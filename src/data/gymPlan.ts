@@ -1,0 +1,117 @@
+import type { GymPlanDay } from '../types/gym.types';
+
+// Day of week → plan day index
+// Sunday=0→7(rest), Mon=1→1, Tue=2→2, Wed=3→3, Thu=4→4, Fri=5→5, Sat=6→6
+export const WEEKDAY_TO_PLAN: Record<number, number> = {
+  0: 7, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6,
+};
+
+export const GYM_PLAN: GymPlanDay[] = [
+  {
+    dayIndex: 1,
+    name: 'Chest & Back A',
+    subtitle: 'Upper Shelf & Width',
+    focus: 'Upper Chest Shelf (Clavicular Head) and Lat Width.',
+    exercises: [
+      { id: 'd1_e1', name: 'Incline Dumbbell Press', targetSets: 3, targetReps: '8–12', muscle: 'Chest' },
+      { id: 'd1_e2', name: 'Neutral-Grip Lat Pulldowns', targetSets: 3, targetReps: '8–12', muscle: 'Back' },
+      { id: 'd1_e3', name: 'Flat Barbell Press', targetSets: 3, targetReps: '8–12', muscle: 'Chest' },
+      { id: 'd1_e4', name: 'Chest-Supported T-Bar', targetSets: 3, targetReps: '8–12', muscle: 'Back' },
+      { id: 'd1_e5', name: 'High-to-Low Cable Crossovers', targetSets: 3, targetReps: '12–15', muscle: 'Chest' },
+      { id: 'd1_e6', name: 'Face Pulls', targetSets: 3, targetReps: '12–15', muscle: 'Rear Delts' },
+      { id: 'd1_e7', name: '45-Degree Weighted Back Extensions', targetSets: 2, targetReps: '10–15', muscle: 'Back' },
+    ],
+  },
+  {
+    dayIndex: 2,
+    name: 'Shoulders & Arms A',
+    subtitle: 'Front Delts & Arms',
+    focus: 'Anterior Deltoid and overall arm mass.',
+    exercises: [
+      { id: 'd2_e1', name: 'Seated Dumbbell Overhead Press', targetSets: 3, targetReps: '8–12', muscle: 'Shoulders' },
+      { id: 'd2_e2', name: 'Cable Lateral Raises', targetSets: 3, targetReps: '12–15', muscle: 'Side Delts' },
+      { id: 'd2_e3', name: 'Dumbbell Shrugs', targetSets: 3, targetReps: '10–15', muscle: 'Shoulders' },
+      { id: 'd2_e4', name: 'Close-Grip Barbell Bench Press', targetSets: 3, targetReps: '8–12', muscle: 'Triceps' },
+      { id: 'd2_e5', name: 'V-Bar Cable Pushdowns', targetSets: 3, targetReps: '10–12', muscle: 'Triceps' },
+      { id: 'd2_e6', name: 'Standing EZ-Bar Curls', targetSets: 3, targetReps: '8–12', muscle: 'Biceps' },
+      { id: 'd2_e7', name: 'Machine Preacher Curls', targetSets: 3, targetReps: '10–12', muscle: 'Biceps' },
+      { id: 'd2_e8', name: 'Dumbbell Hammer Curls', targetSets: 3, targetReps: '10–12', muscle: 'Brachialis' },
+    ],
+  },
+  {
+    dayIndex: 3,
+    name: 'Legs A, 3D Core & Forearms',
+    subtitle: 'Posterior Chain & Core',
+    focus: 'Full Posterior Chain, Heavy Quads, Core & Forearm Flexors.',
+    exercises: [
+      { id: 'd3_e1', name: 'Standard Barbell Deadlifts', targetSets: 3, targetReps: '5–8', muscle: 'Hamstrings' },
+      { id: 'd3_e2', name: 'Hack Squats OR Leg Press', targetSets: 3, targetReps: '8–12', muscle: 'Quads' },
+      { id: 'd3_e3', name: 'Seated Leg Curls', targetSets: 3, targetReps: '10–15', muscle: 'Hamstrings' },
+      { id: 'd3_e4', name: 'Standing Machine Calf Raises', targetSets: 4, targetReps: '10–15', muscle: 'Calves' },
+      { id: 'd3_e5', name: 'Kneeling Cable Crunches', targetSets: 3, targetReps: '12–15', muscle: 'Abs' },
+      { id: 'd3_e6', name: 'Hanging Knee Raises', targetSets: 3, targetReps: '12–15', muscle: 'Abs' },
+      { id: 'd3_e7', name: 'Pall of Press', targetSets: 3, targetReps: '10–12', muscle: 'Core' },
+      { id: 'd3_e8', name: 'Seated Barbell Wrist Curls', targetSets: 3, targetReps: '12–15', muscle: 'Forearms' },
+      { id: 'd3_e9', name: 'Standing Behind Back Wrist Curls', targetSets: 3, targetReps: '15–20', muscle: 'Forearms' },
+      { id: 'd3_e10', name: 'Seated Dumbbell Pronation/Supination', targetSets: 3, targetReps: '10–12', muscle: 'Forearms' },
+    ],
+  },
+  {
+    dayIndex: 4,
+    name: 'Chest & Back B',
+    subtitle: 'Deep Thickness',
+    focus: 'Lat Width/Thickness & Lower Chest Mass.',
+    exercises: [
+      { id: 'd4_e1', name: 'Assisted Pull-Ups OR Assisted Chin-Ups ', targetSets: 3, targetReps: '8–12', muscle: 'Back' },
+      { id: 'd4_e2', name: 'Incline Machine Press', targetSets: 3, targetReps: '8–12', muscle: 'Chest' },
+      { id: 'd4_e3', name: 'Single-Arm Dumbbell Rows', targetSets: 3, targetReps: '8–12', muscle: 'Back' },
+      { id: 'd4_e4', name: 'Decline Dumbbell Press', targetSets: 3, targetReps: '8–12', muscle: 'Chest' },
+      { id: 'd4_e5', name: 'Seated Cable Rows (V-Bar Grip)', targetSets: 3, targetReps: '8–12', muscle: 'Back' },
+      { id: 'd4_e6', name: 'Pec Deck Fly ', targetSets: 3, targetReps: '12–15', muscle: 'Chest' },
+      { id: 'd4_e7', name: 'Straight-Arm Cable Pulldowns', targetSets: 3, targetReps: '12–15', muscle: 'Back' },
+    ],
+  },
+  {
+    dayIndex: 5,
+    name: 'Shoulders & Arms B',
+    subtitle: 'Detail & Width',
+    focus: 'Side Delts, Rear Delts, and Triceps/Biceps peak.',
+    exercises: [
+      { id: 'd5_e1', name: 'Machine Overhead Press', targetSets: 3, targetReps: '8–12', muscle: 'Shoulders' },
+      { id: 'd5_e2', name: 'Dumbbell Lateral Raises', targetSets: 3, targetReps: '12–15', muscle: 'Side Delts' },
+      { id: 'd5_e3', name: 'Reverse Pec Deck', targetSets: 3, targetReps: '12–15', muscle: 'Rear Delts' },
+      { id: 'd5_e4', name: 'Wide-Grip Cable Upright Rows', targetSets: 3, targetReps: '10–12', muscle: 'Side Delts' },
+      { id: 'd5_e5', name: 'Cable Cross-Body Tricep Extensions', targetSets: 3, targetReps: '8–12', muscle: 'Triceps' },
+      { id: 'd5_e6', name: 'Overhead Cable Extensions', targetSets: 3, targetReps: '10–12', muscle: 'Triceps' },
+      { id: 'd5_e7', name: 'Rope Tricep Pushdowns', targetSets: 3, targetReps: '12–15', muscle: 'Triceps' },
+      { id: 'd5_e8', name: 'Alternating Dumbbell Curls w/ Supination', targetSets: 3, targetReps: '8–12', muscle: 'Biceps' },
+      { id: 'd5_e9', name: 'Incline Dumbbell Curls', targetSets: 3, targetReps: '10–12', muscle: 'Biceps' },
+    ],
+  },
+  {
+    dayIndex: 6,
+    name: 'Legs B, Core Power & Grip',
+    subtitle: 'VMO & Grip Strength',
+    focus: 'Inner Quad Teardrop, Core Thickness, and Crushing Grip.',
+    exercises: [
+      { id: 'd6_e1', name: 'Heel-Elevated Goblet Squats', targetSets: 3, targetReps: '10–12', muscle: 'Quads' },
+      { id: 'd6_e2', name: 'Bulgarian Split Squats', targetSets: 3, targetReps: '8–10', muscle: 'Quads/Glutes' },
+      { id: 'd6_e3', name: 'Seated Machine Abductions', targetSets: 3, targetReps: '15–20', muscle: 'Glutes/Hams' },
+      { id: 'd6_e4', name: 'Seated Calf Raises', targetSets: 4, targetReps: '12–15', muscle: 'Soleus' },
+      { id: 'd6_e5', name: 'Seated Ab Crunch Machine', targetSets: 3, targetReps: '10–12', muscle: 'Abs' },
+      { id: 'd6_e6', name: 'Cable Woodchoppers (High-to-Low)', targetSets: 3, targetReps: '10–12', muscle: 'Obliques' },
+      { id: 'd6_e7', name: 'Reverse Crunches', targetSets: 3, targetReps: '12–15', muscle: 'Abs' },
+      { id: 'd6_e8', name: 'Reverse Cable Curls ', targetSets: 3, targetReps: '10–12', muscle: 'Forearms' },
+      { id: 'd6_e9', name: 'Seated Dumbbell Wrist Extensions', targetSets: 3, targetReps: '15–20', muscle: 'Forearms' },
+      { id: 'd6_e10', name: 'Plate Pinches ', targetSets: 3, targetReps: 'Failure', muscle: 'Forearms' },
+    ],
+  },
+  {
+    dayIndex: 7,
+    name: 'Rest Day',
+    subtitle: 'Complete Rest',
+    focus: 'No lifting. Light walk allowed. Focus on recovery.',
+    exercises: [],
+    isRest: true,
+  },
+];

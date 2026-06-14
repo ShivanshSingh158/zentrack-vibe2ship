@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ─────────────────────────────────────────────────────
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    // ── User-scoped collections (userId field pattern) ────────────────────────
+
+    // todos, habits, habit_logs, notes, goals, job_applications, daily_logs,
+    // learning_topics, attendance_subjects, assignments, todos
+    match /{collection}/{docId} {
+      allow read, write: if isSignedIn()
+        && collection != 'users'
+        && resource != null
+        && isOwner(resource.data.userId);
+
+      allow create: if isSignedIn()
+        && collection != 'users'
+        && isOwner(request.resource.data.userId);
+    }
+
+    // ── Users Collection (Secure against self-elevation) ──────────────────────
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isSignedIn() && isOwner(userId);
+      
+      // Users can create their own profile (e.g. on first login), but cannot set isAdmin: true
+      allow create: if isSignedIn() 
+        && isOwner(userId) 
+        && request.resource.data.userId == userId
+        && (!request.resource.data.keys().hasAll(['isAdmin']) || request.resource.data.isAdmin == false);
+      
+      // Users can update their profile, but CANNOT modify or add the isAdmin field
+      allow update: if isSignedIn() 
+        && isOwner(userId) 
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin']));
+    }
+
+    // ── FCM Tokens (docId = userId) ───────────────────────────────────────────
+    // Only the owning user can read/write their own FCM token.
+    // Server (Admin SDK) bypasses rules — so send-notification.js still works.
+    match /fcm_tokens/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    // ── Gym Logs (docId = userId_date) ───────────────────────────────────────
+    match /gymLogs/{docId} {
+      allow read, write: if isSignedIn()
+        && resource != null
+        && isOwner(resource.data.userId);
+
+      allow create: if isSignedIn()
+        && isOwner(request.resource.data.userId);
+    }
+
+    // ── Weekly Reviews ────────────────────────────────────────────────────────
+    match /weekly_reviews/{docId} {
+      allow read, write: if isSignedIn()
+        && resource != null
+        && isOwner(resource.data.userId);
+
+      allow create: if isSignedIn()
+        && isOwner(request.resource.data.userId);
+    }
+
+    // ── Deny everything else ─────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
