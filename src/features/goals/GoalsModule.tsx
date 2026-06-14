@@ -84,7 +84,7 @@ export const GoalsModule = () => {
         if (now - lastSync < 10_000) return;
 
         let goalNeedsUpdate = false;
-        const updatedKRs = (goal.keyResults || []).map(kr => {
+        const updatedKRs = (goal.keyResults || []).map((kr: any) => {
           if (!kr.syncType || kr.syncType === 'none') return kr;
 
           let computedValue = kr.currentValue;
@@ -226,10 +226,10 @@ export const GoalsModule = () => {
     if (!goal) return;
     
     // Check if it's actually different from the current saved value
-    const currentKR = goal.keyResults.find(k => k.id === krId);
+    const currentKR = goal.keyResults.find((k: any) => k.id === krId);
     if (!currentKR || currentKR.currentValue === finalValue) return;
 
-    const updatedKRs = goal.keyResults.map(kr => {
+    const updatedKRs = goal.keyResults.map((kr: any) => {
       if (kr.id === krId) {
         // Append to history
         const newHistory = [...(kr.history || [])];

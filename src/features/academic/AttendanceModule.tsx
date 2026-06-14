@@ -20,10 +20,10 @@ export interface AttendanceSubject {
   labsTotal: number;
   targetPercentage: number;
   order: number;
-  schedule: Record<string, { classCount: number, labCount: number }>;
+  schedule: Record<string, { classCount: number, labCount: number, startTimes?: string[] }>;
 }
 
-const defaultSchedule: Record<string, { classCount: number, labCount: number }> = {
+const defaultSchedule: Record<string, { classCount: number, labCount: number, startTimes?: string[] }> = {
   '0': { classCount: 1, labCount: 0 },
   '1': { classCount: 1, labCount: 0 },
   '2': { classCount: 1, labCount: 0 },

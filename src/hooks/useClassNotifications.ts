@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { sendSystemNotification } from '../utils/notifications';
-import { sendPushNotification } from '../services/fcm';
 import { auth } from '../services/firebase';
 
 /**
@@ -54,17 +53,8 @@ export const useClassNotifications = (subjects: any[]) => {
             const title = `📚 Class in 10 min: ${subject.name}`;
             const body = `${subject.name} starts at ${startTime}. Get ready!`;
 
-            // Web Notification (shows when tab is in background)
+            // Web Notification (shows when tab is open/background)
             sendSystemNotification(title, { body }, false);
-
-            // FCM Push (shows on mobile even if browser is closed)
-            sendPushNotification({
-              userIds: [user.uid],
-              title,
-              body,
-              tag: `class-${subject.id}-${startTime}`,
-              url: '/attendance',
-            }).catch(() => { /* non-critical */ });
           }
         });
       });

@@ -33,11 +33,23 @@ export const sendSystemNotification = (title: string, options?: NotificationOpti
   if (!('Notification' in window)) return;
   
   if (Notification.permission === 'granted') {
-    new Notification(title, {
+    const notifyOptions = {
       icon: '/icon-192.png',
       badge: '/icon-192.png',
       ...options
-    });
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(registration => {
+        registration.showNotification(title, notifyOptions);
+      }).catch(() => {
+        // Fallback if SW is not ready but supported
+        new Notification(title, notifyOptions);
+      });
+    } else {
+      // Fallback for browsers without SW support
+      new Notification(title, notifyOptions);
+    }
     
     if (playSound) {
       playNotificationSound();
