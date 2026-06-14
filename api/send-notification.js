@@ -42,16 +42,17 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // ── Internal secret auth: blocks unauthenticated callers ──────────────────
-  // Set ZENTRACK_INTERNAL_SECRET in Vercel env vars (generate with: openssl rand -hex 32)
+  // ── Internal secret auth — REQUIRED, not optional —————————————————
+  // If ZENTRACK_INTERNAL_SECRET is not set in Vercel, the endpoint is broken by design.
+  // Never allow an unauthenticated caller to send push notifications.
   const internalSecret = process.env.ZENTRACK_INTERNAL_SECRET;
-  if (internalSecret) {
-    const provided = req.headers['x-internal-secret'] || '';
-    if (provided !== internalSecret) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-  } else {
-    console.warn('[send-notification] ZENTRACK_INTERNAL_SECRET not set — endpoint is unprotected!');
+  if (!internalSecret) {
+    console.error('[send-notification] ZENTRACK_INTERNAL_SECRET is not configured. Refusing all requests.');
+    return res.status(500).json({ error: 'Server misconfiguration: notification secret not set.' });
+  }
+  const provided = req.headers['x-internal-secret'] || '';
+  if (provided !== internalSecret) {
+    return res.status(401).json({ error: 'Unauthorized' });
   }
 
   const contentType = req.headers['content-type'] || '';

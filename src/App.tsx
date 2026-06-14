@@ -36,11 +36,12 @@ const SessionEnforcer = () => {
         const data = docSnap.data();
         const currentLocalKey = localStorage.getItem('global_session_key');
         
-        // If DB has an active key and our local key doesn't match, force logout
+        // Key mismatch: forced logout triggered remotely.
+        // Clear the local key BEFORE signing out so the next login
+        // doesn't skip future remote wipe triggers.
         if (data.activeSessionKey && currentLocalKey !== data.activeSessionKey) {
-           console.log("Global logout triggered. Setting local key to:", data.activeSessionKey);
-           localStorage.setItem('global_session_key', data.activeSessionKey);
-           signOut(auth);
+          localStorage.removeItem('global_session_key');
+          signOut(auth);
         }
       } else {
         // Init the document if it doesn't exist

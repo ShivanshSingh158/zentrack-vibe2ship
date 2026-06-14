@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { generateMorningBriefing, generateEveningWindDown } from '../services/gemini';
+import { generateMorningBriefing, generateEveningWindDown } from '../../services/gemini';
 import { collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../services/firebase';
+import { auth, db } from '../../services/firebase';
 import { Sun, Moon, CheckCircle2 } from 'lucide-react';
 
 export const DailyBriefingOverlay = () => {

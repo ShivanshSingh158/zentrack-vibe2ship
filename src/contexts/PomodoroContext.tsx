@@ -114,15 +114,15 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         });
       }
 
-      // Also log the individual session timestamp
-      const durationMinutes = 25; // Default 25m pomodoro
+      // Also log the individual session with the ACTUAL elapsed time, not a hardcoded value
+      const durationMinutes = elapsedRef.current > 0 ? elapsedRef.current : 25;
       await addDoc(collection(db, 'pomodoro_sessions'), {
         userId: user.uid,
         date: todayStr,
         timestamp: Date.now(),
         taskId: state.taskId || null,
         taskText: state.taskText || 'Focus Session',
-        durationMinutes: durationMinutes
+        durationMinutes,
       });
 
       toast.success('+0.5h synced to Daily Log!');

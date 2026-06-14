@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, CheckCircle2, PlaySquare, Route, Timer, Briefcase, GraduationCap, Flame, Command } from 'lucide-react';
 import { doc, setDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import { playPopSound } from '../utils/sound';
+import { db } from '../../services/firebase';
+import { playPopSound } from '../../utils/sound';
 
 interface OnboardingCarouselProps {
   userId: string;

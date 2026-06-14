@@ -15,9 +15,12 @@ import { getMessaging, getToken, onMessage, type Messaging } from 'firebase/mess
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from './firebase';
 
-// VAPID key — must be set as VITE_FIREBASE_VAPID_KEY in Vercel env vars (never hardcode)
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY ||
-  'BIt2pkWP54tAYxUN_U1Hbs4ZyQjgJRQ8h8rN0l0QWxJsmJaOWCRb_ywr1W8xcJ2LMdjGJdkT0wihc57CS6VwEOE';
+// VAPID key — MUST be set as VITE_FIREBASE_VAPID_KEY in Vercel env vars.
+// No fallback: a missing key means the deploy is misconfigured — fail loudly.
+const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string;
+if (!VAPID_KEY) {
+  console.error('[FCM] VITE_FIREBASE_VAPID_KEY is not set. Push notifications will be disabled.');
+}
 
 let messagingInstance: Messaging | null = null;
 

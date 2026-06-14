@@ -1,10 +1,10 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { usePomodoroContext } from '../contexts/PomodoroContext';
+import { usePomodoroContext } from '../../contexts/PomodoroContext';
 import { Play, Pause, RotateCcw, X, Zap, CloudRain, CloudDrizzle, Trees, Waves, VolumeX, Check } from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
-import { db } from '../services/firebase';
-import type { LearningSubTask } from '../types/index';
-import { playPopSound } from '../utils/sound';
+import { db } from '../../services/firebase';
+import type { LearningSubTask } from '../../types/index';
+import { playPopSound } from '../../utils/sound';
 
 export const FocusModeOverlay = () => {
   const { state, focusMode, toggleFocusMode, pauseTimer, resumeTimer, resetTimer, dismissTimer, formatTime, setAmbientSound, setDuration } = usePomodoroContext();
