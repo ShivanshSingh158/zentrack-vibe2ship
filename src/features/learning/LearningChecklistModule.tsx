@@ -29,11 +29,7 @@ const sanitize = (obj: any): any => {
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
 import { PREDEFINED_ROADMAPS } from '../../data/roadmaps';
 
-let _idCounter = 0;
-const uniqueId = () => {
-  _idCounter++;
-  return `${Date.now()}_${_idCounter}_${Math.random().toString(36).substr(2, 6)}`;
-};
+const uniqueId = () => crypto.randomUUID();
 
 const extractYoutubeId = (url: string) => {
   if (!url) return null;

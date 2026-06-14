@@ -15,7 +15,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { collection, updateDoc, doc, addDoc } from 'firebase/firestore';
+import { collection, updateDoc, doc, addDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
@@ -31,6 +31,7 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
 import { TimeboxTimeline } from './TimeboxTimeline';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { PomodoroStatsPanel } from '../pomodoro/PomodoroStatsPanel';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface LocalLog {
@@ -487,12 +488,28 @@ const DailyCommandPanel = ({ localLog, habits, todayHabitLogs, onUpdate, onToggl
 // ─── PomodoroWidget ────────────────────────────────────────────────────────────
 const PomodoroWidget = () => {
   const { state: pomoState, startTimer, pauseTimer, resumeTimer, resetTimer, formatTime, setDuration, toggleFocusMode } = usePomodoroContext();
+  const [showStats, setShowStats] = useState(false);
   return (
     <div className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="panel-header">
         <h2><Timer size={18} /> Focus Timer</h2>
-        <button className="btn-icon" onClick={toggleFocusMode}><Maximize2 size={16} /></button>
+        <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+          <button
+            className="btn-icon"
+            onClick={() => setShowStats(s => !s)}
+            title={showStats ? 'Show Timer' : 'Show Stats'}
+            style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', color: showStats ? 'var(--accent-primary)' : 'var(--text-muted)', background: showStats ? 'rgba(99,102,241,0.1)' : 'transparent', borderRadius: 'var(--radius-sm)', border: `1px solid ${showStats ? 'rgba(99,102,241,0.3)' : 'transparent'}` }}
+          >
+            <BarChart2 size={13} />
+          </button>
+          <button className="btn-icon" onClick={toggleFocusMode}><Maximize2 size={16} /></button>
+        </div>
       </div>
+      {showStats ? (
+        <div className="panel-body" style={{ overflowY: 'auto' }}>
+          <PomodoroStatsPanel />
+        </div>
+      ) : (
       <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', flex: 1, justifyContent: 'center' }}>
         <div style={{ position: 'relative', width: '180px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'rgba(15,15,20,0.5)', boxShadow: pomoState.isRunning ? '0 0 40px rgba(168,85,247,0.2), inset 0 0 20px rgba(168,85,247,0.1)' : 'inset 0 0 20px rgba(0,0,0,0.5)', transition: 'all 0.5s ease' }}>
           <svg width="180" height="180" style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)', pointerEvents: 'none' }}>
@@ -527,6 +544,7 @@ const PomodoroWidget = () => {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 };
@@ -790,16 +808,22 @@ export const HomeDashboard = () => {
   };
 
   const handleToggleHabit = async (habitId: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
     try {
       const isCompleted = todayHabitLogs[habitId];
       if (isCompleted) {
-        const { getDocs, deleteDoc, query, where } = await import('firebase/firestore');
-        const q = query(collection(db, 'habit_logs'), where('userId', '==', auth.currentUser!.uid), where('habitId', '==', habitId), where('date', '==', todayStr));
-        const snap = await getDocs(q);
-        snap.forEach(d => deleteDoc(d.ref));
+        // Log ID is already in habitLogs from GlobalDataContext — delete directly.
+        // No extra Firestore query needed.
+        const logDoc = habitLogs.find(
+          l => l.habitId === habitId && l.date === todayStr && l.completed
+        );
+        if (logDoc?.id) {
+          await deleteDoc(doc(db, 'habit_logs', logDoc.id));
+        }
         toast.info('Habit unmarked');
       } else {
-        await addDoc(collection(db, 'habit_logs'), { userId: auth.currentUser!.uid, habitId, date: todayStr, completed: true });
+        await addDoc(collection(db, 'habit_logs'), { userId: user.uid, habitId, date: todayStr, completed: true });
         import('../../utils/notifications').then(({ sendSystemNotification }) => sendSystemNotification('Habit Completed! 🔥', { body: 'Keep the streak going!' }, true));
         toast.success('Habit completed! 🔥');
       }

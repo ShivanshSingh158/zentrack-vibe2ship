@@ -719,6 +719,51 @@ export const AttendanceModule = () => {
                             </td>
                           ))}
                         </tr>
+                        {/* ⏰ Start-time row — drives the 10-min-before class notifications */}
+                        <tr>
+                          <td style={{ padding: '0.5rem', fontWeight: 600, fontSize: '0.8rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            ⏰ Start Times
+                          </td>
+                          {Object.keys(defaultSchedule).map(dayIdx => {
+                            const slot = subject.schedule?.[dayIdx];
+                            const count = (slot?.classCount || 0) + (slot?.labCount || 0);
+                            const startTimes: string[] = slot?.startTimes || [];
+                            if (count === 0) {
+                              return (
+                                <td key={`time-${dayIdx}`} style={{ padding: '0.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.7rem' }}>—</td>
+                              );
+                            }
+                            return (
+                              <td key={`time-${dayIdx}`} style={{ padding: '0.35rem 0.5rem' }}>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                  {Array.from({ length: count }).map((_, i) => (
+                                    <input
+                                      key={i}
+                                      type="time"
+                                      value={startTimes[i] || ''}
+                                      title={`Slot ${i + 1} start time — triggers 10-min alert`}
+                                      onChange={async (e) => {
+                                        const updated = [...startTimes];
+                                        updated[i] = e.target.value;
+                                        const current = subject.schedule?.[dayIdx] || { classCount: 0, labCount: 0 };
+                                        const newSchedule = {
+                                          ...(subject.schedule || {}),
+                                          [dayIdx]: { ...current, startTimes: updated },
+                                        };
+                                        try {
+                                          await updateDoc(doc(db, 'attendance_subjects', subject.id!), { schedule: newSchedule });
+                                        } catch (err: any) {
+                                          toast.error('Failed to save time');
+                                        }
+                                      }}
+                                      style={{ width: '82px', padding: '0.2rem 0.3rem', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.75rem' }}
+                                    />
+                                  ))}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
                       </tbody>
                     </table>
                   </div>

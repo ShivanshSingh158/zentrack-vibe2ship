@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, writeBatch, doc } from 'firebase/firestore';
 import type { Query, DocumentData } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/firebase';
@@ -99,6 +99,72 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const uid = user.uid;
       setIsLoading(true);
+
+      // ── Recurring Task Auto-Forward Engine ─────────────────────────────────────────────
+      // Runs once per calendar day per user. Finds all isRecurring todos from
+      // before today that are still incomplete, and clones them to today.
+      // Deduplicates against any today task with the same text.
+      const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+      const recurringKey = `recurring_forwarded_${uid}_${todayStr}`;
+      if (!localStorage.getItem(recurringKey)) {
+        (async () => {
+          try {
+            // 1. Fetch all incomplete recurring todos older than today
+            const recurringQ = query(
+              collection(db, 'todos'),
+              where('userId', '==', uid),
+              where('isRecurring', '==', true),
+              where('isCompleted', '==', false)
+            );
+            const snap = await getDocs(recurringQ);
+            const stale = snap.docs.filter(d => (d.data().date || '') < todayStr);
+            if (stale.length === 0) { localStorage.setItem(recurringKey, '1'); return; }
+
+            // 2. Fetch today's todos to dedup
+            const todayQ = query(
+              collection(db, 'todos'),
+              where('userId', '==', uid),
+              where('date', '==', todayStr)
+            );
+            const todaySnap = await getDocs(todayQ);
+            const todayTexts = new Set(todaySnap.docs.map(d => (d.data().text || '').trim().toLowerCase()));
+
+            // 3. Batch-write new copies for today (skip if already exists)
+            const batch = writeBatch(db);
+            let count = 0;
+            stale.forEach(d => {
+              const data = d.data();
+              const textKey = (data.text || '').trim().toLowerCase();
+              if (todayTexts.has(textKey)) return; // already exists today — skip
+              todayTexts.add(textKey); // prevent duplicates within this batch
+              const newRef = doc(collection(db, 'todos'));
+              batch.set(newRef, {
+                userId: uid,
+                text: data.text,
+                date: todayStr,
+                isCompleted: false,
+                priority: data.priority || 'medium',
+                isRecurring: true,
+                timeSlot: data.timeSlot || null,
+                subject: data.subject || null,
+                estimatedMinutes: data.estimatedMinutes || null,
+                subtasks: [],
+                createdAt: Date.now(),
+                order: 999,
+              });
+              count++;
+            });
+
+            if (count > 0) await batch.commit();
+            localStorage.setItem(recurringKey, '1');
+            console.info(`[Recurring] Forwarded ${count} recurring task(s) to today.`);
+          } catch (err) {
+            console.error('[Recurring] Auto-forward failed:', err);
+            // Don't set the key — will retry next session
+          }
+        })();
+      }
+      // ──────────────────────────────────────────────────────────────────────
 
       // Track first-fire per listener to know when initial load is done
       const TOTAL = 12;

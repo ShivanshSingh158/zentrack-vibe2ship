@@ -12,7 +12,8 @@ import { InterviewPrepModule } from './InterviewPrepModule';
 import { SpotifyPlayer } from '../spotify/SpotifyPlayer';
 import { GradeCalculatorModule } from '../academic/GradeCalculatorModule';
 
-const uniqueId = () => Math.random().toString(36).substr(2, 9);
+const uniqueId = () => crypto.randomUUID();
+
 const sanitize = (obj: any) => JSON.parse(JSON.stringify(obj, (k, v) => v === undefined ? null : v));
 
 interface ToolsHubModuleProps {

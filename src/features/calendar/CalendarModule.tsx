@@ -2,8 +2,16 @@ import { useState, useEffect, useMemo } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Briefcase, ListTodo, Target, X, Plus, GraduationCap, AlertTriangle, Palmtree, FileText, Clock } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Briefcase, ListTodo, Target, X, Plus, GraduationCap, AlertTriangle, Palmtree, FileText, Clock, ExternalLink, Link2, Link2Off } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle,
+  addEventToGoogleCalendar,
+} from '../../services/googleCalendar';
+
+const GC_CLIENT_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID &&
+  import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID !== 'YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE';
+
 
 interface CalendarEvent {
   id: string;
@@ -36,6 +44,58 @@ export const CalendarModule = () => {
   const [selectedDayStr, setSelectedDayStr] = useState<string | null>(null);
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventType, setNewEventType] = useState<string>('exam');
+
+  // ── Google Calendar state ─────────────────────────────────────────────────────────────
+  const [gcConnected, setGcConnected] = useState(false);
+  const [gcLoading, setGcLoading] = useState(false);
+  const [exportingId, setExportingId] = useState<string | null>(null);
+
+  // Check if already signed in on mount
+  useEffect(() => {
+    if (GC_CLIENT_CONFIGURED) {
+      initGoogleCalendar().then(() => setGcConnected(isSignedInToGoogle()));
+    }
+  }, []);
+
+  const handleGoogleConnect = async () => {
+    setGcLoading(true);
+    try {
+      const ok = await initGoogleCalendar();
+      if (!ok) { toast.error('Google Calendar is not configured. Add VITE_GOOGLE_CALENDAR_CLIENT_ID to .env'); return; }
+      await signInWithGoogle();
+      setGcConnected(true);
+      toast.success('Connected to Google Calendar!');
+    } catch (err: any) {
+      toast.error('Google sign-in failed: ' + (err?.message || 'cancelled'));
+    } finally { setGcLoading(false); }
+  };
+
+  const handleGoogleDisconnect = () => {
+    signOutGoogle();
+    setGcConnected(false);
+    toast.info('Disconnected from Google Calendar');
+  };
+
+  const handleExportEvent = async (ev: CalendarEvent) => {
+    if (!gcConnected) {
+      await handleGoogleConnect();
+      if (!isSignedInToGoogle()) return;
+    }
+    setExportingId(ev.id);
+    try {
+      await addEventToGoogleCalendar({
+        title: ev.title,
+        date: ev.date,
+        type: ev.type,
+        description: `ZenTrack event: ${ev.title} (${EVENT_COLORS[ev.type]?.label || ev.type})`,
+      });
+      toast.success(`"${ev.title}" added to Google Calendar!`);
+    } catch (err: any) {
+      toast.error('Export failed: ' + (err?.message || 'unknown error'));
+    } finally { setExportingId(null); }
+  };
+  // ──────────────────────────────────────────────────────────────────────
+
 
   useEffect(() => {
     const user = auth.currentUser;
@@ -359,12 +419,45 @@ export const CalendarModule = () => {
           </div>
         )}
 
+        {/* ── Google Calendar Setup Banner ───────────────── */}
+        {!GC_CLIENT_CONFIGURED && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.65rem 0.9rem', background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 'var(--radius-md)', marginBottom: '1rem' }}>
+            <AlertTriangle size={14} style={{ color: '#6366f1', flexShrink: 0, marginTop: '2px' }} />
+            <p style={{ fontSize: '0.75rem', color: 'rgba(99,102,241,0.9)', margin: 0, lineHeight: 1.5 }}>
+              <strong>Google Calendar sync not configured.</strong> Add <code>VITE_GOOGLE_CALENDAR_CLIENT_ID</code> to your <code>.env</code> file.
+              {' '}<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" style={{ color: '#6366f1' }}>Get Client ID →</a>
+            </p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="cal-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <CalendarIcon size={24} style={{ color: 'var(--accent-primary)' }} /> Calendar
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {/* Google Calendar connect/disconnect button */}
+            {GC_CLIENT_CONFIGURED && (
+              gcConnected ? (
+                <button
+                  onClick={handleGoogleDisconnect}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.08)', color: '#10b981', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
+                  title="Disconnect Google Calendar"
+                >
+                  <Link2 size={13} /> GCal ✓
+                </button>
+              ) : (
+                <button
+                  onClick={handleGoogleConnect}
+                  disabled={gcLoading}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: '#6366f1', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, opacity: gcLoading ? 0.7 : 1 }}
+                  title="Connect Google Calendar"
+                >
+                  <Link2Off size={13} /> {gcLoading ? 'Connecting...' : 'Connect Google Cal'}
+                </button>
+              )
+            )}
+
             <div style={{ display: 'flex', background: 'var(--bg-surface)', padding: '0.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
               {(['month', 'week', 'day'] as const).map(mode => (
                 <button key={mode} className="btn-icon" onClick={() => setViewMode(mode)} style={{
@@ -452,6 +545,18 @@ export const CalendarModule = () => {
                   }}>
                     <span>{cfg.icon}</span>
                     <div style={{ flex: 1, fontSize: '0.85rem' }}>{ev.title}</div>
+                    {/* Export to Google Calendar */}
+                    {GC_CLIENT_CONFIGURED && !ev.isCompleted && (
+                      <button
+                        className="btn-icon"
+                        onClick={() => handleExportEvent(ev)}
+                        disabled={exportingId === ev.id}
+                        title="Add to Google Calendar"
+                        style={{ color: '#6366f1', opacity: exportingId === ev.id ? 0.5 : 1 }}
+                      >
+                        {exportingId === ev.id ? <Clock size={13} /> : <ExternalLink size={13} />}
+                      </button>
+                    )}
                     {ev.id && !ev.id.startsWith('job_') && !ev.id.startsWith('goal_') && !ev.id.startsWith('assign_') && (
                       <button className="btn-icon danger" onClick={() => handleDeleteCustomEvent(ev.id)} style={{ padding: '0.15rem' }} title="Delete event"><X size={14} /></button>
                     )}

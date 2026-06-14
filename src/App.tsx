@@ -26,6 +26,16 @@ import { SpotifyFloatingPlayer } from './features/spotify/SpotifyFloatingPlayer'
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FloatingExtraWorks } from './features/_shared/FloatingExtraWorks';
 import { SkeletonCard } from './components/ui/SkeletonCard';
+import { OfflineIndicator } from './components/ui/OfflineIndicator';
+import { useClassNotifications } from './hooks/useClassNotifications';
+import { useGlobalData } from './contexts/GlobalDataContext';
+
+/** Mounts inside GlobalDataProvider so it can access attendanceSubjects */
+const ClassNotificationRunner = () => {
+  const { attendanceSubjects } = useGlobalData();
+  useClassNotifications(attendanceSubjects);
+  return null;
+};
 
 const SessionEnforcer = () => {
   useEffect(() => {
@@ -285,6 +295,8 @@ function App() {
       <UpdatePrompt />
       <UpdateFlashcard />
       <Toaster theme="dark" position="top-right" />
+      <OfflineIndicator />
+      <ClassNotificationRunner />
       <CommandPalette />
       <GlobalQuickAdd />
       <VoiceQuickCaptureWidget />

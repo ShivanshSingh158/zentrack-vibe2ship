@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
+import { useGlobalData } from '../../contexts/GlobalDataContext';
 import type { Goal, KeyResult } from '../../types/index';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import { Target, Plus, Edit2, Trash2, X, Save, TrendingUp, ChevronUp } from 'lucide-react';
@@ -9,16 +10,23 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
 export const GoalsModule = () => {
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // All external data comes from GlobalDataContext — zero additional Firestore listeners.
+  const {
+    goals: globalGoals,
+    jobs: extJobs,
+    todos: extTodos,
+    learningTopics: extLearning,
+    dailyLogs: extLogs,
+    isLoading,
+  } = useGlobalData();
+
+  const goals = useMemo(() => {
+    const sorted = [...globalGoals];
+    sorted.sort((a, b) => b.createdAt - a.createdAt);
+    return sorted;
+  }, [globalGoals]);
+
   const [showArchived, setShowArchived] = useState(false);
-  
-  // Auto-sync external states
-  const [extJobs, setExtJobs] = useState<any[]>([]);
-  const [extTodos, setExtTodos] = useState<any[]>([]);
-  const [extLearning, setExtLearning] = useState<any[]>([]);
-  const [extLogs, setExtLogs] = useState<any[]>([]);
-  
   // Edit state
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,45 +44,7 @@ export const GoalsModule = () => {
   // Last sync timestamps per goal — throttle to max once per 10s per goal
   const lastSyncRef = useRef<{ [goalId: string]: number }>({});
 
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
-    setIsLoading(true);
-
-    const q = query(collection(db, 'goals'), where('userId', '==', user.uid));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() })) as Goal[];
-      data.sort((a, b) => b.createdAt - a.createdAt);
-      setGoals(data);
-      setIsLoading(false);
-    }, (error) => {
-      console.error('Error listening to goals:', error);
-      toast.error('Failed to load goals');
-      setIsLoading(false);
-    });
-
-    const unsubJobs = onSnapshot(query(collection(db, 'job_applications'), where('userId', '==', user.uid)), snap => {
-      setExtJobs(snap.docs.map(d => d.data()));
-    });
-    const unsubTodos = onSnapshot(query(collection(db, 'todos'), where('userId', '==', user.uid)), snap => {
-      setExtTodos(snap.docs.map(d => d.data()));
-    });
-    const unsubLearning = onSnapshot(query(collection(db, 'learning_topics'), where('userId', '==', user.uid)), snap => {
-      setExtLearning(snap.docs.map(d => d.data()));
-    });
-    const unsubLogs = onSnapshot(query(collection(db, 'daily_logs'), where('userId', '==', user.uid)), snap => {
-      setExtLogs(snap.docs.map(d => d.data()));
-    });
-
-    return () => {
-      unsubscribe();
-      unsubJobs();
-      unsubTodos();
-      unsubLearning();
-      unsubLogs();
-    };
-  }, []);
-
+  // Auto-sync engine and edit state unchanged below
   // Keyboard trap for Escape
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
