@@ -87,30 +87,34 @@ export default async function handler(req, res) {
   }
 
   // Build the message payload
-  const message = {
-    notification: { title, body },
+  const payload = {
+    notification: {
+      title,
+      body,
+    },
+    android: {
+      priority: 'high',
+    },
     webpush: {
+      headers: {
+        Urgency: 'high'
+      },
       notification: {
-        title,
-        body,
         icon: '/icon-192.png',
         badge: '/icon-192.png',
-        tag,
-        renotify: true,
-        requireInteraction: false,
-        data: { url, tag, ...data },
+        tag: tag || 'zentrack-notification',
+        requireInteraction: true,
       },
-      fcmOptions: { link: url },
+      fcmOptions: {
+        link: url || 'https://myzentrack.vercel.app/'
+      }
     },
-    data: { url, tag, ...data },
+    tokens: tokens,
   };
 
   try {
     // Send to multiple tokens
-    const batchResponse = await messaging.sendEachForMulticast({
-      tokens,
-      ...message,
-    });
+    const batchResponse = await messaging.sendEachForMulticast(payload);
 
     // Clean up stale tokens that are no longer valid
     const staleTokens = [];

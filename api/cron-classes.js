@@ -96,7 +96,13 @@ export default async function handler(req, res) {
       for (const notif of notifications) {
         const payload = {
           notification: { title: notif.title, body: notif.body },
+          android: {
+            priority: 'high',
+          },
           webpush: {
+            headers: {
+              Urgency: 'high'
+            },
             notification: {
               icon: '/icon-192.png',
               badge: '/icon-192.png',
