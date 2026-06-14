@@ -94,22 +94,22 @@ export default async function handler(req, res) {
       if (tokens.length === 0) continue;
 
       for (const notif of notifications) {
+        // DATA-ONLY Payload! Removing 'notification' from root forces Android
+        // to deliver this to our Service Worker in the background.
         const payload = {
-          notification: { title: notif.title, body: notif.body },
+          data: { 
+            title: notif.title, 
+            body: notif.body,
+            tag: notif.tag,
+            url: '/attendance'
+          },
           android: {
             priority: 'high',
           },
           webpush: {
             headers: {
               Urgency: 'high'
-            },
-            notification: {
-              icon: '/icon-192.png',
-              badge: '/icon-192.png',
-              tag: notif.tag,
-              requireInteraction: true,
-            },
-            fcmOptions: { link: 'https://myzentrack.vercel.app/attendance' }
+            }
           },
           tokens,
         };

@@ -87,10 +87,14 @@ export default async function handler(req, res) {
   }
 
   // Build the message payload
+  // DATA-ONLY Payload! Removing 'notification' from root forces Android
+  // to deliver this to our Service Worker in the background.
   const payload = {
-    notification: {
+    data: {
       title,
       body,
+      tag: tag || 'zentrack-notification',
+      url: url || '/'
     },
     android: {
       priority: 'high',
@@ -98,15 +102,6 @@ export default async function handler(req, res) {
     webpush: {
       headers: {
         Urgency: 'high'
-      },
-      notification: {
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
-        tag: tag || 'zentrack-notification',
-        requireInteraction: true,
-      },
-      fcmOptions: {
-        link: url || 'https://myzentrack.vercel.app/'
       }
     },
     tokens: tokens,

@@ -20,17 +20,18 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Background message received:', payload);
 
-  const { title, body, icon, data } = payload.notification || {};
-  const notificationTitle = title || 'Zentrack';
+  const dataPayload = payload.data || {};
+  const notifPayload = payload.notification || {};
+
+  const notificationTitle = notifPayload.title || dataPayload.title || 'Zentrack';
   const notificationOptions = {
-    body: body || '',
-    icon: icon || '/icon-192.png',
-    badge: '/icon-192.png',
-    data: data || {},
-    tag: data?.tag || 'zentrack-notification',
+    body: notifPayload.body || dataPayload.body || '',
+    icon: notifPayload.icon || dataPayload.icon || '/icon-192.png',
+    badge: notifPayload.badge || dataPayload.badge || '/icon-192.png',
+    data: { url: dataPayload.url || notifPayload.data?.url || '/' },
+    tag: notifPayload.tag || dataPayload.tag || 'zentrack-notification',
     renotify: true,
-    requireInteraction: false,
-    actions: data?.actions ? JSON.parse(data.actions) : [],
+    requireInteraction: true, // Keep notification open until tapped
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
