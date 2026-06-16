@@ -931,6 +931,7 @@ export const GymModule = () => {
           muscle: ex.muscle || null,
         };
         await setDoc(customRef, {
+          userId,
           customExercises: arrayUnion(planEx)
         }, { merge: true });
         toast.success('Saved permanently to your split!');
@@ -1387,6 +1388,7 @@ export const GymModule = () => {
             if (savePermanently && userId) {
               const planEx = { id: ex.exerciseId, name: ex.name, targetSets: ex.targetSets, targetReps: ex.targetReps, muscle: ex.muscle || null };
               setDoc(doc(db, 'gymCustomPlans', `${userId}_day${planDayIdx}`), {
+                userId,
                 customExercises: arrayUnion(planEx)
               }, { merge: true }).catch(err => {
                 console.error(err);
