@@ -25,7 +25,8 @@
     "react-router-dom": "^7.17.0",
     "recharts": "^3.8.1",
     "remark-gfm": "^4.0.1",
-    "sonner": "^2.0.7"
+    "sonner": "^2.0.7",
+    "youtubei.js": "^17.0.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

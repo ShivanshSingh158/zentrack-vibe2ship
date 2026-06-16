@@ -928,7 +928,7 @@ export const GymModule = () => {
           name: ex.name,
           targetSets: ex.targetSets,
           targetReps: ex.targetReps,
-          muscle: ex.muscle,
+          muscle: ex.muscle || null,
         };
         await setDoc(customRef, {
           customExercises: arrayUnion(planEx)
@@ -1385,7 +1385,7 @@ export const GymModule = () => {
           onAdd={(ex, savePermanently) => {
             updateExercise(editingExerciseIdx, ex);
             if (savePermanently && userId) {
-              const planEx = { id: ex.exerciseId, name: ex.name, targetSets: ex.targetSets, targetReps: ex.targetReps, muscle: ex.muscle };
+              const planEx = { id: ex.exerciseId, name: ex.name, targetSets: ex.targetSets, targetReps: ex.targetReps, muscle: ex.muscle || null };
               setDoc(doc(db, 'gymCustomPlans', `${userId}_day${planDayIdx}`), {
                 customExercises: arrayUnion(planEx)
               }, { merge: true }).catch(err => {

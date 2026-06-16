@@ -760,9 +760,9 @@ export const HomeDashboard = () => {
   const tasks = useMemo(() => {
     const pScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
     return todos
-      .filter(t => !t.isCompleted)
+      .filter(t => !t.isCompleted && (!t.date || t.date === todayStr))
       .sort((a, b) => (pScore[b.priority] || 0) - (pScore[a.priority] || 0) || a.createdAt - b.createdAt);
-  }, [todos]);
+  }, [todos, todayStr]);
 
   const interviews = useMemo(() => jobs.filter(j => j.status === 'interviewing'), [jobs]);
 

@@ -4,6 +4,11 @@ interface Props {
   children: ReactNode;
   /** Optional label shown in the error UI — e.g. "Goals Module" */
   name?: string;
+  /**
+   * Optional compact fallback node to render instead of the full error card.
+   * Useful for chart-level boundaries where a small placeholder is better.
+   */
+  fallback?: ReactNode;
 }
 
 interface State {
@@ -31,6 +36,9 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (!this.state.hasError) return this.props.children;
+
+    // Use compact custom fallback if provided (e.g. for individual charts)
+    if (this.props.fallback) return this.props.fallback;
 
     return (
       <div style={{

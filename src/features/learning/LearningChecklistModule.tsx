@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Plus, Check, ChevronDown, ChevronRight, BookOpen, Trash2, Link as LinkIcon, FileText, Search, MoreVertical, EyeOff, Eye, X, Play, GripVertical, ChevronUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -425,7 +426,7 @@ export const LearningChecklistModule = () => {
         return;
       }
 
-      const subTasks: LearningSubTask[] = data.videos.map(v => ({
+      const subTasks: LearningSubTask[] = data.videos.map((v: any) => ({
         id: uniqueId(),
         text: v.title,
         category: 'Videos',
@@ -979,8 +980,8 @@ export const LearningChecklistModule = () => {
         onCancel={() => setDeleteConfirm({ isOpen: false, type: 'topic', id: '' })}
       />
       {/* Roadmap Hub Modal */}
-      {showRoadmapHub && (
-        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, backdropFilter: 'blur(4px)', background: 'rgba(9, 9, 11, 0.8)', padding: '1rem' }} onClick={() => setShowRoadmapHub(false)}>
+      {showRoadmapHub && createPortal(
+        <div className="modal-overlay" style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, backdropFilter: 'blur(4px)', background: 'rgba(9, 9, 11, 0.8)', padding: '1rem' }} onClick={() => setShowRoadmapHub(false)}>
           <div className="modal-content roadmap-modal" onClick={e => e.stopPropagation()} style={{ 
             width: '100%', 
             maxWidth: '650px',
@@ -1063,27 +1064,74 @@ export const LearningChecklistModule = () => {
               
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* Embedded Video Player Modal */}
-      {playingVideoId && (
-        <div className="modal-overlay" style={{ zIndex: 9999, background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(4px)' }} onClick={() => setPlayingVideoId(null)}>
-          <div style={{ position: 'relative', width: '90%', maxWidth: '1000px', aspectRatio: '16/9', background: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.8)' }}>
-            <button className="btn-icon" onClick={() => setPlayingVideoId(null)} style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.6)', color: '#fff', zIndex: 10 }}>
-              <X size={24} />
+      {/* Embedded Video Player Modal — Portal-style: fixed to viewport */}
+      {playingVideoId && createPortal(
+        <div
+          onClick={() => setPlayingVideoId(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 99999,
+            background: 'rgba(0,0,0,0.92)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              width: '90vw',
+              maxWidth: '1100px',
+              aspectRatio: '16/9',
+              background: '#000',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 25px 80px rgba(0,0,0,0.9)',
+            }}
+          >
+            <button
+              onClick={() => setPlayingVideoId(null)}
+              style={{
+                position: 'absolute',
+                top: '10px',
+                right: '10px',
+                background: 'rgba(0,0,0,0.7)',
+                border: 'none',
+                color: '#fff',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                zIndex: 10,
+              }}
+              aria-label="Close video player"
+            >
+              <X size={20} />
             </button>
-            <iframe 
-              width="100%" 
-              height="100%" 
-              src={`https://www.youtube.com/embed/${playingVideoId}?autoplay=1`} 
-              title="YouTube video player" 
-              frameBorder="0" 
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+            <iframe
+              key={playingVideoId}
+              width="100%"
+              height="100%"
+              src={`https://www.youtube-nocookie.com/embed/${playingVideoId}?autoplay=1&rel=0&modestbranding=1`}
+              title="YouTube video player"
+              frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
               allowFullScreen
+              style={{ display: 'block', width: '100%', height: '100%' }}
             ></iframe>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Wrench, Video, Play, Loader2, Briefcase, Code, Brain } from 'lucide-react';
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../services/firebase';
@@ -85,7 +86,7 @@ export const ToolsHubModule: React.FC<ToolsHubModuleProps> = ({ user }) => {
         return;
       }
 
-      const subTasks = data.videos.map(v => ({
+      const subTasks = data.videos.map((v: any) => ({
         id: uniqueId(),
         text: v.title,
         category: 'Videos',
@@ -383,10 +384,11 @@ export const ToolsHubModule: React.FC<ToolsHubModuleProps> = ({ user }) => {
 
       </div>
 
-      {showSimulator && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'var(--bg-base)', display: 'flex', flexDirection: 'column' }}>
+      {showSimulator && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'var(--bg-base)', display: 'flex', flexDirection: 'column' }}>
           <InterviewPrepModule onClose={() => setShowSimulator(false)} />
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

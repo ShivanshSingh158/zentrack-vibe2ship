@@ -8,8 +8,11 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import type { WeeklyReview } from '../../types/index';
-import { AIWeeklyReviewWizard } from '../review/AIWeeklyReviewWizard';
 import { getLocalDateString } from '../../utils/dateUtils';
+import {
+  ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid,
+  AreaChart, Area
+} from 'recharts';
 
 function getWeekBounds(referenceDate: Date): { start: string; end: string; label: string } {
   const d = new Date(referenceDate);
@@ -82,6 +85,47 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
        }
     });
 
+    // Compute daily breakdown
+    const days = [];
+    const sDate = new Date(start);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sDate);
+      d.setDate(sDate.getDate() + i);
+      days.push(getLocalDateString(d));
+    }
+
+    const dailyBreakdown = days.map(date => {
+      const dayTodos = todos.filter(t => t.date === date);
+      const dayLogs = logs.filter(l => l.date === date);
+      const dayHabits = habitLogs.filter((h: any) => h.date === date && h.completed);
+      const dayGym = gymLogs.filter((g: any) => g.date === date);
+
+      const tasksCompleted = dayTodos.filter(t => t.isCompleted).length;
+      const tasksTotal = dayTodos.length;
+      const tasksHours = dayTodos.filter(t => t.isCompleted).reduce((sum, t) => sum + (t.estimatedMinutes || 0) / 60, 0);
+      const logHours = dayLogs.reduce((sum, l) => sum + parseFloat(l.productiveHours || '0'), 0);
+
+      let dayCardio = 0;
+      dayGym.forEach((g: any) => {
+        if (g.cardio) {
+          dayCardio += g.cardio.reduce((s: number, c: any) => s + (Number(c.distanceKm) || 0), 0);
+        }
+      });
+
+      const shortDay = new Date(date).toLocaleDateString('en-US', { weekday: 'short' });
+
+      return {
+        date,
+        dayName: shortDay,
+        tasksCompleted,
+        tasksTotal,
+        productiveHours: Math.round((tasksHours + logHours) * 10) / 10,
+        habitsCompleted: dayHabits.length,
+        workouts: dayGym.length,
+        cardioKm: dayCardio
+      };
+    });
+
     return {
       todosCompleted,
       todosTotal: todos.length,
@@ -94,6 +138,7 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
       goalsActive: 'size' in goals ? goals.size : 0,
       workoutsCompleted,
       cardioKmTotal: Math.round(totalCardioKm * 10) / 10,
+      dailyBreakdown
     };
   } catch (e) {
     console.error('[WeeklyReview] fetchWeekStats error:', e);
@@ -102,6 +147,7 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
       learningSubtasksDone: 0, learningSubtasksTotal: 0,
       habitsDone: 0, habitsAssigned: 0, waterIntakeTotal: 0, goalsActive: 0,
       workoutsCompleted: 0, cardioKmTotal: 0,
+      dailyBreakdown: []
     };
   }
 }
@@ -120,21 +166,31 @@ const StatPill = ({ label, value, emoji }: { label: string; value: number | stri
   </div>
 );
 
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: 'var(--bg-overlay)', border: '1px solid var(--border-subtle)', padding: '0.75rem', borderRadius: 'var(--radius-md)', color: 'var(--text-primary)', zIndex: 1000 }}>
+        <p style={{ margin: '0 0 0.5rem 0', fontWeight: 600 }}>{label}</p>
+        {payload.map((entry: any, index: number) => (
+          <p key={`item-${index}`} style={{ color: entry.color || entry.fill, margin: '0.25rem 0', fontSize: '0.85rem' }}>
+            {entry.name}: {entry.value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
+
 export const WeeklyReviewModule = () => {
   const [weekOffset, setWeekOffset] = useState(0);
   const [review, setReview] = useState<WeeklyReview | null>(null);
   const [reviewId, setReviewId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
 
-  const [wentWell, setWentWell] = useState('');
-  const [toImprove, setToImprove] = useState('');
-  const [nextWeekPriorities, setNextWeekPriorities] = useState('');
-  const [gratitude, setGratitude] = useState('');
-  const [aiChatHistory, setAiChatHistory] = useState<any[]>([]);
   const [stats, setStats] = useState<WeeklyReview['stats']>();
 
   // Stable user uid to prevent effect re-runs
@@ -187,22 +243,14 @@ export const WeeklyReviewModule = () => {
           const data = snap.docs[0].data() as WeeklyReview;
           setReview(data);
           setReviewId(snap.docs[0].id);
-          setWentWell(data.wentWell || '');
-          setToImprove(data.toImprove || '');
-          setNextWeekPriorities(data.nextWeekPriorities || '');
-          setGratitude(data.gratitude || '');
-          setAiChatHistory(data.aiChatHistory || []);
         } else {
           setReview(null); setReviewId(null);
-          setWentWell(''); setToImprove('');
-          setNextWeekPriorities(''); setGratitude('');
-          setAiChatHistory([]);
         }
         setStats(autoStats);
         setLastSyncedAt(new Date());
       } catch (e) {
         console.error('[WeeklyReview] load error:', e);
-        if (isMounted.current) toast.error('Could not load this week\'s data. Please check your connection.');
+        if (isMounted.current) toast.error("Could not load this week's data. Please check your connection.");
       }
       if (isMounted.current) setIsLoading(false);
     };
@@ -272,55 +320,6 @@ export const WeeklyReviewModule = () => {
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshStats]);
 
-  // ── Save handler ─────────────────────────────────────────────────────────────
-  const handleSave = async (reviewData: {
-    wentWell: string; toImprove: string; nextWeekPriorities: string;
-    gratitude: string; aiChatHistory: any[];
-  }) => {
-    if (!userId) return toast.error('You must be logged in.');
-    setIsSaving(true);
-
-    const payload: Partial<WeeklyReview> = {
-      userId,
-      weekStart: week.start,
-      weekEnd: week.end,
-      wentWell: reviewData.wentWell || wentWell,
-      toImprove: reviewData.toImprove || toImprove,
-      nextWeekPriorities: reviewData.nextWeekPriorities || nextWeekPriorities,
-      gratitude: reviewData.gratitude || gratitude,
-      aiChatHistory: reviewData.aiChatHistory,
-      stats,
-      createdAt: review?.createdAt || Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    // Retry up to 2 times on save failure
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        if (reviewId) {
-          await updateDoc(doc(db, 'weekly_reviews', reviewId), payload);
-        } else {
-          const ref = await addDoc(collection(db, 'weekly_reviews'), payload);
-          if (isMounted.current) setReviewId(ref.id);
-        }
-        toast.success('✅ Weekly review saved!');
-        setIsSaving(false);
-        return;
-      } catch (e: any) {
-        if (attempt < 1) {
-          await new Promise(r => setTimeout(r, 1500));
-        } else {
-          console.error('[WeeklyReview] save error:', e);
-          toast.error('Failed to save review. Please try again.');
-        }
-      }
-    }
-    setIsSaving(false);
-  };
-
-  // Suppress unused isSaving warning (used in button disabled state below if we add it)
-  void isSaving;
-
   return (
     <div className="learning-container">
       <div className="learning-header">
@@ -329,7 +328,7 @@ export const WeeklyReviewModule = () => {
             <CalendarCheck size={24} className="logo-icon" /> Weekly Review
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-            Reflect. Learn. Plan the next week.
+            Reflect. Learn. Track your weekly trends.
           </p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -360,6 +359,7 @@ export const WeeklyReviewModule = () => {
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem',
         background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
         borderRadius: 'var(--radius-md)', padding: '0.75rem 1.5rem',
+        marginBottom: '1.5rem'
       }}>
         <button className="btn-icon" onClick={() => setWeekOffset(o => o - 1)}><ChevronLeft size={20} /></button>
         <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', minWidth: '220px', textAlign: 'center' }}>
@@ -377,34 +377,79 @@ export const WeeklyReviewModule = () => {
           {/* Auto-Generated Live Stats */}
           {stats && (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                <h3 style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                  This Week's Stats {isCurrentWeek && <span style={{ color: '#10b981' }}>· Live</span>}
-                </h3>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '2rem' }}>
                 <StatPill emoji="✅" label="Tasks Completed" value={`${stats.todosCompleted}/${stats.todosTotal}`} />
                 <StatPill emoji="⏱️" label="Productive Hours" value={stats.productiveHours} />
                 <StatPill emoji="📚" label="Learning Tasks Done" value={`${stats.learningSubtasksDone}/${stats.learningSubtasksTotal}`} />
                 <StatPill emoji="🔥" label="Habit Check-ins" value={`${stats.habitsDone}/${stats.habitsAssigned}`} />
                 <StatPill emoji="💧" label="Water Intake (L)" value={stats.waterIntakeTotal} />
                 <StatPill emoji="🏋️" label="Workouts" value={stats.workoutsCompleted || 0} />
-                <StatPill emoji="🏃" label="Cardio (km)" value={stats.cardioKmTotal || 0} />
-                <StatPill emoji="🎯" label="Active Goals" value={stats.goalsActive} />
               </div>
+              
+              {/* Daily Charts Section */}
+              {stats.dailyBreakdown && stats.dailyBreakdown.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                  
+                  {/* Productivity Trend */}
+                  <div style={{ background: 'var(--bg-surface)', padding: '1.5rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '1rem' }}>Productivity Trend</h3>
+                    <div style={{ width: '100%', height: 250 }}>
+                      <ResponsiveContainer>
+                        <AreaChart data={stats.dailyBreakdown} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-subtle)" />
+                          <XAxis dataKey="dayName" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                          <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                          <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--border-subtle)', strokeWidth: 1, strokeDasharray: '3 3' }} />
+                          <Area type="monotone" dataKey="productiveHours" name="Hours" stroke="#8b5cf6" strokeWidth={3} fillOpacity={1} fill="url(#colorProd)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Task Completion */}
+                  <div style={{ background: 'var(--bg-surface)', padding: '1.5rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '1rem' }}>Task Completion</h3>
+                    <div style={{ width: '100%', height: 250 }}>
+                      <ResponsiveContainer>
+                        <BarChart data={stats.dailyBreakdown} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-subtle)" />
+                          <XAxis dataKey="dayName" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                          <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-overlay)', opacity: 0.4 }} />
+                          <Legend wrapperStyle={{ fontSize: '0.85rem' }} />
+                          <Bar dataKey="tasksCompleted" name="Completed" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} />
+                          <Bar dataKey="tasksTotal" name="Total Assigned" fill="#3f3f46" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Habit Consistency */}
+                  <div style={{ background: 'var(--bg-surface)', padding: '1.5rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '1rem' }}>Habit Consistency</h3>
+                    <div style={{ width: '100%', height: 250 }}>
+                      <ResponsiveContainer>
+                        <BarChart data={stats.dailyBreakdown} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-subtle)" />
+                          <XAxis dataKey="dayName" stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} />
+                          <YAxis stroke="var(--text-muted)" fontSize={12} tickLine={false} axisLine={false} allowDecimals={false} />
+                          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--bg-overlay)', opacity: 0.4 }} />
+                          <Bar dataKey="habitsCompleted" name="Habits Checked" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                </div>
+              )}
             </div>
           )}
-
-          {/* AI Review Wizard — keyed by week.start so it re-mounts (and starts fresh chat session) on week change */}
-          <div style={{ marginTop: '1.5rem' }}>
-            <AIWeeklyReviewWizard
-              key={week.start}
-              userData={{ stats, week: week.label, isCurrentWeek }}
-              savedChatHistory={aiChatHistory}
-              weekStart={week.start}
-              onSave={handleSave}
-            />
-          </div>
         </>
       )}
     </div>

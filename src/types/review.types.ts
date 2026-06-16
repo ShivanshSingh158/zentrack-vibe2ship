@@ -20,6 +20,16 @@ export interface WeeklyReview {
     goalsActive: number;
     workoutsCompleted?: number;
     cardioKmTotal?: number;
+    dailyBreakdown?: {
+      date: string;
+      dayName: string;
+      tasksCompleted: number;
+      tasksTotal: number;
+      productiveHours: number;
+      habitsCompleted: number;
+      workouts: number;
+      cardioKm: number;
+    }[];
   };
   createdAt: number;
   updatedAt: number;
