@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { db, auth } from '../../services/firebase';
 import { doc, getDoc, setDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -128,7 +128,7 @@ interface SetRowProps {
   onDelete: () => void;
 }
 
-const SetRow = ({ set, onChange, onDelete }: SetRowProps) => (
+const SetRow = memo(({ set, onChange, onDelete }: SetRowProps) => (
   <div style={{
     display: 'grid',
     gridTemplateColumns: '28px minmax(0, 1fr) minmax(0, 1fr) auto',
@@ -203,17 +203,18 @@ const SetRow = ({ set, onChange, onDelete }: SetRowProps) => (
       </button>
     </div>
   </div>
-);
+));
 
 interface ExerciseCardProps {
+  index: number;
   ex: GymExerciseLog;
-  onChange: (ex: GymExerciseLog) => void;
-  onDelete: () => void;
-  onEditClick: () => void;
+  onUpdate: (idx: number, ex: GymExerciseLog) => void;
+  onDelete: (idx: number) => void;
+  onEditClick: (idx: number) => void;
   editMode: boolean;
 }
 
-const ExerciseCard = ({ ex, onChange, onDelete, onEditClick, editMode }: ExerciseCardProps) => {
+const ExerciseCard = memo(({ index, ex, onUpdate, onDelete, onEditClick, editMode }: ExerciseCardProps) => {
   const [open, setOpen] = useState(false);
   const completedSets = ex.setsLog.filter(s => s.completed).length;
   const totalSets = ex.setsLog.length;
@@ -221,7 +222,7 @@ const ExerciseCard = ({ ex, onChange, onDelete, onEditClick, editMode }: Exercis
   const muscleColor = resolveMuscleColor(ex.muscle);
 
   const addSet = () => {
-    onChange({
+    onUpdate(index, {
       ...ex,
       setsLog: [...ex.setsLog, { setNumber: ex.setsLog.length + 1, reps: null, weight: null, completed: false }],
     });
@@ -230,17 +231,16 @@ const ExerciseCard = ({ ex, onChange, onDelete, onEditClick, editMode }: Exercis
   const updateSet = (idx: number, s: GymSet) => {
     const updated = [...ex.setsLog];
     updated[idx] = s;
-    onChange({ ...ex, setsLog: updated });
+    onUpdate(index, { ...ex, setsLog: updated });
   };
 
   const removeSet = (idx: number) => {
     const updated = ex.setsLog.filter((_, i) => i !== idx).map((s, i) => ({ ...s, setNumber: i + 1 }));
-    onChange({ ...ex, setsLog: updated });
+    onUpdate(index, { ...ex, setsLog: updated });
   };
 
   return (
     <motion.div 
-      layout
       className="liquid-panel"
       animate={{
         backgroundColor: allDone ? 'rgba(29,185,84,0.15)' : 'rgba(25, 25, 30, 0.45)',
@@ -294,13 +294,13 @@ const ExerciseCard = ({ ex, onChange, onDelete, onEditClick, editMode }: Exercis
           {editMode && (
             <>
               <button
-                onClick={e => { e.stopPropagation(); onEditClick(); }}
+                onClick={e => { e.stopPropagation(); onEditClick(index); }}
                 style={{ background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.25)', borderRadius: '8px', padding: '0.35rem 0.5rem', color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               >
                 <Edit3 size={14} />
               </button>
               <button
-                onClick={e => { e.stopPropagation(); onDelete(); }}
+                onClick={e => { e.stopPropagation(); onDelete(index); }}
                 style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '8px', padding: '0.35rem 0.5rem', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               >
                 <Trash2 size={14} />
@@ -349,7 +349,7 @@ const ExerciseCard = ({ ex, onChange, onDelete, onEditClick, editMode }: Exercis
       </AnimatePresence>
     </motion.div>
   );
-};
+});
 
 // ── Add/Edit Exercise Modal ────────────────────────────────────────────────────────
 interface AddExerciseModalProps {
@@ -882,7 +882,7 @@ export const GymModule = () => {
     try {
       const updated = { ...data, updatedAt: Date.now() };
       await setDoc(doc(db, 'gymLogs', makeDocId(userId, selectedDate)), updated);
-      setLog(updated);
+      // Do not setLog(updated) here to avoid race condition with fast typing
     } catch (e) {
       console.error('GymModule save error:', e);
       toast.error('Failed to save — check connection');
@@ -896,23 +896,27 @@ export const GymModule = () => {
     saveTimer.current = window.setTimeout(() => saveLog(data), 1200);
   }, [saveLog]);
 
-  const updateExercise = (idx: number, ex: GymExerciseLog) => {
-    if (!log) return;
-    const exs = [...log.exercises];
-    exs[idx] = ex;
-    const updated = { ...log, exercises: exs, updatedAt: Date.now() };
-    setLog(updated);
-    scheduleAutosave(updated);
-  };
+  const updateExercise = useCallback((idx: number, ex: GymExerciseLog) => {
+    setLog(prev => {
+      if (!prev) return prev;
+      const exs = [...prev.exercises];
+      exs[idx] = ex;
+      const updated = { ...prev, exercises: exs, updatedAt: Date.now() };
+      scheduleAutosave(updated);
+      return updated;
+    });
+  }, [scheduleAutosave]);
 
-  const deleteExercise = (idx: number) => {
-    if (!log) return;
-    const exs = log.exercises.filter((_, i) => i !== idx);
-    const updated = { ...log, exercises: exs, updatedAt: Date.now() };
-    setLog(updated);
-    scheduleAutosave(updated);
+  const deleteExercise = useCallback((idx: number) => {
+    setLog(prev => {
+      if (!prev) return prev;
+      const exs = prev.exercises.filter((_, i) => i !== idx);
+      const updated = { ...prev, exercises: exs, updatedAt: Date.now() };
+      scheduleAutosave(updated);
+      return updated;
+    });
     toast.success('Exercise removed');
-  };
+  }, [scheduleAutosave]);
 
   const addExercise = async (ex: GymExerciseLog, savePermanently: boolean) => {
     if (!log) return;
@@ -944,26 +948,29 @@ export const GymModule = () => {
     }
   };
 
-  const updateCardio = (idx: number, c: GymCardioLog) => {
-    if (!log) return;
-    const cArr = log.cardio ? [...log.cardio] : [];
-    cArr[idx] = c;
-    const updated = { ...log, cardio: cArr, updatedAt: Date.now() };
-    setLog(updated);
-    scheduleAutosave(updated);
-  };
+  const updateCardio = useCallback((idx: number, c: GymCardioLog) => {
+    setLog(prev => {
+      if (!prev) return prev;
+      const cArr = prev.cardio ? [...prev.cardio] : [];
+      cArr[idx] = c;
+      const updated = { ...prev, cardio: cArr, updatedAt: Date.now() };
+      scheduleAutosave(updated);
+      return updated;
+    });
+  }, [scheduleAutosave]);
 
-  const deleteCardio = (idx: number) => {
-    if (!log) return;
-    // Never delete the permanent treadmill
-    const item = (log.cardio || [])[idx];
-    if (item?.isPermanent) { toast.error('Treadmill is always tracked'); return; }
-    const cArr = (log.cardio || []).filter((_, i) => i !== idx);
-    const updated = { ...log, cardio: cArr, updatedAt: Date.now() };
-    setLog(updated);
-    scheduleAutosave(updated);
+  const deleteCardio = useCallback((idx: number) => {
+    setLog(prev => {
+      if (!prev) return prev;
+      const item = (prev.cardio || [])[idx];
+      if (item?.isPermanent) { toast.error('Treadmill is always tracked'); return prev; }
+      const cArr = (prev.cardio || []).filter((_, i) => i !== idx);
+      const updated = { ...prev, cardio: cArr, updatedAt: Date.now() };
+      scheduleAutosave(updated);
+      return updated;
+    });
     toast.success('Cardio removed');
-  };
+  }, [scheduleAutosave]);
 
   const addCardio = (c: GymCardioLog) => {
     if (!log) return;
@@ -1282,10 +1289,11 @@ export const GymModule = () => {
             {log?.exercises.map((ex, idx) => (
               <ExerciseCard
                 key={ex.exerciseId + idx}
+                index={idx}
                 ex={ex}
-                onChange={updated => updateExercise(idx, updated)}
-                onDelete={() => deleteExercise(idx)}
-                onEditClick={() => setEditingExerciseIdx(idx)}
+                onUpdate={updateExercise}
+                onDelete={deleteExercise}
+                onEditClick={setEditingExerciseIdx}
                 editMode={editMode}
               />
             ))}
