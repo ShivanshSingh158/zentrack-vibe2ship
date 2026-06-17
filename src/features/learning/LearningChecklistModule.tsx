@@ -15,7 +15,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
-import YouTube, { YouTubeProps, YouTubePlayer } from 'react-youtube';
+import { useYouTube } from '../../contexts/YouTubeContext';
 
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
 import { PREDEFINED_ROADMAPS } from '../../data/roadmaps';
@@ -287,16 +287,17 @@ interface MergeVideo { id: string; title: string; url: string; }
 
 // ── VideoPlayerModal ──────────────────────────────────────────────────────────
 
-const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNavigate, onStudyTime, onSaveVideoNote }: {
-  playing: PlayingVideo;
+const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatched, onNavigate, onStudyTime, onSaveVideoNote }: {
+  playing: any;
+  total: number;
+  idx: number;
   onClose: () => void;
   onMarkWatched: (topicId: string, subtaskId: string) => void;
   onNavigate: (delta: number) => void;
   onStudyTime: (ms: number) => void;
   onSaveVideoNote: (topicId: string, subtaskId: string, note: string) => void;
 }) => {
-  const total = playing.allVideos.length;
-  const idx = playing.currentIndex;
+  const { setPortalNode, setPipMode } = useYouTube();
   const hasPrev = idx > 0;
   const hasNext = idx < total - 1;
   const progressPct = total > 0 ? ((playing.watchedCount) / total) * 100 : 0;
@@ -305,60 +306,37 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
     try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
   });
   const [showNotes, setShowNotes] = useState(false);
-  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const [noteText, setNoteText] = useState('');
-  const [player, setPlayer] = useState<YouTubePlayer | null>(null);
   const studyStartRef = useRef<number>(Date.now());
   const tsIntervalRef = useRef<number>(0);
   const studyIntervalRef = useRef<number>(0);
 
   // Load existing note for this video
   useEffect(() => {
-    const topic = playing.allVideos.length ? undefined : null; // hack to avoid unused warning
-    // Find the actual subtask to get its notes
+    const topic = playing.topicId;
+    const subtask = playing.subtaskId;
+    // We'll pass current note via playing in a future improvement; for now load from parent
     setNoteText('');
-    setIsEditingNotes(false);
   }, [playing.subtaskId]);
 
   const applySpeed = useCallback((s: number) => {
-    if (player) {
-      try { player.setPlaybackRate(s); } catch {}
-    }
-  }, [player]);
+    // Speed is now handled by the context/player instance if needed, or we rely on user.
+    // For now we just mock this out as the global player doesn't easily accept arbitrary commands via postMessage here.
+  }, []);
 
   const handleSpeedChange = (s: number) => {
     setSpeed(s);
     try { localStorage.setItem(SPEED_KEY, String(s)); } catch {}
-    applySpeed(s);
   };
 
-  // ── Timestamp tracking: Poll player every 5s ────
+  // On unmount, if we are still playing, default to PiP mode
   useEffect(() => {
-    if (!player) return;
-    const interval = setInterval(() => {
-      try {
-        const ts = player.getCurrentTime();
-        if (ts > 3) {
-          localStorage.setItem(TS_KEY(playing.videoId), String(Math.floor(ts)));
-        }
-      } catch {}
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [player, playing.videoId]);
-
-  const onPlayerReady = useCallback((event: any) => {
-    setPlayer(event.target);
-    const p = event.target;
-    setTimeout(() => {
-      try { p.setPlaybackRate(speed); } catch {}
-    }, 1000);
-    const saved = Number(localStorage.getItem(TS_KEY(playing.videoId)) || '0');
-    if (saved > 5) {
-      setTimeout(() => {
-        try { p.seekTo(saved, true); } catch {}
-      }, 500);
-    }
-  }, [playing.videoId, speed]);
+    return () => {
+      setPipMode(true);
+      setPortalNode(null);
+    };
+  }, [setPipMode, setPortalNode]);
 
   // ── Study time tracker ────────────────────────────────────────────────────
   useEffect(() => {
@@ -418,16 +396,17 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
   })();
 
   return createPortal(
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.75rem' }}>
+    <div onClick={() => !focusMode && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: focusMode ? '#000' : 'rgba(0,0,0,0.96)', backdropFilter: focusMode ? 'none' : 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: focusMode ? '0' : '0.75rem', transition: 'all 0.3s' }}>
       {/* Playlist progress rail — always at very top */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '3px', background: 'rgba(255,255,255,0.08)', zIndex: 100000 }}>
         <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg,#3b82f6,#8b5cf6)', transition: 'width 0.5s ease', borderRadius: '0 2px 2px 0' }} />
       </div>
 
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '1100px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '1100px', display: 'flex', flexDirection: 'column', gap: focusMode ? '0' : '0.75rem', height: focusMode ? '100vh' : 'auto', transition: 'all 0.3s' }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-          <div style={{ minWidth: 0, flex: 1 }}>
+        {!focusMode && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, background: 'rgba(255,255,255,0.07)', padding: '0.1rem 0.45rem', borderRadius: '99px', flexShrink: 0 }}>#{idx + 1} of {total}</span>
               {resumeTs && <span style={{ fontSize: '0.58rem', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.1rem 0.4rem', borderRadius: '99px', flexShrink: 0 }}>⏱ Resuming from {resumeTs}</span>}
@@ -444,115 +423,80 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
               </button>
             ))}
           </div>
-          {/* Notes toggle */}
-          <button onClick={() => setShowNotes(v => !v)}
-            title="Video notes"
-            style={{ flexShrink: 0, background: showNotes ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${showNotes ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: showNotes ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <FileText size={15} />
-          </button>
-          <button onClick={onClose} style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <X size={16} />
-          </button>
-        </div>
+            {/* Focus toggle */}
+            <button onClick={() => setFocusMode(v => !v)}
+              title="Focus Mode"
+              style={{ flexShrink: 0, background: focusMode ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${focusMode ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: focusMode ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Eye size={15} />
+            </button>
+            <button onClick={onClose} style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         {/* Player + optional notes panel side by side on wide screens */}
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1, position: 'relative', aspectRatio: '16/9', background: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0 }}>
-             <YouTube
-               videoId={playing.videoId}
-               opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, rel: 0, modestbranding: 1 } }}
-               style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-               onReady={onPlayerReady}
-             />
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flex: focusMode ? 1 : 'none' }}>
+          <div 
+            ref={setPortalNode} 
+            style={{ 
+              flex: 1, position: 'relative', aspectRatio: focusMode ? 'auto' : '16/9', height: focusMode ? '100%' : 'auto', 
+              background: '#000', borderRadius: focusMode ? '0' : '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0, transition: 'all 0.3s' 
+            }}>
           </div>
           {/* In-video notes panel */}
           {showNotes && (
             <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '280px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📝 Video Notes</div>
-                <button onClick={() => setIsEditingNotes(!isEditingNotes)} style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: '0.65rem', cursor: 'pointer', fontWeight: 600 }}>{isEditingNotes ? 'View' : 'Edit'}</button>
-              </div>
-              
-              {isEditingNotes ? (
-                <>
-                  <textarea
-                    autoFocus
-                    value={noteText}
-                    onChange={e => setNoteText(e.target.value)}
-                    placeholder={`e.g. 12:30 - key concept\n24:00 - revisit this`}
-                    style={{ flex: 1, minHeight: '200px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.65rem', color: '#e4e4e7', fontSize: '0.8rem', resize: 'vertical', outline: 'none', lineHeight: 1.5 }}
-                  />
-                  <div style={{ display: 'flex', gap: '0.35rem' }}>
-                    <button onClick={() => {
-                      if (!player) return;
-                      const t = player.getCurrentTime();
-                      const m = Math.floor(t / 60);
-                      const s = Math.floor(t % 60).toString().padStart(2, '0');
-                      setNoteText(prev => prev + (prev && !prev.endsWith('\n') ? '\n' : '') + `[${m}:${s}] `);
-                    }}
-                      style={{ flex: 1, padding: '0.45rem', borderRadius: '7px', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontWeight: 600, fontSize: '0.72rem', cursor: 'pointer' }}>
-                      ⏱ Insert Time
-                    </button>
-                    <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); setIsEditingNotes(false); }}
-                      style={{ flex: 1, padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
-                      Save
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div className="markdown-body" style={{ flex: 1, overflowY: 'auto', background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '8px', padding: '0.65rem', fontSize: '0.8rem', color: '#d4d4d8' }}>
-                  {!noteText.trim() ? (
-                    <div style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>No notes yet. Click Edit to add.</div>
-                  ) : (
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        a: ({ href, children }) => {
-                          if (href?.startsWith('#seek-')) {
-                            const [m, s] = href.replace('#seek-', '').split('-');
-                            return (
-                              <button
-                                onClick={() => {
-                                  if (player) player.seekTo(parseInt(m) * 60 + parseInt(s), true);
-                                }}
-                                style={{ background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', color: '#818cf8', borderRadius: '4px', padding: '0 0.2rem', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600 }}
-                              >
-                                {children}
-                              </button>
-                            );
-                          }
-                          return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>{children}</a>;
-                        }
-                      }}
-                    >
-                      {noteText.replace(/\[(\d+):(\d{2})\]/g, '[$1:$2](#seek-$1-$2)')}
-                    </ReactMarkdown>
-                  )}
-                </div>
-              )}
+              <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📝 Video Notes</div>
+              <textarea
+                autoFocus
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                placeholder={`e.g. 12:30 - key concept\n24:00 - revisit this`}
+                style={{ flex: 1, minHeight: '200px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.65rem', color: '#e4e4e7', fontSize: '0.8rem', resize: 'vertical', outline: 'none', lineHeight: 1.5 }}
+              />
+              <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); }}
+                style={{ padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
+                Save Notes
+              </button>
             </div>
           )}
         </div>
 
+        </div>
+
         {/* Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <button onClick={() => onNavigate(-1)} disabled={!hasPrev}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasPrev ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasPrev ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasPrev ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
-            <SkipBack size={14} /> Prev
-          </button>
-          <button onClick={() => { onMarkWatched(playing.topicId, playing.subtaskId); hasNext && onNavigate(1); }}
-            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 700, minHeight: '44px' }}>
-            <Check size={15} strokeWidth={2.5} /> Mark Watched{hasNext ? ' & Next' : ''}
-          </button>
-          <button onClick={() => onNavigate(1)} disabled={!hasNext}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasNext ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasNext ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasNext ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
-            Next <SkipForward size={14} />
-          </button>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)' }}>← → navigate · Enter mark watched · Esc close</div>
-          <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)' }}>{playing.watchedCount}/{total} watched · {Math.round(progressPct)}%</div>
-        </div>
+        {!focusMode && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button onClick={() => onNavigate(-1)} disabled={!hasPrev}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasPrev ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasPrev ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasPrev ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
+                <SkipBack size={14} /> Prev
+              </button>
+              <button onClick={() => { onMarkWatched(playing.topicId, playing.subtaskId); hasNext && onNavigate(1); }}
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 700, minHeight: '44px' }}>
+                <Check size={15} strokeWidth={2.5} /> Mark Watched{hasNext ? ' & Next' : ''}
+              </button>
+              <button onClick={() => onNavigate(1)} disabled={!hasNext}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasNext ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasNext ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasNext ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
+                Next <SkipForward size={14} />
+              </button>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)' }}>← → navigate · Enter mark watched · Esc close</div>
+              <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)' }}>{playing.watchedCount}/{total} watched · {Math.round(progressPct)}%</div>
+            </div>
+          </>
+        )}
+        
+        {/* Escape overlay for Focus Mode */}
+        {focusMode && (
+          <div style={{ position: 'fixed', top: '1rem', right: '1rem', zIndex: 1000000, opacity: 0, transition: 'opacity 0.3s' }} className="hover:opacity-100">
+             <button onClick={() => setFocusMode(false)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#fff', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer' }}>
+               Exit Focus Mode
+             </button>
+          </div>
+        )}
       </div>
     </div>,
     document.body
@@ -1102,7 +1046,7 @@ export const LearningChecklistModule = () => {
   const [isImportingYt, setIsImportingYt] = useState(false);
   const [showRoadmapHub, setShowRoadmapHub] = useState(false);
   const [importingRoadmapId, setImportingRoadmapId] = useState<string | null>(null);
-  const [playingVideo, setPlayingVideo] = useState<PlayingVideo | null>(null);
+  const { playing, playVideo, closePlayer, queue, setPipMode } = useYouTube();
   const [continueWatching, setContinueWatching] = useState<{ topicId: string; subtaskId: string; videoId: string; title: string; topicTitle: string; timestamp?: number } | null>(() => {
     try { return JSON.parse(localStorage.getItem(CW_KEY) || 'null'); } catch { return null; }
   });
@@ -1153,23 +1097,28 @@ export const LearningChecklistModule = () => {
   const handlePlayVideo = useCallback((videoId: string, subtaskId: string, topicId: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    const allVideos: PlayingVideo['allVideos'] = [];
+    const allVideos: any[] = [];
     topic.subTasks.forEach(st => {
       let vid: string | null = null;
       if (st.url) vid = extractYoutubeId(st.url);
       if (!vid && st.resources) for (const r of st.resources) { const id = extractYoutubeId(r.url); if (id) { vid = id; break; } }
-      if (vid) allVideos.push({ videoId: vid, subtaskId: st.id, title: st.text });
+      if (vid) allVideos.push({ videoId: vid, subtaskId: st.id, title: st.text, topicId: topic.id });
     });
     const currentIndex = Math.max(0, allVideos.findIndex(v => v.subtaskId === subtaskId));
     const video = allVideos[currentIndex];
     const watchedCount = topic.subTasks.filter(st => st.isCompleted).length;
-    setPlayingVideo({ videoId, subtaskId, topicId, title: video?.title || '', allVideos, currentIndex, watchedCount });
-    // Save CW with current timestamp (timestamp will be updated live by the modal)
+    
+    playVideo(
+      { videoId, subtaskId, topicId, title: video?.title || '', watchedCount, totalCount: allVideos.length, indexInPlaylist: currentIndex },
+      allVideos
+    );
+    
+    // Save CW with current timestamp
     const savedTs = (() => { try { return Number(localStorage.getItem(TS_KEY(videoId)) || '0'); } catch { return 0; } })();
     const cw = { topicId, subtaskId, videoId, title: video?.title || '', topicTitle: topic.title, timestamp: savedTs || undefined };
     setContinueWatching(cw);
     try { localStorage.setItem(CW_KEY, JSON.stringify(cw)); } catch {}
-  }, [topics]);
+  }, [topics, playVideo]);
 
   // Resume playlist — prefer last-watched position, fall back to first unwatched
   const handleResumePlaylist = useCallback((topicId: string) => {
@@ -1200,19 +1149,29 @@ export const LearningChecklistModule = () => {
   }, [topics, continueWatching, handlePlayVideo]);
 
   const handlePlayerNavigate = useCallback((delta: number) => {
-    setPlayingVideo(prev => {
-      if (!prev) return null;
-      const next = prev.currentIndex + delta;
-      if (next < 0 || next >= prev.allVideos.length) return prev;
-      const v = prev.allVideos[next];
-      // Update CW bookmark
-      const topic = topics.find(t => t.id === prev.topicId);
-      const cwUpdate = { topicId: prev.topicId, subtaskId: v.subtaskId, videoId: v.videoId, title: v.title, topicTitle: topic?.title || '' };
-      setContinueWatching(cwUpdate);
-      try { localStorage.setItem(CW_KEY, JSON.stringify(cwUpdate)); } catch {}
-      return { ...prev, videoId: v.videoId, subtaskId: v.subtaskId, title: v.title, currentIndex: next };
+    if (!playing || !queue.length) return;
+    const nextIdx = playing.indexInPlaylist + delta;
+    if (nextIdx < 0 || nextIdx >= queue.length) return;
+    
+    const v = queue[nextIdx];
+    const topic = topics.find(t => t.id === v.topicId);
+    const watchedCount = topic ? topic.subTasks.filter(st => st.isCompleted).length : playing.watchedCount;
+    
+    // Update CW bookmark
+    const cwUpdate = { topicId: v.topicId, subtaskId: v.subtaskId, videoId: v.videoId, title: v.title, topicTitle: topic?.title || '' };
+    setContinueWatching(cwUpdate);
+    try { localStorage.setItem(CW_KEY, JSON.stringify(cwUpdate)); } catch {}
+    
+    playVideo({
+      ...playing,
+      videoId: v.videoId,
+      subtaskId: v.subtaskId,
+      topicId: v.topicId,
+      title: v.title,
+      watchedCount,
+      indexInPlaylist: nextIdx
     });
-  }, [topics]);
+  }, [playing, queue, topics, playVideo]);
 
   const handleMarkWatched = useCallback(async (topicId: string, subtaskId: string) => {
     const topic = topics.find(t => t.id === topicId);
@@ -1228,14 +1187,14 @@ export const LearningChecklistModule = () => {
 
   // ── Study time tracker: called by VideoPlayerModal on close ─────────────
   const handleStudyTime = useCallback(async (ms: number) => {
-    if (!playingVideo || ms < 5000) return;
-    const topicId = playingVideo.topicId;
+    if (!playing || ms < 5000) return;
+    const topicId = playing.topicId;
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
     const newMs = (topic.timeSpentMs || 0) + ms;
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, timeSpentMs: newMs } : t));
     try { await updateDoc(doc(db, 'learning_topics', topicId), { timeSpentMs: newMs }); } catch {}
-  }, [playingVideo, topics]);
+  }, [playing, topics]);
 
   // ── Save video note from player modal ────────────────────────────────────
   const handleSaveVideoNote = useCallback(async (topicId: string, subtaskId: string, note: string) => {
@@ -1887,10 +1846,12 @@ export const LearningChecklistModule = () => {
       )}
 
       {/* Video Player */}
-      {playingVideo && (
+      {playing && (
         <VideoPlayerModal
-          playing={playingVideo}
-          onClose={() => setPlayingVideo(null)}
+          playing={playing}
+          total={playing.totalCount}
+          idx={playing.indexInPlaylist}
+          onClose={closePlayer}
           onMarkWatched={handleMarkWatched}
           onNavigate={handlePlayerNavigate}
           onStudyTime={handleStudyTime}
