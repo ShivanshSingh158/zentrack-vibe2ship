@@ -103,8 +103,8 @@ export const GymModule = () => {
     Array.from({ length: 7 }, (_, i) => dateStrOffset(weekOffset * 7 + i - 6)),
   [weekOffset]);
 
-  // Recent logs for muscle heatmap (last 7 days of actual data from log history)
-  // We just use the current log as a sample — heatmap will show today's muscles
+  // Muscle heatmap: last 7 days of data — populate from all logs in memory
+  // We pass the current log only; the heatmap fetches week data itself
   const recentLogsForHeatmap = useMemo(() => log ? [log] : [], [log]);
 
   // Handle set completion → start rest timer + PR check
@@ -285,14 +285,23 @@ export const GymModule = () => {
 
       {/* ── Day Content ──────────────────────────────────────────────── */}
       {isRestDay ? (
-        <WeeklyGymInsights userId={userId} selectedDate={selectedDate} />
+        <>
+          {/* Rest Day Hero Card */}
+          <div style={{ margin: '0.85rem 1rem 0', padding: '1.5rem 1rem', borderRadius: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
+            <div style={{ fontSize: '2.8rem', marginBottom: '0.5rem' }}>🛌</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', marginBottom: '0.3rem' }}>Rest Day — Recovery Mode</div>
+            <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>No lifting today. Eat well, sleep deep, and come back stronger tomorrow. Your muscles grow during rest.</div>
+          </div>
+          {/* Weekly Insights shown below */}
+          <WeeklyGymInsights userId={userId} selectedDate={selectedDate} />
+        </>
       ) : (
         <div style={{ opacity: syncing ? 0.75 : 1, transition: 'opacity 0.2s', pointerEvents: syncing ? 'none' : 'auto' }}>
 
           {/* Day card */}
           <div className="liquid-panel" style={{ margin: '0.85rem 1rem 0', padding: '0.9rem 1rem', borderRadius: '16px' }}>
 
-            {/* Global Stopwatch Banner */}
+            {/* Global Stopwatch Banner — TODAY ONLY */}
             {selectedDate === todayStr() && !isRestDay && (
               <div style={{ marginBottom: '1rem', padding: '0.75rem', background: log.workoutStartTime ? 'rgba(245, 158, 11, 0.1)' : 'rgba(124, 58, 237, 0.1)', border: `1px solid ${log.workoutStartTime ? 'rgba(245, 158, 11, 0.3)' : 'rgba(124, 58, 237, 0.3)'}`, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 {log.workoutStartTime ? (
@@ -325,8 +334,16 @@ export const GymModule = () => {
                 )}
               </div>
             )}
+            {/* Past day duration badge */}
+            {selectedDate !== todayStr() && log.workoutDurationMinutes && (
+              <div style={{ marginBottom: '0.75rem', padding: '0.5rem 0.85rem', background: 'rgba(29,185,84,0.07)', border: '1px solid rgba(29,185,84,0.15)', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Timer size={12} style={{ color: '#1db954' }} />
+                <span style={{ fontSize: '0.75rem', color: '#1db954', fontWeight: 600 }}>Workout logged · {log.workoutDurationMinutes} mins</span>
+              </div>
+            )}
 
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.7rem' }}>
+            {/* Progress ring only — bar removed */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.7rem' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                   <span style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#a855f7', background: 'rgba(124,58,237,0.14)', padding: '0.12rem 0.45rem', borderRadius: '99px' }}>{planDay?.name || `Day ${planDayIdx}`}</span>
@@ -352,16 +369,6 @@ export const GymModule = () => {
                 </div>
               </div>
             </div>
-            {/* Progress bar */}
-            <div style={{ marginTop: '0.65rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.67rem', color: 'rgba(255,255,255,0.3)', marginBottom: '0.25rem' }}>
-                <span>{doneExs}/{totalExs} exercises</span>
-                <span>{doneSets}/{totalSets} sets</span>
-              </div>
-              <div style={{ height: '4px', borderRadius: '99px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#1db954' : 'linear-gradient(90deg,#7c3aed,#a855f7)', borderRadius: '99px', transition: 'width 0.4s' }} />
-              </div>
-            </div>
           </div>
 
           {/* Muscle Heatmap */}
@@ -383,15 +390,25 @@ export const GymModule = () => {
             <SectionLabel color="#a855f7" label="Exercises" />
 
             {log?.exercises?.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '1.75rem 1.25rem', background: 'rgba(124,58,237,0.04)', borderRadius: '16px', border: '1px dashed rgba(124,58,237,0.18)' }}>
-                <Dumbbell size={26} style={{ color: '#a855f7', margin: '0 auto 0.6rem', opacity: 0.7 }} />
-                <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'rgba(255,255,255,0.65)', marginBottom: '0.3rem' }}>Start your workout</div>
-                <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.38)', marginBottom: '1.1rem' }}>No exercises logged yet.</div>
-                <button onClick={importPlan}
-                  style={{ padding: '0.65rem 1.1rem', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', color: '#fff', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0 auto' }}>
-                  <Download size={14} /> Import My Routine
-                </button>
-              </div>
+              selectedDate < todayStr() ? (
+                /* Past day empty state */
+                <div style={{ textAlign: 'center', padding: '2rem 1.25rem', background: 'rgba(255,255,255,0.02)', borderRadius: '16px', border: '1px dashed rgba(255,255,255,0.08)' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>😴</div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'rgba(255,255,255,0.45)', marginBottom: '0.2rem' }}>No workout logged</div>
+                  <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.25)' }}>Rest day or missed session</div>
+                </div>
+              ) : (
+                /* Today empty state */
+                <div style={{ textAlign: 'center', padding: '1.75rem 1.25rem', background: 'rgba(124,58,237,0.04)', borderRadius: '16px', border: '1px dashed rgba(124,58,237,0.18)' }}>
+                  <Dumbbell size={26} style={{ color: '#a855f7', margin: '0 auto 0.6rem', opacity: 0.7 }} />
+                  <div style={{ fontSize: '0.92rem', fontWeight: 600, color: 'rgba(255,255,255,0.65)', marginBottom: '0.3rem' }}>Start your workout</div>
+                  <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.38)', marginBottom: '1.1rem' }}>No exercises logged yet.</div>
+                  <button onClick={importPlan}
+                    style={{ padding: '0.65rem 1.1rem', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', color: '#fff', fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: '0 auto' }}>
+                    <Download size={14} /> Import My Routine
+                  </button>
+                </div>
+              )
             ) : (
               log.exercises.map((ex, idx) => (
                 <ExerciseCard

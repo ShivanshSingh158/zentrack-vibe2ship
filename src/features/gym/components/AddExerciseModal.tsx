@@ -12,8 +12,6 @@ interface AddExerciseModalProps {
   onClose: () => void;
 }
 
-const SUPERSET_GROUPS = ['None', 'A', 'B', 'C'];
-
 function extractYouTubeId(url: string) {
   if (!url) return '';
   if (url.length === 11 && !url.includes('/')) return url;
@@ -29,7 +27,6 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
   const [reps, setReps] = useState(initialExercise?.targetReps || '8–12');
   const [muscle, setMuscle] = useState(initialExercise?.muscle || '');
   const [videoId, setVideoId] = useState(initialExercise?.videoId || '');
-  const [supersetGroup, setSupersetGroup] = useState(initialExercise?.supersetGroup || 'None');
   const [savePermanently, setSavePermanently] = useState(false);
   const [fromPlan, setFromPlan] = useState<GymPlanExercise | null>(null);
 
@@ -49,7 +46,6 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
         ...initialExercise, name: name.trim(), targetSets: sets, targetReps: reps,
         muscle: muscle || undefined,
         videoId: videoId ? extractYouTubeId(videoId) : undefined,
-        supersetGroup: supersetGroup !== 'None' ? supersetGroup : undefined,
         setsLog: newSetsLog,
       };
     } else {
@@ -58,7 +54,6 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
         name: name.trim(), targetSets: sets, targetReps: reps,
         muscle: muscle || undefined, isCustom: !fromPlan,
         videoId: videoId ? extractYouTubeId(videoId) : undefined,
-        supersetGroup: supersetGroup !== 'None' ? supersetGroup : undefined,
         setsLog: Array.from({ length: sets }, (_, i) => ({
           setNumber: i + 1, reps: null, weight: null, completed: false,
         })),
@@ -133,18 +128,6 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
           <div>
             <label style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.38)', display: 'block', marginBottom: '0.25rem' }}>YouTube Link (Optional)</label>
             <input value={videoId} onChange={e => setVideoId(e.target.value)} placeholder="e.g. https://youtu.be/..." style={inputStyle} />
-          </div>
-          {/* Superset Group */}
-          <div>
-            <label style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.38)', display: 'block', marginBottom: '0.25rem' }}>Superset Group</label>
-            <div style={{ display: 'flex', gap: '0.35rem' }}>
-              {SUPERSET_GROUPS.map(g => (
-                <button key={g} onClick={() => setSupersetGroup(g)}
-                  style={{ flex: 1, padding: '0.55rem', borderRadius: '8px', border: `1px solid ${supersetGroup === g ? 'rgba(124,58,237,0.5)' : 'rgba(255,255,255,0.1)'}`, background: supersetGroup === g ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.04)', color: supersetGroup === g ? '#a855f7' : 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
-                  {g}
-                </button>
-              ))}
-            </div>
           </div>
           {/* Save permanently */}
           {!isEditMode && (

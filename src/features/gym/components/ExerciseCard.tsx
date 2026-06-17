@@ -1,11 +1,11 @@
-import React, { useState, useRef, useEffect, memo } from 'react';
+import React, { useState, useRef, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays, PlaySquare } from 'lucide-react';
 import SetRow from './SetRow';
 import type { GymExerciseLog, GymSet, PreviousSessionExercise, GymPersonalRecord } from '../../../types/gym.types';
 import { GYM_PLAN } from '../../../data/gymPlan';
 
-/** Format kg: max 1 decimal, strip trailing zero — e.g. 80.0→"80", 82.5→"82.5" */
+/** Format kg: max 1 decimal, strip trailing zero */
 const fmtKg = (v: number | null | undefined): string => {
   if (v == null || isNaN(v)) return '—';
   return parseFloat(v.toFixed(1)).toString();
@@ -37,7 +37,7 @@ interface ExerciseCardProps {
   onEditClick: (idx: number) => void;
   onMoveToDate: (idx: number, date: string) => void;
   onHistoryClick: (exerciseId: string, name: string) => void;
-  onSetComplete: (exerciseName: string, restSecs: number) => void;  // triggers rest timer
+  onSetComplete: (exerciseName: string, restSecs: number) => void;
   editMode: boolean;
 }
 
@@ -47,7 +47,7 @@ const ExerciseCard = memo(({
 }: ExerciseCardProps) => {
   const [open, setOpen] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
-  
+
   const fallbackVideoId = React.useMemo(() => {
     if (ex.videoId) return ex.videoId;
     for (const day of GYM_PLAN) {
@@ -64,7 +64,22 @@ const ExerciseCard = memo(({
   const muscleColor = resolveMuscleColor(ex.muscle);
   const isSkipped = ex.skipped === true;
 
-  // Detect if any set is a new PR
+  // Build compact one-line summary: "3×10 @ 80kg"
+  const lastCompletedWeight = ex.setsLog
+    .filter(s => s.completed && s.weight != null)
+    .reduce((max, s) => Math.max(max, s.weight ?? 0), 0);
+  const lastCompletedReps = ex.setsLog.find(s => s.completed)?.reps ?? null;
+  const summaryStr = (() => {
+    if (completedSets > 0 && lastCompletedWeight > 0 && lastCompletedReps) {
+      return `${completedSets}×${lastCompletedReps} @ ${fmtKg(lastCompletedWeight)}kg`;
+    }
+    if (completedSets > 0 && lastCompletedReps) {
+      return `${completedSets}×${lastCompletedReps} reps`;
+    }
+    return `${ex.targetSets} × ${ex.targetReps}`;
+  })();
+
+  // Detect PR
   const prWeight = allTimePR?.weightKg ?? 0;
   const newPRSet = (setIdx: number) => {
     if (!allTimePR || prWeight <= 0) return false;
@@ -94,7 +109,6 @@ const ExerciseCard = memo(({
     onUpdate(index, { ...ex, skipped: !ex.skipped });
   };
 
-  // Determine rest time: heavier compound lifts get more rest
   const getRestTime = () => {
     const muscle = ex.muscle?.toLowerCase() ?? '';
     const isCompound = ['chest', 'back', 'quads', 'hamstrings', 'glutes'].some(m => muscle.includes(m));
@@ -108,166 +122,150 @@ const ExerciseCard = memo(({
       animate={{
         backgroundColor: isSkipped
           ? 'rgba(255,255,255,0.02)'
-          : allDone ? 'rgba(29,185,84,0.12)' : 'rgba(25,25,30,0.45)',
+          : allDone ? 'rgba(29,185,84,0.06)' : 'rgba(25,25,30,0.45)',
         borderColor: isSkipped
           ? 'rgba(255,255,255,0.05)'
-          : allDone ? 'rgba(29,185,84,0.35)' : 'rgba(255,255,255,0.08)',
-        opacity: isSkipped ? 0.5 : 1,
+          : allDone ? 'rgba(29,185,84,0.2)' : 'rgba(255,255,255,0.08)',
+        opacity: isSkipped ? 0.45 : allDone ? 0.65 : 1,
       }}
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
       style={{ borderRadius: '14px', overflow: 'hidden', padding: 0 }}
     >
-      {/* Superset indicator stripe */}
-      {ex.supersetGroup && (
-        <div style={{
-          height: '3px',
-          background: ex.supersetGroup === 'A' ? '#3b82f6' : ex.supersetGroup === 'B' ? '#f59e0b' : '#a855f7',
-        }} />
-      )}
+      {/* Muscle color left accent stripe */}
+      <div style={{
+        position: 'absolute', left: 0, top: 0, bottom: 0, width: '3px',
+        background: isSkipped ? 'rgba(255,255,255,0.1)' : allDone ? '#1db954' : muscleColor,
+        borderRadius: '3px 0 0 3px',
+        opacity: allDone ? 0.6 : 1,
+      }} />
 
-      {/* Header row */}
+      {/* ── HEADER ROW (always visible, compact) ── */}
       <div
         style={{
-          display: 'flex', alignItems: 'center', gap: '0.55rem',
-          padding: '0.75rem 0.85rem', cursor: 'pointer',
-          background: allDone && !isSkipped ? 'rgba(29,185,84,0.05)' : 'transparent',
-          minHeight: '58px',
+          display: 'flex', alignItems: 'center', gap: '0.5rem',
+          padding: '0.6rem 0.75rem 0.6rem 1rem',
+          cursor: 'pointer', minHeight: '52px',
         }}
         onClick={() => !isSkipped && setOpen(o => !o)}
       >
-        {/* Status circle */}
+        {/* Status circle — compact */}
         <div style={{
-          width: '34px', height: '34px', borderRadius: '50%', flexShrink: 0,
+          width: '30px', height: '30px', borderRadius: '50%', flexShrink: 0,
           background: isSkipped ? 'rgba(255,255,255,0.05)' : allDone ? '#1db954' : `${muscleColor}18`,
           border: `2px solid ${isSkipped ? 'rgba(255,255,255,0.15)' : allDone ? '#1db954' : muscleColor}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '0.7rem', fontWeight: 700,
+          fontSize: '0.65rem', fontWeight: 700,
           color: isSkipped ? 'rgba(255,255,255,0.3)' : allDone ? '#000' : muscleColor,
-          transition: 'all 0.2s',
+          transition: 'all 0.2s', flexDirection: 'column',
         }}>
-          {isSkipped ? '—' : allDone ? <Check size={15} /> : `${completedSets}/${totalSets}`}
+          {isSkipped ? '—' : allDone ? <Check size={13} /> : (
+            <>
+              <span style={{ lineHeight: 1, fontSize: '0.6rem', fontWeight: 800 }}>{completedSets}</span>
+              <span style={{ lineHeight: 1, fontSize: '0.45rem', color: allDone ? '#000' : `${muscleColor}90`, borderTop: `1px solid ${muscleColor}50`, paddingTop: '1px' }}>{totalSets}</span>
+            </>
+          )}
         </div>
 
-        {/* Name + meta */}
+        {/* Name + compact one-line summary */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{
-            fontSize: '0.88rem', fontWeight: 600, lineHeight: 1.3,
-            color: isSkipped ? 'rgba(255,255,255,0.3)' : allDone ? 'rgba(255,255,255,0.55)' : '#fff',
+            fontSize: '0.85rem', fontWeight: 600, lineHeight: 1.2,
+            color: isSkipped ? 'rgba(255,255,255,0.3)' : allDone ? 'rgba(255,255,255,0.45)' : '#fff',
             textDecoration: (allDone || isSkipped) ? 'line-through' : 'none',
-            wordBreak: 'break-word',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           }}>
             {ex.name}
-            {ex.supersetGroup && (
-              <span style={{ fontSize: '0.58rem', marginLeft: '0.35rem', padding: '0.05rem 0.3rem', borderRadius: '99px', background: 'rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', fontWeight: 700 }}>
-                SS-{ex.supersetGroup}
-              </span>
-            )}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)' }}>
-              {ex.targetSets} × {ex.targetReps}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.1rem', flexWrap: 'nowrap' }}>
+            <span style={{ fontSize: '0.65rem', color: allDone ? '#1db954' : 'rgba(255,255,255,0.4)', fontWeight: allDone ? 700 : 400, whiteSpace: 'nowrap' }}>
+              {summaryStr}
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowPlayer(prev => !prev);
-                }}
-                style={{
-                  background: showPlayer ? 'rgba(255,0,0,0.15)' : 'rgba(255,0,0,0.1)', 
-                  border: `1px solid rgba(255,0,0,${showPlayer ? '0.4' : '0.2'})`, 
-                  padding: '0.15rem 0.4rem',
-                  borderRadius: '99px', display: 'flex', alignItems: 'center', gap: '0.2rem', color: '#ef4444', cursor: 'pointer',
-                  transition: 'all 0.2s'
-                }}
-                title="Watch Form Tutorial"
-              >
-                <PlaySquare size={11} />
-                <span style={{ fontSize: '0.55rem', fontWeight: 700, textTransform: 'uppercase' }}>Form</span>
-              </button>
-              {ex.muscle && (
-                <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.08rem 0.35rem', borderRadius: '99px', background: `${muscleColor}20`, color: muscleColor, border: `1px solid ${muscleColor}40` }}>
-                  {ex.muscle}
-                </span>
-              )}
-            </div>
-            {/* Previous session summary */}
-            {previousSession && previousSession.maxWeight > 0 && !isSkipped && (
-              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.28)', background: 'rgba(255,255,255,0.05)', padding: '0.05rem 0.3rem', borderRadius: '99px' }}>
-                last: {fmtKg(previousSession.maxWeight)}kg
-              </span>
-            )}
             {allTimePR && allTimePR.weightKg > 0 && !isSkipped && (
-              <span style={{ fontSize: '0.6rem', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', padding: '0.05rem 0.3rem', borderRadius: '99px', fontWeight: 700 }}>
-                PR: {fmtKg(allTimePR.weightKg)}kg
+              <span style={{ fontSize: '0.55rem', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', padding: '0.05rem 0.25rem', borderRadius: '99px', fontWeight: 700, flexShrink: 0 }}>
+                PR:{fmtKg(allTimePR.weightKg)}
               </span>
             )}
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-          {/* History button — always visible */}
+        {/* Right action buttons — always visible */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}>
+          {/* Form Video — always visible */}
+          {fallbackVideoId && (
+            <button
+              onClick={e => { e.stopPropagation(); setShowPlayer(p => !p); }}
+              style={{
+                background: showPlayer ? 'rgba(255,0,0,0.2)' : 'rgba(255,0,0,0.08)',
+                border: `1px solid rgba(255,0,0,${showPlayer ? '0.45' : '0.2'})`,
+                padding: '0.28rem 0.4rem',
+                borderRadius: '7px', display: 'flex', alignItems: 'center', gap: '0.18rem',
+                color: '#ef4444', cursor: 'pointer', transition: 'all 0.18s',
+              }}
+              title="Watch Form Tutorial"
+            >
+              <PlaySquare size={11} />
+              <span style={{ fontSize: '0.5rem', fontWeight: 700, textTransform: 'uppercase' }}>Form</span>
+            </button>
+          )}
+
+          {/* History */}
           <button
             onClick={e => { e.stopPropagation(); onHistoryClick(ex.exerciseId, ex.name); }}
-            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.3rem', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '7px', padding: '0.28rem', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
             title="View history"
           >
-            <History size={13} />
+            <History size={12} />
           </button>
+
           {editMode && (
             <>
               <button
                 onClick={e => { e.stopPropagation(); toggleSkip(); }}
-                style={{ background: isSkipped ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isSkipped ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '8px', padding: '0.3rem', color: isSkipped ? '#818cf8' : 'rgba(255,255,255,0.35)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
-                title={isSkipped ? 'Unskip' : 'Skip exercise'}
+                style={{ background: isSkipped ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${isSkipped ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)'}`, borderRadius: '7px', padding: '0.28rem', color: isSkipped ? '#818cf8' : 'rgba(255,255,255,0.35)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                title={isSkipped ? 'Unskip' : 'Skip'}
               >
-                <MinusCircle size={13} />
+                <MinusCircle size={12} />
               </button>
               <button
                 onClick={e => { e.stopPropagation(); onEditClick(index); }}
-                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '8px', padding: '0.3rem', color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '7px', padding: '0.28rem', color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               >
-                <Edit3 size={13} />
+                <Edit3 size={12} />
               </button>
               <div style={{ position: 'relative' }}>
                 <button
                   onClick={e => { e.stopPropagation(); dateInputRef.current?.showPicker(); }}
-                  style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '8px', padding: '0.3rem', color: '#a855f7', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '7px', padding: '0.28rem', color: '#a855f7', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
                   title="Move to another day"
                 >
-                  <CalendarDays size={13} />
+                  <CalendarDays size={12} />
                 </button>
-                <input 
+                <input
                   type="date"
                   ref={dateInputRef}
                   style={{ position: 'absolute', opacity: 0, width: 0, height: 0, padding: 0, margin: 0, border: 'none', right: 0 }}
-                  onChange={e => {
-                    if (e.target.value) {
-                      onMoveToDate(index, e.target.value);
-                      e.target.value = ''; // Reset
-                    }
-                  }}
+                  onChange={e => { if (e.target.value) { onMoveToDate(index, e.target.value); e.target.value = ''; } }}
                   onClick={e => e.stopPropagation()}
                 />
               </div>
               <button
                 onClick={e => { e.stopPropagation(); onDelete(index); }}
-                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '0.3rem', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '7px', padding: '0.28rem', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               >
-                <Trash2 size={13} />
+                <Trash2 size={12} />
               </button>
             </>
           )}
+
           {!isSkipped && (
-            <div style={{ color: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', padding: '0.2rem' }}>
-              {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            <div style={{ color: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center' }}>
+              {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </div>
           )}
         </div>
       </div>
 
-      {/* Expanded set logger */}
+      {/* ── EXPANDED CONTENT ── */}
       <AnimatePresence>
         {showPlayer && (
           <motion.div
@@ -276,10 +274,10 @@ const ExerciseCard = memo(({
             exit={{ height: 0, opacity: 0 }}
             style={{ overflow: 'hidden' }}
           >
-            <div style={{ padding: '0 0.85rem 0.85rem' }}>
-              <div style={{ position: 'relative', width: '100%', paddingBottom: '56.25%', borderRadius: '12px', overflow: 'hidden', background: '#000' }}>
+            <div style={{ padding: '0 0.75rem 0.75rem' }}>
+              <div style={{ position: 'relative', width: '100%', paddingBottom: '56.25%', borderRadius: '10px', overflow: 'hidden', background: '#000' }}>
                 <iframe
-                  src={fallbackVideoId ? `https://www.youtube.com/embed/${fallbackVideoId}?autoplay=1` : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(ex.name + ' exercise proper form tutorial')}`}
+                  src={`https://www.youtube.com/embed/${fallbackVideoId}?autoplay=1`}
                   style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
@@ -288,6 +286,7 @@ const ExerciseCard = memo(({
             </div>
           </motion.div>
         )}
+
         {open && !isSkipped && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}
@@ -296,7 +295,13 @@ const ExerciseCard = memo(({
             transition={{ duration: 0.18, ease: 'easeInOut' }}
             style={{ overflow: 'hidden' }}
           >
-            <div style={{ padding: '0 0.85rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+            <div style={{ padding: '0 0.75rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+              {/* Previous session hint */}
+              {previousSession && previousSession.maxWeight > 0 && (
+                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', padding: '0.3rem 0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', marginBottom: '0.1rem' }}>
+                  📅 Last session: {fmtKg(previousSession.maxWeight)}kg — aim to beat it!
+                </div>
+              )}
               {ex.setsLog.map((s, idx) => (
                 <SetRow
                   key={`${ex.exerciseId}-set-${idx}`}
