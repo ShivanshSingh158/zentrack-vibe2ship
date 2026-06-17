@@ -142,46 +142,48 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
     if (!bulkText.trim()) return;
     setFetchingBulk(true);
     
-    // Basic regex to find anything that looks like a URL
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const rawTokens = bulkText.match(urlRegex) || [];
-    const validUrls: string[] = [];
+    const lines = bulkText.split('\n').map(l => l.trim()).filter(Boolean);
     
-    for (const token of rawTokens) {
-      if (!validUrls.includes(token)) validUrls.push(token);
-    }
-    
-    if (validUrls.length === 0) {
-      alert("No valid URLs found.");
+    if (lines.length === 0) {
       setFetchingBulk(false);
       return;
     }
     
-    const fetchedVideos: SourceVideo[] = [];
-    
-    await Promise.all(validUrls.map(async (url) => {
-      try {
-        const vid = extractYoutubeIdBulk(url);
+    const fetchedVideos: SourceVideo[] = await Promise.all(lines.map(async (line) => {
+      let isUrl = false;
+      let urlStr = line;
+      if (line.startsWith('http://') || line.startsWith('https://')) {
+        isUrl = true;
+      } else if (line.includes('.') && !line.includes(' ')) {
+        isUrl = true;
+        urlStr = 'https://' + line;
+      }
+
+      if (isUrl) {
+        const vid = extractYoutubeIdBulk(urlStr);
         if (vid) {
-          const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
-          if (res.ok) {
-            const data = await res.json();
-            fetchedVideos.push({ id: crypto.randomUUID(), videoId: vid, title: data.title || 'YouTube Video', url: url });
-          }
+          try {
+            const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(urlStr)}&format=json`);
+            if (res.ok) {
+              const data = await res.json();
+              return { id: crypto.randomUUID(), videoId: vid, title: data.title || 'YouTube Video', url: urlStr };
+            }
+          } catch (e) {}
+          return { id: crypto.randomUUID(), videoId: vid, title: 'YouTube Video', url: urlStr };
         } else {
-          // It's a non-YouTube link (Article/Blog)
-          // We can't fetch OG easily on client side due to CORS, so we extract hostname as a fallback
-          let domain = 'Article / Link';
-          try { domain = new URL(url).hostname; } catch {}
-          fetchedVideos.push({ id: crypto.randomUUID(), videoId: '', title: `Reading: ${domain}`, url: url });
+          let domain = 'Link';
+          try { domain = new URL(urlStr).hostname; } catch {}
+          return { id: crypto.randomUUID(), videoId: '', title: `Reading: ${domain}`, url: urlStr };
         }
-      } catch (e) {}
+      } else {
+        return { id: crypto.randomUUID(), videoId: '', title: line, url: '' };
+      }
     }));
     
     if (fetchedVideos.length > 0) {
       const newSource: StagedSource = {
         id: crypto.randomUUID(),
-        title: 'Bulk Imported Links',
+        title: 'Bulk Imported Items',
         type: 'bulk',
         videos: fetchedVideos,
         isExpanded: true,
@@ -194,7 +196,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
       const newSelected = new Set(selectedVideoIds);
       fetchedVideos.forEach(v => newSelected.add(v.id));
       setSelectedVideoIds(newSelected);
-    } else { alert("Failed to process URLs."); }
+    } else { alert("Failed to process items."); }
     
     setFetchingBulk(false);
   };
