@@ -14,6 +14,13 @@ interface AddExerciseModalProps {
 
 const SUPERSET_GROUPS = ['None', 'A', 'B', 'C'];
 
+function extractYouTubeId(url: string) {
+  if (!url) return '';
+  if (url.length === 11 && !url.includes('/')) return url;
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/);
+  return match ? match[1] : url; // fallback to raw string if parsing fails
+}
+
 export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }: AddExerciseModalProps) => {
   const plan = GYM_PLAN.find(d => d.dayIndex === planDayIdx);
   const isEditMode = !!initialExercise;
@@ -21,6 +28,7 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
   const [sets, setSets] = useState(initialExercise?.targetSets || 3);
   const [reps, setReps] = useState(initialExercise?.targetReps || '8–12');
   const [muscle, setMuscle] = useState(initialExercise?.muscle || '');
+  const [videoId, setVideoId] = useState(initialExercise?.videoId || '');
   const [supersetGroup, setSupersetGroup] = useState(initialExercise?.supersetGroup || 'None');
   const [savePermanently, setSavePermanently] = useState(false);
   const [fromPlan, setFromPlan] = useState<GymPlanExercise | null>(null);
@@ -40,6 +48,7 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
       ex = {
         ...initialExercise, name: name.trim(), targetSets: sets, targetReps: reps,
         muscle: muscle || undefined,
+        videoId: videoId ? extractYouTubeId(videoId) : undefined,
         supersetGroup: supersetGroup !== 'None' ? supersetGroup : undefined,
         setsLog: newSetsLog,
       };
@@ -48,6 +57,7 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
         exerciseId: fromPlan?.id || `custom_${Date.now()}`,
         name: name.trim(), targetSets: sets, targetReps: reps,
         muscle: muscle || undefined, isCustom: !fromPlan,
+        videoId: videoId ? extractYouTubeId(videoId) : undefined,
         supersetGroup: supersetGroup !== 'None' ? supersetGroup : undefined,
         setsLog: Array.from({ length: sets }, (_, i) => ({
           setNumber: i + 1, reps: null, weight: null, completed: false,
@@ -81,7 +91,7 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '140px', overflowY: 'auto' }}>
               {plan.exercises.map(p => (
                 <button key={p.id}
-                  onClick={() => { setName(p.name); setSets(p.targetSets); setReps(p.targetReps); setMuscle(p.muscle || ''); setFromPlan(p); }}
+                  onClick={() => { setName(p.name); setSets(p.targetSets); setReps(p.targetReps); setMuscle(p.muscle || ''); setVideoId(p.videoId || ''); setFromPlan(p); }}
                   style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 0.7rem', borderRadius: '10px', border: `1px solid ${fromPlan?.id === p.id ? 'rgba(124,58,237,0.4)' : 'rgba(255,255,255,0.06)'}`, background: fromPlan?.id === p.id ? 'rgba(124,58,237,0.1)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', textAlign: 'left', minHeight: '42px' }}>
                   <span style={{ fontSize: '0.83rem', color: fromPlan?.id === p.id ? '#a855f7' : 'rgba(255,255,255,0.75)', flex: 1 }}>{p.name}</span>
                   <span style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.28)' }}>{p.targetSets}×{p.targetReps}</span>
@@ -118,6 +128,11 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
                 <option key={m} value={m} style={{ color: '#000' }}>{m}</option>
               ))}
             </select>
+          </div>
+          {/* YouTube Video ID/Link */}
+          <div>
+            <label style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.38)', display: 'block', marginBottom: '0.25rem' }}>YouTube Link (Optional)</label>
+            <input value={videoId} onChange={e => setVideoId(e.target.value)} placeholder="e.g. https://youtu.be/..." style={inputStyle} />
           </div>
           {/* Superset Group */}
           <div>
