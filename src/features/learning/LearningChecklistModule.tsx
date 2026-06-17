@@ -15,7 +15,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
+
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
 import { PREDEFINED_ROADMAPS } from '../../data/roadmaps';
 
@@ -84,19 +84,22 @@ const ReorderList = React.memo(({ items, onReorder, renderItem }: {
         if (dist < minDistance) { minDistance = dist; overIndex = i; }
       });
 
-      const next = { ...dragRef.current, ghostY, ghostX, overIndex };
+      // Capture values before rAF to avoid stale closure
+      const capturedOverIndex = overIndex;
+      const capturedGhostY = ghostY;
+      const next = { ...dragRef.current, ghostY: capturedGhostY, ghostX, overIndex: capturedOverIndex };
       dragRef.current = next;
 
       // Move ghost via direct DOM on rAF for 60fps smoothness
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(() => {
         if (ghostRef.current) {
-          ghostRef.current.style.top = `${ghostY}px`;
+          ghostRef.current.style.top = `${capturedGhostY}px`;
         }
         // Only re-render when overIndex changes (for indicator + displacement)
         setDrag(prev => {
-          if (!prev || prev.overIndex === overIndex) return prev;
-          return { ...next };
+          if (!prev || prev.overIndex === capturedOverIndex) return prev;
+          return { ...prev, ghostY: capturedGhostY, overIndex: capturedOverIndex };
         });
       });
     };
@@ -841,7 +844,7 @@ export const LearningChecklistModule = () => {
   const [searchQuery, setSearchQuery] = useState(() => sessionStorage.getItem('learningSearch') || '');
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
   const [editingContext, setEditingContext] = useState<{ type: 'topic' | 'subtask'; topicId: string; subtaskId?: string } | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; type: 'topic' | 'subtask'; id: string; parentId?: string }>({ isOpen: false, type: 'topic', id: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string }>({ isOpen: false, id: '' });
   const [editNotes, setEditNotes] = useState('');
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [isImportingYt, setIsImportingYt] = useState(false);
@@ -880,6 +883,13 @@ export const LearningChecklistModule = () => {
       data.sort((a, b) => a.order !== undefined && b.order !== undefined ? a.order - b.order : b.createdAt - a.createdAt);
       setTopics(data);
       setIsLoading(false);
+      // Clear continueWatching if the referenced playlist was deleted
+      setContinueWatching(prev => {
+        if (!prev) return null;
+        const stillExists = data.some(t => t.id === prev.topicId);
+        if (!stillExists) { try { localStorage.removeItem(CW_KEY); } catch {} return null; }
+        return prev;
+      });
     }, err => { console.error(err); toast.error('Failed to load topics'); setIsLoading(false); });
     return () => unsub();
   }, [user]);
@@ -904,10 +914,22 @@ export const LearningChecklistModule = () => {
     try { localStorage.setItem(CW_KEY, JSON.stringify(cw)); } catch {}
   }, [topics]);
 
-  // Jump to first unwatched video in a topic
+  // Resume playlist — prefer last-watched position, fall back to first unwatched
   const handleResumePlaylist = useCallback((topicId: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
+
+    // Try to resume from continueWatching bookmark for this topic
+    const cw = continueWatching;
+    if (cw && cw.topicId === topicId) {
+      const cwTask = topic.subTasks.find(s => s.id === cw.subtaskId);
+      if (cwTask && !cwTask.isCompleted) {
+        handlePlayVideo(cw.videoId, cw.subtaskId, topicId);
+        return;
+      }
+    }
+
+    // Fall back to first unwatched video
     const firstUnwatched = topic.subTasks.find(st => {
       if (st.isCompleted) return false;
       if (st.url && extractYoutubeId(st.url)) return true;
@@ -918,7 +940,7 @@ export const LearningChecklistModule = () => {
     const vid = firstUnwatched.url ? extractYoutubeId(firstUnwatched.url) :
       firstUnwatched.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
     if (vid) handlePlayVideo(vid, firstUnwatched.id, topicId);
-  }, [topics, handlePlayVideo]);
+  }, [topics, continueWatching, handlePlayVideo]);
 
   const handlePlayerNavigate = useCallback((delta: number) => {
     setPlayingVideo(prev => {
@@ -1099,20 +1121,7 @@ export const LearningChecklistModule = () => {
     catch { toast.error('Failed to bulk delete'); }
   }, [topics, bulkDeleteState]);
 
-  // ── Global DragEnd ────────────────────────────────────────────────────────
 
-  const handleGlobalDragEnd = useCallback(async (result: any) => {
-    if (!result.destination) return;
-    if (result.source.droppableId === 'topics') {
-      if (searchQuery.trim() !== '' || showIncompleteOnly) return;
-      const items = Array.from(topics);
-      const [moved] = items.splice(result.source.index, 1);
-      items.splice(result.destination.index, 0, moved);
-      setTopics(items);
-      try { items.forEach((item, i) => { if (item.order !== i) updateDoc(doc(db, 'learning_topics', item.id!), { order: i }); }); }
-      catch { toast.error('Failed to save order'); }
-    }
-  }, [topics, searchQuery, showIncompleteOnly]);
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -1165,9 +1174,9 @@ export const LearningChecklistModule = () => {
     finally { setIsImportingYt(false); }
   };
 
-  const handleDeleteTopic = (id: string, e: React.MouseEvent) => { e.stopPropagation(); setDeleteConfirm({ isOpen: true, type: 'topic', id }); };
+  const handleDeleteTopic = (id: string, e: React.MouseEvent) => { e.stopPropagation(); setDeleteConfirm({ isOpen: true, id }); };
   const confirmDeleteTopic = async () => {
-    try { await deleteDoc(doc(db, 'learning_topics', deleteConfirm.id)); if (expandedTopicId === deleteConfirm.id) setAndPersistExpanded(null); setDeleteConfirm({ isOpen: false, type: 'topic', id: '' }); }
+    try { await deleteDoc(doc(db, 'learning_topics', deleteConfirm.id)); if (expandedTopicId === deleteConfirm.id) setAndPersistExpanded(null); setDeleteConfirm({ isOpen: false, id: '' }); }
     catch { toast.error('Failed to delete topic'); }
   };
 
@@ -1197,23 +1206,12 @@ export const LearningChecklistModule = () => {
     catch { toast.error('Failed to update'); setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: topic.subTasks } : t)); }
   }, [topics]);
 
-  const deleteSubTask = useCallback((topicId: string, subTaskId: string) => {
-    setDeleteConfirm({ isOpen: true, type: 'subtask', id: subTaskId, parentId: topicId });
-  }, []);
+  // Subtask deletion is always instant (no confirm dialog needed)
+  const deleteSubTask = instantDeleteSubTask;
 
   const toggleCategory = useCallback((topicId: string, category: string) => {
     setExpandedCategories(prev => ({ ...prev, [`${topicId}-${category}`]: !prev[`${topicId}-${category}`] }));
   }, []);
-
-  const confirmDeleteSubTask = async () => {
-    const topicId = deleteConfirm.parentId!;
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const updated = topic.subTasks.filter(st => st.id !== deleteConfirm.id);
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); setDeleteConfirm({ isOpen: false, type: 'topic', id: '' }); }
-    catch { toast.error('Failed to delete task'); setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: topic.subTasks } : t)); }
-  };
 
   const openNotesModal = useCallback((topicId: string, subtaskId?: string) => {
     const topic = topics.find(t => t.id === topicId);
@@ -1256,7 +1254,7 @@ export const LearningChecklistModule = () => {
     }).filter(Boolean) as LearningTopic[];
   }, [topics, searchQuery, showIncompleteOnly]);
 
-  const isDraggingAllowed = searchQuery.trim() === '' && !showIncompleteOnly && editModeTopics.size === 0;
+
 
   // Fix: Only show Continue Watching if the video is not already completed
   const validCW = useMemo(() => {
@@ -1338,131 +1336,107 @@ export const LearningChecklistModule = () => {
           {searchQuery || showIncompleteOnly ? 'No matching topics.' : 'No topics yet — import a YouTube playlist or create one!'}
         </div>
       ) : (
-        <DragDropContext onDragEnd={handleGlobalDragEnd}>
-          <Droppable droppableId="topics" type="TOPIC" isDropDisabled={!isDraggingAllowed}>
-            {provided => (
-              <div className="topics-list" {...provided.droppableProps} ref={provided.innerRef}>
-                {filteredTopics.map((topic, index) => {
-                  const isExpanded = searchQuery.trim() !== '' || expandedTopicId === topic.id;
-                  const orig = topics.find(t => t.id === topic.id);
-                  const total = (orig?.subTasks || []).length;
-                  const done = (orig?.subTasks || []).filter(st => st.isCompleted).length;
-                  const progress = total === 0 ? 0 : Math.round((done / total) * 100);
-                  const daysSince = topic.lastStudiedAt ? (Date.now() - topic.lastStudiedAt) / 86400000 : 0;
-                  const needsReview = daysSince > 14 && progress >= 50 && progress < 100;
-                  const isEditMode = editModeTopics.has(topic.id!);
-                  // Check if any video in this topic is unwatched
-                  const hasUnwatchedVideos = (orig?.subTasks || []).some(st => {
-                    if (st.isCompleted) return false;
-                    if (st.url && extractYoutubeId(st.url)) return true;
-                    return (st.resources || []).some(r => extractYoutubeId(r.url));
-                  });
+        <div className="topics-list">
+          {filteredTopics.map((topic) => {
+            const isExpanded = searchQuery.trim() !== '' || expandedTopicId === topic.id;
+            const orig = topics.find(t => t.id === topic.id);
+            const total = (orig?.subTasks || []).length;
+            const done = (orig?.subTasks || []).filter(st => st.isCompleted).length;
+            const progress = total === 0 ? 0 : Math.round((done / total) * 100);
+            const daysSince = topic.lastStudiedAt ? (Date.now() - topic.lastStudiedAt) / 86400000 : 0;
+            const needsReview = daysSince > 14 && progress >= 50 && progress < 100;
+            const isEditMode = editModeTopics.has(topic.id!);
+            const hasUnwatchedVideos = (orig?.subTasks || []).some(st => {
+              if (st.isCompleted) return false;
+              if (st.url && extractYoutubeId(st.url)) return true;
+              return (st.resources || []).some(r => extractYoutubeId(r.url));
+            });
 
-                  return (
-                    <Draggable key={topic.id} draggableId={topic.id!} index={index} isDragDisabled={!isDraggingAllowed}>
-                      {(prov, snap) => (
-                        <div ref={prov.innerRef} {...prov.draggableProps} className="topic-card"
-                          style={{ ...prov.draggableProps.style, opacity: snap.isDragging ? 0.9 : 1, boxShadow: snap.isDragging ? '0 10px 30px rgba(0,0,0,0.5)' : undefined }}>
-                          <div className="topic-card-header" onClick={() => setAndPersistExpanded(isExpanded ? null : topic.id!)}>
-                            <div className="topic-title-section">
-                              {isDraggingAllowed && (
-                                <div {...prov.dragHandleProps} style={{ padding: '0.25rem', marginRight: '0.3rem', cursor: 'grab', color: 'var(--text-muted)' }}>
-                                  <GripVertical size={14} />
-                                </div>
-                              )}
-                              <button className="topic-expand-btn" onClick={e => { e.stopPropagation(); setAndPersistExpanded(isExpanded ? null : topic.id!); }} aria-expanded={isExpanded}>
-                                {isExpanded ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
-                              </button>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                                  <div style={{ fontWeight: 600, fontSize: '1.05rem' }}>{topic.title}</div>
-                                  {needsReview && (
-                                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.18rem', fontSize: '0.58rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(245,158,11,0.22)' }}>
-                                      <Bell size={8} /> Review
-                                    </span>
-                                  )}
-                                  {isEditMode && (
-                                    <span style={{ fontSize: '0.58rem', color: '#60a5fa', background: 'rgba(59,130,246,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(59,130,246,0.2)' }}>✏️ Editing</span>
-                                  )}
-                                </div>
-                                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
-                                  {done}/{total} · {progress}%{topic.timeSpentMs && topic.timeSpentMs > 0 ? ` · ${formatDuration(topic.timeSpentMs)}` : ''}
-                                </div>
-                                <div className="progress-bar" style={{ marginTop: '0.38rem' }}>
-                                  <div className="progress-fill" style={{ width: `${progress}%`, background: progressColor(progress), transition: 'width 400ms ease, background 400ms ease' }} />
-                                </div>
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }} className="topic-actions" onClick={e => e.stopPropagation()}>
-                              {/* ▶ Resume Playlist — Jump to next unwatched */}
-                              {hasUnwatchedVideos && !isEditMode && (
-                                <button
-                                  onClick={e => { e.stopPropagation(); if (!isExpanded) setAndPersistExpanded(topic.id!); handleResumePlaylist(topic.id!); }}
-                                  title="Resume playlist — jump to next unwatched video"
-                                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}>
-                                  <Play size={10} fill="currentColor" /> Resume
-                                </button>
-                              )}
-                              {/* Edit playlist button */}
-                              <button
-                                onClick={() => { if (!isExpanded) setAndPersistExpanded(topic.id!); toggleEditMode(topic.id!); }}
-                                title={isEditMode ? 'Exit Edit Mode' : 'Edit Playlist'}
-                                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: isEditMode ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEditMode ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.1)'}`, color: isEditMode ? '#60a5fa' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}>
-                                <Edit3 size={11} /> {isEditMode ? 'Done' : 'Edit'}
-                              </button>
-                              <button className="btn-icon" onClick={() => openNotesModal(topic.id!)} title="Notes"><FileText size={14} /></button>
-                              <button className="topic-delete-btn" onClick={e => handleDeleteTopic(topic.id!, e)}><Trash2 size={14} /></button>
-                            </div>
-                          </div>
+            return (
+              <div key={topic.id} className="topic-card">
+                <div className="topic-card-header" onClick={() => setAndPersistExpanded(isExpanded ? null : topic.id!)}>
+                  <div className="topic-title-section">
+                    <button className="topic-expand-btn" onClick={e => { e.stopPropagation(); setAndPersistExpanded(isExpanded ? null : topic.id!); }} aria-expanded={isExpanded}>
+                      {isExpanded ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
+                    </button>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+                        <div style={{ fontWeight: 600, fontSize: '1.05rem' }}>{topic.title}</div>
+                        {needsReview && (
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.18rem', fontSize: '0.58rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(245,158,11,0.22)' }}>
+                            <Bell size={8} /> Review
+                          </span>
+                        )}
+                        {isEditMode && (
+                          <span style={{ fontSize: '0.58rem', color: '#60a5fa', background: 'rgba(59,130,246,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(59,130,246,0.2)' }}>✏️ Editing</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                        {done}/{total} · {progress}%{topic.timeSpentMs && topic.timeSpentMs > 0 ? ` · ${formatDuration(topic.timeSpentMs)}` : ''}
+                      </div>
+                      <div className="progress-bar" style={{ marginTop: '0.38rem' }}>
+                        <div className="progress-fill" style={{ width: `${progress}%`, background: progressColor(progress), transition: 'width 400ms ease, background 400ms ease' }} />
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }} className="topic-actions" onClick={e => e.stopPropagation()}>
+                    {hasUnwatchedVideos && !isEditMode && (
+                      <button
+                        onClick={e => { e.stopPropagation(); if (!isExpanded) setAndPersistExpanded(topic.id!); handleResumePlaylist(topic.id!); }}
+                        title="Resume playlist"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}>
+                        <Play size={10} fill="currentColor" /> Resume
+                      </button>
+                    )}
+                    <button
+                      onClick={() => { if (!isExpanded) setAndPersistExpanded(topic.id!); toggleEditMode(topic.id!); }}
+                      title={isEditMode ? 'Exit Edit Mode' : 'Edit Playlist'}
+                      style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: isEditMode ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEditMode ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.1)'}`, color: isEditMode ? '#60a5fa' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}>
+                      <Edit3 size={11} /> {isEditMode ? 'Done' : 'Edit'}
+                    </button>
+                    <button className="btn-icon" onClick={() => openNotesModal(topic.id!)} title="Notes"><FileText size={14} /></button>
+                    <button className="topic-delete-btn" onClick={e => handleDeleteTopic(topic.id!, e)}><Trash2 size={14} /></button>
+                  </div>
+                </div>
 
-                          {/* Smooth accordion */}
-                          <div style={{
-                            display: isExpanded ? 'block' : 'none',
-                            overflow: 'hidden',
-                          }}>
-                            {isExpanded && (
-                              <TopicBody
-                                topic={topic}
-                                expandedCategories={expandedCategories}
-                                toggleCategory={toggleCategory}
-                                toggleSubTask={toggleSubTask}
-                                openNotesModal={openNotesModal}
-                                deleteSubTask={deleteSubTask}
-                                handleAddSubTask={handleAddSubTask}
-                                newSubtaskText={newSubtaskText}
-                                setNewSubtaskText={setNewSubtaskText}
-                                onPlayVideo={handlePlayVideo}
-                                isEditMode={isEditMode}
-                                onToggleEdit={() => toggleEditMode(topic.id!)}
-                                addVideoState={addVideoState}
-                                setAddVideoState={setAddVideoState}
-                                onAddSingleVideo={handleAddSingleVideo}
-                                mergePanelState={mergePanelState}
-                                setMergePanelState={setMergePanelState}
-                                onFetchMerge={handleFetchMergePlaylist}
-                                onMergeSelected={handleMergeSelected}
-                                renamingSubtask={renamingSubtask}
-                                onStartRename={handleStartRename}
-                                onSaveRename={handleSaveRename}
-                                onCancelRename={() => setRenamingSubtask(null)}
-                                instantDeleteSubTask={instantDeleteSubTask}
-                                bulkDeleteState={bulkDeleteState}
-                                toggleBulkDelete={toggleBulkDelete}
-                                handleBulkDelete={handleBulkDelete}
-                                onSubTaskReorder={handleSubTaskReorder}
-                              />
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </Draggable>
-                  );
-                })}
-                {provided.placeholder}
+                <div style={{ display: isExpanded ? 'block' : 'none', overflow: 'hidden' }}>
+                  {isExpanded && (
+                    <TopicBody
+                      topic={topic}
+                      expandedCategories={expandedCategories}
+                      toggleCategory={toggleCategory}
+                      toggleSubTask={toggleSubTask}
+                      openNotesModal={openNotesModal}
+                      deleteSubTask={deleteSubTask}
+                      handleAddSubTask={handleAddSubTask}
+                      newSubtaskText={newSubtaskText}
+                      setNewSubtaskText={setNewSubtaskText}
+                      onPlayVideo={handlePlayVideo}
+                      isEditMode={isEditMode}
+                      onToggleEdit={() => toggleEditMode(topic.id!)}
+                      addVideoState={addVideoState}
+                      setAddVideoState={setAddVideoState}
+                      onAddSingleVideo={handleAddSingleVideo}
+                      mergePanelState={mergePanelState}
+                      setMergePanelState={setMergePanelState}
+                      onFetchMerge={handleFetchMergePlaylist}
+                      onMergeSelected={handleMergeSelected}
+                      renamingSubtask={renamingSubtask}
+                      onStartRename={handleStartRename}
+                      onSaveRename={handleSaveRename}
+                      onCancelRename={() => setRenamingSubtask(null)}
+                      instantDeleteSubTask={instantDeleteSubTask}
+                      bulkDeleteState={bulkDeleteState}
+                      toggleBulkDelete={toggleBulkDelete}
+                      handleBulkDelete={handleBulkDelete}
+                      onSubTaskReorder={handleSubTaskReorder}
+                    />
+                  )}
+                </div>
               </div>
-            )}
-          </Droppable>
-        </DragDropContext>
+            );
+          })}
+        </div>
       )}
 
       {/* Notes Modal — lightweight plain textarea */}
@@ -1491,9 +1465,9 @@ export const LearningChecklistModule = () => {
         </div>
       )}
 
-      <ConfirmDialog open={deleteConfirm.isOpen} title={deleteConfirm.type === 'topic' ? 'Delete Topic' : 'Delete Video'} message={`Delete this ${deleteConfirm.type}? This cannot be undone.`}
-        onConfirm={deleteConfirm.type === 'topic' ? confirmDeleteTopic : confirmDeleteSubTask}
-        onCancel={() => setDeleteConfirm({ isOpen: false, type: 'topic', id: '' })} />
+      <ConfirmDialog open={deleteConfirm.isOpen} title="Delete Topic" message="Delete this topic and all its videos? This cannot be undone."
+        onConfirm={confirmDeleteTopic}
+        onCancel={() => setDeleteConfirm({ isOpen: false, id: '' })} />
 
       {/* Roadmap Hub */}
       {showRoadmapHub && createPortal(

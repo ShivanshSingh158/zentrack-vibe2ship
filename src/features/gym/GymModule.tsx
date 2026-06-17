@@ -106,7 +106,6 @@ export const GymModule = () => {
 
   // Muscle heatmap: last 7 days of data — populate from all logs in memory
   // We pass the current log only; the heatmap fetches week data itself
-  const recentLogsForHeatmap = useMemo(() => log ? [log] : [], [log]);
 
   // Handle set completion → start rest timer + PR check
   const handleSetComplete = useCallback((exerciseName: string, restSecs: number) => {
@@ -375,7 +374,7 @@ export const GymModule = () => {
           </div>
 
           {/* Muscle Heatmap */}
-          <MuscleHeatmap recentLogs={recentLogsForHeatmap} />
+          <MuscleHeatmap recentLogs={log ? [log] : []} />
 
           {/* Treadmill (always at top of workout) */}
           {treadmillEntry && treadmillIdx !== -1 && (
