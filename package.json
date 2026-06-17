@@ -26,7 +26,8 @@
     "recharts": "^3.8.1",
     "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
-    "youtubei.js": "^17.0.1"
+    "youtubei.js": "^17.0.1",
+    "yt-search": "^2.13.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
