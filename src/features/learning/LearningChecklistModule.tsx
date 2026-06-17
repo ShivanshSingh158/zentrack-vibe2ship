@@ -369,7 +369,7 @@ VideoPlayerModal.displayName = 'VideoPlayerModal';
 // ── SubTaskItem ───────────────────────────────────────────────────────────────
 
 const SubTaskItem = React.memo(({
-  subTask, topicId, isEditMode, dragHandleProps,
+  subTask, topicId, isEditMode, onDragStart,
   toggleSubTask, openNotesModal, deleteSubTask, onPlayVideo,
   instantDeleteSubTask, bulkDeleteSelected, toggleBulkDelete,
   isRenaming, onStartRename, onSaveRename, onCancelRename,
