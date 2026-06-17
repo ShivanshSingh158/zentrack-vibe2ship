@@ -463,8 +463,6 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatch
           )}
         </div>
 
-        </div>
-
         {/* Controls */}
         {!focusMode && (
           <>
