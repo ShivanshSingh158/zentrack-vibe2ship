@@ -1,7 +1,7 @@
 import { useState, memo } from 'react';
 import { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays, Youtube } from 'lucide-react';
 import SetRow from './SetRow';
 import type { GymExerciseLog, GymSet, PreviousSessionExercise, GymPersonalRecord } from '../../../types/gym.types';
 
@@ -156,11 +156,27 @@ const ExerciseCard = memo(({
             <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)' }}>
               {ex.targetSets} × {ex.targetReps}
             </span>
-            {ex.muscle && (
-              <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.08rem 0.35rem', borderRadius: '99px', background: `${muscleColor}20`, color: muscleColor, border: `1px solid ${muscleColor}40` }}>
-                {ex.muscle}
-              </span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(`https://www.youtube.com/results?search_query=how+to+do+${encodeURIComponent(ex.name)}+proper+form+tutorial`, '_blank');
+                }}
+                style={{
+                  background: 'rgba(255,0,0,0.1)', border: '1px solid rgba(255,0,0,0.2)', padding: '0.15rem 0.4rem',
+                  borderRadius: '99px', display: 'flex', alignItems: 'center', gap: '0.2rem', color: '#ef4444', cursor: 'pointer'
+                }}
+                title="Watch Form Tutorial"
+              >
+                <Youtube size={11} />
+                <span style={{ fontSize: '0.55rem', fontWeight: 700, textTransform: 'uppercase' }}>Form</span>
+              </button>
+              {ex.muscle && (
+                <span style={{ fontSize: '0.6rem', fontWeight: 700, padding: '0.08rem 0.35rem', borderRadius: '99px', background: `${muscleColor}20`, color: muscleColor, border: `1px solid ${muscleColor}40` }}>
+                  {ex.muscle}
+                </span>
+              )}
+            </div>
             {/* Previous session summary */}
             {previousSession && previousSession.maxWeight > 0 && !isSkipped && (
               <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.28)', background: 'rgba(255,255,255,0.05)', padding: '0.05rem 0.3rem', borderRadius: '99px' }}>

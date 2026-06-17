@@ -4,6 +4,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../../../services/firebase';
 import { toast } from 'sonner';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../../data/gymPlan';
+import { syncGymHabit } from '../utils/habitSync';
 import type {
   GymDayLog, GymExerciseLog, GymCardioLog, GymProfile,
 } from '../../../types/gym.types';
@@ -81,6 +82,8 @@ interface UseGymLogResult {
   updateCardio: (idx: number, c: GymCardioLog) => void;
   deleteCardio: (idx: number) => void;
   addCardio: (c: GymCardioLog) => void;
+  startWorkout: () => void;
+  endWorkout: () => void;
   clearDay: () => void;
   importPlan: () => void;
   wipeAllTemplates: () => Promise<void>;
@@ -319,6 +322,39 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
     toast.success('Day cleared');
   }, [userId, scheduleAutosave]);
 
+  // Stopwatch
+  const startWorkout = useCallback(() => {
+    setLog(prev => {
+      const updated = { ...prev, workoutStartTime: Date.now(), updatedAt: Date.now() };
+      scheduleAutosave(updated);
+      return updated;
+    });
+    toast.success('Workout Started! 🚀');
+  }, [scheduleAutosave]);
+
+  const endWorkout = useCallback(() => {
+    setLog(prev => {
+      if (!prev.workoutStartTime) return prev;
+      const durationMs = Date.now() - prev.workoutStartTime;
+      const durationMins = Math.max(1, Math.round(durationMs / 60000));
+      const totalDuration = (prev.workoutDurationMinutes || 0) + durationMins;
+
+      const updated = { 
+        ...prev, 
+        workoutStartTime: undefined, 
+        workoutDurationMinutes: totalDuration, 
+        updatedAt: Date.now() 
+      };
+      scheduleAutosave(updated);
+      
+      // Auto-sync Habit
+      if (userId) syncGymHabit(userId);
+
+      toast.success(`Workout Ended! Time: ${totalDuration} mins 💪`);
+      return updated;
+    });
+  }, [scheduleAutosave, userId]);
+
   const importPlan = useCallback(() => {
     if (!userId || !planDay?.exercises?.length) {
       toast.error('No plan available for this day.');
@@ -371,7 +407,7 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
   return {
     userId, log, syncing, saving, profile,
     loadLog, updateExercise, deleteExercise, addExercise, moveExerciseToDate,
-    updateCardio, deleteCardio, addCardio,
+    updateCardio, deleteCardio, addCardio, startWorkout, endWorkout,
     clearDay, importPlan, wipeAllTemplates, saveProfile,
   };
 }

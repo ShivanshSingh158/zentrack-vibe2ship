@@ -36,6 +36,7 @@ export interface GymDayLog {
   exercises: GymExerciseLog[];
   cardio?: GymCardioLog[];
   notes?: string;
+  workoutStartTime?: number;
   workoutDurationMinutes?: number;
   createdAt: number;
   updatedAt: number;

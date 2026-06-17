@@ -33,6 +33,22 @@ function debounce<T extends (...args: any[]) => any>(fn: T, ms: number): T {
   }) as T;
 }
 
+function formatTime(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+const LiveTimer = ({ startTime }: { startTime: number }) => {
+  const [elapsed, setElapsed] = useState(Date.now() - startTime);
+  useEffect(() => {
+    const id = setInterval(() => setElapsed(Date.now() - startTime), 1000);
+    return () => clearInterval(id);
+  }, [startTime]);
+  return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTime(elapsed)}</span>;
+};
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export const GymModule = () => {
@@ -60,7 +76,7 @@ export const GymModule = () => {
   const {
     userId, log, syncing, saving, profile,
     loadLog, updateExercise, deleteExercise, addExercise, moveExerciseToDate,
-    updateCardio, deleteCardio, addCardio, clearDay, importPlan,
+    updateCardio, deleteCardio, addCardio, startWorkout, endWorkout, clearDay, importPlan,
     wipeAllTemplates, saveProfile,
   } = useGymLog(selectedDate);
 
@@ -205,25 +221,6 @@ export const GymModule = () => {
                   <><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
                   <span style={{ color: 'rgba(255,255,255,0.35)' }}>Saved</span></>
                 )}
-                {/* Workout timer — manual control */}
-                {selectedDate === todayStr() && (
-                  <button
-                    onClick={() => workoutTimer.isActive ? workoutTimer.stop() : workoutTimer.start()}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.22rem',
-                      padding: '0.12rem 0.35rem', borderRadius: '99px',
-                      border: workoutTimer.isActive
-                        ? '1px solid rgba(245,158,11,0.35)'
-                        : '1px solid rgba(255,255,255,0.12)',
-                      background: workoutTimer.isActive ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.05)',
-                      color: workoutTimer.isActive ? '#f59e0b' : 'rgba(255,255,255,0.4)',
-                      cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700,
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    <Timer size={9} />
-                    {workoutTimer.isActive ? workoutTimer.formatted() : 'Start'}
-                  </button>
                 )}
               </div>
             </div>
@@ -310,6 +307,41 @@ export const GymModule = () => {
 
           {/* Day card */}
           <div className="liquid-panel" style={{ margin: '0.85rem 1rem 0', padding: '0.9rem 1rem', borderRadius: '16px' }}>
+
+            {/* Global Stopwatch Banner */}
+            {selectedDate === todayStr() && !isRestDay && (
+              <div style={{ marginBottom: '1rem', padding: '0.75rem', background: log.workoutStartTime ? 'rgba(245, 158, 11, 0.1)' : 'rgba(124, 58, 237, 0.1)', border: `1px solid ${log.workoutStartTime ? 'rgba(245, 158, 11, 0.3)' : 'rgba(124, 58, 237, 0.3)'}`, borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                {log.workoutStartTime ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', animation: 'pulse 2s infinite' }} />
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span style={{ fontSize: '0.65rem', color: '#f59e0b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.05em' }}>Workout Active</span>
+                        <span style={{ fontSize: '1.25rem', color: '#fff', fontWeight: 800 }}><LiveTimer startTime={log.workoutStartTime} /></span>
+                      </div>
+                    </div>
+                    <button onClick={endWorkout} className="btn-primary" style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
+                      End Workout
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 700 }}>Ready to crush it?</span>
+                      {log.workoutDurationMinutes ? (
+                        <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>Completed in {log.workoutDurationMinutes}m</span>
+                      ) : (
+                        <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>Start the timer when you begin.</span>
+                      )}
+                    </div>
+                    <button onClick={startWorkout} className="btn-primary" style={{ padding: '0.5rem 1.25rem', fontSize: '0.8rem' }}>
+                      Start Workout
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.7rem' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
