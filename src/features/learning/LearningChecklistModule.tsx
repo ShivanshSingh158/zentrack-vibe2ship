@@ -4,7 +4,7 @@ import {
   Plus, Check, ChevronDown, ChevronRight, BookOpen, Trash2,
   FileText, Search, X, Play, GripVertical,
   Eye, EyeOff, SkipForward, SkipBack, Bell, Edit3, RotateCcw,
-  ListPlus, Link as LinkIcon, Loader,
+  ListPlus, Link as LinkIcon, Loader, Gauge, FastForward,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -45,7 +45,6 @@ const formatDuration = (ms: number) => {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
-// Fetch video title from YouTube oEmbed (no API key needed)
 const fetchVideoTitle = async (url: string): Promise<string> => {
   try {
     const res = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`);
@@ -59,16 +58,10 @@ const fetchVideoTitle = async (url: string): Promise<string> => {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MASTERY_LEVELS = {
-  not_started: { label: 'Not Started', color: '#6b7280', bg: 'rgba(107,114,128,0.15)', emoji: '⬜' },
-  learning:    { label: 'Learning',    color: '#f59e0b', bg: 'rgba(245,158,11,0.15)',  emoji: '📖' },
-  revising:    { label: 'Revising',    color: '#3b82f6', bg: 'rgba(59,130,246,0.15)',  emoji: '🔄' },
-  mastered:    { label: 'Mastered',    color: '#10b981', bg: 'rgba(16,185,129,0.15)',  emoji: '✅' },
-} as const;
-const MASTERY_ORDER: Array<keyof typeof MASTERY_LEVELS> = ['not_started', 'learning', 'revising', 'mastered'];
-
 const CW_KEY = 'learning_continue_watching';
 const EXPANDED_KEY = 'learning_expanded_topic';
+const SPEED_KEY = 'learning_playback_speed';
+const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
 
 const progressColor = (pct: number) => {
   if (pct === 100) return '#10b981';
@@ -100,6 +93,26 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
   const hasPrev = idx > 0;
   const hasNext = idx < total - 1;
 
+  const [speed, setSpeed] = useState<number>(() => {
+    try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
+  });
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const applySpeed = useCallback((s: number) => {
+    try {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: 'command', func: 'setPlaybackRate', args: [s] }),
+        '*'
+      );
+    } catch {}
+  }, []);
+
+  const handleSpeedChange = (s: number) => {
+    setSpeed(s);
+    try { localStorage.setItem(SPEED_KEY, String(s)); } catch {}
+    applySpeed(s);
+  };
+
   useEffect(() => {
     const onFs = () => {
       if (document.fullscreenElement) screen.orientation?.lock?.('landscape').catch(() => {});
@@ -128,22 +141,38 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.75rem' }}>
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '1100px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.12rem' }}>Video {idx + 1} of {total}</div>
             <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playing.title}</div>
           </div>
+          {/* Speed controls */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.3rem 0.5rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <Gauge size={12} color="rgba(255,255,255,0.4)" />
+            {SPEEDS.map(s => (
+              <button key={s} onClick={() => handleSpeedChange(s)}
+                style={{ padding: '0.18rem 0.4rem', borderRadius: '6px', border: 'none', background: speed === s ? '#3b82f6' : 'transparent', color: speed === s ? '#fff' : 'rgba(255,255,255,0.45)', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700, transition: 'all 150ms ease' }}>
+                {s}×
+              </button>
+            ))}
+          </div>
           <button onClick={onClose} style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <X size={16} />
           </button>
         </div>
+
+        {/* Player */}
         <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)' }}>
-          <iframe key={playing.videoId} width="100%" height="100%"
-            src={`https://www.youtube-nocookie.com/embed/${playing.videoId}?autoplay=1&rel=0&modestbranding=1`}
+          <iframe ref={iframeRef} key={playing.videoId} width="100%" height="100%"
+            src={`https://www.youtube-nocookie.com/embed/${playing.videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
             title={playing.title} frameBorder="0"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-            allowFullScreen style={{ display: 'block', width: '100%', height: '100%' }} />
+            allowFullScreen style={{ display: 'block', width: '100%', height: '100%' }}
+            onLoad={() => { setTimeout(() => applySpeed(speed), 1500); }} />
         </div>
+
+        {/* Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
           <button onClick={() => onNavigate(-1)} disabled={!hasPrev}
             style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasPrev ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasPrev ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasPrev ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
@@ -169,36 +198,73 @@ VideoPlayerModal.displayName = 'VideoPlayerModal';
 // ── SubTaskItem ───────────────────────────────────────────────────────────────
 
 const SubTaskItem = React.memo(({
-  subTask, topicId, isEditMode, dragHandleProps, renamingId,
-  toggleSubTask, openNotesModal, deleteSubTask, onPlayVideo, onCycleMastery, onStartRename,
+  subTask, topicId, isEditMode, dragHandleProps,
+  toggleSubTask, openNotesModal, deleteSubTask, onPlayVideo,
   instantDeleteSubTask, bulkDeleteSelected, toggleBulkDelete,
+  isRenaming, onStartRename, onSaveRename, onCancelRename,
 }: {
   subTask: LearningSubTask; topicId: string; isEditMode?: boolean;
-  dragHandleProps?: any; renamingId?: string | null;
+  dragHandleProps?: any;
   toggleSubTask: (t: string, s: string) => void;
   openNotesModal: (t: string, s: string) => void;
   deleteSubTask: (t: string, s: string) => void;
   instantDeleteSubTask: (t: string, s: string) => void;
   onPlayVideo: (videoId: string, subtaskId: string, topicId: string) => void;
-  onCycleMastery: (t: string, s: string) => void;
-  onStartRename?: (t: string, s: string, title: string) => void;
   bulkDeleteSelected: Set<string>;
   toggleBulkDelete: (s: string) => void;
+  isRenaming?: boolean;
+  onStartRename?: (t: string, s: string, title: string) => void;
+  onSaveRename?: (newTitle: string) => void;
+  onCancelRename?: () => void;
 }) => {
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
   const videoId = useMemo(() => {
     if (subTask.url) { const id = extractYoutubeId(subTask.url); if (id) return id; }
     if (subTask.resources) for (const r of subTask.resources) { const id = extractYoutubeId(r.url); if (id) return id; }
     return null;
   }, [subTask.url, subTask.resources]);
 
-  const level = subTask.masteryLevel || 'not_started';
-  const cfg = MASTERY_LEVELS[level];
-  const showMastery = level !== 'not_started';
-  const showRevisionCount = (subTask.revisionCount ?? 0) >= 1;
+  const isSelected = bulkDeleteSelected.has(subTask.id);
+
+  // Focus the rename input when isRenaming becomes true
+  useEffect(() => {
+    if (isRenaming) {
+      setTimeout(() => renameInputRef.current?.focus(), 50);
+    }
+  }, [isRenaming]);
+
+  // ── Inline rename mode ──
+  if (isRenaming) {
+    return (
+      <div className="subtask-item" style={{ alignItems: 'center', gap: '0.4rem' }}>
+        {isEditMode && (
+          <div style={{ cursor: 'grab', color: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none', padding: '0 0.1rem' }}>
+            <GripVertical size={13} />
+          </div>
+        )}
+        <input
+          ref={renameInputRef}
+          type="text"
+          defaultValue={subTask.text}
+          onKeyDown={e => {
+            if (e.key === 'Enter') onSaveRename?.((e.target as HTMLInputElement).value);
+            if (e.key === 'Escape') onCancelRename?.();
+          }}
+          style={{ flex: 1, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '7px', padding: '0.3rem 0.55rem', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
+        />
+        <button onClick={e => { const inp = (e.currentTarget.previousElementSibling as HTMLInputElement); onSaveRename?.(inp.value); }}
+          style={{ background: '#3b82f6', border: 'none', borderRadius: '6px', padding: '0.28rem 0.6rem', color: '#fff', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>Save</button>
+        <button onClick={onCancelRename}
+          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={13} /></button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginBottom: '0.35rem' }}>
       <div className={`subtask-item ${subTask.isCompleted ? 'completed' : ''}`} style={{ alignItems: 'center' }}>
+
         {/* Drag handle — only in edit mode */}
         {isEditMode && (
           <div {...dragHandleProps} style={{ cursor: 'grab', color: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', padding: '0 0.2rem', flexShrink: 0, touchAction: 'none' }}>
@@ -206,35 +272,60 @@ const SubTaskItem = React.memo(({
           </div>
         )}
 
-        {/* Checkbox */}
-        <button className={`todo-checkbox ${isEditMode ? (bulkDeleteSelected.has(subTask.id) ? 'checked' : '') : (subTask.isCompleted ? 'checked' : '')}`}
-          onClick={() => isEditMode ? toggleBulkDelete(subTask.id) : toggleSubTask(topicId, subTask.id)}
-          role="checkbox" aria-checked={isEditMode ? bulkDeleteSelected.has(subTask.id) : subTask.isCompleted}
-          style={{ flexShrink: 0 }}>
-          {(isEditMode ? bulkDeleteSelected.has(subTask.id) : subTask.isCompleted) && <Check size={13} strokeWidth={3} />}
-        </button>
+        {/* Bulk-select indicator (edit mode) OR normal checkbox (view mode) */}
+        {isEditMode ? (
+          <button
+            onClick={() => toggleBulkDelete(subTask.id)}
+            style={{ width: '18px', height: '18px', borderRadius: '4px', flexShrink: 0, border: `2px solid ${isSelected ? '#ef4444' : 'rgba(255,255,255,0.18)'}`, background: isSelected ? '#ef4444' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            {isSelected && <Check size={11} color="#fff" strokeWidth={3} />}
+          </button>
+        ) : (
+          <button className={`todo-checkbox ${subTask.isCompleted ? 'checked' : ''}`}
+            onClick={() => toggleSubTask(topicId, subTask.id)}
+            role="checkbox" aria-checked={subTask.isCompleted}
+            style={{ flexShrink: 0 }}>
+            {subTask.isCompleted && <Check size={13} strokeWidth={3} />}
+          </button>
+        )}
+
+        {/* Thumbnail (video items only) */}
+        {videoId && (
+          <div style={{ flexShrink: 0, width: '40px', height: '27px', borderRadius: '4px', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
+            onClick={() => onPlayVideo(videoId, subTask.id, topicId)}>
+            <img
+              src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+              alt=""
+              loading="lazy"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: subTask.isCompleted ? 0.35 : 0.85, transition: 'opacity 200ms' }}
+            />
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
+              <Play size={8} fill="#fff" color="#fff" />
+            </div>
+          </div>
+        )}
 
         {/* Title */}
         <span className="todo-text" style={{ flex: 1 }}>{subTask.text}</span>
 
-        {/* Mastery — only when used */}
-        {showMastery && !isEditMode && (
-          <button onClick={() => onCycleMastery(topicId, subTask.id)} title={`Mastery: ${cfg.label}`}
-            style={{ padding: '0.1rem 0.35rem', borderRadius: '99px', fontSize: '0.6rem', fontWeight: 600, background: cfg.bg, color: cfg.color, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
-            {cfg.emoji} {cfg.label}
-          </button>
-        )}
-        {showRevisionCount && !isEditMode && (
-          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>🔄{subTask.revisionCount}</span>
-        )}
-
         <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0 }}>
-          {/* Single red Watch button */}
-          {videoId && !isEditMode && (
-            <button onClick={() => onPlayVideo(videoId, subTask.id, topicId)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', padding: '0.22rem 0.5rem', borderRadius: '7px', background: subTask.isCompleted ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.32)', color: subTask.isCompleted ? 'rgba(239,68,68,0.45)' : '#ef4444', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, minHeight: '28px' }}>
-              <Play size={10} fill="currentColor" /> Watch
-            </button>
+          {/* Normal mode actions */}
+          {!isEditMode && (
+            <>
+              {videoId && (
+                <button onClick={() => onPlayVideo(videoId, subTask.id, topicId)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', padding: '0.22rem 0.5rem', borderRadius: '7px', background: subTask.isCompleted ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.32)', color: subTask.isCompleted ? 'rgba(239,68,68,0.45)' : '#ef4444', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, minHeight: '28px' }}>
+                  <Play size={10} fill="currentColor" /> Watch
+                </button>
+              )}
+              <button className="btn-icon" onClick={() => openNotesModal(topicId, subTask.id)}
+                style={{ color: subTask.notes ? 'var(--text-primary)' : 'var(--text-muted)' }} title="Notes">
+                <FileText size={12} />
+              </button>
+              <button className="todo-delete" onClick={() => deleteSubTask(topicId, subTask.id)} aria-label="Delete">
+                <Trash2 size={12} />
+              </button>
+            </>
           )}
 
           {/* Edit mode actions */}
@@ -242,7 +333,7 @@ const SubTaskItem = React.memo(({
             <>
               {videoId && (
                 <button onClick={() => onPlayVideo(videoId, subTask.id, topicId)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.2rem', padding: '0.2rem 0.45rem', borderRadius: '6px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444', cursor: 'pointer', fontSize: '0.58rem', fontWeight: 700, minHeight: '28px' }}>
+                  style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.45rem', borderRadius: '6px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444', cursor: 'pointer', minHeight: '28px' }}>
                   <Play size={9} fill="currentColor" />
                 </button>
               )}
@@ -256,19 +347,6 @@ const SubTaskItem = React.memo(({
               </button>
             </>
           )}
-
-          {/* Notes — always visible when not in edit mode */}
-          {!isEditMode && (
-            <button className="btn-icon" onClick={() => openNotesModal(topicId, subTask.id)}
-              style={{ color: subTask.notes ? 'var(--text-primary)' : 'var(--text-muted)' }} title="Notes">
-              <FileText size={12} />
-            </button>
-          )}
-          {!isEditMode && (
-            <button className="todo-delete" onClick={() => deleteSubTask(topicId, subTask.id)} aria-label="Delete">
-              <Trash2 size={12} />
-            </button>
-          )}
         </div>
       </div>
     </div>
@@ -280,182 +358,138 @@ SubTaskItem.displayName = 'SubTaskItem';
 
 const TopicBody = React.memo(({
   topic, expandedCategories, toggleCategory, toggleSubTask, openNotesModal, deleteSubTask,
-  handleAddSubTask, newSubtaskText, setNewSubtaskText, onPlayVideo, onCycleMastery,
+  handleAddSubTask, newSubtaskText, setNewSubtaskText, onPlayVideo,
   isEditMode, onToggleEdit,
-  // For inline add video
   addVideoState, setAddVideoState, onAddSingleVideo,
-  // For merge panel
   mergePanelState, setMergePanelState, onFetchMerge, onMergeSelected,
-  // For rename
   renamingSubtask, onStartRename, onSaveRename, onCancelRename,
-  // Bulk & Instant Delete
   instantDeleteSubTask, bulkDeleteState, toggleBulkDelete, handleBulkDelete,
 }: any) => {
+  // In edit mode, flatten ALL subtasks into one ordered list (no category separators)
+  const flatSubTasks: LearningSubTask[] = topic.subTasks || [];
+
   const categories = useMemo(() => {
     const cats: { [key: string]: LearningSubTask[] } = {};
-    (topic.subTasks || []).forEach((st: any) => {
+    flatSubTasks.forEach((st: any) => {
       const cat = st.category || 'General';
       if (!cats[cat]) cats[cat] = [];
       cats[cat].push(st);
     });
     return cats;
-  }, [topic.subTasks]);
+  }, [flatSubTasks]);
 
   const categoryKeys = Object.keys(categories);
   const isSingleCat = categoryKeys.length === 1;
   const isMyMergePanel = mergePanelState?.topicId === topic.id;
   const isMyAddVideo = addVideoState?.topicId === topic.id;
+  const selectedInTopic = flatSubTasks.filter((st: any) => bulkDeleteState.has(st.id)).length;
 
   return (
     <div className="topic-card-body">
       {/* Edit mode banner */}
       {isEditMode && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', margin: '0 0 0.75rem', borderRadius: '10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)' }}>
-          <span style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: 600 }}>✏️ Edit Mode — drag to reorder, rename or delete videos</span>
+          <span style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: 600 }}>✏️ Edit — drag to reorder · click red checkbox to select · ✏ to rename</span>
           <button onClick={onToggleEdit} style={{ fontSize: '0.68rem', color: '#60a5fa', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', padding: '0.2rem 0.55rem', cursor: 'pointer', fontWeight: 600 }}>Done</button>
         </div>
       )}
 
-      {/* Rename input overlay */}
-      {renamingSubtask?.topicId === topic.id && (
-        <div style={{ padding: '0.6rem 0.75rem', marginBottom: '0.75rem', borderRadius: '10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <Edit3 size={13} color="#60a5fa" style={{ flexShrink: 0 }} />
-          <input
-            autoFocus
-            type="text"
-            defaultValue={renamingSubtask.title}
-            onKeyDown={e => {
-              if (e.key === 'Enter') onSaveRename((e.target as HTMLInputElement).value);
-              if (e.key === 'Escape') onCancelRename();
-            }}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: '0.88rem', fontWeight: 500 }}
-            placeholder="New title..."
-          />
-          <button onClick={e => { const inp = (e.currentTarget.closest('div')!.querySelector('input') as HTMLInputElement); onSaveRename(inp.value); }} style={{ background: '#3b82f6', border: 'none', borderRadius: '6px', padding: '0.25rem 0.6rem', color: '#fff', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>Save</button>
-          <button onClick={onCancelRename} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: '0.2rem' }}><X size={13} /></button>
+      {/* ── EDIT MODE: Flat ordered list with DnD ── */}
+      {isEditMode ? (
+        <Droppable droppableId={`subtasks-${topic.id}`} type="SUBTASK">
+          {(provided) => (
+            <div ref={provided.innerRef} {...provided.droppableProps} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {flatSubTasks.map((st: LearningSubTask, idx: number) => (
+                <Draggable key={st.id} draggableId={`st-${st.id}`} index={idx}>
+                  {(prov, snap) => (
+                    <div ref={prov.innerRef} {...prov.draggableProps}
+                      style={{
+                        ...prov.draggableProps.style,
+                        boxShadow: snap.isDragging ? '0 12px 30px rgba(0,0,0,0.6)' : 'none',
+                        borderRadius: '8px',
+                        background: snap.isDragging ? '#18181b' : 'transparent',
+                        border: snap.isDragging ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
+                        zIndex: snap.isDragging ? 999 : 'auto',
+                      }}>
+                      <SubTaskItem
+                        subTask={st} topicId={topic.id}
+                        isEditMode={true} dragHandleProps={prov.dragHandleProps}
+                        isRenaming={renamingSubtask?.topicId === topic.id && renamingSubtask?.subtaskId === st.id}
+                        toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
+                        deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask}
+                        onPlayVideo={onPlayVideo}
+                        bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
+                        onStartRename={onStartRename} onSaveRename={onSaveRename} onCancelRename={onCancelRename}
+                      />
+                    </div>
+                  )}
+                </Draggable>
+              ))}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
+      ) : (
+        /* ── VIEW MODE: Category sections ── */
+        <div style={{ position: 'relative', paddingLeft: isSingleCat ? 0 : '1rem', marginTop: '0.5rem' }}>
+          {categoryKeys.map(category => {
+            const catKey = `${topic.id}-${category}`;
+            const isCatExpanded = isSingleCat || expandedCategories[catKey] === true;
+            const catSubTasks: LearningSubTask[] = categories[category];
+
+            return (
+              <div key={category} style={{ marginBottom: isSingleCat ? 0 : '1.2rem' }}>
+                {!isSingleCat && (
+                  <div onClick={() => toggleCategory(topic.id, category)}
+                    style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', padding: '0.25rem 0.5rem', borderRadius: '7px', background: 'rgba(255,255,255,0.03)' }}>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', flex: 1 }}>{category}</span>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>{catSubTasks.filter(s => s.isCompleted).length}/{catSubTasks.length}</span>
+                    {isCatExpanded ? <ChevronDown size={12} color="var(--text-muted)" /> : <ChevronRight size={12} color="var(--text-muted)" />}
+                  </div>
+                )}
+
+                {isCatExpanded && catSubTasks.map((st: LearningSubTask) => (
+                  <SubTaskItem key={st.id} subTask={st} topicId={topic.id}
+                    toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
+                    deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask}
+                    onPlayVideo={onPlayVideo}
+                    bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
+                  />
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
-
-      {/* Category sections */}
-      <div style={{ position: 'relative', paddingLeft: isSingleCat ? 0 : '1.5rem', borderLeft: isSingleCat ? 'none' : '2px solid var(--border-subtle)', marginTop: '0.5rem' }}>
-        {categoryKeys.map(category => {
-          const catKey = `${topic.id}-${category}`;
-          const isCatExpanded = isSingleCat || expandedCategories[catKey] === true;
-          const catSubTasks: LearningSubTask[] = categories[category];
-
-          return (
-            <div key={category} style={{ marginBottom: isSingleCat ? 0 : '1.5rem', position: 'relative' }}>
-              {!isSingleCat && (
-                <>
-                  <div style={{ position: 'absolute', left: '-21px', top: '5px', width: '12px', height: '12px', borderRadius: '50%', background: 'var(--bg-surface-active)', border: '2px solid var(--border-subtle)', zIndex: 1 }} />
-                  <div onClick={() => toggleCategory(topic.id, category)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                    <h4 style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{category}</h4>
-                    {isCatExpanded ? <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>▲</span> : <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>▼</span>}
-                  </div>
-                </>
-              )}
-
-              {isCatExpanded && (
-                <div style={{ paddingLeft: isSingleCat ? 0 : '1rem' }}>
-                  {/* Draggable subtasks when in edit mode */}
-                  {isEditMode ? (
-                    <Droppable droppableId={`subtasks-${topic.id}`} type="SUBTASK">
-                      {(provided) => (
-                        <div ref={provided.innerRef} {...provided.droppableProps} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                          {catSubTasks.map((st: LearningSubTask, idx: number) => (
-                            <Draggable key={st.id} draggableId={`st-${st.id}`} index={idx}>
-                              {(prov, snap) => (
-                                <div ref={prov.innerRef} {...prov.draggableProps}
-                                  style={{
-                                    ...prov.draggableProps.style,
-                                    opacity: snap.isDragging ? 1 : 1,
-                                    boxShadow: snap.isDragging ? '0 12px 30px rgba(0,0,0,0.6)' : 'none',
-                                    borderRadius: '8px',
-                                    background: snap.isDragging ? '#18181b' : 'transparent',
-                                    border: snap.isDragging ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
-                                    zIndex: snap.isDragging ? 999 : 'auto'
-                                  }}>
-                                  <SubTaskItem
-                                    subTask={st} topicId={topic.id}
-                                    isEditMode={true} dragHandleProps={prov.dragHandleProps}
-                                    renamingId={renamingSubtask?.subtaskId}
-                                    toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
-                                    deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask} onPlayVideo={onPlayVideo}
-                                    onCycleMastery={onCycleMastery} onStartRename={onStartRename}
-                                    bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
-                                  />
-                                </div>
-                              )}
-                            </Draggable>
-                          ))}
-                          {provided.placeholder}
-                        </div>
-                      )}
-                    </Droppable>
-                  ) : (
-                    catSubTasks.map((st: LearningSubTask) => (
-                      <SubTaskItem key={st.id} subTask={st} topicId={topic.id}
-                        toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
-                        deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask} onPlayVideo={onPlayVideo}
-                        onCycleMastery={onCycleMastery} bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
-                      />
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
 
       {/* ── Edit Mode Action Bar ── */}
       {isEditMode && (
         <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-          {/* Add single video */}
+          {selectedInTopic > 0 && (
+            <button onClick={() => handleBulkDelete(topic.id)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem', borderRadius: '10px', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem', animation: 'pulse 1.5s infinite' }}>
+              <Trash2 size={14} /> Delete Selected ({selectedInTopic})
+            </button>
+          )}
+
           <button
             onClick={() => setAddVideoState(isMyAddVideo ? null : { topicId: topic.id, url: '', title: '', fetching: false })}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px dashed rgba(239,68,68,0.35)', background: isMyAddVideo ? 'rgba(239,68,68,0.08)' : 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}
-          >
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px dashed rgba(239,68,68,0.35)', background: isMyAddVideo ? 'rgba(239,68,68,0.08)' : 'transparent', color: '#ef4444', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
             <LinkIcon size={14} /> {isMyAddVideo ? 'Cancel' : '+ Add Video URL'}
           </button>
 
-          {/* Inline Add Video panel */}
           {isMyAddVideo && (
-            <AddVideoPanel
-              state={addVideoState}
-              setState={setAddVideoState}
-              topicId={topic.id}
-              onAdd={onAddSingleVideo}
-            />
+            <AddVideoPanel state={addVideoState} setState={setAddVideoState} topicId={topic.id} onAdd={onAddSingleVideo} />
           )}
 
-          {/* Merge from another playlist */}
           <button
             onClick={() => setMergePanelState(isMyMergePanel ? null : { topicId: topic.id, url: '', videos: [], selected: new Set(), loading: false })}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px dashed rgba(99,102,241,0.35)', background: isMyMergePanel ? 'rgba(99,102,241,0.08)' : 'transparent', color: '#818cf8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}
-          >
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: '1px dashed rgba(99,102,241,0.35)', background: isMyMergePanel ? 'rgba(99,102,241,0.08)' : 'transparent', color: '#818cf8', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600 }}>
             <ListPlus size={14} /> {isMyMergePanel ? 'Cancel' : '+ Add from Another Playlist'}
           </button>
 
-          {/* Inline Merge Panel */}
           {isMyMergePanel && (
-            <MergePanel
-              state={mergePanelState}
-              setState={setMergePanelState}
-              topicId={topic.id}
-              onFetch={onFetchMerge}
-              onMerge={onMergeSelected}
-            />
-          )}
-
-          {/* Bulk Delete Button */}
-          {bulkDeleteState.size > 0 && topic.subTasks.some((st: any) => bulkDeleteState.has(st.id)) && (
-            <button
-              onClick={() => handleBulkDelete(topic.id)}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem', borderRadius: '10px', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}
-            >
-              <Trash2 size={14} /> Delete Selected ({topic.subTasks.filter((st: any) => bulkDeleteState.has(st.id)).length})
-            </button>
+            <MergePanel state={mergePanelState} setState={setMergePanelState} topicId={topic.id} onFetch={onFetchMerge} onMerge={onMergeSelected} />
           )}
         </div>
       )}
@@ -496,15 +530,8 @@ const AddVideoPanel = ({ state, setState, topicId, onAdd }: any) => {
   return (
     <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
       <div style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>📎 Add Video</div>
-
-      <input
-        type="url"
-        placeholder="Paste YouTube video URL..."
-        value={localUrl}
-        onChange={e => handleUrlChange(e.target.value)}
-        style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.25)', color: '#fff', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }}
-      />
-
+      <input type="url" placeholder="Paste YouTube video URL..." value={localUrl} onChange={e => handleUrlChange(e.target.value)}
+        style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.25)', color: '#fff', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
       {previewId && (
         <div style={{ borderRadius: '8px', overflow: 'hidden', aspectRatio: '16/9', maxHeight: '120px', position: 'relative' }}>
           <img src={`https://img.youtube.com/vi/${previewId}/mqdefault.jpg`} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} />
@@ -515,23 +542,14 @@ const AddVideoPanel = ({ state, setState, topicId, onAdd }: any) => {
           </div>
         </div>
       )}
-
       <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
         {fetching && <Loader size={13} color="rgba(255,255,255,0.4)" style={{ animation: 'spin 1s linear infinite' }} />}
-        <input
-          type="text"
-          placeholder={fetching ? 'Fetching title...' : 'Custom title (optional)'}
-          value={localTitle}
-          onChange={e => setLocalTitle(e.target.value)}
-          style={{ flex: 1, padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
-        />
+        <input type="text" placeholder={fetching ? 'Fetching title...' : 'Custom title (optional)'}
+          value={localTitle} onChange={e => setLocalTitle(e.target.value)}
+          style={{ flex: 1, padding: '0.5rem 0.65rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: '#fff', fontSize: '0.82rem', outline: 'none' }} />
       </div>
-
-      <button
-        onClick={() => onAdd(topicId, localUrl, localTitle)}
-        disabled={!localUrl.trim()}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem', borderRadius: '8px', border: 'none', background: localUrl.trim() ? '#ef4444' : 'rgba(239,68,68,0.3)', color: '#fff', cursor: localUrl.trim() ? 'pointer' : 'default', fontWeight: 700, fontSize: '0.85rem' }}
-      >
+      <button onClick={() => onAdd(topicId, localUrl, localTitle)} disabled={!localUrl.trim()}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem', borderRadius: '8px', border: 'none', background: localUrl.trim() ? '#ef4444' : 'rgba(239,68,68,0.3)', color: '#fff', cursor: localUrl.trim() ? 'pointer' : 'default', fontWeight: 700, fontSize: '0.85rem' }}>
         <Plus size={14} /> Add to Playlist
       </button>
     </div>
@@ -569,21 +587,13 @@ const MergePanel = ({ state, setState, topicId, onFetch, onMerge }: any) => {
   return (
     <div style={{ padding: '0.85rem', borderRadius: '12px', background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
       <div style={{ fontSize: '0.7rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>📥 Merge Playlist</div>
-
       <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <input
-          type="url"
-          placeholder="Paste another playlist URL..."
-          value={state.url}
+        <input type="url" placeholder="Paste another playlist URL..." value={state.url}
           onChange={e => setState((prev: any) => prev ? { ...prev, url: e.target.value } : prev)}
           onKeyDown={e => e.key === 'Enter' && onFetch()}
-          style={{ flex: 1, padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.25)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
-        />
-        <button
-          onClick={onFetch}
-          disabled={state.loading || !state.url.trim()}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.6rem 0.9rem', borderRadius: '8px', border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}
-        >
+          style={{ flex: 1, padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.25)', color: '#fff', fontSize: '0.82rem', outline: 'none' }} />
+        <button onClick={onFetch} disabled={state.loading || !state.url.trim()}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.6rem 0.9rem', borderRadius: '8px', border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}>
           {state.loading ? <Loader size={13} /> : 'Fetch'}
         </button>
       </div>
@@ -600,26 +610,18 @@ const MergePanel = ({ state, setState, topicId, onFetch, onMerge }: any) => {
             </div>
           </div>
 
-          {/* Search within merge list */}
           {state.videos.length > 8 && (
-            <input
-              type="text"
-              placeholder="Filter videos..."
-              value={searchInMerge}
+            <input type="text" placeholder="Filter videos..." value={searchInMerge}
               onChange={e => setSearchInMerge(e.target.value)}
-              style={{ padding: '0.45rem 0.65rem', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: '#fff', fontSize: '0.8rem', outline: 'none', width: '100%', boxSizing: 'border-box' }}
-            />
+              style={{ padding: '0.45rem 0.65rem', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: '#fff', fontSize: '0.8rem', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
           )}
 
-          {/* Video checklist */}
           <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.25rem' }}>
             {filtered.map((v: MergeVideo) => {
               const isSelected = state.selected?.has(v.id);
               return (
-                <div key={v.id}
-                  onClick={() => toggleVideo(v.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0.6rem', borderRadius: '8px', background: isSelected ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSelected ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)'}`, cursor: 'pointer', transition: 'background 150ms ease' }}
-                >
+                <div key={v.id} onClick={() => toggleVideo(v.id)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0.6rem', borderRadius: '8px', background: isSelected ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSelected ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)'}`, cursor: 'pointer', transition: 'background 150ms ease' }}>
                   <div style={{ width: '18px', height: '18px', borderRadius: '4px', border: `2px solid ${isSelected ? '#818cf8' : 'rgba(255,255,255,0.2)'}`, background: isSelected ? '#818cf8' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {isSelected && <Check size={11} color="#fff" strokeWidth={3} />}
                   </div>
@@ -629,11 +631,8 @@ const MergePanel = ({ state, setState, topicId, onFetch, onMerge }: any) => {
             })}
           </div>
 
-          <button
-            onClick={onMerge}
-            disabled={selectedCount === 0}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.6rem', borderRadius: '8px', border: 'none', background: selectedCount > 0 ? 'linear-gradient(135deg,#7c3aed,#8b5cf6)' : 'rgba(99,102,241,0.2)', color: selectedCount > 0 ? '#fff' : 'rgba(255,255,255,0.3)', cursor: selectedCount > 0 ? 'pointer' : 'default', fontWeight: 700, fontSize: '0.88rem' }}
-          >
+          <button onClick={onMerge} disabled={selectedCount === 0}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.6rem', borderRadius: '8px', border: 'none', background: selectedCount > 0 ? 'linear-gradient(135deg,#7c3aed,#8b5cf6)' : 'rgba(99,102,241,0.2)', color: selectedCount > 0 ? '#fff' : 'rgba(255,255,255,0.3)', cursor: selectedCount > 0 ? 'pointer' : 'default', fontWeight: 700, fontSize: '0.88rem' }}>
             <Plus size={14} /> Add {selectedCount > 0 ? `${selectedCount} Video${selectedCount > 1 ? 's' : ''}` : 'Selected Videos'} to Playlist
           </button>
         </>
@@ -663,9 +662,7 @@ export const LearningChecklistModule = () => {
   const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
   const [editingContext, setEditingContext] = useState<{ type: 'topic' | 'subtask'; topicId: string; subtaskId?: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; type: 'topic' | 'subtask'; id: string; parentId?: string }>({ isOpen: false, type: 'topic', id: '' });
-  const [editUrl, setEditUrl] = useState('');
   const [editNotes, setEditNotes] = useState('');
-  const [notesPreviewMode, setNotesPreviewMode] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState('');
   const [isImportingYt, setIsImportingYt] = useState(false);
   const [showRoadmapHub, setShowRoadmapHub] = useState(false);
@@ -727,6 +724,22 @@ export const LearningChecklistModule = () => {
     try { localStorage.setItem(CW_KEY, JSON.stringify(cw)); } catch {}
   }, [topics]);
 
+  // Jump to first unwatched video in a topic
+  const handleResumePlaylist = useCallback((topicId: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const firstUnwatched = topic.subTasks.find(st => {
+      if (st.isCompleted) return false;
+      if (st.url && extractYoutubeId(st.url)) return true;
+      if (st.resources) return st.resources.some(r => extractYoutubeId(r.url));
+      return false;
+    });
+    if (!firstUnwatched) { toast.info('All videos watched! 🎉'); return; }
+    const vid = firstUnwatched.url ? extractYoutubeId(firstUnwatched.url) :
+      firstUnwatched.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
+    if (vid) handlePlayVideo(vid, firstUnwatched.id, topicId);
+  }, [topics, handlePlayVideo]);
+
   const handlePlayerNavigate = useCallback((delta: number) => {
     setPlayingVideo(prev => {
       if (!prev) return null;
@@ -759,12 +772,19 @@ export const LearningChecklistModule = () => {
         if (mergePanelState?.topicId === topicId) setMergePanelState(null);
         if (addVideoState?.topicId === topicId) setAddVideoState(null);
         setRenamingSubtask(null);
+        // Clear bulk selections for this topic when exiting edit mode
+        setBulkDeleteState(prevBulk => {
+          const topicSubTaskIds = new Set(topics.find(t => t.id === topicId)?.subTasks.map(s => s.id) || []);
+          const next = new Set(prevBulk);
+          topicSubTaskIds.forEach(id => next.delete(id));
+          return next;
+        });
       } else {
         next.add(topicId);
       }
       return next;
     });
-  }, [mergePanelState, addVideoState]);
+  }, [mergePanelState, addVideoState, topics]);
 
   const handleSubTaskReorder = useCallback(async (topicId: string, result: any) => {
     const topic = topics.find(t => t.id === topicId);
@@ -887,8 +907,8 @@ export const LearningChecklistModule = () => {
     const updated = topic.subTasks.filter(st => !bulkDeleteState.has(st.id));
     if (updated.length === topic.subTasks.length) return;
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { 
-      await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); 
+    try {
+      await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) });
       setBulkDeleteState(prev => {
         const next = new Set(prev);
         topic.subTasks.forEach(st => next.delete(st.id));
@@ -899,7 +919,7 @@ export const LearningChecklistModule = () => {
     catch { toast.error('Failed to bulk delete'); }
   }, [topics, bulkDeleteState]);
 
-  // ── Global DragEnd (routes topic vs subtask) ──────────────────────────────
+  // ── Global DragEnd ────────────────────────────────────────────────────────
 
   const handleGlobalDragEnd = useCallback(async (result: any) => {
     if (!result.destination) return;
@@ -924,8 +944,15 @@ export const LearningChecklistModule = () => {
     if (!user || !newTopicTitle.trim()) return;
     if (topics.some(t => t.title.toLowerCase() === newTopicTitle.trim().toLowerCase())) { toast.error('Topic already exists'); return; }
     const newTopic: Omit<LearningTopic, 'id'> = { userId: user.uid, title: newTopicTitle.trim(), subTasks: [], createdAt: Date.now(), lastStudiedAt: Date.now(), order: topics.length };
-    try { const ref = await addDoc(collection(db, 'learning_topics'), sanitize(newTopic)); setNewTopicTitle(''); setAndPersistExpanded(ref.id); }
-    catch { toast.error('Failed to add topic'); }
+    // Optimistic update
+    const tempId = uniqueId();
+    setTopics(prev => [...prev, { ...newTopic, id: tempId }]);
+    setNewTopicTitle('');
+    try {
+      const ref = await addDoc(collection(db, 'learning_topics'), sanitize(newTopic));
+      setAndPersistExpanded(ref.id);
+    }
+    catch { toast.error('Failed to add topic'); setTopics(prev => prev.filter(t => t.id !== tempId)); }
   };
 
   const importPredefinedRoadmap = async (roadmap: typeof PREDEFINED_ROADMAPS[0]) => {
@@ -975,8 +1002,11 @@ export const LearningChecklistModule = () => {
     if (!topic) return;
     const newST: LearningSubTask = { id: uniqueId(), text, isCompleted: false };
     const updated = [...topic.subTasks, newST];
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t)); setNewSubtaskText(prev => ({ ...prev, [topicId]: '' })); }
-    catch { toast.error('Failed to add task'); }
+    // Optimistic
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
+    setNewSubtaskText(prev => ({ ...prev, [topicId]: '' }));
+    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
+    catch { toast.error('Failed to add task'); setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: topic.subTasks } : t)); }
   };
 
   const toggleSubTask = useCallback(async (topicId: string, subTaskId: string) => {
@@ -993,20 +1023,6 @@ export const LearningChecklistModule = () => {
   const deleteSubTask = useCallback((topicId: string, subTaskId: string) => {
     setDeleteConfirm({ isOpen: true, type: 'subtask', id: subTaskId, parentId: topicId });
   }, []);
-
-  const cycleMastery = useCallback(async (topicId: string, subTaskId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const updated = topic.subTasks.map(st => {
-      if (st.id !== subTaskId) return st;
-      const cur = st.masteryLevel || 'not_started';
-      const next = MASTERY_ORDER[(MASTERY_ORDER.indexOf(cur) + 1) % MASTERY_ORDER.length];
-      return { ...st, masteryLevel: next, revisionCount: next === 'revising' ? (st.revisionCount || 0) + 1 : st.revisionCount || 0, ...(next === 'revising' ? { lastRevisedAt: Date.now() } : {}) };
-    });
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); }
-    catch { toast.error('Failed to update mastery'); }
-  }, [topics]);
 
   const toggleCategory = useCallback((topicId: string, category: string) => {
     setExpandedCategories(prev => ({ ...prev, [`${topicId}-${category}`]: !prev[`${topicId}-${category}`] }));
@@ -1025,9 +1041,8 @@ export const LearningChecklistModule = () => {
   const openNotesModal = useCallback((topicId: string, subtaskId?: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    if (subtaskId) { const st = topic.subTasks.find(s => s.id === subtaskId); setEditUrl(st?.url || ''); setEditNotes(st?.notes || ''); setEditingContext({ type: 'subtask', topicId, subtaskId }); }
-    else { setEditUrl(''); setEditNotes(topic.notes || ''); setEditingContext({ type: 'topic', topicId }); }
-    setNotesPreviewMode(false);
+    if (subtaskId) { const st = topic.subTasks.find(s => s.id === subtaskId); setEditNotes(st?.notes || ''); setEditingContext({ type: 'subtask', topicId, subtaskId }); }
+    else { setEditNotes(topic.notes || ''); setEditingContext({ type: 'topic', topicId }); }
   }, [topics]);
 
   const saveNotes = async () => {
@@ -1036,7 +1051,7 @@ export const LearningChecklistModule = () => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
     if (type === 'subtask' && subtaskId) {
-      const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, url: editUrl, notes: editNotes } : st);
+      const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, notes: editNotes } : st);
       setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
       try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); toast.success('Saved'); }
       catch { toast.error('Failed to save'); }
@@ -1066,12 +1081,14 @@ export const LearningChecklistModule = () => {
 
   const isDraggingAllowed = searchQuery.trim() === '' && !showIncompleteOnly && editModeTopics.size === 0;
 
+  // Fix: Only show Continue Watching if the video is not already completed
   const validCW = useMemo(() => {
     if (!continueWatching) return null;
     const topic = topics.find(t => t.id === continueWatching.topicId);
     if (!topic) return null;
     const st = topic.subTasks.find(s => s.id === continueWatching.subtaskId);
-    return st ? continueWatching : null;
+    if (!st || st.isCompleted) return null; // Don't show if already watched
+    return continueWatching;
   }, [continueWatching, topics]);
 
   return (
@@ -1087,9 +1104,15 @@ export const LearningChecklistModule = () => {
           <button className={`btn-secondary ${showIncompleteOnly ? 'active' : ''}`} onClick={() => setShowIncompleteOnly(v => !v)} style={{ padding: '0.4rem' }} title={showIncompleteOnly ? 'Show all' : 'Incomplete only'}>
             {showIncompleteOnly ? <EyeOff size={17} /> : <Eye size={17} />}
           </button>
-          <div className="search-input-wrap" style={{ width: '190px' }}>
+          <div className="search-input-wrap" style={{ width: '190px', position: 'relative' }}>
             <Search size={15} className="search-icon" />
             <input ref={searchInputRef} type="text" placeholder="Search (⌘K)..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')}
+                style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '0.1rem' }}>
+                <X size={13} />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1149,8 +1172,14 @@ export const LearningChecklistModule = () => {
                   const done = (orig?.subTasks || []).filter(st => st.isCompleted).length;
                   const progress = total === 0 ? 0 : Math.round((done / total) * 100);
                   const daysSince = topic.lastStudiedAt ? (Date.now() - topic.lastStudiedAt) / 86400000 : 0;
-                  const needsReview = daysSince > 7 && progress > 0 && progress < 100;
+                  const needsReview = daysSince > 14 && progress >= 50 && progress < 100;
                   const isEditMode = editModeTopics.has(topic.id!);
+                  // Check if any video in this topic is unwatched
+                  const hasUnwatchedVideos = (orig?.subTasks || []).some(st => {
+                    if (st.isCompleted) return false;
+                    if (st.url && extractYoutubeId(st.url)) return true;
+                    return (st.resources || []).some(r => extractYoutubeId(r.url));
+                  });
 
                   return (
                     <Draggable key={topic.id} draggableId={topic.id!} index={index} isDragDisabled={!isDraggingAllowed}>
@@ -1172,7 +1201,7 @@ export const LearningChecklistModule = () => {
                                   <div style={{ fontWeight: 600, fontSize: '1.05rem' }}>{topic.title}</div>
                                   {needsReview && (
                                     <span style={{ display: 'flex', alignItems: 'center', gap: '0.18rem', fontSize: '0.58rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(245,158,11,0.22)' }}>
-                                      <Bell size={8} /> Review needed
+                                      <Bell size={8} /> Review
                                     </span>
                                   )}
                                   {isEditMode && (
@@ -1188,12 +1217,20 @@ export const LearningChecklistModule = () => {
                               </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }} className="topic-actions" onClick={e => e.stopPropagation()}>
+                              {/* ▶ Resume Playlist — Jump to next unwatched */}
+                              {hasUnwatchedVideos && !isEditMode && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); if (!isExpanded) setAndPersistExpanded(topic.id!); handleResumePlaylist(topic.id!); }}
+                                  title="Resume playlist — jump to next unwatched video"
+                                  style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}>
+                                  <Play size={10} fill="currentColor" /> Resume
+                                </button>
+                              )}
                               {/* Edit playlist button */}
                               <button
                                 onClick={() => { if (!isExpanded) setAndPersistExpanded(topic.id!); toggleEditMode(topic.id!); }}
                                 title={isEditMode ? 'Exit Edit Mode' : 'Edit Playlist'}
-                                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: isEditMode ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEditMode ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.1)'}`, color: isEditMode ? '#60a5fa' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}
-                              >
+                                style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: isEditMode ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEditMode ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.1)'}`, color: isEditMode ? '#60a5fa' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}>
                                 <Edit3 size={11} /> {isEditMode ? 'Done' : 'Edit'}
                               </button>
                               <button className="btn-icon" onClick={() => openNotesModal(topic.id!)} title="Notes"><FileText size={14} /></button>
@@ -1201,39 +1238,43 @@ export const LearningChecklistModule = () => {
                             </div>
                           </div>
 
-                          {isExpanded && (
-                            <TopicBody
-                              topic={topic}
-                              expandedCategories={expandedCategories}
-                              toggleCategory={toggleCategory}
-                              toggleSubTask={toggleSubTask}
-                              openNotesModal={openNotesModal}
-                              deleteSubTask={deleteSubTask}
-                              startTimer={startTimer}
-                              handleAddSubTask={handleAddSubTask}
-                              newSubtaskText={newSubtaskText}
-                              setNewSubtaskText={setNewSubtaskText}
-                              onPlayVideo={handlePlayVideo}
-                              onCycleMastery={cycleMastery}
-                              isEditMode={isEditMode}
-                              onToggleEdit={() => toggleEditMode(topic.id!)}
-                              addVideoState={addVideoState}
-                              setAddVideoState={setAddVideoState}
-                              onAddSingleVideo={handleAddSingleVideo}
-                              mergePanelState={mergePanelState}
-                              setMergePanelState={setMergePanelState}
-                              onFetchMerge={handleFetchMergePlaylist}
-                              onMergeSelected={handleMergeSelected}
-                              renamingSubtask={renamingSubtask}
-                              onStartRename={handleStartRename}
-                              onSaveRename={handleSaveRename}
-                              onCancelRename={() => setRenamingSubtask(null)}
-                              instantDeleteSubTask={instantDeleteSubTask}
-                              bulkDeleteState={bulkDeleteState}
-                              toggleBulkDelete={toggleBulkDelete}
-                              handleBulkDelete={handleBulkDelete}
-                            />
-                          )}
+                          {/* Smooth accordion */}
+                          <div style={{
+                            display: isExpanded ? 'block' : 'none',
+                            overflow: 'hidden',
+                          }}>
+                            {isExpanded && (
+                              <TopicBody
+                                topic={topic}
+                                expandedCategories={expandedCategories}
+                                toggleCategory={toggleCategory}
+                                toggleSubTask={toggleSubTask}
+                                openNotesModal={openNotesModal}
+                                deleteSubTask={deleteSubTask}
+                                handleAddSubTask={handleAddSubTask}
+                                newSubtaskText={newSubtaskText}
+                                setNewSubtaskText={setNewSubtaskText}
+                                onPlayVideo={handlePlayVideo}
+                                isEditMode={isEditMode}
+                                onToggleEdit={() => toggleEditMode(topic.id!)}
+                                addVideoState={addVideoState}
+                                setAddVideoState={setAddVideoState}
+                                onAddSingleVideo={handleAddSingleVideo}
+                                mergePanelState={mergePanelState}
+                                setMergePanelState={setMergePanelState}
+                                onFetchMerge={handleFetchMergePlaylist}
+                                onMergeSelected={handleMergeSelected}
+                                renamingSubtask={renamingSubtask}
+                                onStartRename={handleStartRename}
+                                onSaveRename={handleSaveRename}
+                                onCancelRename={() => setRenamingSubtask(null)}
+                                instantDeleteSubTask={instantDeleteSubTask}
+                                bulkDeleteState={bulkDeleteState}
+                                toggleBulkDelete={toggleBulkDelete}
+                                handleBulkDelete={handleBulkDelete}
+                              />
+                            )}
+                          </div>
                         </div>
                       )}
                     </Draggable>
@@ -1246,31 +1287,23 @@ export const LearningChecklistModule = () => {
         </DragDropContext>
       )}
 
-      {/* Notes Modal */}
+      {/* Notes Modal — lightweight plain textarea */}
       {editingContext && (
         <div className="notes-modal-overlay" onClick={() => setEditingContext(null)}>
           <div className="notes-modal-content" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
             <div className="notes-modal-header">
               <div>
                 <h2 style={{ fontSize: '1.15rem', margin: 0 }}>{editingContext.type === 'topic' ? 'Topic Notes' : 'Video Notes'}</h2>
-                {editingContext.type === 'subtask' && (
-                  <input type="url" value={editUrl} onChange={e => setEditUrl(e.target.value)} placeholder="Attach URL..." style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '0.45rem 0.65rem', borderRadius: '6px', width: '100%', color: 'var(--text-primary)', boxSizing: 'border-box', marginTop: '0.5rem' }} />
-                )}
               </div>
               <button className="btn-icon" onClick={() => setEditingContext(null)}><X size={17} /></button>
             </div>
             <div className="notes-modal-body">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Notes (Markdown)</label>
-                <div style={{ display: 'flex', gap: '0.35rem', background: 'var(--bg-base)', padding: '0.18rem', borderRadius: 'var(--radius-sm)' }}>
-                  <button onClick={() => setNotesPreviewMode(false)} style={{ padding: '0.22rem 0.65rem', background: !notesPreviewMode ? 'var(--bg-surface)' : 'transparent', color: !notesPreviewMode ? 'var(--text-primary)' : 'var(--text-muted)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Edit</button>
-                  <button onClick={() => setNotesPreviewMode(true)} style={{ padding: '0.22rem 0.65rem', background: notesPreviewMode ? 'var(--bg-surface)' : 'transparent', color: notesPreviewMode ? 'var(--text-primary)' : 'var(--text-muted)', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Preview</button>
-                </div>
-              </div>
-              {notesPreviewMode
-                ? <div className="markdown-preview">{editNotes.trim() ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{editNotes}</ReactMarkdown> : <span style={{ color: 'var(--text-muted)' }}>Nothing to preview</span>}</div>
-                : <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Write notes, code snippets..." style={{ width: '100%', minHeight: '200px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontFamily: 'monospace', resize: 'vertical', boxSizing: 'border-box' }} />
-              }
+              <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
+                {editingContext.type === 'topic' ? 'Notes (Markdown supported)' : 'Quick notes — timestamps, key concepts'}
+              </label>
+              <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)}
+                placeholder={editingContext.type === 'topic' ? 'Write notes, code snippets...' : 'e.g. 12:30 - important concept, 24:00 - demo'}
+                style={{ width: '100%', minHeight: '180px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontFamily: editingContext.type === 'topic' ? 'monospace' : 'inherit', resize: 'vertical', boxSizing: 'border-box', fontSize: '0.9rem' }} />
             </div>
             <div className="notes-modal-footer">
               <button className="btn-secondary" onClick={() => setEditingContext(null)}>Cancel</button>
