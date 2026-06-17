@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
-import { Target, Activity, CheckCircle, Zap, Heart, Award, Dumbbell, Star } from 'lucide-react';
+import { Target, Activity, CheckCircle, Zap, Heart, Award, Dumbbell, Flame } from 'lucide-react';
 import type { GymDayLog } from '../../../types/gym.types';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../../data/gymPlan';
 
@@ -106,6 +106,7 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
   // Compute insights
   const insights = useMemo(() => {
     let totalVolume = 0;
+    let totalReps = 0;
     let completedSets = 0;
     let targetSets = 0;
     let workoutCount = 0;
@@ -144,6 +145,7 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
               exerciseStats[ex.name].maxWeight = Math.max(exerciseStats[ex.name].maxWeight, set.weight);
             }
             if (muscleName) muscleSets[muscleName].hit++;
+            if (set.reps) totalReps += set.reps;
             if (set.weight && set.reps) totalVolume += set.weight * set.reps;
           } else if (!ex.skipped) {
             if (muscleName) muscleSets[muscleName].missed++;
@@ -161,18 +163,14 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
     const grade = getGrade(completionRate);
 
     let heaviestLift = { name: '', weight: 0 };
-    let favoriteExercise = { name: '', hits: 0 };
     
     for (const [name, stats] of Object.entries(exerciseStats)) {
       if (stats.maxWeight > heaviestLift.weight) {
         heaviestLift = { name, weight: stats.maxWeight };
       }
-      if (stats.hits > favoriteExercise.hits) {
-        favoriteExercise = { name, hits: stats.hits };
-      }
     }
 
-    return { totalVolume, completedSets, targetSets, workoutCount, cardioMinutes, muscles, completionRate, grade, heaviestLift, favoriteExercise };
+    return { totalVolume, totalReps, completedSets, targetSets, workoutCount, cardioMinutes, muscles, completionRate, grade, heaviestLift };
   }, [logs]);
 
   if (loading) {
@@ -294,13 +292,13 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
 
         <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
-            <Star size={12} /> Favorite Ex
+            <Flame size={12} /> Total Reps
           </div>
-          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {insights.favoriteExercise.hits > 0 ? `${insights.favoriteExercise.hits} sets` : '—'}
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {insights.totalReps > 0 ? insights.totalReps.toLocaleString() : '0'}
           </div>
           <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {insights.favoriteExercise.name || 'No sets logged'}
+            reps lifted this week
           </div>
         </div>
       </div>
