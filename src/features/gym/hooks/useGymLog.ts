@@ -46,6 +46,7 @@ export function buildDefaultLog(userId: string, date: string, planDayIdx: number
   const plan = GYM_PLAN.find(d => d.dayIndex === planDayIdx);
   const isRestDay = plan?.isRest === true;
   const exercises: GymExerciseLog[] = isRestDay ? [] : (plan?.exercises || []).map(ex => ({
+    id: Math.random().toString(36).substring(2, 10),
     exerciseId: ex.id, name: ex.name, targetSets: ex.targetSets, targetReps: ex.targetReps,
     muscle: ex.muscle, videoId: ex.videoId, isCustom: false,
     setsLog: Array.from({ length: ex.targetSets }, (_, i) => ({
@@ -220,7 +221,8 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
 
   const addExercise = useCallback(async (ex: GymExerciseLog, savePermanently: boolean) => {
     setLog(prev => {
-      const updated = { ...prev, exercises: [...prev.exercises, ex], updatedAt: Date.now() };
+      const exWithId = { ...ex, id: Math.random().toString(36).substring(2, 10) };
+      const updated = { ...prev, exercises: [...prev.exercises, exWithId], updatedAt: Date.now() };
       scheduleAutosave(updated);
       return updated;
     });

@@ -6,6 +6,7 @@ export interface GymSet {
 }
 
 export interface GymExerciseLog {
+  id?: string;
   exerciseId: string;
   name: string;
   targetSets: number;

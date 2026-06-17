@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import {
   Dumbbell, Check, Plus, Trash2, Edit3, Bed, Flame,
   RotateCcw, Download, ChevronLeft, ChevronRight, User, Timer, Trophy,
@@ -6,7 +6,7 @@ import {
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { GYM_PLAN } from '../../data/gymPlan';
-import { ZenGymAI } from './ZenGymAI';
+const ZenGymAI = React.lazy(() => import('./ZenGymAI').then(m => ({ default: m.ZenGymAI })));
 import { useGymLog, todayStr, dateStrOffset, dayLabelFromDate, planDayIndexForDate } from './hooks/useGymLog';
 import { usePreviousSession } from './hooks/usePreviousSession';
 import { useRestTimer } from './hooks/useRestTimer';
@@ -37,7 +37,7 @@ function debounce<T extends (...args: any[]) => any>(fn: T, ms: number): T {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export const GymModule = () => {
+const GymModuleInner = () => {
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [weekOffset, setWeekOffset] = useState(0);
   const [editMode, setEditMode] = useState(false);
@@ -49,14 +49,6 @@ export const GymModule = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [historyFor, setHistoryFor] = useState<{ id: string; name: string } | null>(null);
   const [newPR, setNewPR] = useState<{ exerciseName: string; weight: number } | null>(null);
-
-  // Mobile detection with debounced resize
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : true);
-  useEffect(() => {
-    const handler = debounce(() => setIsMobile(window.innerWidth <= 768), 150);
-    window.addEventListener('resize', handler, { passive: true });
-    return () => window.removeEventListener('resize', handler);
-  }, []);
 
   // Core data hook
   const {
@@ -147,25 +139,7 @@ export const GymModule = () => {
         toast.success('🏆 Workout complete! Open ZenGym AI for recovery advice and form tips.', { duration: 5000 });
       }, 500);
     }
-    if (!allWorkoutDone) formCheckShownRef.current = false;
   }, [allWorkoutDone, selectedDate]);
-
-  // ── Not mobile ────────────────────────────────────────────────────────────
-  if (!isMobile) {
-    return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)', padding: '2rem', textAlign: 'center' }}>
-        <div style={{ maxWidth: '380px' }}>
-          <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-            <Dumbbell size={32} style={{ color: '#a855f7' }} />
-          </div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#fff' }}>Mobile Only</h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-            The Gym Tracker is optimized exclusively for mobile. Open ZenTrack on your phone to log workouts.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -358,11 +332,11 @@ export const GymModule = () => {
               <div style={{ position: 'relative', width: '52px', height: '52px', flexShrink: 0 }}>
                 <svg width="52" height="52" style={{ transform: 'rotate(-90deg)' }}>
                   <circle cx="26" cy="26" r="20" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4" />
-                  <motion.circle cx="26" cy="26" r="20" fill="none" stroke={pct === 100 ? '#1db954' : '#a855f7'} strokeWidth="4"
-                    strokeDasharray={`${2 * Math.PI * 20}`}
-                    animate={{ strokeDashoffset: 2 * Math.PI * 20 * (1 - pct / 100) }}
-                    transition={{ type: 'spring', stiffness: 60, damping: 15 }}
+                  <circle cx="26" cy="26" r="20" fill="none" stroke={pct === 100 ? '#1db954' : '#a855f7'} strokeWidth="4"
+                    strokeDasharray={2 * Math.PI * 20}
+                    strokeDashoffset={2 * Math.PI * 20 * (1 - pct / 100)}
                     strokeLinecap="round"
+                    style={{ transition: 'stroke-dashoffset 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), stroke 0.3s ease' }}
                   />
                 </svg>
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
@@ -412,9 +386,9 @@ export const GymModule = () => {
                 </div>
               )
             ) : (
-              log.exercises.map((ex, idx) => (
+              log.exercises.map((ex: any, idx) => (
                 <ExerciseCard
-                  key={`${ex.exerciseId}-${idx}`}
+                  key={ex.id || `${ex.exerciseId}-${idx}-${ex.name}`}
                   index={idx}
                   ex={ex}
                   previousSession={previousSessionData[ex.exerciseId] ?? previousSessionData[ex.name] ?? null}
@@ -494,7 +468,9 @@ export const GymModule = () => {
       />
 
       {/* ── ZenGymAI ──────────────────────────────────────────────── */}
-      <ZenGymAI userId={userId} todayLog={log} profile={profile} />
+      <Suspense fallback={null}>
+        <ZenGymAI userId={userId} todayLog={log} profile={profile} />
+      </Suspense>
 
       {/* ── Modals ────────────────────────────────────────────────── */}
       {showAddModal && (
@@ -580,6 +556,33 @@ export const GymModule = () => {
       `}</style>
     </div>
   );
+};
+
+export const GymModule = () => {
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 768 : true);
+  useEffect(() => {
+    const handler = debounce(() => setIsMobile(window.innerWidth <= 768), 150);
+    window.addEventListener('resize', handler, { passive: true });
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  if (!isMobile) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)', padding: '2rem', textAlign: 'center' }}>
+        <div style={{ maxWidth: '380px' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+            <Dumbbell size={32} style={{ color: '#a855f7' }} />
+          </div>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#fff' }}>Mobile Only</h2>
+          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+            The Gym Tracker is optimized exclusively for mobile. Open ZenTrack on your phone to log workouts.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return <GymModuleInner />;
 };
 
 // ── Small shared sub-components ───────────────────────────────────────────────
