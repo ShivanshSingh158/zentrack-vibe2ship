@@ -939,13 +939,13 @@ export const LearningChecklistModule = () => {
     });
   }, [mergePanelState, addVideoState, topics]);
 
-  const handleSubTaskReorder = useCallback(async (topicId: string, result: any) => {
+  const handleSubTaskReorder = useCallback(async (topicId: string, fromIndex: number, toIndex: number) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    if (result.source.index === result.destination.index) return;
+    if (fromIndex === toIndex) return;
     const items = Array.from(topic.subTasks);
-    const [moved] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, moved);
+    const [moved] = items.splice(fromIndex, 1);
+    items.splice(toIndex, 0, moved);
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: items } : t));
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(items) }); }
     catch { toast.error('Failed to save order'); }
@@ -1076,10 +1076,7 @@ export const LearningChecklistModule = () => {
 
   const handleGlobalDragEnd = useCallback(async (result: any) => {
     if (!result.destination) return;
-    if (result.source.droppableId.startsWith('subtasks-')) {
-      const topicId = result.source.droppableId.replace('subtasks-', '');
-      await handleSubTaskReorder(topicId, result);
-    } else if (result.source.droppableId === 'topics') {
+    if (result.source.droppableId === 'topics') {
       if (searchQuery.trim() !== '' || showIncompleteOnly) return;
       const items = Array.from(topics);
       const [moved] = items.splice(result.source.index, 1);
@@ -1088,7 +1085,7 @@ export const LearningChecklistModule = () => {
       try { items.forEach((item, i) => { if (item.order !== i) updateDoc(doc(db, 'learning_topics', item.id!), { order: i }); }); }
       catch { toast.error('Failed to save order'); }
     }
-  }, [topics, searchQuery, showIncompleteOnly, handleSubTaskReorder]);
+  }, [topics, searchQuery, showIncompleteOnly]);
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
 
