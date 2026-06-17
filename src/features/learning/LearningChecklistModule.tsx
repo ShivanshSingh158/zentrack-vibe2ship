@@ -1071,7 +1071,7 @@ export const LearningChecklistModule = () => {
   const [isImportingYt, setIsImportingYt] = useState(false);
   const [showRoadmapHub, setShowRoadmapHub] = useState(false);
   const [importingRoadmapId, setImportingRoadmapId] = useState<string | null>(null);
-  const { playing, playVideo, closePlayer, queue, setPipMode } = useYouTube();
+  const { playing, playVideo, closePlayer, queue, setPipMode, isPipMode } = useYouTube();
   const [continueWatching, setContinueWatching] = useState<{ topicId: string; subtaskId: string; videoId: string; title: string; topicTitle: string; timestamp?: number } | null>(() => {
     try { return JSON.parse(localStorage.getItem(CW_KEY) || 'null'); } catch { return null; }
   });
@@ -1871,12 +1871,12 @@ export const LearningChecklistModule = () => {
       )}
 
       {/* Video Player */}
-      {playing && (
+      {playing && !isPipMode && (
         <VideoPlayerModal
           playing={playing}
           total={playing.totalCount}
           idx={playing.indexInPlaylist}
-          onClose={closePlayer}
+          onClose={() => setPipMode(true)}
           onMarkWatched={handleMarkWatched}
           onNavigate={handlePlayerNavigate}
           onStudyTime={handleStudyTime}
