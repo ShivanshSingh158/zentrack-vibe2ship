@@ -41,6 +41,8 @@ const ReorderList = React.memo(({ items, onReorder, renderItem }: {
   const dragRef = useRef<DragState | null>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+  const ghostRef = useRef<HTMLDivElement | null>(null);
+  const rafRef = useRef<number>(0);
 
   const startDrag = useCallback((e: React.PointerEvent, index: number) => {
     e.preventDefault();
@@ -71,26 +73,36 @@ const ReorderList = React.memo(({ items, onReorder, renderItem }: {
       const ghostY = e.clientY - dragRef.current.grabOffsetY;
       const ghostX = dragRef.current.ghostX;
 
-      // Find which index the ghost is hovering over
-      let overIndex = dragRef.current.sourceIndex;
+      // Find closest row by distance to midpoint
+      let overIndex = dragRef.current.overIndex;
       let minDistance = Infinity;
       itemRefs.current.forEach((el, i) => {
         if (!el) return;
         const rect = el.getBoundingClientRect();
         const midY = rect.top + rect.height / 2;
         const dist = Math.abs(e.clientY - midY);
-        if (dist < minDistance) {
-          minDistance = dist;
-          overIndex = i;
-        }
+        if (dist < minDistance) { minDistance = dist; overIndex = i; }
       });
 
       const next = { ...dragRef.current, ghostY, ghostX, overIndex };
       dragRef.current = next;
-      setDrag({ ...next });
+
+      // Move ghost via direct DOM on rAF for 60fps smoothness
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (ghostRef.current) {
+          ghostRef.current.style.top = `${ghostY}px`;
+        }
+        // Only re-render when overIndex changes (for indicator + displacement)
+        setDrag(prev => {
+          if (!prev || prev.overIndex === overIndex) return prev;
+          return { ...next };
+        });
+      });
     };
 
     const onUp = () => {
+      cancelAnimationFrame(rafRef.current);
       if (dragRef.current) {
         const { sourceIndex, overIndex } = dragRef.current;
         if (sourceIndex !== overIndex) onReorder(sourceIndex, overIndex);
@@ -101,13 +113,14 @@ const ReorderList = React.memo(({ items, onReorder, renderItem }: {
       document.body.style.cursor = '';
     };
 
-    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointermove', onMove, { passive: true });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
     return () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      cancelAnimationFrame(rafRef.current);
     };
   }, [drag, onReorder]);
 
@@ -116,36 +129,48 @@ const ReorderList = React.memo(({ items, onReorder, renderItem }: {
       <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
         {items.map((item, index) => {
           const isDraggingThis = drag?.draggingId === item.id;
-          // Show drop indicator above or below
           const isOverAbove = drag && !isDraggingThis && drag.overIndex === index && drag.sourceIndex > index;
           const isOverBelow = drag && !isDraggingThis && drag.overIndex === index && drag.sourceIndex < index;
+
+          // Smooth row displacement as ghost passes over them
+          let translateY = 0;
+          if (drag && !isDraggingThis) {
+            const src = drag.sourceIndex;
+            const over = drag.overIndex;
+            const itemH = drag.ghostH + 4;
+            if (src < over && index > src && index <= over) translateY = -itemH;
+            else if (src > over && index >= over && index < src) translateY = itemH;
+          }
 
           return (
             <div key={item.id}>
               {isOverAbove && (
-                <div style={{ height: '2px', borderRadius: '2px', background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', margin: '2px 0', boxShadow: '0 0 8px rgba(59,130,246,0.6)', transition: 'all 80ms ease' }} />
+                <div style={{ height: '3px', borderRadius: '3px', background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', margin: '2px 0', boxShadow: '0 0 10px rgba(59,130,246,0.7)' }} />
               )}
               <div
                 ref={el => { itemRefs.current[index] = el; }}
                 style={{
-                  opacity: isDraggingThis ? 0.3 : 1,
-                  transition: isDraggingThis ? 'none' : 'opacity 150ms ease',
+                  opacity: isDraggingThis ? 0.25 : 1,
+                  transform: `translateY(${translateY}px)`,
+                  transition: isDraggingThis ? 'opacity 150ms ease' : 'transform 180ms cubic-bezier(0.2,0,0,1), opacity 150ms ease',
                   pointerEvents: drag && !isDraggingThis ? 'none' : 'auto',
+                  willChange: drag ? 'transform' : 'auto',
                 }}
               >
                 {renderItem(item, index, isDraggingThis, (e: React.PointerEvent) => startDrag(e, index))}
               </div>
               {isOverBelow && (
-                <div style={{ height: '2px', borderRadius: '2px', background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', margin: '2px 0', boxShadow: '0 0 8px rgba(59,130,246,0.6)', transition: 'all 80ms ease' }} />
+                <div style={{ height: '3px', borderRadius: '3px', background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', margin: '2px 0', boxShadow: '0 0 10px rgba(59,130,246,0.7)' }} />
               )}
             </div>
           );
         })}
       </div>
 
-      {/* Ghost — rendered at body level via Portal for zero misalignment */}
+      {/* Ghost — body-level Portal, position driven via direct DOM ref for 60fps */}
       {drag && createPortal(
         <div
+          ref={ghostRef}
           style={{
             position: 'fixed',
             left: drag.ghostX,
@@ -154,20 +179,18 @@ const ReorderList = React.memo(({ items, onReorder, renderItem }: {
             height: drag.ghostH,
             pointerEvents: 'none',
             zIndex: 999999,
-            background: 'rgba(24,24,27,0.97)',
-            border: '1px solid rgba(59,130,246,0.5)',
+            background: 'rgba(18,18,22,0.98)',
+            border: '1.5px solid rgba(59,130,246,0.6)',
             borderRadius: '10px',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(59,130,246,0.2)',
-            transform: 'scale(1.02) rotate(-0.5deg)',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.8), 0 0 0 1px rgba(59,130,246,0.25)',
+            transform: 'scale(1.025) rotate(-0.4deg)',
             transformOrigin: 'center top',
-            backdropFilter: 'blur(4px)',
             display: 'flex',
             alignItems: 'center',
             padding: '0 0.5rem',
             overflow: 'hidden',
           }}
         >
-          {/* Show a simplified version of the item in the ghost */}
           {(() => {
             const item = items.find(i => i.id === drag.draggingId);
             if (!item) return null;
