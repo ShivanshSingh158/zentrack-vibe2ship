@@ -133,15 +133,19 @@ export const FloatingYouTubePlayer: React.FC = () => {
     <AnimatePresence>
       {isPipMode && (
         <motion.div
+          drag
+          dragMomentum={false}
           initial={{ opacity: 0, y: 50, scale: 0.9 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 50, scale: 0.9 }}
+          whileDrag={{ cursor: 'grabbing', scale: 1.02 }}
           style={{ 
             position: 'fixed', bottom: '1.5rem', right: '1.5rem', width: '320px', 
             zIndex: 99999, borderRadius: '14px', overflow: 'hidden', 
             boxShadow: '0 25px 70px rgba(0,0,0,0.8), 0 0 30px rgba(0,0,0,0.5)',
             border: '1px solid rgba(255,255,255,0.12)',
-            background: '#000'
+            background: '#000',
+            cursor: 'grab'
           }}
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
