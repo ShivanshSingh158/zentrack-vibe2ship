@@ -1228,6 +1228,10 @@ export const LearningChecklistModule = () => {
                               onStartRename={handleStartRename}
                               onSaveRename={handleSaveRename}
                               onCancelRename={() => setRenamingSubtask(null)}
+                              instantDeleteSubTask={instantDeleteSubTask}
+                              bulkDeleteState={bulkDeleteState}
+                              toggleBulkDelete={toggleBulkDelete}
+                              handleBulkDelete={handleBulkDelete}
                             />
                           )}
                         </div>
