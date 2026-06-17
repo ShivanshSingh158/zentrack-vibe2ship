@@ -404,7 +404,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
   // ─── RENDER ─────────────────────────────────────────────────────────────
   
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(9,9,11,0.98)', display: 'flex', flexDirection: 'column' }}>
+    <div data-lenis-prevent="true" style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(9,9,11,0.98)', display: 'flex', flexDirection: 'column' }}>
       
       {/* Mini Video Preview Overlay */}
       {previewVideoId && (
