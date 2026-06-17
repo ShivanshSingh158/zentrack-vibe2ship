@@ -721,109 +721,119 @@ html, body {
 }
 
 /* ==========================================================================
-   ATTENDANCE MOBILE OPTIMIZATION
+   ATTENDANCE V2 — GLOBAL STYLES
    ========================================================================== */
+
+/* Warning alerts banner */
+.att-warning-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: rgba(239, 68, 68, 0.07);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 12px;
+  padding: 0.7rem 1rem;
+  margin-bottom: 1rem;
+}
+
+/* Week strip */
+.att-week-strip {
+  display: flex;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.att-week-strip::-webkit-scrollbar { display: none; }
+.att-week-pill { flex: 1; min-width: 42px; }
+
+/* Desktop-only elements (projection bar etc.) */
+.att-desktop-only { display: flex; }
+
+/* ── ATTENDANCE LAYOUT ────────────────────────────────────────────────────── */
 .attendance-top-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 1.5rem;
-  align-items: start;
+  align-items: stretch;
 }
 
 @media (max-width: 768px) {
+  /* Hide desktop-only elements (semester projection bar) */
+  .att-desktop-only {
+    display: none !important;
+  }
+
+  /* Stack the top container to single column on small screens */
   .attendance-top-container {
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
+    grid-template-columns: 1fr;
+    gap: 0.85rem;
     align-items: stretch;
   }
-  
+
   .attendance-summary-panel {
-    grid-column: 1 / 2;
     padding: 0.75rem;
-    height: 100%;
     display: flex;
     flex-direction: column;
     justify-content: center;
   }
-  
-  .attendance-log-panel {
-    grid-column: 2 / 3;
-    padding: 0;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
 
-  /* Make extra class span full width at bottom */
-  .attendance-extra-class {
-    grid-column: 1 / -1;
-  }
-
-  /* Optimize Overview content for 50% width */
+  /* Compact overview on mobile */
   .attendance-summary-panel .panel-body {
     flex-direction: column !important;
     gap: 0.5rem !important;
     text-align: center;
   }
-  
+
   .attendance-summary-panel .pie-chart-container {
     display: none !important;
   }
-  
+
   .attendance-summary-panel .overview-title {
     font-size: 0.85rem !important;
     justify-content: center;
   }
-  
+
   .attendance-summary-panel .global-pct {
-    font-size: 2rem !important;
+    font-size: 2.2rem !important;
   }
-  
+
   .attendance-summary-panel .global-total {
     font-size: 0.75rem !important;
   }
 
-  /* Optimize Log content for 50% width */
-  .attendance-log-panel .panel-header h2 {
-    font-size: 0.85rem !important;
-    padding: 0.75rem !important;
-  }
-  
-  .attendance-log-panel .log-history-list {
-    max-height: 80px !important;
-    padding: 0 0.5rem 0.5rem 0.5rem !important;
-    flex: 1;
-  }
-  
-  .attendance-log-panel .log-history-item {
-    padding: 0.4rem !important;
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 0.25rem;
+  /* Extra class spans full width */
+  .attendance-extra-class {
+    grid-column: 1 / -1;
   }
 
-  .attendance-log-panel .log-history-item > div:first-child {
-    min-width: 0;
-    width: 100%;
+  /* Warning banner compact */
+  .att-warning-banner {
+    font-size: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    gap: 0.5rem;
   }
 
-  .attendance-log-panel .log-history-title {
-    font-size: 0.75rem !important;
-    white-space: normal !important;
-    line-height: 1.3;
-    word-break: break-word;
+  /* Week strip — tighter pills */
+  .att-week-strip {
+    gap: 0.3rem;
+    margin-bottom: 1rem;
   }
-
-  .attendance-log-panel .log-history-time {
-    font-size: 0.65rem !important;
-  }
-
-  .attendance-log-panel .undo-text {
-    display: none; /* Hide 'Undo' text, just show icon on mobile */
-  }
-  
-  .attendance-log-panel .undo-btn {
-    padding: 0.2rem 0.4rem !important;
-    align-self: flex-end;
+  .att-week-pill {
+    min-width: 36px;
+    padding: 0.38rem 0.25rem !important;
   }
 }
+
+/* Small phones */
+@media (max-width: 400px) {
+  .att-week-pill {
+    min-width: 30px;
+    padding: 0.3rem 0.15rem !important;
+  }
+  .att-week-pill span:first-child {
+    font-size: 0.55rem !important;
+  }
+}
+
