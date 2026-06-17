@@ -73,12 +73,16 @@ const ReorderList = React.memo(({ items, onReorder, renderItem }: {
 
       // Find which index the ghost is hovering over
       let overIndex = dragRef.current.sourceIndex;
+      let minDistance = Infinity;
       itemRefs.current.forEach((el, i) => {
-        if (!el || i === dragRef.current!.sourceIndex) return;
+        if (!el) return;
         const rect = el.getBoundingClientRect();
         const midY = rect.top + rect.height / 2;
-        if (e.clientY > midY && i > dragRef.current!.sourceIndex) overIndex = i;
-        if (e.clientY < midY && i < dragRef.current!.sourceIndex) overIndex = i;
+        const dist = Math.abs(e.clientY - midY);
+        if (dist < minDistance) {
+          minDistance = dist;
+          overIndex = i;
+        }
       });
 
       const next = { ...dragRef.current, ghostY, ghostX, overIndex };
