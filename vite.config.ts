@@ -14,87 +14,74 @@ const localApiPlugin = (): Plugin => ({
       const playlistId = url.searchParams.get('playlistId');
       if (!playlistId) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing playlistId' })); return; }
 
-      function parseData(data: any) {
-        const videos: {videoId: string; title: string}[] = [];
-        let nextContinuation: string | null = null;
-        let title: string | null = null;
-        function walk(obj: any): void {
-          if (!obj || typeof obj !== 'object') return;
-          if (Array.isArray(obj)) { obj.forEach(walk); return; }
-          if (!title && obj.metadata?.playlistMetadataRenderer?.title) title = obj.metadata.playlistMetadataRenderer.title;
-          if (!title && obj.header?.pageHeaderRenderer?.pageTitle) title = obj.header.pageHeaderRenderer.pageTitle;
-          if (obj.lockupViewModel?.contentType === 'LOCKUP_CONTENT_TYPE_VIDEO') {
-            const v = obj.lockupViewModel;
-            const t = v.metadata?.lockupMetadataViewModel?.title?.content || '';
-            if (v.contentId && t && t !== '[Private video]' && t !== '[Deleted video]') videos.push({ videoId: v.contentId, title: t });
-            return;
-          }
-          if (obj.playlistVideoRenderer?.videoId) {
-            const v = obj.playlistVideoRenderer;
-            const t = v.title?.runs?.[0]?.text || v.title?.simpleText || '';
-            if (t && t !== '[Private video]' && t !== '[Deleted video]') videos.push({ videoId: v.videoId, title: t });
-            return;
-          }
-          if (obj.continuationItemRenderer) {
-            const token = obj.continuationItemRenderer?.continuationEndpoint?.continuationCommand?.token;
-            if (token && !nextContinuation) nextContinuation = token;
-            return;
-          }
-          Object.values(obj).forEach(walk);
-        }
-        walk(data);
-        return { videos, nextContinuation, title };
+      async function fetchNext(pId: string, pIndex: number) {
+        const body = { context: { client: CLIENT }, playlistId: pId, playlistIndex: pIndex };
+        const r = await fetch(`https://www.youtube.com/youtubei/v1/next?key=${INNERTUBE_KEY}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (!r.ok) throw new Error(`InnerTube HTTP ${r.status}`);
+        return await r.json() as any;
       }
 
       try {
-        const allVideos: {videoId: string; title: string}[] = [];
-        const seen = new Set<string>();
+        const allVideos = new Map<string, {videoId: string; title: string; isDeleted?: boolean}>();
         let playlistTitle: string | null = null;
-        let continuation: string | null = null;
-        let page = 0;
+        let currentIndex = 0;
 
-        do {
-          const body: any = { context: { client: CLIENT } };
-          if (continuation) body.continuation = continuation;
-          else body.browseId = `VL${playlistId}`;
-
-          const r = await fetch(`https://www.youtube.com/youtubei/v1/browse?key=${INNERTUBE_KEY}`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-          });
-          if (!r.ok) throw new Error(`InnerTube HTTP ${r.status}`);
-          const data = await r.json() as any;
-
-          if (page === 0) {
-            const alert = data.alerts?.find((a: any) => a.alertRenderer?.type === 'ERROR');
-            if (alert) {
-              const msg = alert.alertRenderer?.text?.runs?.[0]?.text || alert.alertRenderer?.text?.simpleText || 'Playlist not found';
-              res.writeHead(404, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: msg }));
-              return;
-            }
-          }
-
-          const extracted = parseData(data);
-          if (page === 0 && extracted.title) playlistTitle = extracted.title;
-          for (const v of extracted.videos) {
-            if (!seen.has(v.videoId)) { seen.add(v.videoId); allVideos.push(v); }
-          }
+        for (let page = 0; page < 50; page++) {
+          const data = await fetchNext(playlistId, currentIndex);
           
-          if (extracted.videos.length === 0) break;
+          if (page === 0) {
+              const alert = data.alerts?.find((a: any) => a.alertRenderer?.type === 'ERROR');
+              if (alert) {
+                const msg = alert.alertRenderer?.text?.runs?.[0]?.text || alert.alertRenderer?.text?.simpleText || 'Playlist not found';
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: msg }));
+                return;
+              }
+              if (!playlistTitle) {
+                  playlistTitle = data.header?.playlistHeaderRenderer?.title?.simpleText ||
+                                  data.metadata?.playlistMetadataRenderer?.title || null;
+              }
+          }
 
-          continuation = extracted.nextContinuation;
-          page++;
-        } while (continuation && page < 40);
+          let added = 0;
+          function check(obj: any) {
+              if (!obj || typeof obj !== 'object') return;
+              if (obj.playlistPanelVideoRenderer) {
+                  const v = obj.playlistPanelVideoRenderer;
+                  if (v.videoId && !allVideos.has(v.videoId)) {
+                      const t = v.title?.runs?.[0]?.text || v.title?.simpleText || '';
+                      if (t !== '[Private video]' && t !== '[Deleted video]') {
+                          allVideos.set(v.videoId, { videoId: v.videoId, title: t });
+                          added++;
+                      } else {
+                          allVideos.set(v.videoId, { videoId: v.videoId, title: t, isDeleted: true });
+                          added++;
+                      }
+                  }
+              }
+              if (Array.isArray(obj)) { obj.forEach(check); return; }
+              Object.values(obj).forEach(check);
+          }
+          check(data);
 
-        if (allVideos.length === 0) {
+          if (added === 0) break;
+          currentIndex += 190;
+        }
+
+        const validVideos = Array.from(allVideos.values()).filter(v => !v.isDeleted);
+
+        if (validVideos.length === 0) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'No videos found. The playlist may be empty, private, or the URL is incorrect.' }));
           return;
         }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ title: playlistTitle || `Playlist (${allVideos.length} videos)`, videos: allVideos }));
+        res.end(JSON.stringify({ title: playlistTitle || `Playlist (${validVideos.length} videos)`, videos: validVideos }));
       } catch (e: any) {
+        console.error('API Error:', e);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message || 'Unknown error' }));
       }
