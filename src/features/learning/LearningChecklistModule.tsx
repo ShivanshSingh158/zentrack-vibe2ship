@@ -1012,12 +1012,28 @@ const MergePanel = ({ state, setState, topicId, onFetch, onMerge }: any) => {
               style={{ padding: '0.45rem 0.65rem', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: '#fff', fontSize: '0.8rem', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
           )}
 
-          <div style={{ maxHeight: '340px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.25rem', touchAction: 'pan-y' }}>
+          <div
+            onWheel={e => e.stopPropagation()}
+            style={{
+              maxHeight: '400px',
+              height: filtered.length > 4 ? '400px' : 'auto',
+              overflowY: filtered.length > 4 ? 'scroll' : 'visible',
+              WebkitOverflowScrolling: 'touch',
+              overscrollBehavior: 'contain',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.25rem',
+              paddingRight: filtered.length > 4 ? '4px' : '0',
+              touchAction: 'pan-y',
+              scrollbarWidth: 'thin',
+              scrollbarColor: 'rgba(99,102,241,0.5) rgba(255,255,255,0.05)',
+            }}
+          >
             {filtered.map((v: MergeVideo) => {
               const isSelected = state.selected?.has(v.id);
               return (
                 <div key={v.id} onClick={() => toggleVideo(v.id)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0.6rem', borderRadius: '8px', background: isSelected ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSelected ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)'}`, cursor: 'pointer', transition: 'background 150ms ease' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.45rem 0.6rem', borderRadius: '8px', background: isSelected ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)', border: `1px solid ${isSelected ? 'rgba(99,102,241,0.3)' : 'rgba(255,255,255,0.06)'}`, cursor: 'pointer', transition: 'background 150ms ease', flexShrink: 0 }}>
                   <div style={{ width: '18px', height: '18px', borderRadius: '4px', border: `2px solid ${isSelected ? '#818cf8' : 'rgba(255,255,255,0.2)'}`, background: isSelected ? '#818cf8' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     {isSelected && <Check size={11} color="#fff" strokeWidth={3} />}
                   </div>
