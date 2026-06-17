@@ -360,7 +360,15 @@ const TopicBody = React.memo(({
                             <Draggable key={st.id} draggableId={`st-${st.id}`} index={idx}>
                               {(prov, snap) => (
                                 <div ref={prov.innerRef} {...prov.draggableProps}
-                                  style={{ ...prov.draggableProps.style, opacity: snap.isDragging ? 0.85 : 1, boxShadow: snap.isDragging ? '0 8px 24px rgba(0,0,0,0.4)' : 'none', borderRadius: '8px' }}>
+                                  style={{
+                                    ...prov.draggableProps.style,
+                                    opacity: snap.isDragging ? 1 : 1,
+                                    boxShadow: snap.isDragging ? '0 12px 30px rgba(0,0,0,0.6)' : 'none',
+                                    borderRadius: '8px',
+                                    background: snap.isDragging ? '#18181b' : 'transparent',
+                                    border: snap.isDragging ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
+                                    zIndex: snap.isDragging ? 999 : 'auto'
+                                  }}>
                                   <SubTaskItem
                                     subTask={st} topicId={topic.id}
                                     isEditMode={true} dragHandleProps={prov.dragHandleProps}
