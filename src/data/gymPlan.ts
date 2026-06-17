@@ -36,6 +36,8 @@ export const GYM_PLAN: GymPlanDay[] = [
       { id: 'd2_e6', name: 'Standing EZ-Bar Curls', targetSets: 3, targetReps: '8–12', muscle: 'Biceps', videoId: 'kwG2ipFRgfo' },
       { id: 'd2_e7', name: 'Machine Preacher Curls', targetSets: 3, targetReps: '10–12', muscle: 'Biceps', videoId: 'R-8Sa0_qiws' },
       { id: 'd2_e8', name: 'Dumbbell Hammer Curls', targetSets: 3, targetReps: '10–12', muscle: 'Brachialis', videoId: '5FAuyZuvJFg' },
+      { id: 'd3_e9', name: 'Standing Behind Back Wrist Curls', targetSets: 3, targetReps: '15–20', muscle: 'Forearms', videoId: 'yz2eCSWoY4E' },
+      { id: 'd3_e10', name: 'Seated Dumbbell Pronation/Supination', targetSets: 3, targetReps: '10–12', muscle: 'Forearms', videoId: 'Moq6yFCg0vc' },
     ],
   },
   {
@@ -52,8 +54,6 @@ export const GYM_PLAN: GymPlanDay[] = [
       { id: 'd3_e6', name: 'Hanging Knee Raises', targetSets: 3, targetReps: '12–15', muscle: 'Abs', videoId: '2n4UqRIJyk4' },
       { id: 'd3_e7', name: 'Pall of Press', targetSets: 3, targetReps: '10–12', muscle: 'Core', videoId: '5aZ0IhJS8O8' },
       { id: 'd3_e8', name: 'Seated Barbell Wrist Curls', targetSets: 3, targetReps: '12–15', muscle: 'Forearms', videoId: 'd5YiFNoiCa0' },
-      { id: 'd3_e9', name: 'Standing Behind Back Wrist Curls', targetSets: 3, targetReps: '15–20', muscle: 'Forearms', videoId: 'yz2eCSWoY4E' },
-      { id: 'd3_e10', name: 'Seated Dumbbell Pronation/Supination', targetSets: 3, targetReps: '10–12', muscle: 'Forearms', videoId: 'Moq6yFCg0vc' },
     ],
   },
   {
@@ -69,6 +69,8 @@ export const GYM_PLAN: GymPlanDay[] = [
       { id: 'd4_e5', name: 'Seated Cable Rows (V-Bar Grip)', targetSets: 3, targetReps: '8–12', muscle: 'Back', videoId: '4mRy8U542Fo' },
       { id: 'd4_e6', name: 'Pec Deck Fly ', targetSets: 3, targetReps: '12–15', muscle: 'Chest', videoId: 'fgXSA2-o0NM' },
       { id: 'd4_e7', name: 'Straight-Arm Cable Pulldowns', targetSets: 3, targetReps: '12–15', muscle: 'Back', videoId: 'hAMcfubonDc' },
+      { id: 'd6_e9', name: 'Seated Dumbbell Wrist Extensions', targetSets: 3, targetReps: '15–20', muscle: 'Forearms', videoId: 'sKXqNO2KQp8' },
+      { id: 'd6_e10', name: 'Plate Pinches ', targetSets: 3, targetReps: 'Failure', muscle: 'Forearms', videoId: '_cdWkwQGffU' },
     ],
   },
   {
@@ -102,8 +104,6 @@ export const GYM_PLAN: GymPlanDay[] = [
       { id: 'd6_e6', name: 'Cable Woodchoppers (High-to-Low)', targetSets: 3, targetReps: '10–12', muscle: 'Obliques', videoId: 'gcGNypjIQDo' },
       { id: 'd6_e7', name: 'Reverse Crunches', targetSets: 3, targetReps: '12–15', muscle: 'Abs', videoId: 'JonqVgFNiqE' },
       { id: 'd6_e8', name: 'Reverse Cable Curls ', targetSets: 3, targetReps: '10–12', muscle: 'Forearms', videoId: 'jjnJHhzZUUM' },
-      { id: 'd6_e9', name: 'Seated Dumbbell Wrist Extensions', targetSets: 3, targetReps: '15–20', muscle: 'Forearms', videoId: 'sKXqNO2KQp8' },
-      { id: 'd6_e10', name: 'Plate Pinches ', targetSets: 3, targetReps: 'Failure', muscle: 'Forearms', videoId: '_cdWkwQGffU' },
     ],
   },
   {
