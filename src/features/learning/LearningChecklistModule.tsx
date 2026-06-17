@@ -1649,7 +1649,7 @@ export const LearningChecklistModule = () => {
           <p className="subtitle">Build your own curriculum from any YouTube playlist.</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-primary" onClick={() => setShowCurriculumBuilder(true)} style={{ background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', border: 'none', boxShadow: '0 4px 15px rgba(99,102,241,0.3)' }}><BookOpen size={15} /> Curriculum Builder</button>
+          <button className="btn-primary hide-on-mobile" onClick={() => setShowCurriculumBuilder(true)} style={{ background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', border: 'none', boxShadow: '0 4px 15px rgba(99,102,241,0.3)' }}><BookOpen size={15} /> Curriculum Builder</button>
           <button className="btn-secondary" onClick={() => setShowRoadmapHub(true)}><Plus size={15} /> Quick Import</button>
           <button className={`btn-secondary ${showIncompleteOnly ? 'active' : ''}`} onClick={() => setShowIncompleteOnly(v => !v)} style={{ padding: '0.4rem' }} title={showIncompleteOnly ? 'Show all' : 'Incomplete only'}>
             {showIncompleteOnly ? <EyeOff size={17} /> : <Eye size={17} />}
