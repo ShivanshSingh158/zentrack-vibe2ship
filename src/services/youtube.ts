@@ -40,10 +40,11 @@ export const fetchYouTubePlaylist = async (playlistId: string) => {
 
     return {
       title: data.title || 'YouTube Playlist',
-      videos: data.videos.map((v: { videoId: string; title: string }) => ({
+      videos: data.videos.map((v: { videoId: string; title: string; durationStr?: string }) => ({
         title: v.title,
         link: `https://www.youtube.com/watch?v=${v.videoId}`,
         videoId: v.videoId,
+        durationStr: v.durationStr || ''
       })),
     };
   } catch (err: any) {

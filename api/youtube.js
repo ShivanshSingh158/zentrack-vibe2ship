@@ -68,8 +68,9 @@ export default async function handler(req, res) {
               const v = obj.playlistPanelVideoRenderer;
               if (v.videoId && !allVideos.has(v.videoId)) {
                   const t = v.title?.runs?.[0]?.text || v.title?.simpleText || '';
+                  const durationStr = v.lengthText?.runs?.[0]?.text || v.lengthText?.simpleText || '';
                   if (t !== '[Private video]' && t !== '[Deleted video]') {
-                      allVideos.set(v.videoId, { videoId: v.videoId, title: t });
+                      allVideos.set(v.videoId, { videoId: v.videoId, title: t, durationStr });
                       added++;
                   } else {
                       // Still track it so we don't count it as a missing hole, 

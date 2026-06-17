@@ -1517,14 +1517,17 @@ export const LearningChecklistModule = () => {
     try {
       let currentOrder = topics.length;
       for (const draft of draftTopics) {
-        const subTasks: LearningSubTask[] = draft.videos.map((v: any) => ({
-          id: uniqueId(),
-          text: v.title,
-          category: 'Videos',
-          isCompleted: false,
-          url: v.url,
-          resources: [{ title: 'Watch Video', url: v.url, type: 'video' }]
-        }));
+        const subTasks: LearningSubTask[] = draft.videos.map((v: any) => {
+          const isYt = v.url.includes('youtube.com') || v.url.includes('youtu.be');
+          return {
+            id: uniqueId(),
+            text: v.title,
+            category: isYt ? 'Videos' : 'Reading',
+            isCompleted: false,
+            url: v.url,
+            resources: [{ title: isYt ? 'Watch Video' : 'Read Article', url: v.url, type: isYt ? 'video' : 'article' }]
+          };
+        });
         
         const newTopic: Omit<LearningTopic, 'id'> = {
           userId: user.uid,
