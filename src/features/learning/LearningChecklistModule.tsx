@@ -297,7 +297,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatch
   onStudyTime: (ms: number) => void;
   onSaveVideoNote: (topicId: string, subtaskId: string, note: string) => void;
 }) => {
-  const { setPortalNode, setPipMode } = useYouTube();
+  const { setPortalNode, setPipMode, getCurrentTime } = useYouTube();
   const hasPrev = idx > 0;
   const hasNext = idx < total - 1;
   const progressPct = total > 0 ? ((playing.watchedCount) / total) * 100 : 0;
@@ -423,11 +423,16 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatch
               </button>
             ))}
           </div>
-            {/* Focus toggle */}
             <button onClick={() => setFocusMode(v => !v)}
               title="Focus Mode"
               style={{ flexShrink: 0, background: focusMode ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${focusMode ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: focusMode ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Eye size={15} />
+            </button>
+            {/* Notes toggle */}
+            <button onClick={() => setShowNotes(v => !v)}
+              title="Video notes"
+              style={{ flexShrink: 0, background: showNotes ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${showNotes ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: showNotes ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <FileText size={15} />
             </button>
             <button onClick={onClose} style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <X size={16} />
@@ -446,19 +451,36 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatch
           </div>
           {/* In-video notes panel */}
           {showNotes && (
-            <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '280px' }}>
-              <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📝 Video Notes</div>
+            <div style={{ width: focusMode ? '320px' : '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', height: focusMode ? '100%' : 'auto', maxHeight: focusMode ? '100%' : '280px', background: focusMode ? 'rgba(255,255,255,0.03)' : 'transparent', padding: focusMode ? '1.5rem 1rem' : '0', borderRadius: focusMode ? '12px' : '0', boxSizing: 'border-box' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📝 Video Notes</div>
+                {focusMode && (
+                  <button onClick={() => setShowNotes(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
               <textarea
                 autoFocus
                 value={noteText}
                 onChange={e => setNoteText(e.target.value)}
                 placeholder={`e.g. 12:30 - key concept\n24:00 - revisit this`}
-                style={{ flex: 1, minHeight: '200px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.65rem', color: '#e4e4e7', fontSize: '0.8rem', resize: 'vertical', outline: 'none', lineHeight: 1.5 }}
+                style={{ flex: 1, minHeight: focusMode ? 'auto' : '200px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.65rem', color: '#e4e4e7', fontSize: '0.8rem', resize: 'none', outline: 'none', lineHeight: 1.5 }}
               />
-              <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); }}
-                style={{ padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
-                Save Notes
-              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button onClick={async () => {
+                  const time = await getCurrentTime();
+                  const min = Math.floor(time / 60);
+                  const sec = Math.floor(time % 60).toString().padStart(2, '0');
+                  setNoteText(prev => prev + (prev && !prev.endsWith('\n') ? '\n' : '') + `[${min}:${sec}] `);
+                }} title="Insert current timestamp" style={{ padding: '0.45rem 0.6rem', borderRadius: '7px', border: '1px solid rgba(99,102,241,0.5)', background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  ⏱ Time
+                </button>
+                <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); }}
+                  style={{ flex: 1, padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
+                  Save Notes
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -489,7 +511,12 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatch
         
         {/* Escape overlay for Focus Mode */}
         {focusMode && (
-          <div style={{ position: 'fixed', top: '1rem', right: '1rem', zIndex: 1000000, opacity: 0, transition: 'opacity 0.3s' }} className="hover:opacity-100">
+          <div style={{ position: 'fixed', top: '1rem', right: '1rem', zIndex: 1000000, opacity: 0, transition: 'opacity 0.3s', display: 'flex', gap: '0.5rem' }} className="hover:opacity-100">
+             {!showNotes && (
+               <button onClick={() => setShowNotes(true)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#fff', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                 <FileText size={15} /> Notes
+               </button>
+             )}
              <button onClick={() => setFocusMode(false)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#fff', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer' }}>
                Exit Focus Mode
              </button>

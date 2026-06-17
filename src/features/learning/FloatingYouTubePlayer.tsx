@@ -102,7 +102,7 @@ export const FloatingYouTubePlayer: React.FC = () => {
 
   // The actual YouTube iframe
   const YouTubeIframe = (
-    <div className={`relative w-full h-full bg-black ${isPipMode ? 'pointer-events-none' : ''}`}>
+    <div className={`absolute inset-0 w-full h-full bg-black ${isPipMode ? 'pointer-events-none' : ''}`}>
       <YouTube
         videoId={playing.videoId}
         opts={{
@@ -117,8 +117,8 @@ export const FloatingYouTubePlayer: React.FC = () => {
         }}
         onReady={onReady}
         onStateChange={onStateChange}
-        className="w-full h-full"
-        iframeClassName="w-full h-full"
+        className="absolute inset-0 w-full h-full"
+        iframeClassName="absolute inset-0 w-full h-full"
       />
     </div>
   );

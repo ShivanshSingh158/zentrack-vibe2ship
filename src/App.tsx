@@ -293,6 +293,7 @@ function App() {
   return (
     <GlobalDataProvider>
     <SpotifyProvider>
+    <YouTubeProvider>
     <PomodoroProvider>
       <UpdatePrompt />
       <UpdateFlashcard />
@@ -324,7 +325,9 @@ function App() {
         </div>
       </div>
       <SpotifyFloatingPlayer />
+      <FloatingYouTubePlayer />
     </PomodoroProvider>
+    </YouTubeProvider>
     </SpotifyProvider>
     </GlobalDataProvider>
   );
