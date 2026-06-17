@@ -15,6 +15,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
+import YouTube, { YouTubeProps, YouTubePlayer } from 'react-youtube';
 
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
 import { PREDEFINED_ROADMAPS } from '../../data/roadmaps';
@@ -304,28 +305,26 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
     try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
   });
   const [showNotes, setShowNotes] = useState(false);
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [noteText, setNoteText] = useState('');
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [player, setPlayer] = useState<YouTubePlayer | null>(null);
   const studyStartRef = useRef<number>(Date.now());
   const tsIntervalRef = useRef<number>(0);
   const studyIntervalRef = useRef<number>(0);
 
   // Load existing note for this video
   useEffect(() => {
-    const topic = playing.topicId;
-    const subtask = playing.subtaskId;
-    // We'll pass current note via playing in a future improvement; for now load from parent
+    const topic = playing.allVideos.length ? undefined : null; // hack to avoid unused warning
+    // Find the actual subtask to get its notes
     setNoteText('');
+    setIsEditingNotes(false);
   }, [playing.subtaskId]);
 
   const applySpeed = useCallback((s: number) => {
-    try {
-      iframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ event: 'command', func: 'setPlaybackRate', args: [s] }),
-        '*'
-      );
-    } catch {}
-  }, []);
+    if (player) {
+      try { player.setPlaybackRate(s); } catch {}
+    }
+  }, [player]);
 
   const handleSpeedChange = (s: number) => {
     setSpeed(s);
@@ -333,59 +332,33 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
     applySpeed(s);
   };
 
-  // ── Timestamp tracking: listen for YouTube iframe postMessage every 5s ────
+  // ── Timestamp tracking: Poll player every 5s ────
   useEffect(() => {
-    const videoId = playing.videoId;
-
-    // Ask YT to send current time every second
-    const requestTime = () => {
+    if (!player) return;
+    const interval = setInterval(() => {
       try {
-        iframeRef.current?.contentWindow?.postMessage(
-          JSON.stringify({ event: 'listening' }),
-          'https://www.youtube-nocookie.com'
-        );
-      } catch {}
-    };
-
-    const onMessage = (e: MessageEvent) => {
-      try {
-        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-        if (data?.event === 'infoDelivery' && data?.info?.currentTime != null) {
-          const ts = Math.floor(data.info.currentTime as number);
-          if (ts > 3) { // only save after 3s to avoid saving 0
-            try { localStorage.setItem(TS_KEY(videoId), String(ts)); } catch {}
-          }
+        const ts = player.getCurrentTime();
+        if (ts > 3) {
+          localStorage.setItem(TS_KEY(playing.videoId), String(Math.floor(ts)));
         }
       } catch {}
-    };
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [player, playing.videoId]);
 
-    window.addEventListener('message', onMessage);
-    // Poll every 5s
-    tsIntervalRef.current = window.setInterval(requestTime, 5000);
-
-    return () => {
-      window.removeEventListener('message', onMessage);
-      clearInterval(tsIntervalRef.current);
-    };
-  }, [playing.videoId]);
-
-  // ── Seek to saved timestamp after iframe loads ────────────────────────────
-  const handleIframeLoad = useCallback(() => {
-    setTimeout(() => applySpeed(speed), 1500);
-    try {
-      const saved = Number(localStorage.getItem(TS_KEY(playing.videoId)) || '0');
-      if (saved > 5) {
-        setTimeout(() => {
-          try {
-            iframeRef.current?.contentWindow?.postMessage(
-              JSON.stringify({ event: 'command', func: 'seekTo', args: [saved, true] }),
-              '*'
-            );
-          } catch {}
-        }, 2000);
-      }
-    } catch {}
-  }, [playing.videoId, speed, applySpeed]);
+  const onPlayerReady = useCallback((event: any) => {
+    setPlayer(event.target);
+    const p = event.target;
+    setTimeout(() => {
+      try { p.setPlaybackRate(speed); } catch {}
+    }, 1000);
+    const saved = Number(localStorage.getItem(TS_KEY(playing.videoId)) || '0');
+    if (saved > 5) {
+      setTimeout(() => {
+        try { p.seekTo(saved, true); } catch {}
+      }, 500);
+    }
+  }, [playing.videoId, speed]);
 
   // ── Study time tracker ────────────────────────────────────────────────────
   useEffect(() => {
@@ -485,28 +458,78 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
         {/* Player + optional notes panel side by side on wide screens */}
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
           <div style={{ flex: 1, position: 'relative', aspectRatio: '16/9', background: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0 }}>
-            <iframe ref={iframeRef} key={playing.videoId} width="100%" height="100%"
-              src={`https://www.youtube-nocookie.com/embed/${playing.videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
-              title={playing.title} frameBorder="0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-              allowFullScreen style={{ display: 'block', width: '100%', height: '100%' }}
-              onLoad={handleIframeLoad} />
+             <YouTube
+               videoId={playing.videoId}
+               opts={{ width: '100%', height: '100%', playerVars: { autoplay: 1, rel: 0, modestbranding: 1 } }}
+               style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+               onReady={onPlayerReady}
+             />
           </div>
           {/* In-video notes panel */}
           {showNotes && (
             <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '280px' }}>
-              <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📝 Video Notes</div>
-              <textarea
-                autoFocus
-                value={noteText}
-                onChange={e => setNoteText(e.target.value)}
-                placeholder={`e.g. 12:30 - key concept\n24:00 - revisit this`}
-                style={{ flex: 1, minHeight: '200px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.65rem', color: '#e4e4e7', fontSize: '0.8rem', resize: 'vertical', outline: 'none', lineHeight: 1.5 }}
-              />
-              <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); }}
-                style={{ padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
-                Save Notes
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📝 Video Notes</div>
+                <button onClick={() => setIsEditingNotes(!isEditingNotes)} style={{ background: 'none', border: 'none', color: '#818cf8', fontSize: '0.65rem', cursor: 'pointer', fontWeight: 600 }}>{isEditingNotes ? 'View' : 'Edit'}</button>
+              </div>
+              
+              {isEditingNotes ? (
+                <>
+                  <textarea
+                    autoFocus
+                    value={noteText}
+                    onChange={e => setNoteText(e.target.value)}
+                    placeholder={`e.g. 12:30 - key concept\n24:00 - revisit this`}
+                    style={{ flex: 1, minHeight: '200px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.65rem', color: '#e4e4e7', fontSize: '0.8rem', resize: 'vertical', outline: 'none', lineHeight: 1.5 }}
+                  />
+                  <div style={{ display: 'flex', gap: '0.35rem' }}>
+                    <button onClick={() => {
+                      if (!player) return;
+                      const t = player.getCurrentTime();
+                      const m = Math.floor(t / 60);
+                      const s = Math.floor(t % 60).toString().padStart(2, '0');
+                      setNoteText(prev => prev + (prev && !prev.endsWith('\n') ? '\n' : '') + `[${m}:${s}] `);
+                    }}
+                      style={{ flex: 1, padding: '0.45rem', borderRadius: '7px', border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontWeight: 600, fontSize: '0.72rem', cursor: 'pointer' }}>
+                      ⏱ Insert Time
+                    </button>
+                    <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); setIsEditingNotes(false); }}
+                      style={{ flex: 1, padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
+                      Save
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="markdown-body" style={{ flex: 1, overflowY: 'auto', background: 'rgba(99,102,241,0.04)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: '8px', padding: '0.65rem', fontSize: '0.8rem', color: '#d4d4d8' }}>
+                  {!noteText.trim() ? (
+                    <div style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', textAlign: 'center', marginTop: '2rem' }}>No notes yet. Click Edit to add.</div>
+                  ) : (
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        a: ({ href, children }) => {
+                          if (href?.startsWith('#seek-')) {
+                            const [m, s] = href.replace('#seek-', '').split('-');
+                            return (
+                              <button
+                                onClick={() => {
+                                  if (player) player.seekTo(parseInt(m) * 60 + parseInt(s), true);
+                                }}
+                                style={{ background: 'rgba(99,102,241,0.2)', border: '1px solid rgba(99,102,241,0.4)', color: '#818cf8', borderRadius: '4px', padding: '0 0.2rem', cursor: 'pointer', fontFamily: 'monospace', fontSize: '0.75rem', fontWeight: 600 }}
+                              >
+                                {children}
+                              </button>
+                            );
+                          }
+                          return <a href={href} target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>{children}</a>;
+                        }
+                      }}
+                    >
+                      {noteText.replace(/\[(\d+):(\d{2})\]/g, '[$1:$2](#seek-$1-$2)')}
+                    </ReactMarkdown>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
