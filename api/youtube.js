@@ -104,7 +104,7 @@ export default async function handler(req, res) {
 
       continuation = extracted.nextContinuation;
       page++;
-    } while (continuation && page < 40);
+    } while (continuation && page < 200); // 200 pages × ~100 videos = up to 20,000 videos — no practical limit
 
     if (allVideos.length === 0) {
       return res.status(404).json({

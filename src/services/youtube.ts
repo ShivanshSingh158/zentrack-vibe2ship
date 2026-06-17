@@ -12,7 +12,7 @@ export const fetchYouTubePlaylist = async (playlistId: string) => {
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60_000);
+  const timeout = setTimeout(() => controller.abort(), 90_000);
 
   try {
     console.log(`[YouTube] Fetching playlist via server API: ${playlistId}`);

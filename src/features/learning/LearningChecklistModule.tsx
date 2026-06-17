@@ -1012,7 +1012,7 @@ const MergePanel = ({ state, setState, topicId, onFetch, onMerge }: any) => {
               style={{ padding: '0.45rem 0.65rem', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: '#fff', fontSize: '0.8rem', outline: 'none', width: '100%', boxSizing: 'border-box' }} />
           )}
 
-          <div style={{ maxHeight: '280px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.25rem' }}>
+          <div style={{ maxHeight: '340px', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column', gap: '0.25rem', paddingRight: '0.25rem', touchAction: 'pan-y' }}>
             {filtered.map((v: MergeVideo) => {
               const isSelected = state.selected?.has(v.id);
               return (
