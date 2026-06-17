@@ -13,6 +13,9 @@ export interface LearningSubTask {
   estimatedHours?: number;
   revisionCount?: number;
   lastRevisedAt?: number;
+  /** Pin this video for quick re-access */
+  pinned?: boolean;
+  pinnedAt?: number;
 }
 
 export interface LearningTopic {

@@ -263,6 +263,8 @@ const CW_KEY = 'learning_continue_watching';
 const EXPANDED_KEY = 'learning_expanded_topic';
 const SPEED_KEY = 'learning_playback_speed';
 const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
+const TS_KEY = (videoId: string) => `yt_ts_${videoId}`;
+const UNDO_DELAY = 3500;
 
 const progressColor = (pct: number) => {
   if (pct === 100) return '#10b981';
@@ -277,27 +279,44 @@ interface PlayingVideo {
   videoId: string; subtaskId: string; topicId: string; title: string;
   allVideos: Array<{ videoId: string; subtaskId: string; title: string }>;
   currentIndex: number;
+  watchedCount: number; // how many in allVideos are completed
 }
 
 interface MergeVideo { id: string; title: string; url: string; }
 
 // ── VideoPlayerModal ──────────────────────────────────────────────────────────
 
-const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNavigate }: {
+const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNavigate, onStudyTime, onSaveVideoNote }: {
   playing: PlayingVideo;
   onClose: () => void;
   onMarkWatched: (topicId: string, subtaskId: string) => void;
   onNavigate: (delta: number) => void;
+  onStudyTime: (ms: number) => void;
+  onSaveVideoNote: (topicId: string, subtaskId: string, note: string) => void;
 }) => {
   const total = playing.allVideos.length;
   const idx = playing.currentIndex;
   const hasPrev = idx > 0;
   const hasNext = idx < total - 1;
+  const progressPct = total > 0 ? ((playing.watchedCount) / total) * 100 : 0;
 
   const [speed, setSpeed] = useState<number>(() => {
     try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
   });
+  const [showNotes, setShowNotes] = useState(false);
+  const [noteText, setNoteText] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const studyStartRef = useRef<number>(Date.now());
+  const tsIntervalRef = useRef<number>(0);
+  const studyIntervalRef = useRef<number>(0);
+
+  // Load existing note for this video
+  useEffect(() => {
+    const topic = playing.topicId;
+    const subtask = playing.subtaskId;
+    // We'll pass current note via playing in a future improvement; for now load from parent
+    setNoteText('');
+  }, [playing.subtaskId]);
 
   const applySpeed = useCallback((s: number) => {
     try {
@@ -313,6 +332,80 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
     try { localStorage.setItem(SPEED_KEY, String(s)); } catch {}
     applySpeed(s);
   };
+
+  // ── Timestamp tracking: listen for YouTube iframe postMessage every 5s ────
+  useEffect(() => {
+    const videoId = playing.videoId;
+
+    // Ask YT to send current time every second
+    const requestTime = () => {
+      try {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: 'listening' }),
+          'https://www.youtube-nocookie.com'
+        );
+      } catch {}
+    };
+
+    const onMessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        if (data?.event === 'infoDelivery' && data?.info?.currentTime != null) {
+          const ts = Math.floor(data.info.currentTime as number);
+          if (ts > 3) { // only save after 3s to avoid saving 0
+            try { localStorage.setItem(TS_KEY(videoId), String(ts)); } catch {}
+          }
+        }
+      } catch {}
+    };
+
+    window.addEventListener('message', onMessage);
+    // Poll every 5s
+    tsIntervalRef.current = window.setInterval(requestTime, 5000);
+
+    return () => {
+      window.removeEventListener('message', onMessage);
+      clearInterval(tsIntervalRef.current);
+    };
+  }, [playing.videoId]);
+
+  // ── Seek to saved timestamp after iframe loads ────────────────────────────
+  const handleIframeLoad = useCallback(() => {
+    setTimeout(() => applySpeed(speed), 1500);
+    try {
+      const saved = Number(localStorage.getItem(TS_KEY(playing.videoId)) || '0');
+      if (saved > 5) {
+        setTimeout(() => {
+          try {
+            iframeRef.current?.contentWindow?.postMessage(
+              JSON.stringify({ event: 'command', func: 'seekTo', args: [saved, true] }),
+              '*'
+            );
+          } catch {}
+        }, 2000);
+      }
+    } catch {}
+  }, [playing.videoId, speed, applySpeed]);
+
+  // ── Study time tracker ────────────────────────────────────────────────────
+  useEffect(() => {
+    studyStartRef.current = Date.now();
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        const elapsed = Date.now() - studyStartRef.current;
+        if (elapsed > 5000) onStudyTime(elapsed);
+        studyStartRef.current = Date.now();
+      } else {
+        studyStartRef.current = Date.now();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      const elapsed = Date.now() - studyStartRef.current;
+      if (elapsed > 5000) onStudyTime(elapsed);
+    };
+  }, [onStudyTime]);
 
   useEffect(() => {
     const onFs = () => {
@@ -330,26 +423,46 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-      if ((e.key === 'ArrowRight' || e.key === 'n') && hasNext) onNavigate(1);
-      if ((e.key === 'ArrowLeft'  || e.key === 'p') && hasPrev) onNavigate(-1);
-      if (e.key === 'Enter') onMarkWatched(playing.topicId, playing.subtaskId);
+      if (e.key === 'Escape' && !showNotes) onClose();
+      if ((e.key === 'ArrowRight' || e.key === 'n') && hasNext && !showNotes) onNavigate(1);
+      if ((e.key === 'ArrowLeft'  || e.key === 'p') && hasPrev && !showNotes) onNavigate(-1);
+      if (e.key === 'Enter' && !showNotes) onMarkWatched(playing.topicId, playing.subtaskId);
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [playing, hasNext, hasPrev, onClose, onMarkWatched, onNavigate]);
+  }, [playing, hasNext, hasPrev, onClose, onMarkWatched, onNavigate, showNotes]);
+
+  const resumeTs = (() => {
+    try {
+      const s = Number(localStorage.getItem(TS_KEY(playing.videoId)) || '0');
+      if (s > 3) {
+        const m = Math.floor(s / 60);
+        const sec = String(s % 60).padStart(2, '0');
+        return `${m}:${sec}`;
+      }
+    } catch {}
+    return null;
+  })();
 
   return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.75rem' }}>
+      {/* Playlist progress rail — always at very top */}
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '3px', background: 'rgba(255,255,255,0.08)', zIndex: 100000 }}>
+        <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg,#3b82f6,#8b5cf6)', transition: 'width 0.5s ease', borderRadius: '0 2px 2px 0' }} />
+      </div>
+
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '1100px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.12rem' }}>Video {idx + 1} of {total}</div>
-            <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{playing.title}</div>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, background: 'rgba(255,255,255,0.07)', padding: '0.1rem 0.45rem', borderRadius: '99px', flexShrink: 0 }}>#{idx + 1} of {total}</span>
+              {resumeTs && <span style={{ fontSize: '0.58rem', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.1rem 0.4rem', borderRadius: '99px', flexShrink: 0 }}>⏱ Resuming from {resumeTs}</span>}
+            </div>
+            <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.15rem' }}>{playing.title}</div>
           </div>
           {/* Speed controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.3rem 0.5rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.3rem 0.5rem', border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
             <Gauge size={12} color="rgba(255,255,255,0.4)" />
             {SPEEDS.map(s => (
               <button key={s} onClick={() => handleSpeedChange(s)}
@@ -358,19 +471,44 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
               </button>
             ))}
           </div>
+          {/* Notes toggle */}
+          <button onClick={() => setShowNotes(v => !v)}
+            title="Video notes"
+            style={{ flexShrink: 0, background: showNotes ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${showNotes ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: showNotes ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <FileText size={15} />
+          </button>
           <button onClick={onClose} style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <X size={16} />
           </button>
         </div>
 
-        {/* Player */}
-        <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)' }}>
-          <iframe ref={iframeRef} key={playing.videoId} width="100%" height="100%"
-            src={`https://www.youtube-nocookie.com/embed/${playing.videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
-            title={playing.title} frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
-            allowFullScreen style={{ display: 'block', width: '100%', height: '100%' }}
-            onLoad={() => { setTimeout(() => applySpeed(speed), 1500); }} />
+        {/* Player + optional notes panel side by side on wide screens */}
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+          <div style={{ flex: 1, position: 'relative', aspectRatio: '16/9', background: '#000', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0 }}>
+            <iframe ref={iframeRef} key={playing.videoId} width="100%" height="100%"
+              src={`https://www.youtube-nocookie.com/embed/${playing.videoId}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`}
+              title={playing.title} frameBorder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+              allowFullScreen style={{ display: 'block', width: '100%', height: '100%' }}
+              onLoad={handleIframeLoad} />
+          </div>
+          {/* In-video notes panel */}
+          {showNotes && (
+            <div style={{ width: '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '280px' }}>
+              <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📝 Video Notes</div>
+              <textarea
+                autoFocus
+                value={noteText}
+                onChange={e => setNoteText(e.target.value)}
+                placeholder={`e.g. 12:30 - key concept\n24:00 - revisit this`}
+                style={{ flex: 1, minHeight: '200px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.65rem', color: '#e4e4e7', fontSize: '0.8rem', resize: 'vertical', outline: 'none', lineHeight: 1.5 }}
+              />
+              <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); }}
+                style={{ padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
+                Save Notes
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Controls */}
@@ -388,7 +526,10 @@ const VideoPlayerModal = React.memo(({ playing, onClose, onMarkWatched, onNaviga
             Next <SkipForward size={14} />
           </button>
         </div>
-        <div style={{ textAlign: 'center', fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)' }}>← → navigate · Enter mark watched · Esc close</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)' }}>← → navigate · Enter mark watched · Esc close</div>
+          <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)' }}>{playing.watchedCount}/{total} watched · {Math.round(progressPct)}%</div>
+        </div>
       </div>
     </div>,
     document.body
@@ -399,18 +540,19 @@ VideoPlayerModal.displayName = 'VideoPlayerModal';
 // ── SubTaskItem ───────────────────────────────────────────────────────────────
 
 const SubTaskItem = React.memo(({
-  subTask, topicId, isEditMode, onDragStart,
-  toggleSubTask, openNotesModal, deleteSubTask, onPlayVideo,
+  subTask, topicId, isEditMode, onDragStart, lectureIndex,
+  toggleSubTask, openNotesModal, deleteSubTask, onPlayVideo, onTogglePin,
   instantDeleteSubTask, bulkDeleteSelected, toggleBulkDelete,
   isRenaming, onStartRename, onSaveRename, onCancelRename,
 }: {
-  subTask: LearningSubTask; topicId: string; isEditMode?: boolean;
+  subTask: LearningSubTask; topicId: string; isEditMode?: boolean; lectureIndex?: number;
   onDragStart?: (e: React.PointerEvent) => void;
   toggleSubTask: (t: string, s: string) => void;
   openNotesModal: (t: string, s: string) => void;
   deleteSubTask: (t: string, s: string) => void;
   instantDeleteSubTask: (t: string, s: string) => void;
   onPlayVideo: (videoId: string, subtaskId: string, topicId: string) => void;
+  onTogglePin: (topicId: string, subtaskId: string) => void;
   bulkDeleteSelected: Set<string>;
   toggleBulkDelete: (s: string) => void;
   isRenaming?: boolean;
@@ -419,6 +561,9 @@ const SubTaskItem = React.memo(({
   onCancelRename?: () => void;
 }) => {
   const renameInputRef = useRef<HTMLInputElement>(null);
+  const swipeRef = useRef<{ startX: number; startY: number } | null>(null);
+  const [swipeReveal, setSwipeReveal] = useState<'right' | 'left' | null>(null);
+  const lastTapRef = useRef<number>(0);
 
   const videoId = useMemo(() => {
     if (subTask.url) { const id = extractYoutubeId(subTask.url); if (id) return id; }
@@ -428,21 +573,50 @@ const SubTaskItem = React.memo(({
 
   const isSelected = bulkDeleteSelected.has(subTask.id);
 
+  // Double-click to toggle complete
+  const handleDoubleClick = useCallback(() => {
+    if (!isEditMode) toggleSubTask(topicId, subTask.id);
+  }, [isEditMode, toggleSubTask, topicId, subTask.id]);
+
+  // Mobile double-tap
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 300) {
+      handleDoubleClick();
+      lastTapRef.current = 0;
+    } else {
+      lastTapRef.current = now;
+    }
+  }, [handleDoubleClick]);
+
+  // Swipe gesture handlers (mobile)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    swipeRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY };
+    setSwipeReveal(null);
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!swipeRef.current || isEditMode) return;
+    const dx = e.touches[0].clientX - swipeRef.current.startX;
+    const dy = Math.abs(e.touches[0].clientY - swipeRef.current.startY);
+    if (dy > 12) { swipeRef.current = null; return; } // vertical scroll, ignore
+    if (dx > 40) setSwipeReveal('right');
+    else if (dx < -40) setSwipeReveal('left');
+    else setSwipeReveal(null);
+  };
+  const handleTouchEndSwipe = () => {
+    if (swipeReveal === 'right') { toggleSubTask(topicId, subTask.id); }
+    setTimeout(() => setSwipeReveal(null), 400);
+  };
+
   if (isRenaming) {
     return (
       <div className="subtask-item" style={{ alignItems: 'center', gap: '0.4rem' }}>
         {isEditMode && (
-          <div
-            onPointerDown={onDragStart}
-            style={{ cursor: 'grab', color: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', flexShrink: 0, padding: '0 0.1rem', touchAction: 'none' }}
-          >
+          <div onPointerDown={onDragStart} style={{ cursor: 'grab', color: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', flexShrink: 0, padding: '0 0.1rem', touchAction: 'none' }}>
             <GripVertical size={13} />
           </div>
         )}
-        <input
-          ref={renameInputRef}
-          type="text"
-          defaultValue={subTask.text}
+        <input ref={renameInputRef} type="text" defaultValue={subTask.text}
           onKeyDown={e => {
             if (e.key === 'Enter') onSaveRename?.((e.target as HTMLInputElement).value);
             if (e.key === 'Escape') onCancelRename?.();
@@ -451,38 +625,55 @@ const SubTaskItem = React.memo(({
         />
         <button onClick={e => { const inp = (e.currentTarget.previousElementSibling as HTMLInputElement); onSaveRename?.(inp.value); }}
           style={{ background: '#3b82f6', border: 'none', borderRadius: '6px', padding: '0.28rem 0.6rem', color: '#fff', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>Save</button>
-        <button onClick={onCancelRename}
-          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={13} /></button>
+        <button onClick={onCancelRename} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={13} /></button>
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginBottom: '0.35rem' }}>
-      <div className={`subtask-item ${subTask.isCompleted ? 'completed' : ''}`} style={{ alignItems: 'center' }}>
-
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginBottom: '0.35rem', position: 'relative', overflow: 'hidden' }}>
+      {/* Swipe right flash (mark watched) */}
+      {swipeReveal === 'right' && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(16,185,129,0.25)', borderRadius: '8px', display: 'flex', alignItems: 'center', paddingLeft: '1rem', zIndex: 1, pointerEvents: 'none' }}>
+          <Check size={18} color="#10b981" strokeWidth={3} />
+        </div>
+      )}
+      {/* Swipe left flash (delete/pin reveal) */}
+      {swipeReveal === 'left' && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(239,68,68,0.18)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: '1rem', gap: '0.5rem', zIndex: 1, pointerEvents: 'none' }}>
+          <span style={{ fontSize: '0.7rem', color: '#ef4444', fontWeight: 700 }}>Swipe to options</span>
+          <Trash2 size={15} color="#ef4444" />
+        </div>
+      )}
+      <div
+        className={`subtask-item ${subTask.isCompleted ? 'completed' : ''}`}
+        style={{ alignItems: 'center', position: 'relative', zIndex: 2 }}
+        onDoubleClick={handleDoubleClick}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={(e) => { handleTouchEndSwipe(); handleTouchEnd(e); }}
+      >
         {isEditMode && (
-          <div
-            onPointerDown={onDragStart}
-            style={{ cursor: 'grab', color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', padding: '0 0.2rem', flexShrink: 0, touchAction: 'none' }}
-          >
+          <div onPointerDown={onDragStart} style={{ cursor: 'grab', color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', padding: '0 0.2rem', flexShrink: 0, touchAction: 'none' }}>
             <GripVertical size={14} />
           </div>
         )}
 
-        {/* Bulk-select indicator (edit mode) OR normal checkbox (view mode) */}
+        {/* Lecture number badge (view mode) */}
+        {!isEditMode && lectureIndex != null && (
+          <span style={{ fontSize: '0.55rem', fontWeight: 800, color: 'rgba(255,255,255,0.28)', background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.35rem', borderRadius: '5px', flexShrink: 0, minWidth: '22px', textAlign: 'center' }}>#{lectureIndex + 1}</span>
+        )}
+
+        {/* Bulk-select (edit mode) OR checkbox (view mode) */}
         {isEditMode ? (
-          <button
-            onClick={() => toggleBulkDelete(subTask.id)}
-            style={{ width: '18px', height: '18px', borderRadius: '4px', flexShrink: 0, border: `2px solid ${isSelected ? '#ef4444' : 'rgba(255,255,255,0.18)'}`, background: isSelected ? '#ef4444' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-          >
+          <button onClick={() => toggleBulkDelete(subTask.id)}
+            style={{ width: '18px', height: '18px', borderRadius: '4px', flexShrink: 0, border: `2px solid ${isSelected ? '#ef4444' : 'rgba(255,255,255,0.18)'}`, background: isSelected ? '#ef4444' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             {isSelected && <Check size={11} color="#fff" strokeWidth={3} />}
           </button>
         ) : (
           <button className={`todo-checkbox ${subTask.isCompleted ? 'checked' : ''}`}
             onClick={() => toggleSubTask(topicId, subTask.id)}
-            role="checkbox" aria-checked={subTask.isCompleted}
-            style={{ flexShrink: 0 }}>
+            role="checkbox" aria-checked={subTask.isCompleted} style={{ flexShrink: 0 }}>
             {subTask.isCompleted && <Check size={13} strokeWidth={3} />}
           </button>
         )}
@@ -491,12 +682,8 @@ const SubTaskItem = React.memo(({
         {videoId && (
           <div style={{ flexShrink: 0, width: '40px', height: '27px', borderRadius: '4px', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
             onClick={() => onPlayVideo(videoId, subTask.id, topicId)}>
-            <img
-              src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
-              alt=""
-              loading="lazy"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: subTask.isCompleted ? 0.35 : 0.85, transition: 'opacity 200ms' }}
-            />
+            <img src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`} alt="" loading="lazy"
+              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: subTask.isCompleted ? 0.35 : 0.85, transition: 'opacity 200ms' }} />
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
               <Play size={8} fill="#fff" color="#fff" />
             </div>
@@ -505,6 +692,24 @@ const SubTaskItem = React.memo(({
 
         {/* Title */}
         <span className="todo-text" style={{ flex: 1 }}>{subTask.text}</span>
+
+        {/* Pin indicator */}
+        {subTask.pinned && !isEditMode && (
+          <span title="Pinned" style={{ fontSize: '0.75rem', flexShrink: 0 }}>⭐</span>
+        )}
+
+        {/* Saved timestamp indicator */}
+        {videoId && !isEditMode && !subTask.isCompleted && (() => {
+          try {
+            const s = Number(localStorage.getItem(TS_KEY(videoId)) || '0');
+            if (s > 5) {
+              const m = Math.floor(s / 60);
+              const sec = String(s % 60).padStart(2, '0');
+              return <span style={{ fontSize: '0.55rem', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.08rem 0.35rem', borderRadius: '5px', flexShrink: 0, fontWeight: 600 }}>{m}:{sec}</span>;
+            }
+          } catch {}
+          return null;
+        })()}
 
         <div style={{ display: 'flex', gap: '0.2rem', flexShrink: 0 }}>
           {/* Normal mode actions */}
@@ -516,6 +721,8 @@ const SubTaskItem = React.memo(({
                   <Play size={10} fill="currentColor" /> Watch
                 </button>
               )}
+              <button onClick={() => onTogglePin(topicId, subTask.id)} title={subTask.pinned ? 'Unpin' : 'Pin'}
+                style={{ display: 'flex', alignItems: 'center', padding: '0.2rem', borderRadius: '5px', background: 'none', border: 'none', color: subTask.pinned ? '#f59e0b' : 'rgba(255,255,255,0.2)', cursor: 'pointer', fontSize: '0.75rem' }}>⭐</button>
               <button className="btn-icon" onClick={() => openNotesModal(topicId, subTask.id)}
                 style={{ color: subTask.notes ? 'var(--text-primary)' : 'var(--text-muted)' }} title="Notes">
                 <FileText size={12} />
@@ -562,7 +769,7 @@ const TopicBody = React.memo(({
   mergePanelState, setMergePanelState, onFetchMerge, onMergeSelected,
   renamingSubtask, onStartRename, onSaveRename, onCancelRename,
   instantDeleteSubTask, bulkDeleteState, toggleBulkDelete, handleBulkDelete,
-  onSubTaskReorder,
+  onSubTaskReorder, onTogglePin,
 }: any) => {
   // In edit mode, flatten ALL subtasks into one ordered list (no category separators)
   const flatSubTasks: LearningSubTask[] = topic.subTasks || [];
@@ -603,10 +810,11 @@ const TopicBody = React.memo(({
               subTask={st} topicId={topic.id}
               isEditMode={true}
               onDragStart={startDrag}
+              lectureIndex={index}
               isRenaming={renamingSubtask?.topicId === topic.id && renamingSubtask?.subtaskId === st.id}
               toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
               deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask}
-              onPlayVideo={onPlayVideo}
+              onPlayVideo={onPlayVideo} onTogglePin={onTogglePin}
               bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
               onStartRename={onStartRename} onSaveRename={onSaveRename} onCancelRename={onCancelRename}
             />
@@ -631,14 +839,19 @@ const TopicBody = React.memo(({
                   </div>
                 )}
 
-                {isCatExpanded && catSubTasks.map((st: LearningSubTask) => (
-                  <SubTaskItem key={st.id} subTask={st} topicId={topic.id}
-                    toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
-                    deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask}
-                    onPlayVideo={onPlayVideo}
-                    bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
-                  />
-                ))}
+                {isCatExpanded && catSubTasks.map((st: LearningSubTask, catIdx: number) => {
+                  // Find global index for lecture badge
+                  const globalIdx = flatSubTasks.findIndex((s: LearningSubTask) => s.id === st.id);
+                  return (
+                    <SubTaskItem key={st.id} subTask={st} topicId={topic.id}
+                      lectureIndex={globalIdx >= 0 ? globalIdx : catIdx}
+                      toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
+                      deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask}
+                      onPlayVideo={onPlayVideo} onTogglePin={onTogglePin}
+                      bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
+                    />
+                  );
+                })}
               </div>
             );
           })}
@@ -777,7 +990,7 @@ const MergePanel = ({ state, setState, topicId, onFetch, onMerge }: any) => {
           style={{ flex: 1, padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.25)', color: '#fff', fontSize: '0.82rem', outline: 'none' }} />
         <button onClick={onFetch} disabled={state.loading || !state.url.trim()}
           style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.6rem 0.9rem', borderRadius: '8px', border: 'none', background: '#7c3aed', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem', flexShrink: 0 }}>
-          {state.loading ? <Loader size={13} /> : 'Fetch'}
+          {state.loading ? <><Loader size={13} style={{ animation: 'spin 1s linear infinite' }} />{state._loadingMsg || '…'}</> : 'Fetch'}
         </button>
       </div>
 
@@ -851,9 +1064,11 @@ export const LearningChecklistModule = () => {
   const [showRoadmapHub, setShowRoadmapHub] = useState(false);
   const [importingRoadmapId, setImportingRoadmapId] = useState<string | null>(null);
   const [playingVideo, setPlayingVideo] = useState<PlayingVideo | null>(null);
-  const [continueWatching, setContinueWatching] = useState<{ topicId: string; subtaskId: string; videoId: string; title: string; topicTitle: string } | null>(() => {
+  const [continueWatching, setContinueWatching] = useState<{ topicId: string; subtaskId: string; videoId: string; title: string; topicTitle: string; timestamp?: number } | null>(() => {
     try { return JSON.parse(localStorage.getItem(CW_KEY) || 'null'); } catch { return null; }
   });
+  // Undo delete queue: { topicId, subtask, timer }
+  const undoQueueRef = useRef<{ topicId: string; subtask: LearningSubTask; timerId: number } | null>(null);
 
   // ── Custom Playlist Editor State ──────────────────────────────────────────
   const [editModeTopics, setEditModeTopics] = useState<Set<string>>(new Set());
@@ -908,8 +1123,11 @@ export const LearningChecklistModule = () => {
     });
     const currentIndex = Math.max(0, allVideos.findIndex(v => v.subtaskId === subtaskId));
     const video = allVideos[currentIndex];
-    setPlayingVideo({ videoId, subtaskId, topicId, title: video?.title || '', allVideos, currentIndex });
-    const cw = { topicId, subtaskId, videoId, title: video?.title || '', topicTitle: topic.title };
+    const watchedCount = topic.subTasks.filter(st => st.isCompleted).length;
+    setPlayingVideo({ videoId, subtaskId, topicId, title: video?.title || '', allVideos, currentIndex, watchedCount });
+    // Save CW with current timestamp (timestamp will be updated live by the modal)
+    const savedTs = (() => { try { return Number(localStorage.getItem(TS_KEY(videoId)) || '0'); } catch { return 0; } })();
+    const cw = { topicId, subtaskId, videoId, title: video?.title || '', topicTitle: topic.title, timestamp: savedTs || undefined };
     setContinueWatching(cw);
     try { localStorage.setItem(CW_KEY, JSON.stringify(cw)); } catch {}
   }, [topics]);
@@ -948,9 +1166,14 @@ export const LearningChecklistModule = () => {
       const next = prev.currentIndex + delta;
       if (next < 0 || next >= prev.allVideos.length) return prev;
       const v = prev.allVideos[next];
+      // Update CW bookmark
+      const topic = topics.find(t => t.id === prev.topicId);
+      const cwUpdate = { topicId: prev.topicId, subtaskId: v.subtaskId, videoId: v.videoId, title: v.title, topicTitle: topic?.title || '' };
+      setContinueWatching(cwUpdate);
+      try { localStorage.setItem(CW_KEY, JSON.stringify(cwUpdate)); } catch {}
       return { ...prev, videoId: v.videoId, subtaskId: v.subtaskId, title: v.title, currentIndex: next };
     });
-  }, []);
+  }, [topics]);
 
   const handleMarkWatched = useCallback(async (topicId: string, subtaskId: string) => {
     const topic = topics.find(t => t.id === topicId);
@@ -962,6 +1185,39 @@ export const LearningChecklistModule = () => {
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
     catch { toast.error('Failed to mark watched'); }
+  }, [topics]);
+
+  // ── Study time tracker: called by VideoPlayerModal on close ─────────────
+  const handleStudyTime = useCallback(async (ms: number) => {
+    if (!playingVideo || ms < 5000) return;
+    const topicId = playingVideo.topicId;
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const newMs = (topic.timeSpentMs || 0) + ms;
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, timeSpentMs: newMs } : t));
+    try { await updateDoc(doc(db, 'learning_topics', topicId), { timeSpentMs: newMs }); } catch {}
+  }, [playingVideo, topics]);
+
+  // ── Save video note from player modal ────────────────────────────────────
+  const handleSaveVideoNote = useCallback(async (topicId: string, subtaskId: string, note: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, notes: note } : st);
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
+    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); } catch {}
+  }, [topics]);
+
+  // ── Pin / Unpin subtask ──────────────────────────────────────────────────
+  const handleTogglePin = useCallback(async (topicId: string, subtaskId: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, pinned: !st.pinned, pinnedAt: !st.pinned ? Date.now() : undefined } : st);
+    // Move pinned to top
+    const pinned = updated.filter(s => s.pinned).sort((a, b) => (b.pinnedAt || 0) - (a.pinnedAt || 0));
+    const unpinned = updated.filter(s => !s.pinned);
+    const sorted = [...pinned, ...unpinned];
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: sorted } : t));
+    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(sorted) }); } catch {}
   }, [topics]);
 
   // ── Custom Playlist Handlers ──────────────────────────────────────────────
@@ -1031,8 +1287,17 @@ export const LearningChecklistModule = () => {
     const playlistId = extractPlaylistId(mergePanelState.url);
     if (!playlistId) { toast.error('Invalid playlist URL'); return; }
     setMergePanelState((prev: any) => prev ? { ...prev, loading: true } : null);
+    // Animated loading messages so users know it's working (not broken)
+    const loadingMsgs = ['Connecting to YouTube…', 'Fetching playlist pages…', 'Extracting videos…', 'Almost done…'];
+    let msgIdx = 0;
+    setMergePanelState((prev: any) => prev ? { ...prev, _loadingMsg: loadingMsgs[0] } : null);
+    const msgInterval = window.setInterval(() => {
+      msgIdx = Math.min(msgIdx + 1, loadingMsgs.length - 1);
+      setMergePanelState((prev: any) => prev ? { ...prev, _loadingMsg: loadingMsgs[msgIdx] } : null);
+    }, 2500);
     try {
       const data = await fetchYouTubePlaylist(playlistId);
+      clearInterval(msgInterval);
       const topic = topics.find(t => t.id === mergePanelState.topicId);
       const existingVideoIds = new Set(
         (topic?.subTasks || []).map(st => st.url ? extractYoutubeId(st.url) : null).filter(Boolean)
@@ -1042,11 +1307,13 @@ export const LearningChecklistModule = () => {
         .filter((v: any) => !existingVideoIds.has(extractYoutubeId(v.link)))
         .map((v: any) => ({ id: uniqueId(), title: v.title, url: v.link }));
       const selected = new Set(videos.map((v: MergeVideo) => v.id));
-      setMergePanelState((prev: any) => prev ? { ...prev, videos, selected, loading: false, _total: total } : null);
+      setMergePanelState((prev: any) => prev ? { ...prev, videos, selected, loading: false, _total: total, _loadingMsg: undefined } : null);
       if (videos.length === 0) toast.info('All videos from this playlist are already in the topic!');
+      else toast.success(`Found ${videos.length} new video${videos.length !== 1 ? 's' : ''}!`);
     } catch (err: any) {
+      clearInterval(msgInterval);
       toast.error(err.message || 'Failed to fetch playlist');
-      setMergePanelState((prev: any) => prev ? { ...prev, loading: false } : null);
+      setMergePanelState((prev: any) => prev ? { ...prev, loading: false, _loadingMsg: undefined } : null);
     }
   }, [mergePanelState, topics]);
 
@@ -1094,13 +1361,49 @@ export const LearningChecklistModule = () => {
     });
   }, []);
 
-  const instantDeleteSubTask = useCallback(async (topicId: string, subTaskId: string) => {
+  const instantDeleteSubTask = useCallback((topicId: string, subTaskId: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    const updated = topic.subTasks.filter(st => st.id !== subTaskId);
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); }
-    catch { toast.error('Failed to delete'); }
+    const subtask = topic.subTasks.find(st => st.id === subTaskId);
+    if (!subtask) return;
+    // Optimistic remove
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: t.subTasks.filter(st => st.id !== subTaskId) } : t));
+    // Cancel any pending undo first
+    if (undoQueueRef.current) {
+      clearTimeout(undoQueueRef.current.timerId);
+      // Commit previous pending delete
+      const prev = undoQueueRef.current;
+      updateDoc(doc(db, 'learning_topics', prev.topicId), {
+        subTasks: sanitize(topics.find(t => t.id === prev.topicId)?.subTasks.filter(st => st.id !== prev.subtask.id) || []),
+      }).catch(() => {});
+    }
+    // Show undo toast
+    const toastId = toast(
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+        <span style={{ flex: 1, fontSize: '0.85rem' }}>🗑 <strong>{subtask.text.slice(0, 30)}{subtask.text.length > 30 ? '…' : ''}</strong> deleted</span>
+        <button
+          onClick={() => {
+            // Undo: re-insert
+            clearTimeout(undoQueueRef.current?.timerId);
+            undoQueueRef.current = null;
+            setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: [...t.subTasks, subtask] } : t));
+            toast.dismiss(toastId);
+            toast.success('Undo successful!');
+          }}
+          style={{ padding: '0.25rem 0.6rem', borderRadius: '6px', background: '#3b82f6', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', flexShrink: 0 }}
+        >Undo</button>
+      </div>,
+      { duration: UNDO_DELAY, id: `del-${subTaskId}` }
+    );
+    // Commit to Firestore after undo window
+    const timerId = window.setTimeout(async () => {
+      undoQueueRef.current = null;
+      const currentTopic = topics.find(t => t.id === topicId);
+      const finalList = (currentTopic?.subTasks || []).filter(st => st.id !== subTaskId);
+      try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(finalList) }); }
+      catch { toast.error('Failed to delete'); }
+    }, UNDO_DELAY + 100);
+    undoQueueRef.current = { topicId, subtask, timerId };
   }, [topics]);
 
   const handleBulkDelete = useCallback(async (topicId: string) => {
@@ -1216,8 +1519,15 @@ export const LearningChecklistModule = () => {
   const openNotesModal = useCallback((topicId: string, subtaskId?: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    if (subtaskId) { const st = topic.subTasks.find(s => s.id === subtaskId); setEditNotes(st?.notes || ''); setEditingContext({ type: 'subtask', topicId, subtaskId }); }
-    else { setEditNotes(topic.notes || ''); setEditingContext({ type: 'topic', topicId }); }
+    if (subtaskId) {
+      const st = topic.subTasks.find(s => s.id === subtaskId);
+      // Always reinitialize editNotes from current data to prevent state leak
+      setEditNotes(st?.notes || '');
+      setEditingContext({ type: 'subtask', topicId, subtaskId });
+    } else {
+      setEditNotes(topic.notes || '');
+      setEditingContext({ type: 'topic', topicId });
+    }
   }, [topics]);
 
   const saveNotes = async () => {
@@ -1300,7 +1610,20 @@ export const LearningChecklistModule = () => {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Continue · {validCW.topicTitle}</div>
-            <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{validCW.title}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{validCW.title}</div>
+              {(() => {
+                try {
+                  const s = Number(localStorage.getItem(TS_KEY(validCW.videoId)) || '0');
+                  if (s > 5) {
+                    const m = Math.floor(s / 60);
+                    const sec = String(s % 60).padStart(2, '0');
+                    return <span style={{ fontSize: '0.62rem', color: '#f59e0b', background: 'rgba(245,158,11,0.12)', padding: '0.08rem 0.4rem', borderRadius: '5px', flexShrink: 0 }}>⏱ {m}:{sec}</span>;
+                  }
+                } catch {}
+                return null;
+              })()}
+            </div>
           </div>
           <button onClick={() => handlePlayVideo(validCW.videoId, validCW.subtaskId, validCW.topicId)}
             style={{ padding: '0.48rem 0.9rem', borderRadius: '9px', background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.28rem' }}>
@@ -1430,6 +1753,7 @@ export const LearningChecklistModule = () => {
                       toggleBulkDelete={toggleBulkDelete}
                       handleBulkDelete={handleBulkDelete}
                       onSubTaskReorder={handleSubTaskReorder}
+                      onTogglePin={handleTogglePin}
                     />
                   )}
                 </div>
@@ -1525,7 +1849,14 @@ export const LearningChecklistModule = () => {
 
       {/* Video Player */}
       {playingVideo && (
-        <VideoPlayerModal playing={playingVideo} onClose={() => setPlayingVideo(null)} onMarkWatched={handleMarkWatched} onNavigate={handlePlayerNavigate} />
+        <VideoPlayerModal
+          playing={playingVideo}
+          onClose={() => setPlayingVideo(null)}
+          onMarkWatched={handleMarkWatched}
+          onNavigate={handlePlayerNavigate}
+          onStudyTime={handleStudyTime}
+          onSaveVideoNote={handleSaveVideoNote}
+        />
       )}
     </div>
   );
