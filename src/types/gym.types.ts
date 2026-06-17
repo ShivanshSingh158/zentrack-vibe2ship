@@ -123,3 +123,11 @@ export interface WeightTarget {
   trend: 'up' | 'maintain' | 'down' | 'new'; // ↑ → ↓ ?
   confidence: 'high' | 'medium' | 'low';
 }
+
+/** One entry for bodyweight tracking */
+export interface BodyweightLog {
+  userId: string;
+  date: string;       // YYYY-MM-DD
+  weightKg: number;
+  loggedAt: number;   // timestamp
+}

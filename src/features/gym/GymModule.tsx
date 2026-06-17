@@ -18,6 +18,7 @@ import { AddExerciseModal } from './components/AddExerciseModal';
 import { AddCardioModal } from './components/AddCardioModal';
 import { ExerciseHistoryDrawer } from './components/ExerciseHistoryDrawer';
 import { MuscleHeatmap } from './components/MuscleHeatmap';
+import { BodyweightTracker } from './components/BodyweightTracker';
 import { GymProfileModal } from './components/GymProfileModal';
 import { RestTimerPill } from './components/RestTimerPill';
 import { WeeklyGymInsights } from './components/WeeklyGymInsights';
@@ -292,6 +293,8 @@ export const GymModule = () => {
             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', marginBottom: '0.3rem' }}>Rest Day — Recovery Mode</div>
             <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>No lifting today. Eat well, sleep deep, and come back stronger tomorrow. Your muscles grow during rest.</div>
           </div>
+          {/* Bodyweight Tracker */}
+          <BodyweightTracker userId={userId} />
           {/* Weekly Insights shown below */}
           <WeeklyGymInsights userId={userId} selectedDate={selectedDate} />
         </>

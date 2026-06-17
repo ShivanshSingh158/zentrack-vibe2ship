@@ -296,12 +296,36 @@ const ExerciseCard = memo(({
             style={{ overflow: 'hidden' }}
           >
             <div style={{ padding: '0 0.75rem 0.75rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-              {/* Previous session hint */}
-              {previousSession && previousSession.maxWeight > 0 && (
-                <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', padding: '0.3rem 0.5rem', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', marginBottom: '0.1rem' }}>
-                  📅 Last session: {fmtKg(previousSession.maxWeight)}kg — aim to beat it!
-                </div>
-              )}
+              {/* Progressive Overload Banner */}
+              {previousSession && previousSession.maxWeight > 0 && (() => {
+                const lastWeight = previousSession.maxWeight;
+                // If all sets were completed, suggest +2.5kg, else maintain weight
+                const suggestedWeight = previousSession.allRepsCompleted
+                  ? parseFloat((lastWeight + 2.5).toFixed(1))
+                  : lastWeight;
+                const isProgress = suggestedWeight > lastWeight;
+                return (
+                  <div style={{
+                    padding: '0.5rem 0.65rem', borderRadius: '10px', marginBottom: '0.25rem',
+                    background: isProgress ? 'rgba(29,185,84,0.08)' : 'rgba(245,158,11,0.08)',
+                    border: `1px solid ${isProgress ? 'rgba(29,185,84,0.2)' : 'rgba(245,158,11,0.2)'}`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: isProgress ? '#1db954' : '#f59e0b', marginBottom: '0.1rem' }}>
+                        {isProgress ? '📈 Progressive Overload Target' : '🎯 Maintain Weight'}
+                      </div>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.55)' }}>
+                        Last: <span style={{ color: '#fff', fontWeight: 700 }}>{fmtKg(lastWeight)}kg</span>
+                        {isProgress && <> → Target: <span style={{ color: '#1db954', fontWeight: 800 }}>{fmtKg(suggestedWeight)}kg</span></>}
+                      </div>
+                    </div>
+                    {isProgress && (
+                      <div style={{ fontSize: '1.1rem', flexShrink: 0 }}>+2.5</div>
+                    )}
+                  </div>
+                );
+              })()}
               {ex.setsLog.map((s, idx) => (
                 <SetRow
                   key={`${ex.exerciseId}-set-${idx}`}

@@ -300,7 +300,7 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
               <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" fontSize={10} axisLine={false} tickLine={false} dy={10} />
               <YAxis stroke="rgba(255,255,255,0.3)" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(val) => `${val}m`} />
-              <Tooltip 
+              <Tooltip
                 cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                 contentStyle={{ background: '#1e1e2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
                 itemStyle={{ color: '#a855f7' }}
@@ -312,37 +312,41 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
         </div>
       </div>
 
-      {/* Muscle Breakdown */}
+      {/* Volume Per Muscle Per Week */}
       <div style={{ marginTop: '0.2rem' }}>
         <h3 style={{ margin: '0 0 0.8rem', fontSize: '0.85rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <Target size={14} color="#a855f7" /> Muscle Sets Breakdown
+          <Target size={14} color="#a855f7" /> Volume Per Muscle
         </h3>
         {insights.muscles.length === 0 ? (
           <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
             No exercises logged this week yet.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
             {insights.muscles.map(m => {
-              const maxSets = Math.max(...insights.muscles.map(x => x.total));
-              const hitWidth = Math.max((m.hit / maxSets) * 100, 2);
-              const missWidth = Math.max((m.missed / maxSets) * 100, 0);
+              const maxSets = Math.max(...insights.muscles.map(x => x.hit), 1);
+              const barWidth = Math.max((m.hit / maxSets) * 100, 4);
               const color = getMuscleColor(m.name);
-
+              const daysHit = dates.filter(dStr => {
+                const log = logs.find(l => l.date === dStr);
+                return log?.exercises?.some(ex => ex.muscle === m.name && ex.setsLog.some(s => s.completed));
+              }).length;
               return (
-                <div key={m.name} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <div style={{ width: '65px', fontSize: '0.75rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {m.name}
+                <div key={m.name}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: color, flexShrink: 0 }} />
+                      <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>{m.name}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.62rem', color: color, fontWeight: 700, background: `${color}18`, padding: '0.08rem 0.35rem', borderRadius: '99px', border: `1px solid ${color}30` }}>
+                        {daysHit}×/wk
+                      </span>
+                      <span style={{ fontSize: '0.68rem', color: '#fff', fontWeight: 800 }}>{m.hit} sets</span>
+                    </div>
                   </div>
-                  <div style={{ flex: 1, height: '8px', background: 'rgba(255,255,255,0.06)', borderRadius: '99px', display: 'flex', overflow: 'hidden' }}>
-                    <div style={{ width: `${hitWidth}%`, background: color, borderRadius: '99px', transition: 'width 0.5s ease-out' }} />
-                    {m.missed > 0 && (
-                      <div style={{ width: `${missWidth}%`, background: 'rgba(239, 68, 68, 0.4)', borderRadius: '0 99px 99px 0', borderLeft: '1px solid rgba(0,0,0,0.2)', transition: 'width 0.5s ease-out' }} />
-                    )}
-                  </div>
-                  <div style={{ width: '40px', textAlign: 'right', fontSize: '0.7rem' }}>
-                    <span style={{ color: '#fff', fontWeight: 700 }}>{m.hit}</span>
-                    <span style={{ color: 'rgba(255,255,255,0.3)' }}>/{m.total}</span>
+                  <div style={{ height: '6px', background: 'rgba(255,255,255,0.06)', borderRadius: '99px', overflow: 'hidden' }}>
+                    <div style={{ width: `${barWidth}%`, height: '100%', background: color, borderRadius: '99px', transition: 'width 0.5s ease-out' }} />
                   </div>
                 </div>
               );
