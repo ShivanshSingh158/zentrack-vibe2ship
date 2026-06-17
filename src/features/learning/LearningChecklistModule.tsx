@@ -4,7 +4,7 @@ import {
   Plus, Check, ChevronDown, ChevronRight, BookOpen, Trash2,
   FileText, Search, X, Play, GripVertical,
   Eye, EyeOff, SkipForward, SkipBack, Bell, Edit3, RotateCcw,
-  ListPlus, Link as LinkIcon, Loader, Gauge, FastForward,
+  ListPlus, Link as LinkIcon, Loader, Gauge, FastForward, Minimize2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
@@ -287,11 +287,12 @@ interface MergeVideo { id: string; title: string; url: string; }
 
 // ── VideoPlayerModal ──────────────────────────────────────────────────────────
 
-const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatched, onNavigate, onStudyTime, onSaveVideoNote }: {
+const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize, onMarkWatched, onNavigate, onStudyTime, onSaveVideoNote }: {
   playing: any;
   total: number;
   idx: number;
   onClose: () => void;
+  onMinimize: () => void;
   onMarkWatched: (topicId: string, subtaskId: string) => void;
   onNavigate: (delta: number) => void;
   onStudyTime: (ms: number) => void;
@@ -396,7 +397,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatch
   })();
 
   return createPortal(
-    <div onClick={() => !focusMode && onClose()} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: focusMode ? '#000' : 'rgba(0,0,0,0.96)', backdropFilter: focusMode ? 'none' : 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: focusMode ? '0' : '0.75rem', transition: 'all 0.3s' }}>
+    <div onClick={() => !focusMode && onMinimize()} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: focusMode ? '#000' : 'rgba(0,0,0,0.96)', backdropFilter: focusMode ? 'none' : 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: focusMode ? '0' : '0.75rem', transition: 'all 0.3s' }}>
       {/* Playlist progress rail — always at very top */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '3px', background: 'rgba(255,255,255,0.08)', zIndex: 100000 }}>
         <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg,#3b82f6,#8b5cf6)', transition: 'width 0.5s ease', borderRadius: '0 2px 2px 0' }} />
@@ -434,7 +435,10 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMarkWatch
               style={{ flexShrink: 0, background: showNotes ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${showNotes ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: showNotes ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <FileText size={15} />
             </button>
-            <button onClick={onClose} style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={onMinimize} title="Minimize to PiP" style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Minimize2 size={16} />
+            </button>
+            <button onClick={onClose} title="Close Player" style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', width: '36px', height: '36px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <X size={16} />
             </button>
           </div>
@@ -1876,7 +1880,8 @@ export const LearningChecklistModule = () => {
           playing={playing}
           total={playing.totalCount}
           idx={playing.indexInPlaylist}
-          onClose={() => setPipMode(true)}
+          onClose={closePlayer}
+          onMinimize={() => setPipMode(true)}
           onMarkWatched={handleMarkWatched}
           onNavigate={handlePlayerNavigate}
           onStudyTime={handleStudyTime}
