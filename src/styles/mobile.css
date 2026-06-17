@@ -826,35 +826,35 @@ html, body {
     display: none !important;
   }
 
-  /* Header buttons: icon-only on mobile, one line */
+  /* Header actions container — wrap elements */
   .att-header-actions {
-    flex-wrap: nowrap !important;
-    gap: 0.25rem !important;
-    overflow-x: auto;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
+    flex-wrap: wrap !important;
+    gap: 0.5rem !important;
+    overflow-x: visible;
   }
-  .att-header-actions::-webkit-scrollbar { display: none; }
 
   .att-btn-label {
     display: none !important;
   }
 
+  /* Make the 4 action buttons share the row equally */
   .att-header-btn {
-    padding: 0.3rem 0.5rem !important;
-    min-width: 34px;
+    padding: 0.4rem !important;
+    flex: 1;
     justify-content: center;
-    flex-shrink: 0;
   }
 
-  /* Date picker compact on mobile */
+  /* Date picker full width on mobile */
   .att-header-actions .date-picker-wrap {
+    width: 100%;
     flex-shrink: 0;
   }
+  
+  /* Font size 16px prevents iOS Safari auto-zoom on focus */
   .att-header-actions .date-picker-wrap input[type="date"] {
-    width: 130px;
-    font-size: 0.75rem;
-    padding: 0.28rem 0.4rem;
+    width: 100%;
+    font-size: 16px !important;
+    padding: 0.4rem 0.5rem;
   }
 
   /* Extra dropdown full width */
@@ -872,10 +872,3 @@ html, body {
   }
 }
 
-/* Small phones */
-@media (max-width: 400px) {
-  .att-header-actions .date-picker-wrap input[type="date"] {
-    width: 110px;
-    font-size: 0.7rem;
-  }
-}
