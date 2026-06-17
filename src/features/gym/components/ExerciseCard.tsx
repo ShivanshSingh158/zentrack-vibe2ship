@@ -1,7 +1,6 @@
-import { useState, memo } from 'react';
-import { useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays, Youtube } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays, PlaySquare } from 'lucide-react';
 import SetRow from './SetRow';
 import type { GymExerciseLog, GymSet, PreviousSessionExercise, GymPersonalRecord } from '../../../types/gym.types';
 
@@ -168,7 +167,7 @@ const ExerciseCard = memo(({
                 }}
                 title="Watch Form Tutorial"
               >
-                <Youtube size={11} />
+                <PlaySquare size={11} />
                 <span style={{ fontSize: '0.55rem', fontWeight: 700, textTransform: 'uppercase' }}>Form</span>
               </button>
               {ex.muscle && (
