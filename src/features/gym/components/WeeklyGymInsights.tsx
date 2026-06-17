@@ -1,14 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
-import { Target, Activity, CheckCircle, Info, Calendar as CalendarIcon, Zap } from 'lucide-react';
+import { Target, Activity, CheckCircle, Zap, Heart, Award } from 'lucide-react';
 import type { GymDayLog } from '../../../types/gym.types';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../../data/gymPlan';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function getWeekRange(dateStr: string) {
-  // Assuming Monday is the start of the week
   const d = new Date(dateStr + 'T00:00:00');
   const day = d.getDay(); // 0 is Sunday
   const diffToMonday = day === 0 ? 6 : day - 1;
@@ -34,11 +33,20 @@ function getMuscleColor(muscle: string) {
     Arms: '#ec4899',
     Core: '#ef4444',
   };
-  // Handle unknown/custom muscles
   for (const [k, v] of Object.entries(colors)) {
     if (muscle.toLowerCase().includes(k.toLowerCase())) return v;
   }
   return '#a855f7';
+}
+
+function getGrade(score: number) {
+  if (score >= 95) return { letter: 'A+', color: '#1db954' };
+  if (score >= 85) return { letter: 'A', color: '#10b981' };
+  if (score >= 75) return { letter: 'B+', color: '#84cc16' };
+  if (score >= 65) return { letter: 'B', color: '#eab308' };
+  if (score >= 50) return { letter: 'C', color: '#f59e0b' };
+  if (score >= 30) return { letter: 'D', color: '#f97316' };
+  return { letter: 'F', color: '#ef4444' };
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
@@ -62,6 +70,7 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
       }
       setLoading(true);
       try {
+        // Try the composite index query first
         const q = query(
           collection(db, 'gymLogs'),
           where('userId', '==', userId),
@@ -73,7 +82,20 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
         snap.forEach(d => fetched.push(d.data() as GymDayLog));
         setLogs(fetched);
       } catch (e) {
-        console.error('Failed to fetch weekly insights:', e);
+        // Fallback: If composite index is missing, fetch all user logs and filter locally
+        console.warn('Fallback: Fetching all logs and filtering locally due to missing index.');
+        try {
+          const fallbackQ = query(collection(db, 'gymLogs'), where('userId', '==', userId));
+          const snap = await getDocs(fallbackQ);
+          const fetched: GymDayLog[] = [];
+          snap.forEach(d => {
+            const log = d.data() as GymDayLog;
+            if (log.date >= start && log.date <= end) fetched.push(log);
+          });
+          setLogs(fetched);
+        } catch (err) {
+          console.error('Failed to fetch weekly insights via fallback:', err);
+        }
       } finally {
         setLoading(false);
       }
@@ -87,10 +109,21 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
     let completedSets = 0;
     let targetSets = 0;
     let workoutCount = 0;
+    let cardioMinutes = 0;
     const muscleSets: Record<string, { hit: number; missed: number }> = {};
 
     logs.forEach(log => {
       let isWorkout = false;
+      
+      // Calculate cardio
+      log.cardio?.forEach(c => {
+        if (c.completed && c.durationMinutes) {
+          cardioMinutes += c.durationMinutes;
+          isWorkout = true;
+        }
+      });
+
+      // Calculate exercises
       log.exercises?.forEach(ex => {
         const muscleName = ex.muscle;
         if (!muscleName) return;
@@ -116,7 +149,10 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
       .map(([name, stats]) => ({ name, ...stats, total: stats.hit + stats.missed }))
       .sort((a, b) => b.total - a.total);
 
-    return { totalVolume, completedSets, targetSets, workoutCount, muscles };
+    const completionRate = targetSets > 0 ? (completedSets / targetSets) * 100 : 0;
+    const grade = getGrade(completionRate);
+
+    return { totalVolume, completedSets, targetSets, workoutCount, cardioMinutes, muscles, completionRate, grade };
   }, [logs]);
 
   if (loading) {
@@ -148,9 +184,12 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
             {startDateFmt} — {endDateFmt}
           </div>
         </div>
-        <div style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', padding: '0.3rem 0.6rem', borderRadius: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#a855f7' }}>{insights.workoutCount}</span>
-          <span style={{ fontSize: '0.55rem', fontWeight: 700, textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)' }}>Workouts</span>
+        <div style={{ background: `${insights.grade.color}15`, border: `1px solid ${insights.grade.color}30`, padding: '0.2rem 0.6rem', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <Award size={16} color={insights.grade.color} />
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: insights.grade.color, lineHeight: 1 }}>{insights.grade.letter}</span>
+            <span style={{ fontSize: '0.45rem', fontWeight: 700, textTransform: 'uppercase', color: 'rgba(255,255,255,0.5)', marginTop: '0.08rem' }}>Consistency</span>
+          </div>
         </div>
       </div>
 
@@ -158,7 +197,7 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.4rem', background: 'rgba(0,0,0,0.2)', padding: '0.6rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.04)' }}>
         {dates.map((d, i) => {
           const dayLog = logs.find(l => l.date === d);
-          const hasSets = dayLog?.exercises?.some(ex => ex.setsLog.some(s => s.completed));
+          const hasSets = dayLog?.exercises?.some(ex => ex.setsLog.some(s => s.completed)) || (dayLog?.cardio?.some(c => c.completed && c.durationMinutes));
           const isRest = GYM_PLAN.find(p => p.dayIndex === WEEKDAY_TO_PLAN[new Date(d + 'T00:00:00').getDay()])?.isRest;
           
           let color = 'rgba(255,255,255,0.08)';
@@ -191,8 +230,8 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
       </div>
 
       {/* Key Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.85rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
             <Activity size={12} /> Total Volume
           </div>
@@ -200,7 +239,8 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
             {insights.totalVolume > 0 ? `${insights.totalVolume.toLocaleString()} kg` : '0 kg'}
           </div>
         </div>
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.85rem' }}>
+        
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
             <CheckCircle size={12} /> Sets Hit
           </div>
@@ -209,15 +249,25 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
             <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>/ {insights.targetSets}</span>
           </div>
         </div>
+
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.75rem', gridColumn: 'span 2' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
+            <Heart size={12} /> Total Cardio
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>{insights.cardioMinutes}</span>
+            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>minutes this week</span>
+          </div>
+        </div>
       </div>
 
       {/* Muscle Breakdown */}
-      <div>
+      <div style={{ marginTop: '0.2rem' }}>
         <h3 style={{ margin: '0 0 0.8rem', fontSize: '0.85rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           <Target size={14} color="#a855f7" /> Muscle Sets Breakdown
         </h3>
         {insights.muscles.length === 0 ? (
-          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '1rem' }}>
+          <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', textAlign: 'center', padding: '1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
             No exercises logged this week yet.
           </div>
         ) : (
