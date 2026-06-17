@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useRef, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import type { YouTubePlayer } from 'react-youtube';
 
 export interface YouTubeVideoData {

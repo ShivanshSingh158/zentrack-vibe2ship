@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import YouTube, { YouTubePlayer, YouTubeEvent } from 'react-youtube';
+import YouTube, { YouTubePlayer } from 'react-youtube';
+import type { YouTubeEvent } from 'react-youtube';
 import { Maximize2, Minimize2, X, Play, Pause, SkipForward, Check } from 'lucide-react';
 import { useYouTube } from '../../contexts/YouTubeContext';
-import { useSubjects } from '../../contexts/SubjectContext';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const FloatingYouTubePlayer: React.FC = () => {
@@ -11,7 +13,6 @@ export const FloatingYouTubePlayer: React.FC = () => {
     playing, isPipMode, queue, portalNode,
     setPipMode, closePlayer, setPlayerInstance, playVideo
   } = useYouTube();
-  const { toggleSubTask, subjects } = useSubjects();
 
   const [isPlaying, setIsPlaying] = useState(false);
   const playerRef = useRef<YouTubePlayer | null>(null);
@@ -30,13 +31,19 @@ export const FloatingYouTubePlayer: React.FC = () => {
 
   const handleAutoAdvance = () => {
     if (!playing) return;
-    // Mark current as complete if it isn't already
-    const subject = subjects.find(s => s.topics.some(t => t.id === playing.topicId));
-    const topic = subject?.topics.find(t => t.id === playing.topicId);
-    const subtask = topic?.subTasks.find(st => st.id === playing.subtaskId);
-    if (subtask && !subtask.isCompleted) {
-      toggleSubTask(playing.topicId, playing.subtaskId);
-    }
+    
+    // Mark current as complete in Firebase directly
+    try {
+      const topicRef = doc(db, 'learning_topics', playing.topicId);
+      getDoc(topicRef).then(snap => {
+        if (snap.exists()) {
+          const data = snap.data();
+          const subtasks = data.subTasks || [];
+          const updated = subtasks.map((st: { id: string, isCompleted: boolean }) => st.id === playing.subtaskId ? { ...st, isCompleted: true } : st);
+          updateDoc(topicRef, { subTasks: updated }).catch(() => {});
+        }
+      }).catch(() => {});
+    } catch {}
 
     // Find next in queue
     const nextIdx = playing.indexInPlaylist + 1;

@@ -1599,7 +1599,7 @@ export const LearningChecklistModule = () => {
       </div>
 
       {/* Continue Watching */}
-      {validCW && !playingVideo && (
+      {validCW && !playing && (
         <div style={{ padding: '0.8rem 1rem', borderRadius: '14px', marginBottom: '1.25rem', background: 'linear-gradient(135deg,rgba(239,68,68,0.12),rgba(239,68,68,0.05))', border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
           <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
             <Play size={15} fill="#fff" color="#fff" />
