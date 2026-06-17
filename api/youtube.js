@@ -47,10 +47,17 @@ export default async function handler(req, res) {
             }
           }
           if (!playlistTitle) {
-              // The next API returns the title in the header
-              playlistTitle = data.header?.playlistHeaderRenderer?.title?.simpleText ||
-                              data.metadata?.playlistMetadataRenderer?.title ||
-                              null;
+              function findTitle(obj) {
+                  if (!obj || typeof obj !== 'object') return null;
+                  if (obj.playlist && typeof obj.playlist.title === 'string') return obj.playlist.title;
+                  if (Array.isArray(obj)) {
+                      for (const v of obj) { const t = findTitle(v); if (t) return t; }
+                  } else {
+                      for (const v of Object.values(obj)) { const t = findTitle(v); if (t) return t; }
+                  }
+                  return null;
+              }
+              playlistTitle = findTitle(data);
           }
       }
 
