@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import YouTube from 'react-youtube';
 import type { YouTubePlayer, YouTubeEvent } from 'react-youtube';
-import { Maximize2, Minimize2, X, Play, Pause, SkipForward, Check } from 'lucide-react';
+import { X, Maximize2, Play, Pause, SkipForward } from 'lucide-react';
 import { useYouTube } from '../../contexts/YouTubeContext';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';

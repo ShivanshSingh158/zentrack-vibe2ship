@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, Link as LinkIcon, Plus, Trash2, GripVertical, CheckCircle2, Play, BookOpen, Loader, Sparkles, ChevronDown, ChevronRight, Save, Clock } from 'lucide-react';
+import { X, Plus, Trash2, GripVertical, CheckCircle2, Play, BookOpen, Loader, Sparkles, ChevronDown, ChevronRight, Save, Clock } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
 
@@ -510,7 +510,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
                       </div>
 
                       <div style={{ maxHeight: '400px', overflowY: 'auto', overscrollBehavior: 'contain', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', padding: '0.4rem' }}>
-                        {getFilteredVideos(source).map((v, i) => {
+                        {getFilteredVideos(source).map((v) => {
                           const actualIdx = source.videos.findIndex(sv => sv.id === v.id);
                           return (
                             <div key={v.id} onClick={() => toggleVideoSelection(v.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem', borderRadius: '6px', background: selectedVideoIds.has(v.id) ? 'rgba(99,102,241,0.15)' : 'transparent', border: `1px solid ${selectedVideoIds.has(v.id) ? 'rgba(99,102,241,0.3)' : 'transparent'}`, cursor: 'pointer', marginBottom: '0.2rem', transition: 'all 0.1s' }}>

@@ -3,18 +3,15 @@ import { createPortal } from 'react-dom';
 import {
   Plus, Check, ChevronDown, ChevronRight, BookOpen, Trash2,
   FileText, Search, X, Play, GripVertical,
-  Eye, EyeOff, SkipForward, SkipBack, Bell, Edit3, RotateCcw,
-  ListPlus, Link as LinkIcon, Loader, Gauge, FastForward, Minimize2,
+  Eye, EyeOff, SkipForward, SkipBack, Bell, Edit3,
+  ListPlus, Link as LinkIcon, Loader, Gauge, Minimize2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import type { LearningTopic, LearningSubTask } from '../../types/index';
 import { playPopSound } from '../../utils/sound';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { usePomodoroContext } from '../../contexts/PomodoroContext';
 import { useYouTube } from '../../contexts/YouTubeContext';
 import { CurriculumBuilderModal } from './CurriculumBuilderModal';
 
@@ -277,12 +274,7 @@ const progressColor = (pct: number) => {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface PlayingVideo {
-  videoId: string; subtaskId: string; topicId: string; title: string;
-  allVideos: Array<{ videoId: string; subtaskId: string; title: string }>;
-  currentIndex: number;
-  watchedCount: number; // how many in allVideos are completed
-}
+
 
 interface MergeVideo { id: string; title: string; url: string; }
 
@@ -311,21 +303,12 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   const [focusMode, setFocusMode] = useState(false);
   const [noteText, setNoteText] = useState('');
   const studyStartRef = useRef<number>(Date.now());
-  const tsIntervalRef = useRef<number>(0);
-  const studyIntervalRef = useRef<number>(0);
 
   // Load existing note for this video
   useEffect(() => {
-    const topic = playing.topicId;
-    const subtask = playing.subtaskId;
     // We'll pass current note via playing in a future improvement; for now load from parent
     setNoteText('');
   }, [playing.subtaskId]);
-
-  const applySpeed = useCallback((s: number) => {
-    // Speed is now handled by the context/player instance if needed, or we rely on user.
-    // For now we just mock this out as the global player doesn't easily accept arbitrary commands via postMessage here.
-  }, []);
 
   const handleSpeedChange = (s: number) => {
     setSpeed(s);
@@ -576,7 +559,7 @@ const SubTaskItem = React.memo(({
   }, [isEditMode, toggleSubTask, topicId, subTask.id]);
 
   // Mobile double-tap
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+  const handleTouchEnd = useCallback(() => {
     const now = Date.now();
     if (now - lastTapRef.current < 300) {
       handleDoubleClick();
@@ -648,7 +631,7 @@ const SubTaskItem = React.memo(({
         onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
-        onTouchEnd={(e) => { handleTouchEndSwipe(); handleTouchEnd(e); }}
+        onTouchEnd={() => { handleTouchEndSwipe(); handleTouchEnd(); }}
       >
         {isEditMode && (
           <div onPointerDown={onDragStart} style={{ cursor: 'grab', color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', padding: '0 0.2rem', flexShrink: 0, touchAction: 'none' }}>
@@ -802,7 +785,7 @@ const TopicBody = React.memo(({
         <ReorderList
           items={flatSubTasks}
           onReorder={(from, to) => onSubTaskReorder(topic.id, from, to)}
-          renderItem={(st: LearningSubTask, index: number, isDragging: boolean, startDrag: (e: React.PointerEvent) => void) => (
+          renderItem={(st: LearningSubTask, index: number, _: boolean, startDrag: (e: React.PointerEvent) => void) => (
             <SubTaskItem
               subTask={st} topicId={topic.id}
               isEditMode={true}
@@ -902,7 +885,7 @@ TopicBody.displayName = 'TopicBody';
 
 // ── AddVideoPanel ─────────────────────────────────────────────────────────────
 
-const AddVideoPanel = ({ state, setState, topicId, onAdd }: any) => {
+const AddVideoPanel = ({ topicId, onAdd }: any) => {
   const [localUrl, setLocalUrl] = useState('');
   const [localTitle, setLocalTitle] = useState('');
   const [fetching, setFetching] = useState(false);
@@ -951,7 +934,7 @@ const AddVideoPanel = ({ state, setState, topicId, onAdd }: any) => {
 
 // ── MergePanel ────────────────────────────────────────────────────────────────
 
-const MergePanel = ({ state, setState, topicId, onFetch, onMerge }: any) => {
+const MergePanel = ({ state, setState, onFetch, onMerge }: any) => {
   const [searchInMerge, setSearchInMerge] = useState('');
 
   const filtered = useMemo(() =>
@@ -1092,7 +1075,7 @@ export const LearningChecklistModule = () => {
   const [bulkDeleteState, setBulkDeleteState] = useState<Set<string>>(new Set());
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const { startTimer } = usePomodoroContext();
+  // const { startTimer } = usePomodoroContext();
   const user = auth.currentUser;
 
   useEffect(() => { sessionStorage.setItem('learningSearch', searchQuery); }, [searchQuery]);
