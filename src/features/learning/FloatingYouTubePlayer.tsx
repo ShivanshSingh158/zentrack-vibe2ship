@@ -15,6 +15,7 @@ export const FloatingYouTubePlayer: React.FC = () => {
   } = useYouTube();
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
   const playerRef = useRef<YouTubePlayer | null>(null);
 
   // Sync isPlaying state
@@ -135,54 +136,90 @@ export const FloatingYouTubePlayer: React.FC = () => {
           initial={{ opacity: 0, y: 50, scale: 0.9 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 50, scale: 0.9 }}
-          className="bg-zinc-900 border border-zinc-800 shadow-2xl rounded-xl overflow-hidden z-[99999] flex flex-col"
-          style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', width: '320px', zIndex: 99999 }}
+          style={{ 
+            position: 'fixed', bottom: '1.5rem', right: '1.5rem', width: '320px', 
+            zIndex: 99999, borderRadius: '14px', overflow: 'hidden', 
+            boxShadow: '0 25px 70px rgba(0,0,0,0.8), 0 0 30px rgba(0,0,0,0.5)',
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: '#000'
+          }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between p-2 bg-zinc-900/90 backdrop-blur-md border-b border-zinc-800">
-            <div className="flex-1 min-w-0 pr-2">
-              <div className="text-xs font-semibold text-zinc-100 truncate">{playing.title}</div>
-              <div className="text-[10px] text-zinc-400 truncate">
-                {nextInQueue ? `Up Next: ${nextInQueue.title}` : 'Last video'}
-              </div>
-            </div>
-            <div className="flex items-center gap-1 shrink-0">
+          {/* Video Container */}
+          <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', backgroundColor: '#000' }}>
+            {YouTubeIframe}
+            
+            {/* Top right controls overlay */}
+            <div style={{ 
+              position: 'absolute', top: '0.5rem', right: '0.5rem', 
+              display: 'flex', gap: '0.4rem', zIndex: 10,
+              opacity: isHovered ? 1 : 0, transition: 'opacity 0.2s ease',
+            }}>
               <button 
                 onClick={() => setPipMode(false)}
-                className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-white transition-colors"
                 title="Expand"
+                style={{
+                  background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff', padding: '0.35rem', borderRadius: '8px', cursor: 'pointer',
+                  backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,0,0,0.85)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.65)'}
               >
-                <Maximize2 size={14} />
+                <Maximize2 size={13} />
               </button>
               <button 
                 onClick={closePlayer}
-                className="p-1.5 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-white transition-colors"
                 title="Close"
+                style={{
+                  background: 'rgba(0,0,0,0.65)', border: '1px solid rgba(255,255,255,0.15)',
+                  color: '#fff', padding: '0.35rem', borderRadius: '8px', cursor: 'pointer',
+                  backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'background 0.2s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.85)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,0,0,0.65)'}
               >
                 <X size={14} />
               </button>
             </div>
-          </div>
-
-          {/* Video Container */}
-          <div className="group" style={{ position: 'relative', width: '100%', aspectRatio: '16/9', backgroundColor: '#000' }}>
-            {YouTubeIframe}
             
             {/* Hover overlay for play/pause in PiP */}
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
+            <div style={{ 
+              position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', 
+              opacity: isHovered ? 1 : 0, transition: 'opacity 0.2s ease',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem',
+              pointerEvents: isHovered ? 'auto' : 'none'
+            }}>
               <button 
                 onClick={togglePlay}
-                className="w-10 h-10 rounded-full bg-indigo-500 hover:bg-indigo-400 text-white flex items-center justify-center shadow-lg transition-transform hover:scale-105"
+                style={{ 
+                  width: '44px', height: '44px', borderRadius: '50%', background: '#4f46e5',
+                  color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: 'none', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+                  transition: 'transform 0.15s ease'
+                }}
+                onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+                onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
               >
-                {isPlaying ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" className="ml-1" />}
+                {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" style={{ marginLeft: '2px' }} />}
               </button>
               {nextInQueue && (
                 <button 
                   onClick={handleAutoAdvance}
-                  className="w-8 h-8 rounded-full bg-zinc-800/80 hover:bg-zinc-700 text-white flex items-center justify-center backdrop-blur-sm transition-colors"
                   title="Next Video"
+                  style={{ 
+                    width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(39,39,42,0.85)',
+                    color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1px solid rgba(255,255,255,0.1)', cursor: 'pointer', backdropFilter: 'blur(4px)',
+                    transition: 'transform 0.15s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
                 >
-                  <SkipForward size={14} />
+                  <SkipForward size={16} fill="currentColor" />
                 </button>
               )}
             </div>
