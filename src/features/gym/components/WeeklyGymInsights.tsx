@@ -92,8 +92,9 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
     logs.forEach(log => {
       let isWorkout = false;
       log.exercises?.forEach(ex => {
-        if (!ex.muscle) return;
-        if (!muscleSets[ex.muscle]) muscleSets[ex.muscle] = { hit: 0, missed: 0 };
+        const muscleName = ex.muscle;
+        if (!muscleName) return;
+        if (!muscleSets[muscleName]) muscleSets[muscleName] = { hit: 0, missed: 0 };
         
         targetSets += ex.targetSets || ex.setsLog.length;
         
@@ -101,10 +102,10 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
           if (set.completed) {
             completedSets++;
             isWorkout = true;
-            muscleSets[ex.muscle].hit++;
+            muscleSets[muscleName].hit++;
             if (set.weight && set.reps) totalVolume += set.weight * set.reps;
           } else if (!ex.skipped) {
-            muscleSets[ex.muscle].missed++;
+            muscleSets[muscleName].missed++;
           }
         });
       });
