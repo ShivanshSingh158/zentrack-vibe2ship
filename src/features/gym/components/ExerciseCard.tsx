@@ -1,6 +1,7 @@
 import { useState, memo } from 'react';
+import { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays } from 'lucide-react';
 import SetRow from './SetRow';
 import type { GymExerciseLog, GymSet, PreviousSessionExercise, GymPersonalRecord } from '../../../types/gym.types';
 
@@ -34,6 +35,7 @@ interface ExerciseCardProps {
   onUpdate: (idx: number, ex: GymExerciseLog) => void;
   onDelete: (idx: number) => void;
   onEditClick: (idx: number) => void;
+  onMoveToDate: (idx: number, date: string) => void;
   onHistoryClick: (exerciseId: string, name: string) => void;
   onSetComplete: (exerciseName: string, restSecs: number) => void;  // triggers rest timer
   editMode: boolean;
@@ -41,9 +43,10 @@ interface ExerciseCardProps {
 
 const ExerciseCard = memo(({
   index, ex, previousSession, allTimePR, onUpdate, onDelete,
-  onEditClick, onHistoryClick, onSetComplete, editMode,
+  onEditClick, onMoveToDate, onHistoryClick, onSetComplete, editMode,
 }: ExerciseCardProps) => {
   const [open, setOpen] = useState(false);
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const completedSets = ex.setsLog.filter(s => s.completed).length;
   const totalSets = ex.setsLog.length;
   const allDone = totalSets > 0 && completedSets === totalSets;
@@ -197,6 +200,27 @@ const ExerciseCard = memo(({
               >
                 <Edit3 size={13} />
               </button>
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={e => { e.stopPropagation(); dateInputRef.current?.showPicker(); }}
+                  style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', borderRadius: '8px', padding: '0.3rem', color: '#a855f7', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                  title="Move to another day"
+                >
+                  <CalendarDays size={13} />
+                </button>
+                <input 
+                  type="date"
+                  ref={dateInputRef}
+                  style={{ position: 'absolute', opacity: 0, width: 0, height: 0, padding: 0, margin: 0, border: 'none', right: 0 }}
+                  onChange={e => {
+                    if (e.target.value) {
+                      onMoveToDate(index, e.target.value);
+                      e.target.value = ''; // Reset
+                    }
+                  }}
+                  onClick={e => e.stopPropagation()}
+                />
+              </div>
               <button
                 onClick={e => { e.stopPropagation(); onDelete(index); }}
                 style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', padding: '0.3rem', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center' }}

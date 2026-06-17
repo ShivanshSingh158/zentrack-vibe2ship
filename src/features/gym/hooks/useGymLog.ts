@@ -77,6 +77,7 @@ interface UseGymLogResult {
   updateExercise: (idx: number, ex: GymExerciseLog) => void;
   deleteExercise: (idx: number) => void;
   addExercise: (ex: GymExerciseLog, savePermanently: boolean) => Promise<void>;
+  moveExerciseToDate: (idx: number, targetDate: string) => Promise<void>;
   updateCardio: (idx: number, c: GymCardioLog) => void;
   deleteCardio: (idx: number) => void;
   addCardio: (c: GymCardioLog) => void;
@@ -237,6 +238,45 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
     }
   }, [userId, planDayIdx, scheduleAutosave]);
 
+  const moveExerciseToDate = useCallback(async (idx: number, targetDate: string) => {
+    if (!userId) return;
+    
+    // 1. Get the exercise from current log
+    const exToMove = logRef.current.exercises[idx];
+    if (!exToMove) return;
+
+    // 2. Remove it from current log and save
+    setLog(prev => {
+      const exs = prev.exercises.filter((_, i) => i !== idx);
+      const updated = { ...prev, exercises: exs, updatedAt: Date.now() };
+      scheduleAutosave(updated);
+      return updated;
+    });
+
+    // 3. Fetch target date's log
+    const targetDocId = makeDocId(userId, targetDate);
+    const targetRef = doc(db, 'gymLogs', targetDocId);
+    try {
+      const snap = await getDoc(targetRef);
+      if (snap.exists()) {
+        const targetLog = snap.data() as GymDayLog;
+        targetLog.exercises = [...(targetLog.exercises || []), exToMove];
+        targetLog.updatedAt = Date.now();
+        await setDoc(targetRef, targetLog);
+      } else {
+        // Target log doesn't exist, create it from default plan
+        const pidx = planDayIndexForDate(targetDate);
+        const targetLog = buildDefaultLog(userId, targetDate, pidx);
+        targetLog.exercises = [...targetLog.exercises, exToMove];
+        await setDoc(targetRef, targetLog);
+      }
+      toast.success(`Exercise moved to ${targetDate}`);
+    } catch (err) {
+      console.error('Failed to move exercise:', err);
+      toast.error('Failed to move exercise to ' + targetDate);
+    }
+  }, [userId, scheduleAutosave]);
+
   // Cardio CRUD
   const updateCardio = useCallback((idx: number, c: GymCardioLog) => {
     setLog(prev => {
@@ -330,7 +370,7 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
 
   return {
     userId, log, syncing, saving, profile,
-    loadLog, updateExercise, deleteExercise, addExercise,
+    loadLog, updateExercise, deleteExercise, addExercise, moveExerciseToDate,
     updateCardio, deleteCardio, addCardio,
     clearDay, importPlan, wipeAllTemplates, saveProfile,
   };

@@ -59,7 +59,7 @@ export const GymModule = () => {
   // Core data hook
   const {
     userId, log, syncing, saving, profile,
-    loadLog, updateExercise, deleteExercise, addExercise,
+    loadLog, updateExercise, deleteExercise, addExercise, moveExerciseToDate,
     updateCardio, deleteCardio, addCardio, clearDay, importPlan,
     wipeAllTemplates, saveProfile,
   } = useGymLog(selectedDate);
@@ -386,6 +386,7 @@ export const GymModule = () => {
                   allTimePR={allTimePRs[ex.exerciseId] ?? null}
                   onUpdate={updateExerciseWithPR}
                   onDelete={deleteExercise}
+                  onMoveToDate={(index, date) => moveExerciseToDate(index, date)}
                   onEditClick={setEditingExerciseIdx}
                   onHistoryClick={(id, name) => setHistoryFor({ id, name })}
                   onSetComplete={handleSetComplete}
