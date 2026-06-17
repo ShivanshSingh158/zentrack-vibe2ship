@@ -277,30 +277,6 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
             <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>minutes this week</span>
           </div>
         </div>
-
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
-            <Dumbbell size={12} /> Heaviest Lift
-          </div>
-          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {insights.heaviestLift.weight > 0 ? `${insights.heaviestLift.weight} kg` : '—'}
-          </div>
-          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {insights.heaviestLift.name || 'No weights logged'}
-          </div>
-        </div>
-
-        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.75rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
-            <Flame size={12} /> Total Reps
-          </div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {insights.totalReps > 0 ? insights.totalReps.toLocaleString() : '0'}
-          </div>
-          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            reps lifted this week
-          </div>
-        </div>
       </div>
 
       {/* Muscle Breakdown */}
