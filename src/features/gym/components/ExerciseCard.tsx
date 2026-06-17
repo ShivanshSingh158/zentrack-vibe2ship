@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays, PlaySquare } from 'lucide-react';
 import SetRow from './SetRow';
 import type { GymExerciseLog, GymSet, PreviousSessionExercise, GymPersonalRecord } from '../../../types/gym.types';
+import { GYM_PLAN } from '../../../data/gymPlan';
 
 /** Format kg: max 1 decimal, strip trailing zero — e.g. 80.0→"80", 82.5→"82.5" */
 const fmtKg = (v: number | null | undefined): string => {
@@ -46,6 +47,16 @@ const ExerciseCard = memo(({
 }: ExerciseCardProps) => {
   const [open, setOpen] = useState(false);
   const [showPlayer, setShowPlayer] = useState(false);
+  
+  const fallbackVideoId = React.useMemo(() => {
+    if (ex.videoId) return ex.videoId;
+    for (const day of GYM_PLAN) {
+      const match = day.exercises?.find(e => e.id === ex.exerciseId);
+      if (match?.videoId) return match.videoId;
+    }
+    return null;
+  }, [ex.videoId, ex.exerciseId]);
+
   const dateInputRef = useRef<HTMLInputElement>(null);
   const completedSets = ex.setsLog.filter(s => s.completed).length;
   const totalSets = ex.setsLog.length;
@@ -268,7 +279,7 @@ const ExerciseCard = memo(({
             <div style={{ padding: '0 0.85rem 0.85rem' }}>
               <div style={{ position: 'relative', width: '100%', paddingBottom: '56.25%', borderRadius: '12px', overflow: 'hidden', background: '#000' }}>
                 <iframe
-                  src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(ex.name + ' exercise proper form tutorial')}`}
+                  src={fallbackVideoId ? `https://www.youtube.com/embed/${fallbackVideoId}?autoplay=1` : `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(ex.name + ' exercise proper form tutorial')}`}
                   style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen

@@ -47,7 +47,7 @@ export function buildDefaultLog(userId: string, date: string, planDayIdx: number
   const isRestDay = plan?.isRest === true;
   const exercises: GymExerciseLog[] = isRestDay ? [] : (plan?.exercises || []).map(ex => ({
     exerciseId: ex.id, name: ex.name, targetSets: ex.targetSets, targetReps: ex.targetReps,
-    muscle: ex.muscle, isCustom: false,
+    muscle: ex.muscle, videoId: ex.videoId, isCustom: false,
     setsLog: Array.from({ length: ex.targetSets }, (_, i) => ({
       setNumber: i + 1, reps: null, weight: null, completed: false,
     })),

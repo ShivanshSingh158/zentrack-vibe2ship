@@ -11,6 +11,7 @@ export interface GymExerciseLog {
   targetSets: number;
   targetReps: string;   // e.g. "6–10"
   muscle?: string;
+  videoId?: string;
   setsLog: GymSet[];
   isCustom?: boolean;
   skipped?: boolean;
@@ -48,6 +49,7 @@ export interface GymPlanExercise {
   targetSets: number;
   targetReps: string;
   muscle?: string;
+  videoId?: string;
 }
 
 export interface GymPlanDay {
