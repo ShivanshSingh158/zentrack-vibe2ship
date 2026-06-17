@@ -1281,3 +1281,21 @@ html.lenis, html.lenis body {
   }
 }
 
+/* ==========================================================================
+   YouTube Custom Player Classes
+   ========================================================================== */
+.yt-container-full {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.yt-iframe-full {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+}

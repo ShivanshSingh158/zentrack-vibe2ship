@@ -102,12 +102,10 @@ export const FloatingYouTubePlayer: React.FC = () => {
 
   // The actual YouTube iframe
   const YouTubeIframe = (
-    <div className={`absolute inset-0 w-full h-full bg-black ${isPipMode ? 'pointer-events-none' : ''}`}>
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', backgroundColor: '#000', pointerEvents: isPipMode ? 'none' : 'auto' }}>
       <YouTube
         videoId={playing.videoId}
         opts={{
-          width: '100%',
-          height: '100%',
           playerVars: {
             autoplay: 1,
             modestbranding: 1,
@@ -117,8 +115,9 @@ export const FloatingYouTubePlayer: React.FC = () => {
         }}
         onReady={onReady}
         onStateChange={onStateChange}
-        className="absolute inset-0 w-full h-full"
-        iframeClassName="absolute inset-0 w-full h-full"
+        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
+        className="yt-container-full"
+        iframeClassName="yt-iframe-full"
       />
     </div>
   );
