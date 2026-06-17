@@ -19,6 +19,177 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
 import { PREDEFINED_ROADMAPS } from '../../data/roadmaps';
 
+// ── Custom Drag-to-Reorder (Portal-based, zero misalignment) ─────────────────
+
+interface DragState {
+  draggingId: string;
+  ghostX: number;
+  ghostY: number;
+  ghostW: number;
+  ghostH: number;
+  grabOffsetY: number;
+  overIndex: number;
+  sourceIndex: number;
+}
+
+const ReorderList = React.memo(({ items, onReorder, renderItem }: {
+  items: any[];
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  renderItem: (item: any, index: number, isDragging: boolean, startDrag: (e: React.PointerEvent) => void) => React.ReactNode;
+}) => {
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const startDrag = useCallback((e: React.PointerEvent, index: number) => {
+    e.preventDefault();
+    const el = itemRefs.current[index];
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const state: DragState = {
+      draggingId: items[index].id,
+      ghostX: rect.left,
+      ghostY: rect.top,
+      ghostW: rect.width,
+      ghostH: rect.height,
+      grabOffsetY: e.clientY - rect.top,
+      overIndex: index,
+      sourceIndex: index,
+    };
+    dragRef.current = state;
+    setDrag({ ...state });
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
+  }, [items]);
+
+  useEffect(() => {
+    if (!drag) return;
+
+    const onMove = (e: PointerEvent) => {
+      if (!dragRef.current) return;
+      const ghostY = e.clientY - dragRef.current.grabOffsetY;
+      const ghostX = dragRef.current.ghostX;
+
+      // Find which index the ghost is hovering over
+      let overIndex = dragRef.current.sourceIndex;
+      itemRefs.current.forEach((el, i) => {
+        if (!el || i === dragRef.current!.sourceIndex) return;
+        const rect = el.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY > midY && i > dragRef.current!.sourceIndex) overIndex = i;
+        if (e.clientY < midY && i < dragRef.current!.sourceIndex) overIndex = i;
+      });
+
+      const next = { ...dragRef.current, ghostY, ghostX, overIndex };
+      dragRef.current = next;
+      setDrag({ ...next });
+    };
+
+    const onUp = () => {
+      if (dragRef.current) {
+        const { sourceIndex, overIndex } = dragRef.current;
+        if (sourceIndex !== overIndex) onReorder(sourceIndex, overIndex);
+      }
+      dragRef.current = null;
+      setDrag(null);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [drag, onReorder]);
+
+  return (
+    <>
+      <div ref={containerRef} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        {items.map((item, index) => {
+          const isDraggingThis = drag?.draggingId === item.id;
+          // Show drop indicator above or below
+          const isOverAbove = drag && !isDraggingThis && drag.overIndex === index && drag.sourceIndex > index;
+          const isOverBelow = drag && !isDraggingThis && drag.overIndex === index && drag.sourceIndex < index;
+
+          return (
+            <div key={item.id}>
+              {isOverAbove && (
+                <div style={{ height: '2px', borderRadius: '2px', background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', margin: '2px 0', boxShadow: '0 0 8px rgba(59,130,246,0.6)', transition: 'all 80ms ease' }} />
+              )}
+              <div
+                ref={el => { itemRefs.current[index] = el; }}
+                style={{
+                  opacity: isDraggingThis ? 0.3 : 1,
+                  transition: isDraggingThis ? 'none' : 'opacity 150ms ease',
+                  pointerEvents: drag && !isDraggingThis ? 'none' : 'auto',
+                }}
+              >
+                {renderItem(item, index, isDraggingThis, (e: React.PointerEvent) => startDrag(e, index))}
+              </div>
+              {isOverBelow && (
+                <div style={{ height: '2px', borderRadius: '2px', background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', margin: '2px 0', boxShadow: '0 0 8px rgba(59,130,246,0.6)', transition: 'all 80ms ease' }} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Ghost — rendered at body level via Portal for zero misalignment */}
+      {drag && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            left: drag.ghostX,
+            top: drag.ghostY,
+            width: drag.ghostW,
+            height: drag.ghostH,
+            pointerEvents: 'none',
+            zIndex: 999999,
+            background: 'rgba(24,24,27,0.97)',
+            border: '1px solid rgba(59,130,246,0.5)',
+            borderRadius: '10px',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(59,130,246,0.2)',
+            transform: 'scale(1.02) rotate(-0.5deg)',
+            transformOrigin: 'center top',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 0.5rem',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Show a simplified version of the item in the ghost */}
+          {(() => {
+            const item = items.find(i => i.id === drag.draggingId);
+            if (!item) return null;
+            const vid = item.url ? item.url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/)?.[1] : null;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', overflow: 'hidden' }}>
+                <div style={{ cursor: 'grabbing', color: '#3b82f6', display: 'flex', flexShrink: 0 }}>
+                  <GripVertical size={14} />
+                </div>
+                {vid && (
+                  <div style={{ flexShrink: 0, width: '36px', height: '24px', borderRadius: '4px', overflow: 'hidden' }}>
+                    <img src={`https://img.youtube.com/vi/${vid}/mqdefault.jpg`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  </div>
+                )}
+                <span style={{ flex: 1, fontSize: '0.82rem', fontWeight: 600, color: '#e4e4e7', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text}</span>
+              </div>
+            );
+          })()}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+});
+ReorderList.displayName = 'ReorderList';
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const sanitize = (obj: any): any => {
@@ -204,7 +375,7 @@ const SubTaskItem = React.memo(({
   isRenaming, onStartRename, onSaveRename, onCancelRename,
 }: {
   subTask: LearningSubTask; topicId: string; isEditMode?: boolean;
-  dragHandleProps?: any;
+  onDragStart?: (e: React.PointerEvent) => void;
   toggleSubTask: (t: string, s: string) => void;
   openNotesModal: (t: string, s: string) => void;
   deleteSubTask: (t: string, s: string) => void;
@@ -227,19 +398,14 @@ const SubTaskItem = React.memo(({
 
   const isSelected = bulkDeleteSelected.has(subTask.id);
 
-  // Focus the rename input when isRenaming becomes true
-  useEffect(() => {
-    if (isRenaming) {
-      setTimeout(() => renameInputRef.current?.focus(), 50);
-    }
-  }, [isRenaming]);
-
-  // ── Inline rename mode ──
   if (isRenaming) {
     return (
       <div className="subtask-item" style={{ alignItems: 'center', gap: '0.4rem' }}>
         {isEditMode && (
-          <div style={{ cursor: 'grab', color: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none', padding: '0 0.1rem' }}>
+          <div
+            onPointerDown={onDragStart}
+            style={{ cursor: 'grab', color: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', flexShrink: 0, padding: '0 0.1rem', touchAction: 'none' }}
+          >
             <GripVertical size={13} />
           </div>
         )}
@@ -265,9 +431,11 @@ const SubTaskItem = React.memo(({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginBottom: '0.35rem' }}>
       <div className={`subtask-item ${subTask.isCompleted ? 'completed' : ''}`} style={{ alignItems: 'center' }}>
 
-        {/* Drag handle — only in edit mode */}
         {isEditMode && (
-          <div {...dragHandleProps} style={{ cursor: 'grab', color: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', padding: '0 0.2rem', flexShrink: 0, touchAction: 'none' }}>
+          <div
+            onPointerDown={onDragStart}
+            style={{ cursor: 'grab', color: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'center', padding: '0 0.2rem', flexShrink: 0, touchAction: 'none' }}
+          >
             <GripVertical size={14} />
           </div>
         )}
@@ -364,6 +532,7 @@ const TopicBody = React.memo(({
   mergePanelState, setMergePanelState, onFetchMerge, onMergeSelected,
   renamingSubtask, onStartRename, onSaveRename, onCancelRename,
   instantDeleteSubTask, bulkDeleteState, toggleBulkDelete, handleBulkDelete,
+  onSubTaskReorder,
 }: any) => {
   // In edit mode, flatten ALL subtasks into one ordered list (no category separators)
   const flatSubTasks: LearningSubTask[] = topic.subTasks || [];
@@ -394,41 +563,25 @@ const TopicBody = React.memo(({
         </div>
       )}
 
-      {/* ── EDIT MODE: Flat ordered list with DnD ── */}
+      {/* ── EDIT MODE: Custom drag-to-reorder flat list ── */}
       {isEditMode ? (
-        <Droppable droppableId={`subtasks-${topic.id}`} type="SUBTASK">
-          {(provided) => (
-            <div ref={provided.innerRef} {...provided.droppableProps} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {flatSubTasks.map((st: LearningSubTask, idx: number) => (
-                <Draggable key={st.id} draggableId={`st-${st.id}`} index={idx}>
-                  {(prov, snap) => (
-                    <div ref={prov.innerRef} {...prov.draggableProps}
-                      style={{
-                        ...prov.draggableProps.style,
-                        boxShadow: snap.isDragging ? '0 12px 30px rgba(0,0,0,0.6)' : 'none',
-                        borderRadius: '8px',
-                        background: snap.isDragging ? '#18181b' : 'transparent',
-                        border: snap.isDragging ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
-                        zIndex: snap.isDragging ? 999 : 'auto',
-                      }}>
-                      <SubTaskItem
-                        subTask={st} topicId={topic.id}
-                        isEditMode={true} dragHandleProps={prov.dragHandleProps}
-                        isRenaming={renamingSubtask?.topicId === topic.id && renamingSubtask?.subtaskId === st.id}
-                        toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
-                        deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask}
-                        onPlayVideo={onPlayVideo}
-                        bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
-                        onStartRename={onStartRename} onSaveRename={onSaveRename} onCancelRename={onCancelRename}
-                      />
-                    </div>
-                  )}
-                </Draggable>
-              ))}
-              {provided.placeholder}
-            </div>
+        <ReorderList
+          items={flatSubTasks}
+          onReorder={(from, to) => onSubTaskReorder(topic.id, from, to)}
+          renderItem={(st: LearningSubTask, index: number, isDragging: boolean, startDrag: (e: React.PointerEvent) => void) => (
+            <SubTaskItem
+              subTask={st} topicId={topic.id}
+              isEditMode={true}
+              onDragStart={startDrag}
+              isRenaming={renamingSubtask?.topicId === topic.id && renamingSubtask?.subtaskId === st.id}
+              toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
+              deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask}
+              onPlayVideo={onPlayVideo}
+              bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
+              onStartRename={onStartRename} onSaveRename={onSaveRename} onCancelRename={onCancelRename}
+            />
           )}
-        </Droppable>
+        />
       ) : (
         /* ── VIEW MODE: Category sections ── */
         <div style={{ position: 'relative', paddingLeft: isSingleCat ? 0 : '1rem', marginTop: '0.5rem' }}>
@@ -1272,6 +1425,7 @@ export const LearningChecklistModule = () => {
                                 bulkDeleteState={bulkDeleteState}
                                 toggleBulkDelete={toggleBulkDelete}
                                 handleBulkDelete={handleBulkDelete}
+                                onSubTaskReorder={handleSubTaskReorder}
                               />
                             )}
                           </div>
