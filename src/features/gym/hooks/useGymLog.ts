@@ -126,9 +126,12 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
     if (!userId) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, 'gymLogs', makeDocId(userId, selectedDate)), {
+      // JSON stringify/parse strips out all undefined values recursively,
+      // preventing "Unsupported field value: undefined" errors in Firestore
+      const cleanData = JSON.parse(JSON.stringify({
         ...data, updatedAt: Date.now(),
-      });
+      }));
+      await setDoc(doc(db, 'gymLogs', makeDocId(userId, selectedDate)), cleanData);
     } catch (e) {
       console.error('GymModule save error:', e);
       toast.error('Failed to save — check connection');
@@ -265,13 +268,15 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
         const targetLog = snap.data() as GymDayLog;
         targetLog.exercises = [...(targetLog.exercises || []), exToMove];
         targetLog.updatedAt = Date.now();
-        await setDoc(targetRef, targetLog);
+        const cleanTargetLog = JSON.parse(JSON.stringify(targetLog));
+        await setDoc(targetRef, cleanTargetLog);
       } else {
         // Target log doesn't exist, create it from default plan
         const pidx = planDayIndexForDate(targetDate);
         const targetLog = buildDefaultLog(userId, targetDate, pidx);
         targetLog.exercises = [...targetLog.exercises, exToMove];
-        await setDoc(targetRef, targetLog);
+        const cleanTargetLog = JSON.parse(JSON.stringify(targetLog));
+        await setDoc(targetRef, cleanTargetLog);
       }
       toast.success(`Exercise moved to ${targetDate}`);
     } catch (err) {
@@ -396,8 +401,9 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
   const saveProfile = useCallback(async (p: GymProfile) => {
     if (!userId) return;
     try {
-      await setDoc(doc(db, 'gymProfiles', userId), { ...p, userId, updatedAt: Date.now() });
-      setProfile({ ...p, userId, updatedAt: Date.now() });
+      const cleanP = JSON.parse(JSON.stringify({ ...p, userId, updatedAt: Date.now() }));
+      await setDoc(doc(db, 'gymProfiles', userId), cleanP);
+      setProfile(cleanP as GymProfile);
       toast.success('Profile saved!');
     } catch (e) {
       toast.error('Failed to save profile');
