@@ -99,38 +99,91 @@ function hashStats(s: GymStats): string {
 
 function buildContextString(stats: GymStats, profile: GymProfile | null): string {
   const lines: string[] = [];
+
+  // ── Profile ──────────────────────────────────────────────────────────────
   if (profile) {
-    lines.push(`=== USER PROFILE ===`);
-    if (profile.bodyweightKg) lines.push(`Bodyweight: ${profile.bodyweightKg}kg`);
+    lines.push(`=== ATHLETE PROFILE ===`);
+    if (profile.bodyweightKg) lines.push(`Body weight: ${profile.bodyweightKg}kg`);
     if (profile.heightCm) lines.push(`Height: ${profile.heightCm}cm`);
-    if (profile.ageYears) lines.push(`Age: ${profile.ageYears} years`);
+    if (profile.ageYears) lines.push(`Age: ${profile.ageYears}`);
     if (profile.trainingExperienceMonths) {
       const exp = profile.trainingExperienceMonths;
-      const expLabel = exp < 3 ? 'beginner (<3m)' : exp < 6 ? 'novice (3–6m)' : exp < 12 ? 'intermediate (6–12m)' : exp < 24 ? 'experienced (1–2yr)' : 'advanced (2yr+)';
-      lines.push(`Training level: ${expLabel}`);
+      const label = exp < 3 ? 'beginner (<3m)' : exp < 6 ? 'novice (3–6m)' : exp < 12 ? 'intermediate (6–12m)' : exp < 24 ? 'experienced (1–2yr)' : 'advanced (2yr+)';
+      lines.push(`Training experience: ${label} (${exp} months)`);
     }
     lines.push(`Primary goal: ${profile.primaryGoal}`);
+    if (profile.bodyweightKg && profile.heightCm) {
+      const bmi = (profile.bodyweightKg / Math.pow(profile.heightCm / 100, 2)).toFixed(1);
+      lines.push(`BMI: ${bmi}`);
+    }
     lines.push('');
   }
-  lines.push(`=== 30-DAY TRAINING OVERVIEW ===`);
-  lines.push(`Total sessions: ${stats.totalWorkouts}`);
-  lines.push(`Current streak: ${stats.streak} consecutive days`);
-  lines.push(`Average completion: ${stats.avgCompletion.toFixed(0)}%`);
+
+  // ── 30-Day Overview ──────────────────────────────────────────────────────
+  lines.push(`=== 30-DAY TRAINING SUMMARY ===`);
+  lines.push(`Total sessions logged: ${stats.totalWorkouts}`);
+  lines.push(`Current consecutive streak: ${stats.streak} days`);
+  lines.push(`Average session completion rate: ${stats.avgCompletion.toFixed(1)}%`);
+  lines.push(`Total lifting volume: ${stats.totalVolume.toLocaleString()}kg (weight × reps across all sets)`);
   lines.push(`Total cardio: ${stats.totalCardioMinutes} minutes`);
-  lines.push(`Total volume: ${stats.totalVolume.toLocaleString()}kg`);
+  if (stats.totalWorkouts > 0) {
+    lines.push(`Average volume per session: ${Math.round(stats.totalVolume / stats.totalWorkouts).toLocaleString()}kg`);
+  }
+  lines.push('');
+
+  // ── Stall Alerts ─────────────────────────────────────────────────────────
   if (stats.stallAlerts.length > 0) {
+    lines.push(`=== ⚠️ STALL ALERTS (same weight 3+ consecutive sessions) ===`);
+    stats.stallAlerts.forEach(a => lines.push(`  - ${a}`));
     lines.push('');
-    lines.push(`=== STALL ALERTS ===`);
-    stats.stallAlerts.forEach(a => lines.push(`- ${a}`));
   }
+
+  // ── Exercise-Level Progression Detail ────────────────────────────────────
   if (stats.exerciseStats.length > 0) {
-    lines.push('');
-    lines.push(`=== EXERCISE PROGRESSION ===`);
-    stats.exerciseStats.slice(0, 15).forEach(ex => {
-      const wh = ex.recentWeights.sort((a, b) => a.date.localeCompare(b.date)).map(w => `${w.date}: ${w.weight}kg`).join(', ');
-      lines.push(`${ex.name} (${ex.muscle || 'unknown'}): ${ex.sessions} sessions, max ${ex.maxWeight}kg | ${wh}`);
+    lines.push(`=== EXERCISE PROGRESSION LOG (most frequent first) ===`);
+    stats.exerciseStats.slice(0, 20).forEach(ex => {
+      const sorted = [...ex.recentWeights].sort((a, b) => a.date.localeCompare(b.date));
+      const oldest = sorted[0]?.weight ?? null;
+      const newest = sorted[sorted.length - 1]?.weight ?? null;
+      const progressionKg = oldest != null && newest != null ? (newest - oldest) : null;
+      const progressionStr = progressionKg != null
+        ? progressionKg > 0 ? `📈 +${progressionKg}kg over ${sorted.length} logged sessions`
+        : progressionKg < 0 ? `📉 ${progressionKg}kg (regression)`
+        : `→ Stable at ${newest}kg`
+        : '';
+
+      const history = sorted.map(w => `${w.date.slice(5)}: ${w.weight}kg`).join(' → ');
+      lines.push(`
+[${ex.name}] (${ex.muscle ?? 'unknown muscle'})`);
+      lines.push(`  Sessions: ${ex.sessions} | All-time max: ${ex.maxWeight}kg | Last trained: ${ex.lastDate}`);
+      lines.push(`  Weight history: ${history}`);
+      if (progressionStr) lines.push(`  Progression: ${progressionStr}`);
     });
+    lines.push('');
   }
+
+  // ── Last 5 Sessions Detail ────────────────────────────────────────────────
+  const recentSessions = stats.logs.slice(0, 5);
+  if (recentSessions.length > 0) {
+    lines.push(`=== LAST ${recentSessions.length} SESSIONS (FULL SET-LEVEL DATA) ===`);
+    recentSessions.forEach(log => {
+      const completedSets = log.exercises?.reduce((s, e) => s + e.setsLog.filter(set => set.completed).length, 0) ?? 0;
+      const totalSets = log.exercises?.reduce((s, e) => s + e.setsLog.length, 0) ?? 0;
+      const duration = log.workoutDurationMinutes ? ` | Duration: ${log.workoutDurationMinutes}min` : '';
+      lines.push(`\n📅 ${log.date} — ${completedSets}/${totalSets} sets${duration}`);
+      log.exercises?.forEach(ex => {
+        const completedSetData = ex.setsLog
+          .filter(s => s.completed)
+          .map(s => `${s.reps ?? '?'}×${s.weight ?? '?'}kg`)
+          .join(', ');
+        if (completedSetData) {
+          lines.push(`  • ${ex.name}: ${completedSetData}`);
+        }
+      });
+    });
+    lines.push('');
+  }
+
   return lines.join('\n');
 }
 
@@ -201,15 +254,33 @@ function buildOpeningPrompt(mode: SessionMode, todayLog: GymDayLog | null, stats
   const doneSets = todayLog?.exercises?.reduce((s, e) => s + e.setsLog.filter(set => set.completed).length, 0) ?? 0;
   const totalSets = todayLog?.exercises?.reduce((s, e) => s + e.setsLog.length, 0) ?? 0;
   const nextEx = todayLog?.exercises?.find(e => e.setsLog.some(s => !s.completed) && !e.skipped);
+
+  // Build today's exercise targets string
+  const todayTargets = todayLog?.exercises?.slice(0, 5).map(ex => {
+    const stat = stats.exerciseStats.find(s => s.name === ex.name);
+    const lastW = stat?.recentWeights.sort((a,b) => b.date.localeCompare(a.date))[0]?.weight;
+    return lastW ? `${ex.name} (last: ${lastW}kg)` : ex.name;
+  }).join(', ') ?? '';
+
+  const stallStr = stats.stallAlerts.length > 0
+    ? ` STALL ALERTS: ${stats.stallAlerts.slice(0, 2).join('; ')}.`
+    : '';
+
   if (mode === 'complete') {
-    return `My workout is completely done today! ${doneSets} sets completed. Give me a sharp 3-sentence recovery brief: (1) what to eat/drink in the next 2 hours with specific macros, (2) sleep target tonight, (3) what to prioritize next session based on my history.`;
+    const totalVolToday = todayLog?.exercises?.reduce((s, e) =>
+      s + e.setsLog.filter(set => set.completed).reduce((sv, set) => sv + (set.weight ?? 0) * (set.reps ?? 0), 0), 0) ?? 0;
+    return `Workout DONE. ${doneSets} sets, ~${Math.round(totalVolToday).toLocaleString()}kg volume. Today I trained: ${todayLog?.exercises?.filter(e=>e.setsLog.some(s=>s.completed)).map(e=>e.name).join(', ') || 'various exercises'}. Give me: (1) exact post-workout nutrition macros based on my bodyweight and goal, (2) recovery priority for tonight, (3) the single most important thing to improve next session based on today's data.`;
   }
   if (mode === 'active') {
-    return `I'm mid-workout — ${doneSets}/${totalSets} sets done. ${nextEx ? `My next exercise is ${nextEx.name}. ` : ''}Give me real-time coaching in 2-3 sentences: weight/reps for my next exercise and one focus cue.`;
+    const lastWeight = nextEx ? stats.exerciseStats.find(s => s.name === nextEx.name)?.recentWeights.sort((a,b)=>b.date.localeCompare(a.date))[0]?.weight : null;
+    return `Mid-workout: ${doneSets}/${totalSets} sets done. Up next: ${nextEx?.name ?? 'last exercise'}${lastWeight ? ` (last session: ${lastWeight}kg)` : ''}. Give me: (1) exact target weight and reps for this set, (2) one key technique cue, (3) rest time recommendation.`;
   }
+
+  // Idle — pre-workout
   const firstEx = todayLog?.exercises?.[0];
-  const stallMsg = stats.stallAlerts.length > 0 ? ` I have ${stats.stallAlerts.length} stalled exercise(s).` : '';
-  return `I haven't started yet. In 2-3 sentences: (1) my biggest training priority TODAY, (2) the opening weight for ${firstEx?.name ?? 'my first exercise'}.${stallMsg}`;
+  const firstExStat = firstEx ? stats.exerciseStats.find(s => s.name === firstEx.name) : null;
+  const firstExLastW = firstExStat?.recentWeights.sort((a,b)=>b.date.localeCompare(a.date))[0]?.weight;
+  return `Pre-workout briefing. Today's plan: ${todayTargets || 'no exercises loaded yet'}.${stallStr} In 3 bullet points: (1) Opening warm-up weight for ${firstEx?.name ?? 'first exercise'}${firstExLastW ? ` — last session was ${firstExLastW}kg` : ''}, (2) the highest-priority lift to push hardest today based on my 30-day data, (3) one thing to watch out for in today's session.`;
 }
 
 // ── Quick Prompts ──────────────────────────────────────────────────────────────

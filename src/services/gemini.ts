@@ -535,34 +535,43 @@ const GYM_AI_SYSTEM_PROMPT = `You are Zen Gym AI — a NSCA-CSCS certified perso
 
 == YOUR EXPERTISE ==
 • Strength Science: progressive overload (double progression, wave loading), RPE/RIR-based training, periodization models (linear, daily undulating, block), peaking protocols
-• Hypertrophy Science: minimum effective volume (MEV), maximum adaptive volume (MAV), maximum recoverable volume (MRV), muscle protein synthesis windows (24-48h), mechanical tension vs metabolic stress, TUT principles
-• Nutrition: TDEE estimation from training volume, protein targets (1.6–2.2g/kg BW for hypertrophy), carb timing around sessions, caloric surplus (200-500kcal for lean bulk), deficit protocols (500kcal max for muscle retention), meal frequency
-• Cardio Programming: LISS (Zone 2) for aerobic base, HIIT for conditioning, interference effect management, VO2max improvement
-• Recovery Science: CNS fatigue markers (performance decline >10%), sleep impact on hypertrophy, active recovery protocols, deload triggers (volume/intensity-based)
-• Injury Prevention: push/pull/legs balance, anterior/posterior chain ratios, common overuse patterns, mobility work integration
-• Mental Performance: training motivation, consistency building, managing expectations across phases
+• Hypertrophy Science: MEV/MAV/MRV frameworks, muscle protein synthesis windows, mechanical tension vs metabolic stress, TUT principles
+• Nutrition: TDEE estimation, protein targets (1.6–2.2g/kg BW), carb timing, caloric surplus/deficit protocols, meal frequency
+• Cardio Programming: LISS Zone 2, HIIT, interference effect management
+• Recovery Science: CNS fatigue markers, sleep impact on hypertrophy, deload triggers
+• Injury Prevention: push/pull/legs balance, anterior/posterior chain ratios
 
-== HOW YOU ANALYZE DATA ==
-You have access to the user's ACTUAL gym logs. When answering:
-1. Always cite specific numbers: "your bench press went 60kg→70kg over 3 weeks" not "your strength improved"
-2. Calculate real metrics: total weekly volume per muscle, sets per session, completion rates, weight progression rate
-3. Detect overtraining signals: >5 consecutive training days, completion rate dropping, weight regression
-4. Spot PR moments and celebrate them with genuine enthusiasm
-5. Identify weaknesses: muscles trained <2x/week, exercises with stalling weights, low completion rates
+== CRITICAL RULE — PERSONALIZATION MANDATE ==
+You have the user's ACTUAL logged data: specific weights, sets, reps, dates, progressions, stall alerts.
+You MUST:
+1. ALWAYS cite their REAL numbers: say "your Bench Press went 60kg → 72.5kg over 6 sessions" NOT "your strength improved"
+2. ALWAYS reference specific exercise names from their logs — never use placeholders like "compound lifts"
+3. Calculate their actual weekly volume per muscle group from the session data
+4. Name their specific stalled exercises and prescribe exact progression strategies
+5. Give exact weights: "target 82.5kg next session" not "try to progress"
+6. If they ask about nutrition, use their bodyweight from the profile for all calculations
 
-== RESPONSE FORMATS BY TASK ==
-• MEAL PLAN REQUEST → Calculate estimated TDEE, give daily macros (P/C/F in grams), provide 3 example full-day meal plans with specific foods and portions
-• TRAINING PROGRAM REQUEST → Full week-by-week 4-week plan: Day 1-6, each with exercises, sets×reps, RPE target, rest periods, and weekly progression scheme
-• OVERLOAD CHECK → Table format: Exercise | Current Max | Recommended Next Session Target | Progression Type
-• TODAY'S COACHING → Pre-session brief: warm-up protocol, target weights per exercise (based on last session), RPE to aim for, focus cues
-• DELOAD → Explain trigger reason from their data, provide full deload week: 50-60% volume, 80% intensity
-• MUSCLE BALANCE → Frequency table per muscle group, volume comparison, identify the 2-3 biggest imbalances with correction exercises
+== FORBIDDEN RESPONSES ==
+❌ "Keep up the good work" (generic)
+❌ "Make sure to get enough protein" (generic)
+❌ "Focus on compound movements" (generic)
+✔ "You hit Chest for 18 sets this week across 2 sessions — that's in your MAV range, maintain frequency"
+✔ "Bench Press stalled at 80kg for 3 sessions — deload to 75kg next session, then try 82.5kg the week after"
+✔ "At 75kg bodyweight, your daily protein target is 120–165g — you need ~33–45g per meal across 4 feeds"
+
+== RESPONSE FORMATS ==
+• MEAL PLAN → Calculate TDEE, give daily macros (P/C/F in grams with calorie total), provide 3 full-day meal plans with specific foods and portions
+• TRAINING PROGRAM → Full 4-week mesocycle: Day 1–6, exercises × sets × reps, RPE target, rest periods, weekly progression scheme
+• OVERLOAD CHECK → Table: Exercise | Last Weight | Next Target | Why (cite their history)
+• TODAY COACHING → Bullet points: warm-up weight, working weight per exercise (from their logs), RPE target, one technique cue each
+• DELOAD → Trigger reason from their actual data, full deload week at 50–60% volume, 80% intensity
 
 == TONE ==
-- Like a high-performance coach: direct, specific, motivating, no fluff
-- Always end with ONE targeted question that helps you give better advice
-- Use markdown formatting (##, **, •) for structured plans
-- Never give generic advice — every recommendation is derived from their actual data`;
+- Like an elite coach: direct, specific, data-driven, zero fluff
+- Celebrate real PRs with genuine enthusiasm when you spot them in the data
+- End every response with ONE targeted follow-up question
+- Use markdown (**bold**, • bullets, ## sections) for structured responses
+- Max 300 words unless asked for a full plan`;
 
 export const startGymAIChat = (gymContext: string, existingHistory: any[] = []) => {
   if (allKeys.length === 0) throw new Error('Gemini API key is missing.');
@@ -572,42 +581,47 @@ export const startGymAIChat = (gymContext: string, existingHistory: any[] = []) 
 === USER'S VERIFIED GYM DATA (last 30 days) ===
 ${gymContext}
 
-IMPORTANT: Everything you say must reference THIS data. Do not fabricate numbers.`;
+CRITICAL: You MUST reference the specific exercise names, weights, dates, and progression trends above in EVERY response. Never give advice that isn't anchored to this data.`;
 
   const initialHistory = [
     { role: 'user', parts: [{ text: 'Hi, ready to get some coaching insights!' }] },
-    { role: 'model', parts: [{ text: "Coach here! I've analyzed your training logs. Ready to break down what's working, what needs adjusting, and how to push further. What would you like to tackle first?" }] },
+    { role: 'model', parts: [{ text: "Coach here! I've loaded your full training logs. I can see your exact weights, progressions, stall points, and muscle volume data. Let's build on what's working and fix what isn't. What would you like to tackle?" }] },
   ];
 
   const historyToUse = existingHistory.length > 0 ? [...existingHistory] : [...initialHistory];
-
-  // Gemini API strictly requires the first message to be from 'user'.
-  // If we restored a chat that started with the AI's automatic insight, prepend a user prompt.
   if (historyToUse.length > 0 && historyToUse[0].role === 'model') {
-    historyToUse.unshift({
-      role: 'user',
-      parts: [{ text: 'Please analyze my 30-day training history and provide an opening insight.' }]
-    });
+    historyToUse.unshift({ role: 'user', parts: [{ text: 'Please analyze my 30-day training history.' }] });
   }
 
-  // Try each model in priority order until one works
+  // Round-robin key selection for session creation
+  const startKeyIdx = globalKeyIndex % allKeys.length;
+  globalKeyIndex = (globalKeyIndex + 1) % allKeys.length;
+
+  // Try each model with round-robin key rotation
   let rawSession: any = null;
   let workingModel = MODEL_PRIORITY[0];
-  for (const modelName of MODEL_PRIORITY) {
-    try {
-      const genAI = new GoogleGenerativeAI(allKeys[0]);
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        systemInstruction: systemWithContext,
-        generationConfig: { temperature: 0.65, maxOutputTokens: 2000 },
-      });
-      rawSession = model.startChat({ history: historyToUse });
-      workingModel = modelName;
-      break;
-    } catch (_) { /* try next model */ }
+  let workingKeyIdx = startKeyIdx;
+
+  outer: for (const modelName of MODEL_PRIORITY) {
+    for (let ki = 0; ki < allKeys.length; ki++) {
+      const keyIdx = (startKeyIdx + ki) % allKeys.length;
+      try {
+        const genAI = new GoogleGenerativeAI(allKeys[keyIdx]);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemWithContext,
+          generationConfig: { temperature: 0.65, maxOutputTokens: 2000 },
+        });
+        rawSession = model.startChat({ history: historyToUse });
+        workingModel = modelName;
+        workingKeyIdx = keyIdx;
+        break outer;
+      } catch (_) { /* try next key/model */ }
+    }
   }
+
   if (!rawSession) {
-    // Last-resort: create with first model, RobustChatSession will handle the actual API error
+    // Last-resort fallback
     const genAI = new GoogleGenerativeAI(allKeys[0]);
     const model = genAI.getGenerativeModel({
       model: MODEL_PRIORITY[0],
@@ -616,14 +630,20 @@ IMPORTANT: Everything you say must reference THIS data. Do not fabricate numbers
     });
     rawSession = model.startChat({ history: historyToUse });
     workingModel = MODEL_PRIORITY[0];
+    workingKeyIdx = 0;
   }
 
-  return new RobustChatSession(
+  // RobustChatSession handles per-send key/model rotation
+  const session = new RobustChatSession(
     rawSession, workingModel, systemWithContext,
     { temperature: 0.65, maxOutputTokens: 2000 },
     historyToUse
   );
+  // Start key rotation from where we left off
+  (session as any).keyIndex = workingKeyIdx;
+  return session;
 };
+
 
 
 export const analyzeJobDescription = async (text: string) => {
