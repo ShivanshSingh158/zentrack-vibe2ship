@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
-import YouTube, { YouTubePlayer } from 'react-youtube';
-import type { YouTubeEvent } from 'react-youtube';
+import YouTube from 'react-youtube';
+import type { YouTubePlayer, YouTubeEvent } from 'react-youtube';
 import { Maximize2, Minimize2, X, Play, Pause, SkipForward, Check } from 'lucide-react';
 import { useYouTube } from '../../contexts/YouTubeContext';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
