@@ -413,10 +413,11 @@ select option {
   animation: spin 0.8s linear infinite;
 }
 
-/* Paint isolation on the main content container — not on children
-   (contain on children would break their stacking context / animation) */
+/* NOTE: contain:paint was removed — it breaks position:fixed descendants
+   (fixed children become relative to the contain:paint container, not viewport).
+   ZenGymAI, RestTimerPill, and all portals need true viewport-fixed positioning. */
 .main-content {
-  contain: paint;
+  /* no contain — intentional */
 }
 
 /* Children animate in on route change */

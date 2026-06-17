@@ -1,182 +1,336 @@
 /**
- * googleCalendar.ts — Client-side Google Calendar integration using
- * the Google Identity Services (GIS) popup OAuth flow.
+ * googleCalendar.ts — Full bidirectional Google Calendar sync
  *
- * No backend proxy needed. Access tokens are held in memory only
- * (sessionStorage) — never persisted to Firestore.
+ * Uses Google Identity Services (GIS) OAuth + direct REST API calls.
+ * Supports: create, update, delete, poll for external changes.
  *
- * Setup required (one-time, by the developer):
- *   1. Go to https://console.cloud.google.com
- *   2. Create/select a project
- *   3. Enable "Google Calendar API"
- *   4. Go to APIs & Services → Credentials → Create OAuth 2.0 Client ID
- *      - Application type: Web Application
- *      - Authorized JavaScript origins: http://localhost:5174, https://your-domain.com
- *   5. Copy the Client ID into your .env as VITE_GOOGLE_CALENDAR_CLIENT_ID
+ * REQUIRED SETUP:
+ *   1. https://console.cloud.google.com → APIs & Services
+ *   2. Enable "Google Calendar API"  ← MUST DO THIS
+ *   3. Credentials → OAuth 2.0 Client ID (Web Application)
+ *      Authorized JS Origins: http://localhost:5173, https://myzentrack.vercel.app
+ *   4. Set VITE_GOOGLE_CALENDAR_CLIENT_ID in .env
  */
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID as string | undefined;
-const SCOPES    = 'https://www.googleapis.com/auth/calendar.events';
+const SCOPES = 'https://www.googleapis.com/auth/calendar';
+const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 
-let tokenClient: any = null;
-let gapiLoaded      = false;
-let gisLoaded       = false;
+// ZenTrack source tag stored on GCal events to identify them
+const ZENTRACK_SOURCE_TAG = 'zentrack-autosync';
 
-type AuthCallback = (err: Error | null) => void;
+// In-memory token state
+let _accessToken: string | null = null;
+let _tokenExpiry: number = 0;
+let _tokenClient: any = null;
+let _gisLoaded = false;
 
-/** Dynamically loads the Google API JS client library */
-const loadGapiScript = (): Promise<void> => {
-  if (gapiLoaded) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://apis.google.com/js/api.js';
-    s.onload = () => {
-      (window as any).gapi.load('client', async () => {
-        await (window as any).gapi.client.init({});
-        await (window as any).gapi.client.load('https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest');
-        gapiLoaded = true;
-        resolve();
-      });
-    };
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-};
+// Sync state
+let _syncToken: string | null = null;
+let _lastSyncTime: number = 0;
 
-/** Dynamically loads the Google Identity Services script */
+// ─── Script Loader ────────────────────────────────────────────────────────────
+
 const loadGisScript = (): Promise<void> => {
-  if (gisLoaded) return Promise.resolve();
+  if (_gisLoaded) return Promise.resolve();
+  const existing = document.getElementById('__gis_script__');
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener('load', () => { _gisLoaded = true; resolve(); });
+      existing.addEventListener('error', reject);
+    });
+  }
   return new Promise((resolve, reject) => {
     const s = document.createElement('script');
+    s.id = '__gis_script__';
     s.src = 'https://accounts.google.com/gsi/client';
-    s.onload = () => { gisLoaded = true; resolve(); };
+    s.async = true;
+    s.defer = true;
+    s.onload = () => { _gisLoaded = true; resolve(); };
     s.onerror = reject;
     document.head.appendChild(s);
   });
 };
 
-/** Call once on first use. Loads both GAPI and GIS scripts in parallel. */
+// ─── Initialization ───────────────────────────────────────────────────────────
+
 export const initGoogleCalendar = async (): Promise<boolean> => {
   if (!CLIENT_ID) {
     console.warn('[GoogleCalendar] VITE_GOOGLE_CALENDAR_CLIENT_ID is not set.');
     return false;
   }
   try {
-    await Promise.all([loadGapiScript(), loadGisScript()]);
+    await loadGisScript();
     return true;
   } catch (err) {
-    console.error('[GoogleCalendar] Failed to load Google API scripts:', err);
+    console.error('[GoogleCalendar] Failed to load GIS script:', err);
     return false;
   }
 };
 
-/** Returns true if the user has a valid access token stored in sessionStorage */
-export const isSignedInToGoogle = (): boolean => {
-  const token = sessionStorage.getItem('gc_access_token');
-  const exp   = parseInt(sessionStorage.getItem('gc_token_exp') || '0', 10);
-  return !!token && Date.now() < exp;
+// ─── Token State ──────────────────────────────────────────────────────────────
+
+export const isSignedInToGoogle = (): boolean =>
+  !!_accessToken && Date.now() < _tokenExpiry;
+
+const storeToken = (accessToken: string, expiresIn: number) => {
+  _accessToken = accessToken;
+  _tokenExpiry = Date.now() + Math.min(expiresIn * 1000, 55 * 60 * 1000);
 };
 
-/**
- * Triggers the Google OAuth popup and stores the token in sessionStorage.
- * Resolves when the user successfully signs in, rejects on error/cancel.
- */
+// ─── OAuth Sign-in ────────────────────────────────────────────────────────────
+
 export const signInWithGoogle = (): Promise<void> => {
   if (!CLIENT_ID) return Promise.reject(new Error('VITE_GOOGLE_CALENDAR_CLIENT_ID not set'));
 
   return new Promise((resolve, reject) => {
-    if (!tokenClient) {
-      tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+    const doRequest = () => {
+      _tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: (response: any) => {
           if (response.error) {
-            reject(new Error(response.error));
+            reject(new Error(response.error_description || response.error));
             return;
           }
-          // Store token with a 55-minute TTL (Google tokens last 1 hour)
-          sessionStorage.setItem('gc_access_token', response.access_token);
-          sessionStorage.setItem('gc_token_exp', (Date.now() + 55 * 60 * 1000).toString());
-          (window as any).gapi.client.setToken({ access_token: response.access_token });
+          storeToken(response.access_token, response.expires_in ?? 3600);
+          console.log('[GoogleCalendar] ✅ Token obtained');
           resolve();
         },
+        error_callback: (err: any) => {
+          reject(new Error(err?.message || 'OAuth failed'));
+        },
       });
+      _tokenClient.requestAccessToken({ prompt: '' });
+    };
+
+    if (_gisLoaded && (window as any).google?.accounts?.oauth2) {
+      doRequest();
+    } else {
+      loadGisScript().then(doRequest).catch(reject);
     }
-    tokenClient.requestAccessToken({ prompt: isSignedInToGoogle() ? '' : 'consent' });
   });
 };
 
-/** Revokes the current token and clears session storage */
 export const signOutGoogle = (): void => {
-  const token = sessionStorage.getItem('gc_access_token');
-  if (token && (window as any).google?.accounts?.oauth2) {
-    (window as any).google.accounts.oauth2.revoke(token, () => {});
+  if (_accessToken && (window as any).google?.accounts?.oauth2) {
+    try { (window as any).google.accounts.oauth2.revoke(_accessToken, () => {}); } catch {}
   }
-  sessionStorage.removeItem('gc_access_token');
-  sessionStorage.removeItem('gc_token_exp');
-  tokenClient = null;
+  _accessToken = null;
+  _tokenExpiry = 0;
+  _tokenClient = null;
+  _syncToken = null;
+  _lastSyncTime = 0;
 };
+
+// ─── Token Refresh ────────────────────────────────────────────────────────────
+
+const ensureToken = async (): Promise<string> => {
+  if (isSignedInToGoogle() && _accessToken) return _accessToken;
+  await signInWithGoogle();
+  if (!_accessToken) throw new Error('Could not obtain Google access token');
+  return _accessToken;
+};
+
+// ─── REST API Helper ──────────────────────────────────────────────────────────
+
+const calendarFetch = async <T>(
+  path: string,
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'GET',
+  body?: object
+): Promise<T> => {
+  const token = await ensureToken();
+
+  const res = await fetch(`${CALENDAR_API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  if (!res.ok) {
+    let errorMsg = `HTTP ${res.status}`;
+    try {
+      const errData = await res.json();
+      errorMsg = errData?.error?.message || errorMsg;
+      // Surface the API-not-enabled URL for easy fixing
+      if (errData?.error?.errors?.[0]?.reason === 'accessNotConfigured') {
+        const detailsUrl = errData.error.errors[0]?.extendedHelp || '';
+        throw new Error(`Google Calendar API is not enabled. Enable it at: ${detailsUrl || 'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com'}`);
+      }
+    } catch (e: any) {
+      if (e.message.includes('not enabled') || e.message.includes('Enable it')) throw e;
+    }
+    throw new Error(`Google Calendar API error: ${errorMsg}`);
+  }
+
+  if (method === 'DELETE') return undefined as T;
+  return res.json() as Promise<T>;
+};
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface GCalEvent {
   title: string;
-  date: string;       // YYYY-MM-DD
+  date: string;        // YYYY-MM-DD
   description?: string;
   type: string;
+  zentrackId?: string; // Firestore document ID — stored in GCal for dedup
+}
+
+export interface GCalListEvent {
+  id: string;
+  summary: string;
+  description?: string;
+  status?: string;     // 'cancelled' for deleted events
+  start: { date?: string; dateTime?: string };
+  end: { date?: string; dateTime?: string };
+  htmlLink: string;
+  extendedProperties?: {
+    private?: { source?: string; zentrackId?: string; type?: string };
+  };
+}
+
+// ─── Date Helper ─────────────────────────────────────────────────────────────
+
+const nextDay = (date: string): string => {
+  const [y, m, d] = date.split('-').map(Number);
+  const next = new Date(y, m - 1, d + 1);
+  return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+};
+
+const buildCalEventBody = (event: GCalEvent) => ({
+  summary: event.title,
+  description: event.description ?? `ZenTrack — ${event.type}`,
+  start: { date: event.date },
+  end: { date: nextDay(event.date) },
+  extendedProperties: {
+    private: {
+      source: ZENTRACK_SOURCE_TAG,
+      zentrackId: event.zentrackId ?? '',
+      type: event.type,
+    },
+  },
+  reminders: {
+    useDefault: false,
+    overrides: [
+      { method: 'popup', minutes: 24 * 60 },
+      { method: 'popup', minutes: 60 },
+    ],
+  },
+});
+
+// ─── CREATE ───────────────────────────────────────────────────────────────────
+
+/** Creates event in Google Calendar and returns the GCal event ID */
+export const addEventToGoogleCalendar = async (event: GCalEvent): Promise<string> => {
+  const result = await calendarFetch<any>(
+    '/calendars/primary/events',
+    'POST',
+    buildCalEventBody(event)
+  );
+  console.log('[GoogleCalendar] ✅ Created:', result?.summary, result?.id);
+  return result.id as string;
+};
+
+// ─── UPDATE ───────────────────────────────────────────────────────────────────
+
+/** Updates an existing GCal event by its GCal event ID */
+export const updateGoogleCalendarEvent = async (gcalEventId: string, event: GCalEvent): Promise<void> => {
+  await calendarFetch<any>(
+    `/calendars/primary/events/${gcalEventId}`,
+    'PUT',
+    buildCalEventBody(event)
+  );
+  console.log('[GoogleCalendar] ✅ Updated:', event.title);
+};
+
+// ─── DELETE ───────────────────────────────────────────────────────────────────
+
+/** Deletes a GCal event by its GCal event ID */
+export const deleteGoogleCalendarEvent = async (gcalEventId: string): Promise<void> => {
+  await calendarFetch<void>(`/calendars/primary/events/${gcalEventId}`, 'DELETE');
+  console.log('[GoogleCalendar] ✅ Deleted gcalId:', gcalEventId);
+};
+
+// ─── POLL FOR CHANGES ────────────────────────────────────────────────────────
+
+export interface GCalChangesResult {
+  added: GCalListEvent[];      // New events added externally (not from ZenTrack)
+  deleted: string[];           // GCal IDs of deleted events
+  nextSyncToken: string | null;
 }
 
 /**
- * Adds a single event to the user's primary Google Calendar.
- * Ensures the user is signed in first (will trigger OAuth popup if not).
+ * Polls Google Calendar for changes since last sync.
+ * First call does a full initial sync; subsequent calls use syncToken.
  */
-export const addEventToGoogleCalendar = async (event: GCalEvent): Promise<void> => {
-  if (!isSignedInToGoogle()) {
-    await signInWithGoogle();
+export const pollGoogleCalendarChanges = async (): Promise<GCalChangesResult> => {
+  let url: string;
+
+  if (_syncToken) {
+    // Incremental sync using the syncToken from last poll
+    url = `/calendars/primary/events?syncToken=${encodeURIComponent(_syncToken)}&singleEvents=true`;
+  } else {
+    // Initial full sync — fetch events from 90 days ago to 180 days ahead
+    const timeMin = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const timeMax = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
+    url = `/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&maxResults=250`;
   }
 
-  const token = sessionStorage.getItem('gc_access_token');
-  (window as any).gapi.client.setToken({ access_token: token });
+  const data = await calendarFetch<{
+    items?: GCalListEvent[];
+    nextSyncToken?: string;
+    nextPageToken?: string;
+  }>(url);
 
-  const calEvent = {
-    summary: event.title,
-    description: event.description || `Added from ZenTrack (${event.type})`,
-    start: { date: event.date },
-    end:   { date: event.date },
-    reminders: {
-      useDefault: false,
-      overrides: [
-        { method: 'popup', minutes: 24 * 60 }, // 1 day before
-        { method: 'popup', minutes: 60 },       // 1 hour before
-      ],
-    },
-  };
+  _syncToken = data.nextSyncToken ?? null;
+  _lastSyncTime = Date.now();
 
-  const response = await (window as any).gapi.client.calendar.events.insert({
-    calendarId: 'primary',
-    resource: calEvent,
-  });
+  const items = data.items ?? [];
+  const added: GCalListEvent[] = [];
+  const deleted: string[] = [];
 
-  if (response.status !== 200) {
-    throw new Error(`Google Calendar API error: ${response.status}`);
+  for (const item of items) {
+    if (item.status === 'cancelled') {
+      deleted.push(item.id);
+      continue;
+    }
+    // Skip events we created from ZenTrack (identified by extendedProperties)
+    const isFromZentrack = item.extendedProperties?.private?.source === ZENTRACK_SOURCE_TAG;
+    if (!isFromZentrack) {
+      added.push(item);
+    }
   }
+
+  return { added, deleted, nextSyncToken: _syncToken };
 };
 
-/** Exports a batch of events to Google Calendar */
+export const getLastSyncTime = (): number => _lastSyncTime;
+
+// ─── BATCH EXPORT ─────────────────────────────────────────────────────────────
+
 export const exportEventsToGoogleCalendar = async (
   events: GCalEvent[],
   onProgress?: (done: number, total: number) => void
-): Promise<{ success: number; failed: number }> => {
+): Promise<{ success: number; failed: number; gcalIds: Record<string, string> }> => {
   let success = 0;
-  let failed  = 0;
+  let failed = 0;
+  const gcalIds: Record<string, string> = {};
 
   for (let i = 0; i < events.length; i++) {
     try {
-      await addEventToGoogleCalendar(events[i]);
+      const gcalId = await addEventToGoogleCalendar(events[i]);
+      if (events[i].zentrackId) gcalIds[events[i].zentrackId!] = gcalId;
       success++;
-    } catch {
+    } catch (err) {
+      console.error('[GoogleCalendar] Export failed:', events[i].title, err);
       failed++;
     }
     onProgress?.(i + 1, events.length);
   }
 
-  return { success, failed };
+  return { success, failed, gcalIds };
 };

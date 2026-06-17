@@ -6,10 +6,13 @@ import { getLocalDateString } from '../utils/dateUtils';
 // Invalid model IDs return 404 or look like 401 (model not available to key).
 // Verified real IDs: https://ai.google.dev/api/generate-content#v1beta.models
 const MODEL_PRIORITY = [
-  'gemini-2.5-flash-lite',     // ✅ Exists — lightweight, fast, free-tier friendly
-  'gemini-2.5-flash',          // ✅ Exists — capable, may be busy
-  'gemini-2.0-flash',          // ✅ Exists — stable proven fallback
-  'gemini-1.5-flash',          // ✅ Exists — oldest but always available
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash-latest',
+  'gemini-1.5-pro-latest',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
 ];
 
 // Remember which model worked last → try it first next time (faster)

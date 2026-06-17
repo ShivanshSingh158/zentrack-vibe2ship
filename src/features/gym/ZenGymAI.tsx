@@ -1,939 +1,934 @@
-/**
- * ZenGymAI.tsx — Expert AI Personal Trainer & Nutritionist
- *
- * Features:
- * - 30-day gym log context (not just 7 days)
- * - REAL-TIME today's session context — updates as user logs sets/cardio
- * - Full chat session via shared RobustChatSession from gemini.ts
- * - Chat persistence in sessionStorage (survives route changes)
- * - PR detection with celebration in opening message
- * - 6 rich quick prompts: meal plan, training program, overload, coaching, deload, muscle balance
- * - Adaptive layout: side panel on desktop (≥769px), bottom sheet on mobile
- * - Markdown rendering for structured plans
- * - Live stats bar showing today's progress in real time
- */
-
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import { startGymAIChat, RobustChatSession } from '../../services/gemini';
 import {
-  X, Send, Loader2, Sparkles, ChevronDown,
-  Dumbbell, TrendingUp, Zap, RotateCcw, Apple, Calendar, Activity, Flame,
-  RefreshCw, Brain
+  useState, useEffect, useRef, useCallback, useMemo,
+} from 'react';
+import { createPortal } from 'react-dom';
+import {
+  MessageSquare, X, Send, Target, RefreshCw, User,
+  Dumbbell, ChevronUp, ChevronDown, Zap, Apple,
+  AlertTriangle, TrendingUp, Calendar,
 } from 'lucide-react';
-import type { GymDayLog } from '../../types/gym.types';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { startGymAIChat } from '../../services/gemini';
+import { toast } from 'sonner';
+import type {
+  GymDayLog, GymProfile, WeightTarget,
+} from '../../types/gym.types';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+/** Format kg to max 1 decimal, no trailing zeros */
+const fmtKg = (v: number | null | undefined): string => {
+  if (v == null || isNaN(v)) return '—';
+  return parseFloat(v.toFixed(1)).toString();
+};
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const SESSION_KEY_PREFIX = 'zenGymAI_';
+const CONTEXT_TTL_MS = 15 * 60 * 1000;
+const HISTORY_KEY = (uid: string) => `${SESSION_KEY_PREFIX}${uid}_msgs`;
+const CONTEXT_KEY = (uid: string) => `${SESSION_KEY_PREFIX}${uid}_ctx`;
+const CONTEXT_TS_KEY = (uid: string) => `${SESSION_KEY_PREFIX}${uid}_ts`;
+const STATS_HASH_KEY = (uid: string) => `${SESSION_KEY_PREFIX}${uid}_hash`;
+const STATS_KEY = (uid: string) => `${SESSION_KEY_PREFIX}${uid}_stats`;
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+
+type SessionMode = 'idle' | 'active' | 'complete';
+type TabId = 'chat' | 'targets';
 
 interface ChatMessage {
-  role: 'user' | 'ai';
+  id: string;
+  role: 'user' | 'model';
   text: string;
-  timestamp: number;
+  ts: number;
 }
 
-interface WorkoutStats {
-  logs: GymDayLog[];
+interface GymStats {
   totalWorkouts: number;
-  totalSets: number;
-  totalReps: number;
   totalVolume: number;
   totalCardioMinutes: number;
-  totalCardioKm: number;
-  topMuscles: string[];
-  exerciseStats: { name: string; maxWeight: number; totalReps: number; sessions: number; recentWeights: number[] }[];
-  personalRecords: { name: string; weight: number; date: string }[];
   avgCompletion: number;
-  restDays: number;
-  consecutiveWorkoutDays: number;
+  streak: number;
+  stallAlerts: string[];
+  exerciseStats: Array<{
+    name: string; muscle?: string; sessions: number;
+    maxWeight: number; recentWeights: Array<{ date: string; weight: number }>;
+    lastDate: string;
+  }>;
+  logs: GymDayLog[];
 }
 
-// ── Today's live session stats (computed from live todayLog) ──────────────────
-interface TodayLiveStats {
-  doneSets: number;
-  totalSets: number;
-  completedExercises: number;
-  totalExercises: number;
-  pct: number;
-  volume: number; // kg lifted today
-  cardioDone: boolean;
-  cardioMinutes: number;
-  cardioKm: number;
-}
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-function buildTodayStats(todayLog: GymDayLog | null): TodayLiveStats {
-  if (!todayLog) {
-    return { doneSets: 0, totalSets: 0, completedExercises: 0, totalExercises: 0, pct: 0, volume: 0, cardioDone: false, cardioMinutes: 0, cardioKm: 0 };
-  }
-  let doneSets = 0, totalSets = 0, volume = 0, completedExercises = 0;
-  for (const ex of todayLog.exercises || []) {
-    for (const s of ex.setsLog) {
-      totalSets++;
-      if (s.completed) {
-        doneSets++;
-        volume += (s.reps || 0) * (s.weight || 0);
-      }
-    }
-    if (ex.setsLog.length > 0 && ex.setsLog.every(s => s.completed)) completedExercises++;
-  }
-  const totalExercises = todayLog.exercises?.length || 0;
-  const pct = totalSets > 0 ? Math.round((doneSets / totalSets) * 100) : 0;
+function genId() { return Math.random().toString(36).slice(2); }
 
-  // Cardio: treadmill
-  const treadmill = (todayLog.cardio || []).find(c => c.id === 'permanent_treadmill' && c.completed && (c.durationMinutes || 0) > 0);
-  const otherCardio = (todayLog.cardio || []).filter(c => c.id !== 'permanent_treadmill' && c.completed && (c.durationMinutes || 0) > 0);
-  const allCardio = treadmill ? [treadmill, ...otherCardio] : otherCardio;
-  const cardioMinutes = allCardio.reduce((a, c) => a + (c.durationMinutes || 0), 0);
-  const cardioKm = allCardio.reduce((a, c) => a + (c.distanceKm || 0), 0);
-  const cardioDone = allCardio.length > 0;
-
-  return { doneSets, totalSets, completedExercises, totalExercises, pct, volume: Math.round(volume), cardioDone, cardioMinutes, cardioKm: Math.round(cardioKm * 10) / 10 };
-}
-
-const SESSION_KEY = 'zenGymAI_messages';
-const SESSION_VERSION = 'v5'; // bumped: real-time today sync
-const SESSION_VER_KEY = 'zenGymAI_version';
-const SESSION_STATS_KEY = 'zenGymAI_stats_hash';
-
-const statsHash = (s: WorkoutStats | null): string => {
-  if (!s) return '';
-  return `${s.totalWorkouts}|${s.totalCardioMinutes}|${s.totalVolume}|${s.avgCompletion}`;
-};
-
-const initSession = (): ChatMessage[] => {
-  try {
-    const storedVer = sessionStorage.getItem(SESSION_VER_KEY);
-    if (storedVer !== SESSION_VERSION) {
-      sessionStorage.removeItem(SESSION_KEY);
-      sessionStorage.removeItem(SESSION_STATS_KEY);
-      sessionStorage.setItem(SESSION_VER_KEY, SESSION_VERSION);
-      return [];
-    }
-    const saved = sessionStorage.getItem(SESSION_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch { return []; }
-};
-
-// ── Data Fetching ─────────────────────────────────────────────────────────────
-
-async function fetch30DayLogs(userId: string): Promise<GymDayLog[]> {
-  const dates = new Set<string>();
-  for (let i = 0; i < 30; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    dates.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
-  }
-  try {
-    const q = query(collection(db, 'gymLogs'), where('userId', '==', userId));
-    const snap = await getDocs(q);
-    const logs: GymDayLog[] = [];
-    snap.forEach(doc => {
-      const data = doc.data() as GymDayLog;
-      if (dates.has(data.date)) logs.push(data);
-    });
-    return logs.sort((a, b) => a.date.localeCompare(b.date));
-  } catch (e) {
-    console.warn('[ZenGymAI] Could not fetch logs:', e);
-    return [];
-  }
-}
-
-function buildStats(logs: GymDayLog[]): WorkoutStats {
-  let totalSets = 0, totalReps = 0, totalVolume = 0;
-  let totalCardioMinutes = 0, totalCardioKm = 0;
-  let totalCompletion = 0, workoutDays = 0, restDays = 0;
-
-  const muscleCount: Record<string, number> = {};
-  const exerciseMap: Record<string, { maxWeight: number; totalReps: number; sessions: number; recentWeights: number[] }> = {};
-  const prMap: Record<string, { weight: number; date: string }> = {};
-
-  const sortedDates = [...logs].sort((a, b) => b.date.localeCompare(a.date));
-  let consecutiveWorkoutDays = 0;
-  for (const log of sortedDates) {
-    if (log.exercises && log.exercises.length > 0) consecutiveWorkoutDays++;
-    else break;
-  }
-
-  for (const log of logs) {
-    const hasExercises = log.exercises && log.exercises.length > 0;
-    if (!hasExercises) { restDays++; continue; }
-    workoutDays++;
-
-    let daySets = 0, doneSets = 0;
-    for (const ex of log.exercises) {
-      if (ex.muscle) muscleCount[ex.muscle] = (muscleCount[ex.muscle] || 0) + 1;
-      if (!exerciseMap[ex.name]) exerciseMap[ex.name] = { maxWeight: 0, totalReps: 0, sessions: 0, recentWeights: [] };
-      exerciseMap[ex.name].sessions++;
-
-      for (const s of ex.setsLog) {
-        daySets++;
-        if (s.completed) {
-          doneSets++;
-          totalSets++;
-          const reps = s.reps || 0;
-          const kg = s.weight || 0;
-          totalReps += reps;
-          totalVolume += reps * kg;
-          if (kg > exerciseMap[ex.name].maxWeight) {
-            exerciseMap[ex.name].maxWeight = kg;
-            if (!prMap[ex.name] || kg > prMap[ex.name].weight) {
-              prMap[ex.name] = { weight: kg, date: log.date };
-            }
-          }
-          exerciseMap[ex.name].totalReps += reps;
-          if (kg > 0 && exerciseMap[ex.name].recentWeights.length < 5) {
-            exerciseMap[ex.name].recentWeights.push(kg);
-          }
-        }
-      }
-    }
-    if (daySets > 0) totalCompletion += Math.round((doneSets / daySets) * 100);
-
-    for (const c of log.cardio || []) {
-      const isBuggyDefault = c.id === 'permanent_treadmill' && c.durationMinutes === 60 && c.distanceKm === 4 && c.speedKmh === 4;
-      if (c.completed && (c.durationMinutes || 0) > 0 && !isBuggyDefault) {
-        totalCardioMinutes += c.durationMinutes || 0;
-        totalCardioKm += c.distanceKm || 0;
-      }
-    }
-  }
-
-  const topMuscles = Object.entries(muscleCount).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([m]) => m);
-  const exerciseStats = Object.entries(exerciseMap).map(([name, stats]) => ({ name, ...stats })).sort((a, b) => b.totalReps - a.totalReps).slice(0, 8);
-  const personalRecords = Object.entries(prMap).map(([name, pr]) => ({ name, ...pr })).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
-
-  return {
-    logs,
-    totalWorkouts: workoutDays,
-    totalSets,
-    totalReps,
-    totalVolume: Math.round(totalVolume),
-    totalCardioMinutes,
-    totalCardioKm: Math.round(totalCardioKm * 10) / 10,
-    topMuscles,
-    exerciseStats,
-    personalRecords,
-    avgCompletion: workoutDays > 0 ? Math.round(totalCompletion / workoutDays) : 0,
-    restDays,
-    consecutiveWorkoutDays,
-  };
-}
-
-function buildContext(stats: WorkoutStats, todayLog: GymDayLog | null): string {
-  const lines: string[] = [];
-  lines.push('=== 30-DAY TRAINING SUMMARY ===');
-  lines.push(`Training days: ${stats.totalWorkouts} | Rest days: ${stats.restDays}`);
-  lines.push(`Consecutive workout days (from today): ${stats.consecutiveWorkoutDays}`);
-  lines.push(`Total sets: ${stats.totalSets} | Total reps: ${stats.totalReps}`);
-  lines.push(`Total volume lifted: ${stats.totalVolume} kg`);
-  lines.push(`Average session completion: ${stats.avgCompletion}%`);
-  if (stats.totalCardioMinutes > 0) {
-    lines.push(`Cardio: ${stats.totalCardioMinutes} mins | ${stats.totalCardioKm} km`);
-  } else {
-    lines.push('Cardio: No completed cardio sessions logged');
-  }
-
-  if (stats.topMuscles.length > 0) {
-    lines.push(`\nMost trained muscles: ${stats.topMuscles.join(', ')}`);
-  }
-
-  if (stats.exerciseStats.length > 0) {
-    lines.push('\n=== EXERCISE PERFORMANCE ===');
-    for (const ex of stats.exerciseStats) {
-      lines.push(`${ex.name}: ${ex.sessions} sessions | ${ex.totalReps} total reps | max weight ${ex.maxWeight}kg`);
-      if (ex.recentWeights.length > 1) {
-        lines.push(`  Recent weights: ${ex.recentWeights.join('→')}kg`);
-      }
-    }
-  }
-
-  if (stats.personalRecords.length > 0) {
-    lines.push('\n=== PERSONAL RECORDS (this month) ===');
-    for (const pr of stats.personalRecords) {
-      lines.push(`${pr.name}: ${pr.weight}kg on ${pr.date}`);
-    }
-  }
-
-  // Today's live session — always injected fresh
-  lines.push(buildTodayContext(todayLog));
-
-  // Recent workout history (last 7 days detailed)
-  const recent = stats.logs.slice(-7);
-  if (recent.length > 0) {
-    lines.push('\n=== LAST 7 DAYS DETAIL ===');
-    for (const log of recent) {
-      const hasEx = log.exercises && log.exercises.length > 0;
-      if (!hasEx) { lines.push(`${log.date}: Rest day`); continue; }
-      const muscles = [...new Set(log.exercises.map(e => e.muscle).filter(Boolean))];
-      const completedSets = log.exercises.flatMap(e => e.setsLog.filter(s => s.completed)).length;
-      const totalSets = log.exercises.flatMap(e => e.setsLog).length;
-      lines.push(`${log.date}: ${muscles.join('+')} | ${completedSets}/${totalSets} sets`);
-    }
-  }
-
-  return lines.join('\n');
-}
-
-/** Build just the today's session section — called independently for live updates */
-function buildTodayContext(todayLog: GymDayLog | null): string {
-  if (!todayLog || todayLog.exercises.length === 0) {
-    return "\n=== TODAY'S SESSION ===\nNo exercises logged yet today.";
-  }
-  const lines: string[] = [];
-  lines.push("\n=== TODAY'S SESSION (LIVE — REAL TIME) ===");
-  for (const ex of todayLog.exercises) {
-    const done = Array.isArray(ex.setsLog) ? ex.setsLog.filter(s => s && s.completed) : [];
-    const weights = done.map(s => Number(s.weight) || 0).filter(w => w > 0);
-    const reps = done.map(s => s.reps).filter(Boolean);
-    const maxW = weights.length > 0 ? Math.max(...weights) : 0;
-    lines.push(`${ex.name} (${ex.muscle || '?'}): ${done.length}/${Array.isArray(ex.setsLog) ? ex.setsLog.length : 0} sets done | max ${maxW}kg | reps: ${reps.join(', ') || 'none yet'}`);
-  }
-
-  // Cardio
-  const cardioEntries = (todayLog.cardio || []).filter(c => (c.durationMinutes || 0) > 0 || c.completed);
-  for (const c of cardioEntries) {
-    const status = c.completed ? 'DONE' : 'IN PROGRESS';
-    const details = [
-      c.durationMinutes ? `${c.durationMinutes}min` : null,
-      c.distanceKm ? `${c.distanceKm}km` : null,
-      c.speedKmh ? `${c.speedKmh}km/h` : null,
-    ].filter(Boolean).join(' | ');
-    lines.push(`${c.type}: ${status}${details ? ` — ${details}` : ''}`);
-  }
-
-  return lines.join('\n');
-}
-
-// ── Quick Prompts ─────────────────────────────────────────────────────────────
-
-const QUICK_PROMPTS = [
-  {
-    icon: Apple,
-    label: 'Meal Plan',
-    prompt: 'Create a personalized daily meal plan for me based on my training volume and frequency. Include protein targets (g/kg), caloric estimate, meal timing around workouts, and 3 simple meal ideas for each meal.',
-    color: '#10b981',
-  },
-  {
-    icon: Calendar,
-    label: 'Training Program',
-    prompt: 'Build me a structured 4-week progressive training program based on my current workout data, muscle weaknesses, and volume. Include specific exercises, sets, reps, and weekly progression.',
-    color: '#a855f7',
-  },
-  {
-    icon: TrendingUp,
-    label: 'Overload Check',
-    prompt: 'Review my weights across all exercises over the past month. Where am I progressing well? Where am I stalling? Give me exact weight targets to hit next session for each exercise.',
-    color: '#3b82f6',
-  },
-  {
-    icon: Flame,
-    label: "Today's Coaching",
-    prompt: "Coach me through today's session. Based on my recent performance and recovery, what should my weight targets be for each exercise? What RPE should I aim for?",
-    color: '#f59e0b',
-  },
-  {
-    icon: Zap,
-    label: 'Deload Check',
-    prompt: 'Analyze my training fatigue signals from the past 4 weeks. Do I need a deload? If yes, design a full deload week for me with reduced volume/intensity.',
-    color: '#ef4444',
-  },
-  {
-    icon: Activity,
-    label: 'Muscle Balance',
-    prompt: 'Analyze my muscle group training frequency and volume distribution. Identify imbalances or underworked muscles. What should I add or rebalance in my program?',
-    color: '#06b6d4',
-  },
-];
-
-// ── Simple Markdown Renderer ──────────────────────────────────────────────────
-
-function renderMarkdown(text: string): React.ReactNode {
-  const lines = text.split('\n');
-  return lines.map((line, i) => {
-    const boldProcessed = line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    if (line.startsWith('## ')) {
-      return <div key={i} style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--accent-secondary)', marginTop: '0.75rem', marginBottom: '0.25rem' }}>{line.slice(3)}</div>;
-    }
-    if (line.startsWith('# ')) {
-      return <div key={i} style={{ fontWeight: 700, fontSize: '1rem', color: '#fff', marginTop: '0.5rem', marginBottom: '0.25rem' }}>{line.slice(2)}</div>;
-    }
-    if (line.startsWith('• ') || line.startsWith('- ')) {
-      return <div key={i} style={{ paddingLeft: '1rem', marginBottom: '0.15rem', position: 'relative' }}>
-        <span style={{ position: 'absolute', left: '0.25rem' }}>•</span>
-        <span dangerouslySetInnerHTML={{ __html: boldProcessed.slice(2) }} />
-      </div>;
-    }
-    if (line.trim() === '') {
-      return <div key={i} style={{ height: '0.4rem' }} />;
-    }
-    return <div key={i} style={{ marginBottom: '0.1rem' }} dangerouslySetInnerHTML={{ __html: boldProcessed }} />;
+function renderMd(text: string): React.ReactNode[] {
+  return text.split('\n').map((line, i) => {
+    const parseBold = (s: string): React.ReactNode[] => {
+      const parts = s.split(/\*\*(.+?)\*\*/g);
+      return parts.map((p, j) => j % 2 === 1 ? <strong key={j}>{p}</strong> : p as React.ReactNode);
+    };
+    if (line.startsWith('## ')) return (
+      <div key={i} style={{ fontSize: '0.88rem', fontWeight: 700, color: '#a855f7', margin: '0.6rem 0 0.2rem' }}>
+        {parseBold(line.slice(3))}
+      </div>
+    );
+    if (line.startsWith('# ')) return (
+      <div key={i} style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', margin: '0.5rem 0 0.2rem' }}>
+        {parseBold(line.slice(2))}
+      </div>
+    );
+    if (line.startsWith('• ') || line.startsWith('- ') || line.startsWith('* ')) return (
+      <div key={i} style={{ paddingLeft: '0.85rem', position: 'relative', marginBottom: '0.1rem', fontSize: '0.83rem', color: 'rgba(255,255,255,0.78)', lineHeight: 1.5 }}>
+        <span style={{ position: 'absolute', left: '0.15rem', color: '#a855f7' }}>•</span>
+        {parseBold(line.slice(2))}
+      </div>
+    );
+    if (line.trim() === '') return <div key={i} style={{ height: '0.35rem' }} />;
+    return (
+      <div key={i} style={{ fontSize: '0.83rem', color: 'rgba(255,255,255,0.82)', lineHeight: 1.55, marginBottom: '0.08rem' }}>
+        {parseBold(line)}
+      </div>
+    );
   });
 }
 
-// ── Main Component ────────────────────────────────────────────────────────────
+function hashStats(s: GymStats): string {
+  return `${s.totalWorkouts}|${s.totalVolume}|${s.streak}|${s.avgCompletion.toFixed(0)}`;
+}
+
+function buildContextString(stats: GymStats, profile: GymProfile | null): string {
+  const lines: string[] = [];
+  if (profile) {
+    lines.push(`=== USER PROFILE ===`);
+    if (profile.bodyweightKg) lines.push(`Bodyweight: ${profile.bodyweightKg}kg`);
+    if (profile.heightCm) lines.push(`Height: ${profile.heightCm}cm`);
+    if (profile.ageYears) lines.push(`Age: ${profile.ageYears} years`);
+    if (profile.trainingExperienceMonths) {
+      const exp = profile.trainingExperienceMonths;
+      const expLabel = exp < 3 ? 'beginner (<3m)' : exp < 6 ? 'novice (3–6m)' : exp < 12 ? 'intermediate (6–12m)' : exp < 24 ? 'experienced (1–2yr)' : 'advanced (2yr+)';
+      lines.push(`Training level: ${expLabel}`);
+    }
+    lines.push(`Primary goal: ${profile.primaryGoal}`);
+    lines.push('');
+  }
+  lines.push(`=== 30-DAY TRAINING OVERVIEW ===`);
+  lines.push(`Total sessions: ${stats.totalWorkouts}`);
+  lines.push(`Current streak: ${stats.streak} consecutive days`);
+  lines.push(`Average completion: ${stats.avgCompletion.toFixed(0)}%`);
+  lines.push(`Total cardio: ${stats.totalCardioMinutes} minutes`);
+  lines.push(`Total volume: ${stats.totalVolume.toLocaleString()}kg`);
+  if (stats.stallAlerts.length > 0) {
+    lines.push('');
+    lines.push(`=== STALL ALERTS ===`);
+    stats.stallAlerts.forEach(a => lines.push(`- ${a}`));
+  }
+  if (stats.exerciseStats.length > 0) {
+    lines.push('');
+    lines.push(`=== EXERCISE PROGRESSION ===`);
+    stats.exerciseStats.slice(0, 15).forEach(ex => {
+      const wh = ex.recentWeights.sort((a, b) => a.date.localeCompare(b.date)).map(w => `${w.date}: ${w.weight}kg`).join(', ');
+      lines.push(`${ex.name} (${ex.muscle || 'unknown'}): ${ex.sessions} sessions, max ${ex.maxWeight}kg | ${wh}`);
+    });
+  }
+  return lines.join('\n');
+}
+
+function buildStats(logs: GymDayLog[]): GymStats {
+  const sorted = [...logs].sort((a, b) => b.date.localeCompare(a.date));
+  const dateSet = new Set(sorted.map(l => l.date));
+  let streak = 0;
+  const today = new Date();
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (dateSet.has(ds)) { streak++; } else if (i > 0) break;
+  }
+  let totalVolume = 0, totalCardioMinutes = 0, totalCompletion = 0, workoutCount = 0;
+  const exerciseMap: Record<string, { name: string; muscle?: string; sessions: number; maxWeight: number; weightHistory: Array<{ date: string; weight: number }>; lastDate: string; }> = {};
+  for (const log of sorted) {
+    if (!(log.exercises?.length > 0)) continue;
+    workoutCount++;
+    for (const c of log.cardio ?? []) { if (c.completed && c.durationMinutes) totalCardioMinutes += c.durationMinutes; }
+    for (const ex of log.exercises ?? []) {
+      const completedSets = ex.setsLog?.filter(s => s.completed) ?? [];
+      if (completedSets.length === 0) continue;
+      const maxW = completedSets.reduce((m, s) => Math.max(m, s.weight ?? 0), 0);
+      totalVolume += completedSets.reduce((s, set) => s + (set.weight ?? 0) * (set.reps ?? 0), 0);
+      if (!exerciseMap[ex.name]) exerciseMap[ex.name] = { name: ex.name, muscle: ex.muscle, sessions: 0, maxWeight: 0, weightHistory: [], lastDate: '' };
+      const e = exerciseMap[ex.name];
+      e.sessions++;
+      e.maxWeight = Math.max(e.maxWeight, maxW);
+      if (maxW > 0 && e.weightHistory.length < 8) e.weightHistory.push({ date: log.date, weight: maxW });
+      if (!e.lastDate || log.date > e.lastDate) e.lastDate = log.date;
+    }
+    const total = log.exercises.reduce((s, e) => s + e.setsLog.length, 0);
+    const done = log.exercises.reduce((s, e) => s + e.setsLog.filter(set => set.completed).length, 0);
+    if (total > 0) totalCompletion += (done / total) * 100;
+  }
+  const stallAlerts: string[] = [];
+  for (const ex of Object.values(exerciseMap)) {
+    const recent = ex.weightHistory.slice(-3);
+    if (recent.length >= 3 && new Set(recent.map(w => w.weight)).size === 1) {
+      stallAlerts.push(`${ex.name}: stuck at ${recent[0].weight}kg for ${recent.length}+ sessions`);
+    }
+  }
+  const exerciseStats = Object.values(exerciseMap).sort((a, b) => b.sessions - a.sessions).map(e => ({ name: e.name, muscle: e.muscle, sessions: e.sessions, maxWeight: e.maxWeight, recentWeights: e.weightHistory, lastDate: e.lastDate }));
+  return { totalWorkouts: workoutCount, totalVolume, totalCardioMinutes, avgCompletion: workoutCount > 0 ? totalCompletion / workoutCount : 0, streak, stallAlerts, exerciseStats, logs: sorted };
+}
+
+function buildWeightTargets(exercises: GymDayLog['exercises'], stats: GymStats): WeightTarget[] {
+  return exercises.map(ex => {
+    const stat = stats.exerciseStats.find(s => s.name === ex.name);
+    if (!stat || stat.sessions === 0) return { exerciseName: ex.name, exerciseId: ex.exerciseId, muscle: ex.muscle, lastDate: null, lastMaxWeight: null, lastReps: null, recommendedWeight: null, trend: 'new', confidence: 'low' };
+    const sorted = stat.recentWeights.sort((a, b) => b.date.localeCompare(a.date));
+    const lastW = sorted[0]?.weight ?? null;
+    const prevW = sorted[1]?.weight ?? null;
+    const lastDate = sorted[0]?.date ?? null;
+    let trend: WeightTarget['trend'] = 'maintain', rec = lastW, confidence: WeightTarget['confidence'] = 'medium';
+    if (lastW != null && prevW != null) {
+      if (lastW > prevW) { trend = 'up'; rec = lastW + 2.5; confidence = 'high'; }
+      else if (lastW === prevW) { trend = 'up'; rec = lastW + 2.5; confidence = 'medium'; }
+      else { trend = 'maintain'; rec = lastW; confidence = 'medium'; }
+    } else if (lastW != null) { trend = 'up'; rec = lastW + 2.5; confidence = 'low'; }
+    if (rec != null) rec = Math.round(rec * 2) / 2;
+    return { exerciseName: ex.name, exerciseId: ex.exerciseId, muscle: ex.muscle, lastDate, lastMaxWeight: lastW, lastReps: null, recommendedWeight: rec, trend, confidence };
+  });
+}
+
+function buildOpeningPrompt(mode: SessionMode, todayLog: GymDayLog | null, stats: GymStats): string {
+  const doneSets = todayLog?.exercises?.reduce((s, e) => s + e.setsLog.filter(set => set.completed).length, 0) ?? 0;
+  const totalSets = todayLog?.exercises?.reduce((s, e) => s + e.setsLog.length, 0) ?? 0;
+  const nextEx = todayLog?.exercises?.find(e => e.setsLog.some(s => !s.completed) && !e.skipped);
+  if (mode === 'complete') {
+    return `My workout is completely done today! ${doneSets} sets completed. Give me a sharp 3-sentence recovery brief: (1) what to eat/drink in the next 2 hours with specific macros, (2) sleep target tonight, (3) what to prioritize next session based on my history.`;
+  }
+  if (mode === 'active') {
+    return `I'm mid-workout — ${doneSets}/${totalSets} sets done. ${nextEx ? `My next exercise is ${nextEx.name}. ` : ''}Give me real-time coaching in 2-3 sentences: weight/reps for my next exercise and one focus cue.`;
+  }
+  const firstEx = todayLog?.exercises?.[0];
+  const stallMsg = stats.stallAlerts.length > 0 ? ` I have ${stats.stallAlerts.length} stalled exercise(s).` : '';
+  return `I haven't started yet. In 2-3 sentences: (1) my biggest training priority TODAY, (2) the opening weight for ${firstEx?.name ?? 'my first exercise'}.${stallMsg}`;
+}
+
+// ── Quick Prompts ──────────────────────────────────────────────────────────────
+
+const QUICK_PROMPTS = [
+  { label: '📊 30-day overview', text: 'Give me a detailed analysis of my last 30 days — volume trends, consistency, top progressions, and 2 things I need to fix.' },
+  { label: '🍽️ Meal plan', text: 'Build me a full meal plan for today based on my training goal and profile. Include specific foods, portions, and timing.' },
+  { label: '⚠️ Stall analysis', text: 'Which exercises have stalled? For each one, tell me the exact progression strategy to break through.' },
+  { label: '📅 Mesocycle plan', text: 'Design a 4-week periodization mesocycle based on my current training data.' },
+  { label: '🎯 Today targets', text: "What exact weights should I target for every exercise in today's session? Give me a table: Exercise | Recommended | Why." },
+  { label: '😴 Recovery check', text: 'Based on my training frequency and volume, am I recovered enough to train hard today? Give me a 1-5 recovery score.' },
+  { label: '💪 Weakest muscle', text: 'Which muscle group is getting the least stimulus? Give me 3 exercises to add and how to fit them in.' },
+  { label: '🎥 Form tip', text: "Give me one advanced form cue for my most frequent exercise. Include setup, execution, and a common mistake to avoid." },
+];
+
+// ── Component ──────────────────────────────────────────────────────────────────
 
 interface ZenGymAIProps {
   userId: string | null;
   todayLog: GymDayLog | null;
+  profile: GymProfile | null;
 }
 
-export const ZenGymAI = ({ userId, todayLog }: ZenGymAIProps) => {
+export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => initSession());
+  const [activeTab, setActiveTab] = useState<TabId>('chat');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
-  const [stats, setStats] = useState<WorkoutStats | null>(null);
-  const [contextError, setContextError] = useState<string | null>(null);
-  const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 769);
-  // Live today stats — updated instantly as user logs
-  const [todayStats, setTodayStats] = useState<TodayLiveStats>(() => buildTodayStats(todayLog));
-  // Track when today data changed while panel was open (to show refresh hint)
-  const [todayDataUpdated, setTodayDataUpdated] = useState(false);
-
-  const chatSessionRef = useRef<RobustChatSession | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [stats, setStats] = useState<GymStats | null>(null);
+  const [targets, setTargets] = useState<WeightTarget[]>([]);
+  const [showQuickPrompts, setShowQuickPrompts] = useState(true);
+  const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const contextRef = useRef<string>('');
-  const isLoadingContextRef = useRef(false);
-  // Keep latest todayLog accessible synchronously without re-triggering effects
-  const todayLogRef = useRef<GymDayLog | null>(todayLog);
-  const prevTodayHashRef = useRef('');
+  const chatSessionRef = useRef<any>(null);
+  const statsRef = useRef<GymStats | null>(null);
+  statsRef.current = stats;
 
-  // ── Real-time today log sync ───────────────────────────────────────────────
-  // This runs EVERY time todayLog changes (user logs a set, treadmill, etc.)
-  useEffect(() => {
-    todayLogRef.current = todayLog;
-    // Recompute today's stats for the UI stats bar
-    const live = buildTodayStats(todayLog);
-    setTodayStats(live);
+  const sessionMode = useMemo<SessionMode>(() => {
+    if (!todayLog?.exercises?.length) return 'idle';
+    const totalSets = todayLog.exercises.reduce((s, e) => s + e.setsLog.length, 0);
+    const doneSets = todayLog.exercises.reduce((s, e) => s + e.setsLog.filter(set => set.completed).length, 0);
+    if (totalSets === 0) return 'idle';
+    if (doneSets === totalSets) return 'complete';
+    if (doneSets > 0) return 'active';
+    return 'idle';
+  }, [todayLog]);
 
-    // Compute a hash of today's data to detect meaningful changes
-    const newHash = `${live.doneSets}|${live.totalSets}|${live.volume}|${live.cardioMinutes}|${live.cardioKm}`;
+  // ── Context loader ─────────────────────────────────────────────────────────
 
-    if (prevTodayHashRef.current && newHash !== prevTodayHashRef.current) {
-      // Data changed! Update the context string in the ref immediately.
-      // The AI will receive this fresh context on the next sendMessage call
-      // via an injected system message (see sendMessage).
-      if (isOpen && contextRef.current) {
-        // Rebuild just the today section and update contextRef
-        const todaySection = buildTodayContext(todayLog);
-        // Replace the TODAY'S SESSION block in the existing context
-        const updatedCtx = contextRef.current.replace(
-          /\n=== TODAY'S SESSION[\s\S]*$/,
-          todaySection
-        );
-        contextRef.current = updatedCtx;
-        if (!isLoadingContextRef.current) {
-          setTodayDataUpdated(true);
-        }
+  const loadContext = useCallback(async (force = false) => {
+    if (!userId) return null;
+    if (!force) {
+      const ts = Number(sessionStorage.getItem(CONTEXT_TS_KEY(userId)) || 0);
+      const ctx = sessionStorage.getItem(CONTEXT_KEY(userId));
+      const savedStatsStr = sessionStorage.getItem(STATS_KEY(userId));
+      if (ctx && savedStatsStr && Date.now() - ts < CONTEXT_TTL_MS) {
+        try {
+          const parsedStats = JSON.parse(savedStatsStr);
+          statsRef.current = parsedStats;
+          setStats(parsedStats);
+          return { contextString: ctx, stats: parsedStats };
+        } catch { /* parse failed */ }
       }
     }
-    prevTodayHashRef.current = newHash;
-  }, [todayLog, isOpen]);
-
-  // Track desktop vs mobile
-  useEffect(() => {
-    const onResize = () => setIsDesktop(window.innerWidth >= 769);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  // Persist messages to sessionStorage
-  useEffect(() => {
-    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(messages.slice(-50))); } catch { /* ignore */ }
-  }, [messages]);
-
-  // Load 30-day context every time panel opens (always fresh)
-  useEffect(() => {
-    if (!isOpen || !userId) return;
-    if (isLoadingContextRef.current) return;
-    isLoadingContextRef.current = true;
-    setTodayDataUpdated(false);
-
-    (async () => {
-      setIsLoadingContext(true);
-      setContextError(null);
+    setIsLoadingContext(true);
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const cutoff = `${thirtyDaysAgo.getFullYear()}-${String(thirtyDaysAgo.getMonth() + 1).padStart(2, '0')}-${String(thirtyDaysAgo.getDate()).padStart(2, '0')}`;
+      let logs: GymDayLog[] = [];
       try {
-        const logs = await fetch30DayLogs(userId);
-        const s = buildStats(logs);
-        setStats(s);
-        // Always build context with the LATEST todayLog (from ref — not stale closure)
-        const context = buildContext(s, todayLogRef.current);
-        contextRef.current = context;
-
-        const newHash = statsHash(s);
-        const oldHash = sessionStorage.getItem(SESSION_STATS_KEY) || '';
-        const statsChanged = newHash !== oldHash;
-
-        const currentMessages = statsChanged ? [] : messages;
-        if (statsChanged) {
-          setMessages([]);
-          sessionStorage.removeItem(SESSION_KEY);
-          sessionStorage.setItem(SESSION_STATS_KEY, newHash);
-        }
-
-        const existingHistory = currentMessages.length > 0
-          ? currentMessages.map(m => ({
-            role: m.role === 'user' ? 'user' : 'model',
-            parts: [{ text: m.text }],
-          }))
-          : [];
-        chatSessionRef.current = startGymAIChat(context, existingHistory);
-
-        if (currentMessages.length === 0) {
-          setIsLoading(true);
-          const prText = s.personalRecords.length > 0
-            ? `Note: User has ${s.personalRecords.length} personal record(s) this month: ${s.personalRecords.map(p => `${p.name} at ${p.weight}kg`).join(', ')}. Celebrate these first!`
-            : '';
-          const openingPrompt = `Give me a 3-4 sentence overview of my last 30 days of training. ${prText} Highlight the most important pattern or insight you see. What should I focus on this week?`;
-          const response = await chatSessionRef.current.sendMessage(openingPrompt);
-          const aiText = response.response.text();
-          setMessages([{ role: 'ai', text: aiText, timestamp: Date.now() }]);
-          sessionStorage.setItem(SESSION_STATS_KEY, newHash);
-          setIsLoading(false);
-        }
-      } catch (e: any) {
-        console.error('[ZenGymAI]', e);
-        setContextError(`Could not load data: ${e?.message || 'Check your connection.'}`);
-        setIsLoading(false);
-      } finally {
-        setIsLoadingContext(false);
-        isLoadingContextRef.current = false;
+        const q = query(collection(db, 'gymLogs'), where('userId', '==', userId), where('date', '>=', cutoff), orderBy('date', 'desc'), limit(35));
+        const snap = await getDocs(q);
+        snap.forEach(d => logs.push(d.data() as GymDayLog));
+      } catch {
+        const q = query(collection(db, 'gymLogs'), where('userId', '==', userId));
+        const snap = await getDocs(q);
+        snap.forEach(d => logs.push(d.data() as GymDayLog));
+        logs = logs.filter(l => l.date >= cutoff);
       }
-    })();
-  }, [isOpen, userId]);
+      const computedStats = buildStats(logs);
+      setStats(computedStats);
+      const ctxString = buildContextString(computedStats, profile);
+      try {
+        sessionStorage.setItem(CONTEXT_KEY(userId), ctxString);
+        sessionStorage.setItem(CONTEXT_TS_KEY(userId), String(Date.now()));
+        sessionStorage.setItem(STATS_HASH_KEY(userId), hashStats(computedStats));
+        sessionStorage.setItem(STATS_KEY(userId), JSON.stringify(computedStats));
+      } catch { /* storage full */ }
+      return { contextString: ctxString, stats: computedStats };
+    } catch (e) {
+      console.error('[ZenGymAI] context load error:', e);
+      return null;
+    } finally {
+      setIsLoadingContext(false);
+    }
+  }, [userId, profile]);
 
-  // Scroll to bottom on new messages
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isLoading]);
+  const todayContextString = useMemo(() => {
+    if (!todayLog) return '';
+    const doneSets = todayLog.exercises.reduce((s, e) => s + e.setsLog.filter(set => set.completed).length, 0);
+    const totalSets = todayLog.exercises.reduce((s, e) => s + e.setsLog.length, 0);
+    const completedExercises = todayLog.exercises.filter(e => e.setsLog.every(s => s.completed) && !e.skipped);
+    const lines = [
+      `\n=== TODAY'S SESSION (${todayLog.date}) — LIVE DATA ===`,
+      `Mode: ${sessionMode.toUpperCase()}`,
+      `Progress: ${doneSets}/${totalSets} sets`,
+      `Completed exercises: ${completedExercises.map(e => e.name).join(', ') || 'none yet'}`,
+    ];
+    const treadmill = todayLog.cardio?.find(c => c.id === 'permanent_treadmill');
+    if (treadmill?.completed && (treadmill.durationMinutes || 0) > 0) {
+      lines.push(`Cardio: Treadmill ${treadmill.durationMinutes}min${treadmill.distanceKm ? ` / ${treadmill.distanceKm}km` : ''}`);
+    }
+    return lines.join('\n');
+  }, [todayLog, sessionMode]);
 
-  // Focus input when opened
+  const initChatSession = useCallback(async (contextString: string, existingHistory?: any[]) => {
+    const fullContext = contextString + todayContextString;
+    chatSessionRef.current = startGymAIChat(fullContext, existingHistory || []);
+  }, [todayContextString]);
+
+  // ── Open panel ─────────────────────────────────────────────────────────────
+
+  const openPanel = useCallback(async () => {
+    setIsOpen(true);
+    if (!userId) return;
+    try {
+      const saved = sessionStorage.getItem(HISTORY_KEY(userId));
+      if (saved) {
+        const parsed: ChatMessage[] = JSON.parse(saved);
+        setMessages(parsed);
+        const ctx = sessionStorage.getItem(CONTEXT_KEY(userId)) || '';
+        if (ctx && parsed.length > 0) {
+          const geminiHistory = parsed.slice(0, -1).map(m => ({ role: m.role, parts: [{ text: m.text }] }));
+          await initChatSession(ctx, geminiHistory);
+          return;
+        }
+      }
+    } catch { /* ignore */ }
+
+    const result = await loadContext();
+    if (!result) {
+      setIsLoading(false);
+      const emptyStats: GymStats = { totalWorkouts: 0, totalVolume: 0, totalCardioMinutes: 0, avgCompletion: 0, streak: 0, stallAlerts: [], exerciseStats: [], logs: [] };
+      setStats(emptyStats);
+      setMessages([{ id: genId(), role: 'model', text: 'I had trouble loading your data. I can still chat but insights will be limited to this session!', ts: Date.now() }]);
+      return;
+    }
+
+    const { contextString, stats: freshStats } = result;
+    if (!contextString) return;
+    await initChatSession(contextString);
+
+    const fallbackStats: GymStats = { totalWorkouts: 0, totalVolume: 0, totalCardioMinutes: 0, avgCompletion: 0, streak: 0, stallAlerts: [], exerciseStats: [], logs: [] };
+    const opening = buildOpeningPrompt(sessionMode, todayLog, freshStats ?? stats ?? fallbackStats);
+    if (todayLog?.exercises) {
+      const t = buildWeightTargets(todayLog.exercises, freshStats ?? stats ?? fallbackStats);
+      setTargets(t);
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await chatSessionRef.current.sendMessage(opening);
+      const aiText = res?.response?.text?.() || await res?.text?.() || (typeof res === 'string' ? res : 'Ready to coach you!');
+      const aiMsg: ChatMessage = { id: genId(), role: 'model', text: aiText, ts: Date.now() };
+      setMessages([aiMsg]);
+      if (userId) saveMessages([aiMsg], userId);
+    } catch {
+      toast.error('AI is warming up — try again in a moment');
+    } finally {
+      setIsLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, sessionMode, todayLog, loadContext, initChatSession]);
+
+  // ── Send message ───────────────────────────────────────────────────────────
+
+  const send = useCallback(async (textOverride?: string) => {
+    const text = (textOverride || input).trim();
+    if (!text || isLoading) return;
+    setInput('');
+    const userMsg: ChatMessage = { id: genId(), role: 'user', text, ts: Date.now() };
+    const next = [...messages, userMsg];
+    setMessages(next);
+    if (!chatSessionRef.current) { toast.error('AI not ready — please try reopening'); return; }
+    setIsLoading(true);
+    try {
+      const msgWithContext = todayContextString ? `[LIVE WORKOUT STATE:${todayContextString}]\n\nUser: ${text}` : text;
+      const res = await chatSessionRef.current.sendMessage(msgWithContext);
+      const aiText = res?.response?.text?.() || await res?.text?.() || (typeof res === 'string' ? res : '…');
+      const aiMsg: ChatMessage = { id: genId(), role: 'model', text: aiText, ts: Date.now() };
+      const withAI = [...next, aiMsg];
+      setMessages(withAI);
+      if (userId) saveMessages(withAI, userId);
+    } catch (e: any) {
+      setMessages(prev => [...prev, { id: genId(), role: 'model', text: `Sorry, something went wrong. ${e?.message || 'Please try again.'}`, ts: Date.now() }]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [input, isLoading, messages, todayContextString, userId]);
+
+  const forceRefresh = useCallback(async () => {
+    if (!userId) return;
+    [CONTEXT_KEY, CONTEXT_TS_KEY, STATS_HASH_KEY, STATS_KEY, HISTORY_KEY].forEach(k => sessionStorage.removeItem(k(userId)));
+    setMessages([]);
+    chatSessionRef.current = null;
+    toast.info('Refreshing AI context…');
+    await openPanel();
+  }, [userId, openPanel]);
+
+  // ── Effects ────────────────────────────────────────────────────────────────
+
+  // Scroll to bottom of chat
   useEffect(() => {
-    if (isOpen && !isLoadingContext) {
+    if (isOpen && chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    }
+  }, [messages, isOpen]);
+
+  // Focus input
+  useEffect(() => {
+    if (isOpen && activeTab === 'chat' && inputRef.current) {
       setTimeout(() => inputRef.current?.focus(), 300);
     }
-  }, [isOpen, isLoadingContext]);
+  }, [isOpen, activeTab]);
 
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isLoading || !chatSessionRef.current) return;
+  // iOS-compatible body scroll lock
+  useEffect(() => {
+    if (!isOpen) return;
+    const scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.width = '';
+      document.body.style.overflow = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
 
-    // If today's data was updated since last message, prepend a silent context refresh
-    // by injecting the updated today section into the message
-    let messageToSend = text.trim();
-    if (todayDataUpdated) {
-      const todayCtx = buildTodayContext(todayLogRef.current);
-      messageToSend = `[CONTEXT UPDATE — my live workout data just changed]\n${todayCtx}\n\n[MY QUESTION]: ${text.trim()}`;
-      setTodayDataUpdated(false);
-    }
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
-    const userMsg: ChatMessage = { role: 'user', text: text.trim(), timestamp: Date.now() };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
-    setIsLoading(true);
+  function saveMessages(msgs: ChatMessage[], uid: string) {
+    try { sessionStorage.setItem(HISTORY_KEY(uid), JSON.stringify(msgs.slice(-30))); } catch { /* storage full */ }
+  }
 
-    try {
-      const response = await chatSessionRef.current.sendMessage(messageToSend);
-      const aiText = response.response.text();
-      setMessages(prev => [...prev, { role: 'ai', text: aiText, timestamp: Date.now() }]);
-    } catch (e: any) {
-      setMessages(prev => [...prev, {
-        role: 'ai',
-        text: `Sorry, I hit an issue: ${e?.message || 'Please try again.'}`,
-        timestamp: Date.now(),
-      }]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isLoading, todayDataUpdated]);
+  const modeBadge = {
+    idle: { label: 'Planning Mode', color: '#a855f7', bg: 'rgba(124,58,237,0.12)' },
+    active: { label: 'Active Session', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
+    complete: { label: 'Workout Done', color: '#1db954', bg: 'rgba(29,185,84,0.12)' },
+  }[sessionMode];
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage(input);
-    }
-  };
+  const stallAlerts = stats?.stallAlerts || [];
 
-  const clearChat = () => {
-    setMessages([]);
-    setStats(null);
-    chatSessionRef.current = null;
-    setTodayDataUpdated(false);
-    try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
-  };
+  const currentTargets = targets.length > 0 ? targets : (todayLog?.exercises ?? []).map(ex => ({
+    exerciseName: ex.name, exerciseId: ex.exerciseId, muscle: ex.muscle,
+    lastDate: null, lastMaxWeight: null, lastReps: null,
+    recommendedWeight: null, trend: 'new' as const, confidence: 'low' as const,
+  }));
 
-  /** Manually refresh today's context and inject it into the chat */
-  const refreshTodayContext = useCallback(async () => {
-    if (!chatSessionRef.current || isLoading) return;
-    setTodayDataUpdated(false);
-    const todayCtx = buildTodayContext(todayLogRef.current);
-    const live = buildTodayStats(todayLogRef.current);
+  const headerStatus = (() => {
+    if (isLoadingContext) return { dot: '#a855f7', text: 'Loading your data…', pulse: true };
+    if (stats) return { dot: '#1db954', text: `${stats.totalWorkouts} sessions · ${stats.streak} day streak`, pulse: false };
+    return { dot: '#f59e0b', text: 'Ready — limited history', pulse: false };
+  })();
 
-    setIsLoading(true);
-    const prompt = `Here is my updated live session data:\n${todayCtx}\n\nBased on what I've done so far, give me a quick 2-sentence progress check and tell me what weight I should aim for on my remaining exercises.`;
-    const userMsg: ChatMessage = { role: 'user', text: '🔄 Sync latest session data and coach me', timestamp: Date.now() };
-    setMessages(prev => [...prev, userMsg]);
-
-    try {
-      const response = await chatSessionRef.current.sendMessage(prompt);
-      const aiText = response.response.text();
-      setMessages(prev => [...prev, { role: 'ai', text: aiText, timestamp: Date.now() }]);
-      // Update stats bar with live today data
-      setTodayStats(live);
-    } catch (e: any) {
-      setMessages(prev => [...prev, { role: 'ai', text: `Sync failed: ${e?.message || 'Try again.'}`, timestamp: Date.now() }]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isLoading]);
-
-  // Stats bar — 30-day summary
-  const statsBar = useMemo(() => {
-    if (!stats) return null;
-    return (
-      <div style={{ display: 'flex', gap: '0.75rem', padding: '0.4rem 1rem', background: 'rgba(124,58,237,0.08)', borderBottom: '1px solid rgba(255,255,255,0.06)', fontSize: '0.7rem', color: 'var(--text-muted)', flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>30d</span>
-        <span>🏋️ <strong style={{ color: '#fff' }}>{stats.totalWorkouts}</strong> workouts</span>
-        <span>⚡ <strong style={{ color: '#fff' }}>{stats.totalVolume.toLocaleString()}</strong>kg</span>
-        <span>✅ <strong style={{ color: '#fff' }}>{stats.avgCompletion}%</strong></span>
-        <span>🏃 <strong style={{ color: '#fff' }}>{stats.totalCardioMinutes}</strong>min</span>
-        {stats.personalRecords.length > 0 && <span>🏆 <strong style={{ color: '#f59e0b' }}>{stats.personalRecords.length}</strong> PRs</span>}
-      </div>
-    );
-  }, [stats]);
-
-  // Live today stats bar — updates in real time
-  const todayBar = useMemo(() => {
-    if (!todayStats.totalSets && !todayStats.cardioMinutes) return null;
-    const pctColor = todayStats.pct >= 100 ? '#1db954' : todayStats.pct >= 50 ? '#f59e0b' : '#a855f7';
-    return (
-      <div style={{
-        display: 'flex', gap: '0.5rem', padding: '0.4rem 1rem',
-        background: 'rgba(29,185,84,0.06)',
-        borderBottom: '1px solid rgba(29,185,84,0.12)',
-        fontSize: '0.7rem', color: 'var(--text-muted)', flexWrap: 'wrap', alignItems: 'center',
-      }}>
-        <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>Live</span>
-        {/* Progress ring */}
-        <span style={{ fontWeight: 700, color: pctColor }}>{todayStats.pct}%</span>
-        <span><strong style={{ color: '#fff' }}>{todayStats.doneSets}</strong>/{todayStats.totalSets} sets</span>
-        {todayStats.volume > 0 && <span>⚡ <strong style={{ color: '#fff' }}>{todayStats.volume}</strong>kg</span>}
-        {todayStats.cardioMinutes > 0 && (
-          <span>🏃 <strong style={{ color: '#1db954' }}>{todayStats.cardioMinutes}min</strong>
-            {todayStats.cardioKm > 0 && ` · ${todayStats.cardioKm}km`}
-          </span>
-        )}
-        {todayDataUpdated && (
-          <button
-            onClick={refreshTodayContext}
-            disabled={isLoading}
-            title="Sync live data to AI"
-            style={{
-              marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.2rem',
-              padding: '0.2rem 0.5rem', borderRadius: '99px',
-              background: 'rgba(29,185,84,0.15)', border: '1px solid rgba(29,185,84,0.4)',
-              color: '#1db954', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 700,
-              animation: 'zenPulse 1.5s ease-in-out infinite',
-            }}
-          >
-            <RefreshCw size={10} /> Sync AI
-          </button>
-        )}
-      </div>
-    );
-  }, [todayStats, todayDataUpdated, isLoading, refreshTodayContext]);
-
-  // ── Render ──────────────────────────────────────────────────────────────────
-
-  const panelStyle: React.CSSProperties = isDesktop ? {
-    position: 'fixed',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    width: '420px',
-    zIndex: 1100,
-    display: 'flex',
-    flexDirection: 'column',
-    background: 'rgba(10,8,20,0.98)',
-    borderLeft: '1px solid rgba(124,58,237,0.25)',
-    boxShadow: '-8px 0 40px rgba(124,58,237,0.2)',
-    animation: 'slideInFromRight 0.25s var(--ease-out-expo)',
-  } : {
-    position: 'relative',
-    zIndex: 1,
-    background: 'rgba(12,10,20,0.97)',
-    borderRadius: '24px 24px 0 0',
-    border: '1px solid rgba(124,58,237,0.25)',
-    borderBottom: 'none',
-    height: '82vh',
-    maxHeight: '700px',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    boxShadow: '0 -8px 40px rgba(124,58,237,0.2)',
-  };
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return createPortal(
     <>
-      {/* ── Floating AI Button ── */}
+      {/* Floating AI button */}
       <button
-        id="zen-gym-ai-btn"
-        onClick={() => setIsOpen(true)}
-        aria-label="Open Zen Gym AI"
+        id="zenGymAI-toggle"
+        onClick={() => { if (!isOpen) openPanel(); else setIsOpen(false); }}
         style={{
           position: 'fixed',
-          bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))',
-          right: '1.25rem',
-          zIndex: 200,
-          width: '56px',
-          height: '56px',
-          borderRadius: '50%',
-          border: 'none',
-          background: 'linear-gradient(135deg, #7c3aed, #a855f7)',
-          color: '#fff',
-          cursor: 'pointer',
-          display: isOpen ? 'none' : 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 4px 20px rgba(124,58,237,0.5), 0 8px 32px rgba(0,0,0,0.3)',
-          animation: 'gymAiPulse 3s ease-in-out infinite',
-          transition: 'transform 0.15s, box-shadow 0.15s',
-          WebkitTapHighlightColor: 'transparent',
+          bottom: 'calc(4.8rem + env(safe-area-inset-bottom, 0px))',
+          right: '1rem',
+          width: '54px', height: '54px', borderRadius: '50%',
+          background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
+          border: 'none', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 4px 24px rgba(124,58,237,0.55), 0 0 0 3px rgba(124,58,237,0.15)',
+          zIndex: 9900, transition: 'all 0.2s',
+          animation: isOpen ? 'none' : 'aiPulse 3s ease-in-out infinite',
+          touchAction: 'manipulation',
         }}
       >
-        {/* Clean single icon — Dumbbell with AI sparkle accent */}
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <Dumbbell size={22} style={{ color: '#fff', filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.4))' }} />
-          <Sparkles size={10} style={{ position: 'absolute', top: -6, right: -8, color: '#fbbf24', filter: 'drop-shadow(0 0 3px rgba(251,191,36,0.8))' }} />
-        </div>
-
-        {/* Live session dot — shows when there's active workout data */}
-        {todayStats.totalSets > 0 && (
-          <span style={{
-            position: 'absolute', top: '2px', right: '2px',
-            width: '10px', height: '10px', borderRadius: '50%',
-            background: todayStats.pct >= 100 ? '#1db954' : '#f59e0b',
-            border: '2px solid #7c3aed',
-          }} />
-        )}
+        {isOpen ? <X size={22} color="#fff" /> : <MessageSquare size={22} color="#fff" />}
       </button>
 
-      {/* ── Panel / Sheet ── */}
+      {/* Stall alert badge */}
+      {!isOpen && stallAlerts.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          bottom: `calc(4.8rem + 48px + env(safe-area-inset-bottom, 0px))`,
+          right: '0.75rem',
+          width: '18px', height: '18px', borderRadius: '50%',
+          background: '#f59e0b', border: '2px solid #000',
+          zIndex: 9901, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '0.58rem', fontWeight: 800, color: '#000',
+        }}>
+          {stallAlerts.length}
+        </div>
+      )}
+
+      {/* Backdrop */}
       {isOpen && (
         <div
-          style={isDesktop ? {} : {
+          onClick={() => setIsOpen(false)}
+          onTouchStart={e => e.preventDefault()}
+          onTouchMove={e => e.preventDefault()}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9940,
+            background: 'rgba(0,0,0,0.55)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
+            animation: 'fadeIn 0.2s ease',
+            touchAction: 'none',
+          }}
+        />
+      )}
+
+      {/* AI Panel — bottom sheet */}
+      {isOpen && (
+        <div
+          id="zenGymAI-panel"
+          onTouchMove={e => e.stopPropagation()}
+          style={{
             position: 'fixed',
-            inset: 0,
-            zIndex: 1100,
+            bottom: 0, left: 0, right: 0,
+            height: '78vh',
+            maxHeight: '640px',
+            zIndex: 9950,
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'flex-end',
+            background: 'rgba(9,7,18,0.98)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+            borderRadius: '20px 20px 0 0',
+            border: '1px solid rgba(124,58,237,0.2)',
+            borderBottom: 'none',
+            boxShadow: '0 -8px 40px rgba(0,0,0,0.6)',
+            animation: 'panelSlideUp 0.28s cubic-bezier(0.34,1.2,0.64,1)',
+            overflow: 'hidden',
           }}
-          onClick={isDesktop ? undefined : (e => { if (e.target === e.currentTarget) setIsOpen(false); })}
         >
-          {/* Backdrop (mobile only) */}
-          {!isDesktop && (
-            <div
-              style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(6px)' }}
-              onClick={() => setIsOpen(false)}
-            />
-          )}
+          {/* Drag handle */}
+          <div style={{ display: 'flex', justifyContent: 'center', paddingTop: '0.6rem', flexShrink: 0 }}>
+            <div style={{ width: '36px', height: '4px', borderRadius: '99px', background: 'rgba(255,255,255,0.15)' }} />
+          </div>
 
-          <div style={panelStyle}>
-            {/* ── Header ── */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.7rem',
-              padding: '0.85rem 1rem',
-              borderBottom: '1px solid rgba(255,255,255,0.07)',
-              flexShrink: 0,
-              background: 'rgba(124,58,237,0.08)',
-            }}>
-              <div style={{
-                width: '36px', height: '36px', borderRadius: '50%',
-                background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <Dumbbell size={18} color="#fff" />
+          {/* Header */}
+          <div style={{ padding: '0.6rem 1rem 0', flexShrink: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginBottom: '0.6rem' }}>
+              <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Dumbbell size={16} color="#fff" />
               </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff', lineHeight: 1.2 }}>Zen Gym AI</div>
-                <div style={{ fontSize: '0.7rem', color: 'rgba(168,85,247,0.9)' }}>
-                  {isLoadingContext ? 'Loading 30-day data...' : stats ? `${stats.totalWorkouts} workouts · 30-day view` : 'Personal Trainer + Nutritionist'}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  ZenGym AI
+                  <span style={{ fontSize: '0.6rem', padding: '0.08rem 0.4rem', borderRadius: '99px', background: modeBadge.bg, color: modeBadge.color, fontWeight: 700 }}>
+                    {modeBadge.label}
+                  </span>
+                </div>
+                <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.38)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.08rem' }}>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: headerStatus.dot, display: 'inline-block', flexShrink: 0, animation: headerStatus.pulse ? 'pulse 1s ease-in-out infinite' : 'none' }} />
+                  {headerStatus.text}
                 </div>
               </div>
-              {/* Sync button — always available when panel is open */}
-              <button
-                onClick={refreshTodayContext}
-                disabled={isLoading || isLoadingContext}
-                title="Sync live session data to AI"
-                style={{
-                  background: todayDataUpdated ? 'rgba(29,185,84,0.15)' : 'none',
-                  border: todayDataUpdated ? '1px solid rgba(29,185,84,0.4)' : 'none',
-                  color: todayDataUpdated ? '#1db954' : 'var(--text-muted)',
-                  cursor: 'pointer', padding: '0.3rem', borderRadius: '6px',
-                  display: 'flex', alignItems: 'center',
-                  animation: todayDataUpdated ? 'zenPulse 1.5s ease-in-out infinite' : 'none',
-                }}
-              >
-                <RefreshCw size={15} />
-              </button>
-              <button
-                onClick={clearChat}
-                title="Clear chat"
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.3rem', borderRadius: '6px' }}
-              >
-                <RotateCcw size={15} />
-              </button>
-              <button
-                onClick={() => setIsOpen(false)}
-                style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.3rem', borderRadius: '6px' }}
-              >
-                {isDesktop ? <X size={18} /> : <ChevronDown size={20} />}
-              </button>
+              <div style={{ display: 'flex', gap: '0.3rem' }}>
+                <button onClick={forceRefresh} title="Refresh AI data" style={{ padding: '0.4rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                  <RefreshCw size={13} />
+                </button>
+                <button onClick={() => setIsOpen(false)} style={{ padding: '0.4rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                  <X size={13} />
+                </button>
+              </div>
             </div>
 
-            {/* 30-day Stats Bar */}
-            {statsBar}
-
-            {/* Live Today Bar */}
-            {todayBar}
-
-            {/* ── Messages ── */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.85rem', scrollbarWidth: 'none' }}>
-              {isLoadingContext && (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: '0.75rem', color: 'var(--text-muted)' }}>
-                  <Loader2 size={28} style={{ animation: 'spin 1s linear infinite', color: '#a855f7' }} />
-                  <span style={{ fontSize: '0.85rem' }}>Loading your 30-day training data…</span>
-                </div>
-              )}
-
-              {contextError && (
-                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', padding: '0.85rem', fontSize: '0.85rem', color: '#fca5a5' }}>
-                  {contextError}
-                </div>
-              )}
-
-              {!isLoadingContext && messages.map((msg, i) => (
-                <div key={i} style={{
-                  display: 'flex',
-                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                }}>
-                  <div style={{
-                    maxWidth: '88%',
-                    padding: '0.65rem 0.9rem',
-                    borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '4px 18px 18px 18px',
-                    background: msg.role === 'user'
-                      ? 'linear-gradient(135deg,#7c3aed,#a855f7)'
-                      : 'rgba(255,255,255,0.06)',
-                    border: msg.role === 'ai' ? '1px solid rgba(255,255,255,0.08)' : 'none',
-                    color: '#fff',
-                    fontSize: '0.875rem',
-                    lineHeight: 1.55,
-                  }}>
-                    {msg.role === 'ai' ? renderMarkdown(msg.text) : msg.text}
-                  </div>
-                </div>
+            {/* Tabs */}
+            <div style={{ display: 'flex', gap: '0.25rem', marginBottom: '0.5rem' }}>
+              {([
+                { id: 'chat' as TabId, icon: <MessageSquare size={12} />, label: 'Chat' },
+                { id: 'targets' as TabId, icon: <Target size={12} />, label: "Today's Targets" },
+              ] as const).map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    padding: '0.35rem 0.75rem', borderRadius: '10px',
+                    border: `1px solid ${activeTab === tab.id ? 'rgba(124,58,237,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                    background: activeTab === tab.id ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.04)',
+                    color: activeTab === tab.id ? '#a855f7' : 'rgba(255,255,255,0.4)',
+                    cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: '0.3rem', minHeight: '34px',
+                  }}
+                >
+                  {tab.icon} {tab.label}
+                </button>
               ))}
-
-              {isLoading && !isLoadingContext && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Sparkles size={13} color="#fff" />
-                  </div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    {[0, 1, 2].map(j => (
-                      <div key={j} style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#a855f7', animation: `bounce 1.2s ${j * 0.2}s ease-in-out infinite` }} />
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div ref={bottomRef} />
             </div>
 
-            {/* ── Quick Prompts ── */}
-            {!isLoadingContext && messages.length <= 1 && (
-              <div style={{ padding: '0 0.75rem 0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap', flexShrink: 0 }}>
-                {QUICK_PROMPTS.map(qp => (
-                  <button
-                    key={qp.label}
-                    onClick={() => sendMessage(qp.prompt)}
-                    disabled={isLoading || !stats}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.3rem',
-                      padding: '0.35rem 0.65rem', borderRadius: '20px',
-                      background: `${qp.color}14`, border: `1px solid ${qp.color}35`,
-                      color: qp.color, fontSize: '0.72rem', fontWeight: 500,
-                      cursor: 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
-                    }}
-                  >
-                    <qp.icon size={12} />
-                    {qp.label}
-                  </button>
-                ))}
+            {stallAlerts.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', padding: '0.4rem 0.6rem', borderRadius: '10px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', marginBottom: '0.5rem' }}>
+                <AlertTriangle size={12} style={{ color: '#f59e0b', flexShrink: 0, marginTop: '0.05rem' }} />
+                <div style={{ fontSize: '0.68rem', color: '#f59e0b', lineHeight: 1.5 }}>
+                  <strong>Stall Detected:</strong> {stallAlerts[0]}
+                  {stallAlerts.length > 1 && ` (+${stallAlerts.length - 1} more)`}
+                </div>
               </div>
             )}
 
-            {/* ── Input ── */}
-            <div style={{
-              padding: '0.6rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom, 0px))',
-              borderTop: '1px solid rgba(255,255,255,0.07)',
-              display: 'flex', gap: '0.5rem', alignItems: 'flex-end', flexShrink: 0,
-            }}>
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={stats ? 'Ask about training, nutrition, or create a plan…' : 'Loading data…'}
-                disabled={isLoading || isLoadingContext || !!contextError}
-                rows={1}
+            <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', marginLeft: '-1rem', marginRight: '-1rem' }} />
+          </div>
+
+          {/* ── CHAT TAB ──────────────────────────────────────────────── */}
+          {activeTab === 'chat' && (
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+              {/* Scrollable messages — uses absolute positioning for reliable iOS scroll */}
+              <div style={{ position: 'relative', flex: 1, minHeight: 0, height: '100%', width: '100%' }}>
+                <div
+                  ref={chatRef}
+                  id="zenGymAI-chat-scroll"
+                  onTouchStart={e => e.stopPropagation()}
+                  onTouchMove={e => e.stopPropagation()}
+                  onWheel={e => e.stopPropagation()}
+                  style={{
+                    position: 'absolute', inset: 0,
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    WebkitOverflowScrolling: 'touch' as any,
+                    overscrollBehavior: 'contain',
+                    touchAction: 'pan-y',
+                    padding: '0.75rem 1rem',
+                    display: 'flex', flexDirection: 'column', gap: '0.7rem',
+                  }}
+                >
+                  {messages.length === 0 && !isLoadingContext && !isLoading && (
+                    <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'rgba(255,255,255,0.28)', fontSize: '0.82rem' }}>
+                      <Dumbbell size={26} style={{ opacity: 0.2, margin: '0 auto 0.5rem', display: 'block' }} />
+                      Your coaching session will start here
+                    </div>
+                  )}
+                  {messages.map(msg => (
+                    <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: '0.2rem' }}>
+                      {msg.role === 'model' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.1rem', paddingLeft: '0.2rem' }}>
+                          <div style={{ width: '18px', height: '18px', borderRadius: '6px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                            <Dumbbell size={10} color="#fff" />
+                          </div>
+                          <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>Zen Coach</span>
+                        </div>
+                      )}
+                      <div style={{
+                        maxWidth: '88%', padding: '0.6rem 0.85rem',
+                        borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '4px 16px 16px 16px',
+                        background: msg.role === 'user' ? 'linear-gradient(135deg,#7c3aed,#a855f7)' : 'rgba(255,255,255,0.05)',
+                        border: msg.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                        wordBreak: 'break-word',
+                      }}>
+                        {msg.role === 'user'
+                          ? <div style={{ fontSize: '0.83rem', color: '#fff', lineHeight: 1.5 }}>{msg.text}</div>
+                          : renderMd(msg.text)
+                        }
+                      </div>
+                    </div>
+                  ))}
+                  {isLoading && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.2rem' }}>
+                      <div style={{ width: '18px', height: '18px', borderRadius: '6px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Dumbbell size={10} color="#fff" />
+                      </div>
+                      <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                        {[0, 1, 2].map(i => (
+                          <div key={i} style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#a855f7', animation: `bounce 1.2s ease-in-out ${i * 0.15}s infinite` }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Prompts — sticky at bottom of chat */}
+              <div style={{ flexShrink: 0, padding: '0 1rem 0.3rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                <button
+                  onClick={() => setShowQuickPrompts(p => !p)}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.3rem 0', background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.3)', fontSize: '0.62rem', fontWeight: 600, width: '100%' }}
+                >
+                  <Zap size={10} style={{ color: '#f59e0b' }} />
+                  Quick Prompts
+                  {showQuickPrompts ? <ChevronDown size={11} style={{ marginLeft: 'auto' }} /> : <ChevronUp size={11} style={{ marginLeft: 'auto' }} />}
+                </button>
+                {showQuickPrompts && (
+                  <div style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto', paddingBottom: '0.3rem', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' as any }}>
+                    {QUICK_PROMPTS.map(qp => (
+                      <button
+                        key={qp.label}
+                        onClick={() => send(qp.text)}
+                        disabled={isLoading}
+                        style={{
+                          padding: '0.28rem 0.6rem', borderRadius: '99px', flexShrink: 0,
+                          border: '1px solid rgba(124,58,237,0.25)', background: 'rgba(124,58,237,0.08)',
+                          color: '#a855f7', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap',
+                          minHeight: '30px', opacity: isLoading ? 0.5 : 1,
+                        }}
+                      >
+                        {qp.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Input area */}
+              <div style={{ padding: '0 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px)) 1rem', flexShrink: 0 }}>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end' }}>
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+                    placeholder="Ask your coach anything…"
+                    rows={1}
+                    style={{
+                      flex: 1, padding: '0.65rem 0.8rem', borderRadius: '14px',
+                      background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
+                      color: '#fff', fontSize: '0.85rem', outline: 'none', resize: 'none',
+                      lineHeight: 1.5, overflowY: 'hidden', boxSizing: 'border-box',
+                      fontFamily: 'inherit', maxHeight: '90px', overflowX: 'hidden',
+                    }}
+                    onInput={e => {
+                      const t = e.target as HTMLTextAreaElement;
+                      t.style.height = 'auto';
+                      t.style.height = `${Math.min(t.scrollHeight, 90)}px`;
+                    }}
+                  />
+                  <button
+                    onClick={() => send()}
+                    disabled={!input.trim() || isLoading}
+                    style={{
+                      width: '44px', height: '44px', borderRadius: '12px', border: 'none', flexShrink: 0,
+                      background: !input.trim() || isLoading ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c3aed,#a855f7)',
+                      color: !input.trim() || isLoading ? 'rgba(255,255,255,0.2)' : '#fff',
+                      cursor: !input.trim() || isLoading ? 'default' : 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
+                    }}
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── TARGETS TAB ─────────────────────────────────────────────── */}
+          {activeTab === 'targets' && (
+            <div style={{ position: 'relative', flex: 1, minHeight: 0, height: '100%', width: '100%' }}>
+              <div
+                id="zenGymAI-targets-scroll"
+                onTouchStart={e => e.stopPropagation()}
+                onTouchMove={e => e.stopPropagation()}
+                onWheel={e => e.stopPropagation()}
                 style={{
-                  flex: 1, resize: 'none', background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px',
-                  padding: '0.55rem 0.75rem', color: '#fff', fontSize: '0.875rem',
-                  lineHeight: 1.5, maxHeight: '100px', outline: 'none',
-                  fontFamily: 'inherit', WebkitTapHighlightColor: 'transparent',
-                }}
-                onInput={e => {
-                  const t = e.currentTarget;
-                  t.style.height = 'auto';
-                  t.style.height = Math.min(t.scrollHeight, 100) + 'px';
-                }}
-              />
-              <button
-                onClick={() => sendMessage(input)}
-                disabled={!input.trim() || isLoading || isLoadingContext || !!contextError}
-                style={{
-                  width: '38px', height: '38px', borderRadius: '12px',
-                  background: input.trim() && !isLoading ? 'linear-gradient(135deg,#7c3aed,#a855f7)' : 'rgba(255,255,255,0.08)',
-                  border: 'none', color: '#fff', cursor: input.trim() && !isLoading ? 'pointer' : 'not-allowed',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.2s', flexShrink: 0,
+                  position: 'absolute', inset: 0,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  WebkitOverflowScrolling: 'touch' as any,
+                  overscrollBehavior: 'contain',
+                  touchAction: 'pan-y',
+                  padding: '0.75rem 1rem',
+                  paddingBottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))',
+                  display: 'flex', flexDirection: 'column', gap: '0.5rem',
                 }}
               >
-                {isLoading ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Send size={16} />}
-              </button>
+                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5, padding: '0.5rem 0.65rem', borderRadius: '10px', background: 'rgba(124,58,237,0.05)', border: '1px solid rgba(124,58,237,0.12)', flexShrink: 0 }}>
+                  <TrendingUp size={11} style={{ color: '#a855f7', marginRight: '0.3rem', verticalAlign: 'middle' }} />
+                  {stats ? `Based on your last ${stats.totalWorkouts} sessions.` : "Showing today's exercises."} Tap any row to ask the AI.
+                </div>
+
+                {!todayLog?.exercises?.length ? (
+                  <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'rgba(255,255,255,0.3)' }}>
+                    <Target size={28} style={{ opacity: 0.2, margin: '0 auto 0.5rem', display: 'block' }} />
+                    <div style={{ fontSize: '0.85rem' }}>No exercises in today's plan</div>
+                    <div style={{ fontSize: '0.72rem', marginTop: '0.25rem' }}>Import your routine first</div>
+                  </div>
+                ) : (
+                  <>
+                    {currentTargets.map((target, i) => {
+                      const trendIcon = target.trend === 'up' ? '↑' : target.trend === 'down' ? '↓' : target.trend === 'new' ? '✦' : '→';
+                      const trendColor = target.trend === 'up' ? '#1db954' : target.trend === 'down' ? '#ef4444' : target.trend === 'new' ? '#a855f7' : '#f59e0b';
+                      const ex = todayLog?.exercises?.find(e => e.exerciseId === target.exerciseId) ?? todayLog?.exercises?.[i];
+                      const completedSets = ex?.setsLog?.filter(s => s.completed).length ?? 0;
+                      const totalSetCount = ex?.setsLog?.length ?? ex?.targetSets ?? 0;
+                      const isDone = completedSets === totalSetCount && totalSetCount > 0;
+
+                      return (
+                        <div
+                          key={target.exerciseId}
+                          onClick={() => {
+                            setActiveTab('chat');
+                            send(`Tell me specifically what weight and reps to target for ${target.exerciseName} today, and explain the progression logic.`);
+                          }}
+                          style={{
+                            padding: '0.8rem', borderRadius: '14px', cursor: 'pointer', flexShrink: 0,
+                            background: isDone ? 'rgba(29,185,84,0.06)' : 'rgba(255,255,255,0.03)',
+                            border: `1px solid ${isDone ? 'rgba(29,185,84,0.2)' : 'rgba(255,255,255,0.07)'}`,
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.4rem' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: '0.85rem', fontWeight: 600, color: isDone ? 'rgba(255,255,255,0.5)' : '#fff', textDecoration: isDone ? 'line-through' : 'none' }}>
+                                {target.exerciseName}
+                              </div>
+                              {target.muscle && (
+                                <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', marginTop: '0.08rem' }}>{target.muscle}</div>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.2rem', flexShrink: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <span style={{ fontSize: '1rem', fontWeight: 800, color: trendColor }}>
+                                  {target.recommendedWeight != null ? `${fmtKg(target.recommendedWeight)}kg` : '—'}
+                                </span>
+                                <span style={{ fontSize: '0.85rem', fontWeight: 800, color: trendColor }}>{trendIcon}</span>
+                              </div>
+                              <span style={{ fontSize: '0.58rem', color: trendColor, background: `${trendColor}18`, padding: '0.05rem 0.28rem', borderRadius: '99px', fontWeight: 600 }}>
+                                {target.confidence === 'high' ? 'High confidence' : target.confidence === 'medium' ? 'Moderate' : 'First session'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.35rem' }}>
+                            <div style={{ textAlign: 'center', padding: '0.3rem', borderRadius: '8px', background: 'rgba(255,255,255,0.04)' }}>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                                {target.lastMaxWeight != null ? `${fmtKg(target.lastMaxWeight)}kg` : '—'}
+                              </div>
+                              <div style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>Last max</div>
+                            </div>
+                            <div style={{ textAlign: 'center', padding: '0.3rem', borderRadius: '8px', background: 'rgba(255,255,255,0.04)' }}>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                                {target.lastDate ? new Date(target.lastDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                              </div>
+                              <div style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>Last session</div>
+                            </div>
+                            <div style={{ textAlign: 'center', padding: '0.3rem', borderRadius: '8px', background: isDone ? 'rgba(29,185,84,0.12)' : 'rgba(255,255,255,0.04)' }}>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: isDone ? '#1db954' : '#fff' }}>
+                                {totalSetCount > 0 ? `${completedSets}/${totalSetCount}` : `0/${ex?.targetSets ?? '?'}`}
+                              </div>
+                              <div style={{ fontSize: '0.52rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase' }}>Sets done</div>
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: '0.35rem', fontSize: '0.62rem', color: 'rgba(255,255,255,0.2)', textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.2rem' }}>
+                            <Calendar size={10} /> Tap to ask AI for coaching
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {sessionMode === 'complete' && (
+                      <div style={{ padding: '0.7rem 0.8rem', borderRadius: '12px', background: 'rgba(29,185,84,0.07)', border: '1px solid rgba(29,185,84,0.18)', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.3rem' }}>
+                          <Apple size={13} style={{ color: '#1db954' }} />
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1db954' }}>Nutrition Window</span>
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>
+                          Eat {profile?.bodyweightKg ? `${Math.round(profile.bodyweightKg * 0.4)}–${Math.round(profile.bodyweightKg * 0.5)}g protein` : '30–40g protein'} within 2 hours.
+                        </div>
+                        <button onClick={() => { setActiveTab('chat'); send("Give me a specific post-workout meal recommendation with exact foods and amounts based on my profile and today's session."); }}
+                          style={{ marginTop: '0.45rem', padding: '0.35rem 0.65rem', borderRadius: '8px', border: '1px solid rgba(29,185,84,0.25)', background: 'rgba(29,185,84,0.1)', color: '#1db954', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600 }}>
+                          Ask for full meal plan →
+                        </button>
+                      </div>
+                    )}
+
+                    {!profile && (
+                      <div style={{ padding: '0.65rem 0.8rem', borderRadius: '12px', background: 'rgba(124,58,237,0.07)', border: '1px solid rgba(124,58,237,0.15)', display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                        <User size={13} style={{ color: '#a855f7', flexShrink: 0 }} />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#a855f7' }}>Set your Gym Profile</div>
+                          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.38)', marginTop: '0.08rem' }}>Add bodyweight, age & goal for personalized targets</div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
       <style>{`
-        @keyframes gymAiPulse {
-          0%, 100% { box-shadow: 0 4px 20px rgba(124,58,237,0.5), 0 0 0 0 rgba(168,85,247,0.4); }
-          50% { box-shadow: 0 4px 28px rgba(124,58,237,0.7), 0 0 0 10px rgba(168,85,247,0); }
+        @keyframes aiPulse {
+          0%, 100% { box-shadow: 0 4px 24px rgba(124,58,237,0.5); }
+          50% { box-shadow: 0 4px 32px rgba(124,58,237,0.75), 0 0 0 8px rgba(124,58,237,0.12); }
         }
-        @keyframes slideInFromRight {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
+        @keyframes panelSlideUp {
+          from { opacity:0; transform:translateY(32px); }
+          to { opacity:1; transform:translateY(0); }
         }
-        #zen-gym-ai-btn:active { transform: scale(0.88); }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes bounce {
+          0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+          40% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
       `}</style>
     </>,
-    document.body
+    document.body,
   );
 };

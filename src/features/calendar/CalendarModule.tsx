@@ -1,26 +1,32 @@
-import { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Briefcase, ListTodo, Target, X, Plus, GraduationCap, AlertTriangle, Palmtree, FileText, Clock, ExternalLink, Link2, Link2Off } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Plus, AlertTriangle, Clock, ExternalLink, Link2, Link2Off, RefreshCw, Zap, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle,
-  addEventToGoogleCalendar,
+  addEventToGoogleCalendar, deleteGoogleCalendarEvent, pollGoogleCalendarChanges,
+  getLastSyncTime,
 } from '../../services/googleCalendar';
 
 const GC_CLIENT_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID &&
   import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID !== 'YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE';
+
+// Poll interval: 2 minutes
+const POLL_INTERVAL_MS = 2 * 60 * 1000;
 
 
 interface CalendarEvent {
   id: string;
   title: string;
   date: string;
-  type: 'todo' | 'job' | 'goal' | 'exam' | 'assignment_due' | 'holiday' | 'viva' | 'submission';
+  type: 'todo' | 'job' | 'goal' | 'exam' | 'assignment_due' | 'holiday' | 'viva' | 'submission' | 'gcal';
   isCompleted?: boolean;
   sourceCollection?: string;
   sourceId?: string;
+  gcalEventId?: string; // GCal event ID for events synced TO Google Calendar
+  fromGCal?: boolean;  // true for events pulled FROM Google Calendar
 }
 
 const EVENT_COLORS: Record<string, { color: string; bg: string; label: string; icon: string }> = {
@@ -32,11 +38,13 @@ const EVENT_COLORS: Record<string, { color: string; bg: string; label: string; i
   todo: { color: '#7c3aed', bg: 'rgba(124,58,237,0.1)', label: 'Task', icon: '✅' },
   job: { color: '#fbbf24', bg: 'rgba(251,191,36,0.1)', label: 'Interview', icon: '💼' },
   goal: { color: '#ec4899', bg: 'rgba(236,72,153,0.1)', label: 'Deadline', icon: '🎯' },
+  gcal: { color: '#4285f4', bg: 'rgba(66,133,244,0.1)', label: 'Google Cal', icon: '📅' },
 };
 
 export const CalendarModule = () => {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [customEvents, setCustomEvents] = useState<CalendarEvent[]>([]);
+  const [gcalEvents, setGcalEvents] = useState<CalendarEvent[]>([]); // Events pulled FROM Google Calendar
   const [isLoading, setIsLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
@@ -45,56 +53,196 @@ export const CalendarModule = () => {
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventType, setNewEventType] = useState<string>('exam');
 
-  // ── Google Calendar state ─────────────────────────────────────────────────────────────
+  // ── Google Calendar sync state ────────────────────────────────────────────────
   const [gcConnected, setGcConnected] = useState(false);
   const [gcLoading, setGcLoading] = useState(false);
-  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [gcSyncing, setGcSyncing] = useState(false);
+  const [gcApiError, setGcApiError] = useState<string | null>(null); // 'not_enabled' | error msg
+  const [lastSynced, setLastSynced] = useState<number>(0);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track gcalEventIds for events we've pushed: zentrackId -> gcalId
+  const gcalIdMapRef = useRef<Record<string, string>>({});
 
-  // Check if already signed in on mount
+  // ── Init GIS Script on Mount ──────────────────────────────────────────────────
   useEffect(() => {
     if (GC_CLIENT_CONFIGURED) {
       initGoogleCalendar().then(() => setGcConnected(isSignedInToGoogle()));
     }
   }, []);
 
+  // ── GCal Polling ──────────────────────────────────────────────────────────────
+  const runPoll = useCallback(async () => {
+    if (!isSignedInToGoogle()) return;
+    try {
+      setGcSyncing(true);
+      const { added, deleted } = await pollGoogleCalendarChanges();
+
+      // Remove any deleted GCal events from our gcalEvents list
+      if (deleted.length > 0) {
+        setGcalEvents(prev => prev.filter(e => !deleted.includes(e.gcalEventId ?? '')));
+      }
+
+      // Add newly discovered external GCal events
+      if (added.length > 0) {
+        const newEvents: CalendarEvent[] = added.map(item => {
+          const date = item.start.date ?? item.start.dateTime?.split('T')[0] ?? '';
+          return {
+            id: `gcal_${item.id}`,
+            gcalEventId: item.id,
+            title: item.summary ?? '(No title)',
+            date,
+            type: 'gcal' as const,
+            fromGCal: true,
+          };
+        }).filter(e => !!e.date);
+
+        setGcalEvents(prev => {
+          const existingIds = new Set(prev.map(e => e.gcalEventId));
+          const fresh = newEvents.filter(e => !existingIds.has(e.gcalEventId));
+          return [...prev, ...fresh];
+        });
+      }
+
+      setLastSynced(getLastSyncTime());
+    } catch (err: any) {
+      const msg = err?.message ?? '';
+      if (msg.includes('not enabled') || msg.includes('Enable it')) {
+        setGcApiError('not_enabled');
+        stopPolling();
+      } else if (msg.includes('401') || msg.includes('invalid_grant')) {
+        setGcConnected(false);
+        stopPolling();
+      }
+      console.error('[GCal Poll]', err);
+    } finally {
+      setGcSyncing(false);
+    }
+  }, []);
+
+  const startPolling = useCallback(() => {
+    if (pollTimerRef.current) return;
+    runPoll(); // immediate first poll
+    pollTimerRef.current = setInterval(runPoll, POLL_INTERVAL_MS);
+  }, [runPoll]);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  // Start/stop polling based on connection state
+  useEffect(() => {
+    if (gcConnected) {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+    return stopPolling;
+  }, [gcConnected, startPolling, stopPolling]);
+
+  // ── Connect ───────────────────────────────────────────────────────────────────
   const handleGoogleConnect = async () => {
     setGcLoading(true);
+    setGcApiError(null);
     try {
       const ok = await initGoogleCalendar();
-      if (!ok) { toast.error('Google Calendar is not configured. Add VITE_GOOGLE_CALENDAR_CLIENT_ID to .env'); return; }
+      if (!ok) {
+        toast.error('Google Calendar not configured — add VITE_GOOGLE_CALENDAR_CLIENT_ID to .env');
+        return;
+      }
       await signInWithGoogle();
-      setGcConnected(true);
-      toast.success('Connected to Google Calendar!');
+      if (isSignedInToGoogle()) {
+        setGcConnected(true);
+        toast.success('✅ Connected! Auto-syncing with Google Calendar…');
+      } else {
+        toast.error('Sign-in completed but no token received. Try again.');
+      }
     } catch (err: any) {
-      toast.error('Google sign-in failed: ' + (err?.message || 'cancelled'));
-    } finally { setGcLoading(false); }
+      const msg = err?.message || '';
+      if (msg.includes('popup_closed') || msg.includes('access_denied')) {
+        toast.error('Google sign-in cancelled.');
+      } else {
+        toast.error('Google sign-in failed: ' + msg);
+      }
+    } finally {
+      setGcLoading(false);
+    }
   };
 
   const handleGoogleDisconnect = () => {
     signOutGoogle();
     setGcConnected(false);
+    setGcalEvents([]);
+    setGcApiError(null);
+    gcalIdMapRef.current = {};
     toast.info('Disconnected from Google Calendar');
   };
 
+  // ── Auto-push event to GCal when added ────────────────────────────────────────
+  const pushToGCal = useCallback(async (
+    zentrackId: string, title: string, date: string, type: string
+  ) => {
+    if (!isSignedInToGoogle()) return;
+    try {
+      const gcalId = await addEventToGoogleCalendar({
+        zentrackId,
+        title,
+        date,
+        type,
+        description: `ZenTrack — ${EVENT_COLORS[type]?.icon ?? ''} ${EVENT_COLORS[type]?.label ?? type}: ${title}`,
+      });
+      gcalIdMapRef.current[zentrackId] = gcalId;
+      // Persist gcalEventId back to Firestore so we can delete it later
+      try {
+        await updateDoc(doc(db, 'calendar_events', zentrackId), { gcalEventId: gcalId });
+      } catch { /* best effort */ }
+    } catch (err: any) {
+      const msg = err?.message ?? '';
+      if (msg.includes('not enabled') || msg.includes('Enable it')) {
+        setGcApiError('not_enabled');
+      }
+      console.error('[GCal push]', err);
+    }
+  }, []);
+
+  // ── Manual export (side panel button) ────────────────────────────────────────
+  const [exportingId, setExportingId] = useState<string | null>(null);
   const handleExportEvent = async (ev: CalendarEvent) => {
-    if (!gcConnected) {
+    if (!isSignedInToGoogle()) {
+      setGcConnected(false);
       await handleGoogleConnect();
       if (!isSignedInToGoogle()) return;
     }
     setExportingId(ev.id);
     try {
-      await addEventToGoogleCalendar({
+      const zenId = ev.id.replace(/^(todo_|job_|goal_|assign_)/, '');
+      const gcalId = await addEventToGoogleCalendar({
+        zentrackId: zenId,
         title: ev.title,
         date: ev.date,
         type: ev.type,
-        description: `ZenTrack event: ${ev.title} (${EVENT_COLORS[ev.type]?.label || ev.type})`,
+        description: `ZenTrack — ${EVENT_COLORS[ev.type]?.icon ?? ''} ${EVENT_COLORS[ev.type]?.label ?? ev.type}: ${ev.title}`,
       });
-      toast.success(`"${ev.title}" added to Google Calendar!`);
+      gcalIdMapRef.current[ev.id] = gcalId;
+      toast.success(`✅ "${ev.title}" synced to Google Calendar!`);
     } catch (err: any) {
-      toast.error('Export failed: ' + (err?.message || 'unknown error'));
-    } finally { setExportingId(null); }
+      const msg = err?.message ?? 'unknown';
+      if (msg.includes('not enabled') || msg.includes('Enable it')) {
+        setGcApiError('not_enabled');
+        toast.error('Google Calendar API not enabled. See the banner above.');
+      } else if (msg.includes('401') || msg.includes('invalid_grant')) {
+        setGcConnected(false);
+        toast.error('Session expired — please reconnect.');
+      } else {
+        toast.error('Sync failed: ' + msg);
+      }
+    } finally {
+      setExportingId(null);
+    }
   };
-  // ──────────────────────────────────────────────────────────────────────
+  // ──────────────────────────────────────────────────────────────────────────────
 
 
   useEffect(() => {
@@ -106,6 +254,8 @@ export const CalendarModule = () => {
     let jobsEvents: CalendarEvent[] = [];
     let goalsEvents: CalendarEvent[] = [];
     let assignmentEvents: CalendarEvent[] = [];
+    // Track previous custom event IDs to detect newly added ones for auto-push
+    const prevCustomIds = new Set<string>();
 
     const updateEvents = () => {
       setEvents([...todosEvents, ...jobsEvents, ...goalsEvents, ...assignmentEvents]);
@@ -151,18 +301,36 @@ export const CalendarModule = () => {
       updateEvents();
     });
 
-    // Custom calendar events (exams, holidays, vivas)
+    // Custom calendar events — auto-push new ones to GCal
     const unsubCustom = onSnapshot(query(collection(db, 'calendar_events'), where('userId', '==', user.uid)), (snap) => {
-      setCustomEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent)));
+      const docs = snap.docs.map(d => ({ id: d.id, ...d.data() } as CalendarEvent & { gcalEventId?: string }));
+      setCustomEvents(docs);
+
+      // Auto-push newly added events to Google Calendar
+      if (isSignedInToGoogle()) {
+        docs.forEach(ev => {
+          if (!prevCustomIds.has(ev.id) && prevCustomIds.size > 0 && !ev.gcalEventId) {
+            // This is a new event with no gcalEventId — push it
+            pushToGCal(ev.id, ev.title, ev.date, ev.type);
+          }
+          prevCustomIds.add(ev.id);
+        });
+        // Remove deleted from prevCustomIds
+        const currentIds = new Set(docs.map(d => d.id));
+        prevCustomIds.forEach(id => { if (!currentIds.has(id)) prevCustomIds.delete(id); });
+      } else {
+        // Just track IDs
+        docs.forEach(ev => prevCustomIds.add(ev.id));
+      }
     });
 
     return () => { unsubTodos(); unsubJobs(); unsubGoals(); unsubAssignments(); unsubCustom(); };
-  }, [currentDate]);
+  }, [currentDate, pushToGCal]);
 
   const allEvents = useMemo(() => {
-    const combined = [...events, ...customEvents];
+    const combined = [...events, ...customEvents, ...gcalEvents];
     return hideCompleted ? combined.filter(e => !e.isCompleted) : combined;
-  }, [events, customEvents, hideCompleted]);
+  }, [events, customEvents, gcalEvents, hideCompleted]);
 
   // Upcoming exams countdown
   const upcomingExams = useMemo(() => {
@@ -187,22 +355,55 @@ export const CalendarModule = () => {
 
     try {
       if (newEventType === 'todo') {
-        await addDoc(collection(db, 'todos'), { userId: user.uid, text: newEventTitle.trim(), date: selectedDayStr, isCompleted: false, priority: 'medium', createdAt: Date.now() });
+        const ref = await addDoc(collection(db, 'todos'), {
+          userId: user.uid, text: newEventTitle.trim(), date: selectedDayStr,
+          isCompleted: false, priority: 'medium', createdAt: Date.now()
+        });
+        // Auto-push to GCal
+        if (isSignedInToGoogle()) {
+          pushToGCal(`todo_${ref.id}`, newEventTitle.trim(), selectedDayStr, 'todo').catch(() => {});
+        }
       } else {
-        await addDoc(collection(db, 'calendar_events'), {
+        const ref = await addDoc(collection(db, 'calendar_events'), {
           userId: user.uid, title: newEventTitle.trim(), date: selectedDayStr, type: newEventType
         });
+        // Auto-push to GCal
+        if (isSignedInToGoogle()) {
+          pushToGCal(ref.id, newEventTitle.trim(), selectedDayStr, newEventType).catch(() => {});
+        }
       }
       setNewEventTitle('');
-      toast.success('Added!');
+      toast.success(gcConnected ? '✅ Added & synced to Google Calendar!' : 'Added!');
     } catch (err) { toast.error('Failed to add'); }
   };
 
   const handleDeleteCustomEvent = async (id: string) => {
     try {
+      // Also delete from GCal if we have the gcal event ID
+      const gcalId = gcalIdMapRef.current[id];
+      if (gcalId && isSignedInToGoogle()) {
+        deleteGoogleCalendarEvent(gcalId).catch(err => console.warn('[GCal] Delete failed:', err));
+        delete gcalIdMapRef.current[id];
+      }
+
       if (id.startsWith('todo_')) {
         await deleteDoc(doc(db, 'todos', id.replace('todo_', '')));
+      } else if (id.startsWith('gcal_')) {
+        // Event from GCal — remove from local state and optionally from GCal
+        const gcalEventId = id.replace('gcal_', '');
+        if (isSignedInToGoogle()) {
+          deleteGoogleCalendarEvent(gcalEventId).catch(() => {});
+        }
+        setGcalEvents(prev => prev.filter(e => e.id !== id));
+        toast.success('Removed from Google Calendar');
+        return;
       } else {
+        // Check if Firestore doc has gcalEventId stored
+        const evData = customEvents.find(e => e.id === id);
+        const storedGcalId = (evData as any)?.gcalEventId;
+        if (storedGcalId && isSignedInToGoogle()) {
+          deleteGoogleCalendarEvent(storedGcalId).catch(() => {});
+        }
         await deleteDoc(doc(db, 'calendar_events', id));
       }
       toast.success('Deleted');
@@ -369,6 +570,7 @@ export const CalendarModule = () => {
       <style>{`
         @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes slideInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .cal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 199; }
         @media (max-width: 640px) {
           .cal-header-row { flex-direction: column !important; align-items: flex-start !important; }
@@ -419,7 +621,33 @@ export const CalendarModule = () => {
           </div>
         )}
 
-        {/* ── Google Calendar Setup Banner ───────────────── */}
+        {/* ── Google Calendar API Not Enabled Banner ─── */}
+        {gcApiError === 'not_enabled' && (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.85rem 1rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius-md)', marginBottom: '1rem' }}>
+            <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0, marginTop: '1px' }} />
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: '0.82rem', color: '#ef4444', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
+                Google Calendar API is not enabled in your Google Cloud project.
+              </p>
+              <p style={{ fontSize: '0.78rem', color: 'rgba(239,68,68,0.85)', margin: '0.3rem 0 0', lineHeight: 1.5 }}>
+                Fix it in 30 seconds:{' '}
+                <a
+                  href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com`}
+                  target="_blank" rel="noreferrer"
+                  style={{ color: '#ef4444', fontWeight: 700, textDecoration: 'underline' }}
+                >
+                  Enable Google Calendar API →
+                </a>
+                {' '}then come back and reconnect.
+              </p>
+            </div>
+            <button onClick={() => setGcApiError(null)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', opacity: 0.7, padding: '0.1rem' }}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* ── Google Calendar Setup Banner (no client ID) ─── */}
         {!GC_CLIENT_CONFIGURED && (
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.65rem 0.9rem', background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 'var(--radius-md)', marginBottom: '1rem' }}>
             <AlertTriangle size={14} style={{ color: '#6366f1', flexShrink: 0, marginTop: '2px' }} />
@@ -436,26 +664,38 @@ export const CalendarModule = () => {
             <CalendarIcon size={24} style={{ color: 'var(--accent-primary)' }} /> Calendar
           </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {/* Google Calendar connect/disconnect button */}
+            {/* Google Calendar connect/disconnect + sync status */}
             {GC_CLIENT_CONFIGURED && (
-              gcConnected ? (
-                <button
-                  onClick={handleGoogleDisconnect}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.08)', color: '#10b981', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
-                  title="Disconnect Google Calendar"
-                >
-                  <Link2 size={13} /> GCal ✓
-                </button>
-              ) : (
-                <button
-                  onClick={handleGoogleConnect}
-                  disabled={gcLoading}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: '#6366f1', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, opacity: gcLoading ? 0.7 : 1 }}
-                  title="Connect Google Calendar"
-                >
-                  <Link2Off size={13} /> {gcLoading ? 'Connecting...' : 'Connect Google Cal'}
-                </button>
-              )
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {gcConnected && gcSyncing && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> Syncing…
+                  </span>
+                )}
+                {gcConnected && !gcSyncing && lastSynced > 0 && (
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title={new Date(lastSynced).toLocaleTimeString()}>
+                    <Zap size={11} style={{ display: 'inline', verticalAlign: 'middle', color: '#10b981' }} /> Live
+                  </span>
+                )}
+                {gcConnected ? (
+                  <button
+                    onClick={handleGoogleDisconnect}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.08)', color: '#10b981', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
+                    title="Click to disconnect Google Calendar"
+                  >
+                    <Link2 size={13} /> GCal ✓
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleGoogleConnect}
+                    disabled={gcLoading}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: '#6366f1', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, opacity: gcLoading ? 0.7 : 1 }}
+                    title="Connect Google Calendar for auto-sync"
+                  >
+                    <Link2Off size={13} /> {gcLoading ? 'Connecting…' : 'Connect Google Cal'}
+                  </button>
+                )}
+              </div>
             )}
 
             <div style={{ display: 'flex', background: 'var(--bg-surface)', padding: '0.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
