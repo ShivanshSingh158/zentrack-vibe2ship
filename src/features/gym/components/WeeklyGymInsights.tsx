@@ -302,7 +302,7 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
                 cursor={{ fill: 'rgba(255,255,255,0.05)' }}
                 contentStyle={{ background: '#1e1e2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
                 itemStyle={{ color: '#a855f7' }}
-                formatter={(val: number) => [`${val} mins`, 'Duration']}
+                formatter={(val: any) => [`${val} mins`, 'Duration']}
               />
               <Bar dataKey="minutes" fill="#a855f7" radius={[4, 4, 0, 0]} maxBarSize={30} />
             </BarChart>
