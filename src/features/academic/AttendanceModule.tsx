@@ -107,6 +107,7 @@ export const AttendanceModule = () => {
   const [editName, setEditName]     = useState('');
   const [isTimetableModalOpen, setIsTimetableModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen]     = useState(false);
+  const [isExtraOpen, setIsExtraOpen]                   = useState(false);
   const [confirmDeleteId, setConfirmDeleteId]           = useState<string | null>(null);
   const [confirmResetSemester, setConfirmResetSemester] = useState(false);
   const [dismissedWarnings, setDismissedWarnings]       = useState<Set<string>>(new Set());
@@ -399,32 +400,75 @@ export const AttendanceModule = () => {
     <div className="page-pad">
 
       {/* ── Header ── */}
-      <div className="page-header" style={{ marginBottom: '1rem' }}>
+      <div className="page-header" style={{ marginBottom: '0.75rem' }}>
         <div className="page-header-info">
-          <h1><GraduationCap size={24} className="icon-blue" /> Attendance Tracker</h1>
-          <p className="subtitle">Log classes · Track progress · Stay above target.</p>
+          <h1><GraduationCap size={22} className="icon-blue" /> Attendance Tracker</h1>
+          <p className="subtitle att-desktop-only" style={{ display: 'flex' }}>Log classes · Track progress · Stay above target.</p>
         </div>
-        <div className="page-header-actions">
+        <div className="page-header-actions att-header-actions">
           <div className="date-picker-wrap">
-            <Calendar size={15} style={{ color: 'var(--text-muted)' }} />
+            <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
             <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
           </div>
           <button
-            className={`btn-secondary${isSelectedHoliday ? ' active' : ''}`}
+            className={`btn-secondary att-header-btn${isSelectedHoliday ? ' active' : ''}`}
             onClick={handleToggleHoliday}
             style={{ color: isSelectedHoliday ? '#10b981' : undefined }}
-            title={isSelectedHoliday ? 'Remove holiday' : 'Mark this day as holiday'}
+            title={isSelectedHoliday ? 'Remove holiday' : 'Mark as holiday'}
           >
-            <Palmtree size={14} /> {isSelectedHoliday ? 'Holiday ✓' : 'Holiday'}
+            <Palmtree size={14} />
+            <span className="att-btn-label">{isSelectedHoliday ? 'Holiday ✓' : 'Holiday'}</span>
           </button>
-          <button className="btn-secondary" onClick={() => setIsHistoryModalOpen(true)}>
-            <History size={14} /> History
+          <button
+            className={`btn-secondary att-header-btn${isExtraOpen ? ' active' : ''}`}
+            onClick={() => setIsExtraOpen(o => !o)}
+            title="Log extra/makeup class"
+          >
+            <Plus size={14} />
+            <span className="att-btn-label">Extra</span>
           </button>
-          <button className="btn-secondary" onClick={() => setIsTimetableModalOpen(true)}>
-            <Settings size={15} /> Timetable
+          <button className="btn-secondary att-header-btn" onClick={() => setIsHistoryModalOpen(true)} title="Log history">
+            <History size={14} />
+            <span className="att-btn-label">History</span>
+          </button>
+          <button className="btn-secondary att-header-btn" onClick={() => setIsTimetableModalOpen(true)} title="Timetable settings">
+            <Settings size={14} />
+            <span className="att-btn-label">Timetable</span>
           </button>
         </div>
       </div>
+
+      {/* ── Extra Class Inline Dropdown ── */}
+      {isExtraOpen && (
+        <div className="att-extra-dropdown">
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            <select
+              value={extraSubjectId}
+              onChange={e => setExtraSubjectId(e.target.value)}
+              style={{ flex: 1, minWidth: '140px', padding: '0.38rem 0.5rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
+            >
+              <option value="">Select Subject...</option>
+              {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            {(['class', 'lab'] as const).map(t =>
+              (['attended', 'missed'] as const).map(a => {
+                const sub = subjects.find(s => s.id === extraSubjectId);
+                return (
+                  <button key={`${t}-${a}`}
+                    className="btn-secondary"
+                    disabled={!extraSubjectId}
+                    onClick={() => { if (sub) { handleLog(sub, t, a, selectedDate, true); setExtraSubjectId(''); setIsExtraOpen(false); } else toast.error('Select a subject first'); }}
+                    style={{ fontSize: '0.78rem', padding: '0.32rem 0.6rem', color: a === 'attended' ? '#10b981' : '#ef4444', border: `1px solid ${a === 'attended' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`, opacity: extraSubjectId ? 1 : 0.5, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                  >
+                    {a === 'attended' ? <Check size={12} /> : <X size={12} />} {t === 'class' ? 'Class' : 'Lab'}
+                  </button>
+                );
+              })
+            )}
+            <button onClick={() => { setIsExtraOpen(false); setExtraSubjectId(''); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={14} /></button>
+          </div>
+        </div>
+      )}
 
       {/* ── Warning Alerts Banner ── */}
       {warningSubjects.length > 0 && (
@@ -490,31 +534,29 @@ export const AttendanceModule = () => {
         })}
       </div>
 
-      {/* ── Top Row: Overview + Extra Class ── */}
-      <div className="attendance-top-container" style={{ marginBottom: '1.5rem' }}>
-
-        {/* Semester Overview */}
+      {/* ── Top Row: Overview only ── */}
+      <div className="att-overview-desktop" style={{ marginBottom: '1.25rem' }}>
         <div className="panel panel-green attendance-summary-panel">
           <div className="panel-body" style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
             <div style={{ flex: 1 }}>
-              <h2 className="overview-title" style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <PieChart size={16} /> <span>Semester Overview</span>
+              <h2 className="overview-title" style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <PieChart size={15} /> <span>Semester Overview</span>
               </h2>
-              <div className="global-pct" style={{ fontSize: '2.8rem', fontFamily: 'var(--font-display)', fontWeight: 700, color: globalSafe ? '#10b981' : '#ef4444', lineHeight: 1 }}>
+              <div className="global-pct" style={{ fontSize: '2.6rem', fontFamily: 'var(--font-display)', fontWeight: 700, color: globalSafe ? '#10b981' : '#ef4444', lineHeight: 1 }}>
                 {Math.round(globalPct)}%
               </div>
-              <div className="global-total" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+              <div className="global-total" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
                 {globalAttended} / {globalTotal} attended
               </div>
-              <div style={{ marginTop: '0.5rem', height: '5px', borderRadius: '3px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', borderRadius: '3px', width: `${Math.min(100, globalPct)}%`, background: globalSafe ? '#10b981' : '#ef4444', transition: 'width 0.5s ease' }} />
+              <div style={{ marginTop: '0.45rem', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', borderRadius: '2px', width: `${Math.min(100, globalPct)}%`, background: globalSafe ? '#10b981' : '#ef4444', transition: 'width 0.5s ease' }} />
               </div>
             </div>
-            <div className="pie-chart-container" style={{ width: '110px', height: '110px' }}>
+            <div className="pie-chart-container" style={{ width: '100px', height: '100px' }}>
               {globalTotal > 0 && (
                 <ResponsiveContainer width="100%" height="100%">
                   <RechartsPieChart>
-                    <Pie data={chartData} innerRadius={38} outerRadius={50} paddingAngle={4} dataKey="value" stroke="none">
+                    <Pie data={chartData} innerRadius={32} outerRadius={44} paddingAngle={4} dataKey="value" stroke="none">
                       {chartData.map((entry, idx) => <Cell key={`cell-${idx}`} fill={entry.color} />)}
                     </Pie>
                     <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px' }} />
@@ -524,39 +566,18 @@ export const AttendanceModule = () => {
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Extra Class — compact, always visible */}
-        <div className="panel attendance-extra-class">
-          <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', justifyContent: 'center', height: '100%' }}>
-            <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Log Extra / Makeup Class
-            </div>
-            <select
-              value={extraSubjectId}
-              onChange={e => setExtraSubjectId(e.target.value)}
-              style={{ padding: '0.4rem 0.5rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.82rem', width: '100%' }}
-            >
-              <option value="">Select Subject...</option>
-              {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-              {(['class', 'lab'] as const).map(t =>
-                (['attended', 'missed'] as const).map(a => {
-                  const sub = subjects.find(s => s.id === extraSubjectId);
-                  return (
-                    <button key={`${t}-${a}`}
-                      className="btn-secondary"
-                      disabled={!extraSubjectId}
-                      onClick={() => { if (sub) { handleLog(sub, t, a, selectedDate, true); setExtraSubjectId(''); } else toast.error('Select a subject first'); }}
-                      style={{ fontSize: '0.75rem', padding: '0.28rem 0.55rem', color: a === 'attended' ? '#10b981' : '#ef4444', border: `1px solid ${a === 'attended' ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`, opacity: extraSubjectId ? 1 : 0.45 }}
-                    >
-                      {a === 'attended' ? <Check size={11} /> : <X size={11} />} {t === 'class' ? 'Class' : 'Lab'}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
+      {/* Mobile-only slim stats bar */}
+      <div className="att-mobile-stats">
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.6rem', color: globalSafe ? '#10b981' : '#ef4444', lineHeight: 1 }}>
+          {Math.round(globalPct)}%
+        </div>
+        <div style={{ height: '4px', flex: 1, borderRadius: '2px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+          <div style={{ height: '100%', borderRadius: '2px', width: `${Math.min(100, globalPct)}%`, background: globalSafe ? '#10b981' : '#ef4444', transition: 'width 0.5s ease' }} />
+        </div>
+        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+          {globalAttended}/{globalTotal}
         </div>
       </div>
 
