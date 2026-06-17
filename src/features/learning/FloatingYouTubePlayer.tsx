@@ -135,7 +135,8 @@ export const FloatingYouTubePlayer: React.FC = () => {
           initial={{ opacity: 0, y: 50, scale: 0.9 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 50, scale: 0.9 }}
-          className="fixed bottom-6 right-6 w-80 bg-zinc-900 border border-zinc-800 shadow-2xl rounded-xl overflow-hidden z-[99999] flex flex-col"
+          className="bg-zinc-900 border border-zinc-800 shadow-2xl rounded-xl overflow-hidden z-[99999] flex flex-col"
+          style={{ position: 'fixed', bottom: '1.5rem', right: '1.5rem', width: '320px', zIndex: 99999 }}
         >
           {/* Header */}
           <div className="flex items-center justify-between p-2 bg-zinc-900/90 backdrop-blur-md border-b border-zinc-800">
@@ -164,7 +165,7 @@ export const FloatingYouTubePlayer: React.FC = () => {
           </div>
 
           {/* Video Container */}
-          <div className="relative aspect-video w-full group">
+          <div className="group" style={{ position: 'relative', width: '100%', aspectRatio: '16/9', backgroundColor: '#000' }}>
             {YouTubeIframe}
             
             {/* Hover overlay for play/pause in PiP */}
