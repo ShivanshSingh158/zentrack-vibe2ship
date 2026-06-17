@@ -221,7 +221,6 @@ export const GymModule = () => {
                   <><span style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
                   <span style={{ color: 'rgba(255,255,255,0.35)' }}>Saved</span></>
                 )}
-                )}
               </div>
             </div>
           </div>
