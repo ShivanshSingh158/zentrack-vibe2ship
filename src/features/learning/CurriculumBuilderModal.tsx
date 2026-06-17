@@ -72,6 +72,11 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
   useEffect(() => { localStorage.setItem(STORAGE_KEY + '_sources', JSON.stringify(stagedSources)); }, [stagedSources]);
   useEffect(() => { localStorage.setItem(STORAGE_KEY + '_topics', JSON.stringify(draftTopics)); }, [draftTopics]);
 
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = 'auto'; };
+  }, []);
+
   const clearWorkspace = () => {
     if (!window.confirm("Are you sure you want to clear your entire workspace? This cannot be undone.")) return;
     setStagedSources([]);
@@ -399,7 +404,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
   // ─── RENDER ─────────────────────────────────────────────────────────────
   
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(9,9,11,0.98)', backdropFilter: 'blur(20px)', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 100000, background: 'rgba(9,9,11,0.98)', display: 'flex', flexDirection: 'column' }}>
       
       {/* Mini Video Preview Overlay */}
       {previewVideoId && (
@@ -502,7 +507,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
                         </div>
                       </div>
 
-                      <div style={{ maxHeight: '400px', overflowY: 'auto', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', padding: '0.4rem' }}>
+                      <div style={{ maxHeight: '400px', overflowY: 'auto', overscrollBehavior: 'contain', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', padding: '0.4rem' }}>
                         {getFilteredVideos(source).map((v, i) => {
                           const actualIdx = source.videos.findIndex(sv => sv.id === v.id);
                           return (
@@ -604,7 +609,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
 
                         <Droppable droppableId={topic.id}>
                           {(provided, snapshot) => (
-                            <div ref={provided.innerRef} {...provided.droppableProps} style={{ minHeight: '60px', maxHeight: '400px', overflowY: 'auto', background: snapshot.isDraggingOver ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.15)', borderRadius: '8px', padding: '0.5rem', transition: 'background 0.2s' }}>
+                            <div ref={provided.innerRef} {...provided.droppableProps} style={{ minHeight: '60px', maxHeight: '400px', overflowY: 'auto', overscrollBehavior: 'contain', background: snapshot.isDraggingOver ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.15)', borderRadius: '8px', padding: '0.5rem', transition: 'background 0.2s' }}>
                               {topic.videos.length === 0 ? (
                                 <div style={{ textAlign: 'center', padding: '1.5rem', color: 'rgba(255,255,255,0.3)', fontSize: '0.8rem' }}>Drag videos here...</div>
                               ) : (
