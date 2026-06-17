@@ -20,6 +20,7 @@ import { ExerciseHistoryDrawer } from './components/ExerciseHistoryDrawer';
 import { MuscleHeatmap } from './components/MuscleHeatmap';
 import { GymProfileModal } from './components/GymProfileModal';
 import { RestTimerPill } from './components/RestTimerPill';
+import { WeeklyGymInsights } from './components/WeeklyGymInsights';
 import type { GymExerciseLog, GymCardioLog } from '../../types/gym.types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -303,11 +304,7 @@ export const GymModule = () => {
 
       {/* ── Day Content ──────────────────────────────────────────────── */}
       {isRestDay ? (
-        <div style={{ margin: '1.25rem 1rem', padding: '1.75rem 1.25rem', borderRadius: '20px', background: 'linear-gradient(135deg,rgba(99,102,241,0.07),rgba(124,58,237,0.03))', border: '1px solid rgba(99,102,241,0.12)', textAlign: 'center' }}>
-          <Bed size={36} style={{ color: '#818cf8', margin: '0 auto 0.6rem' }} />
-          <h2 style={{ margin: '0 0 0.4rem', fontSize: '1.2rem', fontWeight: 700, color: '#fff' }}>Rest Day 🛌</h2>
-          <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.42)', lineHeight: 1.6 }}>{planDay?.focus}</p>
-        </div>
+        <WeeklyGymInsights userId={userId} selectedDate={selectedDate} />
       ) : (
         <div style={{ opacity: syncing ? 0.75 : 1, transition: 'opacity 0.2s', pointerEvents: syncing ? 'none' : 'auto' }}>
 
