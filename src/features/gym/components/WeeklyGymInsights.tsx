@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
-import { Target, Activity, CheckCircle, Zap, Heart, Award } from 'lucide-react';
+import { Target, Activity, CheckCircle, Zap, Heart, Award, Dumbbell, Star } from 'lucide-react';
 import type { GymDayLog } from '../../../types/gym.types';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../../data/gymPlan';
 
@@ -111,6 +111,7 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
     let workoutCount = 0;
     let cardioMinutes = 0;
     const muscleSets: Record<string, { hit: number; missed: number }> = {};
+    const exerciseStats: Record<string, { hits: number; maxWeight: number }> = {};
 
     logs.forEach(log => {
       let isWorkout = false;
@@ -126,8 +127,11 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
       // Calculate exercises
       log.exercises?.forEach(ex => {
         const muscleName = ex.muscle;
-        if (!muscleName) return;
-        if (!muscleSets[muscleName]) muscleSets[muscleName] = { hit: 0, missed: 0 };
+        if (!exerciseStats[ex.name]) exerciseStats[ex.name] = { hits: 0, maxWeight: 0 };
+
+        if (muscleName) {
+          if (!muscleSets[muscleName]) muscleSets[muscleName] = { hit: 0, missed: 0 };
+        }
         
         targetSets += ex.targetSets || ex.setsLog.length;
         
@@ -135,10 +139,14 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
           if (set.completed) {
             completedSets++;
             isWorkout = true;
-            muscleSets[muscleName].hit++;
+            exerciseStats[ex.name].hits++;
+            if (set.weight) {
+              exerciseStats[ex.name].maxWeight = Math.max(exerciseStats[ex.name].maxWeight, set.weight);
+            }
+            if (muscleName) muscleSets[muscleName].hit++;
             if (set.weight && set.reps) totalVolume += set.weight * set.reps;
           } else if (!ex.skipped) {
-            muscleSets[muscleName].missed++;
+            if (muscleName) muscleSets[muscleName].missed++;
           }
         });
       });
@@ -152,7 +160,19 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
     const completionRate = targetSets > 0 ? (completedSets / targetSets) * 100 : 0;
     const grade = getGrade(completionRate);
 
-    return { totalVolume, completedSets, targetSets, workoutCount, cardioMinutes, muscles, completionRate, grade };
+    let heaviestLift = { name: '', weight: 0 };
+    let favoriteExercise = { name: '', hits: 0 };
+    
+    for (const [name, stats] of Object.entries(exerciseStats)) {
+      if (stats.maxWeight > heaviestLift.weight) {
+        heaviestLift = { name, weight: stats.maxWeight };
+      }
+      if (stats.hits > favoriteExercise.hits) {
+        favoriteExercise = { name, hits: stats.hits };
+      }
+    }
+
+    return { totalVolume, completedSets, targetSets, workoutCount, cardioMinutes, muscles, completionRate, grade, heaviestLift, favoriteExercise };
   }, [logs]);
 
   if (loading) {
@@ -257,6 +277,30 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem' }}>
             <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>{insights.cardioMinutes}</span>
             <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>minutes this week</span>
+          </div>
+        </div>
+
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
+            <Dumbbell size={12} /> Heaviest Lift
+          </div>
+          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {insights.heaviestLift.weight > 0 ? `${insights.heaviestLift.weight} kg` : '—'}
+          </div>
+          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {insights.heaviestLift.name || 'No weights logged'}
+          </div>
+        </div>
+
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>
+            <Star size={12} /> Favorite Ex
+          </div>
+          <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {insights.favoriteExercise.hits > 0 ? `${insights.favoriteExercise.hits} sets` : '—'}
+          </div>
+          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {insights.favoriteExercise.name || 'No sets logged'}
           </div>
         </div>
       </div>

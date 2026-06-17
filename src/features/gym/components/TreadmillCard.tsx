@@ -11,7 +11,7 @@ interface TreadmillCardProps {
 export const TreadmillCard = ({ cardio, onChange }: TreadmillCardProps) => {
   const [open, setOpen] = useState(false);
   const done = cardio.completed;
-  const hasData = cardio.durationMinutes || cardio.distanceKm || cardio.speedKmh;
+  const hasData = cardio.durationMinutes || cardio.distanceKm;
 
   return (
     <motion.div layout="position" className="liquid-panel" style={{
@@ -45,7 +45,6 @@ export const TreadmillCard = ({ cardio, onChange }: TreadmillCardProps) => {
             <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.2rem', flexWrap: 'wrap' }}>
               {!!cardio.durationMinutes && <span style={{ fontSize: '0.65rem', color: '#f87171', background: 'rgba(239,68,68,0.1)', padding: '0.08rem 0.35rem', borderRadius: '99px', fontWeight: 600 }}>⏱ {cardio.durationMinutes} min</span>}
               {!!cardio.distanceKm && <span style={{ fontSize: '0.65rem', color: '#fb923c', background: 'rgba(251,146,60,0.1)', padding: '0.08rem 0.35rem', borderRadius: '99px', fontWeight: 600 }}>📍 {cardio.distanceKm} km</span>}
-              {!!cardio.speedKmh && <span style={{ fontSize: '0.65rem', color: '#60a5fa', background: 'rgba(96,165,250,0.1)', padding: '0.08rem 0.35rem', borderRadius: '99px', fontWeight: 600 }}>💨 {cardio.speedKmh} km/h</span>}
             </div>
           ) : !open ? (
             <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.28)', marginTop: '0.1rem' }}>Tap to log</div>
@@ -61,11 +60,10 @@ export const TreadmillCard = ({ cardio, onChange }: TreadmillCardProps) => {
         {open && (
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.18 }} style={{ overflow: 'hidden' }}>
             <div style={{ padding: '0 0.85rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.45rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
                 {[
                   { label: 'mins', icon: <Timer size={9} />, value: cardio.durationMinutes, key: 'durationMinutes', step: 1, max: 180 },
                   { label: 'km', icon: <Zap size={9} />, value: cardio.distanceKm, key: 'distanceKm', step: 0.1, max: 50 },
-                  { label: 'km/h', icon: <Wind size={9} />, value: cardio.speedKmh, key: 'speedKmh', step: 0.5, max: 30 },
                 ].map(field => (
                   <div key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     <label style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.2rem' }}>

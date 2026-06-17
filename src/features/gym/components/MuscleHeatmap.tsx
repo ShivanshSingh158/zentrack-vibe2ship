@@ -35,7 +35,7 @@ export const MuscleHeatmap = ({ recentLogs }: MuscleHeatmapProps) => {
   return (
     <div style={{ margin: '0.6rem 1rem 0', padding: '0.65rem 0.75rem', borderRadius: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
       <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem' }}>
-        This Week's Muscles
+        Today's Muscles
       </div>
       <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
         {muscleCounts.map(([muscle, count]) => {
