@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays, PlaySquare } from 'lucide-react';
 import SetRow from './SetRow';
@@ -45,6 +45,7 @@ const ExerciseCard = memo(({
   onEditClick, onMoveToDate, onHistoryClick, onSetComplete, editMode,
 }: ExerciseCardProps) => {
   const [open, setOpen] = useState(false);
+  const [showPlayer, setShowPlayer] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
   const completedSets = ex.setsLog.filter(s => s.completed).length;
   const totalSets = ex.setsLog.length;
@@ -159,11 +160,14 @@ const ExerciseCard = memo(({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  window.open(`https://www.youtube.com/results?search_query=how+to+do+${encodeURIComponent(ex.name)}+proper+form+tutorial`, '_blank');
+                  setShowPlayer(prev => !prev);
                 }}
                 style={{
-                  background: 'rgba(255,0,0,0.1)', border: '1px solid rgba(255,0,0,0.2)', padding: '0.15rem 0.4rem',
-                  borderRadius: '99px', display: 'flex', alignItems: 'center', gap: '0.2rem', color: '#ef4444', cursor: 'pointer'
+                  background: showPlayer ? 'rgba(255,0,0,0.15)' : 'rgba(255,0,0,0.1)', 
+                  border: `1px solid rgba(255,0,0,${showPlayer ? '0.4' : '0.2'})`, 
+                  padding: '0.15rem 0.4rem',
+                  borderRadius: '99px', display: 'flex', alignItems: 'center', gap: '0.2rem', color: '#ef4444', cursor: 'pointer',
+                  transition: 'all 0.2s'
                 }}
                 title="Watch Form Tutorial"
               >
@@ -254,6 +258,25 @@ const ExerciseCard = memo(({
 
       {/* Expanded set logger */}
       <AnimatePresence>
+        {showPlayer && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div style={{ padding: '0 0.85rem 0.85rem' }}>
+              <div style={{ position: 'relative', width: '100%', paddingBottom: '56.25%', borderRadius: '12px', overflow: 'hidden', background: '#000' }}>
+                <iframe
+                  src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(ex.name + ' exercise proper form tutorial')}`}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
         {open && !isSkipped && (
           <motion.div
             initial={{ height: 0, opacity: 0 }}

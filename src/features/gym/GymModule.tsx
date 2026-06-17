@@ -21,6 +21,7 @@ import { MuscleHeatmap } from './components/MuscleHeatmap';
 import { GymProfileModal } from './components/GymProfileModal';
 import { RestTimerPill } from './components/RestTimerPill';
 import { WeeklyGymInsights } from './components/WeeklyGymInsights';
+import { LiveTimer } from './components/LiveTimer';
 import type { GymExerciseLog, GymCardioLog } from '../../types/gym.types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -32,22 +33,6 @@ function debounce<T extends (...args: any[]) => any>(fn: T, ms: number): T {
     timer = window.setTimeout(() => fn(...args), ms);
   }) as T;
 }
-
-function formatTime(ms: number) {
-  const totalSeconds = Math.floor(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-const LiveTimer = ({ startTime }: { startTime: number }) => {
-  const [elapsed, setElapsed] = useState(Date.now() - startTime);
-  useEffect(() => {
-    const id = setInterval(() => setElapsed(Date.now() - startTime), 1000);
-    return () => clearInterval(id);
-  }, [startTime]);
-  return <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatTime(elapsed)}</span>;
-};
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
@@ -417,9 +402,9 @@ export const GymModule = () => {
                   allTimePR={allTimePRs[ex.exerciseId] ?? null}
                   onUpdate={updateExerciseWithPR}
                   onDelete={deleteExercise}
-                  onMoveToDate={(index, date) => moveExerciseToDate(index, date)}
+                  onMoveToDate={(index: number, date: string) => moveExerciseToDate(index, date)}
                   onEditClick={setEditingExerciseIdx}
-                  onHistoryClick={(id, name) => setHistoryFor({ id, name })}
+                  onHistoryClick={(id: string, name: string) => setHistoryFor({ id, name })}
                   onSetComplete={handleSetComplete}
                   editMode={editMode}
                 />
