@@ -16,6 +16,7 @@ import remarkGfm from 'remark-gfm';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
 import { useYouTube } from '../../contexts/YouTubeContext';
+import { CurriculumBuilderModal } from './CurriculumBuilderModal';
 
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
 import { PREDEFINED_ROADMAPS } from '../../data/roadmaps';
@@ -1055,6 +1056,7 @@ export const LearningChecklistModule = () => {
   const [topics, setTopics] = useState<LearningTopic[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newTopicTitle, setNewTopicTitle] = useState('');
+  const [showCurriculumBuilder, setShowCurriculumBuilder] = useState(false);
 
   const [expandedTopicId, setExpandedTopicId] = useState<string | null>(() => {
     try { return localStorage.getItem(EXPANDED_KEY) || null; } catch { return null; }
@@ -1510,6 +1512,38 @@ export const LearningChecklistModule = () => {
     catch { toast.error('Failed to delete topic'); }
   };
 
+  const handlePublishCurriculum = async (draftTopics: any[]) => {
+    if (!user) return;
+    try {
+      let currentOrder = topics.length;
+      for (const draft of draftTopics) {
+        const subTasks: LearningSubTask[] = draft.videos.map((v: any) => ({
+          id: uniqueId(),
+          text: v.title,
+          category: 'Videos',
+          isCompleted: false,
+          url: v.url,
+          resources: [{ title: 'Watch Video', url: v.url, type: 'video' }]
+        }));
+        
+        const newTopic: Omit<LearningTopic, 'id'> = {
+          userId: user.uid,
+          title: draft.title,
+          subTasks,
+          createdAt: Date.now(),
+          lastStudiedAt: Date.now(),
+          order: currentOrder++,
+          timeSpentMs: 0
+        };
+        await addDoc(collection(db, 'learning_topics'), sanitize(newTopic));
+      }
+      toast.success(`Published ${draftTopics.length} new topics successfully!`);
+      setShowCurriculumBuilder(false);
+    } catch (err) {
+      toast.error('Failed to publish curriculum');
+    }
+  };
+
   const handleAddSubTask = async (topicId: string, e: React.FormEvent) => {
     e.preventDefault();
     const text = newSubtaskText[topicId]?.trim();
@@ -1612,7 +1646,8 @@ export const LearningChecklistModule = () => {
           <p className="subtitle">Build your own curriculum from any YouTube playlist.</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-primary" onClick={() => setShowRoadmapHub(true)}><Plus size={15} /> Import</button>
+          <button className="btn-primary" onClick={() => setShowCurriculumBuilder(true)} style={{ background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', border: 'none', boxShadow: '0 4px 15px rgba(99,102,241,0.3)' }}><BookOpen size={15} /> Curriculum Builder</button>
+          <button className="btn-secondary" onClick={() => setShowRoadmapHub(true)}><Plus size={15} /> Quick Import</button>
           <button className={`btn-secondary ${showIncompleteOnly ? 'active' : ''}`} onClick={() => setShowIncompleteOnly(v => !v)} style={{ padding: '0.4rem' }} title={showIncompleteOnly ? 'Show all' : 'Incomplete only'}>
             {showIncompleteOnly ? <EyeOff size={17} /> : <Eye size={17} />}
           </button>
@@ -1819,6 +1854,14 @@ export const LearningChecklistModule = () => {
       <ConfirmDialog open={deleteConfirm.isOpen} title="Delete Topic" message="Delete this topic and all its videos? This cannot be undone."
         onConfirm={confirmDeleteTopic}
         onCancel={() => setDeleteConfirm({ isOpen: false, id: '' })} />
+
+      {/* Curriculum Builder Modal */}
+      {showCurriculumBuilder && (
+        <CurriculumBuilderModal 
+          onClose={() => setShowCurriculumBuilder(false)}
+          onPublish={handlePublishCurriculum}
+        />
+      )}
 
       {/* Roadmap Hub */}
       {showRoadmapHub && createPortal(
