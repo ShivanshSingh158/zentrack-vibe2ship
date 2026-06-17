@@ -177,9 +177,12 @@ const SubTaskItem = React.memo(({
   toggleSubTask: (t: string, s: string) => void;
   openNotesModal: (t: string, s: string) => void;
   deleteSubTask: (t: string, s: string) => void;
+  instantDeleteSubTask: (t: string, s: string) => void;
   onPlayVideo: (videoId: string, subtaskId: string, topicId: string) => void;
   onCycleMastery: (t: string, s: string) => void;
   onStartRename?: (t: string, s: string, title: string) => void;
+  bulkDeleteSelected: Set<string>;
+  toggleBulkDelete: (s: string) => void;
 }) => {
   const videoId = useMemo(() => {
     if (subTask.url) { const id = extractYoutubeId(subTask.url); if (id) return id; }
@@ -203,11 +206,11 @@ const SubTaskItem = React.memo(({
         )}
 
         {/* Checkbox */}
-        <button className={`todo-checkbox ${subTask.isCompleted ? 'checked' : ''}`}
-          onClick={() => toggleSubTask(topicId, subTask.id)}
-          role="checkbox" aria-checked={subTask.isCompleted}
+        <button className={`todo-checkbox ${isEditMode ? (bulkDeleteSelected.has(subTask.id) ? 'checked' : '') : (subTask.isCompleted ? 'checked' : '')}`}
+          onClick={() => isEditMode ? toggleBulkDelete(subTask.id) : toggleSubTask(topicId, subTask.id)}
+          role="checkbox" aria-checked={isEditMode ? bulkDeleteSelected.has(subTask.id) : subTask.isCompleted}
           style={{ flexShrink: 0 }}>
-          {subTask.isCompleted && <Check size={13} strokeWidth={3} />}
+          {(isEditMode ? bulkDeleteSelected.has(subTask.id) : subTask.isCompleted) && <Check size={13} strokeWidth={3} />}
         </button>
 
         {/* Title */}
@@ -246,7 +249,7 @@ const SubTaskItem = React.memo(({
                 style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.4rem', borderRadius: '6px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa', cursor: 'pointer', minHeight: '28px' }}>
                 <Edit3 size={11} />
               </button>
-              <button onClick={() => deleteSubTask(topicId, subTask.id)}
+              <button onClick={() => instantDeleteSubTask(topicId, subTask.id)}
                 style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.4rem', borderRadius: '6px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.22)', color: '#ef4444', cursor: 'pointer', minHeight: '28px' }}>
                 <Trash2 size={11} />
               </button>
@@ -284,6 +287,8 @@ const TopicBody = React.memo(({
   mergePanelState, setMergePanelState, onFetchMerge, onMergeSelected,
   // For rename
   renamingSubtask, onStartRename, onSaveRename, onCancelRename,
+  // Bulk & Instant Delete
+  instantDeleteSubTask, bulkDeleteState, toggleBulkDelete, handleBulkDelete,
 }: any) => {
   const categories = useMemo(() => {
     const cats: { [key: string]: LearningSubTask[] } = {};
@@ -374,8 +379,9 @@ const TopicBody = React.memo(({
                                     isEditMode={true} dragHandleProps={prov.dragHandleProps}
                                     renamingId={renamingSubtask?.subtaskId}
                                     toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
-                                    deleteSubTask={deleteSubTask} onPlayVideo={onPlayVideo}
+                                    deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask} onPlayVideo={onPlayVideo}
                                     onCycleMastery={onCycleMastery} onStartRename={onStartRename}
+                                    bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
                                   />
                                 </div>
                               )}
@@ -389,8 +395,8 @@ const TopicBody = React.memo(({
                     catSubTasks.map((st: LearningSubTask) => (
                       <SubTaskItem key={st.id} subTask={st} topicId={topic.id}
                         toggleSubTask={toggleSubTask} openNotesModal={openNotesModal}
-                        deleteSubTask={deleteSubTask} onPlayVideo={onPlayVideo}
-                        onCycleMastery={onCycleMastery}
+                        deleteSubTask={deleteSubTask} instantDeleteSubTask={instantDeleteSubTask} onPlayVideo={onPlayVideo}
+                        onCycleMastery={onCycleMastery} bulkDeleteSelected={bulkDeleteState} toggleBulkDelete={toggleBulkDelete}
                       />
                     ))
                   )}
@@ -439,6 +445,16 @@ const TopicBody = React.memo(({
               onFetch={onFetchMerge}
               onMerge={onMergeSelected}
             />
+          )}
+
+          {/* Bulk Delete Button */}
+          {bulkDeleteState.size > 0 && topic.subTasks.some((st: any) => bulkDeleteState.has(st.id)) && (
+            <button
+              onClick={() => handleBulkDelete(topic.id)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem', borderRadius: '10px', border: 'none', background: '#ef4444', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.82rem' }}
+            >
+              <Trash2 size={14} /> Delete Selected ({topic.subTasks.filter((st: any) => bulkDeleteState.has(st.id)).length})
+            </button>
           )}
         </div>
       )}
@@ -663,6 +679,7 @@ export const LearningChecklistModule = () => {
   const [addVideoState, setAddVideoState] = useState<any>(null);
   const [mergePanelState, setMergePanelState] = useState<any>(null);
   const [renamingSubtask, setRenamingSubtask] = useState<{ topicId: string; subtaskId: string; title: string } | null>(null);
+  const [bulkDeleteState, setBulkDeleteState] = useState<Set<string>>(new Set());
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { startTimer } = usePomodoroContext();
@@ -845,6 +862,41 @@ export const LearningChecklistModule = () => {
     } catch { toast.error('Failed to rename'); }
     setRenamingSubtask(null);
   }, [topics, renamingSubtask]);
+
+  const toggleBulkDelete = useCallback((subTaskId: string) => {
+    setBulkDeleteState(prev => {
+      const next = new Set(prev);
+      next.has(subTaskId) ? next.delete(subTaskId) : next.add(subTaskId);
+      return next;
+    });
+  }, []);
+
+  const instantDeleteSubTask = useCallback(async (topicId: string, subTaskId: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const updated = topic.subTasks.filter(st => st.id !== subTaskId);
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
+    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); }
+    catch { toast.error('Failed to delete'); }
+  }, [topics]);
+
+  const handleBulkDelete = useCallback(async (topicId: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const updated = topic.subTasks.filter(st => !bulkDeleteState.has(st.id));
+    if (updated.length === topic.subTasks.length) return;
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
+    try { 
+      await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); 
+      setBulkDeleteState(prev => {
+        const next = new Set(prev);
+        topic.subTasks.forEach(st => next.delete(st.id));
+        return next;
+      });
+      toast.success('Deleted selected videos');
+    }
+    catch { toast.error('Failed to bulk delete'); }
+  }, [topics, bulkDeleteState]);
 
   // ── Global DragEnd (routes topic vs subtask) ──────────────────────────────
 
