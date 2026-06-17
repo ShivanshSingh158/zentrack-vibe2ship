@@ -171,12 +171,14 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
       }
     }
 
-    const durationData = dates.map(dStr => {
-      const d = new Date(dStr + 'T00:00:00');
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-      const log = logs.find(l => l.date === dStr);
-      return { name: dayName, minutes: log?.workoutDurationMinutes || 0 };
-    });
+    const durationData = dates
+      .filter(dStr => new Date(dStr + 'T00:00:00').getDay() !== 0)
+      .map(dStr => {
+        const d = new Date(dStr + 'T00:00:00');
+        const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+        const log = logs.find(l => l.date === dStr);
+        return { name: dayName, minutes: log?.workoutDurationMinutes || 0 };
+      });
 
     return { totalVolume, totalReps, completedSets, targetSets, workoutCount, cardioMinutes, muscles, completionRate, grade, heaviestLift, durationData };
   }, [logs, dates]);
