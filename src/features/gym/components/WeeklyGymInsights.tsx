@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
-import { Target, Activity, CheckCircle, Zap, Heart, Award, Dumbbell, Flame } from 'lucide-react';
+import { Target, Activity, CheckCircle, Zap, Heart, Award, Dumbbell, Flame, Timer } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { GymDayLog } from '../../../types/gym.types';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../../data/gymPlan';
 
@@ -170,8 +171,15 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
       }
     }
 
-    return { totalVolume, totalReps, completedSets, targetSets, workoutCount, cardioMinutes, muscles, completionRate, grade, heaviestLift };
-  }, [logs]);
+    const durationData = dates.map(dStr => {
+      const d = new Date(dStr + 'T00:00:00');
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const log = logs.find(l => l.date === dStr);
+      return { name: dayName, minutes: log?.workoutDurationMinutes || 0 };
+    });
+
+    return { totalVolume, totalReps, completedSets, targetSets, workoutCount, cardioMinutes, muscles, completionRate, grade, heaviestLift, durationData };
+  }, [logs, dates]);
 
   if (loading) {
     return (
@@ -276,6 +284,29 @@ export const WeeklyGymInsights = ({ userId, selectedDate }: WeeklyGymInsightsPro
             <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff' }}>{insights.cardioMinutes}</span>
             <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)' }}>minutes this week</span>
           </div>
+        </div>
+      </div>
+
+      {/* Duration Chart */}
+      <div style={{ marginTop: '0.2rem' }}>
+        <h3 style={{ margin: '0 0 0.8rem', fontSize: '0.85rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <Timer size={14} color="#a855f7" /> Workout Duration Trend
+        </h3>
+        <div style={{ height: '160px', width: '100%', background: 'rgba(255,255,255,0.02)', padding: '1rem 1rem 1rem 0', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={insights.durationData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <XAxis dataKey="name" stroke="rgba(255,255,255,0.3)" fontSize={10} axisLine={false} tickLine={false} dy={10} />
+              <YAxis stroke="rgba(255,255,255,0.3)" fontSize={10} axisLine={false} tickLine={false} tickFormatter={(val) => `${val}m`} />
+              <Tooltip 
+                cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                contentStyle={{ background: '#1e1e2e', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontSize: '12px' }}
+                itemStyle={{ color: '#a855f7' }}
+                formatter={(val: number) => [`${val} mins`, 'Duration']}
+              />
+              <Bar dataKey="minutes" fill="#a855f7" radius={[4, 4, 0, 0]} maxBarSize={30} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
