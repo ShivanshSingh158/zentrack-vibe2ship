@@ -46,7 +46,7 @@ const SetRow = memo(({ set, previousSet, isNewPR, onChange, onDelete, onComplete
       border: `1px solid ${set.completed
         ? (isNewPR ? 'rgba(251,191,36,0.4)' : 'rgba(29,185,84,0.25)')
         : 'rgba(255,255,255,0.07)'}`,
-      transition: 'all 0.18s',
+      transition: 'background 180ms ease, border-color 180ms ease',
     }}>
       {/* Set number */}
       <div style={{
@@ -126,7 +126,7 @@ const SetRow = memo(({ set, previousSet, isNewPR, onChange, onDelete, onComplete
             background: set.completed ? (isNewPR ? '#fbbf24' : '#1db954') : 'rgba(255,255,255,0.08)',
             color: set.completed ? '#000' : 'rgba(255,255,255,0.45)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'all 0.15s',
+            transition: 'background 180ms ease, box-shadow 180ms ease, color 180ms ease',
             boxShadow: set.completed ? `0 2px 10px ${isNewPR ? 'rgba(251,191,36,0.5)' : 'rgba(29,185,84,0.45)'}` : 'none',
           }}
           title="Mark done"
