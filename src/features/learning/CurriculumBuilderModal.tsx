@@ -502,7 +502,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
                         </div>
                       </div>
 
-                      <div style={{ maxHeight: '300px', overflowY: 'auto', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', padding: '0.4rem' }}>
+                      <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', padding: '0.4rem' }}>
                         {getFilteredVideos(source).map((v, i) => {
                           const actualIdx = source.videos.findIndex(sv => sv.id === v.id);
                           return (
