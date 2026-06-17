@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { X, Search, Link as LinkIcon, Plus, Trash2, GripVertical, CheckCircle2, Play, BookOpen, Loader } from 'lucide-react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
-import { uniqueId } from '../../utils/uniqueId'; // We will create a small utils file if it doesn't exist, or just use crypto.randomUUID
 
 interface SourceVideo {
   id: string; // unique for this list
