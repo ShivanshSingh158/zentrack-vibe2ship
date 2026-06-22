@@ -76,6 +76,14 @@ export const FloatingYouTubePlayer: React.FC = () => {
         }
       } catch {}
     }
+
+    // Set initial playback speed
+    try {
+      const speed = Number(localStorage.getItem('learning_playback_speed')) || 1;
+      if (typeof e.target.setPlaybackRate === 'function') {
+        e.target.setPlaybackRate(speed);
+      }
+    } catch {}
   };
 
   // Poll timestamp to save
@@ -133,6 +141,7 @@ export const FloatingYouTubePlayer: React.FC = () => {
     <AnimatePresence>
       {isPipMode && (
         <motion.div
+          id="youtube-floating-pip"
           drag
           dragMomentum={false}
           initial={{ opacity: 0, y: 50, scale: 0.9 }}

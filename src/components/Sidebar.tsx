@@ -26,21 +26,21 @@ interface ModuleDef {
 
 
 const ALL_MODULES: ModuleDef[] = [
-  // ── Primary: Daily-use modules ──
+  // ── Primary: Daily-use modules (Core AI Suite Focus) ──
   { id: 'home',        label: 'Home',          shortLabel: 'Home',    path: '/home',        icon: <Home size={20} /> },
   { id: 'todo',        label: 'To-Do',         shortLabel: 'To-Do',   path: '/todo',        icon: <ListTodo size={20} /> },
-  { id: 'habits',      label: 'Habits',        shortLabel: 'Habits',  path: '/habits',      icon: <Flame size={20} /> },
-  { id: 'attendance',  label: 'Attendance',    shortLabel: 'Attend.', path: '/attendance',  icon: <ClipboardCheck size={20} /> },
+  { id: 'goals',       label: 'Goals & OKRs',  shortLabel: 'Goals',   path: '/goals',       icon: <Target size={20} /> },
   { id: 'calendar',    label: 'Calendar',      shortLabel: 'Cal.',    path: '/calendar',    icon: <Calendar size={20} /> },
-  { id: 'gym',         label: 'Gym',           shortLabel: 'Gym',     path: '/gym',         icon: <Dumbbell size={20} />, mobileOnly: true },
+  { id: 'notes',       label: 'Smart Storage', shortLabel: 'Notes',   path: '/notes',       icon: <BookOpen size={20} color="#fbbf24" />, isPremium: true },
+  { id: 'gym',         label: 'Gym AI',        shortLabel: 'Gym',     path: '/gym',         icon: <Dumbbell size={20} /> },
+  { id: 'habits',      label: 'Habits',        shortLabel: 'Habits',  path: '/habits',      icon: <Flame size={20} /> },
 
-  // ── Secondary: Less frequent modules ──
-  { id: 'tools',       label: 'Power Tools',   shortLabel: 'Tools',   path: '/tools',       icon: <Wrench size={20} /> },
+  // ── Secondary: Less frequent / Clutter modules ──
   { id: 'learning',    label: 'Learning',      shortLabel: 'Learn',   path: '/learning',    icon: <GraduationCap size={20} /> },
-  { id: 'notes',       label: 'Storage',       shortLabel: 'Files',   path: '/notes',       icon: <BookOpen size={20} color="#fbbf24" />, isPremium: true },
-  { id: 'goals',       label: 'Goals',         shortLabel: 'Goals',   path: '/goals',       icon: <Target size={20} /> },
+  { id: 'tools',       label: 'Power Tools',   shortLabel: 'Tools',   path: '/tools',       icon: <Wrench size={20} /> },
   { id: 'jobs',        label: 'Job Tracker',   shortLabel: 'Jobs',    path: '/jobs',        icon: <Briefcase size={20} /> },
   { id: 'analytics',   label: 'Analytics',     shortLabel: 'Stats',   path: '/analytics',   icon: <BarChart3 size={20} /> },
+  { id: 'attendance',  label: 'Attendance',    shortLabel: 'Attend.', path: '/attendance',  icon: <ClipboardCheck size={20} /> },
   { id: 'assignments', label: 'Assignments',   shortLabel: 'Assign.', path: '/assignments', icon: <ClipboardList size={20} /> },
 ];
 
@@ -48,7 +48,7 @@ const ALL_MODULES: ModuleDef[] = [
 const SECONDARY_START_INDEX = 7;
 
 // Home is always pinned first; max 4 more can be pinned to bottom bar
-const DEFAULT_PINNED = ['home', 'todo', 'habits', 'attendance', 'calendar'];
+const DEFAULT_PINNED = ['home', 'todo', 'goals', 'calendar', 'gym'];
 const STORAGE_KEY = 'nav_pinned_v4';
 const MAX_PINNED = 5; // including home = 4 user slots
 

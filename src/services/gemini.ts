@@ -1,18 +1,28 @@
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { getLocalDateString } from '../utils/dateUtils';
 
 // ── Model priority (verified real model IDs — 2026-06) ────────────────────────
 // Only include models that ACTUALLY EXIST in the Gemini API.
 // Invalid model IDs return 404 or look like 401 (model not available to key).
 // Verified real IDs: https://ai.google.dev/api/generate-content#v1beta.models
+// Gemini 3.x series (GA as of 2026) — ordered by capability
+// These are the real API model IDs used with both API key and OAuth:
+//   gemini-3.1-pro      = 3.1 Pro  (Advanced math and code)   ← PRIMARY
+//   gemini-3.5-flash    = 3.5 Flash (All-around help)          ← FALLBACK 1
+//   gemini-3.1-flash-lite = 3.1 Flash-Lite (Fastest)           ← FALLBACK 2
 const MODEL_PRIORITY = [
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-pro-latest',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
+  'gemini-3.1-pro',        // PRIMARY — strongest (3.1 Pro)
+  'gemini-3.5-flash',      // FALLBACK 1 — balanced (3.5 Flash)
+  'gemini-3.1-flash-lite', // FALLBACK 2 — fastest (3.1 Flash-Lite)
+  'gemini-2.5-pro',        // FALLBACK 3 — legacy
+  'gemini-2.5-flash-lite', // FALLBACK 4 — last resort
+];
+
+const SAFETY_SETTINGS = [
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,       threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
 // Remember which model worked last → try it first next time (faster)
@@ -221,8 +231,72 @@ export class RobustChatSession {
       model: modelName,
       systemInstruction: this.systemPrompt,
       generationConfig: this.genConfig,
+      safetySettings: SAFETY_SETTINGS,
     });
     return model.startChat({ history: safeHistory });
+  }
+
+  async sendMessageStream(msg: string, onChunk: (text: string) => void): Promise<{ text: string, model: string }> {
+    let lastError: any;
+    for (let mi = this.modelIndex; mi < MODEL_PRIORITY.length; mi++) {
+      const modelName = MODEL_PRIORITY[mi];
+      const keyCount = Math.max(allKeys.length, 1);
+      for (let ki = 0; ki < keyCount; ki++) {
+        const keyIdx = (this.keyIndex + ki) % keyCount;
+        try {
+          if (mi !== this.modelIndex || ki > 0) {
+            const history = await this.getHistory();
+            this.session    = await this.rebuildSession(modelName, keyIdx, history);
+            this.modelName  = modelName;
+            this.modelIndex = mi;
+            this.keyIndex   = keyIdx;
+          }
+
+          const result = await this.session.sendMessageStream(msg);
+          let fullText = '';
+          let sawFinish = false;
+          for await (const chunk of result.stream) {
+            const chunkText = chunk.text();
+            fullText += chunkText;
+            onChunk(fullText);
+            if (chunk.candidates?.[0]?.finishReason) {
+              sawFinish = true;
+            }
+          }
+          if (fullText.length > 0 && !sawFinish) {
+            throw new Error('STREAM_ABORTED_NO_FINISH_REASON');
+          }
+          setPreferredModel(modelName);
+          return { text: fullText, model: modelName };
+        } catch (err: any) {
+          lastError = err;
+          const errMsg = String(err?.message || '').toLowerCase();
+          const isAuth = errMsg.includes('401') || errMsg.includes('invalid authentication');
+          const isNotFound = errMsg.includes('404') || errMsg.includes('not found');
+          if (isAuth && ki < keyCount - 1) continue;
+          if (isNotFound || isAuth) break;
+          if (errMsg.includes('first content should be with role')) {
+            this.session = await this.rebuildSession(modelName, keyIdx, this.seedHistory);
+            try {
+              const retryResult = await this.session.sendMessageStream(msg);
+              let ft = '';
+              let sawRetryFinish = false;
+              for await (const chunk of retryResult.stream) {
+                ft += chunk.text();
+                onChunk(ft);
+                if (chunk.candidates?.[0]?.finishReason) sawRetryFinish = true;
+              }
+              if (ft.length > 0 && !sawRetryFinish) {
+                throw new Error('STREAM_ABORTED_NO_FINISH_REASON');
+              }
+              return { text: ft, model: modelName };
+            } catch (e: any) { lastError = e; }
+          }
+          if (ki === keyCount - 1) break;
+        }
+      }
+    }
+    throw lastError || new Error('All models exhausted in stream.');
   }
 
   async sendMessage(msg: string) {
@@ -336,15 +410,12 @@ export const parseAIJson = (text: string): any => {
     cleanTrailing(t)
   ];
 
-  // Bracket-counting safe extractor — finds the first complete JSON object or array
-  // regardless of what text surrounds it. More reliable than greedy regex.
+  // Bracket-counting safe extractor with auto-repair for truncated JSON
   const extractJson = (src: string): string | null => {
     for (let i = 0; i < src.length; i++) {
       const ch = src[i];
       if (ch !== '{' && ch !== '[') continue;
-      const open = ch === '{' ? '{' : '[';
-      const close = open === '{' ? '}' : ']';
-      let depth = 0;
+      const stack: string[] = [];
       let inStr = false;
       let escape = false;
       for (let j = i; j < src.length; j++) {
@@ -353,12 +424,22 @@ export const parseAIJson = (text: string): any => {
         if (c === '\\' && inStr) { escape = true; continue; }
         if (c === '"') { inStr = !inStr; continue; }
         if (inStr) continue;
-        if (c === open) depth++;
-        else if (c === close) {
-          depth--;
-          if (depth === 0) return src.slice(i, j + 1);
+        if (c === '{') stack.push('}');
+        else if (c === '[') stack.push(']');
+        else if (c === '}' || c === ']') {
+          if (stack[stack.length - 1] === c) stack.pop();
+          if (stack.length === 0) return src.slice(i, j + 1);
         }
       }
+      
+      // If we reach the end and stack is not empty, it means the JSON was cut off.
+      // Let's repair it by closing any open strings and brackets.
+      let repaired = src.slice(i);
+      if (inStr) repaired += '"';
+      while (stack.length > 0) {
+        repaired += stack.pop();
+      }
+      return repaired;
     }
     return null;
   };
@@ -442,7 +523,11 @@ Return ONLY a raw JSON object (no markdown, no explanation, no preamble):
 }`;
 
   return callWithFallback(async (genAI, modelName) => {
-    const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { temperature: 0.35, maxOutputTokens: 1200 } });
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.35, maxOutputTokens: 1200 },
+      safetySettings: SAFETY_SETTINGS,
+    });
     const result = await model.generateContent(prompt);
     return parseAIJson(result.response.text());
   });
@@ -507,6 +592,7 @@ IMPORTANT: Do NOT repeat the system prompt or mention "data". Speak naturally as
         model: modelName,
         systemInstruction: systemPrompt,
         generationConfig: { temperature: 0.6 },
+        safetySettings: SAFETY_SETTINGS,
       });
       rawSession = model.startChat({ history: historyToUse });
       workingModel = modelName;
@@ -520,6 +606,7 @@ IMPORTANT: Do NOT repeat the system prompt or mention "data". Speak naturally as
       model: MODEL_PRIORITY[0],
       systemInstruction: systemPrompt,
       generationConfig: { temperature: 0.6 },
+      safetySettings: SAFETY_SETTINGS,
     });
     rawSession = model.startChat({ history: historyToUse });
     workingModel = MODEL_PRIORITY[0];
@@ -531,47 +618,48 @@ IMPORTANT: Do NOT repeat the system prompt or mention "data". Speak naturally as
 
 // ── Gym AI Chat ────────────────────────────────────────────────────────────────
 
-const GYM_AI_SYSTEM_PROMPT = `You are Zen Gym AI — a NSCA-CSCS certified personal trainer, exercise physiologist, and sports nutritionist (CISSN) embedded inside ZenTrack.
+const GYM_AI_SYSTEM_PROMPT = `You are ZEN COACH — a world-class, data-driven personal trainer and sports scientist embedded in ZenTrack. You have access to this user's COMPLETE training history.
 
-== YOUR EXPERTISE ==
-• Strength Science: progressive overload (double progression, wave loading), RPE/RIR-based training, periodization models (linear, daily undulating, block), peaking protocols
-• Hypertrophy Science: MEV/MAV/MRV frameworks, muscle protein synthesis windows, mechanical tension vs metabolic stress, TUT principles
-• Nutrition: TDEE estimation, protein targets (1.6–2.2g/kg BW), carb timing, caloric surplus/deficit protocols, meal frequency
-• Cardio Programming: LISS Zone 2, HIIT, interference effect management
-• Recovery Science: CNS fatigue markers, sleep impact on hypertrophy, deload triggers
-• Injury Prevention: push/pull/legs balance, anterior/posterior chain ratios
+== YOUR CREDENTIALS ==
+NSCA-CSCS, CISSN, FMS Level 2, Precision Nutrition Level 1. Expert in: progressive overload, RPE/RIR training, periodization (linear, DUP, block), hypertrophy science (MEV/MAV/MRV), TDEE-based nutrition, recovery optimization, Indian diet optimization.
 
-== CRITICAL RULE — PERSONALIZATION MANDATE ==
-You have the user's ACTUAL logged data: specific weights, sets, reps, dates, progressions, stall alerts.
-You MUST:
-1. ALWAYS cite their REAL numbers: say "your Bench Press went 60kg → 72.5kg over 6 sessions" NOT "your strength improved"
-2. ALWAYS reference specific exercise names from their logs — never use placeholders like "compound lifts"
-3. Calculate their actual weekly volume per muscle group from the session data
-4. Name their specific stalled exercises and prescribe exact progression strategies
-5. Give exact weights: "target 82.5kg next session" not "try to progress"
-6. If they ask about nutrition, use their bodyweight from the profile for all calculations
+== THE 12 LAWS OF ZEN COACHING (NEVER BREAK THESE) ==
+1. CITE REAL NUMBERS ALWAYS: Never say "your strength improved" — say "your Bench went 60kg → 72.5kg over 6 sessions".
+2. NAME REAL EXERCISES: Never say "compound lifts" — say "your Barbell Squat, Romanian Deadlift, and Bench Press".
+3. STRETCHES = DATA-DRIVEN: When prescribing stretches, ONLY prescribe for the muscles the user actually trained today. Never give a generic full-body stretch routine.
+4. NUTRITION = BODYWEIGHT-CALCULATED + INDIA-CONTEXT: Always use their actual bodyweight. Say "At your 72kg, protein = 115–144g/day. In Indian diet: 200g paneer + 3 eggs + 2 scoops whey covers 90g." Give specific Indian foods: dal, paneer, eggs, curd, chicken, roti, rice, sprouts. Never suggest generic "chicken breast" when you can say "150g boiled chicken or 200g paneer".
+5. RECOVERY = GAP-AWARE: Check how many days since they last trained each muscle. Flag if a muscle is being undertrained OR overtrained (consecutive days).
+6. WARM-UPS = EXERCISE-SPECIFIC: Pre-workout activation must target the exact muscles in today's planned exercises.
+7. ANOMALIES = CALL OUT: If data shows a suspicious weight jump (>30% in one session), flag it: "Your logged 120kg squat last session vs 85kg the session before — is that a data entry error or a real PR?"
+8. WEEKLY PATTERN AWARE: Know what muscle groups the user trains on which days of the week. Reference this: "You typically train chest on Mondays — today is Monday, so today's session looks like your usual push day."
+9. SUNDAY = WEEKLY DEBRIEF: If today is Sunday, open with a full 7-day summary: volume by muscle, biggest win, biggest gap, one focus for next week.
+10. POST-WORKOUT STRETCHES: After a workout, prescribe 5-minute post-workout stretches specifically for the exercises completed. E.g., if they squatted → hip flexor stretch, quad stretch, pigeon pose.
+11. VOLUME TRACKING: Always note weekly sets per muscle group vs. MEV/MRV benchmarks. E.g., "You're doing 8 sets/week for chest — minimum effective is 10. Add 2 more sets of incline press."
+12. HONEST ASSESSMENTS: If the data shows the user is undertrained, inconsistent, or missing a muscle group — say it clearly. "Your back only got 4 sets this week vs. 14 for chest. This will create a posture and injury problem."
 
 == FORBIDDEN RESPONSES ==
-❌ "Keep up the good work" (generic)
-❌ "Make sure to get enough protein" (generic)
-❌ "Focus on compound movements" (generic)
-✔ "You hit Chest for 18 sets this week across 2 sessions — that's in your MAV range, maintain frequency"
-✔ "Bench Press stalled at 80kg for 3 sessions — deload to 75kg next session, then try 82.5kg the week after"
-✔ "At 75kg bodyweight, your daily protein target is 120–165g — you need ~33–45g per meal across 4 feeds"
+❌ "Keep up the good work" — cite the specific PR instead
+❌ "Make sure to get enough protein" — give their actual gram target WITH specific Indian food sources
+❌ "Focus on compound movements" — name the specific compounds they're already doing
+❌ Generic stretching routines not tied to today's session
+❌ Any advice that isn't anchored to their actual data
 
 == RESPONSE FORMATS ==
-• MEAL PLAN → Calculate TDEE, give daily macros (P/C/F in grams with calorie total), provide 3 full-day meal plans with specific foods and portions
-• TRAINING PROGRAM → Full 4-week mesocycle: Day 1–6, exercises × sets × reps, RPE target, rest periods, weekly progression scheme
-• OVERLOAD CHECK → Table: Exercise | Last Weight | Next Target | Why (cite their history)
-• TODAY COACHING → Bullet points: warm-up weight, working weight per exercise (from their logs), RPE target, one technique cue each
-• DELOAD → Trigger reason from their actual data, full deload week at 50–60% volume, 80% intensity
+• MEAL PLAN → TDEE calc (show formula), daily macros in grams + calories, 3 full Indian day meal plans with specific foods + portions + timing
+• TRAINING PROGRAM → Full 4-week mesocycle: Day 1–6, exercises × sets × reps × RPE, rest periods, weekly progression note. (Use lists, NO tables)
+• OVERLOAD CHECK → Use mobile-friendly bulleted lists. Format: [Exercise Name]: Last Weight → Today's Target (Reasoning)
+• TODAY COACHING → Warm-up weights per exercise → working set targets → RPE → one form cue each
+• STRETCHES (pre) → Activation for today's target muscles, sets × reps
+• STRETCHES (post) → Per completed exercise, hold times, breathing cues
+• DELOAD → Trigger based on their actual data, full deload week prescription
 
 == TONE ==
-- Like an elite coach: direct, specific, data-driven, zero fluff
-- Celebrate real PRs with genuine enthusiasm when you spot them in the data
-- End every response with ONE targeted follow-up question
-- Use markdown (**bold**, • bullets, ## sections) for structured responses
-- Max 300 words unless asked for a full plan`;
+- Direct, specific, data-driven — like a coach who has studied their log for months
+- Celebrate genuine PRs with real enthusiasm when you spot them in the data
+- End EVERY response with ONE targeted follow-up question relevant to their current training phase
+- Use **bold**, • bullets, and ## sections for structured responses.
+- CRITICAL: DO NOT use markdown tables (e.g. | Column | Column |). They are unreadable and squished on mobile screens. ALWAYS use formatted lists instead.
+- Q&A responses: max 350 words. Plans: as long as needed.`;
 
 export const startGymAIChat = (gymContext: string, existingHistory: any[] = []) => {
   if (allKeys.length === 0) throw new Error('Gemini API key is missing.');
@@ -610,7 +698,8 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
         const model = genAI.getGenerativeModel({
           model: modelName,
           systemInstruction: systemWithContext,
-          generationConfig: { temperature: 0.65, maxOutputTokens: 2000 },
+          generationConfig: { temperature: 0.65, maxOutputTokens: 8192 },
+          safetySettings: SAFETY_SETTINGS,
         });
         rawSession = model.startChat({ history: historyToUse });
         workingModel = modelName;
@@ -626,7 +715,8 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
     const model = genAI.getGenerativeModel({
       model: MODEL_PRIORITY[0],
       systemInstruction: systemWithContext,
-      generationConfig: { temperature: 0.65, maxOutputTokens: 2000 },
+      generationConfig: { temperature: 0.65, maxOutputTokens: 8192 },
+      safetySettings: SAFETY_SETTINGS,
     });
     rawSession = model.startChat({ history: historyToUse });
     workingModel = MODEL_PRIORITY[0];
@@ -636,7 +726,7 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
   // RobustChatSession handles per-send key/model rotation
   const session = new RobustChatSession(
     rawSession, workingModel, systemWithContext,
-    { temperature: 0.65, maxOutputTokens: 2000 },
+    { temperature: 0.65, maxOutputTokens: 8192 },
     historyToUse
   );
   // Start key rotation from where we left off
@@ -644,6 +734,241 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
   return session;
 };
 
+// ── ZenGym AI — OAuth-powered chat (uses user's personal Google account) ─────────
+// When the user has connected their Google account via Lecture Chat OAuth,
+// this function uses their personal token instead of the shared API key.
+// This gives them their own quota pool, completely separate from the shared key.
+
+const GYM_OAUTH_MODELS = [
+  'gemini-3.1-pro',        // PRIMARY — 3.1 Pro (Advanced math & code)
+  'gemini-3.5-flash',      // FALLBACK 1 — 3.5 Flash (All-around help)
+  'gemini-3.1-flash-lite', // FALLBACK 2 — 3.1 Flash-Lite (Fastest)
+  'gemini-2.5-pro',        // FALLBACK 3 — legacy pro
+  'gemini-2.5-flash-lite', // FALLBACK 4 — last resort
+];
+
+async function callGymOAuthREST(
+  token: string,
+  systemInstruction: string,
+  contents: any[],
+  modelIndex = 0
+): Promise<string> {
+  const model = GYM_OAUTH_MODELS[modelIndex];
+  if (!model) throw new Error('All OAuth models exhausted.');
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemInstruction }] },
+        contents,
+        generationConfig: { temperature: 0.65, maxOutputTokens: 8192 },
+        safetySettings: SAFETY_SETTINGS,
+      }),
+    }
+  );
+
+  if (res.status === 401 || res.status === 403) throw new Error('OAUTH_EXPIRED');
+  if (res.status === 404 || res.status === 429 || res.status === 503) {
+    return callGymOAuthREST(token, systemInstruction, contents, modelIndex + 1);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = (err as any)?.error?.message || `HTTP ${res.status}`;
+    if (msg.includes('not found') || msg.includes('404')) {
+      return callGymOAuthREST(token, systemInstruction, contents, modelIndex + 1);
+    }
+    throw new Error(msg);
+  }
+
+  const data = await res.json();
+  const text = (data as any)?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error('Empty response from Gemini OAuth.');
+  return text;
+}
+
+async function callGymOAuthRESTStream(
+  token: string,
+  systemInstruction: string,
+  contents: any[],
+  modelIndex = 0,
+  onChunk: (text: string) => void
+): Promise<{ text: string; model: string }> {
+  const model = GYM_OAUTH_MODELS[modelIndex];
+  if (!model) throw new Error('All OAuth models exhausted.');
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemInstruction }] },
+        contents,
+        generationConfig: { temperature: 0.65, maxOutputTokens: 8192 },
+        safetySettings: SAFETY_SETTINGS,
+      }),
+    }
+  );
+
+  if (res.status === 401 || res.status === 403) throw new Error('OAUTH_EXPIRED');
+  if (res.status === 404 || res.status === 429 || res.status === 503) {
+    return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = (err as any)?.error?.message || `HTTP ${res.status}`;
+    if (msg.includes('not found') || msg.includes('404')) {
+      return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
+    }
+    throw new Error(msg);
+  }
+
+  if (!res.body) throw new Error('No response body from Gemini.');
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let fullText = '';
+  let buffer = '';
+  let sawFinishReason = false;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      buffer += decoder.decode(new Uint8Array(), { stream: false });
+      break;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine.startsWith('data: ')) {
+        // Detect mid-stream JSON error payloads (e.g. 503 MODEL_CAPACITY_EXHAUSTED)
+        if (trimmedLine.startsWith('{') && trimmedLine.includes('"error"')) {
+          try {
+            const errJson = JSON.parse(trimmedLine);
+            if (errJson.error) {
+              if (modelIndex < GYM_OAUTH_MODELS.length - 1) {
+                return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
+              }
+              throw new Error(errJson.error.message || 'Stream error payload');
+            }
+          } catch { /* ignore */ }
+        }
+        continue;
+      }
+      const dataStr = trimmedLine.slice(6).trim();
+      if (dataStr === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(dataStr);
+        const candidate = parsed?.candidates?.[0];
+        const part = candidate?.content?.parts?.[0]?.text || '';
+        if (part) {
+          fullText += part;
+          onChunk(fullText);
+        }
+        if (candidate?.finishReason) {
+          sawFinishReason = true;
+        }
+      } catch { /* ignore partial/malformed JSON in invalid lines */ }
+    }
+  }
+
+  // Process final leftover buffer line if it is complete
+  if (buffer) {
+    const trimmedLine = buffer.trim();
+    if (trimmedLine.startsWith('data: ')) {
+      const dataStr = trimmedLine.slice(6).trim();
+      if (dataStr !== '[DONE]') {
+        try {
+          const parsed = JSON.parse(dataStr);
+          const candidate = parsed?.candidates?.[0];
+          const part = candidate?.content?.parts?.[0]?.text || '';
+          if (part) {
+            fullText += part;
+            onChunk(fullText);
+          }
+          if (candidate?.finishReason) {
+            sawFinishReason = true;
+          }
+        } catch { /* ignore */ }
+      }
+    }
+  }
+
+  if (fullText.length > 0 && !sawFinishReason) {
+    if (modelIndex < GYM_OAUTH_MODELS.length - 1) {
+      return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
+    }
+    throw new Error('STREAM_ABORTED_NO_FINISH_REASON');
+  }
+
+  if (!fullText) throw new Error('Empty response from Gemini OAuth.');
+  return { text: fullText, model };
+}
+
+/**
+ * An OAuth-powered ZenGym chat session.
+ * Works identically to startGymAIChat but uses the user's personal
+ * Google OAuth token instead of the shared VITE_GEMINI_API_KEY.
+ * Falls back gracefully if the token has expired.
+ */
+export class OAuthGymChatSession {
+  private token: string;
+  private systemInstruction: string;
+  private contents: any[];
+
+  constructor(token: string, systemInstruction: string, initialHistory: any[] = []) {
+    this.token = token;
+    this.systemInstruction = systemInstruction;
+    // Convert Gemini SDK history format to REST API contents format
+    this.contents = initialHistory.map(h => ({
+      role: h.role === 'model' ? 'model' : 'user',
+      parts: h.parts,
+    }));
+  }
+
+  async sendMessage(msg: string): Promise<{ response: { text: () => string } }> {
+    this.contents.push({ role: 'user', parts: [{ text: msg }] });
+    const aiText = await callGymOAuthREST(this.token, this.systemInstruction, this.contents);
+    this.contents.push({ role: 'model', parts: [{ text: aiText }] });
+    return { response: { text: () => aiText } };
+  }
+
+  async sendMessageStream(msg: string, onChunk: (text: string) => void): Promise<{ text: string, model: string }> {
+    this.contents.push({ role: 'user', parts: [{ text: msg }] });
+    const result = await callGymOAuthRESTStream(this.token, this.systemInstruction, this.contents, 0, onChunk);
+    this.contents.push({ role: 'model', parts: [{ text: result.text }] });
+    return result;
+  }
+
+  async getHistory() {
+    return this.contents.map(c => ({ role: c.role, parts: c.parts }));
+  }
+}
+
+export const startGymAIOAuthChat = (
+  gymContext: string,
+  oauthToken: string,
+  existingHistory: any[] = []
+): OAuthGymChatSession => {
+  const systemWithContext = `${GYM_AI_SYSTEM_PROMPT}
+
+=== USER'S VERIFIED GYM DATA (last 30 days) ===
+${gymContext}
+
+CRITICAL: You MUST reference the specific exercise names, weights, dates, and progression trends above in EVERY response. Never give advice that isn't anchored to this data.`;
+
+  const initialHistory = existingHistory.length > 0 ? existingHistory : [
+    { role: 'user', parts: [{ text: 'Hi, ready to get some coaching insights!' }] },
+    { role: 'model', parts: [{ text: "Coach here! I've loaded your full training logs — I can see your exact weights, progressions, stall points, and weekly volume. Let's work on what matters. What would you like to tackle?" }] },
+  ];
+
+  return new OAuthGymChatSession(oauthToken, systemWithContext, initialHistory);
+};
 
 
 export const analyzeJobDescription = async (text: string) => {
@@ -698,7 +1023,8 @@ ${jdText}
   return callWithFallback(async (genAI, modelName) => {
     const model = genAI.getGenerativeModel({
       model: modelName,
-      generationConfig: { temperature: 0, maxOutputTokens: 1024 }
+      generationConfig: { temperature: 0, maxOutputTokens: 1024 },
+      safetySettings: SAFETY_SETTINGS,
     });
     const result = await model.generateContent(prompt);
     const parsed = parseAIJson(result.response.text());
@@ -798,7 +1124,11 @@ Return ONLY raw JSON (no markdown, no explanation):
 {"title":"","difficulty":"Easy","tags":[],"optimalTimeComplexity":"O(N)","optimalSpaceComplexity":"O(1)","pattern":"","patternExplanation":"","similarProblems":[],"hints":["Hint 1 — direction nudge","Hint 2 — approach reveal","Hint 3 — near-solution structure"],"subTasks":["Step 1","Step 2","Step 3","Step 4"]}`;
 
   return callWithFallback(async (genAI, modelName) => {
-    const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { temperature: 0.15, maxOutputTokens: 1200 } });
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.15, maxOutputTokens: 1200 },
+      safetySettings: SAFETY_SETTINGS,
+    });
     const result = await model.generateContent(prompt);
     const parsed = parseAIJson(result.response.text());
 
@@ -863,7 +1193,11 @@ Return ONLY raw JSON (no markdown, no preamble):
 }`;
 
   return callWithFallback(async (genAI, modelName) => {
-    const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { temperature: 0.2, maxOutputTokens: 1500 } });
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.2, maxOutputTokens: 1500 },
+      safetySettings: SAFETY_SETTINGS,
+    });
     const result = await model.generateContent(prompt);
     const parsed = parseAIJson(result.response.text());
     const safeP = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
@@ -910,7 +1244,11 @@ Return ONLY raw JSON (no markdown, no preamble):
 
   return callWithFallback(async (genAI, modelName) => {
     // Flash models are extremely fast and good enough for this simple extraction
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite', generationConfig: { temperature: 0.1, maxOutputTokens: 200 } });
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.1, maxOutputTokens: 800 },
+      safetySettings: SAFETY_SETTINGS,
+    });
     const result = await model.generateContent(prompt);
     const parsed = parseAIJson(result.response.text());
     const safeP = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
@@ -1043,7 +1381,8 @@ EXAMPLE OUTPUT 2 (Cardio):
       generationConfig: { 
         temperature: 0.1, 
         maxOutputTokens: 2000
-      } 
+      },
+      safetySettings: SAFETY_SETTINGS,
     });
     const result = await model.generateContent(prompt);
     const parsed = parseAIJson(result.response.text());
@@ -1062,7 +1401,9 @@ export const generateMorningBriefing = async (userData: any) => {
     tasks: (userData.tasks || []).map((t: any) => t.text).slice(0, 10),
     assignments: (userData.assignments || []).map((a: any) => a.title).slice(0, 5),
     jobs: (userData.jobs || []).map((j: any) => j.company).slice(0, 5),
-    habits: (userData.habits || []).map((h: any) => h.name).slice(0, 5)
+    habits: (userData.habits || []).map((h: any) => h.name).slice(0, 5),
+    goals: (userData.goals || []).map((g: any) => g.title).slice(0, 3),
+    isGymDay: userData.isGymDay || false
   };
 
   const prompt = `You are Zen AI, a high-performance productivity coach. 
@@ -1070,12 +1411,12 @@ Generate a short, punchy, highly motivating Morning Briefing for the user.
 
 Rules:
 1. Speak directly to the user (e.g. "Good morning!").
-2. Reference their actual data.
+2. Reference their actual data across tasks, assignments, goals, and gym schedule. (e.g. if isGymDay is true, mention getting to the gym).
 3. Keep it under 3 sentences. No fluff. Extremely crisp and energizing.
 4. Return raw JSON ONLY in this format:
 {
   "greeting": "Good morning!",
-  "message": "You have 3 tasks and an assignment due today. Let's crush it.",
+  "message": "You have 3 tasks and an assignment due today. It's also a training day—let's crush it.",
   "quote": "Win the morning, win the day."
 }
 
@@ -1083,7 +1424,11 @@ User Data:
 ${JSON.stringify(safeData, null, 2)}`;
 
   return callWithFallback(async (genAI, modelName) => {
-    const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { temperature: 0.7, maxOutputTokens: 300 } });
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.7, maxOutputTokens: 800 },
+      safetySettings: SAFETY_SETTINGS,
+    });
     const result = await model.generateContent(prompt);
     return parseAIJson(result.response.text());
   });
@@ -1094,6 +1439,7 @@ export const generateEveningWindDown = async (userData: any) => {
     completedTasks: (userData.completedTasks || []).map((t: any) => t.text).slice(0, 10),
     completedHabits: userData.completedHabitsCount || 0,
     totalHabits: userData.totalHabitsCount || 0,
+    gymLogged: userData.gymLogged || false
   };
 
   const prompt = `You are Zen AI, a calm and supportive life coach.
@@ -1101,13 +1447,13 @@ Generate a short, relaxing Evening Wind-Down message for the user.
 
 Rules:
 1. Speak directly to the user in a calm tone.
-2. Acknowledge what they completed today.
+2. Acknowledge what they completed today (tasks, habits, and if gymLogged is true, acknowledge their workout).
 3. If they missed habits, gently remind them to log them if they forgot.
 4. Keep it under 3 sentences.
 5. Return raw JSON ONLY in this format:
 {
   "greeting": "Good evening.",
-  "message": "You knocked out 5 tasks today including [Task Name]. Take a deep breath and disconnect.",
+  "message": "You knocked out 5 tasks today and crushed your workout. Take a deep breath and disconnect.",
   "quote": "Rest is not idleness, it is necessary to recharge."
 }
 
@@ -1115,7 +1461,212 @@ User Data:
 ${JSON.stringify(safeData, null, 2)}`;
 
   return callWithFallback(async (genAI, modelName) => {
-    const model = genAI.getGenerativeModel({ model: modelName, generationConfig: { temperature: 0.6, maxOutputTokens: 300 } });
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.6, maxOutputTokens: 800 },
+      safetySettings: SAFETY_SETTINGS,
+    });
+    const result = await model.generateContent(prompt);
+    return parseAIJson(result.response.text());
+  });
+};
+
+export const generateNextActionRecommendation = async (userData: any) => {
+  const safeData = {
+    todos: (userData.todos || []).map((t: any) => ({ text: t.text, priority: t.priority, isOverdue: t.isOverdue })),
+    assignments: (userData.assignments || []).map((a: any) => ({ title: a.title, isOverdue: a.isOverdue, dueSoon: a.dueSoon })),
+    habitsPending: userData.habitsPending || 0,
+    isGymDay: userData.isGymDay || false,
+    gymLogged: userData.gymLogged || false
+  };
+
+  const prompt = `You are Zen AI. The user has 45 minutes of free time and is asking: "What should I do right now?"
+Analyze their pending tasks, assignments, habits, and gym schedule.
+Pick the single highest-impact thing they should do right now and provide a 1-sentence reasoning.
+Prioritize: Overdue assignments > Overdue tasks > High priority tasks > Gym (if it's a gym day and not logged) > Habits > Medium tasks.
+
+Return raw JSON ONLY in this format:
+{
+  "action": "Complete the Physics Assignment",
+  "reasoning": "It's due soon and holds the highest priority right now."
+}
+
+User Data:
+${JSON.stringify(safeData, null, 2)}`;
+
+  return callWithFallback(async (genAI, modelName) => {
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.3, maxOutputTokens: 800 },
+      safetySettings: SAFETY_SETTINGS,
+    });
+    const result = await model.generateContent(prompt);
+    return parseAIJson(result.response.text());
+  });
+};
+
+export const analyzeNoteWithAI = async (noteContent: string, action: 'summarize' | 'concepts' | 'flashcards' | 'question', customQuestion?: string) => {
+  let prompt = '';
+  if (action === 'summarize') {
+    prompt = `You are Zen AI, a learning assistant. Summarize the following note into a concise paragraph followed by 3 key bullet points.\n\nNote Content:\n${noteContent}`;
+  } else if (action === 'concepts') {
+    prompt = `You are Zen AI. Extract the core concepts, definitions, and important formulas/facts from the following note. Present them as a clean Markdown list.\n\nNote Content:\n${noteContent}`;
+  } else if (action === 'flashcards') {
+    prompt = `You are Zen AI. Generate 5-7 high-yield flashcards (Question & Answer format) based on the following note. Format them as bold Q: and A: pairs.\n\nNote Content:\n${noteContent}`;
+  } else if (action === 'question') {
+    prompt = `You are Zen AI. Answer the user's question directly based ONLY on the following note. If the answer isn't in the note, say so.\n\nQuestion: ${customQuestion}\n\nNote Content:\n${noteContent}`;
+  }
+
+  return callWithFallback(async (genAI, modelName) => {
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.5, maxOutputTokens: 1000 },
+      safetySettings: SAFETY_SETTINGS,
+    });
+    const result = await model.generateContent(prompt);
+    return result.response.text();
+  });
+};
+
+const NOTES_AI_SYSTEM_PROMPT = `You are Zen Notes AI, an exceptionally capable academic assistant and writing partner embedded directly in the user's note-taking environment.
+
+== YOUR CAPABILITIES ==
+1. You have FULL POWER to write, rewrite, and structure notes from scratch.
+2. The user might provide handwritten notes, raw lecture transcripts, or messy text. Your job is to deeply understand them and explain concepts from the absolute basics if needed.
+3. You MUST provide extremely detailed, comprehensive responses. THERE IS NO WORD LIMIT. Be as exhaustive and thorough as necessary to explain the topic perfectly.
+4. You can answer questions, summarize, and generate flashcards based on the document text provided to you.
+
+== GENERATING NOTE CONTENT ==
+Whenever you generate content that is meant to form the body of the note (like a new topic explanation, study guide, or rewritten section), you MUST enclose that entire generated note content inside a standard Markdown code block, like this:
+\`\`\`markdown
+# Note Title
+Note content goes here...
+\`\`\`
+This tells the UI to offer the user a one-click "Replace Note Content" or "Append to Note" button.
+
+== TONE ==
+- Academic, precise, and highly structured.
+- Start from the basics and build up to complex topics.
+- Use headings, bullet points, code blocks, and bold text to make notes readable.
+- Do NOT arbitrarily limit your response length.`;
+
+export const startNoteAIChat = (noteTitle: string, noteContent: string, existingHistory: any[] = []) => {
+  if (allKeys.length === 0) throw new Error('Gemini API key is missing.');
+
+  const dynamicSystemPrompt = `${NOTES_AI_SYSTEM_PROMPT}
+
+=== CURRENT ACTIVE NOTE ===
+Title: ${noteTitle || 'Untitled Note'}
+Content:
+${noteContent ? noteContent : '(Note is currently empty)'}
+==========================
+`;
+
+  const initialHistory = [
+    { role: 'user', parts: [{ text: 'Hello!' }] },
+    { role: 'model', parts: [{ text: "Hi! I'm your Zen Notes Assistant. I can summarize this note, explain concepts, generate flashcards, or even write entirely new structured notes for you. What do you need?" }] }
+  ];
+
+  let historyToUse = existingHistory.length > 0 ? existingHistory : initialHistory;
+  if (historyToUse.length > 0 && historyToUse[0]?.role !== 'user') {
+    historyToUse = [initialHistory[0], ...historyToUse];
+  }
+
+  let rawSession: any = null;
+  let workingModel = MODEL_PRIORITY[0];
+  for (const modelName of MODEL_PRIORITY) {
+    try {
+      const genAI = new GoogleGenerativeAI(allKeys[0]);
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: dynamicSystemPrompt,
+        generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
+        safetySettings: SAFETY_SETTINGS,
+      });
+      rawSession = model.startChat({ history: historyToUse });
+      workingModel = modelName;
+      break;
+    } catch (_) {}
+  }
+  if (!rawSession) {
+    const genAI = new GoogleGenerativeAI(allKeys[0]);
+    const model = genAI.getGenerativeModel({
+      model: MODEL_PRIORITY[0],
+      systemInstruction: dynamicSystemPrompt,
+      generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
+      safetySettings: SAFETY_SETTINGS,
+    });
+    rawSession = model.startChat({ history: historyToUse });
+    workingModel = MODEL_PRIORITY[0];
+  }
+
+  return new RobustChatSession(rawSession, workingModel, dynamicSystemPrompt, { temperature: 0.6, maxOutputTokens: 8192 }, historyToUse);
+};
+
+// ── Autonomous Task Planning & Scheduling ──────────────────────────────────────
+
+export const autoScheduleDay = async (todos: any[], existingEvents: any[]) => {
+  const safeTodos = todos.map(t => ({ id: t.id, text: t.text, priority: t.priority }));
+  const safeEvents = existingEvents.map(e => ({ title: e.title, date: e.date, type: e.type }));
+
+  const prompt = `You are Zen AI, an autonomous scheduling agent.
+The user wants to auto-schedule their uncompleted tasks for today and tomorrow.
+I am providing you a list of their tasks and their existing calendar events.
+
+Your job is to assign a realistic "date" (YYYY-MM-DD) and a "time" (e.g., "14:00") for each task.
+Spread the tasks intelligently so they are not overwhelmed.
+
+Rules:
+1. Prioritize 'high' priority tasks for today.
+2. If today is too packed, push medium/low tasks to tomorrow.
+3. Return raw JSON ONLY in this format:
+{
+  "scheduledTasks": [
+    { "id": "task_id_here", "date": "YYYY-MM-DD", "time": "HH:MM", "reasoning": "High priority, scheduled for afternoon." }
+  ]
+}
+
+Today's Date: ${getLocalDateString(new Date())}
+Tasks: ${JSON.stringify(safeTodos)}
+Existing Events: ${JSON.stringify(safeEvents)}`;
+
+  return callWithFallback(async (genAI, modelName) => {
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.3, maxOutputTokens: 2000 },
+      safetySettings: SAFETY_SETTINGS,
+    });
+    const result = await model.generateContent(prompt);
+    return parseAIJson(result.response.text());
+  });
+};
+
+export const autoBreakdownGoal = async (goalTitle: string, goalDescription: string) => {
+  const prompt = `You are Zen AI, an autonomous project manager.
+The user has a massive goal. Break it down into highly actionable, step-by-step sub-tasks.
+Each task should take no more than a few hours. 
+Assign a suggested delay in days from today for when it should be completed.
+
+Goal Title: ${goalTitle}
+Goal Description: ${goalDescription}
+
+Rules:
+1. Return realistic tasks.
+2. 'daysFromNow' should be an integer (0 = today, 1 = tomorrow).
+3. Return raw JSON ONLY in this format:
+{
+  "subtasks": [
+    { "text": "Set up project repository", "priority": "high", "daysFromNow": 0 },
+    { "text": "Design database schema", "priority": "medium", "daysFromNow": 1 }
+  ]
+}`;
+
+  return callWithFallback(async (genAI, modelName) => {
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig: { temperature: 0.4, maxOutputTokens: 2000 },
+      safetySettings: SAFETY_SETTINGS,
+    });
     const result = await model.generateContent(prompt);
     return parseAIJson(result.response.text());
   });

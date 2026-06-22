@@ -31,6 +31,7 @@ interface ExerciseCardProps {
   ex: GymExerciseLog;
   previousSession?: PreviousSessionExercise | null;
   allTimePR?: GymPersonalRecord | null;
+  stallWarning?: string;
   onUpdate: (idx: number, ex: GymExerciseLog) => void;
   onDelete: (idx: number) => void;
   onEditClick: (idx: number) => void;
@@ -191,7 +192,7 @@ VideoPlayer.displayName = 'VideoPlayer';
 
 // ── ExerciseCard ───────────────────────────────────────────────────────────────
 const ExerciseCard = memo(({
-  index, ex, previousSession, allTimePR, onUpdate, onDelete,
+  index, ex, previousSession, allTimePR, stallWarning, onUpdate, onDelete,
   onEditClick, onMoveToDate, onHistoryClick, onSetComplete, editMode,
 }: ExerciseCardProps) => {
   const [open, setOpen] = useState(false);
@@ -343,6 +344,11 @@ const ExerciseCard = memo(({
             {allTimePR && allTimePR.weightKg > 0 && !isSkipped && (
               <span style={{ fontSize: '0.55rem', color: '#fbbf24', background: 'rgba(251,191,36,0.08)', padding: '0.05rem 0.25rem', borderRadius: '99px', fontWeight: 700, flexShrink: 0 }}>
                 PR:{fmtKg(allTimePR.weightKg)}
+              </span>
+            )}
+            {stallWarning && !isSkipped && (
+              <span style={{ fontSize: '0.55rem', color: '#ef4444', background: 'rgba(239,68,68,0.08)', padding: '0.05rem 0.35rem', borderRadius: '99px', fontWeight: 800, flexShrink: 0, border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', gap: '0.15rem' }} title={stallWarning}>
+                ⚠️ Stalled
               </span>
             )}
           </div>

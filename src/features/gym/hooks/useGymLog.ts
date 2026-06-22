@@ -89,6 +89,8 @@ interface UseGymLogResult {
   importPlan: () => void;
   wipeAllTemplates: () => Promise<void>;
   saveProfile: (p: GymProfile) => Promise<void>;
+  startRestTimer: (durationSecs: number, exerciseName: string) => void;
+  clearRestTimer: () => void;
 }
 
 export function useGymLog(selectedDate: string): UseGymLogResult {
@@ -362,6 +364,22 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
     });
   }, [scheduleAutosave, userId]);
 
+  const startRestTimer = useCallback((durationSecs: number, exerciseName: string) => {
+    setLog(prev => {
+      const updated = { ...prev, restTimerStartTime: Date.now(), restTimerDurationSecs: durationSecs, restTimerExerciseName: exerciseName, updatedAt: Date.now() };
+      scheduleAutosave(updated);
+      return updated;
+    });
+  }, [scheduleAutosave]);
+
+  const clearRestTimer = useCallback(() => {
+    setLog(prev => {
+      const updated = { ...prev, restTimerStartTime: undefined, restTimerDurationSecs: undefined, restTimerExerciseName: undefined, updatedAt: Date.now() };
+      scheduleAutosave(updated);
+      return updated;
+    });
+  }, [scheduleAutosave]);
+
   const importPlan = useCallback(() => {
     if (!userId || !planDay?.exercises?.length) {
       toast.error('No plan available for this day.');
@@ -417,5 +435,6 @@ export function useGymLog(selectedDate: string): UseGymLogResult {
     loadLog, updateExercise, deleteExercise, addExercise, moveExerciseToDate,
     updateCardio, deleteCardio, addCardio, startWorkout, endWorkout,
     clearDay, importPlan, wipeAllTemplates, saveProfile,
+    startRestTimer, clearRestTimer,
   };
 }

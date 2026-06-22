@@ -95,6 +95,31 @@ const localApiPlugin = (): Plugin => ({
         res.end(JSON.stringify({ error: e.message || 'Unknown error' }));
       }
     });
+
+    server.middlewares.use('/api/transcript', async (req: any, res: any) => {
+      const url = new URL(req.url, 'http://localhost');
+      const videoId = url.searchParams.get('videoId');
+      if (!videoId) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing videoId' })); return; }
+
+      try {
+        const { YoutubeTranscript } = await import('youtube-transcript');
+        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+        const text = transcript
+          .map((item: any) => {
+            const startSec = Math.floor(item.offset / 1000);
+            const mm = Math.floor(startSec / 60);
+            const ss = String(startSec % 60).padStart(2, '0');
+            return `[${mm}:${ss}] ${item.text.replace(/\n/g, ' ')}`;
+          })
+          .join('\n');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ transcript: text }));
+      } catch (e: any) {
+        console.error('Transcript API Error:', e);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message || 'Transcript not found' }));
+      }
+    });
   },
 });
 
@@ -142,6 +167,7 @@ export default defineConfig({
         skipWaiting: true,
         clientsClaim: true,
         cleanupOutdatedCaches: true,
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB to accommodate html2pdf
         // Cache the app shell: all JS/CSS/HTML/images except the FCM SW itself
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff,woff2}'],
         // Don't let Workbox cache version.json — it must always be fetched fresh

@@ -2,8 +2,9 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Plus, AlertTriangle, Clock, ExternalLink, Link2, Link2Off, RefreshCw, Zap, AlertCircle } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Plus, AlertTriangle, Clock, ExternalLink, Link2, Link2Off, RefreshCw, Zap, AlertCircle, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { autoScheduleDay } from '../../services/gemini';
 import {
   initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle,
   addEventToGoogleCalendar, deleteGoogleCalendarEvent, pollGoogleCalendarChanges,
@@ -52,6 +53,7 @@ export const CalendarModule = () => {
   const [selectedDayStr, setSelectedDayStr] = useState<string | null>(null);
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventType, setNewEventType] = useState<string>('exam');
+  const [isAutoScheduling, setIsAutoScheduling] = useState(false);
 
   // ── Google Calendar sync state ────────────────────────────────────────────────
   const [gcConnected, setGcConnected] = useState(false);
@@ -240,6 +242,43 @@ export const CalendarModule = () => {
       }
     } finally {
       setExportingId(null);
+    }
+  };
+
+  // ── Auto-Schedule Day ────────────────────────────────────────────────────────
+  const handleAutoSchedule = async () => {
+    setIsAutoScheduling(true);
+    toast.info('AI is analyzing your tasks...');
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error('Not logged in');
+      const uncompletedTodos = events.filter(e => e.type === 'todo' && !e.isCompleted);
+      if (uncompletedTodos.length === 0) {
+        toast.info('No pending tasks to schedule!');
+        return;
+      }
+      
+      const allScheduled = allEvents.filter(e => e.date);
+      const res = await autoScheduleDay(uncompletedTodos, allScheduled);
+      
+      if (!res.scheduledTasks || res.scheduledTasks.length === 0) {
+        toast.info('AI found no tasks needing scheduling right now.');
+        return;
+      }
+
+      let count = 0;
+      for (const t of res.scheduledTasks) {
+        if (t.id && t.date) {
+          const rawId = t.id.replace('todo_', '');
+          await updateDoc(doc(db, 'todos', rawId), { date: t.date });
+          count++;
+        }
+      }
+      toast.success(`🪄 AI successfully scheduled ${count} tasks!`);
+    } catch (err: any) {
+      toast.error('AI Auto-Schedule failed: ' + err.message);
+    } finally {
+      setIsAutoScheduling(false);
     }
   };
   // ──────────────────────────────────────────────────────────────────────────────
@@ -697,6 +736,16 @@ export const CalendarModule = () => {
                 )}
               </div>
             )}
+            
+            <button 
+              onClick={handleAutoSchedule} 
+              disabled={isAutoScheduling}
+              className="btn-primary" 
+              style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <Wand2 size={14} />
+              {isAutoScheduling ? 'Scheduling...' : 'Auto-Schedule'}
+            </button>
 
             <div style={{ display: 'flex', background: 'var(--bg-surface)', padding: '0.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
               {(['month', 'week', 'day'] as const).map(mode => (

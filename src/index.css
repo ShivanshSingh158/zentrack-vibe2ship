@@ -1305,3 +1305,11 @@ html.lenis, html.lenis body {
     display: none !important;
   }
 }
+
+/* Hide floating players when AI panel is open */
+body.ai-panel-open #spotify-floating-player,
+body.ai-panel-open #spotify-floating-player-connect,
+body.ai-panel-open #spotify-floating-player-open,
+body.ai-panel-open #youtube-floating-pip {
+  display: none !important;
+}

@@ -4,8 +4,9 @@ import {
   Plus, Check, ChevronDown, ChevronRight, BookOpen, Trash2,
   FileText, Search, X, Play, GripVertical,
   Eye, EyeOff, SkipForward, SkipBack, Bell, Edit3,
-  ListPlus, Link as LinkIcon, Loader, Gauge, Minimize2,
+  ListPlus, Link as LinkIcon, Loader, Gauge, Minimize2, MessageSquare,
 } from 'lucide-react';
+import { LectureChatPanel } from './LectureChatPanel';
 import { toast } from 'sonner';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
@@ -280,7 +281,7 @@ interface MergeVideo { id: string; title: string; url: string; }
 
 // ── VideoPlayerModal ──────────────────────────────────────────────────────────
 
-const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize, onMarkWatched, onNavigate, onStudyTime, onSaveVideoNote }: {
+const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize, onMarkWatched, onNavigate, onStudyTime, onSaveVideoNote, topicName, onMarkDoubt, completedTopicNames, totalProgress }: {
   playing: any;
   total: number;
   idx: number;
@@ -290,8 +291,12 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   onNavigate: (delta: number) => void;
   onStudyTime: (ms: number) => void;
   onSaveVideoNote: (topicId: string, subtaskId: string, note: string) => void;
+  topicName: string;
+  onMarkDoubt?: (videoId: string) => void;
+  completedTopicNames?: string[];
+  totalProgress?: { completed: number; total: number };
 }) => {
-  const { setPortalNode, setPipMode, getCurrentTime } = useYouTube();
+  const { setPortalNode, setPipMode, getCurrentTime, playerInstance } = useYouTube();
   const hasPrev = idx > 0;
   const hasNext = idx < total - 1;
   const progressPct = total > 0 ? ((playing.watchedCount) / total) * 100 : 0;
@@ -300,9 +305,28 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
     try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
   });
   const [showNotes, setShowNotes] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [chatAutoTrigger, setChatAutoTrigger] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [noteText, setNoteText] = useState('');
   const studyStartRef = useRef<number>(Date.now());
+
+  const handleTriggerQuiz = useCallback(() => {
+    onMarkWatched(playing.topicId, playing.subtaskId);
+    setShowChat(true);
+    setShowNotes(false);
+    setChatAutoTrigger("I just finished watching this video. Generate a 3-question rapid-fire quiz to test my knowledge on the core concepts. Label the questions Q1, Q2, and Q3. Do NOT reveal the answers yet.");
+  }, [onMarkWatched, playing.topicId, playing.subtaskId]);
+
+  useEffect(() => {
+    // 5-minute proactive check-in
+    const timer = setTimeout(() => {
+      setShowChat(true);
+      setShowNotes(false);
+      setChatAutoTrigger("I'm a few minutes into this video. Give me a brief proactive check-in summary of what we've covered so far and ask if I have any questions.");
+    }, 5 * 60 * 1000);
+    return () => clearTimeout(timer);
+  }, [playing.videoId]);
 
   // Load existing note for this video
   useEffect(() => {
@@ -313,6 +337,9 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   const handleSpeedChange = (s: number) => {
     setSpeed(s);
     try { localStorage.setItem(SPEED_KEY, String(s)); } catch {}
+    if (playerInstance && typeof playerInstance.setPlaybackRate === 'function') {
+      playerInstance.setPlaybackRate(s);
+    }
   };
 
   // On unmount, if we are still playing, default to PiP mode
@@ -359,14 +386,18 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showNotes) onClose();
-      if ((e.key === 'ArrowRight' || e.key === 'n') && hasNext && !showNotes) onNavigate(1);
-      if ((e.key === 'ArrowLeft'  || e.key === 'p') && hasPrev && !showNotes) onNavigate(-1);
-      if (e.key === 'Enter' && !showNotes) onMarkWatched(playing.topicId, playing.subtaskId);
+      // Don't trigger hotkeys if the user is typing in chat or notes
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+
+      if (e.key === 'Escape' && !showNotes && !showChat) onClose();
+      if ((e.key === 'ArrowRight' || e.key === 'n') && hasNext && !showNotes && !showChat) onNavigate(1);
+      if ((e.key === 'ArrowLeft'  || e.key === 'p') && hasPrev && !showNotes && !showChat) onNavigate(-1);
+      if (e.key === 'Enter' && !showNotes && !showChat) handleTriggerQuiz();
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [playing, hasNext, hasPrev, onClose, onMarkWatched, onNavigate, showNotes]);
+  }, [playing, hasNext, hasPrev, onClose, onMarkWatched, onNavigate, showNotes, showChat]);
 
   const resumeTs = (() => {
     try {
@@ -387,7 +418,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
         <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg,#3b82f6,#8b5cf6)', transition: 'width 0.5s ease', borderRadius: '0 2px 2px 0' }} />
       </div>
 
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '1100px', display: 'flex', flexDirection: 'column', gap: focusMode ? '0' : '0.75rem', height: focusMode ? '100vh' : 'auto', transition: 'all 0.3s' }}>
+      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: (showChat || showNotes) && !focusMode ? '1450px' : '1100px', display: 'flex', flexDirection: 'column', gap: focusMode ? '0' : '0.75rem', height: focusMode ? '100vh' : 'auto', transition: 'all 0.3s' }}>
         {/* Header */}
         {!focusMode && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
@@ -414,10 +445,17 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
               <Eye size={15} />
             </button>
             {/* Notes toggle */}
-            <button onClick={() => setShowNotes(v => !v)}
+            <button onClick={() => { setShowNotes(v => !v); setShowChat(false); }}
               title="Video notes"
               style={{ flexShrink: 0, background: showNotes ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${showNotes ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: showNotes ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <FileText size={15} />
+            </button>
+            {/* AI Chat toggle */}
+            <button onClick={() => { setShowChat(v => !v); setShowNotes(false); }}
+              title="Ask Gemini AI about this lecture"
+              style={{ flexShrink: 0, background: showChat ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.08)', border: `1px solid ${showChat ? 'rgba(168,85,247,0.7)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: showChat ? '#c4b5fd' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              <MessageSquare size={15} />
+              {showChat && <span style={{ position: 'absolute', top: '4px', right: '4px', width: '6px', height: '6px', borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 6px rgba(168,85,247,0.8)' }} />}
             </button>
             <button onClick={onMinimize} title="Minimize to PiP" style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Minimize2 size={16} />
@@ -437,6 +475,22 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
               background: '#000', borderRadius: focusMode ? '0' : '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0, transition: 'all 0.3s' 
             }}>
           </div>
+          {/* Gemini AI chat sidebar */}
+          {showChat && (
+            <LectureChatPanel
+              videoId={playing.videoId}
+              videoTitle={playing.title}
+              topicName={topicName}
+              onClose={() => setShowChat(false)}
+              isFullscreen={focusMode}
+              progressPct={Math.round(progressPct)}
+              onMarkDoubt={onMarkDoubt}
+              completedTopics={completedTopicNames}
+              totalProgress={totalProgress}
+              autoTriggerMessage={chatAutoTrigger}
+              onAutoTriggerComplete={() => setChatAutoTrigger(null)}
+            />
+          )}
           {/* In-video notes panel */}
           {showNotes && (
             <div style={{ width: focusMode ? '320px' : '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', height: focusMode ? '100%' : 'auto', maxHeight: focusMode ? '100%' : '280px', background: focusMode ? 'rgba(255,255,255,0.03)' : 'transparent', padding: focusMode ? '1.5rem 1rem' : '0', borderRadius: focusMode ? '12px' : '0', boxSizing: 'border-box' }}>
@@ -481,9 +535,9 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
                 style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasPrev ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasPrev ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasPrev ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
                 <SkipBack size={14} /> Prev
               </button>
-              <button onClick={() => { onMarkWatched(playing.topicId, playing.subtaskId); hasNext && onNavigate(1); }}
+              <button onClick={() => { if(hasNext) { onMarkWatched(playing.topicId, playing.subtaskId); onNavigate(1); } else { handleTriggerQuiz(); } }}
                 style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 700, minHeight: '44px' }}>
-                <Check size={15} strokeWidth={2.5} /> Mark Watched{hasNext ? ' & Next' : ''}
+                <Check size={15} strokeWidth={2.5} /> Mark Watched{hasNext ? ' & Next' : ' & Quiz'}
               </button>
               <button onClick={() => onNavigate(1)} disabled={!hasNext}
                 style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasNext ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasNext ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasNext ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
@@ -500,9 +554,14 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
         {/* Escape overlay for Focus Mode */}
         {focusMode && (
           <div style={{ position: 'fixed', top: '1rem', right: '1rem', zIndex: 1000000, opacity: 0, transition: 'opacity 0.3s', display: 'flex', gap: '0.5rem' }} className="hover:opacity-100">
-             {!showNotes && (
-               <button onClick={() => setShowNotes(true)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#fff', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+             {!showNotes && !showChat && (
+               <button onClick={() => { setShowNotes(true); setShowChat(false); }} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#fff', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                  <FileText size={15} /> Notes
+               </button>
+             )}
+             {!showChat && !showNotes && (
+               <button onClick={() => { setShowChat(true); setShowNotes(false); }} style={{ background: 'rgba(168,85,247,0.2)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#c4b5fd', fontWeight: 'bold', border: '1px solid rgba(168,85,247,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                 <MessageSquare size={15} /> AI Chat
                </button>
              )}
              <button onClick={() => setFocusMode(false)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#fff', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer' }}>
@@ -672,6 +731,11 @@ const SubTaskItem = React.memo(({
 
         {/* Title */}
         <span className="todo-text" style={{ flex: 1 }}>{subTask.text}</span>
+
+        {/* Needs-review flag */}
+        {(subTask as any).needsReview && !isEditMode && (
+          <span title="Flagged for review in AI chat" style={{ fontSize: '0.65rem', flexShrink: 0, background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.28)', borderRadius: '99px', padding: '0.05rem 0.32rem', color: '#fbbf24', fontWeight: 700 }}>🚩 review</span>
+        )}
 
         {/* Pin indicator */}
         {subTask.pinned && !isEditMode && (
@@ -1198,6 +1262,17 @@ export const LearningChecklistModule = () => {
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
     catch { toast.error('Failed to mark watched'); }
   }, [topics]);
+
+  // ── Mark doubt (flag lecture for review) ────────────────────────────────
+  const handleMarkDoubt = useCallback(async (_videoId: string) => {
+    if (!playing) return;
+    const { topicId, subtaskId } = playing;
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+    const updated = topic.subTasks.map(s => s.id === subtaskId ? { ...s, needsReview: true } : s);
+    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
+    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); } catch {}
+  }, [playing, topics]);
 
   // ── Study time tracker: called by VideoPlayerModal on close ─────────────
   const handleStudyTime = useCallback(async (ms: number) => {
@@ -1904,19 +1979,32 @@ export const LearningChecklistModule = () => {
       )}
 
       {/* Video Player */}
-      {playing && !isPipMode && (
-        <VideoPlayerModal
-          playing={playing}
-          total={playing.totalCount}
-          idx={playing.indexInPlaylist}
-          onClose={closePlayer}
-          onMinimize={() => setPipMode(true)}
-          onMarkWatched={handleMarkWatched}
-          onNavigate={handlePlayerNavigate}
-          onStudyTime={handleStudyTime}
-          onSaveVideoNote={handleSaveVideoNote}
-        />
-      )}
+      {playing && !isPipMode && (() => {
+        // Compute completed topic names and overall progress for AI context
+        const completedTopicNames = topics
+          .filter(t => t.subTasks.every(s => s.isCompleted))
+          .map(t => t.title)
+          .slice(-5);
+        const totalCompleted = topics.reduce((acc, t) => acc + t.subTasks.filter(s => s.isCompleted).length, 0);
+        const totalVideos = topics.reduce((acc, t) => acc + t.subTasks.length, 0);
+        return (
+          <VideoPlayerModal
+            playing={playing}
+            total={playing.totalCount}
+            idx={playing.indexInPlaylist}
+            onClose={closePlayer}
+            onMinimize={() => setPipMode(true)}
+            onMarkWatched={handleMarkWatched}
+            onNavigate={handlePlayerNavigate}
+            onStudyTime={handleStudyTime}
+            onSaveVideoNote={handleSaveVideoNote}
+            topicName={topics.find(t => t.id === playing.topicId)?.title || ''}
+            onMarkDoubt={handleMarkDoubt}
+            completedTopicNames={completedTopicNames}
+            totalProgress={{ completed: totalCompleted, total: totalVideos }}
+          />
+        );
+      })()}
     </div>
   );
 };

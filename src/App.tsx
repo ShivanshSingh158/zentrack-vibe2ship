@@ -20,8 +20,6 @@ import { PomodoroProvider } from './contexts/PomodoroContext';
 import { SpotifyProvider } from './contexts/SpotifyContext';
 import { YouTubeProvider } from './contexts/YouTubeContext';
 import { GlobalDataProvider } from './contexts/GlobalDataContext';
-import { GlobalQuickAdd } from './features/tasks/GlobalQuickAdd';
-import { VoiceQuickCaptureWidget } from './features/tasks/VoiceQuickCaptureWidget';
 import { FocusModeOverlay } from './components/overlays/FocusModeOverlay';
 import { SpotifyFloatingPlayer } from './features/spotify/SpotifyFloatingPlayer';
 import { FloatingYouTubePlayer } from './features/learning/FloatingYouTubePlayer';
@@ -31,11 +29,19 @@ import { SkeletonCard } from './components/ui/SkeletonCard';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
+import { VoiceQuickCaptureWidget } from './features/_shared/VoiceQuickCaptureWidget';
+
+import { useContextReminders } from './hooks/useContextReminders';
 
 /** Mounts inside GlobalDataProvider so it can access attendanceSubjects */
 const ClassNotificationRunner = () => {
   const { attendanceSubjects } = useGlobalData();
   useClassNotifications(attendanceSubjects);
+  return null;
+};
+
+const ContextRemindersRunner = () => {
+  useContextReminders();
   return null;
 };
 
@@ -300,12 +306,12 @@ function App() {
       <Toaster theme="dark" position="top-right" />
       <OfflineIndicator />
       <ClassNotificationRunner />
+      <ContextRemindersRunner />
       <CommandPalette />
-      <GlobalQuickAdd />
-      <VoiceQuickCaptureWidget />
       <FocusModeOverlay />
       <DailyBriefingOverlay />
       <FloatingExtraWorks />
+      <VoiceQuickCaptureWidget />
       <SessionEnforcer />
 
       {/* Onboarding Carousel */}

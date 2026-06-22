@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { GymDayLog } from '../../../types/gym.types';
 
 interface RestTimerState {
   timeLeft: number;       // seconds remaining
@@ -7,51 +8,71 @@ interface RestTimerState {
   exerciseName: string;
 }
 
-export function useRestTimer(onComplete?: () => void) {
+export function useRestTimer(log: GymDayLog | null, clearDbTimer: () => void, onComplete?: () => void) {
   const [state, setState] = useState<RestTimerState>({
     timeLeft: 0, totalTime: 0, isRunning: false, exerciseName: '',
   });
-  const intervalRef = useRef<number | null>(null);
+
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
-  const clearTimer = useCallback(() => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-  }, []);
+  useEffect(() => {
+    if (!log?.restTimerStartTime || !log?.restTimerDurationSecs) {
+      setState({ timeLeft: 0, totalTime: 0, isRunning: false, exerciseName: '' });
+      return;
+    }
 
-  const start = useCallback((seconds: number, exerciseName = '') => {
-    clearTimer();
-    setState({ timeLeft: seconds, totalTime: seconds, isRunning: true, exerciseName });
-    intervalRef.current = window.setInterval(() => {
-      setState(prev => {
-        if (!prev.isRunning) return prev;
-        const next = prev.timeLeft - 1;
-        if (next <= 0) {
-          clearInterval(intervalRef.current!);
-          intervalRef.current = null;
-          onCompleteRef.current?.();
-          // Vibrate on completion if supported
-          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-          return { ...prev, timeLeft: 0, isRunning: false };
-        }
-        return { ...prev, timeLeft: next };
-      });
+    const { restTimerStartTime, restTimerDurationSecs, restTimerExerciseName } = log;
+    
+    // Check initial state
+    const elapsed = Math.floor((Date.now() - restTimerStartTime) / 1000);
+    const remaining = restTimerDurationSecs - elapsed;
+
+    if (remaining <= 0) {
+      setState({ timeLeft: 0, totalTime: restTimerDurationSecs, isRunning: false, exerciseName: restTimerExerciseName || '' });
+      clearDbTimer();
+      onCompleteRef.current?.();
+      return;
+    }
+
+    setState({
+      timeLeft: remaining,
+      totalTime: restTimerDurationSecs,
+      isRunning: true,
+      exerciseName: restTimerExerciseName || '',
+    });
+
+    const interval = window.setInterval(() => {
+      const e = Math.floor((Date.now() - restTimerStartTime) / 1000);
+      const rem = restTimerDurationSecs - e;
+
+      if (rem <= 0) {
+        clearInterval(interval);
+        setState({ timeLeft: 0, totalTime: restTimerDurationSecs, isRunning: false, exerciseName: restTimerExerciseName || '' });
+        clearDbTimer();
+        onCompleteRef.current?.();
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      } else {
+        setState({
+          timeLeft: rem,
+          totalTime: restTimerDurationSecs,
+          isRunning: true,
+          exerciseName: restTimerExerciseName || '',
+        });
+      }
     }, 1000);
-  }, [clearTimer]);
+
+    return () => clearInterval(interval);
+  }, [log?.restTimerStartTime, log?.restTimerDurationSecs, log?.restTimerExerciseName, clearDbTimer]);
 
   const stop = useCallback(() => {
-    clearTimer();
-    setState(prev => ({ ...prev, isRunning: false, timeLeft: 0, totalTime: 0 }));
-  }, [clearTimer]);
+    clearDbTimer();
+  }, [clearDbTimer]);
 
   const skip = useCallback(() => {
-    clearTimer();
-    setState(prev => ({ ...prev, isRunning: false, timeLeft: 0 }));
+    clearDbTimer();
     onCompleteRef.current?.();
-  }, [clearTimer]);
-
-  // Cleanup on unmount
-  useEffect(() => () => clearTimer(), [clearTimer]);
+  }, [clearDbTimer]);
 
   const progress = state.totalTime > 0
     ? (state.totalTime - state.timeLeft) / state.totalTime
@@ -63,5 +84,5 @@ export function useRestTimer(onComplete?: () => void) {
     return `${m}:${String(s).padStart(2, '0')}`;
   };
 
-  return { ...state, progress, start, stop, skip, formatted };
+  return { ...state, progress, stop, skip, formatted };
 }

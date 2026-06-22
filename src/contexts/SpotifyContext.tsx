@@ -47,6 +47,7 @@ interface SpotifyContextValue {
   sdkError: string | null;
   isPremium: boolean;          // false = Free tier, controls disabled
   isPlaying: boolean;
+  isShuffle: boolean;
   currentTrack: TrackInfo | null;
   showFloating: boolean;
   currentPlaylistId: string;
@@ -54,6 +55,7 @@ interface SpotifyContextValue {
   startPlaylist: (playlistId: string) => Promise<void>;
   startTrack: (trackUri: string) => Promise<void>;
   togglePlayPause: () => Promise<void>;
+  toggleShuffle: () => Promise<void>;
   skipNext: () => Promise<void>;
   skipPrevious: () => Promise<void>;
   hideFloating: () => void;
@@ -100,6 +102,7 @@ export const SpotifyProvider = ({ children }: { children: React.ReactNode }) => 
   const [isPremium, setIsPremium]       = useState(true);  // optimistic: assume Premium until proved otherwise
   const [deviceId, setDeviceId]         = useState<string | null>(null);
   const [isPlaying, setIsPlaying]       = useState(false);
+  const [isShuffle, setIsShuffle]       = useState(false);
   const [currentTrack, setCurrentTrack] = useState<TrackInfo | null>(null);
   const [showFloating, setShowFloating] = useState(false);
   const [currentPlaylistId, setCurrentPlaylistId] = useState(CURATED_PLAYLISTS[0].id);
@@ -198,6 +201,7 @@ export const SpotifyProvider = ({ children }: { children: React.ReactNode }) => 
             durationMs: track.duration_ms || 1,
           });
           setIsPlaying(!state.paused);
+          setIsShuffle(!!state.shuffle);
         }
       });
 
@@ -247,6 +251,7 @@ export const SpotifyProvider = ({ children }: { children: React.ReactNode }) => 
       pollBackoffRef.current = 8000; // reset backoff on success
       if (!data || !data.item) { setIsPlaying(false); return; }
       setIsPlaying(data.is_playing);
+      setIsShuffle(!!data.shuffle_state);
       setCurrentTrack({
         title:      data.item.name,
         artist:     (data.item.artists || []).map((a: any) => a.name).join(', '),
@@ -338,6 +343,25 @@ export const SpotifyProvider = ({ children }: { children: React.ReactNode }) => 
     }
   }, [sdkReady, pollPlayback]);
 
+  const toggleShuffle = useCallback(async () => {
+    if (!deviceId && !sdkReady) return;
+    const newState = !isShuffle;
+    setIsShuffle(newState); // Optimistic UI update
+    try {
+      const { accessToken } = getStoredTokens();
+      await fetch(`https://api.spotify.com/v1/me/player/shuffle?state=${newState}${deviceId ? `&device_id=${deviceId}` : ''}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      setTimeout(pollPlayback, 500);
+    } catch (e) {
+      setIsShuffle(!newState); // Revert on failure
+      console.warn('[Spotify] shuffle error:', e);
+    }
+  }, [isShuffle, deviceId, sdkReady, pollPlayback]);
+
   const skipPrevious = useCallback(async () => {
     if (playerRef.current && sdkReady) {
       await playerRef.current.previousTrack();
@@ -350,10 +374,10 @@ export const SpotifyProvider = ({ children }: { children: React.ReactNode }) => 
   return (
     <SpotifyContext.Provider value={{
       isConnected, sdkReady, sdkError, isPremium,
-      isPlaying, currentTrack, showFloating,
+      isPlaying, isShuffle, currentTrack, showFloating,
       currentPlaylistId, setCurrentPlaylistId,
       startPlaylist, startTrack,
-      togglePlayPause, skipNext, skipPrevious,
+      togglePlayPause, toggleShuffle, skipNext, skipPrevious,
       hideFloating, setShowFloating,
       disconnect,
     }}>

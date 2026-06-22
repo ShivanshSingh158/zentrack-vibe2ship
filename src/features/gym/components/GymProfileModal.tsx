@@ -32,6 +32,10 @@ export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfile
   const [age, setAge] = useState(String(initial?.ageYears ?? ''));
   const [experience, setExperience] = useState(initial?.trainingExperienceMonths ?? 9);
   const [goal, setGoal] = useState<GymGoal>(initial?.primaryGoal ?? 'hypertrophy');
+  const [targetWeight, setTargetWeight] = useState(String(initial?.targetBodyweightKg ?? ''));
+  const [targetTimeline, setTargetTimeline] = useState(String(initial?.targetTimelineWeeks ?? ''));
+  const [mesoWeek, setMesoWeek] = useState(String(initial?.currentMesocycleWeek ?? ''));
+  const [mesoTotal, setMesoTotal] = useState(String(initial?.totalMesocycleWeeks ?? ''));
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '0.7rem 0.85rem', borderRadius: '10px',
@@ -47,6 +51,10 @@ export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfile
       ageYears: age ? Number(age) : null,
       trainingExperienceMonths: experience,
       primaryGoal: goal,
+      targetBodyweightKg: targetWeight ? Number(targetWeight) : null,
+      targetTimelineWeeks: targetTimeline ? Number(targetTimeline) : null,
+      currentMesocycleWeek: mesoWeek ? Number(mesoWeek) : null,
+      totalMesocycleWeeks: mesoTotal ? Number(mesoTotal) : null,
     });
     onClose();
   };
@@ -96,6 +104,24 @@ export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfile
             ))}
           </div>
 
+          {/* Conditional Target inputs */}
+          {(goal === 'weightLoss' || goal === 'recomp' || goal === 'hypertrophy') && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', padding: '0.8rem', background: 'rgba(124,58,237,0.06)', borderRadius: '12px', border: '1px solid rgba(124,58,237,0.2)' }}>
+              <div style={{ fontSize: '0.72rem', color: '#c4b5fd', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Goal Targets (Optional)</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '0.3rem' }}>Target Weight (kg)</label>
+                  <input type="number" value={targetWeight} onChange={e => setTargetWeight(e.target.value)} placeholder="e.g. 70" style={{ ...inputStyle, background: 'rgba(0,0,0,0.2)' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '0.3rem' }}>Timeline (weeks)</label>
+                  <input type="number" value={targetTimeline} onChange={e => setTargetTimeline(e.target.value)} placeholder="e.g. 12" style={{ ...inputStyle, background: 'rgba(0,0,0,0.2)' }} />
+                </div>
+              </div>
+            </div>
+          )}
+
+
           {/* Training experience */}
           <div>
             <label style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.38)', display: 'block', marginBottom: '0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Training Experience</label>
@@ -106,6 +132,24 @@ export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfile
                   {e.label}
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Periodization */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Periodization / Phase (Optional)</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '0.3rem' }}>Current Week</label>
+                <input type="number" value={mesoWeek} onChange={e => setMesoWeek(e.target.value)} placeholder="e.g. 2" style={inputStyle} />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', display: 'block', marginBottom: '0.3rem' }}>Total Weeks in Block</label>
+                <input type="number" value={mesoTotal} onChange={e => setMesoTotal(e.target.value)} placeholder="e.g. 4" style={inputStyle} />
+              </div>
+            </div>
+            <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.35)', marginTop: '0.2rem' }}>
+              Helps AI determine if you're peaking, deloading, or accumulating volume.
             </div>
           </div>
 

@@ -4,8 +4,9 @@ import { db, auth } from '../../services/firebase';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import type { Goal, KeyResult } from '../../types/index';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
-import { Target, Plus, Edit2, Trash2, X, Save, TrendingUp, ChevronUp } from 'lucide-react';
+import { Target, Plus, Edit2, Trash2, X, Save, TrendingUp, ChevronUp, Wand2, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { autoBreakdownGoal } from '../../services/gemini';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 
@@ -38,6 +39,9 @@ export const GoalsModule = () => {
   
   // Expanded charts state
   const [expandedCharts, setExpandedCharts] = useState<{ [goalId: string]: boolean }>({});
+  
+  // AI Breakdown state
+  const [isBreakingDown, setIsBreakingDown] = useState<{ [goalId: string]: boolean }>({});
 
   // Debounce timer for auto-sync (prevents Firestore write storms)
   const syncDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -260,6 +264,40 @@ export const GoalsModule = () => {
     return goals.filter(g => g.status === 'active');
   }, [goals, showArchived]);
 
+  const handleAIBreakdown = async (goal: Goal) => {
+    setIsBreakingDown(prev => ({ ...prev, [goal.id!]: true }));
+    toast.info(`AI is analyzing "${goal.title}"...`);
+    try {
+      const res = await autoBreakdownGoal(goal.title, goal.description);
+      if (!res.subtasks || res.subtasks.length === 0) {
+        toast.info('No subtasks generated.');
+        return;
+      }
+      
+      let count = 0;
+      for (const t of res.subtasks) {
+        const d = new Date();
+        d.setDate(d.getDate() + (t.daysFromNow || 0));
+        await addDoc(collection(db, 'todos'), {
+          userId: auth.currentUser?.uid,
+          text: t.text,
+          priority: t.priority || 'medium',
+          date: getLocalDateString(d),
+          createdAt: Date.now(),
+          isCompleted: false,
+          isOverdue: false,
+          goalId: goal.id
+        });
+        count++;
+      }
+      toast.success(`🪄 AI successfully created ${count} tasks for this goal! Check your To-Do list.`);
+    } catch (err: any) {
+      toast.error('AI Breakdown failed: ' + err.message);
+    } finally {
+      setIsBreakingDown(prev => ({ ...prev, [goal.id!]: false }));
+    }
+  };
+
   if (isLoading) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading Goals...</div>;
 
   return (
@@ -328,6 +366,9 @@ export const GoalsModule = () => {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button className="btn-icon" style={{ color: '#8b5cf6' }} onClick={() => handleAIBreakdown(goal)} title="AI Breakdown" disabled={isBreakingDown[goal.id!]}>
+                      {isBreakingDown[goal.id!] ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Wand2 size={16} />}
+                    </button>
                     <button className="btn-icon" onClick={() => { setEditingGoal(goal); setIsModalOpen(true); }} title="Edit Goal"><Edit2 size={16} /></button>
                     <button className="btn-icon" style={{ color: '#ef4444' }} onClick={() => handleDeleteGoal(goal.id!)} title="Delete Goal"><Trash2 size={16} /></button>
                   </div>
@@ -557,29 +598,47 @@ export const GoalsModule = () => {
                       <button className="btn-icon" onClick={() => handleRemoveKR(idx)} style={{ color: '#ef4444', padding: '0.5rem' }}><Trash2 size={16} /></button>
                     </div>
                     
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Auto-Sync:</label>
-                      <select 
-                        value={kr.syncType || 'none'}
-                        onChange={e => handleUpdateKR(idx, 'syncType', e.target.value)}
-                        style={{ padding: '0.4rem', fontSize: '0.8rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
-                      >
-                        <option value="none">Disabled (Manual Slider)</option>
-                        <option value="job_applications">Total Job Apps</option>
-                        <option value="interviews">Total Interviews</option>
-                        <option value="todos_completed">Completed Tasks</option>
-                        <option value="learning_subtasks">Learning Syllabus</option>
-                        <option value="gym_days">Gym Days</option>
-                        <option value="productive_hours">Productive Hours</option>
-                      </select>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+                      <label style={{ fontSize: '0.85rem', color: 'var(--text-primary)', fontWeight: 600 }}>Auto-Sync Source <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400 }}>(updates automatically)</span></label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                        {[
+                          { id: 'none', label: 'Manual Slider' },
+                          { id: 'job_applications', label: 'Job Apps' },
+                          { id: 'interviews', label: 'Interviews' },
+                          { id: 'todos_completed', label: 'Completed Tasks' },
+                          { id: 'learning_subtasks', label: 'Learning' },
+                          { id: 'gym_days', label: 'Gym Days' },
+                          { id: 'productive_hours', label: 'Focus Hours' }
+                        ].map(opt => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleUpdateKR(idx, 'syncType', opt.id)}
+                            style={{
+                              padding: '0.35rem 0.75rem',
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              borderRadius: '999px',
+                              border: '1px solid',
+                              borderColor: (kr.syncType || 'none') === opt.id ? 'var(--accent-primary)' : 'var(--border-subtle)',
+                              background: (kr.syncType || 'none') === opt.id ? 'rgba(124,58,237,0.1)' : 'var(--bg-base)',
+                              color: (kr.syncType || 'none') === opt.id ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
                       
                       {kr.syncType && kr.syncType !== 'none' && (kr.syncType === 'todos_completed' || kr.syncType === 'learning_subtasks') && (
                         <input 
                           type="text" 
-                          placeholder="Filter keyword (Optional)" 
+                          placeholder="Filter keyword (Optional, e.g. 'react')" 
                           value={kr.syncQuery || ''}
                           onChange={e => handleUpdateKR(idx, 'syncQuery', e.target.value)}
-                          style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)' }}
+                          style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: '6px', color: 'var(--text-primary)', marginTop: '0.25rem' }}
                         />
                       )}
                     </div>

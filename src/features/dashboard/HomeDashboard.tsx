@@ -14,6 +14,7 @@
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
+import { WisdomVideoCard } from './WisdomVideoCard';
 import { useNavigate } from 'react-router-dom';
 import { collection, updateDoc, doc, addDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
@@ -23,8 +24,9 @@ import { useGlobalData } from '../../contexts/GlobalDataContext';
 import {
   Droplets, Timer, Flame, BarChart2, Maximize2, Plus, X,
   RotateCcw, ClipboardList, Square, AlertTriangle, Calendar,
-  ClipboardCheck, Check, Moon, Briefcase, Play,
+  ClipboardCheck, Check, Moon, Briefcase, Play, Sparkles, Activity, BookOpen, Wand2, Target, Mic
 } from 'lucide-react';
+import { generateNextActionRecommendation } from '../../services/gemini';
 import { toast } from 'sonner';
 import { sendPushNotification } from '../../services/fcm';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
@@ -42,10 +44,11 @@ interface LocalLog {
 }
 
 // ─── DashboardHero ────────────────────────────────────────────────────────────
-const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, todayHabitLogs, habits }: {
+const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, overdueTaskCount, todayHabitLogs, habits }: {
   currentStreak: number;
   hasRollovers: boolean;
   pendingTaskCount: number;
+  overdueTaskCount: number;
   todayHabitLogs: Record<string, boolean>;
   habits: any[];
 }) => {
@@ -89,8 +92,12 @@ const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, todayHab
             <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.2rem)', fontWeight: 800, letterSpacing: '-0.02em', margin: 0, lineHeight: 1.1, fontFamily: 'var(--font-display)' }}>
               Good {greetingTime}, {userName} {emoji}
             </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: '0.35rem 0 0' }}>
-              {pendingTaskCount === 0 ? "You're all caught up today! 🎉" : `${pendingTaskCount} priority task${pendingTaskCount !== 1 ? 's' : ''} waiting`}
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: '0.35rem 0 0', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              {pendingTaskCount === 0
+                ? "You're all caught up today! 🎉"
+                : <><span>{pendingTaskCount} task{pendingTaskCount !== 1 ? 's' : ''} today</span>
+                  {overdueTaskCount > 0 && <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.82rem', background: 'rgba(239,68,68,0.1)', padding: '0.05rem 0.4rem', borderRadius: '4px' }}>⚠ {overdueTaskCount} overdue</span>}
+                </>}
             </p>
           </div>
 
@@ -106,6 +113,92 @@ const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, todayHab
         </div>
       </div>
     </>
+  );
+};
+
+// ─── ZenAIControlCenter ────────────────────────────────────────────────────────
+const ZenAIControlCenter = () => {
+  const navigate = useNavigate();
+  return (
+    <div style={{
+      background: 'linear-gradient(135deg, rgba(168,85,247,0.1) 0%, rgba(236,72,153,0.1) 100%)',
+      border: '1px solid rgba(168,85,247,0.3)',
+      borderRadius: 'var(--radius-xl)',
+      padding: '1.5rem',
+      marginBottom: '1.5rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '1rem',
+      boxShadow: '0 8px 32px rgba(168,85,247,0.1)'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <Sparkles size={24} style={{ color: '#c084fc' }} />
+        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: '#fff' }}>Zen AI Control Center</h2>
+        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '999px', background: 'rgba(168,85,247,0.2)', color: '#c084fc', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Autonomous</span>
+      </div>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+        <button className="ai-feature-btn" onClick={() => navigate('/calendar')} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '1rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(124,58,237,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#c084fc', fontWeight: 600 }}>
+            <Wand2 size={18} /> Auto-Schedule Today
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Click to let AI assign optimal times for your pending tasks.</div>
+        </button>
+
+        <button className="ai-feature-btn" onClick={() => navigate('/goals')} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '1rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(236,72,153,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f472b6', fontWeight: 600 }}>
+            <Target size={18} /> AI Goal Breakdown
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Let AI break your long-term goals into a daily to-do list.</div>
+        </button>
+
+        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 600 }}>
+            <Mic size={18} /> Voice Assistant
+          </div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Tap the floating mic anywhere to capture tasks hands-free.</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── StreakSummaryWidget ───────────────────────────────────────────────────────
+const StreakSummaryWidget = ({ gymLogs, learningTopics }: { gymLogs: any[], learningTopics: any[] }) => {
+  const gymStreak = useMemo(() => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0,0,0,0);
+    return gymLogs.filter((l:any) => new Date(l.date) >= startOfWeek).length;
+  }, [gymLogs]);
+
+  const activeTopics = learningTopics.filter((t:any) => t.status === 'in_progress').length;
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+      <div style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(251,146,60,0.2)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ background: 'rgba(251,146,60,0.1)', padding: '0.75rem', borderRadius: '12px' }}><Flame size={20} color="#fb923c" /></div>
+        <div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fb923c', fontFamily: 'var(--font-display)' }}>Daily</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Habits</div>
+        </div>
+      </div>
+      <div style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(59,130,246,0.2)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ background: 'rgba(59,130,246,0.1)', padding: '0.75rem', borderRadius: '12px' }}><Activity size={20} color="#3b82f6" /></div>
+        <div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#3b82f6', fontFamily: 'var(--font-display)' }}>{gymStreak} <span style={{fontSize:'0.8rem'}}>this week</span></div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Gym Sessions</div>
+        </div>
+      </div>
+      <div style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(168,85,247,0.2)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ background: 'rgba(168,85,247,0.1)', padding: '0.75rem', borderRadius: '12px' }}><BookOpen size={20} color="#a855f7" /></div>
+        <div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#a855f7', fontFamily: 'var(--font-display)' }}>{activeTopics}</div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Active Topics</div>
+        </div>
+      </div>
+    </div>
   );
 };
 
@@ -238,31 +331,36 @@ const StudentWidgets = ({ attendanceSubjects, assignments }: {
   ];
 
   const sorted = [...widgets].sort((a, b) => (a.isEmpty === b.isEmpty ? 0 : a.isEmpty ? 1 : -1));
+  // Only show non-empty widgets — empty ones add visual noise and confuse new users
+  const visible = sorted.filter(w => !w.isEmpty);
 
   if (allEmpty) return null;
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-      {sorted.map(w => w.node)}
+      {visible.map(w => w.node)}
     </div>
   );
 };
 
 // ─── DailyCommandPanel ────────────────────────────────────────────────────────
-const DailyCommandPanel = ({ localLog, habits, todayHabitLogs, onUpdate, onToggleHabit }: {
+const DailyCommandPanel = ({ localLog, habits, todayHabitLogs, onUpdate, onToggleHabit, aiRecommendation, isAiLoading, onAskAi }: {
   localLog: LocalLog;
   habits: any[];
   todayHabitLogs: Record<string, boolean>;
   onUpdate: (field: string, value: any) => void;
   onToggleHabit: (habitId: string) => void;
+  aiRecommendation: any;
+  isAiLoading: boolean;
+  onAskAi: () => void;
 }) => {
   const navigate = useNavigate();
-  const [quickExtraWorkText, setQuickExtraWorkText] = useState('');
   const [quickTaskText, setQuickTaskText]   = useState('');
-  const [quickTaskPriority, setQuickTaskPriority] = useState<'high'|'medium'|'low'>('high');
+  const [quickTaskPriority, setQuickTaskPriority] = useState<'high'|'medium'|'low'>('medium');
   const [quickTaskEstimate, setQuickTaskEstimate] = useState('25');
   const [quickTaskStartTime, setQuickTaskStartTime] = useState('');
   const [quickTaskEndTime, setQuickTaskEndTime]   = useState('');
+  const [showTaskOptions, setShowTaskOptions] = useState(false);
 
   // Auto-compute duration from start/end time
   useEffect(() => {
@@ -296,14 +394,8 @@ const DailyCommandPanel = ({ localLog, habits, todayHabitLogs, onUpdate, onToggl
     toast.success(quickTaskStartTime ? 'Task scheduled on timeline!' : 'Task added!');
   };
 
-  const addExtraWork = () => {
-    if (!quickExtraWorkText.trim()) return;
-    const newExtra = localLog.extraWorks
-      ? `${localLog.extraWorks}\n- ${quickExtraWorkText}`
-      : `- ${quickExtraWorkText}`;
-    onUpdate('extraWorks', newExtra);
-    setQuickExtraWorkText('');
-  };
+  const addExtraWork = () => {}; // kept for compat, Brain Dump now uses direct textarea only
+
 
   const bentoStyle = (borderColor: string): React.CSSProperties => ({
     background: 'rgba(20,20,25,0.6)',
@@ -438,19 +530,41 @@ const DailyCommandPanel = ({ localLog, habits, todayHabitLogs, onUpdate, onToggl
           <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <ClipboardList size={16} style={{ color: '#10b981' }} />
           </div>
-          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Brain Dump & Extra Works</span>
+          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Brain Dump</span>
+          <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Capture thoughts, ideas, anything...</span>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <input type="text" placeholder="Quick add to Brain Dump..." value={quickExtraWorkText} onChange={e => setQuickExtraWorkText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addExtraWork(); }} style={{ flex: 1, padding: '0.75rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.9rem', outline: 'none' }} onFocus={e => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.5)')} onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} />
-          <button onClick={addExtraWork} style={{ padding: '0.75rem 1rem', borderRadius: '12px', background: 'rgba(16,185,129,0.2)', border: '1px solid rgba(16,185,129,0.4)', color: '#10b981', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Plus size={16} /> Add
-          </button>
-        </div>
-        <textarea placeholder="Or write freely here..." value={localLog.extraWorks || ''} onChange={e => onUpdate('extraWorks', e.target.value)} style={{ width: '100%', minHeight: '80px', padding: '1rem', borderRadius: '16px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.95rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }} onFocus={e => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.5)')} onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} />
+        <textarea placeholder="Start typing freely here..." value={localLog.extraWorks || ''} onChange={e => onUpdate('extraWorks', e.target.value)} style={{ width: '100%', minHeight: '90px', padding: '1rem', borderRadius: '16px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.95rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box' }} onFocus={e => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.5)')} onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} />
       </div>
 
-      {/* Quick Add Task */}
-      <motion.div style={{ gridColumn: '1 / -1', background: 'rgba(20,20,25,0.6)', backdropFilter: 'blur(12px)', borderRadius: '24px', border: '1px solid rgba(168,85,247,0.2)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden' }} whileHover={{ y: -4, scale: 1.01 }} transition={{ type: 'spring', stiffness: 400, damping: 10 }}>
+      {/* AI Priority */}
+      <div style={bentoStyle('rgba(236,72,153,0.2)')}
+        onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
+        onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}>
+        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(236,72,153,0.5), transparent)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(236,72,153,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Sparkles size={16} style={{ color: '#ec4899' }} />
+          </div>
+          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Priority</span>
+        </div>
+        
+        {aiRecommendation ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(236,72,153,0.2)' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '0.4rem', lineHeight: 1.3 }}>{aiRecommendation.action}</div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{aiRecommendation.reasoning}</div>
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center' }}>Got 45 minutes? Ask Zen AI what to do next.</div>
+            <button onClick={onAskAi} disabled={isAiLoading} style={{ padding: '0.6rem 1.5rem', borderRadius: '12px', background: 'linear-gradient(135deg, #a855f7, #ec4899)', border: 'none', color: '#fff', fontWeight: 700, cursor: isAiLoading ? 'not-allowed' : 'pointer', opacity: isAiLoading ? 0.7 : 1, transition: 'all 0.2s', boxShadow: '0 4px 15px rgba(236,72,153,0.3)' }}>
+              {isAiLoading ? 'Analyzing...' : 'Ask Zen AI'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Quick Add Task — progressive disclosure */}
+      <motion.div style={{ gridColumn: '1 / -1', background: 'rgba(20,20,25,0.6)', backdropFilter: 'blur(12px)', borderRadius: '24px', border: '1px solid rgba(168,85,247,0.2)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden' }} whileHover={{ y: -2 }} transition={{ type: 'spring', stiffness: 400, damping: 10 }}>
         <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.5), transparent)' }} />
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(168,85,247,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -458,28 +572,40 @@ const DailyCommandPanel = ({ localLog, habits, todayHabitLogs, onUpdate, onToggl
           </div>
           <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quick Add Task</span>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '0.5rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <input type="text" placeholder="What needs to get done…" value={quickTaskText} onChange={e => setQuickTaskText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addQuickTask(); }} style={{ flex: 1, padding: '0.6rem 0.8rem', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.95rem', outline: 'none' }} onFocus={e => (e.currentTarget.style.borderColor = 'rgba(168,85,247,0.5)')} onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} />
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-              <input type="time" value={quickTaskStartTime} onChange={e => setQuickTaskStartTime(e.target.value)} style={{ padding: '0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.85rem', width: '85px' }} title="Start Time" />
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>-</span>
-              <input type="time" value={quickTaskEndTime} onChange={e => setQuickTaskEndTime(e.target.value)} style={{ padding: '0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.85rem', width: '85px' }} title="End Time" />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0 0.4rem', width: '50px' }}>
-              <Timer size={13} color="rgba(255,255,255,0.5)" />
-              <input type="number" value={quickTaskEstimate} onChange={e => setQuickTaskEstimate(e.target.value)} min="1" max="480" style={{ width: '100%', padding: '0.5rem 0 0.5rem 0.2rem', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.85rem', outline: 'none' }} title="Duration (minutes)" />
-            </div>
-            <select value={quickTaskPriority} onChange={e => setQuickTaskPriority(e.target.value as any)} style={{ width: '38px', padding: '0.5rem 0', borderRadius: '8px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.9rem', outline: 'none', cursor: 'pointer', appearance: 'none', textAlign: 'center' }}>
-              <option value="low">🟢</option>
-              <option value="medium">🟡</option>
-              <option value="high">🔴</option>
-            </select>
-            <button id="btn-quick-add-task" onClick={addQuickTask} style={{ marginLeft: 'auto', padding: '0.5rem 1.25rem', borderRadius: '8px', background: 'linear-gradient(135deg, #a855f7, #ec4899)', border: 'none', color: '#fff', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 15px rgba(168,85,247,0.4)' }}>
-              Add
-            </button>
-          </div>
+        {/* Row 1: text + add */}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input type="text" placeholder="What needs to get done…" value={quickTaskText} onChange={e => setQuickTaskText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addQuickTask(); }} style={{ flex: 1, padding: '0.65rem 0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.95rem', outline: 'none' }} onFocus={e => (e.currentTarget.style.borderColor = 'rgba(168,85,247,0.5)')} onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} />
+          <button onClick={() => setShowTaskOptions(s => !s)} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: showTaskOptions ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showTaskOptions ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: showTaskOptions ? '#c084fc' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="More options">
+            <Timer size={14} /> {showTaskOptions ? 'Less' : 'Schedule'}
+          </button>
+          <button id="btn-quick-add-task" onClick={addQuickTask} style={{ padding: '0.65rem 1.25rem', borderRadius: '10px', background: 'linear-gradient(135deg, #a855f7, #ec4899)', border: 'none', color: '#fff', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 15px rgba(168,85,247,0.4)', whiteSpace: 'nowrap' }}>
+            Add
+          </button>
         </div>
+        {/* Row 2: options (collapsible) */}
+        {showTaskOptions && (
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.6rem 0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+            {/* Priority pills */}
+            <div style={{ display: 'flex', gap: '0.3rem' }}>
+              {(['low', 'medium', 'high'] as const).map(p => (
+                <button key={p} onClick={() => setQuickTaskPriority(p)} style={{ padding: '0.3rem 0.65rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', border: '1px solid', borderColor: quickTaskPriority === p ? (p === 'high' ? '#ef4444' : p === 'medium' ? '#f59e0b' : '#10b981') : 'rgba(255,255,255,0.1)', background: quickTaskPriority === p ? (p === 'high' ? 'rgba(239,68,68,0.15)' : p === 'medium' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)') : 'transparent', color: quickTaskPriority === p ? (p === 'high' ? '#ef4444' : p === 'medium' ? '#f59e0b' : '#10b981') : 'var(--text-muted)', textTransform: 'capitalize', transition: 'all 0.15s' }}>
+                  {p === 'high' ? '🔴' : p === 'medium' ? '🟡' : '🟢'} {p}
+                </button>
+              ))}
+            </div>
+            {/* Time range */}
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
+              <input type="time" value={quickTaskStartTime} onChange={e => setQuickTaskStartTime(e.target.value)} style={{ padding: '0.4rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '80px' }} title="Start Time" />
+              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 0.2rem' }}>→</span>
+              <input type="time" value={quickTaskEndTime} onChange={e => setQuickTaskEndTime(e.target.value)} style={{ padding: '0.4rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '80px' }} title="End Time" />
+            </div>
+            {/* Duration */}
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0 0.4rem', width: '60px' }}>
+              <Timer size={12} color="rgba(255,255,255,0.5)" />
+              <input type="number" value={quickTaskEstimate} onChange={e => setQuickTaskEstimate(e.target.value)} min="1" max="480" style={{ width: '100%', padding: '0.4rem 0 0.4rem 0.2rem', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.82rem', outline: 'none' }} title="Duration (mins)" />
+            </div>
+          </div>
+        )}
       </motion.div>
     </div>
   );
@@ -650,9 +776,10 @@ const PriorityTasksList = ({ tasks, interviews, onToggleTask }: {
 export const HomeDashboard = () => {
   const dashboardRef = useRef<HTMLDivElement>(null);
 
-  // Throttle mouse tracking with rAF to avoid DOM writes on every pixel
+  // Throttle mouse tracking with rAF — only on pointer:fine (mouse) devices, not touch
   const rafRef = useRef<number | null>(null);
   useEffect(() => {
+    if (!window.matchMedia('(pointer: fine)').matches) return;
     const handleMouseMove = (e: MouseEvent) => {
       if (rafRef.current) return; // already scheduled
       rafRef.current = requestAnimationFrame(() => {
@@ -672,7 +799,37 @@ export const HomeDashboard = () => {
   }, []);
 
   // ── All data from GlobalDataContext — ZERO extra Firestore listeners ──────
-  const { todos, dailyLogs, habitLogs, habits, jobs, goals, attendanceSubjects, assignments, isLoading } = useGlobalData();
+  const { todos, dailyLogs, habitLogs, habits, jobs, goals, attendanceSubjects, assignments, learningTopics, gymLogs, isLoading } = useGlobalData();
+
+  // ── AI Priority State ─────────────────────────────────────────────────────
+  const [aiRec, setAiRec] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const handleAskAi = async () => {
+    setAiLoading(true);
+    try {
+      const now = new Date();
+      const safeTodos = todos || [];
+      const safeAssignments = assignments || [];
+      const safeHabits = habits || [];
+      const safeGymLogs = gymLogs || [];
+      const safeTodayHabitLogs = todayHabitLogs || {};
+
+      const rec = await generateNextActionRecommendation({
+        todos: safeTodos,
+        assignments: safeAssignments,
+        habitsPending: Math.max(0, safeHabits.length - Object.values(safeTodayHabitLogs).filter(Boolean).length),
+        isGymDay: safeGymLogs.length > 0,
+        gymLogged: safeGymLogs.some((l: any) => l && l.date && new Date(l.date).toDateString() === now.toDateString())
+      });
+      setAiRec(rec);
+    } catch (err) {
+      console.error('[HomeDashboard] AI recommendation error:', err);
+      toast.error('Failed to get AI recommendation');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // ── Daily log local state (for debounced saves) ───────────────────────────
   const [localLog, setLocalLog] = useState<LocalLog>({ waterIntakeLiters: 0, wakeUpTime: '', sleepTime: '' });
@@ -749,8 +906,9 @@ export const HomeDashboard = () => {
     if (dueFollowUps.length > 0)   body += `You have ${dueFollowUps.length} job follow-up(s) pending!\n`;
 
     if (body) {
+      // Set flag BEFORE the async call to prevent duplicate notifications on slow auth re-renders
       localStorage.setItem(notifiedKey, 'true');
-      sendPushNotification({ userIds: [auth.currentUser.uid], title: 'Zentrack Daily Reminder', body: body.trim() }).catch(console.error);
+      sendPushNotification({ userIds: [auth.currentUser!.uid], title: 'Zentrack Daily Reminder', body: body.trim() }).catch(console.error);
     }
   }, [assignments, jobs, isLoading, todayStr]);
 
@@ -779,22 +937,26 @@ export const HomeDashboard = () => {
     const today = new Date(); today.setHours(0,0,0,0);
     for (let i = 0; i < 365; i++) {
       const d = new Date(today); d.setDate(d.getDate() - i);
-      const log = dailyLogs.find(l => l.date === getLocalDateString(d));
-      if (log && (log.mood || parseFloat(log.productiveHours || '0') > 0 || log.waterIntakeLiters > 0)) {
+      const dateStr = getLocalDateString(d);
+      const log = dailyLogs.find(l => l.date === dateStr);
+      // Streak requires meaningful work: productive hours logged, OR at least 1 habit completed, OR at least 1 task completed
+      const hasHabit = habitLogs.some(l => l.date === dateStr && l.completed);
+      const hasTask = todos.some(t => t.date === dateStr && t.isCompleted);
+      if (log && (parseFloat(log.productiveHours || '0') > 0 || hasHabit || hasTask)) {
         streak++;
       } else if (i !== 0) {
         break;
       }
     }
     return { currentStreak: streak };
-  }, [dailyLogs]);
+  }, [dailyLogs, habitLogs, todos]);
 
-  const hasRollovers = useMemo(() => tasks.some(t => {
-    if (!t.dueDate) return false;
-    const due = new Date(t.dueDate); due.setHours(0,0,0,0);
-    const today = new Date(); today.setHours(0,0,0,0);
-    return due < today;
-  }), [tasks]);
+  // Fix: TodoItem uses `date` field, not `dueDate`
+  const overdueTaskCount = useMemo(() =>
+    todos.filter(t => t.date && t.date < todayStr && !t.isCompleted).length
+  , [todos, todayStr]);
+
+  const hasRollovers = overdueTaskCount > 0;
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleUpdateLocal = (field: string, value: any) => setLocalLog(prev => ({ ...prev, [field]: value }));
@@ -848,11 +1010,6 @@ export const HomeDashboard = () => {
     }
   };
 
-  // ── Quick Note Modal state ────────────────────────────────────────────────
-  const [isQuickNoteOpen, setIsQuickNoteOpen] = useState(false);
-  const [quickNoteTitle, setQuickNoteTitle]   = useState('');
-  const [quickNoteContent, setQuickNoteContent] = useState('');
-
   if (isLoading) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading Zentrack...</div>;
 
   return (
@@ -865,11 +1022,42 @@ export const HomeDashboard = () => {
             currentStreak={currentStreak}
             hasRollovers={hasRollovers}
             pendingTaskCount={tasks.length}
+            overdueTaskCount={overdueTaskCount}
             todayHabitLogs={todayHabitLogs}
             habits={todayHabits}
           />
+          
+          <ZenAIControlCenter />
 
-          <TimeboxTimeline tasks={tasks} />
+          <StreakSummaryWidget gymLogs={gymLogs} learningTopics={learningTopics} />
+
+          {/* Daily Wisdom Video — collapsible, rotates every 6 hours */}
+          <WisdomVideoCard />
+
+          {/* Rollover prompt — one-click reschedule for incomplete tasks from past days */}
+          {hasRollovers && (() => {
+            const staleKey = `rollover_prompted_${todayStr}`;
+            if (localStorage.getItem(staleKey)) return null;
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 'var(--radius-md)', padding: '0.65rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+                <span style={{ flex: 1, color: '#fbbf24', fontWeight: 500 }}>📋 You have {overdueTaskCount} incomplete task{overdueTaskCount !== 1 ? 's' : ''} from previous days. Roll them to today?</span>
+                <button
+                  onClick={async () => {
+                    const staleTodos = todos.filter(t => t.date && t.date < todayStr && !t.isCompleted);
+                    const batch = (await import('firebase/firestore')).writeBatch(db);
+                    staleTodos.forEach(t => batch.update(doc(db, 'todos', t.id!), { date: todayStr }));
+                    await batch.commit();
+                    localStorage.setItem(staleKey, 'true');
+                    toast.success(`${staleTodos.length} task${staleTodos.length !== 1 ? 's' : ''} rolled to today!`);
+                  }}
+                  style={{ padding: '0.35rem 0.85rem', borderRadius: '8px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24', fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+                >Roll Over →</button>
+                <button onClick={() => { localStorage.setItem(staleKey, 'true'); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}>Dismiss</button>
+              </div>
+            );
+          })()}
+
+          {tasks.some(t => t.timeSlot) && <TimeboxTimeline tasks={tasks} />}
 
           <StudentWidgets attendanceSubjects={attendanceSubjects} assignments={assignments} />
 
@@ -880,9 +1068,12 @@ export const HomeDashboard = () => {
               todayHabitLogs={todayHabitLogs}
               onUpdate={handleUpdateLocal}
               onToggleHabit={handleToggleHabit}
+              aiRecommendation={aiRec}
+              isAiLoading={aiLoading}
+              onAskAi={handleAskAi}
             />
 
-            <div className="hide-on-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'stretch', gridColumn: '1 / -1' }}>
+            <div className="hide-on-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'stretch', gridColumn: '1 / -1', gridRow: 'auto' }}>
               <PomodoroWidget />
               <WeeklyFocusChart dailyLogs={dailyLogs} />
             </div>
@@ -891,24 +1082,7 @@ export const HomeDashboard = () => {
           </div>
         </div>
 
-        {isQuickNoteOpen && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={() => setIsQuickNoteOpen(false)}>
-            <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', boxShadow: '0 20px 50px rgba(0,0,0,0.8)', padding: '2rem', borderRadius: 'var(--radius-lg)', width: '400px', maxWidth: '90vw' }} onClick={e => e.stopPropagation()}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 600 }}>Quick Note</h3>
-                <button className="btn-icon" onClick={() => setIsQuickNoteOpen(false)}><X size={18} /></button>
-              </div>
-              <input type="text" placeholder="Title" value={quickNoteTitle} onChange={e => setQuickNoteTitle(e.target.value)} className="todo-input" style={{ width: '100%', marginBottom: '1rem' }} />
-              <textarea placeholder="Write something..." value={quickNoteContent} onChange={e => setQuickNoteContent(e.target.value)} className="todo-input" style={{ width: '100%', minHeight: '100px', resize: 'vertical', marginBottom: '1rem', fontFamily: 'var(--font-sans)' }} />
-              <button className="btn-primary" style={{ width: '100%' }} onClick={async () => {
-                if (!quickNoteTitle.trim() && !quickNoteContent.trim()) return;
-                await addDoc(collection(db, 'notes'), { userId: auth.currentUser?.uid, title: quickNoteTitle.trim() || 'Untitled Note', content: quickNoteContent.trim(), tags: [], createdAt: Date.now(), updatedAt: Date.now() });
-                setQuickNoteTitle(''); setQuickNoteContent(''); setIsQuickNoteOpen(false);
-                toast.success('Note saved!');
-              }}>Save Note</button>
-            </div>
-          </div>
-        )}
+
       </div>
     </DragDropContext>
   );

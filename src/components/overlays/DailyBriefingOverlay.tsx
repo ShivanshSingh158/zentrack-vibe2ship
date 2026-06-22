@@ -1,17 +1,20 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { generateMorningBriefing, generateEveningWindDown } from '../../services/gemini';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../../services/firebase';
+import { auth } from '../../services/firebase';
 import { Sun, Moon, CheckCircle2 } from 'lucide-react';
+import { useGlobalData } from '../../contexts/GlobalDataContext';
 
 export const DailyBriefingOverlay = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [type, setType] = useState<'morning' | 'evening' | null>(null);
   const [data, setData] = useState<{ greeting: string; message: string; quote: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const { isLoading, todos, assignments, goals, gymLogs, habits, habitLogs } = useGlobalData();
 
   useEffect(() => {
+    if (isLoading) return;
+
     const checkTimeAndShow = async () => {
       const user = auth.currentUser;
       if (!user) return;
@@ -22,13 +25,12 @@ export const DailyBriefingOverlay = () => {
       const morningKey = `briefing_morning_until`;
       const eveningKey = `briefing_evening_until`;
 
-      // Check if we're in a time window AND haven't already shown it in this period
-      // "Until" key stores a timestamp — if current time is before that timestamp, suppress
       const morningUntil = parseInt(localStorage.getItem(morningKey) || '0', 10);
       const eveningUntil = parseInt(localStorage.getItem(eveningKey) || '0', 10);
 
       let currentType: 'morning' | 'evening' | null = null;
 
+      // Note: for testing, you can change these hour ranges or remove the check temporarily
       if (hour >= 6 && hour < 9 && Date.now() > morningUntil) {
         currentType = 'morning';
       } else if (hour >= 20 && hour < 23 && Date.now() > eveningUntil) {
@@ -37,8 +39,6 @@ export const DailyBriefingOverlay = () => {
 
       if (!currentType) return;
 
-      // ── Mark as seen IMMEDIATELY so refresh never shows it again ──────────
-      // Suppress for 8 hours from now — covers the full morning/evening window
       const suppressUntil = Date.now() + 8 * 60 * 60 * 1000;
       if (currentType === 'morning') localStorage.setItem(morningKey, suppressUntil.toString());
       else localStorage.setItem(eveningKey, suppressUntil.toString());
@@ -48,26 +48,33 @@ export const DailyBriefingOverlay = () => {
       setLoading(true);
 
       try {
-        if (currentType === 'morning') {
-          // Fetch some basic data to pass to AI
-          const qTasks = query(collection(db, 'todos'), where('userId', '==', user.uid), where('isCompleted', '==', false));
-          const snapTasks = await getDocs(qTasks);
-          const tasks = snapTasks.docs.map(d => d.data());
+        const todayStr = new Date().toLocaleDateString('en-CA');
+        const isGymDay = gymLogs.length > 0; // Simplified for now
+        const gymLogged = gymLogs.some((l: any) => new Date(l.date).toDateString() === now.toDateString());
 
-          const briefing = await generateMorningBriefing({ tasks });
+        if (currentType === 'morning') {
+          const briefing = await generateMorningBriefing({ 
+            tasks: todos.filter((t:any) => !t.isCompleted),
+            assignments: assignments.filter((a:any) => a.status !== 'submitted'),
+            goals: goals,
+            habits: habits,
+            isGymDay
+          });
           setData(briefing);
         } else {
-          // Fetch completed tasks for today
-          const qTasks = query(collection(db, 'todos'), where('userId', '==', user.uid), where('isCompleted', '==', true));
-          const snapTasks = await getDocs(qTasks);
-          const completedTasks = snapTasks.docs.map(d => d.data()).filter((t: any) => t.updatedAt && new Date(t.updatedAt).toDateString() === now.toDateString());
-          
-          const winddown = await generateEveningWindDown({ completedTasks });
+          const completedTasks = todos.filter((t:any) => t.isCompleted && new Date(t.updatedAt || Date.now()).toDateString() === now.toDateString());
+          const completedHabitsCount = habitLogs.filter((l:any) => l.date === todayStr).length;
+
+          const winddown = await generateEveningWindDown({ 
+            completedTasks,
+            completedHabitsCount,
+            totalHabitsCount: habits.length,
+            gymLogged
+          });
           setData(winddown);
         }
       } catch (error) {
         console.error('Error generating briefing:', error);
-        // Fallback data if AI fails
         setData({
           greeting: currentType === 'morning' ? 'Good morning!' : 'Good evening.',
           message: currentType === 'morning' ? "Let's make today a great day." : "Time to disconnect and recharge.",
@@ -78,10 +85,9 @@ export const DailyBriefingOverlay = () => {
       }
     };
 
-    // Check after a slight delay to ensure auth is loaded
-    const timeout = setTimeout(checkTimeAndShow, 2000);
+    const timeout = setTimeout(checkTimeAndShow, 1000);
     return () => clearTimeout(timeout);
-  }, []);
+  }, [isLoading]);
 
   const handleClose = () => {
     setIsVisible(false);

@@ -1,4 +1,4 @@
-why// Vercel Serverless — YouTube playlist fetcher via InnerTube API
+// Vercel Serverless — YouTube playlist fetcher via InnerTube API
 // Uses the `/next` endpoint with `playlistIndex` overlapping pagination.
 // Bypasses the broken `continuation` token structure completely.
 // Returns ALL videos in a playlist regardless of size, even with the new layout.

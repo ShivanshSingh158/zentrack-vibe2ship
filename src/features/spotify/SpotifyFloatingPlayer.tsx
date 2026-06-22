@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Music2, ChevronDown, ChevronUp,
-  Play, Pause, SkipBack, SkipForward,
+  Play, Pause, SkipBack, SkipForward, Shuffle, ListMusic,
   X, RefreshCw, LogIn, Volume2, Wifi, WifiOff, ExternalLink, Lock, Search
 } from 'lucide-react';
 import { useSpotify } from '../../contexts/SpotifyContext';
@@ -12,6 +12,7 @@ import {
   fetchUserPlaylists,
   CURATED_PLAYLISTS,
   searchSpotifyTracks,
+  fetchSpotifyQueue,
 } from '../../services/spotify';
 
 function getRedirectUri() {
@@ -30,18 +31,20 @@ export const SpotifyFloatingPlayer = () => {
   const {
     isConnected, sdkReady, sdkError, isPremium,
     currentPlaylistId, setCurrentPlaylistId, startPlaylist, startTrack,
-    isPlaying, currentTrack,
+    isPlaying, isShuffle, currentTrack,
     showFloating, hideFloating, setShowFloating,
-    togglePlayPause, skipNext, skipPrevious,
+    togglePlayPause, toggleShuffle, skipNext, skipPrevious,
   } = useSpotify();
 
   // True when controls can actually do something
   const canControl = sdkReady && isPremium;
 
   const [expanded, setExpanded] = useState(false);
-  const [playlistTab, setPlaylistTab] = useState<'curated' | 'mine' | 'search'>('curated');
+  const [playlistTab, setPlaylistTab] = useState<'curated' | 'mine' | 'search' | 'queue'>('curated');
   const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
+  const [queueTracks, setQueueTracks] = useState<any[]>([]);
+  const [isQueueLoading, setIsQueueLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -59,6 +62,32 @@ export const SpotifyFloatingPlayer = () => {
   }, [isConnected]);
 
   useEffect(() => { loadPlaylists(); }, [loadPlaylists]);
+
+  const loadQueue = useCallback(async () => {
+    if (!isConnected) return;
+    setIsQueueLoading(true);
+    console.log('[Zentrack Spotify] loadQueue called');
+    try {
+      const data = await fetchSpotifyQueue();
+      console.log('[Zentrack Spotify] fetchSpotifyQueue response:', data);
+      if (data && data.queue) {
+        console.log('[Zentrack Spotify] setting queue tracks:', data.queue.map((t: any) => ({ name: t.name, uri: t.uri })));
+        setQueueTracks(data.queue);
+      } else {
+        console.warn('[Zentrack Spotify] queue API returned empty/null data');
+      }
+    } catch (err) {
+      console.error('[Zentrack Spotify] loadQueue failed:', err);
+    } finally {
+      setIsQueueLoading(false);
+    }
+  }, [isConnected]);
+
+  useEffect(() => {
+    if (playlistTab === 'queue' && expanded) {
+      loadQueue();
+    }
+  }, [playlistTab, expanded, loadQueue, currentTrack?.title]); // Refresh when track changes
 
   useEffect(() => {
     if (playlistTab !== 'search' || !searchQuery.trim() || !isConnected) {
@@ -87,7 +116,7 @@ export const SpotifyFloatingPlayer = () => {
   if (!isConnected) {
     const { accessToken } = getStoredTokens();
     if (!accessToken) return (
-      <button onClick={() => { window.location.href = getSpotifyAuthUrl(getRedirectUri()); }}
+      <button id="spotify-floating-player-connect" onClick={() => { window.location.href = getSpotifyAuthUrl(getRedirectUri()); }}
         style={{ position: 'fixed', bottom: '1.25rem', right: '1.25rem', zIndex: 9990, background: 'rgba(12,12,16,0.95)', border: '1px solid rgba(29,185,84,0.4)', borderRadius: '50px', padding: '0.55rem 1rem', color: '#1db954', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', backdropFilter: 'blur(16px)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
         <LogIn size={14} /> Connect Spotify
       </button>
@@ -97,7 +126,7 @@ export const SpotifyFloatingPlayer = () => {
 
   // ── Hidden pill ───────────────────────────────────────────────────────────
   if (!showFloating) return (
-    <button onClick={() => setShowFloating(true)}
+    <button id="spotify-floating-player-open" onClick={() => setShowFloating(true)}
       style={{ position: 'fixed', bottom: '1.25rem', right: '1.25rem', zIndex: 9990, background: 'rgba(12,12,16,0.95)', border: '1px solid rgba(29,185,84,0.4)', borderRadius: '50px', padding: '0.55rem 1rem', color: '#1db954', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', backdropFilter: 'blur(16px)', boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
       <Music2 size={14} /> Open Player
     </button>
@@ -158,8 +187,8 @@ export const SpotifyFloatingPlayer = () => {
             </div>
 
             {/* Tabs */}
-            <div style={{ padding: '0.5rem 0.85rem 0.35rem', display: 'flex', gap: '0.4rem', background: 'rgba(255,255,255,0.02)' }}>
-              {(['curated', 'mine', 'search'] as const).map(tab => (
+            <div style={{ padding: '0.5rem 0.85rem 0.35rem', display: 'flex', gap: '0.4rem', background: 'rgba(255,255,255,0.02)', overflowX: 'auto' }}>
+              {(['curated', 'mine', 'search', 'queue'] as const).map(tab => (
                 <button key={tab} onClick={() => setPlaylistTab(tab)} style={{
                   flex: 1, padding: '0.32rem 0.3rem', borderRadius: '8px', border: 'none',
                   background: playlistTab === tab ? 'rgba(30,215,96,0.15)' : 'transparent',
@@ -168,7 +197,7 @@ export const SpotifyFloatingPlayer = () => {
                   fontWeight: playlistTab === tab ? 700 : 400, transition: 'all 0.2s',
                   whiteSpace: 'nowrap'
                 }}>
-                  {tab === 'curated' ? '🎯 Picks' : tab === 'mine' ? '🎵 Mine' : '🔍 Search'}
+                  {tab === 'curated' ? '🎯 Picks' : tab === 'mine' ? '🎵 Mine' : tab === 'search' ? '🔍 Search' : '📋 Queue'}
                 </button>
               ))}
             </div>
@@ -227,6 +256,38 @@ export const SpotifyFloatingPlayer = () => {
                     <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', padding: '1rem 0' }}>No tracks found for "{searchQuery}"</div>
                   )}
                 </div>
+              </div>
+            ) : playlistTab === 'queue' ? (
+              <div style={{ maxHeight: '180px', overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 0.6rem 0.6rem', display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                {isQueueLoading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', padding: '0.75rem', color: 'rgba(255,255,255,0.35)', fontSize: '0.78rem' }}>
+                    <RefreshCw size={13} className="animate-spin" /> Loading queue...
+                  </div>
+                ) : queueTracks.length === 0 ? (
+                  <div style={{ textAlign: 'center', fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', padding: '1rem 0' }}>Queue is empty</div>
+                ) : queueTracks.map((track: any, i: number) => (
+                  <div key={(track.id || track.uri) + i}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.55rem',
+                      padding: '0.4rem 0.55rem', borderRadius: '8px', width: '100%',
+                      background: 'transparent', textAlign: 'left',
+                    }}
+                  >
+                    {track.album?.images?.[0]?.url ? (
+                      <img src={track.album.images[0].url} alt="" style={{ width: '30px', height: '30px', borderRadius: '5px', objectFit: 'cover', flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: '30px', height: '30px', borderRadius: '5px', background: 'rgba(255,255,255,0.1)', flexShrink: 0 }} />
+                    )}
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'rgba(255,255,255,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {track.name}
+                      </div>
+                      <div style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {track.artists?.map((a: any) => a.name).join(', ')}
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div style={{ maxHeight: '180px', overflowY: 'auto', overscrollBehavior: 'contain', padding: '0 0.6rem 0.6rem' }}>
@@ -362,6 +423,14 @@ export const SpotifyFloatingPlayer = () => {
 
           {/* Controls */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+            <button onClick={toggleShuffle} title={canControl ? (isShuffle ? 'Disable Shuffle' : 'Enable Shuffle') : 'Requires Spotify Premium'} disabled={!canControl}
+              style={{ background: 'none', border: 'none', cursor: canControl ? 'pointer' : 'not-allowed', color: canControl ? (isShuffle ? '#1db954' : 'rgba(255,255,255,0.45)') : 'rgba(255,255,255,0.15)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0.4rem', borderRadius: '50%', transition: 'all 0.15s', filter: isShuffle ? 'drop-shadow(0 0 6px rgba(29,185,84,0.7))' : 'none', position: 'relative' }}
+              onMouseEnter={e => { if (canControl) { e.currentTarget.style.color = isShuffle ? '#1ed760' : '#fff'; e.currentTarget.style.transform = 'scale(1.1)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.color = canControl ? (isShuffle ? '#1db954' : 'rgba(255,255,255,0.45)') : 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'scale(1)'; }}>
+              <Shuffle size={16} />
+              {isShuffle && <div style={{ position: 'absolute', bottom: '0px', width: '4px', height: '4px', borderRadius: '50%', background: '#1db954' }} />}
+            </button>
+
             <button onClick={skipPrevious} title={canControl ? 'Previous' : 'Requires Spotify Premium'} disabled={!canControl}
               style={{ background: 'none', border: 'none', cursor: canControl ? 'pointer' : 'not-allowed', color: canControl ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', padding: '0.4rem', borderRadius: '50%', transition: 'all 0.15s' }}
               onMouseEnter={e => { if (canControl) { e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'scale(1.1)'; } }}
@@ -381,6 +450,13 @@ export const SpotifyFloatingPlayer = () => {
               onMouseEnter={e => { if (canControl) { e.currentTarget.style.color = '#fff'; e.currentTarget.style.transform = 'scale(1.1)'; } }}
               onMouseLeave={e => { e.currentTarget.style.color = canControl ? 'rgba(255,255,255,0.45)' : 'rgba(255,255,255,0.15)'; e.currentTarget.style.transform = 'scale(1)'; }}>
               <SkipForward size={20} fill="currentColor" />
+            </button>
+
+            <button onClick={() => { setPlaylistTab('queue'); setExpanded(true); }} title="View Queue"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: playlistTab === 'queue' && expanded ? '#1db954' : 'rgba(255,255,255,0.45)', display: 'flex', alignItems: 'center', padding: '0.4rem', borderRadius: '50%', transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.color = playlistTab === 'queue' && expanded ? '#1ed760' : '#fff'; e.currentTarget.style.transform = 'scale(1.1)'; }}
+              onMouseLeave={e => { e.currentTarget.style.color = playlistTab === 'queue' && expanded ? '#1db954' : 'rgba(255,255,255,0.45)'; e.currentTarget.style.transform = 'scale(1)'; }}>
+              <ListMusic size={16} />
             </button>
           </div>
         </div>

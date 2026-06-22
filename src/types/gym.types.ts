@@ -40,6 +40,9 @@ export interface GymDayLog {
   notes?: string;
   workoutStartTime?: number;
   workoutDurationMinutes?: number;
+  restTimerStartTime?: number;
+  restTimerDurationSecs?: number;
+  restTimerExerciseName?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -78,6 +81,10 @@ export interface GymProfile {
   ageYears: number | null;
   trainingExperienceMonths: number | null;  // e.g. 6, 12, 24
   primaryGoal: GymGoal;
+  targetBodyweightKg?: number | null;
+  targetTimelineWeeks?: number | null;
+  currentMesocycleWeek?: number | null;
+  totalMesocycleWeeks?: number | null;
   updatedAt: number;
 }
 

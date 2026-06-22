@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useState, useEffect } from 'react';
 import { Check, X } from 'lucide-react';
 import type { GymSet } from '../../../types/gym.types';
 
@@ -12,6 +12,15 @@ interface SetRowProps {
 }
 
 const SetRow = memo(({ set, previousSet, isNewPR, onChange, onDelete, onComplete }: SetRowProps) => {
+  const [localWeight, setLocalWeight] = useState(set.weight?.toString() ?? '');
+
+  useEffect(() => {
+    const num = localWeight === '' ? null : Number(localWeight);
+    if (set.weight !== num) {
+      setLocalWeight(set.weight?.toString() ?? '');
+    }
+  }, [set.weight, localWeight]);
+
   const handleComplete = () => {
     const next = !set.completed;
     onChange({ ...set, completed: next });
@@ -97,10 +106,19 @@ const SetRow = memo(({ set, previousSet, isNewPR, onChange, onDelete, onComplete
           >−</button>
           <input
             type="text" inputMode="decimal" pattern="[0-9.]*"
-            value={set.weight ?? ''}
+            value={localWeight}
             onChange={e => {
               const v = e.target.value.replace(/[^0-9.]/g, '');
-              onChange({ ...set, weight: v === '' ? null : Number(v) });
+              if ((v.match(/\./g) || []).length > 1) return; // Prevent multiple dots
+              setLocalWeight(v);
+              const n = v === '' ? null : Number(v);
+              if (!Number.isNaN(n)) onChange({ ...set, weight: n });
+            }}
+            onBlur={() => {
+              // Clean up trailing dots on blur
+              if (localWeight.endsWith('.')) {
+                setLocalWeight(localWeight.slice(0, -1));
+              }
             }}
             placeholder="—"
             style={inputShared}

@@ -3,7 +3,7 @@ import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc
 import { onAuthStateChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { db, auth } from '../../services/firebase';
-import { ClipboardList, Plus, X, Calendar, AlertTriangle, Check, Clock, FileText, Edit2, Trash2, BookOpen } from 'lucide-react';
+import { ClipboardList, Plus, X, Calendar, AlertTriangle, Check, Clock, FileText, Edit2, Trash2, BookOpen, ListChecks } from 'lucide-react';
 import { toast } from 'sonner';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import type { Assignment } from '../../types/index';
@@ -343,7 +343,32 @@ export const AssignmentModule = () => {
                 </div>
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: '0.25rem' }}>
+                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  {a.status !== 'submitted' && a.status !== 'graded' && (
+                    <button
+                      className="btn-secondary"
+                      title="Add as today's task"
+                      style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)', whiteSpace: 'nowrap' }}
+                      onClick={async () => {
+                        if (!user) return;
+                        await addDoc(collection(db, 'todos'), {
+                          userId: user.uid,
+                          text: a.title,
+                          date: getLocalDateString(new Date()),
+                          isCompleted: false,
+                          priority: 'high',
+                          isRecurring: false,
+                          subtasks: [],
+                          subject: a.subjectName,
+                          createdAt: Date.now(),
+                          order: Date.now(),
+                        });
+                        toast.success('Added to today\'s tasks!');
+                      }}
+                    >
+                      <ListChecks size={12} /> + Tasks
+                    </button>
+                  )}
                   <button className="btn-icon" onClick={() => openEdit(a)} title="Edit"><Edit2 size={14} /></button>
                   <button className="btn-icon danger" onClick={() => setConfirmDeleteId(a.id!)} title="Delete"><Trash2 size={14} /></button>
                 </div>

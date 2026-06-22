@@ -109,6 +109,7 @@ const AnalyticsModuleInner = () => {
     gymLogs: gymData,
     attendanceSubjects,
     pomodoroSessions,
+    learningTopics: rawLearningTopics,
     isLoading,
   } = useGlobalData();
 
@@ -132,6 +133,8 @@ const AnalyticsModuleInner = () => {
   const safePomodoroSessions = useMemo(() => (Array.isArray(pomodoroSessions) ? pomodoroSessions : []), [pomodoroSessions]);
   // Guard: ensure gymData is always a valid array
   const safeGymData = useMemo(() => (Array.isArray(gymData) ? gymData.filter(g => g && typeof g.date === 'string') : []), [gymData]);
+  const learningTopics = useMemo(() => (Array.isArray(rawLearningTopics) ? rawLearningTopics : []), [rawLearningTopics]);
+  const safeDailyLogs = useMemo(() => (Array.isArray(logData) ? logData : []), [logData]);
 
   useEffect(() => {
     const onOnline = () => setIsOnline(true);
@@ -165,6 +168,42 @@ const AnalyticsModuleInner = () => {
       return { total: 0, completed: 0, rate: 0, daily: last30.map(d => ({ date: getWeekLabel(d), total: 0, completed: 0 })) };
     }
   }, [safeTodos, last30]);
+
+  // ── Week-over-Week Metrics ────────────────────────────────────────────────
+  const weekOverWeekMetrics = useMemo(() => {
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const msPerDay = 24 * 60 * 60 * 1000;
+      
+      const getRangeCount = (dataList: any[], dateField: string, filterFn: (d: any) => boolean) => {
+        let thisWeek = 0, lastWeek = 0;
+        dataList.forEach(d => {
+          if (!d || typeof d[dateField] !== 'string') return;
+          const dt = new Date(d[dateField] + 'T00:00:00');
+          if (isNaN(dt.getTime())) return;
+          const diffDays = Math.floor((today.getTime() - dt.getTime()) / msPerDay);
+          if (diffDays >= 0 && diffDays < 7 && filterFn(d)) thisWeek++;
+          else if (diffDays >= 7 && diffDays < 14 && filterFn(d)) lastWeek++;
+        });
+        return { thisWeek, lastWeek, diff: thisWeek - lastWeek };
+      };
+
+      const tasks = getRangeCount(safeTodos, 'date', d => d.isCompleted === true);
+      const habits = getRangeCount(habitLogs, 'date', () => true);
+      const gym = getRangeCount(safeGymData, 'date', () => true);
+
+      return { tasks, habits, gym };
+    } catch (e) {
+      console.error('[Analytics] weekOverWeekMetrics error:', e);
+      return { 
+        tasks: { thisWeek: 0, lastWeek: 0, diff: 0 }, 
+        habits: { thisWeek: 0, lastWeek: 0, diff: 0 }, 
+        gym: { thisWeek: 0, lastWeek: 0, diff: 0 } 
+      };
+    }
+  }, [safeTodos, habitLogs, safeGymData]);
 
   // ── 2. Gym Strength Progression ───────────────────────────────────────────
   const gymProgressionMetrics = useMemo(() => {
@@ -202,9 +241,9 @@ const AnalyticsModuleInner = () => {
             .filter((w: number) => w > 0 && isFinite(w));
           const maxWeight = weights.length > 0 ? Math.max(...weights) : 0;
           if (maxWeight > 0 && isFinite(maxWeight)) {
-            if (name.includes('bench')) chartData[idx].bench = Math.max(chartData[idx].bench ?? 0, maxWeight);
-            if (name.includes('squat')) chartData[idx].squat = Math.max(chartData[idx].squat ?? 0, maxWeight);
-            if (name.includes('deadlift')) chartData[idx].deadlift = Math.max(chartData[idx].deadlift ?? 0, maxWeight);
+            if (name.includes('bench') || name.includes('chest press') || name.includes('barbell press') || name.includes('db press') || name.includes('dumbbell press') || name.includes('fly')) chartData[idx].bench = Math.max(chartData[idx].bench ?? 0, maxWeight);
+            if (name.includes('squat') || name.includes('leg press') || name.includes('hack')) chartData[idx].squat = Math.max(chartData[idx].squat ?? 0, maxWeight);
+            if (name.includes('deadlift') || name.includes('rdl') || name.includes('romanian') || name.includes('good morning')) chartData[idx].deadlift = Math.max(chartData[idx].deadlift ?? 0, maxWeight);
           }
         });
       });
@@ -275,6 +314,23 @@ const AnalyticsModuleInner = () => {
       return { totalChecked: 0, daysWithActivity: 0 };
     }
   }, [habitLogs]);
+
+  // ── Learning Progress ─────────────────────────────────────────────────────
+  const learningChartData = useMemo(() => {
+    try {
+      return last30.map(date => {
+        const dLog = safeDailyLogs.find(l => l.date === date);
+        const watchSeconds = safeNum(dLog?.daily_watch_seconds);
+        return {
+          date: getWeekLabel(date),
+          watchMinutes: Math.round(watchSeconds / 60),
+        };
+      });
+    } catch (e) {
+      console.error('[Analytics] learningChartData error:', e);
+      return last30.map(d => ({ date: getWeekLabel(d), watchMinutes: 0 }));
+    }
+  }, [safeDailyLogs, last30]);
 
   // ── 5. Pomodoro Time-of-Day Distribution ──────────────────────────────────
   const pomodoroHeatmapMetrics = useMemo(() => {
@@ -399,8 +455,35 @@ const AnalyticsModuleInner = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem', maxWidth: '100%' }}>
               <StatCard icon={<CheckCircle size={22} />} label="Tasks Completed" value={todoMetrics.completed} sub={`${todoMetrics.rate}% completion rate`} color="#7c3aed" />
               <StatCard icon={<Flame size={22} />} label="Habit Check-ins" value={habitMetrics.totalChecked} sub={`${habitMetrics.daysWithActivity} active days`} color="#ef4444" />
-              <StatCard icon={<Dumbbell size={22} />} label="Gym Trend" value="Active" sub="Tracking Big 3 Lifts" color="#f97316" />
+              <StatCard icon={<Dumbbell size={22} />} label="Gym Trend" value={`${safeGymData.filter((d: any) => d.date >= last30[0]).length} Sessions`} sub={`${weekOverWeekMetrics.gym.diff > 0 ? '+' : ''}${weekOverWeekMetrics.gym.diff} this week`} color="#f97316" />
               <StatCard icon={<Book size={22} />} label="Attendance" value={`${safeAttendance.length} Subj`} sub="Tracking health" color="#14b8a6" />
+            </div>
+
+            {/* Week-over-Week Comparison */}
+            <div style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
+                <TrendingUp size={18} /> Week-over-Week Comparison
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                {[
+                  { label: 'Tasks Completed', icon: <CheckCircle size={16} />, color: '#7c3aed', data: weekOverWeekMetrics.tasks },
+                  { label: 'Habits Logged', icon: <Flame size={16} />, color: '#ef4444', data: weekOverWeekMetrics.habits },
+                  { label: 'Gym Sessions', icon: <Dumbbell size={16} />, color: '#f97316', data: weekOverWeekMetrics.gym },
+                ].map(metric => (
+                  <div key={metric.label} style={{ padding: '0.8rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ color: metric.color, display: 'flex' }}>{metric.icon}</div>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{metric.label}</div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metric.data.thisWeek}</div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 600, color: metric.data.diff > 0 ? '#10b981' : metric.data.diff < 0 ? '#ef4444' : 'var(--text-muted)' }}>
+                        {metric.data.diff > 0 ? `+${metric.data.diff}` : metric.data.diff < 0 ? metric.data.diff : 'same'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* AI Insights */}
@@ -464,7 +547,24 @@ const AnalyticsModuleInner = () => {
                 </ErrorBoundary>
               </div>
 
-              {/* 3. Attendance Radar */}
+              {/* 3. Learning Progress */}
+              <div className="topic-card" style={{ padding: '1.5rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
+                  <Book size={18} /> Learning (Video Minutes)
+                </h3>
+                <ErrorBoundary name="Learning Chart" fallback={<ChartFallback name="Learning Progress" />}>
+                  <ResponsiveContainer width="100%" height={260}>
+                    <BarChart data={learningChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                      <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
+                      <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                      <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: '#3b82f6' }} />
+                      <Bar dataKey="watchMinutes" name="Minutes Watched" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ErrorBoundary>
+              </div>
+
+              {/* 4. Attendance Radar */}
               <div className="topic-card" style={{ padding: '1.5rem' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
                   <Book size={18} /> Subject Attendance Health (%)

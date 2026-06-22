@@ -72,7 +72,14 @@ service cloud.firestore {
         && isOwner(request.resource.data.userId);
     }
 
-    // ── Deny everything else ─────────────────────────────────────────────────
+    // ── Lecture Chat History (subcollection path) ─────────────────────────────
+    // lectureChats/{userId}/videos/{videoId}
+    // Each user can only access their own chat history.
+    match /lectureChats/{userId}/videos/{videoId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }

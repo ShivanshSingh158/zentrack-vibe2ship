@@ -49,20 +49,21 @@ const GymModuleInner = () => {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [historyFor, setHistoryFor] = useState<{ id: string; name: string } | null>(null);
   const [newPR, setNewPR] = useState<{ exerciseName: string; weight: number } | null>(null);
+  const [gymStats, setGymStats] = useState<any>(null);
 
   // Core data hook
   const {
     userId, log, syncing, saving, profile,
     loadLog, updateExercise, deleteExercise, addExercise, moveExerciseToDate,
     updateCardio, deleteCardio, addCardio, startWorkout, endWorkout, clearDay, importPlan,
-    wipeAllTemplates, saveProfile,
+    wipeAllTemplates, saveProfile, startRestTimer, clearRestTimer,
   } = useGymLog(selectedDate);
 
   // Previous session + PRs
   const { previousSessionData, allTimePRs, setAllTimePRs } = usePreviousSession(userId, selectedDate);
 
   // Rest timer
-  const restTimer = useRestTimer();
+  const restTimer = useRestTimer(log, clearRestTimer);
 
   // Workout timer — manual start/stop only
   const workoutTimer = useWorkoutTimer();
@@ -101,8 +102,8 @@ const GymModuleInner = () => {
 
   // Handle set completion → start rest timer + PR check
   const handleSetComplete = useCallback((exerciseName: string, restSecs: number) => {
-    restTimer.start(restSecs, exerciseName);
-  }, [restTimer]);
+    startRestTimer(restSecs, exerciseName);
+  }, [startRestTimer]);
 
   // PR detection: check if any completed set beats all-time PR
   const handlePRCheck = useCallback((ex: GymExerciseLog) => {
@@ -257,6 +258,22 @@ const GymModuleInner = () => {
         </div>
       </div>
 
+      {/* ── Profile Banner (Discoverability) ────────────────────────── */}
+      {(!profile || !profile.bodyweightKg || !profile.heightCm) && (
+        <div style={{ margin: '0.85rem 1rem 0', padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setShowProfileModal(true)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(124,58,237,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <User size={18} style={{ color: '#a855f7' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#c4b5fd' }}>Complete Your Profile</div>
+              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.1rem' }}>Required for precise AI nutrition advice</div>
+            </div>
+          </div>
+          <ChevronRight size={16} style={{ color: 'rgba(124,58,237,0.5)' }} />
+        </div>
+      )}
+
       {/* ── Day Content ──────────────────────────────────────────────── */}
       {isRestDay ? (
         <>
@@ -393,6 +410,7 @@ const GymModuleInner = () => {
                   ex={ex}
                   previousSession={previousSessionData[ex.exerciseId] ?? previousSessionData[ex.name] ?? null}
                   allTimePR={allTimePRs[ex.exerciseId] ?? null}
+                  stallWarning={gymStats?.stallAlerts?.find((a: any) => a.exerciseName === ex.name)?.message}
                   onUpdate={updateExerciseWithPR}
                   onDelete={deleteExercise}
                   onMoveToDate={(index: number, date: string) => moveExerciseToDate(index, date)}
@@ -469,7 +487,7 @@ const GymModuleInner = () => {
 
       {/* ── ZenGymAI ──────────────────────────────────────────────── */}
       <Suspense fallback={null}>
-        <ZenGymAI userId={userId} todayLog={log} profile={profile} />
+        <ZenGymAI userId={userId} todayLog={log} profile={profile} onStatsLoaded={setGymStats} />
       </Suspense>
 
       {/* ── Modals ────────────────────────────────────────────────── */}

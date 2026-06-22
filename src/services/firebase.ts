@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -18,6 +18,9 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+
+// Explicitly set persistence to local to prevent unexpected logouts over time
+setPersistence(auth, browserLocalPersistence).catch(console.error);
 
 /**
  * Firebase v12 offline persistence + multi-tab sync.

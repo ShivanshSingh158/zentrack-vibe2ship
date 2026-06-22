@@ -19,9 +19,9 @@ const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 // ZenTrack source tag stored on GCal events to identify them
 const ZENTRACK_SOURCE_TAG = 'zentrack-autosync';
 
-// In-memory token state
-let _accessToken: string | null = null;
-let _tokenExpiry: number = 0;
+// In-memory token state (initialized from localStorage)
+let _accessToken: string | null = localStorage.getItem('zen_gcal_access_token');
+let _tokenExpiry: number = parseInt(localStorage.getItem('zen_gcal_token_expiry') || '0', 10);
 let _tokenClient: any = null;
 let _gisLoaded = false;
 
@@ -76,6 +76,8 @@ export const isSignedInToGoogle = (): boolean =>
 const storeToken = (accessToken: string, expiresIn: number) => {
   _accessToken = accessToken;
   _tokenExpiry = Date.now() + Math.min(expiresIn * 1000, 55 * 60 * 1000);
+  localStorage.setItem('zen_gcal_access_token', _accessToken);
+  localStorage.setItem('zen_gcal_token_expiry', _tokenExpiry.toString());
 };
 
 // ─── OAuth Sign-in ────────────────────────────────────────────────────────────
@@ -121,6 +123,8 @@ export const signOutGoogle = (): void => {
   _tokenClient = null;
   _syncToken = null;
   _lastSyncTime = 0;
+  localStorage.removeItem('zen_gcal_access_token');
+  localStorage.removeItem('zen_gcal_token_expiry');
 };
 
 // ─── Token Refresh ────────────────────────────────────────────────────────────

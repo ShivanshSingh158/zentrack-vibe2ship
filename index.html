@@ -12,6 +12,21 @@
     <title>Zentrack</title>
   </head>
   <body>
+    <script>
+      // FORCED CACHE CLEAR: Unregister all service workers to ensure the latest code is loaded.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          let hasUnregistered = false;
+          for (let registration of registrations) {
+            registration.unregister();
+            hasUnregistered = true;
+          }
+          if (hasUnregistered) {
+            window.location.reload(true);
+          }
+        });
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

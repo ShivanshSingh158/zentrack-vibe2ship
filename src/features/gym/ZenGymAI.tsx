@@ -5,12 +5,17 @@ import { createPortal } from 'react-dom';
 import {
   MessageSquare, X, Send, Target, RefreshCw, User,
   Dumbbell, ChevronUp, ChevronDown, Zap, Apple,
-  AlertTriangle, TrendingUp, Calendar,
+  AlertTriangle, TrendingUp, Calendar, Sparkles,
 } from 'lucide-react';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { startGymAIChat } from '../../services/gemini';
+import { startGymAIChat, startGymAIOAuthChat } from '../../services/gemini';
 import { toast } from 'sonner';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import type {
   GymDayLog, GymProfile, WeightTarget,
 } from '../../types/gym.types';
@@ -31,16 +36,26 @@ const CONTEXT_TS_KEY = (uid: string) => `${SESSION_KEY_PREFIX}${uid}_ts`;
 const STATS_HASH_KEY = (uid: string) => `${SESSION_KEY_PREFIX}${uid}_hash`;
 const STATS_KEY = (uid: string) => `${SESSION_KEY_PREFIX}${uid}_stats`;
 
+// ── OAuth token reader (shared with Lecture Chat) ──────────────────────────────
+const getLectureChatOAuthToken = (): string | null => {
+  try {
+    const expiry = Number(sessionStorage.getItem('zen_gemini_oauth_expiry') || '0');
+    if (Date.now() > expiry) return null;
+    return sessionStorage.getItem('zen_gemini_oauth_token');
+  } catch { return null; }
+};
+
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 type SessionMode = 'idle' | 'active' | 'complete';
-type TabId = 'chat' | 'targets';
+type TabId = 'chat' | 'targets' | 'profile';
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'model';
   text: string;
   ts: number;
+  model?: string;
 }
 
 interface GymStats {
@@ -49,49 +64,20 @@ interface GymStats {
   totalCardioMinutes: number;
   avgCompletion: number;
   streak: number;
-  stallAlerts: string[];
+  stallAlerts: { exerciseName: string; message: string }[];
   exerciseStats: Array<{
     name: string; muscle?: string; sessions: number;
     maxWeight: number; recentWeights: Array<{ date: string; weight: number }>;
     lastDate: string;
   }>;
   logs: GymDayLog[];
+  dowMuscleMap: Record<number, string[]>;
+  anomalies: string[];
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function genId() { return Math.random().toString(36).slice(2); }
-
-function renderMd(text: string): React.ReactNode[] {
-  return text.split('\n').map((line, i) => {
-    const parseBold = (s: string): React.ReactNode[] => {
-      const parts = s.split(/\*\*(.+?)\*\*/g);
-      return parts.map((p, j) => j % 2 === 1 ? <strong key={j}>{p}</strong> : p as React.ReactNode);
-    };
-    if (line.startsWith('## ')) return (
-      <div key={i} style={{ fontSize: '0.88rem', fontWeight: 700, color: '#a855f7', margin: '0.6rem 0 0.2rem' }}>
-        {parseBold(line.slice(3))}
-      </div>
-    );
-    if (line.startsWith('# ')) return (
-      <div key={i} style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', margin: '0.5rem 0 0.2rem' }}>
-        {parseBold(line.slice(2))}
-      </div>
-    );
-    if (line.startsWith('• ') || line.startsWith('- ') || line.startsWith('* ')) return (
-      <div key={i} style={{ paddingLeft: '0.85rem', position: 'relative', marginBottom: '0.1rem', fontSize: '0.83rem', color: 'rgba(255,255,255,0.78)', lineHeight: 1.5 }}>
-        <span style={{ position: 'absolute', left: '0.15rem', color: '#a855f7' }}>•</span>
-        {parseBold(line.slice(2))}
-      </div>
-    );
-    if (line.trim() === '') return <div key={i} style={{ height: '0.35rem' }} />;
-    return (
-      <div key={i} style={{ fontSize: '0.83rem', color: 'rgba(255,255,255,0.82)', lineHeight: 1.55, marginBottom: '0.08rem' }}>
-        {parseBold(line)}
-      </div>
-    );
-  });
-}
 
 function hashStats(s: GymStats): string {
   return `${s.totalWorkouts}|${s.totalVolume}|${s.streak}|${s.avgCompletion.toFixed(0)}`;
@@ -112,15 +98,30 @@ function buildContextString(stats: GymStats, profile: GymProfile | null): string
       lines.push(`Training experience: ${label} (${exp} months)`);
     }
     lines.push(`Primary goal: ${profile.primaryGoal}`);
+    if (profile.targetBodyweightKg) lines.push(`Target Bodyweight: ${profile.targetBodyweightKg}kg`);
+    if (profile.targetTimelineWeeks) lines.push(`Target Timeline: ${profile.targetTimelineWeeks} weeks`);
     if (profile.bodyweightKg && profile.heightCm) {
       const bmi = (profile.bodyweightKg / Math.pow(profile.heightCm / 100, 2)).toFixed(1);
       lines.push(`BMI: ${bmi}`);
+    }
+    if (profile.currentMesocycleWeek && profile.totalMesocycleWeeks) {
+      lines.push(`Periodization Phase: Week ${profile.currentMesocycleWeek} of ${profile.totalMesocycleWeeks}`);
     }
     lines.push('');
   }
 
   // ── 30-Day Overview ──────────────────────────────────────────────────────
+  let daysLogging = 30;
+  if (stats.logs.length > 0) {
+    const oldestLog = stats.logs[stats.logs.length - 1];
+    const diffTime = Math.abs(new Date().getTime() - new Date(oldestLog.date).getTime());
+    daysLogging = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+  }
+
   lines.push(`=== 30-DAY TRAINING SUMMARY ===`);
+  if (daysLogging < 30) {
+    lines.push(`[CRITICAL: The user has ONLY been using this app for ${daysLogging} days! Their total volume and workouts reflect ${daysLogging} days, NOT 30 days. DO NOT tell them they are inconsistent over the last month, they just started!]`);
+  }
   lines.push(`Total sessions logged: ${stats.totalWorkouts}`);
   lines.push(`Current consecutive streak: ${stats.streak} days`);
   lines.push(`Average session completion rate: ${stats.avgCompletion.toFixed(1)}%`);
@@ -131,12 +132,26 @@ function buildContextString(stats: GymStats, profile: GymProfile | null): string
   }
   lines.push('');
 
-  // ── Stall Alerts ─────────────────────────────────────────────────────────
+  // ── Stall Alerts & Anomalies ─────────────────────────────────────────────
   if (stats.stallAlerts.length > 0) {
     lines.push(`=== ⚠️ STALL ALERTS (same weight 3+ consecutive sessions) ===`);
-    stats.stallAlerts.forEach(a => lines.push(`  - ${a}`));
+    stats.stallAlerts.forEach(a => lines.push(`  - ${a.exerciseName}: ${a.message}`));
     lines.push('');
   }
+  if (stats.anomalies.length > 0) {
+    lines.push(`=== 📉 WEIGHT ANOMALIES (Sudden drops in performance) ===`);
+    stats.anomalies.forEach(a => lines.push(`  - ${a}`));
+    lines.push('');
+  }
+
+  // ── Day of Week Muscle Map ───────────────────────────────────────────────
+  lines.push(`=== TYPICAL WEEKLY SCHEDULE (Based on last 30 days) ===`);
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  days.forEach((day, idx) => {
+    const muscles = stats.dowMuscleMap[idx] || [];
+    lines.push(`  - ${day}: ${muscles.length > 0 ? muscles.join(', ') : 'Rest'}`);
+  });
+  lines.push('');
 
   // ── Exercise-Level Progression Detail ────────────────────────────────────
   if (stats.exerciseStats.length > 0) {
@@ -220,15 +235,33 @@ function buildStats(logs: GymDayLog[]): GymStats {
     const done = log.exercises.reduce((s, e) => s + e.setsLog.filter(set => set.completed).length, 0);
     if (total > 0) totalCompletion += (done / total) * 100;
   }
-  const stallAlerts: string[] = [];
+  const stallAlerts: { exerciseName: string; message: string }[] = [];
+  const anomalies: string[] = [];
   for (const ex of Object.values(exerciseMap)) {
     const recent = ex.weightHistory.slice(-3);
     if (recent.length >= 3 && new Set(recent.map(w => w.weight)).size === 1) {
-      stallAlerts.push(`${ex.name}: stuck at ${recent[0].weight}kg for ${recent.length}+ sessions`);
+      stallAlerts.push({ exerciseName: ex.name, message: `Stuck at ${recent[0].weight}kg for ${recent.length}+ sessions` });
+    }
+    // Anomaly detection: weight dropped by > 15% from max
+    if (recent.length >= 1) {
+      const lastW = recent[recent.length - 1].weight;
+      if (lastW > 0 && ex.maxWeight > 0 && lastW < ex.maxWeight * 0.85) {
+        anomalies.push(`${ex.name}: lifted ${lastW}kg last session, which is down ${Math.round((1 - lastW / ex.maxWeight) * 100)}% from all-time max (${ex.maxWeight}kg)`);
+      }
     }
   }
+
+  const dowMuscleMap: Record<number, string[]> = {};
+  for (const log of sorted) {
+    const dow = new Date(log.date + 'T12:00:00').getDay();
+    if (!dowMuscleMap[dow]) dowMuscleMap[dow] = [];
+    log.exercises?.forEach(ex => {
+      if (ex.muscle && !dowMuscleMap[dow].includes(ex.muscle)) dowMuscleMap[dow].push(ex.muscle);
+    });
+  }
+
   const exerciseStats = Object.values(exerciseMap).sort((a, b) => b.sessions - a.sessions).map(e => ({ name: e.name, muscle: e.muscle, sessions: e.sessions, maxWeight: e.maxWeight, recentWeights: e.weightHistory, lastDate: e.lastDate }));
-  return { totalWorkouts: workoutCount, totalVolume, totalCardioMinutes, avgCompletion: workoutCount > 0 ? totalCompletion / workoutCount : 0, streak, stallAlerts, exerciseStats, logs: sorted };
+  return { totalWorkouts: workoutCount, totalVolume, totalCardioMinutes, avgCompletion: workoutCount > 0 ? totalCompletion / workoutCount : 0, streak, stallAlerts, exerciseStats, logs: sorted, dowMuscleMap, anomalies };
 }
 
 function buildWeightTargets(exercises: GymDayLog['exercises'], stats: GymStats): WeightTarget[] {
@@ -263,7 +296,7 @@ function buildOpeningPrompt(mode: SessionMode, todayLog: GymDayLog | null, stats
   }).join(', ') ?? '';
 
   const stallStr = stats.stallAlerts.length > 0
-    ? ` STALL ALERTS: ${stats.stallAlerts.slice(0, 2).join('; ')}.`
+    ? ` STALL ALERTS: ${stats.stallAlerts.slice(0, 2).map(a => `${a.exerciseName} ${a.message}`).join('; ')}.`
     : '';
 
   if (mode === 'complete') {
@@ -302,9 +335,10 @@ interface ZenGymAIProps {
   userId: string | null;
   todayLog: GymDayLog | null;
   profile: GymProfile | null;
+  onStatsLoaded?: (stats: GymStats) => void;
 }
 
-export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
+export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>('chat');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -312,8 +346,8 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [stats, setStats] = useState<GymStats | null>(null);
-  const [targets, setTargets] = useState<WeightTarget[]>([]);
   const [showQuickPrompts, setShowQuickPrompts] = useState(true);
+  const [usingOAuth, setUsingOAuth] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chatSessionRef = useRef<any>(null);
@@ -343,6 +377,7 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
           const parsedStats = JSON.parse(savedStatsStr);
           statsRef.current = parsedStats;
           setStats(parsedStats);
+          if (onStatsLoaded) onStatsLoaded(parsedStats);
           return { contextString: ctx, stats: parsedStats };
         } catch { /* parse failed */ }
       }
@@ -365,6 +400,7 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
       }
       const computedStats = buildStats(logs);
       setStats(computedStats);
+      if (onStatsLoaded) onStatsLoaded(computedStats);
       const ctxString = buildContextString(computedStats, profile);
       try {
         sessionStorage.setItem(CONTEXT_KEY(userId), ctxString);
@@ -392,6 +428,17 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
       `Progress: ${doneSets}/${totalSets} sets`,
       `Completed exercises: ${completedExercises.map(e => e.name).join(', ') || 'none yet'}`,
     ];
+
+    lines.push(`Current exercises and sets logged so far today:`);
+    todayLog.exercises.forEach(ex => {
+        if (ex.skipped) {
+           lines.push(`- ${ex.name} (SKIPPED)`);
+           return;
+        }
+        const setsStr = ex.setsLog.map((s, i) => `Set ${i+1}: ${s.weight ?? '?'}kg x ${s.reps ?? '?'} reps ${s.completed ? '(DONE)' : '(PENDING)'}`).join(', ');
+        lines.push(`- ${ex.name}: ${setsStr}`);
+    });
+
     const treadmill = todayLog.cardio?.find(c => c.id === 'permanent_treadmill');
     if (treadmill?.completed && (treadmill.durationMinutes || 0) > 0) {
       lines.push(`Cardio: Treadmill ${treadmill.durationMinutes}min${treadmill.distanceKm ? ` / ${treadmill.distanceKm}km` : ''}`);
@@ -400,8 +447,18 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
   }, [todayLog, sessionMode]);
 
   const initChatSession = useCallback(async (contextString: string, existingHistory?: any[]) => {
-    const fullContext = contextString + todayContextString;
-    chatSessionRef.current = startGymAIChat(fullContext, existingHistory || []);
+    const formatRule = `\n\nCRITICAL FORMATTING RULE: You must always structure your responses clearly using markdown, bullet points, and double newlines for paragraph breaks. Avoid giant walls of text and never put everything on a single line. Make the text highly readable and structured.`;
+    const fullContext = contextString + todayContextString + formatRule;
+    const oauthToken = getLectureChatOAuthToken();
+    if (oauthToken) {
+      // Use personal Google account OAuth token — own quota pool
+      chatSessionRef.current = startGymAIOAuthChat(fullContext, oauthToken, existingHistory || []);
+      setUsingOAuth(true);
+    } else {
+      // Fall back to shared API key
+      chatSessionRef.current = startGymAIChat(fullContext, existingHistory || []);
+      setUsingOAuth(false);
+    }
   }, [todayContextString]);
 
   // ── Open panel ─────────────────────────────────────────────────────────────
@@ -426,7 +483,7 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
     const result = await loadContext();
     if (!result) {
       setIsLoading(false);
-      const emptyStats: GymStats = { totalWorkouts: 0, totalVolume: 0, totalCardioMinutes: 0, avgCompletion: 0, streak: 0, stallAlerts: [], exerciseStats: [], logs: [] };
+      const emptyStats: GymStats = { totalWorkouts: 0, totalVolume: 0, totalCardioMinutes: 0, avgCompletion: 0, streak: 0, stallAlerts: [], exerciseStats: [], logs: [], dowMuscleMap: {}, anomalies: [] };
       setStats(emptyStats);
       setMessages([{ id: genId(), role: 'model', text: 'I had trouble loading your data. I can still chat but insights will be limited to this session!', ts: Date.now() }]);
       return;
@@ -436,21 +493,42 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
     if (!contextString) return;
     await initChatSession(contextString);
 
-    const fallbackStats: GymStats = { totalWorkouts: 0, totalVolume: 0, totalCardioMinutes: 0, avgCompletion: 0, streak: 0, stallAlerts: [], exerciseStats: [], logs: [] };
-    const opening = buildOpeningPrompt(sessionMode, todayLog, freshStats ?? stats ?? fallbackStats);
-    if (todayLog?.exercises) {
-      const t = buildWeightTargets(todayLog.exercises, freshStats ?? stats ?? fallbackStats);
-      setTargets(t);
+    const fallbackStats: GymStats = { totalWorkouts: 0, totalVolume: 0, totalCardioMinutes: 0, avgCompletion: 0, streak: 0, stallAlerts: [], exerciseStats: [], logs: [], dowMuscleMap: {}, anomalies: [] };
+    const activeStats = freshStats ?? stats ?? fallbackStats;
+
+    // ── Sunday weekly debrief auto-trigger ────────────────────────────────────
+    const todayDOW = new Date().getDay(); // 0 = Sunday
+    const sundayReportKey = `zenGymAI_lastSundayReport_${userId}`;
+    const lastSundayReport = sessionStorage.getItem(sundayReportKey);
+    const todayStr = new Date().toDateString();
+    let opening: string;
+    if (todayDOW === 0 && lastSundayReport !== todayStr && activeStats.totalWorkouts > 0) {
+      sessionStorage.setItem(sundayReportKey, todayStr);
+      const muscleVolume = activeStats.exerciseStats
+        .map((e: typeof activeStats.exerciseStats[number]) => `${e.muscle || 'unknown'}: ${e.sessions} sessions`)
+        .join(', ');
+      opening = `Today is Sunday — give me my complete weekly training debrief. Use my actual data:\n• Volume by muscle group this week (from my logs)\n• Which muscle I undertrained or skipped entirely\n• My best performance of the week (exercise + exact numbers)\n• Recovery quality score 1–10 based on rest day gaps between sessions\n• One specific thing to change or prioritize next week\nBe brutally honest and cite specific numbers from my logs. Here's my muscle data: ${muscleVolume}`;
+    } else {
+      opening = buildOpeningPrompt(sessionMode, todayLog, activeStats);
     }
+    // ── End Sunday debrief ────────────────────────────────────────────────────
 
     setIsLoading(true);
     try {
-      const res = await chatSessionRef.current.sendMessage(opening);
-      const aiText = res?.response?.text?.() || await res?.text?.() || (typeof res === 'string' ? res : 'Ready to coach you!');
-      const aiMsg: ChatMessage = { id: genId(), role: 'model', text: aiText, ts: Date.now() };
-      setMessages([aiMsg]);
-      if (userId) saveMessages([aiMsg], userId);
+      const aiMsgId = genId();
+      setMessages([{ id: aiMsgId, role: 'model', text: '', ts: Date.now() }]);
+      let finalModel = '';
+      const res = await chatSessionRef.current.sendMessageStream(opening, (text: string) => {
+        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text } : m));
+      });
+      finalModel = res.model || '';
+      setMessages(prev => {
+        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, text: res.text || res.text, model: finalModel } : m);
+        if (userId) saveMessages(nextMsgs, userId);
+        return nextMsgs;
+      });
     } catch {
+      setMessages([]);
       toast.error('AI is warming up — try again in a moment');
     } finally {
       setIsLoading(false);
@@ -470,13 +548,22 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
     if (!chatSessionRef.current) { toast.error('AI not ready — please try reopening'); return; }
     setIsLoading(true);
     try {
-      const msgWithContext = todayContextString ? `[LIVE WORKOUT STATE:${todayContextString}]\n\nUser: ${text}` : text;
-      const res = await chatSessionRef.current.sendMessage(msgWithContext);
-      const aiText = res?.response?.text?.() || await res?.text?.() || (typeof res === 'string' ? res : '…');
-      const aiMsg: ChatMessage = { id: genId(), role: 'model', text: aiText, ts: Date.now() };
-      const withAI = [...next, aiMsg];
-      setMessages(withAI);
-      if (userId) saveMessages(withAI, userId);
+      const formatReminder = `\n\n(Remember to use proper markdown formatting, bullet points, and newlines for readability. Do not put everything on one line.)`;
+      const msgWithContext = todayContextString ? `[LIVE WORKOUT STATE:${todayContextString}]\n\nUser: ${text}${formatReminder}` : `${text}${formatReminder}`;
+      const aiMsgId = genId();
+      setMessages(prev => [...prev, { id: aiMsgId, role: 'model', text: '', ts: Date.now() }]);
+      let finalModel = '';
+      
+      const res = await chatSessionRef.current.sendMessageStream(msgWithContext, (textChunk: string) => {
+        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: textChunk } : m));
+      });
+      finalModel = res.model || '';
+      
+      setMessages(prev => {
+        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, text: res.text || res.text, model: finalModel } : m);
+        if (userId) saveMessages(nextMsgs, userId);
+        return nextMsgs;
+      });
     } catch (e: any) {
       setMessages(prev => [...prev, { id: genId(), role: 'model', text: `Sorry, something went wrong. ${e?.message || 'Please try again.'}`, ts: Date.now() }]);
     } finally {
@@ -540,11 +627,17 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
 
   const stallAlerts = stats?.stallAlerts || [];
 
-  const currentTargets = targets.length > 0 ? targets : (todayLog?.exercises ?? []).map(ex => ({
-    exerciseName: ex.name, exerciseId: ex.exerciseId, muscle: ex.muscle,
-    lastDate: null, lastMaxWeight: null, lastReps: null,
-    recommendedWeight: null, trend: 'new' as const, confidence: 'low' as const,
-  }));
+  const currentTargets = useMemo(() => {
+    if (!todayLog?.exercises) return [];
+    if (!stats) {
+      return todayLog.exercises.map(ex => ({
+        exerciseName: ex.name, exerciseId: ex.exerciseId, muscle: ex.muscle,
+        lastDate: null, lastMaxWeight: null, lastReps: null,
+        recommendedWeight: null, trend: 'new' as const, confidence: 'low' as const,
+      }));
+    }
+    return buildWeightTargets(todayLog.exercises, stats);
+  }, [todayLog?.exercises, stats]);
 
   const headerStatus = (() => {
     if (isLoadingContext) return { dot: '#a855f7', text: 'Loading your data…', pulse: true };
@@ -651,9 +744,20 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
                     {modeBadge.label}
                   </span>
                 </div>
-                <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.38)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.08rem' }}>
+                <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.38)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.08rem', flexWrap: 'wrap' }}>
                   <span style={{ width: 5, height: 5, borderRadius: '50%', background: headerStatus.dot, display: 'inline-block', flexShrink: 0, animation: headerStatus.pulse ? 'pulse 1s ease-in-out infinite' : 'none' }} />
                   {headerStatus.text}
+                  {isOpen && (
+                    <span style={{
+                      marginLeft: '0.2rem', fontSize: '0.55rem', padding: '0.05rem 0.35rem',
+                      borderRadius: '99px', fontWeight: 700,
+                      background: usingOAuth ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.12)',
+                      color: usingOAuth ? '#34d399' : '#818cf8',
+                      border: `1px solid ${usingOAuth ? 'rgba(16,185,129,0.3)' : 'rgba(99,102,241,0.25)'}`,
+                    }}>
+                      {usingOAuth ? '🔒 Your Account' : '🔑 Shared Key'}
+                    </span>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.3rem' }}>
@@ -671,6 +775,7 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
               {([
                 { id: 'chat' as TabId, icon: <MessageSquare size={12} />, label: 'Chat' },
                 { id: 'targets' as TabId, icon: <Target size={12} />, label: "Today's Targets" },
+                { id: 'profile' as TabId, icon: <User size={12} />, label: 'Profile' },
               ] as const).map(tab => (
                 <button
                   key={tab.id}
@@ -693,7 +798,7 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.4rem', padding: '0.4rem 0.6rem', borderRadius: '10px', background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.2)', marginBottom: '0.5rem' }}>
                 <AlertTriangle size={12} style={{ color: '#f59e0b', flexShrink: 0, marginTop: '0.05rem' }} />
                 <div style={{ fontSize: '0.68rem', color: '#f59e0b', lineHeight: 1.5 }}>
-                  <strong>Stall Detected:</strong> {stallAlerts[0]}
+                  <strong>Stall Detected:</strong> {stallAlerts[0].exerciseName}
                   {stallAlerts.length > 1 && ` (+${stallAlerts.length - 1} more)`}
                 </div>
               </div>
@@ -750,23 +855,28 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
                       }}>
                         {msg.role === 'user'
                           ? <div style={{ fontSize: '0.83rem', color: '#fff', lineHeight: 1.5 }}>{msg.text}</div>
-                          : renderMd(msg.text)
+                          : (msg.text === '' ? (
+                              <div style={{ display: 'flex', gap: '4px', alignItems: 'center', height: '1.2rem', padding: '0 0.3rem' }}>
+                                {[0, 1, 2].map(i => (
+                                  <div key={i} style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#a855f7', animation: `bounce 1.2s ease-in-out ${i * 0.15}s infinite` }} />
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="markdown-body" style={{ color: 'rgba(255,255,255,0.85)', whiteSpace: 'pre-wrap' }}>
+                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
+                                  {msg.text}
+                                </ReactMarkdown>
+                              </div>
+                            ))
                         }
+                        {msg.role === 'model' && msg.model && (
+                          <div style={{ marginTop: '0.4rem', fontSize: '0.6rem', color: 'rgba(255,255,255,0.25)', textAlign: 'right' }}>
+                            ✨ Generated by {msg.model}
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
-                  {isLoading && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.2rem' }}>
-                      <div style={{ width: '18px', height: '18px', borderRadius: '6px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Dumbbell size={10} color="#fff" />
-                      </div>
-                      <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
-                        {[0, 1, 2].map(i => (
-                          <div key={i} style={{ width: '5px', height: '5px', borderRadius: '50%', background: '#a855f7', animation: `bounce 1.2s ease-in-out ${i * 0.15}s infinite` }} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -782,6 +892,12 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
                 </button>
                 {showQuickPrompts && (
                   <div style={{ display: 'flex', gap: '0.35rem', overflowX: 'auto', paddingBottom: '0.3rem', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' as any }}>
+                    {profile?.targetBodyweightKg && profile?.targetTimelineWeeks && (
+                       <button onClick={() => { send(`Build me a step-by-step ${profile.targetTimelineWeeks}-week plan to hit my target bodyweight of ${profile.targetBodyweightKg}kg. Break it down by phases.`); setShowQuickPrompts(false); }}
+                         style={{ flexShrink: 0, padding: '0.45rem 0.75rem', borderRadius: '12px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', fontSize: '0.7rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                         🎯 Build my {profile.targetTimelineWeeks}-week target plan
+                       </button>
+                    )}
                     {QUICK_PROMPTS.map(qp => (
                       <button
                         key={qp.label}
@@ -975,6 +1091,76 @@ export const ZenGymAI = ({ userId, todayLog, profile }: ZenGymAIProps) => {
                   </>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── PROFILE TAB ───────────────────────────────────────────── */}
+          {activeTab === 'profile' && (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {!profile ? (
+                <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'rgba(255,255,255,0.4)', fontSize: '0.82rem' }}>
+                  <User size={32} style={{ opacity: 0.3, margin: '0 auto 0.5rem', display: 'block' }} />
+                  Your Gym Profile isn't set up yet.<br />Go to the main Gym tab to configure it.
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', padding: '0.8rem', background: 'rgba(255,255,255,0.03)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <User size={24} color="#fff" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>Athlete Profile</div>
+                      <div style={{ fontSize: '0.7rem', color: '#a855f7', fontWeight: 600, marginTop: '0.1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        {profile.primaryGoal}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <div style={{ padding: '0.6rem 0.8rem', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Bodyweight</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>{profile.bodyweightKg ? `${profile.bodyweightKg}kg` : '—'}</div>
+                    </div>
+                    <div style={{ padding: '0.6rem 0.8rem', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Height</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>{profile.heightCm ? `${profile.heightCm}cm` : '—'}</div>
+                    </div>
+                    <div style={{ padding: '0.6rem 0.8rem', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Age</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>{profile.ageYears ? `${profile.ageYears} yrs` : '—'}</div>
+                    </div>
+                    <div style={{ padding: '0.6rem 0.8rem', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Experience</div>
+                      <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff' }}>{profile.trainingExperienceMonths ? `${profile.trainingExperienceMonths} mo` : '—'}</div>
+                    </div>
+                  </div>
+
+                  {(profile.targetBodyweightKg || profile.targetTimelineWeeks) && (
+                    <div style={{ padding: '0.7rem 0.9rem', borderRadius: '12px', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div>
+                        <div style={{ fontSize: '0.55rem', color: '#c4b5fd', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Target Goal</div>
+                        <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>
+                          {profile.targetBodyweightKg ? `${profile.targetBodyweightKg}kg` : '—'}
+                        </div>
+                      </div>
+                      {profile.targetTimelineWeeks && (
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.55rem', color: '#c4b5fd', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.2rem' }}>Timeline</div>
+                          <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>{profile.targetTimelineWeeks} wks</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <button onClick={() => { setActiveTab('chat'); send("Based on my athlete profile and goal, how should I adjust my training volume and frequency?"); }}
+                    style={{ marginTop: '0.25rem', padding: '0.65rem', borderRadius: '12px', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.3)', color: '#c4b5fd', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', transition: 'all 0.2s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = 'rgba(124,58,237,0.2)'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(124,58,237,0.1)'; }}
+                  >
+                    <Sparkles size={13} /> Analyze my profile
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
