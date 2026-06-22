@@ -43,5 +43,5 @@ export const useContextReminders = () => {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [location.pathname, todos, gymLogs, isGymDay]);
+  }, [location.pathname, todos, gymLogs]);
 };

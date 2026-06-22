@@ -1,6 +1,7 @@
 import { addDoc, collection, updateDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
-import { addEventToGoogleCalendar, GCalEvent } from '../services/googleCalendar';
+import { addEventToGoogleCalendar } from '../services/googleCalendar';
+import type { GCalEvent } from '../services/googleCalendar';
 import { sendPushNotification } from '../services/fcm';
 import { getLocalDateString } from '../utils/dateUtils';
 
