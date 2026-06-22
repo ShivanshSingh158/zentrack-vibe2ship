@@ -30,6 +30,8 @@ import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
 import { VoiceQuickCaptureWidget } from './features/_shared/VoiceQuickCaptureWidget';
+import { ZenAgentPanel } from './features/agent/ZenAgentPanel';
+import { Bot } from 'lucide-react';
 
 import { useContextReminders } from './hooks/useContextReminders';
 
@@ -203,6 +205,7 @@ function App() {
   const [showGreeting, setShowGreeting]   = useState(false);
   const [greeting, setGreeting]           = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showAgent, setShowAgent] = useState(false);
 
   // Use a ref to track previous user so we never add it to the effect dep array
   // (adding it caused multiple auth subscriptions on each login/logout cycle).
@@ -297,6 +300,7 @@ function App() {
   }
 
   return (
+    <ErrorBoundary name="GlobalProviders">
     <GlobalDataProvider>
     <SpotifyProvider>
     <YouTubeProvider>
@@ -316,13 +320,37 @@ function App() {
 
       {/* Onboarding Carousel */}
       {showOnboarding && (
-        <OnboardingCarousel userId={user.uid} onComplete={() => setShowOnboarding(false)} />
+        <ErrorBoundary name="Onboarding">
+          <OnboardingCarousel userId={user.uid} onComplete={() => setShowOnboarding(false)} />
+        </ErrorBoundary>
       )}
+
+      {/* Zen Agent Floating Button & Panel */}
+      <button
+        onClick={() => setShowAgent(true)}
+        style={{
+          position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 900,
+          background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
+          border: 'none', borderRadius: '50%', width: '56px', height: '56px',
+          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: '0 8px 32px rgba(139, 92, 246, 0.4)', cursor: 'pointer',
+          transition: 'transform 0.2s',
+          transform: showAgent ? 'scale(0)' : 'scale(1)'
+        }}
+      >
+        <Bot size={28} />
+      </button>
+
+      <AnimatePresence>
+        {showAgent && <ZenAgentPanel onClose={() => setShowAgent(false)} />}
+      </AnimatePresence>
 
       {/* Greeting Toast removed per user request */}
 
       <div className="app-container">
-        <Sidebar user={user} onLogout={() => signOut(auth)} />
+        <ErrorBoundary name="Sidebar">
+          <Sidebar user={user} onLogout={() => signOut(auth)} />
+        </ErrorBoundary>
         <div className="main-content">
           {/* Suspense wraps ALL lazy routes — PageLoader shown during chunk download */}
           <Suspense fallback={<PageLoader />}>
@@ -336,6 +364,7 @@ function App() {
     </YouTubeProvider>
     </SpotifyProvider>
     </GlobalDataProvider>
+    </ErrorBoundary>
   );
 }
 

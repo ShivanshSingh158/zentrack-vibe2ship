@@ -179,8 +179,10 @@ const calendarFetch = async <T>(
 export interface GCalEvent {
   title: string;
   date: string;        // YYYY-MM-DD
+  startDateTime?: string; // ISO String
+  endDateTime?: string;   // ISO String
   description?: string;
-  type: string;
+  type?: string;
   zentrackId?: string; // Firestore document ID — stored in GCal for dedup
 }
 
@@ -207,14 +209,14 @@ const nextDay = (date: string): string => {
 
 const buildCalEventBody = (event: GCalEvent) => ({
   summary: event.title,
-  description: event.description ?? `ZenTrack — ${event.type}`,
-  start: { date: event.date },
-  end: { date: nextDay(event.date) },
+  description: event.description ?? `ZenTrack — ${event.type || 'Event'}`,
+  start: event.startDateTime ? { dateTime: event.startDateTime } : { date: event.date },
+  end: event.endDateTime ? { dateTime: event.endDateTime } : { date: nextDay(event.date) },
   extendedProperties: {
     private: {
       source: ZENTRACK_SOURCE_TAG,
       zentrackId: event.zentrackId ?? '',
-      type: event.type,
+      type: event.type || 'auto-scheduled',
     },
   },
   reminders: {
