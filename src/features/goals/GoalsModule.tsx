@@ -268,7 +268,7 @@ export const GoalsModule = () => {
     setIsBreakingDown(prev => ({ ...prev, [goal.id!]: true }));
     toast.info(`AI is analyzing "${goal.title}"...`);
     try {
-      const res = await autoBreakdownGoal(goal.title, goal.description);
+      const res = await autoBreakdownGoal(goal.title, goal.description || '');
       if (!res.subtasks || res.subtasks.length === 0) {
         toast.info('No subtasks generated.');
         return;

@@ -5,7 +5,7 @@ import { useGlobalData } from '../contexts/GlobalDataContext';
 
 export const useContextReminders = () => {
   const location = useLocation();
-  const { todos, gymLogs, isGymDay } = useGlobalData();
+  const { todos, gymLogs } = useGlobalData();
   const hasShownGymReminder = useRef(false);
   const hasShownTodoReminder = useRef(false);
 
@@ -17,7 +17,7 @@ export const useContextReminders = () => {
 
       if (path === '/gym') {
         const gymLoggedToday = gymLogs.some((l: any) => new Date(l.date).toDateString() === now.toDateString());
-        if (!gymLoggedToday && isGymDay && !hasShownGymReminder.current) {
+        if (!gymLoggedToday && !hasShownGymReminder.current) {
           toast.message('Zen AI Reminder 🧠', {
             description: "Don't forget to take your pre-workout! Let's crush today's session.",
             duration: 6000,
