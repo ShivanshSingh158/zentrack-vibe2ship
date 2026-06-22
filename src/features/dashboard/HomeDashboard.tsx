@@ -34,6 +34,8 @@ import type { DropResult } from '@hello-pangea/dnd';
 import { TimeboxTimeline } from './TimeboxTimeline';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import { PomodoroStatsPanel } from '../pomodoro/PomodoroStatsPanel';
+import { CrisisTriageModal } from '../crisis/CrisisTriageModal';
+import { AnimatePresence } from 'framer-motion';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface LocalLog {
@@ -117,7 +119,7 @@ const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, overdueT
 };
 
 // ─── ZenAIControlCenter ────────────────────────────────────────────────────────
-const ZenAIControlCenter = () => {
+const ZenAIControlCenter = ({ onOpenCrisis }: { onOpenCrisis: () => void }) => {
   const navigate = useNavigate();
   return (
     <div style={{
@@ -158,6 +160,13 @@ const ZenAIControlCenter = () => {
           </div>
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Tap the floating mic anywhere to capture tasks hands-free.</div>
         </div>
+
+        <button className="ai-feature-btn" onClick={onOpenCrisis} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', padding: '1rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444', fontWeight: 600 }}>
+            <AlertTriangle size={18} /> Crisis Triage
+          </div>
+          <div style={{ fontSize: '0.8rem', color: '#fca5a5' }}>Overwhelmed? Let AI identify the ONE thing that matters today.</div>
+        </button>
       </div>
     </div>
   );
@@ -804,6 +813,7 @@ export const HomeDashboard = () => {
   // ── AI Priority State ─────────────────────────────────────────────────────
   const [aiRec, setAiRec] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [showCrisis, setShowCrisis] = useState(false);
 
   const handleAskAi = async () => {
     setAiLoading(true);
@@ -1027,62 +1037,65 @@ export const HomeDashboard = () => {
             habits={todayHabits}
           />
           
-          <ZenAIControlCenter />
+          <div className="dashboard-grid">
+            <ZenAIControlCenter onOpenCrisis={() => setShowCrisis(true)} />
+            <StreakSummaryWidget gymLogs={gymLogs} learningTopics={learningTopics} />
 
-          <StreakSummaryWidget gymLogs={gymLogs} learningTopics={learningTopics} />
+            {/* Daily Wisdom Video — collapsible, rotates every 6 hours */}
+            <WisdomVideoCard />
 
-          {/* Daily Wisdom Video — collapsible, rotates every 6 hours */}
-          <WisdomVideoCard />
+            {/* Rollover prompt — one-click reschedule for incomplete tasks from past days */}
+            {hasRollovers && (() => {
+              const staleKey = `rollover_prompted_${todayStr}`;
+              if (localStorage.getItem(staleKey)) return null;
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 'var(--radius-md)', padding: '0.65rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+                  <span style={{ flex: 1, color: '#fbbf24', fontWeight: 500 }}>📋 You have {overdueTaskCount} incomplete task{overdueTaskCount !== 1 ? 's' : ''} from previous days. Roll them to today?</span>
+                  <button
+                    onClick={async () => {
+                      const staleTodos = todos.filter(t => t.date && t.date < todayStr && !t.isCompleted);
+                      const batch = (await import('firebase/firestore')).writeBatch(db);
+                      staleTodos.forEach(t => batch.update(doc(db, 'todos', t.id!), { date: todayStr }));
+                      await batch.commit();
+                      localStorage.setItem(staleKey, 'true');
+                      toast.success(`${staleTodos.length} task${staleTodos.length !== 1 ? 's' : ''} rolled to today!`);
+                    }}
+                    style={{ padding: '0.35rem 0.85rem', borderRadius: '8px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24', fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
+                  >Roll Over →</button>
+                  <button onClick={() => { localStorage.setItem(staleKey, 'true'); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}>Dismiss</button>
+                </div>
+              );
+            })()}
 
-          {/* Rollover prompt — one-click reschedule for incomplete tasks from past days */}
-          {hasRollovers && (() => {
-            const staleKey = `rollover_prompted_${todayStr}`;
-            if (localStorage.getItem(staleKey)) return null;
-            return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 'var(--radius-md)', padding: '0.65rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
-                <span style={{ flex: 1, color: '#fbbf24', fontWeight: 500 }}>📋 You have {overdueTaskCount} incomplete task{overdueTaskCount !== 1 ? 's' : ''} from previous days. Roll them to today?</span>
-                <button
-                  onClick={async () => {
-                    const staleTodos = todos.filter(t => t.date && t.date < todayStr && !t.isCompleted);
-                    const batch = (await import('firebase/firestore')).writeBatch(db);
-                    staleTodos.forEach(t => batch.update(doc(db, 'todos', t.id!), { date: todayStr }));
-                    await batch.commit();
-                    localStorage.setItem(staleKey, 'true');
-                    toast.success(`${staleTodos.length} task${staleTodos.length !== 1 ? 's' : ''} rolled to today!`);
-                  }}
-                  style={{ padding: '0.35rem 0.85rem', borderRadius: '8px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24', fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
-                >Roll Over →</button>
-                <button onClick={() => { localStorage.setItem(staleKey, 'true'); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}>Dismiss</button>
+            {tasks.some(t => t.timeSlot) && <TimeboxTimeline tasks={tasks} />}
+
+            <StudentWidgets attendanceSubjects={attendanceSubjects} assignments={assignments} />
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem', alignItems: 'start' }}>
+              <DailyCommandPanel
+                localLog={localLog}
+                habits={todayHabits}
+                todayHabitLogs={todayHabitLogs}
+                onUpdate={handleUpdateLocal}
+                onToggleHabit={handleToggleHabit}
+                aiRecommendation={aiRec}
+                isAiLoading={aiLoading}
+                onAskAi={handleAskAi}
+              />
+
+              <div className="hide-on-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'stretch', gridColumn: '1 / -1', gridRow: 'auto' }}>
+                <PomodoroWidget />
+                <WeeklyFocusChart dailyLogs={dailyLogs} />
               </div>
-            );
-          })()}
 
-          {tasks.some(t => t.timeSlot) && <TimeboxTimeline tasks={tasks} />}
-
-          <StudentWidgets attendanceSubjects={attendanceSubjects} assignments={assignments} />
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem', alignItems: 'start' }}>
-            <DailyCommandPanel
-              localLog={localLog}
-              habits={todayHabits}
-              todayHabitLogs={todayHabitLogs}
-              onUpdate={handleUpdateLocal}
-              onToggleHabit={handleToggleHabit}
-              aiRecommendation={aiRec}
-              isAiLoading={aiLoading}
-              onAskAi={handleAskAi}
-            />
-
-            <div className="hide-on-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'stretch', gridColumn: '1 / -1', gridRow: 'auto' }}>
-              <PomodoroWidget />
-              <WeeklyFocusChart dailyLogs={dailyLogs} />
+              <PriorityTasksList tasks={tasks} interviews={interviews} onToggleTask={handleToggleTask} />
             </div>
-
-            <PriorityTasksList tasks={tasks} interviews={interviews} onToggleTask={handleToggleTask} />
           </div>
+
+          <AnimatePresence>
+            {showCrisis && <CrisisTriageModal onClose={() => setShowCrisis(false)} />}
+          </AnimatePresence>
         </div>
-
-
       </div>
     </DragDropContext>
   );
