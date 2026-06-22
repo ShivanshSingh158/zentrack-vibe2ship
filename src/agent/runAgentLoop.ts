@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { TOOL_DECLARATIONS } from './toolDeclarations';
-import { executeTool, ToolResult } from './toolExecutor';
+import { executeTool } from './toolExecutor';
+import type { ToolResult } from './toolExecutor';
 
 const AGENT_SYSTEM = `You are Zen Agent — an autonomous AI assistant embedded inside the Zentrack productivity app.
 You have real tools at your disposal. You can read tasks, create tasks, schedule calendar blocks, and send push notifications.
@@ -59,7 +60,7 @@ export const runAgentLoop = async (
     // 1. Check if the AI wants to call a tool
     const functionCallPart = parts.find((p: any) => p.functionCall);
     if (functionCallPart) {
-      const { name, args } = functionCallPart.functionCall;
+      const { name, args } = functionCallPart.functionCall as any;
       onStep({ type: 'tool_call', toolName: name, args });
 
       // Execute the real tool
@@ -90,7 +91,7 @@ export const runAgentLoop = async (
     // 2. If no function call, the AI should have provided a text response
     const textPart = parts.find((p: any) => p.text);
     if (textPart) {
-      finalAnswer = textPart.text;
+      finalAnswer = textPart.text || '';
       onStep({ type: 'answer', text: finalAnswer });
       break; // The loop is finished!
     }
