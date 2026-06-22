@@ -1,13 +1,16 @@
-export const TOOL_DECLARATIONS = [
+import type { FunctionDeclaration } from '@google/generative-ai';
+import { SchemaType } from '@google/generative-ai';
+
+export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'get_tasks',
     description:
       'Get the user\'s incomplete tasks and deadlines from the database. Use this first whenever the user asks about scheduling, their workload, what to do, or anything related to their pending items.',
     parameters: {
-      type: 'OBJECT',
+      type: SchemaType.OBJECT,
       properties: {
         filter: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description:
             'Optional filter: "overdue" (missed deadlines), "today" (due today), "high_priority" (high priority only), or "all" (everything incomplete). Default: "all".',
         },
@@ -20,20 +23,20 @@ export const TOOL_DECLARATIONS = [
     description:
       'Create a new task for the user. Use this when the user asks to add, log, or create a task, reminder, or to-do item.',
     parameters: {
-      type: 'OBJECT',
+      type: SchemaType.OBJECT,
       properties: {
-        text: { type: 'STRING', description: 'The task description / title.' },
+        text: { type: SchemaType.STRING, description: 'The task description / title.' },
         priority: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description: '"high", "medium", or "low". Default: "medium".',
         },
         date: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description:
             'Due date in YYYY-MM-DD format. Use today\'s date if not specified.',
         },
         estimatedMinutes: {
-          type: 'NUMBER',
+          type: SchemaType.NUMBER,
           description: 'Optional: estimated time to complete in minutes.',
         },
       },
@@ -45,23 +48,23 @@ export const TOOL_DECLARATIONS = [
     description:
       'Block dedicated focus time in the user\'s Google Calendar for a specific task. Use this after get_free_calendar_slots to find a suitable slot, then call this to actually block it.',
     parameters: {
-      type: 'OBJECT',
+      type: SchemaType.OBJECT,
       properties: {
         taskName: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description: 'The task title to show in the calendar event.',
         },
         date: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description: 'Date to schedule in YYYY-MM-DD format.',
         },
         startTime: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description:
             'Start time in HH:MM 24-hour format (e.g., "14:00" for 2 PM).',
         },
         durationMinutes: {
-          type: 'NUMBER',
+          type: SchemaType.NUMBER,
           description:
             'How many minutes to block. Default 60 if not specified.',
         },
@@ -74,10 +77,10 @@ export const TOOL_DECLARATIONS = [
     description:
       'Find free 1-hour time slots today or tomorrow that don\'t conflict with existing calendar events. Always call this before schedule_task_in_calendar to find valid times.',
     parameters: {
-      type: 'OBJECT',
+      type: SchemaType.OBJECT,
       properties: {
         date: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description:
             'Date to check in YYYY-MM-DD format. Defaults to today if not specified.',
         },
@@ -90,15 +93,15 @@ export const TOOL_DECLARATIONS = [
     description:
       'Schedule a push notification reminder for the user at a future time. Use this when the user asks to be reminded about something later.',
     parameters: {
-      type: 'OBJECT',
+      type: SchemaType.OBJECT,
       properties: {
         message: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description:
             'The reminder notification text. Keep it short and clear.',
         },
         delayMinutes: {
-          type: 'NUMBER',
+          type: SchemaType.NUMBER,
           description:
             'How many minutes from now to send the reminder. E.g., 60 for 1 hour from now.',
         },
@@ -111,15 +114,15 @@ export const TOOL_DECLARATIONS = [
     description:
       'Mark an existing task as completed. Use this when the user says they finished, completed, or are done with a task.',
     parameters: {
-      type: 'OBJECT',
+      type: SchemaType.OBJECT,
       properties: {
         taskId: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description:
             'The task ID (from get_tasks results) to mark as complete.',
         },
         taskText: {
-          type: 'STRING',
+          type: SchemaType.STRING,
           description:
             'The task text, for confirmation in the response.',
         },
