@@ -6,7 +6,7 @@ import { db, auth } from '../../services/firebase';
 import { Calculator, Plus, Trash2, Edit2, TrendingUp, Target, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Semester, SemesterSubject } from '../../types/index';
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Line, ComposedChart } from 'recharts';
+import {  Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Line, ComposedChart } from 'recharts';
 import { useSubjects } from '../../hooks/useSubjects';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 

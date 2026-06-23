@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../../services/firebase';
-import { Target, Activity, CheckCircle, Zap, Heart, Award, Dumbbell, Flame, Timer } from 'lucide-react';
+import { Target, Activity, CheckCircle, Zap, Heart, Award, Timer } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { GymDayLog } from '../../../types/gym.types';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../../data/gymPlan';

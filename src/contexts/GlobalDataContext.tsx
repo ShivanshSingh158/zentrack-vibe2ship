@@ -6,6 +6,7 @@ import { db, auth } from '../services/firebase';
 
 interface GlobalDataContextType {
   todos: any[];
+  calendarEvents: any[];
   dailyLogs: any[];
   habitLogs: any[];
   habits: any[];
@@ -17,6 +18,11 @@ interface GlobalDataContextType {
   attendanceSubjects: any[];
   assignments: any[];
   pomodoroSessions: any[];
+  userPreferences: {
+    peakEnergyTime: 'morning' | 'midday' | 'evening';
+    isGymDay?: boolean;
+    gymLogged?: boolean;
+  };
   isLoading: boolean;
 }
 
@@ -55,6 +61,7 @@ function safeSnapshot(
 
 export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [todos, setTodos] = useState<any[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [dailyLogs, setDailyLogs] = useState<any[]>([]);
   const [habitLogs, setHabitLogs] = useState<any[]>([]);
   const [habits, setHabits] = useState<any[]>([]);
@@ -66,6 +73,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [attendanceSubjects, setAttendanceSubjects] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [pomodoroSessions, setPomodoroSessions] = useState<any[]>([]);
+  const [userPreferences, setUserPreferences] = useState<GlobalDataContextType['userPreferences']>({ peakEnergyTime: 'morning' });
   const [isLoading, setIsLoading] = useState(true);
 
   // Ref to hold current data listener cleanup functions
@@ -167,7 +175,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // ──────────────────────────────────────────────────────────────────────
 
       // Track first-fire per listener to know when initial load is done
-      const TOTAL = 12;
+      const TOTAL = 14;
       let firedCount = 0;
       const onFirstFire = () => {
         firedCount++;
@@ -184,6 +192,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const unsubs: (() => void)[] = [
         safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTodos), 'todos'),
+        safeSnapshot(query(collection(db, 'calendar_events'), where('userId', '==', uid)), makeHandler(setCalendarEvents), 'calendar_events'),
         safeSnapshot(query(collection(db, 'daily_logs'), where('userId', '==', uid)), makeHandler(setDailyLogs), 'daily_logs'),
         safeSnapshot(query(collection(db, 'habits'), where('userId', '==', uid)), makeHandler(setHabits), 'habits'),
         safeSnapshot(query(collection(db, 'habit_logs'), where('userId', '==', uid)), makeHandler(setHabitLogs), 'habit_logs'),
@@ -195,6 +204,12 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         safeSnapshot(query(collection(db, 'attendance_subjects'), where('userId', '==', uid)), makeHandler(setAttendanceSubjects), 'attendance_subjects'),
         safeSnapshot(query(collection(db, 'assignments'), where('userId', '==', uid)), makeHandler(setAssignments), 'assignments'),
         safeSnapshot(query(collection(db, 'pomodoro_sessions'), where('userId', '==', uid)), makeHandler(setPomodoroSessions), 'pomodoro_sessions'),
+        onSnapshot(doc(db, 'users', uid), (snap) => {
+          if (snap.exists() && snap.data().preferences) {
+            setUserPreferences(snap.data().preferences);
+          }
+          onFirstFire();
+        })
       ];
 
       dataUnsubsRef.current = unsubs;
@@ -212,9 +227,9 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   return (
     <GlobalDataContext.Provider value={{
-      todos, dailyLogs, habitLogs, habits, jobs, goals,
+      todos, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
       learningTopics, gymLogs, notes, attendanceSubjects, assignments,
-      pomodoroSessions,
+      pomodoroSessions, userPreferences,
       isLoading
     }}>
       {children}

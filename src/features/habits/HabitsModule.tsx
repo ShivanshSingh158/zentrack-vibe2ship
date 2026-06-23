@@ -1,12 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { Plus, Check, Flame, Trophy, X, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
+import { collection, addDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
-import type { Habit, HabitLog } from '../../types/index';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { playPopSound } from '../../utils/sound';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';

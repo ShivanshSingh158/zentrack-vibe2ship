@@ -1,9 +1,8 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense } from 'react';
 import {
-  Dumbbell, Check, Plus, Trash2, Edit3, Bed, Flame,
-  RotateCcw, Download, ChevronLeft, ChevronRight, User, Timer, Trophy,
+  Dumbbell, Plus, Trash2, Edit3, Bed,
+  Download, ChevronLeft, ChevronRight, User, Timer, Trophy,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { GYM_PLAN } from '../../data/gymPlan';
 const ZenGymAI = React.lazy(() => import('./ZenGymAI').then(m => ({ default: m.ZenGymAI })));
@@ -23,7 +22,7 @@ import { GymProfileModal } from './components/GymProfileModal';
 import { RestTimerPill } from './components/RestTimerPill';
 import { WeeklyGymInsights } from './components/WeeklyGymInsights';
 import { LiveTimer } from './components/LiveTimer';
-import type { GymExerciseLog, GymCardioLog } from '../../types/gym.types';
+import type { GymExerciseLog } from '../../types/gym.types';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -54,7 +53,7 @@ const GymModuleInner = () => {
   // Core data hook
   const {
     userId, log, syncing, saving, profile,
-    loadLog, updateExercise, deleteExercise, addExercise, moveExerciseToDate,
+    updateExercise, deleteExercise, addExercise, moveExerciseToDate,
     updateCardio, deleteCardio, addCardio, startWorkout, endWorkout, clearDay, importPlan,
     wipeAllTemplates, saveProfile, startRestTimer, clearRestTimer,
   } = useGymLog(selectedDate);

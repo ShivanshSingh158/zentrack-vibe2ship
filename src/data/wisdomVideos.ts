@@ -417,7 +417,6 @@ function saveQueue(queue: number[], pos: number) {
  * If the queue is empty or exhausted, build a fresh shuffled queue first.
  */
 export function getCurrentWisdomVideo(
-  _offset: number = 0,
   dynamicVideos: WisdomVideo[] = [],
 ): WisdomVideo {
   const pool = buildPool(dynamicVideos);

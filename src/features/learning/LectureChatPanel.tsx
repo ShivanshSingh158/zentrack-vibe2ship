@@ -22,18 +22,11 @@ const TOKEN_EXPIRY_KEY = 'zen_gemini_oauth_expiry';
 const GEMINI_SCOPE = 'https://www.googleapis.com/auth/generative-language.retriever';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
-// Models to try in order — Gemini 3.x series (GA as of 2026)
-// Priority matches the Gemini app dropdown:
-//   1. gemini-3.1-pro        → 3.1 Pro  (Advanced math and code) ✓ PRIMARY
-//   2. gemini-3.5-flash      → 3.5 Flash (All-around help)       ✓ FALLBACK 1
-//   3. gemini-3.1-flash-lite → 3.1 Flash-Lite (Fastest)          ✓ FALLBACK 2
-//   4. gemini-2.5-pro        → Legacy fallback only
+// Models to try in order
 const MODEL_FALLBACKS = [
-  'gemini-3.1-pro',        // PRIMARY: strongest (3.1 Pro — Advanced math & code)
-  'gemini-3.5-flash',      // FALLBACK 1: balanced (3.5 Flash — All-around help)
-  'gemini-3.1-flash-lite', // FALLBACK 2: fastest (3.1 Flash-Lite — Fastest answers)
-  'gemini-2.5-pro',        // FALLBACK 3: legacy pro
-  'gemini-2.5-flash-lite', // FALLBACK 4: last resort
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
 ];
 
 // Global Learning Context — cross-video memory stored in localStorage

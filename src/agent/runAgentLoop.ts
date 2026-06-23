@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { TOOL_DECLARATIONS } from './toolDeclarations';
 import type { ToolResult } from './toolExecutor';
 import { executeTool } from './toolExecutor';
@@ -15,6 +14,8 @@ export type AgentStep =
   | { type: 'tool_result'; toolName: string; result: ToolResult }
   | { type: 'answer'; text: string };
 
+import { callWithFallback } from '../services/gemini/core';
+
 export const runAgentLoop = async (
   userMessage: string,
   userTodos: any[],
@@ -22,12 +23,6 @@ export const runAgentLoop = async (
   apiKey: string,
   onStep: (step: AgentStep) => void
 ): Promise<string> => {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    systemInstruction: AGENT_SYSTEM,
-    tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-  });
 
   const contents: any[] = [{ role: 'user', parts: [{ text: userMessage }] }];
   let finalAnswer = '';
@@ -35,8 +30,32 @@ export const runAgentLoop = async (
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     onStep({ type: 'thinking', text: 'Zen AI is thinking...' });
+    window.dispatchEvent(new CustomEvent('agent-log', { detail: { type: 'thinking', text: 'Zen AI is thinking...' } }));
     
-    const response = await model.generateContent({ contents });
+    let response;
+    try {
+      response = await callWithFallback(async (genAI, modelName) => {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: AGENT_SYSTEM,
+          tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+        });
+        return await model.generateContent({ contents });
+      });
+    } catch (err: any) {
+      const msg = (err.message || '').toLowerCase();
+      let friendlyError = err.message || 'Unknown error occurred.';
+      
+      if (msg.includes('401') || msg.includes('authentication')) {
+        friendlyError = 'My Gemini API key is invalid or expired. Please update VITE_GEMINI_API_KEY in the .env file.';
+      } else if (msg.includes('429') || msg.includes('quota')) {
+        friendlyError = 'I have reached my Gemini API rate limit. Please try again later or use a different key.';
+      }
+
+      window.dispatchEvent(new CustomEvent('agent-log', { detail: { type: 'answer', text: `⚠️ ${friendlyError}` } }));
+      return `Agent Loop Failed: ${friendlyError}`;
+    }
+
     const candidate = response.response.candidates?.[0];
     if (!candidate) break;
 
@@ -48,10 +67,12 @@ export const runAgentLoop = async (
       const name = functionCallPart.functionCall.name;
       const args = functionCallPart.functionCall.args as any;
       onStep({ type: 'tool_call', toolName: name, args });
+      window.dispatchEvent(new CustomEvent('agent-log', { detail: { type: 'tool_call', toolName: name, args } }));
       
       // Execute the real tool
       const result = await executeTool(name, args, userTodos, calendarEvents);
       onStep({ type: 'tool_result', toolName: name, result });
+      window.dispatchEvent(new CustomEvent('agent-log', { detail: { type: 'tool_result', toolName: name, result } }));
       
       // Add AI's function call + our result to the conversation
       contents.push({ role: 'model', parts: [{ functionCall: { name, args } }] });
@@ -67,6 +88,7 @@ export const runAgentLoop = async (
     if (textPart && textPart.text) {
       finalAnswer = textPart.text;
       onStep({ type: 'answer', text: finalAnswer });
+      window.dispatchEvent(new CustomEvent('agent-log', { detail: { type: 'answer', text: finalAnswer } }));
       break;
     }
     break;

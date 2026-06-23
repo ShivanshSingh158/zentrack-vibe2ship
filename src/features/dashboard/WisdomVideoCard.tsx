@@ -258,7 +258,7 @@ function useDynamicWisdomVideos() {
 // ── Main WisdomVideoCard ──────────────────────────────────────────────────────
 export function WisdomVideoCard() {
   const [isOpen, setIsOpen]     = useState(false);
-  const [video, setVideo]       = useState<WisdomVideo>(() => getCurrentWisdomVideo(0));
+  const [video, setVideo]       = useState<WisdomVideo>(() => getCurrentWisdomVideo());
   const [remaining, setRemaining] = useState(() => videosRemaining());
   const dynamicVideos           = useDynamicWisdomVideos();
   const headerRef               = useRef<HTMLDivElement>(null);
@@ -284,7 +284,7 @@ export function WisdomVideoCard() {
   // Re-init with dynamic videos once they load
   useEffect(() => {
     if (dynamicVideos.length > 0) {
-      setVideo(getCurrentWisdomVideo(0, dynamicVideos));
+      setVideo(getCurrentWisdomVideo(dynamicVideos));
       setRemaining(videosRemaining(dynamicVideos));
     }
   }, [dynamicVideos]);

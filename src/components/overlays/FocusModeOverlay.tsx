@@ -90,10 +90,6 @@ export const FocusModeOverlay = () => {
     if (!state.taskId) prevTaskIdRef.current = null;
   });
 
-  const totalSeconds = state.taskId ? sessionDurationRef.current : (25 * 60);
-  const progress = state.taskId ? Math.min(100, ((totalSeconds - state.timeLeft) / totalSeconds) * 100) : 0;
-  const CIRCUMFERENCE = 2 * Math.PI * 88;
-
   if (!focusMode) return null;
 
   let bgGradient = 'radial-gradient(ellipse at center, rgba(10, 10, 14, 0.97) 0%, rgba(5, 5, 8, 1) 100%)';

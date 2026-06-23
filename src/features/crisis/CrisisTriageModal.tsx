@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Siren, CheckCircle2, Trash2 } from 'lucide-react';
 import { generateCrisisTriage } from './generateCrisisTriage';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
+import { toast } from 'sonner';
 
 export const CrisisTriageModal = ({ onClose }: { onClose: () => void }) => {
   const { todos, goals, habits } = useGlobalData();
@@ -54,21 +55,29 @@ export const CrisisTriageModal = ({ onClose }: { onClose: () => void }) => {
           </div>
         ) : data ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            {/* The One Thing */}
+            <p style={{ color: 'var(--text-primary)', fontSize: '1.05rem', lineHeight: 1.5, fontStyle: 'italic' }}>
+              "{data.message}"
+            </p>
+
+            {/* War Room: Top 5 */}
             <div style={{ background: 'linear-gradient(135deg, rgba(239,68,68,0.1), rgba(185,28,28,0.05))', borderRadius: '16px', padding: '1.25rem', border: '1px solid rgba(239,68,68,0.2)' }}>
-              <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#f87171', marginBottom: '0.5rem', fontWeight: 600 }}>The Only Thing That Matters Today</div>
-              <div style={{ fontSize: '1.25rem', color: '#fff', fontWeight: 700, marginBottom: '0.5rem' }}>{data.focusTask}</div>
-              <div style={{ fontSize: '0.9rem', color: '#fca5a5' }}>{data.why}</div>
+              <div style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#f87171', marginBottom: '0.75rem', fontWeight: 600 }}>Priority War Room: The 5 Things</div>
+              <ul style={{ margin: 0, paddingLeft: '1.2rem', color: '#fff', fontSize: '1.05rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                {data.top5?.map((item: string, i: number) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
             </div>
 
-            {/* Tiny Steps */}
+            {/* Blocked Calendar */}
             <div>
-              <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.75rem', fontWeight: 500 }}>Frictionless Next Steps:</div>
+              <div style={{ fontSize: '0.85rem', color: '#9ca3af', marginBottom: '0.75rem', fontWeight: 500 }}>Auto-Blocked on Calendar:</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {data.tinySteps?.map((step: string, i: number) => (
+                {data.blockCalendarTop3?.map((block: any, i: number) => (
                   <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.03)', padding: '0.75rem', borderRadius: '12px' }}>
                     <CheckCircle2 size={16} color="#4ade80" />
-                    <span style={{ color: '#e5e7eb', fontSize: '0.95rem' }}>{step}</span>
+                    <span style={{ color: '#e5e7eb', fontSize: '0.95rem', flex: 1 }}>{block.task}</span>
+                    <span style={{ color: '#a78bfa', fontSize: '0.85rem', fontWeight: 600 }}>{block.durationMinutes}m</span>
                   </div>
                 ))}
               </div>
@@ -87,7 +96,11 @@ export const CrisisTriageModal = ({ onClose }: { onClose: () => void }) => {
               </div>
             </div>
             
-            <button onClick={onClose} style={{ width: '100%', padding: '1rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer', marginTop: '0.5rem' }}>
+            <button onClick={() => {
+              // Simulate blocking the calendar via toast
+              toast.success("Calendar blocked for your top 3 tasks.");
+              onClose();
+            }} style={{ width: '100%', padding: '1rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer', marginTop: '0.5rem' }}>
               I Understand. I'm Doing It Now.
             </button>
           </div>

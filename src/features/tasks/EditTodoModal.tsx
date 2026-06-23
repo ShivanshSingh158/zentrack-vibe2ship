@@ -18,6 +18,8 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({ isOpen, onClose, t
   const [estimatedMinutes, setEstimatedMinutes] = useState('');
   const [subject, setSubject] = useState('');
   const [date, setDate] = useState('');
+  const [commitmentTo, setCommitmentTo] = useState('');
+  const [energyRequirement, setEnergyRequirement] = useState<TodoItem['energyRequirement']>('medium');
 
   useEffect(() => {
     if (todo && isOpen) {
@@ -27,6 +29,8 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({ isOpen, onClose, t
       setEstimatedMinutes(todo.estimatedMinutes ? todo.estimatedMinutes.toString() : '');
       setSubject(todo.subject || '');
       setDate(todo.date || '');
+      setCommitmentTo(todo.commitmentTo || '');
+      setEnergyRequirement(todo.energyRequirement || 'medium');
     }
   }, [todo, isOpen]);
 
@@ -44,6 +48,8 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({ isOpen, onClose, t
         date: date || '',
         subject: subject.trim() || '',
         estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes) : 0,
+        commitmentTo: commitmentTo.trim() || '',
+        energyRequirement,
       };
 
       await updateDoc(doc(db, 'todos', todo.id!), updates);
@@ -148,6 +154,32 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({ isOpen, onClose, t
                 onChange={e => setEstimatedMinutes(e.target.value)}
                 style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
               />
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>🤝 Promised To</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Professor Smith, Mom"
+                value={commitmentTo}
+                onChange={e => setCommitmentTo(e.target.value)}
+                style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>⚡ Energy Reqd.</label>
+              <select 
+                value={energyRequirement}
+                onChange={e => setEnergyRequirement(e.target.value as TodoItem['energyRequirement'])}
+                style={{ width: '100%', padding: '0.6rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+              >
+                <option value="low">Low (Mechanical)</option>
+                <option value="medium">Medium</option>
+                <option value="high">High (Deep Focus)</option>
+              </select>
             </div>
           </div>
 

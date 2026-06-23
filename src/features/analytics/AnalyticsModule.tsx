@@ -109,7 +109,6 @@ const AnalyticsModuleInner = () => {
     gymLogs: gymData,
     attendanceSubjects,
     pomodoroSessions,
-    learningTopics: rawLearningTopics,
     isLoading,
   } = useGlobalData();
 
@@ -133,7 +132,6 @@ const AnalyticsModuleInner = () => {
   const safePomodoroSessions = useMemo(() => (Array.isArray(pomodoroSessions) ? pomodoroSessions : []), [pomodoroSessions]);
   // Guard: ensure gymData is always a valid array
   const safeGymData = useMemo(() => (Array.isArray(gymData) ? gymData.filter(g => g && typeof g.date === 'string') : []), [gymData]);
-  const learningTopics = useMemo(() => (Array.isArray(rawLearningTopics) ? rawLearningTopics : []), [rawLearningTopics]);
   const safeDailyLogs = useMemo(() => (Array.isArray(logData) ? logData : []), [logData]);
 
   useEffect(() => {
@@ -163,7 +161,7 @@ const AnalyticsModuleInner = () => {
         return { date: getWeekLabel(date), total: dayTodos.length, completed: done };
       });
       return { total, completed, rate, daily };
-    } catch (e) {
+    } catch {
       console.error('[Analytics] todoMetrics error:', e);
       return { total: 0, completed: 0, rate: 0, daily: last30.map(d => ({ date: getWeekLabel(d), total: 0, completed: 0 })) };
     }
@@ -195,7 +193,7 @@ const AnalyticsModuleInner = () => {
       const gym = getRangeCount(safeGymData, 'date', () => true);
 
       return { tasks, habits, gym };
-    } catch (e) {
+    } catch {
       console.error('[Analytics] weekOverWeekMetrics error:', e);
       return { 
         tasks: { thisWeek: 0, lastWeek: 0, diff: 0 }, 
@@ -256,7 +254,7 @@ const AnalyticsModuleInner = () => {
       });
 
       return chartData;
-    } catch (e) {
+    } catch {
       console.error('[Analytics] gymProgressionMetrics error:', e);
       return last30.map(d => ({ date: getWeekLabel(d), bench: undefined, squat: undefined, deadlift: undefined, rawDate: d }));
     }

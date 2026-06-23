@@ -1,6 +1,6 @@
 import { X, SkipForward, Maximize2, Minimize2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { motion, useDragControls } from 'framer-motion';
 
 interface RestTimerPillProps {

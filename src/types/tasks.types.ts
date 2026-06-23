@@ -23,4 +23,8 @@ export interface TodoItem {
   recurringPattern?: 'daily' | 'weekly' | 'monthly';
   recurringEndDate?: string;
   completedAt?: number;
+  /** Guardian Features */
+  commitmentTo?: string; // Promise to others
+  blockedBy?: string[]; // Array of task IDs this task depends on
+  energyRequirement?: 'high' | 'medium' | 'low';
 }

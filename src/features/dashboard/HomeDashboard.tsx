@@ -24,7 +24,7 @@ import { useGlobalData } from '../../contexts/GlobalDataContext';
 import {
   Droplets, Timer, Flame, BarChart2, Maximize2, Plus, X,
   RotateCcw, ClipboardList, Square, AlertTriangle, Calendar,
-  ClipboardCheck, Check, Moon, Briefcase, Play, Sparkles, Activity, BookOpen, Wand2, Target, Mic
+  ClipboardCheck, Check, Moon, Briefcase, Play, Sparkles, Activity, BookOpen, Wand2, Target, Siren
 } from 'lucide-react';
 import { generateNextActionRecommendation } from '../../services/gemini';
 import { toast } from 'sonner';
@@ -46,13 +46,11 @@ interface LocalLog {
 }
 
 // ─── DashboardHero ────────────────────────────────────────────────────────────
-const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, overdueTaskCount, todayHabitLogs, habits }: {
+const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, overdueTaskCount }: {
   currentStreak: number;
   hasRollovers: boolean;
   pendingTaskCount: number;
   overdueTaskCount: number;
-  todayHabitLogs: Record<string, boolean>;
-  habits: any[];
 }) => {
   const hour = new Date().getHours();
   const greetingTime =
@@ -72,7 +70,6 @@ const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, overdueT
   const userName    = auth.currentUser?.displayName?.split(' ')[0] || 'Student';
   const todayName   = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   const todayFull   = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-  const completedH  = Object.values(todayHabitLogs).filter(Boolean).length;
 
   return (
     <>
@@ -154,19 +151,118 @@ const ZenAIControlCenter = ({ onOpenCrisis }: { onOpenCrisis: () => void }) => {
           <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Let AI break your long-term goals into a daily to-do list.</div>
         </button>
 
-        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', padding: '1rem', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 600 }}>
-            <Mic size={18} /> Voice Assistant
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Tap the floating mic anywhere to capture tasks hands-free.</div>
-        </div>
-
         <button className="ai-feature-btn" onClick={onOpenCrisis} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', padding: '1rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444', fontWeight: 600 }}>
             <AlertTriangle size={18} /> Crisis Triage
           </div>
           <div style={{ fontSize: '0.8rem', color: '#fca5a5' }}>Overwhelmed? Let AI identify the ONE thing that matters today.</div>
         </button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginTop: '1rem' }}>
+        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-doom-scroll'))} style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px dashed rgba(239,68,68,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
+          Test: Doom-Scroll
+        </button>
+        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-missed-gym'))} style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px dashed rgba(245,158,11,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
+          Test: Missed Gym
+        </button>
+        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-morning-brief'))} style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px dashed rgba(59,130,246,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
+          Test: 8am Brief
+        </button>
+        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-accountability'))} style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px dashed rgba(168,85,247,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
+          Test: 9pm Check
+        </button>
+        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-calendar-conflict'))} style={{ background: 'rgba(236,72,153,0.1)', color: '#ec4899', border: '1px dashed rgba(236,72,153,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
+          Test: Cal Conflict
+        </button>
+        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-pattern-analysis'))} style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px dashed rgba(16,185,129,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
+          Test: Pattern Analysis
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ─── SituationReportWidget ───────────────────────────────────────────────────
+const SituationReportWidget = ({ tasks, overdueTaskCount, isGymDay, gymLogged }: {
+  tasks: any[];
+  overdueTaskCount: number;
+  isGymDay: boolean;
+  gymLogged: boolean;
+}) => {
+  const { startTimer } = usePomodoroContext();
+  const navigate = useNavigate();
+
+  const topTask = tasks.length > 0 ? tasks[0] : null;
+
+  return (
+    <div style={{
+      background: 'rgba(20,20,25,0.95)',
+      border: '1px solid rgba(255,255,255,0.1)',
+      borderRadius: 'var(--radius-xl)',
+      padding: '2rem',
+      marginBottom: '2.5rem',
+      boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '1.5rem',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: 'linear-gradient(90deg, #ef4444, #f59e0b, #10b981)' }} />
+      
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <h2 style={{ margin: 0, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: 700 }}>Current Situation</h2>
+        
+        {topTask ? (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
+            <div style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
+              <AlertTriangle size={20} />
+            </div>
+            <div>
+              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ef4444', fontFamily: 'var(--font-display)' }}>URGENT: {topTask.text}</div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Top priority based on your timeline and priority score.</div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: '1.1rem', color: '#10b981', fontWeight: 600 }}>✅ You are completely caught up.</div>
+        )}
+
+        {overdueTaskCount > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b', fontSize: '0.9rem', fontWeight: 500, marginTop: '0.5rem' }}>
+            <AlertTriangle size={16} /> {overdueTaskCount} overdue task{overdueTaskCount > 1 ? 's' : ''} need attention
+          </div>
+        )}
+
+        {isGymDay && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: gymLogged ? '#10b981' : '#a855f7', fontSize: '0.9rem', fontWeight: 500 }}>
+            {gymLogged ? <Check size={16} /> : <AlertTriangle size={16} />}
+            Gym session: {gymLogged ? 'Logged for today' : 'Not logged yet (it is your gym day)'}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <Sparkles size={20} style={{ color: '#c084fc', flexShrink: 0, marginTop: '0.2rem' }} />
+          <div>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Zen AI Assessment</div>
+            <p style={{ fontSize: '1.05rem', color: 'var(--text-primary)', lineHeight: 1.5, margin: 0 }}>
+              {topTask ? `You should spend your immediate focus on "${topTask.text}".` : "You have no urgent tasks right now. Consider reviewing your long term goals."}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+          {topTask && (
+            <button className="btn-primary" onClick={() => startTimer(topTask.id, topTask.text, undefined, undefined, topTask.estimatedMinutes)} style={{ background: 'linear-gradient(135deg, #a855f7, #ec4899)', boxShadow: '0 4px 15px rgba(168,85,247,0.3)' }}>
+              Start Focus Session
+            </button>
+          )}
+          <button className="btn-secondary" onClick={() => navigate('/calendar')} style={{ background: 'rgba(255,255,255,0.05)' }}>
+            Show Full Plan
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -402,9 +498,6 @@ const DailyCommandPanel = ({ localLog, habits, todayHabitLogs, onUpdate, onToggl
     setQuickTaskEstimate('25');
     toast.success(quickTaskStartTime ? 'Task scheduled on timeline!' : 'Task added!');
   };
-
-  const addExtraWork = () => {}; // kept for compat, Brain Dump now uses direct textarea only
-
 
   const bentoStyle = (borderColor: string): React.CSSProperties => ({
     background: 'rgba(20,20,25,0.6)',
@@ -808,12 +901,85 @@ export const HomeDashboard = () => {
   }, []);
 
   // ── All data from GlobalDataContext — ZERO extra Firestore listeners ──────
-  const { todos, dailyLogs, habitLogs, habits, jobs, goals, attendanceSubjects, assignments, learningTopics, gymLogs, isLoading } = useGlobalData();
+  const { todos, dailyLogs, habitLogs, habits, jobs, attendanceSubjects, assignments, learningTopics, gymLogs, isLoading } = useGlobalData();
 
   // ── AI Priority State ─────────────────────────────────────────────────────
   const [aiRec, setAiRec] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [showCrisis, setShowCrisis] = useState(false);
+  const [showDoomScroll, setShowDoomScroll] = useState(false);
+  const [showMissedGym, setShowMissedGym] = useState(false);
+  const [showMorningBrief, setShowMorningBrief] = useState(false);
+  const [showAccountability, setShowAccountability] = useState(false);
+  const [accountabilityData, setAccountabilityData] = useState({ promised: 0, completed: 0, remaining: 0 });
+  const [hasSeenAccountability, setHasSeenAccountability] = useState(() => {
+     return localStorage.getItem('seenAccountability') === new Date().toLocaleDateString('en-CA');
+  });
+  const [showCalendarConflict, setShowCalendarConflict] = useState(false);
+  const [conflictDetails, setConflictDetails] = useState<any>(null);
+  const [showPatternAnalysis, setShowPatternAnalysis] = useState(false);
+
+  useEffect(() => {
+    const handleDoom = () => setShowDoomScroll(true);
+    const handleMissed = () => setShowMissedGym(true);
+    const handleMorning = () => setShowMorningBrief(true);
+    const handleAccountability = () => setShowAccountability(true);
+    const handleConflict = (e: any) => {
+      setConflictDetails(e.detail);
+      setShowCalendarConflict(true);
+    };
+    const handlePattern = () => setShowPatternAnalysis(true);
+    const handleTriageAlert = (e: any) => {
+      toast.error(`Guardian Alert: ${e.detail?.title || 'Task'} is due soon!`, { duration: 5000 });
+      setShowCrisis(true);
+    };
+    const handleGymAlert = () => setShowMissedGym(true);
+
+    window.addEventListener('simulate-doom-scroll', handleDoom);
+    window.addEventListener('simulate-missed-gym', handleMissed);
+    window.addEventListener('simulate-morning-brief', handleMorning);
+    window.addEventListener('simulate-accountability', handleAccountability);
+    window.addEventListener('guardian-calendar-conflict', handleConflict);
+    window.addEventListener('simulate-pattern-analysis', handlePattern);
+    
+    window.addEventListener('guardian-triage-alert', handleTriageAlert);
+    window.addEventListener('guardian-gym-alert', handleGymAlert);
+    
+    return () => {
+      window.removeEventListener('simulate-doom-scroll', handleDoom);
+      window.removeEventListener('simulate-missed-gym', handleMissed);
+      window.removeEventListener('simulate-morning-brief', handleMorning);
+      window.removeEventListener('simulate-accountability', handleAccountability);
+      window.removeEventListener('guardian-calendar-conflict', handleConflict);
+      window.removeEventListener('simulate-pattern-analysis', handlePattern);
+      
+      window.removeEventListener('guardian-triage-alert', handleTriageAlert);
+      window.removeEventListener('guardian-gym-alert', handleGymAlert);
+    }
+  }, []);
+
+  // Automatic Accountability Check at 9:00 PM
+  useEffect(() => {
+    const checkAccountability = () => {
+      const now = new Date();
+      const todayStr = now.toLocaleDateString('en-CA');
+      
+      if (now.getHours() >= 21 && !hasSeenAccountability && todos) {
+         const todayTodos = todos.filter(t => t.date === todayStr);
+         const completed = todayTodos.filter(t => t.isCompleted).length;
+         const total = todayTodos.length;
+         
+         setAccountabilityData({ promised: total, completed, remaining: total - completed });
+         setShowAccountability(true);
+         setHasSeenAccountability(true);
+         localStorage.setItem('seenAccountability', todayStr);
+      }
+    };
+    
+    checkAccountability();
+    const interval = setInterval(checkAccountability, 60000);
+    return () => clearInterval(interval);
+  }, [todos, hasSeenAccountability]);
 
   const handleAskAi = async () => {
     setAiLoading(true);
@@ -1033,10 +1199,21 @@ export const HomeDashboard = () => {
             hasRollovers={hasRollovers}
             pendingTaskCount={tasks.length}
             overdueTaskCount={overdueTaskCount}
-            todayHabitLogs={todayHabitLogs}
-            habits={todayHabits}
           />
           
+          <SituationReportWidget 
+            tasks={tasks} 
+            overdueTaskCount={overdueTaskCount} 
+            isGymDay={dayOfWeek !== 0} // Simplistic assumption for now, can be improved
+            gymLogged={gymLogs.some((l: any) => l.date === todayStr)} 
+          />
+
+          <div style={{ margin: '3rem 0 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', opacity: 0.5 }}>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+            <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Below The Fold</span>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
+          </div>
+
           <div className="dashboard-grid">
             <ZenAIControlCenter onOpenCrisis={() => setShowCrisis(true)} />
             <StreakSummaryWidget gymLogs={gymLogs} learningTopics={learningTopics} />
@@ -1094,6 +1271,104 @@ export const HomeDashboard = () => {
 
           <AnimatePresence>
             {showCrisis && <CrisisTriageModal onClose={() => setShowCrisis(false)} />}
+            
+            {showDoomScroll && (
+              <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(220, 38, 38, 0.95)', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center', backdropFilter: 'blur(10px)' }}>
+                <AlertTriangle size={80} color="#fff" style={{ marginBottom: '2rem' }} />
+                <h1 style={{ color: '#fff', fontSize: '2.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem', fontFamily: 'var(--font-display)' }}>Put The Phone Down.</h1>
+                <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '1.25rem', maxWidth: '600px', lineHeight: 1.6, marginBottom: '3rem' }}>
+                  Warning: 45 minutes of mindless browsing detected. You have a critical task coming up. Do you want me to lock this app and start a 25-minute Pomodoro?
+                </p>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <button onClick={() => { setShowDoomScroll(false); }} className="btn-primary" style={{ background: '#fff', color: '#dc2626', padding: '1rem 2rem', fontSize: '1.1rem', fontWeight: 800 }}>Start Focus</button>
+                  <button onClick={() => setShowDoomScroll(false)} style={{ background: 'transparent', border: '2px solid rgba(255,255,255,0.3)', color: '#fff', padding: '1rem 2rem', borderRadius: '12px', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer' }}>Dismiss</button>
+                </div>
+              </div>
+            )}
+
+            {showMissedGym && (
+              <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
+                <div style={{ background: 'rgba(20,20,25,0.95)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '24px', padding: '2rem', width: '90%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: '#f59e0b', marginBottom: '1.5rem' }}>
+                    <div style={{ background: 'rgba(245,158,11,0.15)', padding: '0.75rem', borderRadius: '12px' }}><Siren size={24} /></div>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Autonomous Re-Schedule</h2>
+                  </div>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: 1.5, marginBottom: '2rem' }}>
+                    You missed your 2 PM workout. Zentrack has autonomously moved it to 8 PM tonight and shifted your reading to tomorrow morning to keep you on track.
+                  </p>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button onClick={() => setShowMissedGym(false)} className="btn-primary" style={{ flex: 1, background: '#f59e0b', color: '#000', fontWeight: 700 }}>Approve Changes</button>
+                    <button onClick={() => setShowMissedGym(false)} className="btn-secondary" style={{ flex: 1 }}>Reject</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showMorningBrief && (
+              <div style={{ position: 'fixed', top: '10%', right: '5%', zIndex: 10000, display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'slideInRight 0.3s ease-out' }}>
+                <div style={{ background: 'rgba(20,20,25,0.95)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '16px', padding: '1.5rem', width: '350px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', borderLeft: '4px solid #3b82f6' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: '#60a5fa', fontWeight: 700 }}>8:00 AM — Daily Briefing</span>
+                    <button onClick={() => setShowMorningBrief(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}><X size={16}/></button>
+                  </div>
+                  <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: 1.5, margin: 0 }}>
+                    🚨 You have 2 OVERDUE items from yesterday. They won't disappear. I've blocked your morning from 9-11am to clear them. Let's build momentum.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {showAccountability && (
+              <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
+                <div style={{ background: 'rgba(20,20,25,0.95)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '24px', padding: '2rem', width: '90%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+                  <Target size={48} color="#c084fc" style={{ marginBottom: '1rem' }} />
+                  <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#fff', marginBottom: '1rem' }}>9:00 PM Accountability Check</h2>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: 1.5, marginBottom: '2rem' }}>
+                    You promised to complete {accountabilityData.promised} tasks today, but you only finished {accountabilityData.completed}. The remaining {accountabilityData.remaining} have been carried over to tomorrow and tagged as <strong>[Promised]</strong>. 
+                  </p>
+                  <button onClick={() => setShowAccountability(false)} className="btn-primary" style={{ width: '100%', padding: '1rem', background: '#a855f7', color: '#fff', fontWeight: 700 }}>Understood.</button>
+                </div>
+              </div>
+            )}
+
+            {showCalendarConflict && conflictDetails && (
+              <div style={{ position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, animation: 'slideDown 0.3s ease-out' }}>
+                <div style={{ background: 'rgba(236,72,153,0.1)', backdropFilter: 'blur(20px)', border: '1px solid rgba(236,72,153,0.3)', borderRadius: '16px', padding: '1.25rem', width: '400px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', display: 'flex', gap: '1rem' }}>
+                  <div style={{ marginTop: '0.2rem' }}><Calendar size={24} color="#f472b6" /></div>
+                  <div>
+                    <h3 style={{ margin: '0 0 0.5rem 0', color: '#fff', fontSize: '1.05rem' }}>Smart Time-Block Defender</h3>
+                    <p style={{ margin: '0 0 1rem 0', color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', lineHeight: 1.4 }}>
+                      A new meeting <strong>"{conflictDetails.gcalEvent.summary}"</strong> was added to your Google Calendar. This conflicts with your scheduled <strong>"{conflictDetails.task.text}"</strong> block. Should I shift your task block?
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button onClick={async () => {
+                         // Automatically clear time slot so it gets rescheduled
+                         const { doc, updateDoc } = await import('firebase/firestore');
+                         await updateDoc(doc(db, 'todos', conflictDetails.task.id), { timeSlot: null });
+                         toast.success("Task block shifted to unscheduled.");
+                         setShowCalendarConflict(false);
+                      }} style={{ background: '#f472b6', color: '#000', border: 'none', padding: '0.4rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>Yes, move it</button>
+                      <button onClick={() => setShowCalendarConflict(false)} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>No, I'll decline the meeting</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showPatternAnalysis && (
+              <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 10000, animation: 'slideUp 0.3s ease-out' }}>
+                <div style={{ background: 'rgba(16,185,129,0.1)', backdropFilter: 'blur(20px)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '16px', padding: '1.25rem', width: '380px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', display: 'flex', gap: '1rem', borderTop: '3px solid #10b981' }}>
+                  <div style={{ marginTop: '0.2rem' }}><Activity size={24} color="#34d399" /></div>
+                  <div>
+                    <h3 style={{ margin: '0 0 0.5rem 0', color: '#fff', fontSize: '1.05rem' }}>Pattern Intelligence Update</h3>
+                    <p style={{ margin: '0 0 0.5rem 0', color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', lineHeight: 1.4 }}>
+                      I noticed you consistently underestimate "Physics" tasks by 2x. I have automatically updated your default estimates for future Physics tasks to prevent scheduling overflow.
+                    </p>
+                    <button onClick={() => setShowPatternAnalysis(false)} style={{ background: 'none', color: '#34d399', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}>Got it</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </AnimatePresence>
         </div>
       </div>

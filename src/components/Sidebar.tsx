@@ -1,6 +1,6 @@
 import { NavLink, Link } from 'react-router-dom';
 import {
-  Briefcase, ListTodo, GraduationCap, LogOut, Activity, Play, Pause, Zap,
+  Briefcase, ListTodo, GraduationCap, LogOut, Play, Pause, Zap,
   Home, Calendar, Target, BookOpen, X, Flame, BarChart3, Menu,
   ClipboardCheck, ClipboardList, Settings2, GripVertical, Check, Wrench, Dumbbell,
 } from 'lucide-react';
@@ -29,13 +29,13 @@ const ALL_MODULES: ModuleDef[] = [
   // ── Primary: Daily-use modules (Core AI Suite Focus) ──
   { id: 'home',        label: 'Home',          shortLabel: 'Home',    path: '/home',        icon: <Home size={20} /> },
   { id: 'todo',        label: 'To-Do',         shortLabel: 'To-Do',   path: '/todo',        icon: <ListTodo size={20} /> },
-  { id: 'goals',       label: 'Goals & OKRs',  shortLabel: 'Goals',   path: '/goals',       icon: <Target size={20} /> },
   { id: 'calendar',    label: 'Calendar',      shortLabel: 'Cal.',    path: '/calendar',    icon: <Calendar size={20} /> },
-  { id: 'notes',       label: 'Smart Storage', shortLabel: 'Notes',   path: '/notes',       icon: <BookOpen size={20} color="#fbbf24" />, isPremium: true },
+  { id: 'goals',       label: 'Goals & OKRs',  shortLabel: 'Goals',   path: '/goals',       icon: <Target size={20} /> },
   { id: 'gym',         label: 'Gym AI',        shortLabel: 'Gym',     path: '/gym',         icon: <Dumbbell size={20} /> },
-  { id: 'habits',      label: 'Habits',        shortLabel: 'Habits',  path: '/habits',      icon: <Flame size={20} /> },
 
-  // ── Secondary: Less frequent / Clutter modules ──
+  // ── Secondary: Less frequent / Clutter modules (Hidden in "More") ──
+  { id: 'notes',       label: 'Smart Storage', shortLabel: 'Notes',   path: '/notes',       icon: <BookOpen size={20} color="#fbbf24" /> },
+  { id: 'habits',      label: 'Habits',        shortLabel: 'Habits',  path: '/habits',      icon: <Flame size={20} /> },
   { id: 'learning',    label: 'Learning',      shortLabel: 'Learn',   path: '/learning',    icon: <GraduationCap size={20} /> },
   { id: 'tools',       label: 'Power Tools',   shortLabel: 'Tools',   path: '/tools',       icon: <Wrench size={20} /> },
   { id: 'jobs',        label: 'Job Tracker',   shortLabel: 'Jobs',    path: '/jobs',        icon: <Briefcase size={20} /> },
@@ -45,7 +45,7 @@ const ALL_MODULES: ModuleDef[] = [
 ];
 
 // The index where secondary modules start (after primary group)
-const SECONDARY_START_INDEX = 7;
+const SECONDARY_START_INDEX = 5;
 
 // Home is always pinned first; max 4 more can be pinned to bottom bar
 const DEFAULT_PINNED = ['home', 'todo', 'goals', 'calendar', 'gym'];

@@ -1,158 +1,42 @@
-# Zentrack — Personal Life OS
+# Zentrack — The Last-Minute Life Saver
+> AI-powered productivity guardian that watches your deadlines, schedules your time, and acts before you realize you need it.
 
-A calm, AI-powered productivity dashboard for tracking everything that matters — tasks, habits, gym, jobs, learning, and more.
+## Live Demo
+**Link:** [Insert Demo Link Here]
+**Demo Login:** `demo@zentrack.com` / `demo123`
 
-Built with React + TypeScript + Firebase. Designed to feel like an iOS app on both desktop and mobile.
+## The Problem We Solve
+Students and professionals constantly face decision fatigue and burnout, leading to missed deadlines and skipped habits. Traditional task apps only *record* what you need to do—Zentrack acts as a proactive guardian that intercepts bad habits and auto-corrects your schedule before failure happens.
 
----
+## How Zen AI Acts Autonomously
+Zentrack employs a background intelligent agent loop.
+\`\`\`
+User Data (Firestore) → Zen Agent (Gemini) → Tool Calls → Proactive Action → Notification (FCM)
+\`\`\`
 
-## What's Inside
+## Google Technologies Used
+- **Gemini API**: Deep integration using Function Calling, Streaming, and Multi-key rotation/fallback. Models: `gemini-3.1-pro`, `gemini-3.5-flash`.
+- **Firebase**: Authentication, Firestore (real-time sync), and Cloud Messaging (FCM) for push notifications.
+- **Google Calendar API**: Bidirectional OAuth sync for smart time-blocking.
+- **Google AI Studio**: Prompt testing and deployment.
 
-| Module | Route | Description |
-|--------|-------|-------------|
-| Dashboard | `/home` | Daily overview, timebox schedule, quick stats |
-| Tasks | `/todo` | Kanban-style to-do list with voice capture |
-| Habits | `/habits` | Daily habit tracker with streaks |
-| Calendar | `/calendar` | Event planning and daily view |
-| Gym | `/gym` | Workout logging with AI coach (ZenGymAI) |
-| Job Tracker | `/jobs` | Kanban board for job applications |
-| Goals | `/goals` | Long-term goal setting and tracking |
-| Learning | `/learning` | Curriculum checklists and progress |
-| Notes | `/notes` | Rich note-taking with cloud storage |
-| Analytics | `/analytics` | Charts across all modules |
-| Attendance | `/attendance` | College attendance tracking |
-| Assignments | `/assignments` | Assignment deadlines and status |
-| Tools | `/tools` | Interview prep, GPA calculator, Spotify player |
-| Weekly Review | Built into Dashboard | AI-guided weekly reflection wizard |
+## Key Features
+1. **Crisis Triage Mode (War Room)**: Extreme prioritization for the next 6 hours.
+2. **Proactive Push Notifications**: 8am Daily Briefings and 9pm Accountability Checks.
+3. **Auto-Schedule with Calendar Blocking**: Energy-aware scheduling that protects your deep-work hours.
+4. **Zero-Friction Quick Capture**: Paste raw text, emails, or syllabus snippets and let the AI parse the deadlines.
+5. **OKR Auto-Sync Engine**: Breaking down massive goals into daily micro-habits.
 
----
+## How to Run Locally
 
-## Tech Stack
-
-- **Frontend**: React 18 + TypeScript + Vite
-- **Routing**: React Router v6 (lazy-loaded routes)
-- **Animations**: Framer Motion + CSS keyframes
-- **Styling**: Vanilla CSS with design tokens (`vars.css`)
-- **Database**: Firebase Firestore (real-time sync)
-- **Auth**: Firebase Authentication (Google Sign-In)
-- **AI**: Google Gemini API (multi-key rotation with fallback)
-- **Push Notifications**: Firebase Cloud Messaging (FCM)
-- **Media**: Cloudinary (image uploads)
-- **Music**: Spotify Web API
-- **Deployment**: Vercel (with serverless API routes in `/api`)
-- **PWA**: Vite PWA plugin with auto-update service worker
-
----
-
-## Project Structure
-
-```
-src/
-├── App.tsx              # Router, providers, auth logic
-├── main.tsx             # Entry point
-├── index.css            # Global styles (imports all CSS modules)
-│
-├── styles/              # Design system
-│   ├── vars.css         # Design tokens (colors, radii, fonts, animations)
-│   ├── layout.css       # App shell (sidebar, nav, main-content)
-│   ├── animations.css   # Keyframe definitions
-│   ├── todo.css         # Kanban board styles
-│   ├── learning.css     # Learning module styles
-│   └── mobile.css       # Responsive overrides + iOS smoothness
-│
-├── components/          # Shared UI components
-│   ├── ui/              # Pure UI atoms
-│   │   ├── SkeletonCard.tsx
-│   │   ├── ConfirmDialog.tsx
-│   │   └── CustomTimeSelect.tsx
-│   ├── overlays/        # Full-screen overlay components
-│   │   ├── FocusModeOverlay.tsx
-│   │   ├── DailyBriefingOverlay.tsx
-│   │   └── OnboardingCarousel.tsx
-│   ├── Sidebar.tsx      # Nav (desktop sidebar + mobile bottom bar)
-│   ├── Login.tsx        # Auth screen
-│   ├── CommandPalette.tsx
-│   ├── ErrorBoundary.tsx
-│   ├── UpdatePrompt.tsx
-│   └── UpdateFlashcard.tsx
-│
-├── contexts/            # React context providers
-│   ├── GlobalDataContext.tsx   # All Firestore real-time listeners
-│   ├── PomodoroContext.tsx     # Pomodoro timer state
-│   └── SpotifyContext.tsx      # Spotify playback state
-│
-├── services/            # External integrations
-│   ├── firebase.ts      # Firebase app init + exports
-│   ├── gemini.ts        # Gemini AI — chat, JSON parsing, key rotation
-│   ├── fcm.ts           # FCM push notification registration
-│   ├── spotify.ts       # Spotify OAuth + player API
-│   ├── youtube.ts       # YouTube search API
-│   └── cloudinary.ts    # Image upload helper
-│
-├── hooks/               # Custom React hooks
-│   └── useSubjects.ts   # Academic subjects hook
-│
-├── utils/               # Pure utility functions
-│   ├── dateUtils.ts
-│   ├── notifications.ts
-│   └── sound.ts
-│
-├── types/               # TypeScript type definitions
-│   ├── index.ts         # Re-exports all types
-│   └── *.types.ts       # Per-feature type files
-│
-├── data/                # Static / seed data
-│   ├── gymPlan.ts
-│   ├── syllabusData.ts
-│   ├── dsaSyllabusData.ts
-│   ├── genAiSyllabusData.ts
-│   └── roadmaps.ts
-│
-└── features/            # Page modules (one folder = one route)
-    ├── _shared/         # Components used across multiple features
-    │   └── FloatingExtraWorks.tsx
-    ├── dashboard/       HomeDashboard + TimeboxTimeline
-    ├── tasks/           TodoListModule + GlobalQuickAdd + VoiceCapture
-    ├── habits/          HabitsModule
-    ├── calendar/        CalendarModule
-    ├── gym/             GymModule + ZenGymAI
-    ├── jobs/            JobTracker (Kanban)
-    ├── goals/           GoalsModule
-    ├── notes/           NotesModule
-    ├── learning/        LearningChecklistModule
-    ├── analytics/       AnalyticsModule
-    ├── academic/        AttendanceModule + AssignmentModule + GradeCalculator
-    ├── tools/           ToolsHubModule + InterviewPrepModule
-    ├── review/          WeeklyReviewModule + AIWeeklyReviewWizard
-    └── spotify/         SpotifyPlayer + SpotifyFloatingPlayer + Callback
-```
-
----
-
-## Getting Started
-
-```bash
-# Install dependencies
-npm install
-
-# Start dev server
-npm run dev
-
-# Build for production
-npm run build
-```
-
-Set up environment variables in `.env` (copy `.env` and fill in your keys):
-- `VITE_FIREBASE_*` — Firebase project config
-- `VITE_GEMINI_API_KEY_*` — Gemini AI keys (up to 5 for rotation)
-- `VITE_CLOUDINARY_*` — Cloudinary upload config
-- `VITE_SPOTIFY_CLIENT_ID` — Spotify app client ID
-
----
-
-## Design Philosophy
-
-- **Mobile-first smoothness** — feels like an iOS app: 60fps scrolling, no tap delay, GPU-composited nav
-- **Calm aesthetics** — dark aurora theme, no harsh whites or reds
-- **Resilient by default** — all AI calls retry with backoff; all Firestore reads have Array.isArray guards
-- **Instant navigation** — all modules lazy-loaded; route transitions run in sync (not wait mode)
+1. Clone the repository
+2. Run `npm install`
+3. Create a `.env.local` file at the root with your credentials:
+   ```env
+   VITE_FIREBASE_API_KEY=your_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_domain
+   VITE_FIREBASE_PROJECT_ID=your_id
+   VITE_GEMINI_API_KEY=your_gemini_key
+   ```
+4. Run `npm run dev`
+5. Open `http://localhost:5173`

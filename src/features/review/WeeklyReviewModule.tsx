@@ -3,7 +3,7 @@ import { CalendarCheck, ChevronLeft, ChevronRight, RefreshCw, Wifi, WifiOff } fr
 import { toast } from 'sonner';
 import {
   collection, query, where,
-  getDocs, addDoc, updateDoc, doc,
+  getDocs,
   onSnapshot,
 } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
@@ -184,8 +184,6 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export const WeeklyReviewModule = () => {
   const [weekOffset, setWeekOffset] = useState(0);
-  const [review, setReview] = useState<WeeklyReview | null>(null);
-  const [reviewId, setReviewId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -227,25 +225,10 @@ export const WeeklyReviewModule = () => {
       if (!userId) { setIsLoading(false); return; }
       setIsLoading(true);
       try {
-        const q = query(
-          collection(db, 'weekly_reviews'),
-          where('userId', '==', userId),
-          where('weekStart', '==', week.start)
-        );
-        const [snap, autoStats] = await Promise.all([
-          getDocs(q),
-          fetchWeekStats(userId, week.start, week.end),
-        ]);
+        const autoStats = await fetchWeekStats(userId, week.start, week.end);
 
         if (!isMounted.current) return;
 
-        if (!snap.empty) {
-          const data = snap.docs[0].data() as WeeklyReview;
-          setReview(data);
-          setReviewId(snap.docs[0].id);
-        } else {
-          setReview(null); setReviewId(null);
-        }
         setStats(autoStats);
         setLastSyncedAt(new Date());
       } catch (e) {

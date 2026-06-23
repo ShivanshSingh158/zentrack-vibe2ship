@@ -78,5 +78,51 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       },
       required: ['taskId']
     }
+  },
+  {
+    name: 'send_notification',
+    description: 'Send a push notification or toast message to the user instantly.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        title: { type: SchemaType.STRING, description: 'Notification title' },
+        message: { type: SchemaType.STRING, description: 'Notification body' },
+      },
+      required: ['title', 'message'],
+    },
+  },
+  {
+    name: 'auto_reschedule',
+    description: 'Automatically reschedules all non-critical or low-priority tasks from today to tomorrow to make room for an emergency.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        reason: { type: SchemaType.STRING, description: 'The reason for rescheduling, which will be logged to the user.' },
+      },
+      required: ['reason'],
+    },
+  },
+  {
+    name: 'block_calendar',
+    description: 'Blocks a chunk of time on the user\'s calendar today for deep work on a critical task.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        taskName: { type: SchemaType.STRING, description: 'Name of the critical task to block time for.' },
+        durationHours: { type: SchemaType.NUMBER, description: 'Number of hours to block (e.g., 2).' },
+      },
+      required: ['taskName', 'durationHours'],
+    },
+  },
+  {
+    name: 'delete_calendar_events',
+    description: 'Deletes all existing calendar events today to clear the user\'s schedule.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        reason: { type: SchemaType.STRING, description: 'Reason for clearing the schedule' },
+      },
+      required: ['reason'],
+    },
   }
 ];

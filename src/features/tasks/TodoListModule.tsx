@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Check, Trash2, Calendar as CalendarIcon, AlertCircle, RefreshCw, X, ChevronDown, ChevronRight, Timer, Maximize, Minimize, GripVertical, Search, ListChecks, Play, Edit2 } from 'lucide-react';
+import { Plus, Check, Trash2, Calendar as CalendarIcon, X, ChevronDown, ChevronRight, Timer, Maximize, GripVertical, Search, ListChecks, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { collection, query, where, getDocs, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import type { TodoItem, TodoSubtask } from '../../types/index';
 import { playPopSound } from '../../utils/sound';
@@ -12,11 +12,36 @@ import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { getLocalDateString, formatDisplayDate, formatHoursDisplay } from '../../utils/dateUtils';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { EditTodoModal } from './EditTodoModal';
+import { getUrgencyLevel, getCountdownText, useLiveTick } from '../../hooks/useDeadlineWatcher';
+import { useEscalation } from '../../hooks/useEscalation';
+import { RecoveryPlannerModal } from '../crisis/RecoveryPlannerModal';
+import { ExtensionDraftModal } from '../crisis/ExtensionDraftModal';
 
-const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEdit, newSubtaskText, toggleSelection, toggleTodoComplete, setExpandedTaskId, handleDeleteTask, toggleSubtask, handleDeleteSubtask, addSubtask, setNewSubtaskText, startTimer, onEdit }: any) => {
+const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEdit, newSubtaskText, toggleSelection, toggleTodoComplete, setExpandedTaskId, handleDeleteTask, toggleSubtask, handleDeleteSubtask, addSubtask, setNewSubtaskText, startTimer, onEdit, isBlocked }: any) => {
   const subtasks = todo.subtasks || [];
   const stDone = subtasks.filter((s: any) => s.isCompleted).length;
-  const isOverdue = todo.date && todo.date < getLocalDateString(new Date()) && !todo.isCompleted;
+  
+  useLiveTick(); // forces re-render every minute
+  const urgency = (todo.date && !todo.isCompleted) ? getUrgencyLevel(todo.date) : 'normal';
+  const escalation = useEscalation(todo.isCompleted ? null : todo.date);
+
+  // --- Styling based on Urgency ---
+  let containerStyle: React.CSSProperties = {
+    flexDirection: 'column',
+    gap: '0.5rem',
+    padding: '0.7rem 0.9rem',
+    position: 'relative',
+    overflow: 'hidden',
+    borderColor: escalation.border,
+    background: escalation.background,
+    animation: escalation.animation
+  };
+  
+  if (isSelected) {
+    containerStyle = { ...containerStyle, background: 'rgba(99,102,241,0.1)', borderColor: 'var(--accent-primary)' };
+  }
+
+
 
   return (
     <Draggable key={todo.id!} draggableId={todo.id!} index={index} isDragDisabled={isBulkEdit}>
@@ -32,14 +57,13 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
         >
           <div
             className={`todo-item priority-${todo.priority} ${isSelected ? 'selected-item' : ''}`}
-            style={{
-              flexDirection: 'column',
-              gap: '0.5rem',
-              padding: '0.7rem 0.9rem',
-              ...(isSelected ? { background: 'rgba(99,102,241,0.1)', borderColor: 'var(--accent-primary)' } : {}),
-              ...(isOverdue ? { borderLeft: '3px solid #ef4444', background: 'rgba(239,68,68,0.03)' } : {}),
-            }}
+            style={containerStyle}
           >
+            {/* Escalation Overlay Suggestion */}
+            {(urgency === 'critical' || urgency === 'overdue') && (
+               <div style={{ position: 'absolute', top: 0, left: 0, width: '3px', height: '100%', background: escalation.accent, boxShadow: `0 0 10px ${escalation.accent}` }} />
+            )}
+            
             {/* ── ROW 1: checkbox + single-line title ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', width: '100%', minWidth: 0 }}>
               {/* Drag handle */}
@@ -61,10 +85,18 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
               ) : (
                 <button
                   className="todo-checkbox"
-                  onClick={() => toggleTodoComplete(todo)}
+                  onClick={() => {
+                    if (isBlocked) {
+                      toast.error("This task is blocked by other tasks! Complete them first.");
+                      return;
+                    }
+                    toggleTodoComplete(todo);
+                  }}
                   aria-label="Mark complete"
-                  style={{ flexShrink: 0 }}
-                />
+                  style={{ flexShrink: 0, opacity: isBlocked ? 0.5 : 1, cursor: isBlocked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {isBlocked && <span style={{fontSize: '10px'}}>🔒</span>}
+                </button>
               )}
 
               {/* Title — ONE line, truncates with ellipsis */}
@@ -103,9 +135,29 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
                     {todo.subject}
                   </span>
                 )}
-                {isOverdue && (
+                {urgency === 'overdue' && (
                   <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', background: 'rgba(239,68,68,0.12)', color: '#f87171', fontWeight: 700, flexShrink: 0 }}>
-                    ⚠ Overdue
+                    🚨 OVERDUE
+                  </span>
+                )}
+                {(urgency === 'urgent' || urgency === 'critical') && (
+                  <span style={{ fontSize: '0.65rem', color: urgency === 'critical' ? '#ef4444' : '#f97316', fontWeight: 700, flexShrink: 0 }}>
+                    ⏱ {getCountdownText(todo.date)}
+                  </span>
+                )}
+                {todo.commitmentTo && (
+                  <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', border: '1px solid rgba(236,72,153,0.3)', color: '#ec4899', display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}>
+                    🤝 Promised to: {todo.commitmentTo}
+                  </span>
+                )}
+                {isBlocked && (
+                  <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', background: 'rgba(107,114,128,0.2)', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}>
+                    🔒 Blocked
+                  </span>
+                )}
+                {todo.energyRequirement && (
+                  <span style={{ fontSize: '0.65rem', color: todo.energyRequirement === 'high' ? '#ef4444' : todo.energyRequirement === 'medium' ? '#f59e0b' : '#3b82f6', flexShrink: 0 }}>
+                    ⚡ {todo.energyRequirement.toUpperCase()}
                   </span>
                 )}
                 {todo.isRecurring && (
@@ -159,6 +211,20 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
             )}
 
           </div>
+
+          {/* Extreme Urgency Quick Actions Overlay */}
+          {(urgency === 'critical' || urgency === 'overdue') && !isBulkEdit && !isExpanded && (
+            <div style={{ padding: '0.5rem 0.9rem', background: 'rgba(239,68,68,0.05)', borderTop: `1px solid ${escalation.border}`, display: 'flex', gap: '0.5rem' }}>
+              <button className="btn-primary" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('simulate-recovery-plan', { detail: todo })); }} style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', flex: 1, background: escalation.accent, color: '#fff' }}>
+                Create Recovery Plan
+              </button>
+              {urgency === 'overdue' && (
+                <button className="btn-secondary" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('simulate-extension-request', { detail: todo })); }} style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem', flex: 1 }}>
+                  Draft Extension Email
+                </button>
+              )}
+            </div>
+          )}
 
 
           {isExpanded && !isBulkEdit && (
@@ -294,6 +360,43 @@ export const TodoListModule = () => {
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [bulkRescheduleDate, setBulkRescheduleDate] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; type: 'task' | 'subtask'; id: string; parentId?: string }>({ isOpen: false, type: 'task', id: '' });
+
+  const [recoveryTask, setRecoveryTask] = useState<TodoItem | null>(null);
+  const [extensionTask, setExtensionTask] = useState<TodoItem | null>(null);
+
+  useEffect(() => {
+    const handleRecovery = (e: any) => setRecoveryTask(e.detail);
+    const handleExtension = (e: any) => setExtensionTask(e.detail);
+    window.addEventListener('simulate-recovery-plan', handleRecovery);
+    window.addEventListener('simulate-extension-request', handleExtension);
+    
+    const handleGCalEvents = (e: any) => {
+      const addedGcal = e.detail || [];
+      const todayStr = new Date().toLocaleDateString('en-CA');
+      
+      for (const gcalEvent of addedGcal) {
+         if (!gcalEvent.start?.dateTime) continue;
+         const d = new Date(gcalEvent.start.dateTime);
+         const evDateStr = d.toLocaleDateString('en-CA');
+         if (evDateStr !== todayStr) continue;
+
+         const hourStr = d.getHours().toString().padStart(2, '0') + ':00';
+         // Check if any todo has this exact timeSlot today
+         const conflictTask = todos.find(t => !t.isCompleted && (t.date === todayStr || !t.date) && t.timeSlot === hourStr);
+         if (conflictTask) {
+             window.dispatchEvent(new CustomEvent('guardian-calendar-conflict', { detail: { task: conflictTask, gcalEvent } }));
+             break; // only handle one conflict at a time for now
+         }
+      }
+    };
+    window.addEventListener('gcal-events-added', handleGCalEvents);
+
+    return () => {
+      window.removeEventListener('simulate-recovery-plan', handleRecovery);
+      window.removeEventListener('simulate-extension-request', handleExtension);
+      window.removeEventListener('gcal-events-added', handleGCalEvents);
+    };
+  }, [todos]);
 
   const { startTimer, state: pomodoroState, pauseTimer, resumeTimer, resetTimer, dismissTimer, formatTime, toggleFocusMode } = usePomodoroContext();
   const user = auth.currentUser;
@@ -598,6 +701,22 @@ export const TodoListModule = () => {
 
   const sortedTodos = [...filteredTodos].sort((a, b) => {
     if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+    
+    // Sort by Urgency x Priority
+    const getUrgScore = (date: string) => {
+      const u = getUrgencyLevel(date);
+      if (u === 'overdue') return 5;
+      if (u === 'critical') return 4;
+      if (u === 'urgent') return 3;
+      if (u === 'upcoming') return 2;
+      return 1;
+    };
+    const getPriScore = (p: string) => p === 'high' ? 3 : p === 'medium' ? 2 : 1;
+    
+    const scoreA = getUrgScore(a.date) * getPriScore(a.priority);
+    const scoreB = getUrgScore(b.date) * getPriScore(b.priority);
+    
+    if (scoreA !== scoreB) return scoreB - scoreA; // Descending score
     return (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
   });
 
@@ -892,6 +1011,7 @@ export const TodoListModule = () => {
                 {(provided) => (
                   <div {...provided.droppableProps} ref={provided.innerRef} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {incompleteTodos.map((todo, index) => {
+                      const isTaskBlocked = todo.blockedBy?.some((id: string) => todos.find((t: any) => t.id === id && !t.isCompleted));
                       return (
                         <TodoListItem 
                           key={todo.id!}
@@ -900,6 +1020,7 @@ export const TodoListModule = () => {
                           isExpanded={expandedTaskId === todo.id}
                           isSelected={selectedTaskIds.has(todo.id!)}
                           isBulkEdit={isBulkEdit}
+                          isBlocked={isTaskBlocked}
                           newSubtaskText={newSubtaskTexts[todo.id!] || ''}
                           toggleSelection={toggleSelection}
                           toggleTodoComplete={toggleTodoComplete}
@@ -1087,6 +1208,14 @@ export const TodoListModule = () => {
         onClose={() => setEditingTask(null)} 
         todo={editingTask} 
       />
+      <AnimatePresence>
+        {recoveryTask && (
+          <RecoveryPlannerModal task={recoveryTask} onClose={() => setRecoveryTask(null)} />
+        )}
+        {extensionTask && (
+          <ExtensionDraftModal task={extensionTask} onClose={() => setExtensionTask(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

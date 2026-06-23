@@ -1,6 +1,6 @@
 import { addDoc, collection, updateDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
-import { addEventToGoogleCalendar } from '../services/googleCalendar';
+import { addEventToGoogleCalendar, deleteGoogleCalendarEvent } from '../services/googleCalendar';
 import { sendPushNotification } from '../services/fcm';
 import { getLocalDateString } from '../utils/dateUtils';
 
@@ -87,7 +87,7 @@ export const executeTool = async (
             title: 'Zen AI Reminder 🧠',
             body: args.message
           });
-        } catch (e) {
+      } catch {
           console.warn("Could not send push notification:", e);
         }
       }, (args.delayMinutes || 5) * 60 * 1000);
@@ -97,6 +97,71 @@ export const executeTool = async (
     case 'complete_task': {
       await updateDoc(doc(db, 'todos', args.taskId), { isCompleted: true });
       return { success: true, data: {}, message: `Task marked complete` };
+    }
+
+    case 'send_notification': {
+      try {
+        await sendPushNotification({
+          userIds: [user.uid],
+          title: args.title,
+          body: args.message
+        });
+        return { success: true, data: {}, message: `Notification sent: "${args.title}"` };
+      } catch {
+        return { success: false, data: null, message: `Failed to send notification` };
+      }
+    }
+
+    case 'auto_reschedule': {
+      let rescheduledCount = 0;
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = getLocalDateString(tomorrow);
+      
+      for (const t of userTodos) {
+        if (!t.isCompleted && t.date === today && t.priority !== 'high') {
+          await updateDoc(doc(db, 'todos', t.id), { date: tomorrowStr });
+          rescheduledCount++;
+        }
+      }
+      return { success: true, data: { rescheduledCount, reason: args.reason }, message: `Rescheduled ${rescheduledCount} low-priority tasks to tomorrow` };
+    }
+
+    case 'block_calendar': {
+      const startDate = new Date();
+      // start 15 mins from now
+      startDate.setMinutes(startDate.getMinutes() + 15);
+      const endDate = new Date(startDate.getTime() + (args.durationHours || 2) * 3600000);
+      try {
+        await addEventToGoogleCalendar({
+          title: `🚨 DEEP WORK: ${args.taskName}`,
+          date: startDate.toISOString().split('T')[0],
+          startDateTime: startDate.toISOString(),
+          endDateTime: endDate.toISOString(),
+          description: 'Auto-blocked by Zen AI Emergency Protocol'
+        });
+        return { success: true, data: {}, message: `Blocked ${args.durationHours}h for "${args.taskName}" starting at ${startDate.toLocaleTimeString()}` };
+      } catch (err: any) {
+        return { success: false, data: null, message: `Calendar API Error: ${err.message}` };
+      }
+    }
+
+    case 'delete_calendar_events': {
+      let deletedCount = 0;
+      try {
+        for (const ev of calendarEvents) {
+          if (ev.id && ev.start && ev.start.dateTime) {
+            const evDate = new Date(ev.start.dateTime).toISOString().split('T')[0];
+            if (evDate === today) {
+              await deleteGoogleCalendarEvent(ev.id);
+              deletedCount++;
+            }
+          }
+        }
+        return { success: true, data: { deletedCount }, message: `Cleared ${deletedCount} events from today's schedule.` };
+      } catch (err: any) {
+        return { success: false, data: null, message: `Calendar API Error: ${err.message}` };
+      }
     }
 
     default:

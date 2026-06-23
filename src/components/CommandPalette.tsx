@@ -8,7 +8,7 @@ import { getLocalDateString, formatDisplayDate, formatHoursDisplay } from '../ut
 import { toast } from 'sonner';
 
 interface SearchResult {
-  type: 'todo' | 'learning' | 'log' | 'action' | 'note';
+  type: 'todo' | 'learning' | 'log' | 'action' | 'note' | 'calendar';
   title: string;
   subtitle: string;
   route?: string;
@@ -27,10 +27,10 @@ export const CommandPalette = () => {
   const navigate = useNavigate();
   const { startTimer } = usePomodoroContext();
 
-  // Global Cmd+K / Ctrl+K handler
+  // Global Ctrl+Shift+Z handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         setIsOpen(prev => !prev);
       }
@@ -208,6 +208,18 @@ export const CommandPalette = () => {
         });
       });
 
+      // Load calendar events
+      const calendarSnap = await getDocs(query(collection(db, 'calendar_events'), where('userId', '==', user.uid)));
+      calendarSnap.forEach(doc => {
+        const d = doc.data();
+        items.push({
+          type: 'calendar',
+          title: d.title || 'Event',
+          subtitle: `Event • ${d.start} - ${d.end}`,
+          route: '/calendar'
+        });
+      });
+
     } catch (err) {
       console.error('Command palette load error:', err);
     }
@@ -222,6 +234,7 @@ export const CommandPalette = () => {
       case 'todo': return <ListTodo size={16} />;
       case 'learning': return <BookOpen size={16} />;
       case 'note': return <BookOpen size={16} />;
+      case 'calendar': return <Activity size={16} />;
       case 'log': return <Activity size={16} />;
       case 'action': return <Plus size={16} />;
       default: return <Briefcase size={16} />;
@@ -233,6 +246,7 @@ export const CommandPalette = () => {
       case 'todo': return '#7c3aed';
       case 'learning': return '#a855f7';
       case 'note': return '#a855f7';
+      case 'calendar': return '#3b82f6';
       case 'log': return '#10b981';
       case 'action': return '#ec4899';
       default: return '#f59e0b';
@@ -312,6 +326,27 @@ export const CommandPalette = () => {
                 <span><code>/task [name]</code> - Create a task instantly</span>
                 <span><code>/water</code> - Log 0.5L water</span>
                 <span><code>/focus</code> - Start 25m Pomodoro</span>
+              </div>
+              
+              <div style={{ marginTop: '2rem', display: 'flex', gap: '0.75rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+                <button 
+                  onClick={() => { setIsOpen(false); window.dispatchEvent(new CustomEvent('guardian-triage-alert')); }} 
+                  style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '0.5rem 1rem', borderRadius: '100px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}
+                >
+                  <Activity size={16} /> Crisis Mode
+                </button>
+                <button 
+                  onClick={() => { setIsOpen(false); navigate('/calendar'); }} 
+                  style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', padding: '0.5rem 1rem', borderRadius: '100px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}
+                >
+                  🗓 Auto-Schedule
+                </button>
+                <button 
+                  onClick={() => { setIsOpen(false); const btn = document.querySelector('button[title="Zen Agent"]') as HTMLButtonElement || document.querySelector('.zen-agent-btn') as HTMLButtonElement; if(btn) btn.click(); }} 
+                  style={{ background: 'rgba(168,85,247,0.15)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.3)', padding: '0.5rem 1rem', borderRadius: '100px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}
+                >
+                  🤖 Zen Agent
+                </button>
               </div>
             </div>
           ) : results.length === 0 ? (

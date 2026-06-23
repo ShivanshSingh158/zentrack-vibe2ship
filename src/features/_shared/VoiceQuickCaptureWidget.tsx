@@ -7,6 +7,7 @@ import { collection, addDoc, getDocs, query, where, doc, updateDoc, setDoc, getD
 import { db, auth } from '../../services/firebase';
 import { parseUniversalVoiceCommand } from '../../services/gemini';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useGlobalData } from '../../contexts/GlobalDataContext';
 
 export const VoiceQuickCaptureWidget = () => {
   const [isListening, setIsListening] = useState(false);
@@ -19,6 +20,7 @@ export const VoiceQuickCaptureWidget = () => {
   
   const location = useLocation();
   const navigate = useNavigate();
+  const { todos, calendarEvents } = useGlobalData();
 
   // Determine context-aware theme colors
   let baseColor = '#c084fc'; // Default light purple
@@ -102,8 +104,24 @@ export const VoiceQuickCaptureWidget = () => {
     const processToastId = toast.loading('Understanding voice command...');
 
     try {
-      const parsed = await parseUniversalVoiceCommand(text);
+      const contextString = `Tasks: ${JSON.stringify(todos.slice(0, 10))}\nEvents: ${JSON.stringify(calendarEvents)}`;
+      const parsed = await parseUniversalVoiceCommand(text, contextString);
       const { module, action, payload } = parsed;
+
+      if (module === 'chat' && action === 'speak') {
+        toast.dismiss(processToastId);
+        toast.success(payload.response);
+        
+        // Use Web Speech API for TTS
+        const utterance = new SpeechSynthesisUtterance(payload.response);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+        
+        setIsProcessing(false);
+        setTranscription('');
+        return;
+      }
 
       if (module === 'todo') {
         if (action === 'add') {
@@ -497,7 +515,14 @@ export const VoiceQuickCaptureWidget = () => {
       setTranscription('');
     } catch (err: any) {
       console.error('Voice parsing error:', err);
-      toast.error('Failed: ' + (err.message || 'Unknown error'), { id: processToastId });
+      const msg = (err.message || '').toLowerCase();
+      let friendlyError = err.message || 'Unknown error occurred.';
+      if (msg.includes('401') || msg.includes('authentication')) {
+        friendlyError = 'Invalid Gemini API key. Please update it in your .env file.';
+      } else if (msg.includes('429') || msg.includes('quota')) {
+        friendlyError = 'Gemini API rate limit reached. Please try again later.';
+      }
+      toast.error('Voice failed: ' + friendlyError, { id: processToastId });
     } finally {
       setIsProcessing(false);
     }

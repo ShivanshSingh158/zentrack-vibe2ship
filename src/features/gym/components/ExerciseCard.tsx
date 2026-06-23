@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, memo, useEffect } from 'react';
-import { Check, ChevronDown, ChevronUp, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays, PlaySquare, X } from 'lucide-react';
+import { Check, ChevronDown, Plus, Trash2, Edit3, History, MinusCircle, CalendarDays, PlaySquare, X } from 'lucide-react';
 import SetRow from './SetRow';
 import type { GymExerciseLog, GymSet, PreviousSessionExercise, GymPersonalRecord } from '../../../types/gym.types';
 import { GYM_PLAN } from '../../../data/gymPlan';

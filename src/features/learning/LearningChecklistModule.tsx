@@ -13,10 +13,9 @@ import { db, auth } from '../../services/firebase';
 import type { LearningTopic, LearningSubTask } from '../../types/index';
 import { playPopSound } from '../../utils/sound';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { useYouTube } from '../../contexts/YouTubeContext';
 import { CurriculumBuilderModal } from './CurriculumBuilderModal';
-
 import { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
+
 import { PREDEFINED_ROADMAPS } from '../../data/roadmaps';
 
 // ── Custom Drag-to-Reorder (Portal-based, zero misalignment) ─────────────────
@@ -281,7 +280,7 @@ interface MergeVideo { id: string; title: string; url: string; }
 
 // ── VideoPlayerModal ──────────────────────────────────────────────────────────
 
-const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize, onMarkWatched, onNavigate, onStudyTime, onSaveVideoNote, topicName, onMarkDoubt, completedTopicNames, totalProgress }: {
+const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize, onMarkWatched, onNavigate, onSaveVideoNote, topicName, completedTopicNames, totalProgress }: {
   playing: any;
   total: number;
   idx: number;
@@ -289,14 +288,11 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   onMinimize: () => void;
   onMarkWatched: (topicId: string, subtaskId: string) => void;
   onNavigate: (delta: number) => void;
-  onStudyTime: (ms: number) => void;
   onSaveVideoNote: (topicId: string, subtaskId: string, note: string) => void;
   topicName: string;
-  onMarkDoubt?: (videoId: string) => void;
   completedTopicNames?: string[];
   totalProgress?: { completed: number; total: number };
 }) => {
-  const { setPortalNode, setPipMode, getCurrentTime, playerInstance } = useYouTube();
   const hasPrev = idx > 0;
   const hasNext = idx < total - 1;
   const progressPct = total > 0 ? ((playing.watchedCount) / total) * 100 : 0;
@@ -309,7 +305,6 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   const [chatAutoTrigger, setChatAutoTrigger] = useState<string | null>(null);
   const [focusMode, setFocusMode] = useState(false);
   const [noteText, setNoteText] = useState('');
-  const studyStartRef = useRef<number>(Date.now());
 
   const handleTriggerQuiz = useCallback(() => {
     onMarkWatched(playing.topicId, playing.subtaskId);
@@ -337,39 +332,9 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   const handleSpeedChange = (s: number) => {
     setSpeed(s);
     try { localStorage.setItem(SPEED_KEY, String(s)); } catch {}
-    if (playerInstance && typeof playerInstance.setPlaybackRate === 'function') {
-      playerInstance.setPlaybackRate(s);
-    }
   };
 
-  // On unmount, if we are still playing, default to PiP mode
-  useEffect(() => {
-    return () => {
-      setPipMode(true);
-      setPortalNode(null);
-    };
-  }, [setPipMode, setPortalNode]);
-
   // ── Study time tracker ────────────────────────────────────────────────────
-  useEffect(() => {
-    studyStartRef.current = Date.now();
-    const onVisibilityChange = () => {
-      if (document.hidden) {
-        const elapsed = Date.now() - studyStartRef.current;
-        if (elapsed > 5000) onStudyTime(elapsed);
-        studyStartRef.current = Date.now();
-      } else {
-        studyStartRef.current = Date.now();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      const elapsed = Date.now() - studyStartRef.current;
-      if (elapsed > 5000) onStudyTime(elapsed);
-    };
-  }, [onStudyTime]);
-
   useEffect(() => {
     const onFs = () => {
       if (document.fullscreenElement) screen.orientation?.lock?.('landscape').catch(() => {});
@@ -469,11 +434,17 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
         {/* Player + optional notes panel side by side on wide screens */}
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flex: focusMode ? 1 : 'none' }}>
           <div 
-            ref={setPortalNode} 
             style={{ 
               flex: 1, position: 'relative', aspectRatio: focusMode ? 'auto' : '16/9', height: focusMode ? '100%' : 'auto', 
               background: '#000', borderRadius: focusMode ? '0' : '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0, transition: 'all 0.3s' 
             }}>
+            <iframe
+              src={`https://www.youtube.com/embed/${playing.videoId}?autoplay=1&rel=0&modestbranding=1`}
+              title={playing.title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              style={{ width: '100%', height: '100%', border: 0 }}
+            />
           </div>
           {/* Gemini AI chat sidebar */}
           {showChat && (
@@ -484,7 +455,6 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
               onClose={() => setShowChat(false)}
               isFullscreen={focusMode}
               progressPct={Math.round(progressPct)}
-              onMarkDoubt={onMarkDoubt}
               completedTopics={completedTopicNames}
               totalProgress={totalProgress}
               autoTriggerMessage={chatAutoTrigger}
@@ -511,9 +481,8 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
               />
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button onClick={async () => {
-                  const time = await getCurrentTime();
-                  const min = Math.floor(time / 60);
-                  const sec = Math.floor(time % 60).toString().padStart(2, '0');
+                  const min = 0;
+                  const sec = "00";
                   setNoteText(prev => prev + (prev && !prev.endsWith('\n') ? '\n' : '') + `[${min}:${sec}] `);
                 }} title="Insert current timestamp" style={{ padding: '0.45rem 0.6rem', borderRadius: '7px', border: '1px solid rgba(99,102,241,0.5)', background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                   ⏱ Time
@@ -1124,7 +1093,8 @@ export const LearningChecklistModule = () => {
   const [isImportingYt, setIsImportingYt] = useState(false);
   const [showRoadmapHub, setShowRoadmapHub] = useState(false);
   const [importingRoadmapId, setImportingRoadmapId] = useState<string | null>(null);
-  const { playing, playVideo, closePlayer, queue, setPipMode, isPipMode } = useYouTube();
+  const [playing, setPlaying] = useState<any>(null);
+  const [isPipMode, setIsPipMode] = useState(false);
   const [continueWatching, setContinueWatching] = useState<{ topicId: string; subtaskId: string; videoId: string; title: string; topicTitle: string; timestamp?: number } | null>(() => {
     try { return JSON.parse(localStorage.getItem(CW_KEY) || 'null'); } catch { return null; }
   });
@@ -1139,7 +1109,6 @@ export const LearningChecklistModule = () => {
   const [bulkDeleteState, setBulkDeleteState] = useState<Set<string>>(new Set());
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-  // const { startTimer } = usePomodoroContext();
   const user = auth.currentUser;
 
   useEffect(() => { sessionStorage.setItem('learningSearch', searchQuery); }, [searchQuery]);
@@ -1175,81 +1144,78 @@ export const LearningChecklistModule = () => {
   const handlePlayVideo = useCallback((videoId: string, subtaskId: string, topicId: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    const allVideos: any[] = [];
-    topic.subTasks.forEach(st => {
-      let vid: string | null = null;
-      if (st.url) vid = extractYoutubeId(st.url);
-      if (!vid && st.resources) for (const r of st.resources) { const id = extractYoutubeId(r.url); if (id) { vid = id; break; } }
-      if (vid) allVideos.push({ videoId: vid, subtaskId: st.id, title: st.text, topicId: topic.id });
-    });
-    const currentIndex = Math.max(0, allVideos.findIndex(v => v.subtaskId === subtaskId));
-    const video = allVideos[currentIndex];
-    const watchedCount = topic.subTasks.filter(st => st.isCompleted).length;
-    
-    playVideo(
-      { videoId, subtaskId, topicId, title: video?.title || '', watchedCount, totalCount: allVideos.length, indexInPlaylist: currentIndex },
-      allVideos
-    );
-    
-    // Save CW with current timestamp
-    const savedTs = (() => { try { return Number(localStorage.getItem(TS_KEY(videoId)) || '0'); } catch { return 0; } })();
-    const cw = { topicId, subtaskId, videoId, title: video?.title || '', topicTitle: topic.title, timestamp: savedTs || undefined };
-    setContinueWatching(cw);
-    try { localStorage.setItem(CW_KEY, JSON.stringify(cw)); } catch {}
-  }, [topics, playVideo]);
 
-  // Resume playlist — prefer last-watched position, fall back to first unwatched
+    const videos = topic.subTasks
+      .map(st => {
+        const id = st.url ? extractYoutubeId(st.url) : st.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
+        return id ? { videoId: id, subtaskId: st.id, topicId, title: st.text } : null;
+      })
+      .filter(Boolean) as Array<{ videoId: string; subtaskId: string; topicId: string; title: string }>;
+
+    const indexInPlaylist = Math.max(0, videos.findIndex(v => v.subtaskId === subtaskId));
+    const watchedCount = topic.subTasks.filter(st => st.isCompleted).length;
+    const current = videos[indexInPlaylist] || { videoId, subtaskId, topicId, title: 'Lecture' };
+    const nextPlaying = {
+      ...current,
+      watchedCount,
+      totalCount: videos.length || 1,
+      indexInPlaylist
+    };
+
+    setPlaying(nextPlaying);
+    setIsPipMode(false);
+
+    const bookmark = { topicId, subtaskId, videoId, title: current.title, topicTitle: topic.title };
+    setContinueWatching(bookmark);
+    try { localStorage.setItem(CW_KEY, JSON.stringify(bookmark)); } catch {}
+  }, [topics]);
+
   const handleResumePlaylist = useCallback((topicId: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
 
-    // Try to resume from continueWatching bookmark for this topic
-    const cw = continueWatching;
-    if (cw && cw.topicId === topicId) {
-      const cwTask = topic.subTasks.find(s => s.id === cw.subtaskId);
-      if (cwTask && !cwTask.isCompleted) {
-        handlePlayVideo(cw.videoId, cw.subtaskId, topicId);
-        return;
-      }
-    }
-
-    // Fall back to first unwatched video
-    const firstUnwatched = topic.subTasks.find(st => {
+    const firstVideo = topic.subTasks.find(st => {
       if (st.isCompleted) return false;
       if (st.url && extractYoutubeId(st.url)) return true;
-      if (st.resources) return st.resources.some(r => extractYoutubeId(r.url));
-      return false;
+      return st.resources?.some(r => extractYoutubeId(r.url));
     });
-    if (!firstUnwatched) { toast.info('All videos watched! 🎉'); return; }
-    const vid = firstUnwatched.url ? extractYoutubeId(firstUnwatched.url) :
-      firstUnwatched.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
-    if (vid) handlePlayVideo(vid, firstUnwatched.id, topicId);
-  }, [topics, continueWatching, handlePlayVideo]);
+
+    if (!firstVideo) {
+      toast.info('No unwatched videos in this topic.');
+      return;
+    }
+
+    const videoId = firstVideo.url ? extractYoutubeId(firstVideo.url) : firstVideo.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
+    if (videoId) handlePlayVideo(videoId, firstVideo.id, topicId);
+  }, [handlePlayVideo, topics]);
+
+  const closePlayer = useCallback(() => {
+    setPlaying(null);
+    setIsPipMode(false);
+  }, []);
 
   const handlePlayerNavigate = useCallback((delta: number) => {
-    if (!playing || !queue.length) return;
-    const nextIdx = playing.indexInPlaylist + delta;
-    if (nextIdx < 0 || nextIdx >= queue.length) return;
-    
-    const v = queue[nextIdx];
-    const topic = topics.find(t => t.id === v.topicId);
-    const watchedCount = topic ? topic.subTasks.filter(st => st.isCompleted).length : playing.watchedCount;
-    
-    // Update CW bookmark
-    const cwUpdate = { topicId: v.topicId, subtaskId: v.subtaskId, videoId: v.videoId, title: v.title, topicTitle: topic?.title || '' };
-    setContinueWatching(cwUpdate);
-    try { localStorage.setItem(CW_KEY, JSON.stringify(cwUpdate)); } catch {}
-    
-    playVideo({
-      ...playing,
-      videoId: v.videoId,
-      subtaskId: v.subtaskId,
-      topicId: v.topicId,
-      title: v.title,
-      watchedCount,
-      indexInPlaylist: nextIdx
+    if (!playing) return;
+    const topic = topics.find(t => t.id === playing.topicId);
+    if (!topic) return;
+
+    const videos = topic.subTasks
+      .map(st => {
+        const id = st.url ? extractYoutubeId(st.url) : st.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
+        return id ? { videoId: id, subtaskId: st.id, topicId: topic.id!, title: st.text } : null;
+      })
+      .filter(Boolean) as Array<{ videoId: string; subtaskId: string; topicId: string; title: string }>;
+
+    const nextIndex = playing.indexInPlaylist + delta;
+    if (nextIndex < 0 || nextIndex >= videos.length) return;
+    const next = videos[nextIndex];
+    setPlaying({
+      ...next,
+      watchedCount: topic.subTasks.filter(st => st.isCompleted).length,
+      totalCount: videos.length,
+      indexInPlaylist: nextIndex
     });
-  }, [playing, queue, topics, playVideo]);
+  }, [playing, topics]);
 
   const handleMarkWatched = useCallback(async (topicId: string, subtaskId: string) => {
     const topic = topics.find(t => t.id === topicId);
@@ -1264,27 +1230,7 @@ export const LearningChecklistModule = () => {
   }, [topics]);
 
   // ── Mark doubt (flag lecture for review) ────────────────────────────────
-  const handleMarkDoubt = useCallback(async (_videoId: string) => {
-    if (!playing) return;
-    const { topicId, subtaskId } = playing;
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const updated = topic.subTasks.map(s => s.id === subtaskId ? { ...s, needsReview: true } : s);
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); } catch {}
-  }, [playing, topics]);
-
   // ── Study time tracker: called by VideoPlayerModal on close ─────────────
-  const handleStudyTime = useCallback(async (ms: number) => {
-    if (!playing || ms < 5000) return;
-    const topicId = playing.topicId;
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const newMs = (topic.timeSpentMs || 0) + ms;
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, timeSpentMs: newMs } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { timeSpentMs: newMs }); } catch {}
-  }, [playing, topics]);
-
   // ── Save video note from player modal ────────────────────────────────────
   const handleSaveVideoNote = useCallback(async (topicId: string, subtaskId: string, note: string) => {
     const topic = topics.find(t => t.id === topicId);
@@ -1993,13 +1939,11 @@ export const LearningChecklistModule = () => {
             total={playing.totalCount}
             idx={playing.indexInPlaylist}
             onClose={closePlayer}
-            onMinimize={() => setPipMode(true)}
+            onMinimize={() => setIsPipMode(true)}
             onMarkWatched={handleMarkWatched}
             onNavigate={handlePlayerNavigate}
-            onStudyTime={handleStudyTime}
             onSaveVideoNote={handleSaveVideoNote}
             topicName={topics.find(t => t.id === playing.topicId)?.title || ''}
-            onMarkDoubt={handleMarkDoubt}
             completedTopicNames={completedTopicNames}
             totalProgress={{ completed: totalCompleted, total: totalVideos }}
           />

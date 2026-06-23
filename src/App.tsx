@@ -17,12 +17,8 @@ import { UpdateFlashcard } from './components/UpdateFlashcard';
 import { OnboardingCarousel } from './components/overlays/OnboardingCarousel';
 import { DailyBriefingOverlay } from './components/overlays/DailyBriefingOverlay';
 import { PomodoroProvider } from './contexts/PomodoroContext';
-import { SpotifyProvider } from './contexts/SpotifyContext';
-import { YouTubeProvider } from './contexts/YouTubeContext';
 import { GlobalDataProvider } from './contexts/GlobalDataContext';
 import { FocusModeOverlay } from './components/overlays/FocusModeOverlay';
-import { SpotifyFloatingPlayer } from './features/spotify/SpotifyFloatingPlayer';
-import { FloatingYouTubePlayer } from './features/learning/FloatingYouTubePlayer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FloatingExtraWorks } from './features/_shared/FloatingExtraWorks';
 import { SkeletonCard } from './components/ui/SkeletonCard';
@@ -32,6 +28,8 @@ import { useGlobalData } from './contexts/GlobalDataContext';
 import { VoiceQuickCaptureWidget } from './features/_shared/VoiceQuickCaptureWidget';
 import { ZenAgentPanel } from './features/agent/ZenAgentPanel';
 import { Bot } from 'lucide-react';
+import { AgentTerminal } from './components/AgentTerminal';
+import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
 
 import { useContextReminders } from './hooks/useContextReminders';
 
@@ -44,6 +42,11 @@ const ClassNotificationRunner = () => {
 
 const ContextRemindersRunner = () => {
   useContextReminders();
+  return null;
+};
+
+const DeadlineWatcherRunner = () => {
+  useDeadlineWatcher();
   return null;
 };
 
@@ -108,7 +111,7 @@ const lazyWithRetry = (componentImport: () => Promise<any>, name: string) => {
             const regs = await navigator.serviceWorker?.getRegistrations() ?? [];
             await Promise.all(regs.map(r => r.unregister()));
           }
-        } catch (_) { /* ignore */ }
+        } catch { /* ignore */ }
 
         window.location.reload();
         return new Promise(() => {}); // suspend while reloading
@@ -140,7 +143,6 @@ const AnalyticsModule = lazyWithRetry(() => import('./features/analytics/Analyti
 const AttendanceModule = lazyWithRetry(() => import('./features/academic/AttendanceModule').then(m => ({ default: m.AttendanceModule })), 'AttendanceModule');
 const AssignmentModule = lazyWithRetry(() => import('./features/academic/AssignmentModule').then(m => ({ default: m.AssignmentModule })), 'AssignmentModule');
 const ToolsHubModule = lazyWithRetry(() => import('./features/tools/ToolsHubModule').then(m => ({ default: m.ToolsHubModule })), 'ToolsHubModule');
-const SpotifyCallbackPage = lazyWithRetry(() => import('./features/spotify/SpotifyCallbackPage').then(m => ({ default: m.SpotifyCallbackPage })), 'SpotifyCallbackPage');
 const GymModule = lazyWithRetry(() => import('./features/gym/GymModule').then(m => ({ default: m.GymModule })), 'GymModule');
 
 // ─── Page loading skeleton (replaces spinner — feels like content is loading, not waiting) ──
@@ -190,9 +192,8 @@ const AnimatedRoutes = ({ user }: { user: User }) => {
         <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><AttendanceModule /></ErrorBoundary></PageTransition>} />
         <Route path="/assignments" element={<PageTransition><ErrorBoundary name="Assignments"><AssignmentModule /></ErrorBoundary></PageTransition>} />
         <Route path="/analytics"   element={<PageTransition><ErrorBoundary name="Analytics"><AnalyticsModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/tools"       element={<PageTransition><ErrorBoundary name="Tools Hub"><ToolsHubModule user={user} /></ErrorBoundary></PageTransition>} />
+        <Route path="/tools"       element={<PageTransition><ErrorBoundary name="Tools Hub"><ToolsHubModule /></ErrorBoundary></PageTransition>} />
         <Route path="/gym"         element={<PageTransition><ErrorBoundary name="Gym"><GymModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/spotify-callback" element={<SpotifyCallbackPage />} />
         <Route path="*"            element={<Navigate to="/todo" replace />} />
       </Routes>
     </AnimatePresence>
@@ -202,8 +203,6 @@ const AnimatedRoutes = ({ user }: { user: User }) => {
 function App() {
   const [user, setUser]               = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [showGreeting, setShowGreeting]   = useState(false);
-  const [greeting, setGreeting]           = useState('');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
 
@@ -302,8 +301,6 @@ function App() {
   return (
     <ErrorBoundary name="GlobalProviders">
     <GlobalDataProvider>
-    <SpotifyProvider>
-    <YouTubeProvider>
     <PomodoroProvider>
       <UpdatePrompt />
       <UpdateFlashcard />
@@ -311,11 +308,13 @@ function App() {
       <OfflineIndicator />
       <ClassNotificationRunner />
       <ContextRemindersRunner />
+      <DeadlineWatcherRunner />
       <CommandPalette />
       <FocusModeOverlay />
       <DailyBriefingOverlay />
       <FloatingExtraWorks />
       <VoiceQuickCaptureWidget />
+      <AgentTerminal />
       <SessionEnforcer />
 
       {/* Onboarding Carousel */}
@@ -358,11 +357,7 @@ function App() {
           </Suspense>
         </div>
       </div>
-      <SpotifyFloatingPlayer />
-      <FloatingYouTubePlayer />
     </PomodoroProvider>
-    </YouTubeProvider>
-    </SpotifyProvider>
     </GlobalDataProvider>
     </ErrorBoundary>
   );

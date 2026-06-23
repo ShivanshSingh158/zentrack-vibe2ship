@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { runAgentLoop } from '../../agent/runAgentLoop';
 import type { AgentStep } from '../../agent/runAgentLoop';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
-import { Bot, Send, X, Zap, Loader2 } from 'lucide-react';
+import { Bot, Send, X, Loader2 } from 'lucide-react';
 
 const STEP_ICON: Record<string, string> = {
   'get_tasks': '📋 Reading your tasks...',

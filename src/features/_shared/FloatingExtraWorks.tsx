@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { getLocalDateString } from '../../utils/dateUtils';
-import { Check, X, GripHorizontal, EyeOff, ClipboardList } from 'lucide-react';
+import { Check, GripHorizontal, EyeOff, ClipboardList } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export const FloatingExtraWorks: React.FC = () => {

@@ -1,5 +1,0 @@
-              </div>
-            )}
-          </div>
-
-        {/* AI Panel for File Viewer */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Dumbbell, GraduationCap, CheckSquare, Moon, ArrowRight, Check, Sparkles, ClipboardList, Layers, MessageSquare, Palette, Zap } from 'lucide-react';
+import { Mic, Dumbbell, CheckSquare, Moon, ArrowRight, Check, Sparkles, ClipboardList, MessageSquare, Palette, Zap } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { motion } from 'framer-motion';
 

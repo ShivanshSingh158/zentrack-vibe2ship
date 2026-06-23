@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithPopup, signInWithRedirect, getRedirectResult } from 'firebase/auth';
-import { auth, googleProvider } from '../services/firebase';
-import { LogIn, Loader2 } from 'lucide-react';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../services/firebase';
+import { LogIn, Loader2, Play } from 'lucide-react';
 import { toast } from 'sonner';
+import { seedDemoData } from '../utils/seedDemoData';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 
 export const Login: React.FC = () => {
+  const googleProvider = new GoogleAuthProvider();
   const [isLoading, setIsLoading] = useState(false);
 
   // Mouse tracking for 3D tilt
@@ -34,7 +36,7 @@ export const Login: React.FC = () => {
   };
 
   useEffect(() => {
-    getRedirectResult(auth).then(result => {
+    getRedirectResult(auth).then(() => {
       // User signed in via redirect — onAuthStateChanged handles the rest
     }).catch(err => {
       console.error('Redirect sign-in error:', err);
@@ -54,7 +56,7 @@ export const Login: React.FC = () => {
         toast.info('Popup blocked — trying redirect sign-in instead...', { duration: 5000 });
         try {
           await signInWithRedirect(auth, googleProvider);
-        } catch (redirectErr) {
+        } catch {
           toast.error('Sign-in failed. Please allow popups for this site.');
         }
       } else if (error.code === 'auth/unauthorized-domain') {
@@ -278,6 +280,41 @@ export const Login: React.FC = () => {
           >
             {isLoading ? <Loader2 size={20} className="spin" /> : <LogIn size={20} />}
             {isLoading ? 'Synchronizing...' : 'Initialize Session'}
+          </motion.button>
+          
+          {/* Try Demo Button */}
+          <motion.button
+            onClick={async () => {
+              try {
+                setIsLoading(true);
+                await signInWithEmailAndPassword(auth, 'demo@zentrack.com', 'demo123');
+                await seedDemoData();
+              } catch (e: any) {
+                toast.error('Demo login failed: ' + e.message);
+                setIsLoading(false);
+              }
+            }}
+            disabled={isLoading}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            style={{
+              transform: 'translateZ(40px)',
+              marginTop: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.8rem 1.5rem',
+              borderRadius: '100px',
+              background: 'rgba(255,255,255,0.05)',
+              color: 'rgba(255,255,255,0.8)',
+              fontSize: '0.95rem',
+              fontWeight: 500,
+              border: '1px solid rgba(255,255,255,0.1)',
+              cursor: 'pointer',
+            }}
+          >
+            <Play size={16} />
+            👀 Try Demo
           </motion.button>
           
           {/* Subtle info text */}

@@ -8,7 +8,7 @@ import {
 
 const firebaseConfig = {
   apiKey: "AIzaSyCWZ_tUzZynf60lxC3-RweGfZRGlcHBz_s",
-  authDomain: typeof window !== 'undefined' ? window.location.host : "job-tracker-6b672.firebaseapp.com",
+  authDomain: (typeof window !== 'undefined' && window.location.hostname !== 'localhost') ? window.location.host : "job-tracker-6b672.firebaseapp.com",
   projectId: "job-tracker-6b672",
   storageBucket: "job-tracker-6b672.firebasestorage.app",
   messagingSenderId: "336719988763",

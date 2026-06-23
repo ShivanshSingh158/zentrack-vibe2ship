@@ -5,6 +5,7 @@ import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Plus, AlertTriangle, Clock, ExternalLink, Link2, Link2Off, RefreshCw, Zap, AlertCircle, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { autoScheduleDay } from '../../services/gemini';
+import { useGlobalData } from '../../contexts/GlobalDataContext';
 import {
   initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle,
   addEventToGoogleCalendar, deleteGoogleCalendarEvent, pollGoogleCalendarChanges,
@@ -58,6 +59,8 @@ export const CalendarModule = () => {
   // ── Google Calendar sync state ────────────────────────────────────────────────
   const [gcConnected, setGcConnected] = useState(false);
   const [gcLoading, setGcLoading] = useState(false);
+
+  const { userPreferences } = useGlobalData();
   const [gcSyncing, setGcSyncing] = useState(false);
   const [gcApiError, setGcApiError] = useState<string | null>(null); // 'not_enabled' | error msg
   const [lastSynced, setLastSynced] = useState<number>(0);
@@ -101,6 +104,9 @@ export const CalendarModule = () => {
         setGcalEvents(prev => {
           const existingIds = new Set(prev.map(e => e.gcalEventId));
           const fresh = newEvents.filter(e => !existingIds.has(e.gcalEventId));
+          if (fresh.length > 0) {
+             window.dispatchEvent(new CustomEvent('gcal-events-added', { detail: added }));
+          }
           return [...prev, ...fresh];
         });
       }
@@ -259,7 +265,7 @@ export const CalendarModule = () => {
       }
       
       const allScheduled = allEvents.filter(e => e.date);
-      const res = await autoScheduleDay(uncompletedTodos, allScheduled);
+      const res = await autoScheduleDay(uncompletedTodos, allScheduled, userPreferences.peakEnergyTime);
       
       if (!res.scheduledTasks || res.scheduledTasks.length === 0) {
         toast.info('AI found no tasks needing scheduling right now.');
@@ -270,7 +276,9 @@ export const CalendarModule = () => {
       for (const t of res.scheduledTasks) {
         if (t.id && t.date) {
           const rawId = t.id.replace('todo_', '');
-          await updateDoc(doc(db, 'todos', rawId), { date: t.date });
+          const updateData: any = { date: t.date };
+          if (t.time) updateData.timeSlot = t.time;
+          await updateDoc(doc(db, 'todos', rawId), updateData);
           count++;
         }
       }
@@ -413,7 +421,7 @@ export const CalendarModule = () => {
       }
       setNewEventTitle('');
       toast.success(gcConnected ? '✅ Added & synced to Google Calendar!' : 'Added!');
-    } catch (err) { toast.error('Failed to add'); }
+    } catch { toast.error('Failed to add'); }
   };
 
   const handleDeleteCustomEvent = async (id: string) => {
