@@ -28,9 +28,10 @@ import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
 import { VoiceQuickCaptureWidget } from './features/_shared/VoiceQuickCaptureWidget';
 import { ZenAgentPanel } from './features/agent/ZenAgentPanel';
-import { Bot } from 'lucide-react';
+import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, X } from 'lucide-react';
 import { AgentTerminal } from './components/AgentTerminal';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
+
 
 import { useContextReminders } from './hooks/useContextReminders';
 
@@ -212,6 +213,7 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
+  const [showFab,   setShowFab]   = useState(false);
   const [showDeveloperMatrix, setShowDeveloperMatrix] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
 
@@ -349,25 +351,137 @@ function App() {
         </ErrorBoundary>
       )}
 
-      {/* Zen Agent Floating Button & Panel */}
-      <button
-        onClick={() => setShowAgent(true)}
-        style={{
-          position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 900,
-          background: 'linear-gradient(135deg, #8b5cf6, #3b82f6)',
-          border: 'none', borderRadius: '50%', width: '56px', height: '56px',
-          color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 8px 32px rgba(139, 92, 246, 0.4)', cursor: 'pointer',
-          transition: 'transform 0.2s',
-          transform: showAgent ? 'scale(0)' : 'scale(1)'
-        }}
-      >
-        <Bot size={28} />
-      </button>
+      {/* ── Zen Agent SpeedDial FAB ─────────────────────────────────── */}
+      {/* 4 quick-action petals + main chat panel                         */}
+      {/* Petal actions dispatch 'agent-shortcut' event picked up by      */}
+      {/* HomeDashboard to fire handleExecuteCommand with a preset prompt */}
+      {(() => {
+        const petals = [
+          {
+            id: 'chat',
+            label: 'Chat',
+            icon: <MessageSquare size={16} />,
+            color: 'linear-gradient(135deg,#8b5cf6,#3b82f6)',
+            shadow: 'rgba(139,92,246,0.5)',
+            action: () => { setShowAgent(true); setShowFab(false); },
+          },
+          {
+            id: 'risk',
+            label: 'Risk Scan',
+            icon: <ShieldAlert size={16} />,
+            color: 'linear-gradient(135deg,#ef4444,#f97316)',
+            shadow: 'rgba(239,68,68,0.5)',
+            action: () => {
+              window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                detail: { prompt: 'LEVEL_4 EMERGENCY: Run a full risk assessment. Call MONITOR to score all overdue and high-priority tasks, check my calendar for time conflicts, send me a notification with the top 3 critical items, and give me a complete risk report.' }
+              }));
+              setShowFab(false);
+            },
+          },
+          {
+            id: 'ghost',
+            label: 'Ghost Scan',
+            icon: <Ghost size={16} />,
+            color: 'linear-gradient(135deg,#06b6d4,#0891b2)',
+            shadow: 'rgba(6,182,212,0.5)',
+            action: () => {
+              window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                detail: { prompt: 'GHOST DEADLINE DISCOVERY: Scan my Gmail inbox for any hidden deadlines, commitments, or tasks I may have missed. Look for phrases like "by Friday", "due date", "ASAP", "please submit", "can you send". Create a ZenTrack task for each ghost deadline you find.' }
+              }));
+              setShowFab(false);
+            },
+          },
+          {
+            id: 'script',
+            label: 'Generate Script',
+            icon: <Code2 size={16} />,
+            color: 'linear-gradient(135deg,#10b981,#059669)',
+            shadow: 'rgba(16,185,129,0.5)',
+            action: () => {
+              window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                detail: { prompt: 'Generate a Python script that exports all my current ZenTrack tasks to a CSV file with columns: title, priority, status, due_date. Include sample data in comments.' }
+              }));
+              setShowFab(false);
+            },
+          },
+        ];
+
+        return (
+          <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 900 }}>
+            {/* Petal buttons — fan out above the main button */}
+            <AnimatePresence>
+              {showFab && petals.map((p, i) => (
+                <motion.div
+                  key={p.id}
+                  initial={{ opacity: 0, scale: 0.6, y: 0 }}
+                  animate={{ opacity: 1, scale: 1, y: -(72 + i * 60) }}
+                  exit={{ opacity: 0, scale: 0.6, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 28, delay: i * 0.05 }}
+                  style={{ position: 'absolute', bottom: 0, right: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}
+                >
+                  {/* Label */}
+                  <motion.span
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.05 + 0.1 }}
+                    style={{
+                      background: 'rgba(10,10,15,0.9)', backdropFilter: 'blur(8px)',
+                      border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px',
+                      padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600,
+                      color: '#e4e4e7', whiteSpace: 'nowrap',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+                    }}
+                  >
+                    {p.label}
+                  </motion.span>
+                  {/* Button */}
+                  <button
+                    onClick={p.action}
+                    style={{
+                      width: 46, height: 46, borderRadius: '50%', border: 'none',
+                      background: p.color, color: '#fff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', flexShrink: 0,
+                      boxShadow: `0 6px 20px ${p.shadow}`,
+                    }}
+                  >
+                    {p.icon}
+                  </button>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {/* Main FAB */}
+            <motion.button
+              onClick={() => setShowFab(f => !f)}
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.94 }}
+              animate={{ rotate: showFab ? 135 : 0, scale: showAgent ? 0 : 1 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+              style={{
+                position: 'relative', zIndex: 1,
+                background: showFab
+                  ? 'linear-gradient(135deg,#374151,#1f2937)'
+                  : 'linear-gradient(135deg,#8b5cf6,#3b82f6)',
+                border: 'none', borderRadius: '50%', width: 56, height: 56,
+                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: showFab
+                  ? '0 8px 32px rgba(0,0,0,0.4)'
+                  : '0 8px 32px rgba(139,92,246,0.45)',
+                cursor: 'pointer', transition: 'background 0.3s ease, box-shadow 0.3s ease',
+              }}
+              aria-label={showFab ? 'Close agent menu' : 'Open Zen Agent'}
+            >
+              <Bot size={26} />
+            </motion.button>
+          </div>
+        );
+      })()}
 
       <AnimatePresence>
         {showAgent && <ZenAgentPanel onClose={() => setShowAgent(false)} />}
       </AnimatePresence>
+
 
       {/* Greeting Toast removed per user request */}
 

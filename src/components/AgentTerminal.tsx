@@ -18,7 +18,7 @@ export const AgentTerminal: React.FC = () => {
 
   useEffect(() => {
     const handleLog = (e: CustomEvent) => {
-      setIsOpen(true);
+      // Accumulate logs silently — user opens terminal explicitly via toggle button
       const step = e.detail;
       const now = new Date().toLocaleTimeString([], { hour12: false });
       const newLog: LogEntry = {
@@ -47,7 +47,14 @@ export const AgentTerminal: React.FC = () => {
     };
 
     window.addEventListener('agent-log' as any, handleLog);
-    return () => window.removeEventListener('agent-log' as any, handleLog);
+
+    const handleToggle = () => setIsOpen(o => !o);
+    window.addEventListener('agent-terminal-toggle', handleToggle);
+
+    return () => {
+      window.removeEventListener('agent-log' as any, handleLog);
+      window.removeEventListener('agent-terminal-toggle', handleToggle);
+    };
   }, []);
 
   useEffect(() => {

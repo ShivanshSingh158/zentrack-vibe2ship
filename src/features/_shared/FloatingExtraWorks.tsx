@@ -14,10 +14,6 @@ export const FloatingExtraWorks: React.FC = () => {
   const prevTasksLength = React.useRef(0);
 
   useEffect(() => {
-    if (tasks.length > prevTasksLength.current) {
-      setIsVisible(true);
-      localStorage.setItem('zen_floating_extra_works', 'visible');
-    }
     prevTasksLength.current = tasks.length;
   }, [tasks.length]);
 
@@ -198,7 +194,7 @@ export const FloatingExtraWorks: React.FC = () => {
                 <Check size={12} color="#10b981" />
               </button>
               <span style={{ color: '#e4e4e7', fontSize: '0.85rem', fontWeight: 400, lineHeight: 1.4, wordBreak: 'break-word', paddingTop: '2px' }}>
-                {task.text}
+                {task.title}
               </span>
             </motion.div>
           ))}

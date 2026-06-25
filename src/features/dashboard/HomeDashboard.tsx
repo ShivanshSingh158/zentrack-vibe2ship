@@ -537,11 +537,21 @@ export function HomeDashboard() {
       setAgentHistory([]);
     };
 
+    const handleShortcut = (e: Event) => {
+      const { prompt } = (e as CustomEvent).detail || {};
+      if (prompt && typeof prompt === 'string') {
+        // Small delay so FAB close animation finishes before agent UI opens
+        setTimeout(() => handleExecuteCommand(prompt), 120);
+      }
+    };
+
     window.addEventListener('agent-log', handleAgentLog);
     window.addEventListener('agent-clear-memory', handleClearMemory);
+    window.addEventListener('agent-shortcut', handleShortcut);
     return () => {
       window.removeEventListener('agent-log', handleAgentLog);
       window.removeEventListener('agent-clear-memory', handleClearMemory);
+      window.removeEventListener('agent-shortcut', handleShortcut);
       clearTimeout(timeout);
     };
   }, []);
@@ -1983,11 +1993,78 @@ export function HomeDashboard() {
 
 
           
-          <div className="status-bar" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.2rem', background: 'rgba(5, 5, 10, 0.6)' }}>
-            <div className="status-text" style={{ fontSize: '0.85rem' }}>
-              <span className={`status-dot ${isExecuting ? 'pulsing' : ''}`} style={{ background: isExecuting ? '#a855f7' : '#ef4444' }}></span>
-              {agentStatus}
+          <div className="status-bar" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1.2rem', background: 'rgba(5, 5, 10, 0.6)' }}>
+            {/* Status row */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div className="status-text" style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span className={`status-dot ${isExecuting ? 'pulsing' : ''}`} style={{ background: isExecuting ? '#a855f7' : '#ef4444' }}></span>
+                {agentStatus}
+              </div>
+              {/* Agent quick-fire buttons */}
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                    detail: { prompt: 'Run a full MONITOR risk assessment: score all overdue and high-priority tasks, check my calendar for conflicts, send me a notification with the top 3 critical items.' }
+                  }))}
+                  disabled={isExecuting}
+                  title="MONITOR — Run Risk Assessment"
+                  style={{
+                    background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
+                    borderRadius: '8px', padding: '0.3rem 0.6rem', color: '#f87171',
+                    fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    opacity: isExecuting ? 0.4 : 1, transition: 'all 0.2s'
+                  }}
+                >
+                  <span>🛡️</span> Risk
+                </button>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                    detail: { prompt: 'GHOST DEADLINE DISCOVERY: Scan my Gmail inbox for any hidden deadlines, commitments, or tasks I may have missed. Look for phrases like "by Friday", "due date", "ASAP", "please submit". Create a ZenTrack task for each ghost deadline you find.' }
+                  }))}
+                  disabled={isExecuting}
+                  title="GHOST DETECTOR — Scan Inbox for Hidden Deadlines"
+                  style={{
+                    background: 'rgba(6,182,212,0.12)', border: '1px solid rgba(6,182,212,0.3)',
+                    borderRadius: '8px', padding: '0.3rem 0.6rem', color: '#22d3ee',
+                    fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    opacity: isExecuting ? 0.4 : 1, transition: 'all 0.2s'
+                  }}
+                >
+                  <span>👻</span> Ghost
+                </button>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                    detail: { prompt: 'Generate a Python script that exports all my current ZenTrack tasks to a CSV file with columns: title, priority, status, due_date. Include sample data in comments and instructions to run.' }
+                  }))}
+                  disabled={isExecuting}
+                  title="CODING Agent — Generate Script"
+                  style={{
+                    background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)',
+                    borderRadius: '8px', padding: '0.3rem 0.6rem', color: '#34d399',
+                    fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    opacity: isExecuting ? 0.4 : 1, transition: 'all 0.2s'
+                  }}
+                >
+                  <span>⚙️</span> Script
+                </button>
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('agent-terminal-toggle'))}
+                  title="Toggle Agent Terminal Log"
+                  style={{
+                    background: 'rgba(168,85,247,0.12)', border: '1px solid rgba(168,85,247,0.25)',
+                    borderRadius: '8px', padding: '0.3rem 0.5rem', color: '#a78bfa',
+                    fontSize: '0.72rem', cursor: 'pointer', display: 'flex', alignItems: 'center',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  <span style={{ fontFamily: 'monospace' }}>&gt;_</span>
+                </button>
+              </div>
             </div>
+
             <div className="command-bar-container" style={{ position: 'relative' }}>
               <AnimatePresence>
                 {isListening && (
