@@ -1,30 +1,11 @@
-export interface TodoSubtask {
-  id: string;
-  text: string;
-  isCompleted: boolean;
-}
+import { TaskSchema } from './models.types';
 
-export interface TodoItem {
-  id?: string;
+export type Task = TaskSchema;
+
+export interface DailyLog {
+  id: string;
   userId: string;
-  text: string;
-  date: string; // YYYY-MM-DD
-  isCompleted: boolean;
-  priority: 'high' | 'medium' | 'low';
-  isRecurring?: boolean;
-  estimatedMinutes?: number;
-  subtasks?: TodoSubtask[];
+  date: string;
+  content: string;
   createdAt: number;
-  order?: number;
-  goalId?: string;
-  /** Subject/course this task belongs to */
-  subject?: string;
-  /** Recurring pattern */
-  recurringPattern?: 'daily' | 'weekly' | 'monthly';
-  recurringEndDate?: string;
-  completedAt?: number;
-  /** Guardian Features */
-  commitmentTo?: string; // Promise to others
-  blockedBy?: string[]; // Array of task IDs this task depends on
-  energyRequirement?: 'high' | 'medium' | 'low';
 }

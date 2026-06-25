@@ -60,8 +60,8 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
       ? gymSnap.value.docs.map(d => d.data()).filter((l: any) => l.date && l.date >= start && l.date <= end)
       : [];
 
-    const todosCompleted = todos.filter(t => t.isCompleted).length;
-    const todosEstimatedMinutes = todos.filter(t => t.isCompleted).reduce((s, t) => s + (t.estimatedMinutes || 0), 0);
+    const todosCompleted = tasks.filter(t => t.status === 'completed').length;
+    const todosEstimatedMinutes = tasks.filter(t => t.status === 'completed').reduce((s, t) => s + (t.estimatedMinutes || 0), 0);
     const productiveHoursFromLogs = logs.reduce((s, l) => s + parseFloat(l.productiveHours || '0'), 0);
     const waterIntakeTotal = logs.reduce((s, l) => s + (l.waterIntakeLiters || 0), 0);
     const productiveHours = productiveHoursFromLogs + todosEstimatedMinutes / 60;
@@ -70,7 +70,7 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
     learnDocs.forEach(d => {
       const st = d.data().subTasks || [];
       learningSubtasksTotal += st.length;
-      learningSubtasksDone += st.filter((s: any) => s.isCompleted).length;
+      learningSubtasksDone += st.filter((s: any) => s.status === 'completed').length;
     });
 
     const habitsDone = habitLogs.filter((d: any) => d.completed).length;
@@ -95,14 +95,14 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
     }
 
     const dailyBreakdown = days.map(date => {
-      const dayTodos = todos.filter(t => t.date === date);
+      const dayTodos = tasks.filter(t => t.date === date);
       const dayLogs = logs.filter(l => l.date === date);
       const dayHabits = habitLogs.filter((h: any) => h.date === date && h.completed);
       const dayGym = gymLogs.filter((g: any) => g.date === date);
 
-      const tasksCompleted = dayTodos.filter(t => t.isCompleted).length;
+      const tasksCompleted = dayTodos.filter(t => t.status === 'completed').length;
       const tasksTotal = dayTodos.length;
-      const tasksHours = dayTodos.filter(t => t.isCompleted).reduce((sum, t) => sum + (t.estimatedMinutes || 0) / 60, 0);
+      const tasksHours = dayTodos.filter(t => t.status === 'completed').reduce((sum, t) => sum + (t.estimatedMinutes || 0) / 60, 0);
       const logHours = dayLogs.reduce((sum, l) => sum + parseFloat(l.productiveHours || '0'), 0);
 
       let dayCardio = 0;
@@ -128,7 +128,7 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
 
     return {
       todosCompleted,
-      todosTotal: todos.length,
+      todosTotal: tasks.length,
       productiveHours: Math.round(productiveHours * 10) / 10,
       learningSubtasksDone,
       learningSubtasksTotal,

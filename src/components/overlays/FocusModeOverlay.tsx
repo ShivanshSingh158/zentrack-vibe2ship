@@ -64,7 +64,7 @@ export const FocusModeOverlay = () => {
     let newStatus = false;
     const updated = subTasks.map(st => {
       if (st.id === subTaskId) {
-        newStatus = !st.isCompleted;
+        newStatus = st.status !== 'completed';
         return { ...st, isCompleted: newStatus };
       }
       return st;
@@ -218,15 +218,15 @@ export const FocusModeOverlay = () => {
               {subTasks.length > 0 && (
                 <div style={{ width: '100%', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {subTasks.map(st => (
-                    <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', opacity: st.isCompleted ? 0.5 : 1, transition: 'opacity 0.2s' }}>
+                    <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', opacity: st.status === 'completed' ? 0.5 : 1, transition: 'opacity 0.2s' }}>
                       <button 
-                        className={`todo-checkbox ${st.isCompleted ? 'checked' : ''}`}
+                        className={`todo-checkbox ${st.status === 'completed' ? 'checked' : ''}`}
                         onClick={() => toggleSubTask(st.id)}
                         style={{ width: '20px', height: '20px' }}
                       >
-                        {st.isCompleted && <Check size={12} strokeWidth={3} />}
+                        {st.status === 'completed' && <Check size={12} strokeWidth={3} />}
                       </button>
-                      <span style={{ fontSize: '1rem', color: st.isCompleted ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: st.isCompleted ? 'line-through' : 'none' }}>
+                      <span style={{ fontSize: '1rem', color: st.status === 'completed' ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: st.status === 'completed' ? 'line-through' : 'none' }}>
                         {st.text}
                       </span>
                     </div>

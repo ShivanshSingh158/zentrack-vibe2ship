@@ -7,45 +7,45 @@ export const PREDEFINED_ROADMAPS = [
       {
         category: "Internet Fundamentals",
         items: [
-          { text: "How does the internet work?", url: "https://roadmap.sh/guides/what-is-internet" },
-          { text: "What is HTTP?", url: "https://roadmap.sh/guides/http" },
-          { text: "Browsers and how they work", url: "https://roadmap.sh/guides/how-browsers-work" },
-          { text: "DNS and how it works", url: "https://roadmap.sh/guides/dns-in-one-picture" }
+          { title: "How does the internet work?", url: "https://roadmap.sh/guides/what-is-internet" },
+          { title: "What is HTTP?", url: "https://roadmap.sh/guides/http" },
+          { title: "Browsers and how they work", url: "https://roadmap.sh/guides/how-browsers-work" },
+          { title: "DNS and how it works", url: "https://roadmap.sh/guides/dns-in-one-picture" }
         ]
       },
       {
         category: "HTML",
         items: [
-          { text: "Learn the basics of HTML", url: "" },
-          { text: "Semantic HTML", url: "" },
-          { text: "Forms and Validations", url: "" },
-          { text: "Accessibility", url: "" }
+          { title: "Learn the basics of HTML", url: "" },
+          { title: "Semantic HTML", url: "" },
+          { title: "Forms and Validations", url: "" },
+          { title: "Accessibility", url: "" }
         ]
       },
       {
         category: "CSS",
         items: [
-          { text: "Learn the basics of CSS", url: "" },
-          { text: "Making layouts (Flexbox & Grid)", url: "" },
-          { text: "Responsive design and Media Queries", url: "" }
+          { title: "Learn the basics of CSS", url: "" },
+          { title: "Making layouts (Flexbox & Grid)", url: "" },
+          { title: "Responsive design and Media Queries", url: "" }
         ]
       },
       {
         category: "JavaScript",
         items: [
-          { text: "Syntax and Basic Constructs", url: "" },
-          { text: "DOM Manipulation", url: "" },
-          { text: "Fetch API / Ajax (XHR)", url: "" },
-          { text: "ES6+ and modular JS", url: "" }
+          { title: "Syntax and Basic Constructs", url: "" },
+          { title: "DOM Manipulation", url: "" },
+          { title: "Fetch API / Ajax (XHR)", url: "" },
+          { title: "ES6+ and modular JS", url: "" }
         ]
       },
       {
         category: "React Framework",
         items: [
-          { text: "Components and JSX", url: "" },
-          { text: "State and Props", url: "" },
-          { text: "Hooks (useState, useEffect)", url: "" },
-          { text: "Context API and Redux", url: "" }
+          { title: "Components and JSX", url: "" },
+          { title: "State and Props", url: "" },
+          { title: "Hooks (useState, useEffect)", url: "" },
+          { title: "Context API and Redux", url: "" }
         ]
       }
     ]
@@ -58,34 +58,34 @@ export const PREDEFINED_ROADMAPS = [
       {
         category: "Internet & OS Fundamentals",
         items: [
-          { text: "How the Internet Works", url: "" },
-          { text: "Terminal Usage", url: "" },
-          { text: "OS Processes, Threads, Concurrency", url: "" },
-          { text: "Basic Networking (TCP/UDP, Ports)", url: "" }
+          { title: "How the Internet Works", url: "" },
+          { title: "Terminal Usage", url: "" },
+          { title: "OS Processes, Threads, Concurrency", url: "" },
+          { title: "Basic Networking (TCP/UDP, Ports)", url: "" }
         ]
       },
       {
         category: "Language & Logic",
         items: [
-          { text: "Learn a Language (Node.js/Python/Go)", url: "" },
-          { text: "Data Structures & Algorithms", url: "" }
+          { title: "Learn a Language (Node.js/Python/Go)", url: "" },
+          { title: "Data Structures & Algorithms", url: "" }
         ]
       },
       {
         category: "Databases",
         items: [
-          { text: "Relational Databases (PostgreSQL)", url: "" },
-          { text: "NoSQL Databases (MongoDB, Redis)", url: "" },
-          { text: "ORMs and ODMs", url: "" },
-          { text: "ACID Properties & Transactions", url: "" }
+          { title: "Relational Databases (PostgreSQL)", url: "" },
+          { title: "NoSQL Databases (MongoDB, Redis)", url: "" },
+          { title: "ORMs and ODMs", url: "" },
+          { title: "ACID Properties & Transactions", url: "" }
         ]
       },
       {
         category: "APIs",
         items: [
-          { text: "REST API Design", url: "" },
-          { text: "Authentication (JWT, OAuth)", url: "" },
-          { text: "GraphQL", url: "" }
+          { title: "REST API Design", url: "" },
+          { title: "Authentication (JWT, OAuth)", url: "" },
+          { title: "GraphQL", url: "" }
         ]
       }
     ]
@@ -98,35 +98,35 @@ export const PREDEFINED_ROADMAPS = [
       {
         category: "Prerequisites",
         items: [
-          { text: "Python Programming", url: "" },
-          { text: "Linear Algebra & Calculus Basics", url: "" },
-          { text: "Statistics & Probability", url: "" }
+          { title: "Python Programming", url: "" },
+          { title: "Linear Algebra & Calculus Basics", url: "" },
+          { title: "Statistics & Probability", url: "" }
         ]
       },
       {
         category: "Data Processing",
         items: [
-          { text: "Pandas & NumPy", url: "" },
-          { text: "Data Cleaning & Preprocessing", url: "" },
-          { text: "Data Visualization (Matplotlib, Seaborn)", url: "" }
+          { title: "Pandas & NumPy", url: "" },
+          { title: "Data Cleaning & Preprocessing", url: "" },
+          { title: "Data Visualization (Matplotlib, Seaborn)", url: "" }
         ]
       },
       {
         category: "Machine Learning (Classic)",
         items: [
-          { text: "Scikit-Learn Basics", url: "" },
-          { text: "Supervised Learning (Regression, Classification)", url: "" },
-          { text: "Unsupervised Learning (Clustering)", url: "" }
+          { title: "Scikit-Learn Basics", url: "" },
+          { title: "Supervised Learning (Regression, Classification)", url: "" },
+          { title: "Unsupervised Learning (Clustering)", url: "" }
         ]
       },
       {
         category: "Deep Learning & Generative AI",
         items: [
-          { text: "Neural Networks Fundamentals", url: "" },
-          { text: "PyTorch or TensorFlow", url: "" },
-          { text: "Transformer Architecture", url: "" },
-          { text: "LLM APIs (OpenAI, Anthropic, Gemini)", url: "" },
-          { text: "RAG (Retrieval-Augmented Generation)", url: "" }
+          { title: "Neural Networks Fundamentals", url: "" },
+          { title: "PyTorch or TensorFlow", url: "" },
+          { title: "Transformer Architecture", url: "" },
+          { title: "LLM APIs (OpenAI, Anthropic, Gemini)", url: "" },
+          { title: "RAG (Retrieval-Augmented Generation)", url: "" }
         ]
       }
     ]

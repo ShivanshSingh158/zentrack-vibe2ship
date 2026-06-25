@@ -1,4 +1,49 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import { getActiveGeminiKey, setAuthExpired } from '../userGeminiAuth';
+
+// ── Global Fetch Interceptor for Gemini OAuth ───────────────────────────────
+// The official GoogleGenerativeAI SDK does not natively support OAuth Bearer tokens
+// and ignores customFetch in newer versions. This interceptor catches requests
+// containing our dummy key and rewrites them into valid OAuth requests.
+if (typeof window !== 'undefined') {
+  const originalFetch = window.fetch;
+  window.fetch = async (input, init) => {
+    try {
+      const urlString = input instanceof Request ? input.url : input.toString();
+      if (urlString.includes('generativelanguage.googleapis.com')) {
+        const headers = new Headers(init?.headers);
+        if (input instanceof Request) {
+          input.headers.forEach((v, k) => headers.set(k, v));
+        }
+        
+        // The SDK passes the key in headers, not the URL
+        if (headers.get('x-goog-api-key') === 'oauth_dummy_key') {
+          const url = new URL(urlString);
+          url.searchParams.delete('key'); // just in case
+          headers.delete('x-goog-api-key');
+          
+          const token = getActiveGeminiKey();
+          if (token) {
+            // ✅ Happy path: inject the live OAuth bearer token
+            headers.set('Authorization', `Bearer ${token}`);
+            return originalFetch(url.toString(), { ...init, headers });
+          } else {
+            // ❌ CRITICAL FIX: The personal key was requested but is expired or missing.
+            // Instead of sending a request with NO auth header (which causes a confusing
+            // generic fetch error), throw a clear, typed error that callWithFallback
+            // can detect and use to immediately rotate to the shared key pool.
+            throw new Error('PERSONAL_TOKEN_UNAVAILABLE: OAuth token expired or not present. Rotating to shared key.');
+          }
+        }
+      }
+    } catch (e: any) {
+      // If our own typed error, re-throw so callWithFallback catches it correctly
+      if (e?.message?.startsWith('PERSONAL_TOKEN_UNAVAILABLE')) throw e;
+      // All other interceptor errors: fall back to normal fetch
+    }
+    return originalFetch(input, init);
+  };
+}
 
 // ── Model priority (verified real model IDs — 2026-06) ────────────────────────
 // Only include models that ACTUALLY EXIST in the Gemini API.
@@ -9,11 +54,23 @@ import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/ge
 //   gemini-3.1-pro      = 3.1 Pro  (Advanced math and code)   ← PRIMARY
 //   gemini-3.5-flash    = 3.5 Flash (All-around help)          ← FALLBACK 1
 //   gemini-3.1-flash-lite = 3.1 Flash-Lite (Fastest)           ← FALLBACK 2
-export const MODEL_PRIORITY = [
+export const SHARED_MODEL_PRIORITY = [
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
-  'gemini-2.5-pro',
-  'gemini-2.0-flash',
+  'gemini-3.1-pro',
 ];
+
+export const PERSONAL_MODEL_PRIORITY = [
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-pro',
+  'gemini-2.5-flash',
+];
+
+export const getPriorityModels = (isPersonal: boolean) => {
+  return isPersonal ? PERSONAL_MODEL_PRIORITY : SHARED_MODEL_PRIORITY;
+};
 
 export const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT,        threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -22,20 +79,16 @@ export const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
-// Remember which model worked last → try it first next time (faster)
-const MODEL_CACHE_KEY = 'zen_working_model';
-const getPreferredModel = (): string => {
-  try {
-    const cached = localStorage.getItem(MODEL_CACHE_KEY) || '';
-    // Only use the cached model if it's still in our valid list
-    if (cached && MODEL_PRIORITY.includes(cached)) return cached;
-    localStorage.removeItem(MODEL_CACHE_KEY);
-    return MODEL_PRIORITY[0];
-  } catch { return MODEL_PRIORITY[0]; }
+// Always try the best model first (avoid permanent sticky downgrades due to transient errors)
+const getPreferredModel = (isPersonal: boolean): string => {
+  return getPriorityModels(isPersonal)[0];
 };
 const setPreferredModel = (m: string) => {
-  try { localStorage.setItem(MODEL_CACHE_KEY, m); } catch { /* ignore */ }
+  // No-op to prevent permanent sticky downgrades
 };
+if (typeof window !== 'undefined') {
+  try { localStorage.removeItem('zen_working_model'); } catch {}
+}
 
 const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 // Filter out empty strings and obviously invalid keys (too short)
@@ -59,6 +112,7 @@ const isRetryableError = (err: any): boolean => {
   return (
     msg.includes('503') || msg.includes('overload') || msg.includes('high demand') ||
     msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') ||
+    (msg.includes('400') && msg.includes('size')) ||
     // Note: 404 is NOT here — invalid model = skip immediately, handled separately
     msg.includes('unavailable') ||
     msg.includes('500') || msg.includes('internal') ||
@@ -85,96 +139,167 @@ export const takeNextKeyIndex = (): number => {
 
 /**
  * Core AI caller with:
+ *  - Personal OAuth key first, shared key pool fallback (automatic, no errors shown)
  *  - Smart model ordering (cached winner first)
- *  - Per-model timeout (30s)
- *  - Exponential backoff on retryable errors
- *  - Automatic fallback through MODEL_PRIORITY
- *  - Round-robin load balancing across all available API keys
+ *  - Capped exponential backoff (max 4s) on retryable errors
+ *  - Automatic fallback through all models in MODEL_PRIORITY
+ *  - Round-robin load balancing across all available shared API keys
  */
+
 export const callWithFallback = async (
   buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
 ): Promise<any> => {
-  if (allKeys.length === 0) throw new Error('Gemini API key is missing. Please contact support.');
+  // ── Key Resolution: always call getActiveGeminiKey() FRESH (it auto-expires) ──
+  const personalKey = getActiveGeminiKey();
 
-  // Round-robin start index for this specific request
-  let localKeyIndex = globalKeyIndex;
-  globalKeyIndex = (globalKeyIndex + 1) % allKeys.length;
+  if (!personalKey && allKeys.length === 0) {
+    throw new Error('No Gemini API key found. Add your API key in Settings → AI Key.');
+  }
 
-  const getKey = () => allKeys[localKeyIndex] || '';
-  const rotateKey = (): boolean => {
-    if (allKeys.length > 1) {
-      localKeyIndex = (localKeyIndex + 1) % allKeys.length;
-      console.warn(`[ZenAI] Switched to fallback API key (${localKeyIndex + 1}/${allKeys.length})`);
-      return true;
+  // Build the ordered key trial list: personal first (if valid), then round-robin shared
+  const keysToTry: { token: string, isPersonal: boolean, isSharedIndex?: number }[] = [];
+  
+  if (personalKey) {
+    keysToTry.push({ token: personalKey, isPersonal: true });
+  }
+
+  if (allKeys.length > 0) {
+    const startIndex = globalKeyIndex;
+    globalKeyIndex = (globalKeyIndex + 1) % allKeys.length;
+    for (let i = 0; i < allKeys.length; i++) {
+      const idx = (startIndex + i) % allKeys.length;
+      keysToTry.push({ token: allKeys[idx], isPersonal: false, isSharedIndex: idx });
     }
-    return false;
+  }
+
+  const safeDispatchRotation = (nextKeyObj: any, reason?: string) => {
+    const label = nextKeyObj.isPersonal
+      ? 'personal key'
+      : `shared key [${(nextKeyObj.isSharedIndex ?? 0) + 1}/${allKeys.length}]`;
+    console.warn(`[ZenAI] → Rotating to ${label}. Reason: ${(reason || '').substring(0, 80)}`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('agent-log', {
+        detail: { type: 'thinking', title: `↩ Rotating to ${label}...` }
+      }));
+    }
   };
 
-  // Build ordered list: cached winner first, then rest
-  const preferred = getPreferredModel();
-  const ordered = [preferred, ...MODEL_PRIORITY.filter(m => m !== preferred)];
+  // Model order: cached winner first, then priority list
+  const isPersonalRequest = !!personalKey;
+  const priorityList = getPriorityModels(isPersonalRequest);
+  const preferred = getPreferredModel(isPersonalRequest);
+  const ordered = [preferred, ...priorityList.filter(m => m !== preferred)];
 
   let lastError: any;
   let hitQuota = false;
+
   for (let i = 0; i < ordered.length; i++) {
     const modelName = ordered[i];
-
     let keyAttempts = 0;
-    while (keyAttempts < allKeys.length) {
+
+    while (keyAttempts < keysToTry.length) {
+      const currentKeyObj = keysToTry[keyAttempts];
+      const isPersonalToken = currentKeyObj.isPersonal;
+
       try {
-        const genAI = new GoogleGenerativeAI(getKey());
-        const result = await Promise.race([
-          buildRequest(genAI, modelName),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout after 45s')), 45_000))
-        ]);
-        setPreferredModel(modelName); // Cache this winner
+        // IMPORTANT: For the personal OAuth key, re-check validity at time of use.
+        // The token may have expired between when we built keysToTry and now.
+        if (isPersonalToken && !getActiveGeminiKey()) {
+          // Personal key is gone (expired). Skip directly to shared keys.
+          console.warn('[ZenAI] Personal key expired mid-loop. Skipping to shared key pool.');
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('agent-log', {
+              detail: { type: 'thinking', title: '🔄 Personal token expired. Using shared key pool...' }
+            }));
+          }
+          keyAttempts++;
+          continue;
+        }
+
+        const genAI = new GoogleGenerativeAI(isPersonalToken ? 'oauth_dummy_key' : currentKeyObj.token);
+        const result = await buildRequest(genAI, modelName);
+        setPreferredModel(modelName);
         return result;
+
       } catch (err: any) {
         lastError = err;
         const msg = String(err?.message || '').toLowerCase();
+
         if (msg.includes('429') || msg.includes('quota') || msg.includes('rate limit')) hitQuota = true;
+
+        // Personal token unavailable (detected by interceptor) → skip straight to shared key
+        if (msg.includes('personal_token_unavailable')) {
+          console.warn('[ZenAI] Interceptor: personal token unavailable. Rotating to shared key.');
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('agent-log', {
+              detail: { type: 'thinking', title: '🔄 Personal AI token unavailable. Switching to shared key...' }
+            }));
+          }
+          keyAttempts++;
+          continue;
+        }
 
         // 404 = model doesn't exist for this key/region → skip to next model immediately
         if (msg.includes('404') || msg.includes('not found')) break;
 
         // Rate limit / quota / auth error → try next key for the SAME model
         if (isAuthError(err)) {
-          if (rotateKey()) {
+          if (keyAttempts + 1 < keysToTry.length) {
+            safeDispatchRotation(keysToTry[keyAttempts + 1], err.message);
             keyAttempts++;
             continue;
           }
+          // Exhausted all keys on auth error
+          break;
         }
 
-        // Other retryable error → break key loop, try next model
+        // Other retryable error (503, overload) → skip model entirely
         if (isRetryableError(err)) break;
 
-        // Non-retryable → throw immediately
+        // Non-retryable → surface immediately
         throw err;
       }
     }
 
-    // Exhausted all keys for this model. Delay then try next model.
+    // All keys failed for this model. Apply capped delay then try next model.
     if (i < ordered.length - 1) {
-      const delay = Math.min(1000 * Math.pow(2, i), 4000); // 1s, 2s, 4s max
-      console.warn(`[ZenAI] ${modelName} failed, trying ${ordered[i + 1]} in ${delay}ms`);
+      let delay = Math.min(1000 * Math.pow(2, i), 4000);
+      if (lastError) {
+        const retryMatch = String(lastError.message).toLowerCase().match(/retry after (\d+)/);
+        if (retryMatch?.[1]) delay = parseInt(retryMatch[1], 10) * 1000;
+      }
+      delay = Math.min(delay, 4000); // Hard cap — never sleep > 4s between model fallbacks
+      console.warn(`[ZenAI] ${modelName} exhausted, trying ${ordered[i + 1]} in ${delay}ms`);
       await sleep(delay);
     }
   }
 
+  // All models and keys exhausted
   if (hitQuota) {
-    if (allKeys.length > 1) {
-      throw new Error(`All ${allKeys.length} API keys have hit their rate limit. Please try again in a minute.`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('agent-log', {
+        detail: { type: 'thinking', title: '⚠️ All API keys hit rate limits.' }
+      }));
+    }
+    if (personalKey) {
+      throw new Error('Both your personal Gemini key AND the shared pool have hit their rate limits. Please try again in a minute.');
+    } else if (allKeys.length > 1) {
+      throw new Error(`All ${allKeys.length} shared API keys hit their rate limit. Add your personal Gemini key in Settings → AI Key.`);
     } else {
-      throw new Error('AI quota reached. Please try again in a few minutes.');
+      throw new Error('AI quota reached. Add your own Gemini API key in Settings for uninterrupted access.');
     }
   }
 
   const finalMsg = String(lastError?.message || '').toLowerCase();
   if (finalMsg.includes('503') || finalMsg.includes('overload') || finalMsg.includes('high demand')) {
-    throw new Error('AI is currently overloaded. Please try again later.');
+    throw new Error('AI is currently overloaded. Please try again in a moment.');
   }
   if (finalMsg.includes('401') || finalMsg.includes('invalid authentication') || finalMsg.includes('authentication credentials')) {
-    throw new Error('Gemini API key is invalid. Please update VITE_GEMINI_API_KEY in Vercel settings.');
+    if (personalKey) {
+      setAuthExpired();
+      throw new Error('Your Gemini OAuth session has expired. Please reconnect your Google account to continue using your private quota.');
+    }
+    throw new Error('Gemini API key is invalid. Please update VITE_GEMINI_API_KEY in your environment settings.');
   }
 
   throw new Error(lastError?.message || 'AI failed to respond. Please try again.');
@@ -239,7 +364,7 @@ export class RobustChatSession {
     return model.startChat({ history: safeHistory });
   }
 
-  async sendMessageStream(msg: string, onChunk: (text: string) => void): Promise<{ text: string, model: string }> {
+  async sendMessageStream(msg: string, onChunk: (title: string) => void): Promise<{ title: string, model: string }> {
     let lastError: any;
     for (let mi = this.modelIndex; mi < MODEL_PRIORITY.length; mi++) {
       const modelName = MODEL_PRIORITY[mi];
@@ -270,7 +395,7 @@ export class RobustChatSession {
             throw new Error('STREAM_ABORTED_NO_FINISH_REASON');
           }
           setPreferredModel(modelName);
-          return { text: fullText, model: modelName };
+          return { title: fullText, model: modelName };
         } catch (err: any) {
           lastError = err;
           const errMsg = String(err?.message || '').toLowerCase();
@@ -292,7 +417,7 @@ export class RobustChatSession {
               if (ft.length > 0 && !sawRetryFinish) {
                 throw new Error('STREAM_ABORTED_NO_FINISH_REASON');
               }
-              return { text: ft, model: modelName };
+              return { title: ft, model: modelName };
             } catch (e: any) { lastError = e; }
           }
           if (ki === keyCount - 1) break;
@@ -395,7 +520,7 @@ export class RobustChatSession {
  * Robustly parse JSON from an AI response.
  * Handles markdown fences, leading/trailing text, escaped JSON strings.
  */
-export const parseAIJson = (text: string): any => {
+export const parseAIJson = (title: string): any => {
   if (!text || typeof text !== 'string') throw new Error('parseAIJson received empty or non-string input');
   const t = text.trim();
   const errors: string[] = [];
@@ -462,6 +587,6 @@ export const parseAIJson = (text: string): any => {
     }
   }
 
-  console.error("AI JSON Parse Failed. Raw text:", text, "Errors:", errors);
+  console.error("AI JSON Parse Failed. Raw title:", text, "Errors:", errors);
   throw new Error(`Parse error: ${errors[0] || 'unknown'}. Raw: ${text.substring(0, 80)}...`);
 };

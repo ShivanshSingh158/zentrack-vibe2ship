@@ -19,11 +19,11 @@ import { ExtensionDraftModal } from '../crisis/ExtensionDraftModal';
 
 const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEdit, newSubtaskText, toggleSelection, toggleTodoComplete, setExpandedTaskId, handleDeleteTask, toggleSubtask, handleDeleteSubtask, addSubtask, setNewSubtaskText, startTimer, onEdit, isBlocked }: any) => {
   const subtasks = todo.subtasks || [];
-  const stDone = subtasks.filter((s: any) => s.isCompleted).length;
+  const stDone = subtasks.filter((s: any) => s.status === 'completed').length;
   
   useLiveTick(); // forces re-render every minute
-  const urgency = (todo.date && !todo.isCompleted) ? getUrgencyLevel(todo.date) : 'normal';
-  const escalation = useEscalation(todo.isCompleted ? null : todo.date);
+  const urgency = (todo.date && todo.status !== 'completed') ? getUrgencyLevel(todo.date) : 'normal';
+  const escalation = useEscalation(todo.status === 'completed' ? null : todo.date);
 
   // --- Styling based on Urgency ---
   let containerStyle: React.CSSProperties = {
@@ -104,7 +104,7 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
                 className="todo-text"
                 onDoubleClick={() => onEdit(todo)}
                 onClick={() => !isBulkEdit && setExpandedTaskId(isExpanded ? null : todo.id!)}
-                title={todo.text}
+                title={todo.title}
                 style={{
                   flex: 1,
                   minWidth: 0,
@@ -118,7 +118,7 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
                   cursor: 'pointer',
                 }}
               >
-                {todo.text}
+                {todo.title}
               </span>
             </div>
 
@@ -189,8 +189,8 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
                   <button className="btn-icon" onClick={(e) => { e.stopPropagation(); onEdit(todo); }} title="Edit" style={{ padding: '0.25rem 0.3rem' }}>
                     <Edit2 size={14} />
                   </button>
-                  {!todo.isCompleted && (
-                    <button className="btn-icon" onClick={(e) => { e.stopPropagation(); startTimer(todo.id!, todo.text, undefined, undefined, todo.estimatedMinutes); }} title="Pomodoro" style={{ padding: '0.25rem 0.3rem', color: 'var(--accent-primary)' }}>
+                  {todo.status !== 'completed' && (
+                    <button className="btn-icon" onClick={(e) => { e.stopPropagation(); startTimer(todo.id!, todo.title, undefined, undefined, todo.estimatedMinutes); }} title="Pomodoro" style={{ padding: '0.25rem 0.3rem', color: 'var(--accent-primary)' }}>
                       <Timer size={14} />
                     </button>
                   )}
@@ -241,16 +241,16 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
               {subtasks.map((st: any) => (
                 <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.3rem 0' }}>
                   <button
-                    className={`todo-checkbox ${st.isCompleted ? 'checked' : ''}`}
+                    className={`todo-checkbox ${st.status === 'completed' ? 'checked' : ''}`}
                     onClick={() => toggleSubtask(todo.id!, st.id)}
                     style={{ width: '18px', height: '18px', borderRadius: '4px' }}
                     role="checkbox"
-                    aria-checked={st.isCompleted}
-                    aria-label={`Mark subtask ${st.isCompleted ? 'incomplete' : 'complete'}`}
+                    aria-checked={st.status === 'completed'}
+                    aria-label={`Mark subtask ${st.status === 'completed' ? 'incomplete' : 'complete'}`}
                   >
-                    {st.isCompleted && <Check size={10} strokeWidth={3} />}
+                    {st.status === 'completed' && <Check size={10} strokeWidth={3} />}
                   </button>
-                  <span style={{ flex: 1, fontSize: '0.85rem', color: st.isCompleted ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: st.isCompleted ? 'line-through' : 'none' }}>
+                  <span style={{ flex: 1, fontSize: '0.85rem', color: st.status === 'completed' ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: st.status === 'completed' ? 'line-through' : 'none' }}>
                     {st.text}
                   </span>
                   <button className="btn-icon" onClick={() => handleDeleteSubtask(todo.id!, st.id)} style={{ padding: '0.2rem' }} aria-label="Delete subtask">
@@ -259,7 +259,7 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
                 </div>
               ))}
               {/* All subtasks done — prompt to complete parent */}
-              {subtasks.length > 0 && stDone === subtasks.length && !todo.isCompleted && (
+              {subtasks.length > 0 && stDone === subtasks.length && todo.status !== 'completed' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem', background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)', borderRadius: '8px', marginTop: '0.25rem', animation: 'pulse 2s ease-in-out infinite' }}>
                   <Check size={14} style={{ color: '#10b981', flexShrink: 0 }} />
                   <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600, flex: 1 }}>All subtasks done! Mark task complete?</span>
@@ -275,8 +275,8 @@ const TodoListItem = React.memo(({ todo, index, isExpanded, isSelected, isBulkEd
                   style={{ flex: 1, background: 'transparent', border: '1px solid var(--border-subtle)', padding: '0.4rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem', color: 'var(--text-primary)' }}
                 />
                 {/* Pomodoro visible on mobile in expanded view */}
-                {!todo.isCompleted && (
-                  <button type="button" onClick={() => startTimer(todo.id!, todo.text, undefined, undefined, todo.estimatedMinutes)} className="btn-secondary show-on-mobile-only" style={{ padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem' }} title="Start Pomodoro">
+                {todo.status !== 'completed' && (
+                  <button type="button" onClick={() => startTimer(todo.id!, todo.title, undefined, undefined, todo.estimatedMinutes)} className="btn-secondary show-on-mobile-only" style={{ padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem' }} title="Start Pomodoro">
                     <Timer size={13} /> Focus
                   </button>
                 )}
@@ -320,7 +320,7 @@ const CompletedTodoItem = React.memo(({ todo, isSelected, isBulkEdit, toggleSele
         )}
         
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <span className="todo-text">{todo.text}</span>
+          <span className="todo-text">{todo.title}</span>
         </div>
 
         {!isBulkEdit && (
@@ -335,7 +335,7 @@ const CompletedTodoItem = React.memo(({ todo, isSelected, isBulkEdit, toggleSele
 CompletedTodoItem.displayName = 'CompletedTodoItem';
 
 export const TodoListModule = () => {
-  const { todos: globalTodos, isLoading } = useGlobalData();
+  const { tasks: globalTodos, isLoading } = useGlobalData();
   const todayStr = getLocalDateString(new Date());
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
@@ -382,7 +382,7 @@ export const TodoListModule = () => {
 
          const hourStr = d.getHours().toString().padStart(2, '0') + ':00';
          // Check if any todo has this exact timeSlot today
-         const conflictTask = todos.find(t => !t.isCompleted && (t.date === todayStr || !t.date) && t.timeSlot === hourStr);
+         const conflictTask = globalTodos.find(t => t.status !== 'completed' && (t.date === todayStr || !t.date) && t.timeSlot === hourStr);
          if (conflictTask) {
              window.dispatchEvent(new CustomEvent('guardian-calendar-conflict', { detail: { task: conflictTask, gcalEvent } }));
              break; // only handle one conflict at a time for now
@@ -430,9 +430,9 @@ export const TodoListModule = () => {
     Promise.all(missing.map(t =>
       addDoc(collection(db, 'todos'), {
         userId: user.uid,
-        text: t.text,
+        title: t.text,
         date: todayStr,
-        isCompleted: false,
+        status: 'pending',
         priority: t.priority,
         isRecurring: true,
         subtasks: [],
@@ -462,13 +462,13 @@ export const TodoListModule = () => {
     e.preventDefault();
     if (!user || !newTaskText.trim()) return;
 
-    const incompleteCount = todos.filter(t => !t.isCompleted).length;
+    const incompleteCount = todos.filter(t => t.status !== 'completed').length;
 
     const newTodo: any = {
       userId: user.uid,
-      text: newTaskText.trim(),
+      title: newTaskText.trim(),
       date: selectedDate,
-      isCompleted: false,
+      status: 'pending',
       priority: newTaskPriority,
       isRecurring: newTaskRecurring,
       timeSlot: newTaskStartTime || null,
@@ -499,16 +499,16 @@ export const TodoListModule = () => {
 
   const toggleTodoComplete = useCallback(async (todo: TodoItem) => {
     if (!todo.id) return;
-    const newStatus = !todo.isCompleted;
+    const newStatus = todo.status !== 'completed';
     if (newStatus) {
       playPopSound();
       import('../../utils/notifications').then(({ sendSystemNotification }) => {
-        sendSystemNotification('Task Completed! 🎉', { body: `You finished: "${todo.text}". Keep it up!` }, true);
+        sendSystemNotification('Task Completed! 🎉', { body: `You finished: "${todo.title}". Keep it up!` }, true);
       });
     }
 
     try {
-      await updateDoc(doc(db, 'todos', todo.id), { isCompleted: newStatus });
+      await updateDoc(doc(db, 'todos', todo.id), { status: newStatus ? 'completed' : 'pending' });
     } catch (error) {
       console.error('Error updating task:', error);
       toast.error('Failed to update task status');
@@ -549,17 +549,17 @@ export const TodoListModule = () => {
     }
   };
 
-  const addSubtask = useCallback(async (todoId: string, text: string) => {
+  const addSubtask = useCallback(async (todoId: string, title: string) => {
     const trimmedText = text?.trim();
     if (!trimmedText) return;
     
-    const todo = todos.find(t => t.id === todoId);
+    const todo = globalTodos.find(t => t.id === todoId);
     if (!todo) return;
 
     const newSt: TodoSubtask = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-      text: trimmedText,
-      isCompleted: false
+      title: trimmedText,
+      status: 'pending'
     };
     const updated = [...(todo.subtasks || []), newSt];
 
@@ -573,14 +573,14 @@ export const TodoListModule = () => {
   }, [todos]);
 
   const toggleSubtask = useCallback(async (todoId: string, subtaskId: string) => {
-    const todo = todos.find(t => t.id === todoId);
+    const todo = globalTodos.find(t => t.id === todoId);
     if (!todo) return;
     
     const updated = (todo.subtasks || []).map((st: any) =>
-      st.id === subtaskId ? { ...st, isCompleted: !st.isCompleted } : st
+      st.id === subtaskId ? { ...st, isCompleted: st.status !== 'completed' } : st
     );
     
-    const wasCompleted = (todo.subtasks || []).find((s: any) => s.id === subtaskId)?.isCompleted;
+    const wasCompleted = (todo.subtasks || []).find((s: any) => s.id === subtaskId)?.status === 'completed';
     if (!wasCompleted) playPopSound();
 
     try {
@@ -595,7 +595,7 @@ export const TodoListModule = () => {
   const confirmDeleteSubtask = async () => {
     const todoId = deleteConfirm.parentId!;
     const subtaskId = deleteConfirm.id;
-    const todo = todos.find(t => t.id === todoId);
+    const todo = globalTodos.find(t => t.id === todoId);
     if (!todo) return;
     const updated = (todo.subtasks || []).filter((st: any) => st.id !== subtaskId);
     try {
@@ -605,7 +605,7 @@ export const TodoListModule = () => {
   };
 
   const clearCompleted = async () => {
-    const completed = todos.filter(t => t.isCompleted);
+    const completed = todos.filter(t => t.status === 'completed');
     if (completed.length === 0) return;
     try {
       const batch = writeBatch(db);
@@ -663,10 +663,10 @@ export const TodoListModule = () => {
       return true;
     });
     const sorted = [...filtered].sort((a, b) => {
-      if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+      if (a.status === 'completed' !== b.status === 'completed') return a.status === 'completed' ? 1 : -1;
       return (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
     });
-    const incomplete = sorted.filter(t => !t.isCompleted);
+    const incomplete = sorted.filter(t => t.status !== 'completed');
     
     if (destination.index >= incomplete.length || source.index >= incomplete.length) return;
     
@@ -688,7 +688,7 @@ export const TodoListModule = () => {
     }
   }, [isBulkEdit, todos, searchTerm, filter]);
 
-  const handleUpdateNewSubtaskText = useCallback((todoId: string, text: string) => {
+  const handleUpdateNewSubtaskText = useCallback((todoId: string, title: string) => {
     setNewSubtaskTexts(prev => ({ ...prev, [todoId]: text }));
   }, []);
 
@@ -700,7 +700,7 @@ export const TodoListModule = () => {
   });
 
   const sortedTodos = [...filteredTodos].sort((a, b) => {
-    if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+    if (a.status === 'completed' !== b.status === 'completed') return a.status === 'completed' ? 1 : -1;
     
     // Sort by Urgency x Priority
     const getUrgScore = (date: string) => {
@@ -720,8 +720,8 @@ export const TodoListModule = () => {
     return (a.order ?? a.createdAt) - (b.order ?? b.createdAt);
   });
 
-  const incompleteTodos = sortedTodos.filter(t => !t.isCompleted);
-  const completedTodos = sortedTodos.filter(t => t.isCompleted);
+  const incompleteTodos = sortedTodos.filter(t => t.status !== 'completed');
+  const completedTodos = sortedTodos.filter(t => t.status === 'completed');
 
   const [y, m, d] = selectedDate.split('-').map(Number);
   const selectedDateObj = new Date(y, m - 1, d);
@@ -734,8 +734,8 @@ export const TodoListModule = () => {
     return d;
   });
 
-  const completedCount = todos.filter(t => t.isCompleted).length;
-  const totalEstimate = todos.filter(t => !t.isCompleted).reduce((acc, t) => acc + (t.estimatedMinutes || 0), 0);
+  const completedCount = todos.filter(t => t.status === 'completed').length;
+  const totalEstimate = todos.filter(t => t.status !== 'completed').reduce((acc, t) => acc + (t.estimatedMinutes || 0), 0);
 
   return (
     <div className="module-container" style={{ position: 'relative' }}>
@@ -753,7 +753,7 @@ export const TodoListModule = () => {
             const monthName = dateObj.toLocaleDateString('en-US', { month: 'short' });
             // Dot indicator: does this date have tasks?
             const dateTodos = globalTodos.filter(t => t.date === dateStr);
-            const hasOverdue = dateTodos.some(t => !t.isCompleted && dateStr < todayStr);
+            const hasOverdue = dateTodos.some(t => t.status !== 'completed' && dateStr < todayStr);
             const hasTasks = dateTodos.length > 0;
             return (
               <button 
@@ -801,8 +801,8 @@ export const TodoListModule = () => {
         </div>
       </div>
 
-      <div className="todo-content liquid-panel" style={{ padding: '1.5rem', marginTop: '1rem', border: 'none' }}>
-        <div style={{ marginBottom: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <div className="todo-content liquid-panel" style={{ padding: '1rem 1.5rem', border: 'none' }}>
+        <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'nowrap', gap: '0.5rem' }}>
             <h1 style={{ margin: 0, fontSize: '1.5rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {selectedDate === todayStr ? "Today's Tasks" : `Tasks for ${formatDisplayDate(selectedDate)}`}
@@ -824,15 +824,19 @@ export const TodoListModule = () => {
         </div>
 
         {/* Desktop Search & Filters */}
-        <div className="hide-on-mobile" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem', background: 'var(--bg-surface)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0 0.75rem', flex: '1 1 200px', minWidth: 0 }}>
+        <div className="hide-on-mobile" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem', background: 'var(--bg-surface)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
+          <div 
+            style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0 0.75rem', flex: '1 1 200px', minWidth: 0, transition: 'all 0.2s ease' }}
+            onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 2px rgba(168, 85, 247, 0.4)'; e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.8)'; }}
+            onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; }}
+          >
             <Search size={16} color="var(--text-muted)" />
             <input 
               type="text" 
               placeholder="Search tasks..." 
               value={searchTerm} 
               onChange={e => setSearchTerm(e.target.value)} 
-              style={{ border: 'none', background: 'transparent', padding: '0.5rem', width: '100%', color: 'var(--text-primary)', outline: 'none' }}
+              style={{ border: 'none', background: 'transparent', padding: '0.5rem', width: '100%', color: 'var(--text-primary)', outline: 'none', boxShadow: 'none' }}
             />
           </div>
           <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -874,7 +878,7 @@ export const TodoListModule = () => {
         {/* Quick Add Task — progressive disclosure */}
         <motion.form 
           onSubmit={handleAddTask} 
-          style={{ background: 'rgba(20,20,25,0.6)', backdropFilter: 'blur(12px)', borderRadius: '24px', border: '1px solid rgba(168,85,247,0.2)', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden', marginBottom: '2rem' }} 
+          style={{ background: 'rgba(20,20,25,0.6)', backdropFilter: 'blur(12px)', borderRadius: '24px', border: '1px solid rgba(168,85,247,0.2)', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden', marginBottom: '1.25rem' }} 
           initial={{ opacity: 0, y: 10 }} 
           animate={{ opacity: 1, y: 0 }}
         >
@@ -1011,7 +1015,7 @@ export const TodoListModule = () => {
                 {(provided) => (
                   <div {...provided.droppableProps} ref={provided.innerRef} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     {incompleteTodos.map((todo, index) => {
-                      const isTaskBlocked = todo.blockedBy?.some((id: string) => todos.find((t: any) => t.id === id && !t.isCompleted));
+                      const isTaskBlocked = todo.blockedBy?.some((id: string) => globalTodos.find((t: any) => t.id === id && t.status !== 'completed'));
                       return (
                         <TodoListItem 
                           key={todo.id!}

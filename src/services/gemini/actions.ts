@@ -7,7 +7,7 @@ export const generateAnalyticsInsights = async (userData: any) => {
   // Trim data to avoid token overflow — summarise arrays instead of dumping raw JSON
   const safe = {
     summary: userData.summary,
-    recentTasks: (userData.todos || []).slice(0, 20).map((t: any) => ({ text: t.text, done: t.isCompleted, date: t.date, priority: t.priority })),
+    recentTasks: (userData.todos || []).slice(0, 20).map((t: any) => ({ title: t.text, done: t.status === 'completed', date: t.date, priority: t.priority })),
     recentLogs: (userData.logs || []).slice(0, 14).map((l: any) => ({ date: l.date, mood: l.mood, hours: l.productiveHours, water: l.waterIntakeLiters, notes: l.notes })),
     habits: {
       totalCheckins: (userData.habits || []).length,
@@ -150,7 +150,7 @@ ${JSON.stringify(safeData, null, 2)}`;
 
 export const generateNextActionRecommendation = async (userData: any) => {
   const safeData = {
-    todos: (userData.todos || []).map((t: any) => ({ text: t.text, priority: t.priority, isOverdue: t.isOverdue })),
+    tasks: (userData.todos || []).map((t: any) => ({ title: t.text, priority: t.priority, isOverdue: t.isOverdue })),
     assignments: (userData.assignments || []).map((a: any) => ({ title: a.title, isOverdue: a.isOverdue, dueSoon: a.dueSoon })),
     habitsPending: userData.habitsPending || 0,
     isGymDay: userData.isGymDay || false,
@@ -207,8 +207,8 @@ export const analyzeNoteWithAI = async (noteContent: string, action: 'summarize'
 
 // ── Autonomous Task Planning & Scheduling ──────────────────────────────────────
 
-export const autoScheduleDay = async (todos: any[], existingEvents: any[], peakEnergyTime: string = 'morning') => {
-  const safeTodos = todos.map(t => ({ id: t.id, text: t.text, priority: t.priority, energyRequirement: t.energyRequirement || 'medium' }));
+export const autoScheduleDay = async (tasks: any[], existingEvents: any[], peakEnergyTime: string = 'morning') => {
+  const safeTodos = tasks.map(t => ({ id: t.id, title: t.text, priority: t.priority, energyRequirement: t.energyRequirement || 'medium' }));
   const safeEvents = existingEvents.map(e => ({ title: e.title, date: e.date, type: e.type }));
 
   const prompt = `You are Zen AI, an autonomous scheduling agent.

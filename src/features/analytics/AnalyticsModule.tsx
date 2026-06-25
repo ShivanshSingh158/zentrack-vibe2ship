@@ -103,7 +103,7 @@ export const AnalyticsModule = () => (
 
 const AnalyticsModuleInner = () => {
   const {
-    todos: todoData,
+    tasks: todoData,
     dailyLogs: logData,
     habitLogs: rawHabitLogs,
     gymLogs: gymData,
@@ -153,11 +153,11 @@ const AnalyticsModuleInner = () => {
   const todoMetrics = useMemo(() => {
     try {
       const total = safeTodos.length;
-      const completed = safeTodos.filter(t => t?.isCompleted === true).length;
+      const completed = safeTodos.filter(t => t?.status === 'completed').length;
       const rate = total > 0 ? clamp(Math.round((completed / total) * 100), 0, 100) : 0;
       const daily = last30.map(date => {
         const dayTodos = safeTodos.filter(t => t?.date === date);
-        const done = dayTodos.filter(t => t?.isCompleted === true).length;
+        const done = dayTodos.filter(t => t?.status === 'completed').length;
         return { date: getWeekLabel(date), total: dayTodos.length, completed: done };
       });
       return { total, completed, rate, daily };
@@ -188,7 +188,7 @@ const AnalyticsModuleInner = () => {
         return { thisWeek, lastWeek, diff: thisWeek - lastWeek };
       };
 
-      const tasks = getRangeCount(safeTodos, 'date', d => d.isCompleted === true);
+      const tasks = getRangeCount(safeTodos, 'date', d => d.status === 'completed');
       const habits = getRangeCount(habitLogs, 'date', () => true);
       const gym = getRangeCount(safeGymData, 'date', () => true);
 
@@ -368,7 +368,7 @@ const AnalyticsModuleInner = () => {
 
   // ── AI Summary Data ───────────────────────────────────────────────────────
   const aiUserData = useMemo(() => ({
-    todos: safeTodos,
+    tasks: safeTodos,
     habits: habitLogs,
     attendance: safeAttendance,
     gym: safeGymData,

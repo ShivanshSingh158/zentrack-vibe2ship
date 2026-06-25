@@ -1,27 +1,33 @@
 /* Module Container */
 .module-container {
   display: flex;
-  height: 100%;
+  flex: 1;
   width: 100%;
 }
 
 /* Calendar Sidebar */
 .calendar-sidebar {
-  width: 250px;
+  width: calc(250px + max(0px, 50vw - 700px));
   background: rgba(12, 12, 16, 0.6);
   border-right: 1px solid var(--border-subtle);
-  padding: 1.5rem;
+  padding: 1.5rem 1.5rem 1.5rem 0;
+  padding-top: 6.75rem; /* Push content down to avoid TopNav */
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  margin-top: -7.25rem; /* Pull background up to top of screen */
+  margin-bottom: -2rem;
+  margin-left: calc(-2rem - max(0px, 50vw - 700px));
 }
 
 .calendar-header {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   color: var(--text-primary);
   font-family: var(--font-display);
+  padding-left: 0;
 }
 
 .calendar-dates {
@@ -44,7 +50,11 @@
   gap: 0.5rem;
   cursor: pointer;
   transition: transform 0.25s var(--ease-out-expo), opacity 0.25s var(--ease-out-expo), background-color 0.25s var(--ease-out-expo), border-color 0.25s var(--ease-out-expo), box-shadow 0.25s var(--ease-out-expo), color 0.25s var(--ease-out-expo);
-  text-align: left;
+  text-align: center;
+  justify-content: center;
+  padding-left: 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: none;
 }
 
 .date-btn:hover {
@@ -68,6 +78,10 @@
   margin-top: auto;
   border-top: 1px solid var(--border-subtle);
   padding-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
 }
 
 /* Todo Content */
@@ -298,6 +312,7 @@
     gap: 0.5rem; 
     padding: 0.75rem 0;
     background: var(--bg-base);
+    margin: 0;
   }
   .calendar-header { padding: 0 0.75rem; }
   .calendar-dates { 

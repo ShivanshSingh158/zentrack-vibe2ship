@@ -30,13 +30,13 @@ export const JobModal: React.FC<JobModalProps> = ({ isOpen, onClose, onSave, ini
   const [jobDescription, setJobDescription] = useState('');
   const [coverLetter, setCoverLetter] = useState('');
   const [attachedFileIds, setAttachedFileIds] = useState<string[]>([]);
-  const [prepChecklist, setPrepChecklist] = useState<{id: string, text: string, done: boolean}[]>([
-    { id: '1', text: 'Research the company thoroughly', done: false },
-    { id: '2', text: 'Review the job description', done: false },
-    { id: '3', text: 'Prepare STAR stories', done: false },
-    { id: '4', text: 'Practice coding/technical questions', done: false },
-    { id: '5', text: 'Prepare questions to ask', done: false },
-    { id: '6', text: 'Test setup (camera/mic/internet)', done: false },
+  const [prepChecklist, setPrepChecklist] = useState<{id: string, title: string, done: boolean}[]>([
+    { id: '1', title: 'Research the company thoroughly', done: false },
+    { id: '2', title: 'Review the job description', done: false },
+    { id: '3', title: 'Prepare STAR stories', done: false },
+    { id: '4', title: 'Practice coding/technical questions', done: false },
+    { id: '5', title: 'Prepare questions to ask', done: false },
+    { id: '6', title: 'Test setup (camera/mic/internet)', done: false },
   ]);
   
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -300,7 +300,7 @@ export const JobModal: React.FC<JobModalProps> = ({ isOpen, onClose, onSave, ini
                               e.preventDefault();
                               const val = (e.target as HTMLInputElement).value.trim();
                               if (val) {
-                                setPrepChecklist(prev => [...prev, { id: String(Date.now()), text: val, done: false }]);
+                                setPrepChecklist(prev => [...prev, { id: String(Date.now()), title: val, done: false }]);
                                 (e.target as HTMLInputElement).value = '';
                               }
                             }

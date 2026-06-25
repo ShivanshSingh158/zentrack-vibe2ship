@@ -5,7 +5,7 @@ import { useGlobalData } from '../contexts/GlobalDataContext';
 
 export const useContextReminders = () => {
   const location = useLocation();
-  const { todos, gymLogs } = useGlobalData();
+  const { tasks, gymLogs } = useGlobalData();
   const hasShownGymReminder = useRef(false);
   const hasShownTodoReminder = useRef(false);
 
@@ -27,14 +27,14 @@ export const useContextReminders = () => {
       }
 
       if (path === '/todo' || path === '/tasks') {
-        const overdueTodos = todos.filter(t => t.isOverdue && !t.isCompleted);
+        const overdueTodos = tasks.filter(t => t.isOverdue && t.status !== 'completed');
         if (overdueTodos.length > 3 && !hasShownTodoReminder.current) {
           toast.message('Zen AI Reminder 🧠', {
             description: `You have ${overdueTodos.length} overdue tasks! Focus mode is highly recommended.`,
             duration: 6000,
           });
           hasShownTodoReminder.current = true;
-        } else if (todos.filter(t => !t.isCompleted).length === 0 && todos.length > 0) {
+        } else if (tasks.filter(t => t.status !== 'completed').length === 0 && tasks.length > 0) {
           // If they just opened the todo page and have 0 pending tasks
            toast.success("You've cleared all your tasks for today! Take a break.");
         }
@@ -43,5 +43,5 @@ export const useContextReminders = () => {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [location.pathname, todos, gymLogs]);
+  }, [location.pathname, tasks, gymLogs]);
 };

@@ -6,7 +6,7 @@ import { Check, GripHorizontal, EyeOff, ClipboardList } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export const FloatingExtraWorks: React.FC = () => {
-  const [tasks, setTasks] = useState<{ id: number; text: string; rawLine: string }[]>([]);
+  const [tasks, setTasks] = useState<{ id: number; title: string; rawLine: string }[]>([]);
   const [docId, setDocId] = useState<string | null>(null);
   const [fullText, setFullText] = useState<string>('');
   const [isVisible, setIsVisible] = useState(() => localStorage.getItem('zen_floating_extra_works') !== 'hidden');
@@ -40,7 +40,7 @@ export const FloatingExtraWorks: React.FC = () => {
         
         // Parse lines
         const lines = extraText.split('\n');
-        const activeTasks: { id: number; text: string; rawLine: string }[] = [];
+        const activeTasks: { id: number; title: string; rawLine: string }[] = [];
         
         lines.forEach((line: string, index: number) => {
           const trimmed = line.trim();
@@ -51,7 +51,7 @@ export const FloatingExtraWorks: React.FC = () => {
           let cleanText = trimmed;
           if (trimmed.startsWith('- ')) cleanText = trimmed.substring(2);
           
-          activeTasks.push({ id: index, text: cleanText, rawLine: line });
+          activeTasks.push({ id: index, title: cleanText, rawLine: line });
         });
         
         setTasks(activeTasks);

@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Terminal, X, Minimize2, Maximize2 } from 'lucide-react';
+import { Terminal, X, Minimize2, Maximize2, Trash } from 'lucide-react';
 
 interface LogEntry {
   id: string;
   time: string;
   type: 'thinking' | 'tool_call' | 'tool_result' | 'answer';
-  text: string;
+  title: string;
   data?: any;
 }
 
@@ -25,19 +25,22 @@ export const AgentTerminal: React.FC = () => {
         id: Math.random().toString(36).substr(2, 9),
         time: now,
         type: step.type,
-        text: '',
+        title: '',
       };
 
       if (step.type === 'thinking') {
-        newLog.text = step.text;
+        newLog.text = step.text || step.title || step.message;
       } else if (step.type === 'tool_call') {
-        newLog.text = `Executing: ${step.toolName}`;
-        newLog.data = step.args;
+        newLog.text = `Executing: ${step.toolName || step.title}`;
+        newLog.data = step.args || step.data;
       } else if (step.type === 'tool_result') {
-        newLog.text = `Result: ${step.toolName}`;
-        newLog.data = step.result;
+        newLog.text = `Result: ${step.toolName || step.title}`;
+        newLog.data = step.result || step.data;
       } else if (step.type === 'answer') {
-        newLog.text = step.text;
+        const fullText = step.text || step.title || step.message || '';
+        newLog.text = fullText.length > 80 ? fullText.substring(0, 80) + '... (See Mission Report)' : fullText;
+      } else {
+        newLog.text = step.text || step.title || step.message || JSON.stringify(step);
       }
 
       setLogs(prev => [...prev, newLog]);
@@ -91,17 +94,39 @@ export const AgentTerminal: React.FC = () => {
             ZEN AGENT TERMINAL
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
+            <button 
+              onClick={() => {
+                setLogs([]);
+                window.dispatchEvent(new CustomEvent('agent-clear-memory'));
+              }} 
+              style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              title="Clear Terminal & Agent Memory"
+            >
+              <Trash size={14} />
+            </button>
             <button onClick={() => setIsMinimized(!isMinimized)} style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer' }}>
               {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
             </button>
-            <button onClick={() => { setIsOpen(false); setLogs([]); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+            <button onClick={() => { setIsOpen(false); setLogs([]); window.dispatchEvent(new CustomEvent('agent-clear-memory')); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
               <X size={14} />
             </button>
           </div>
         </div>
 
         {!isMinimized && (
-          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div 
+            ref={scrollRef} 
+            data-lenis-prevent="true"
+            style={{ 
+              flex: 1, 
+              overflowY: 'auto', 
+              padding: '12px', 
+              display: 'flex', 
+              flexDirection: 'column', 
+              gap: '8px',
+              overscrollBehavior: 'contain'
+            }}
+          >
             {logs.map((log) => (
               <div key={log.id} style={{ fontSize: '13px', lineHeight: 1.4 }}>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -114,20 +139,6 @@ export const AgentTerminal: React.FC = () => {
                     {log.text}
                   </span>
                 </div>
-                {log.data && (
-                  <pre style={{ 
-                    margin: '4px 0 0 60px', 
-                    padding: '8px', 
-                    background: 'rgba(0,0,0,0.5)', 
-                    borderRadius: '4px',
-                    color: '#a78bfa',
-                    fontSize: '11px',
-                    whiteSpace: 'pre-wrap',
-                    wordBreak: 'break-all'
-                  }}>
-                    {JSON.stringify(log.data, null, 2)}
-                  </pre>
-                )}
               </div>
             ))}
             {logs.length > 0 && logs[logs.length - 1].type !== 'answer' && (

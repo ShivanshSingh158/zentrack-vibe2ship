@@ -24,9 +24,10 @@ const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 // Models to try in order
 const MODEL_FALLBACKS = [
-  'gemini-2.5-pro',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
-  'gemini-2.0-flash',
+  'gemini-3.1-pro',
 ];
 
 // Global Learning Context — cross-video memory stored in localStorage
@@ -78,7 +79,7 @@ const buildGlobalCtxString = (currentVideoId: string): string => {
 interface ChatMessage {
   id: string;
   role: 'user' | 'model';
-  text: string;
+  title: string;
   ts: number;
   error?: boolean;
   model?: string;
@@ -151,7 +152,7 @@ const DOUBT_PATTERNS = [
   /this is confusing/i, /not getting it/i,
   /i don'?t get/i, /please (clarify|explain)/i,
 ];
-const isDoubtMessage = (text: string) => DOUBT_PATTERNS.some(r => r.test(text));
+const isDoubtMessage = (title: string) => DOUBT_PATTERNS.some(r => r.test(text));
 
 // ── OAuth sign-in ─────────────────────────────────────────────────────────────
 
@@ -179,8 +180,8 @@ async function callGeminiREST(
   systemInstruction: any,
   contents: any[],
   modelIndex = 0,
-  onChunk?: (text: string) => void
-): Promise<{ text: string; model: string }> {
+  onChunk?: (title: string) => void
+): Promise<{ title: string; model: string }> {
   const model = MODEL_FALLBACKS[modelIndex];
   if (!model) throw new Error('All models exhausted. Please try again.');
 
@@ -256,12 +257,12 @@ async function callGeminiREST(
   }
 
   if (!fullText) throw new Error('Empty response from Gemini.');
-  return { text: fullText, model };
+  return { title: fullText, model };
 }
 
 // ── Follow-up question parser ─────────────────────────────────────────────────
 
-const parseFollowUps = (text: string): string[] => {
+const parseFollowUps = (title: string): string[] => {
   const match = text.match(/💡\s*\*?\*?Ask next:\*?\*?\s*(.+)/i);
   if (!match) return [];
   const raw = match[1];
@@ -270,7 +271,7 @@ const parseFollowUps = (text: string): string[] => {
   return raw.split(/[·|]/).map(s => s.trim().replace(/^["']|["']$/g, '')).filter(s => s.length > 5).slice(0, 3);
 };
 
-const stripFollowUpLine = (text: string): string =>
+const stripFollowUpLine = (title: string): string =>
   text.replace(/\n*💡\s*\*?\*?Ask next:\*?\*?.*$/im, '').trim();
 
 // ── System prompt builder ─────────────────────────────────────────────────────
@@ -280,8 +281,7 @@ const buildSystemInstruction = (
   progressPct?: number, completedTopics?: string[],
   totalProgress?: { completed: number; total: number }, globalCtx?: string,
 ) => ({
-  parts: [{
-    text: `You are Zen Tutor — a world-class expert educator and pedagogy specialist embedded inside ZenTrack.
+  parts: [{ text: `You are Zen Tutor — a world-class expert educator and pedagogy specialist embedded inside ZenTrack.
 The student is watching: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"
 ${progressPct !== undefined ? `Topic progress: ~${progressPct}% of videos watched.` : ''}
 ${totalProgress ? `Overall course progress: ${totalProgress.completed}/${totalProgress.total} videos completed.` : ''}
@@ -455,7 +455,7 @@ const CodeBlock = ({ codeLang, codeLines }: { codeLang: string; codeLines: strin
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
-const renderMarkdown = (text: string): React.ReactNode => {
+const renderMarkdown = (title: string): React.ReactNode => {
   const lines = text.split('\n');
   const result: React.ReactNode[] = [];
   let codeLines: string[] = [];
@@ -676,20 +676,20 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
       
       try {
         const msgId = crypto.randomUUID();
-        const placeholder: ChatMessage = { id: msgId, role: 'model', text: '', ts: Date.now() };
+        const placeholder: ChatMessage = { id: msgId, role: 'model', title: '', ts: Date.now() };
         setMessages(prev => [...prev, placeholder]);
 
-        const { text: aiText, model: usedModel } = await callGeminiREST(
+        const { title: aiText, model: usedModel } = await callGeminiREST(
           token, systemRef.current, newContents, 0,
           (chunk) => {
-            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: chunk } : m));
+            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, title: chunk } : m));
             bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
           }
         );
 
         const followUps = parseFollowUps(aiText);
         const cleanText = stripFollowUpLine(aiText);
-        const finalMsg: ChatMessage = { id: msgId, role: 'model', text: cleanText, ts: Date.now(), model: usedModel, followUps };
+        const finalMsg: ChatMessage = { id: msgId, role: 'model', title: cleanText, ts: Date.now(), model: usedModel, followUps };
         
         contentsRef.current = [...newContents, { role: 'model', parts: [{ text: cleanText }] }];
         setMessages(prev => { const n = prev.map(m => m.id === msgId ? finalMsg : m); persistMessages(n); return n; });
@@ -723,20 +723,20 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
 
     try {
       const msgId = crypto.randomUUID();
-      const placeholder: ChatMessage = { id: msgId, role: 'model', text: '', ts: Date.now() };
+      const placeholder: ChatMessage = { id: msgId, role: 'model', title: '', ts: Date.now() };
       setMessages(prev => [...prev, placeholder]);
 
-      const { text: aiText, model: usedModel } = await callGeminiREST(
+      const { title: aiText, model: usedModel } = await callGeminiREST(
         token, systemRef.current, newContents, 0,
         (chunk) => {
-          setMessages(prev => prev.map(m => m.id === msgId ? { ...m, text: chunk } : m));
+          setMessages(prev => prev.map(m => m.id === msgId ? { ...m, title: chunk } : m));
           bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
         }
       );
 
       const followUps = parseFollowUps(aiText);
       const cleanText = stripFollowUpLine(aiText);
-      const finalMsg: ChatMessage = { id: msgId, role: 'model', text: cleanText, ts: Date.now(), model: usedModel, followUps };
+      const finalMsg: ChatMessage = { id: msgId, role: 'model', title: cleanText, ts: Date.now(), model: usedModel, followUps };
       contentsRef.current = [...newContents, { role: 'model', parts: [{ text: cleanText }] }];
       setMessages(prev => { const n = prev.map(m => m.id === msgId ? finalMsg : m); persistMessages(n); return n; });
 
@@ -758,7 +758,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
       }
     } catch (err: any) {
       if (err.message === 'AUTH_EXPIRED') { clearToken(); setToken(null); return; }
-      const errMsg: ChatMessage = { id: crypto.randomUUID(), role: 'model', text: err.message || 'AI failed to respond.', ts: Date.now(), error: true };
+      const errMsg: ChatMessage = { id: crypto.randomUUID(), role: 'model', title: err.message || 'AI failed to respond.', ts: Date.now(), error: true };
       contentsRef.current = contentsRef.current.slice(0, -1);
       setChatError(err.message || 'Request failed. Please try again.');
       setMessages(prev => { const n = [...prev, errMsg]; persistMessages(n); return n; });

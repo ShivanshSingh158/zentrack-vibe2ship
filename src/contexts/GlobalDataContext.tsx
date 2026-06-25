@@ -3,9 +3,11 @@ import { collection, query, where, onSnapshot, getDocs, writeBatch, doc } from '
 import type { Query, DocumentData } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/firebase';
+import { initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle, getTokenTimeRemaining } from '../services/googleCalendar';
+import { loadUserGeminiKey } from '../services/userGeminiAuth';
 
 interface GlobalDataContextType {
-  todos: any[];
+  tasks: any[];
   calendarEvents: any[];
   dailyLogs: any[];
   habitLogs: any[];
@@ -24,6 +26,9 @@ interface GlobalDataContextType {
     gymLogged?: boolean;
   };
   isLoading: boolean;
+  isGoogleConnected: boolean;
+  connectGoogle: () => Promise<void>;
+  disconnectGoogle: () => void;
 }
 
 const GlobalDataContext = createContext<GlobalDataContextType | null>(null);
@@ -60,7 +65,7 @@ function safeSnapshot(
 }
 
 export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [todos, setTodos] = useState<any[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
   const [dailyLogs, setDailyLogs] = useState<any[]>([]);
   const [habitLogs, setHabitLogs] = useState<any[]>([]);
@@ -75,9 +80,57 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [pomodoroSessions, setPomodoroSessions] = useState<any[]>([]);
   const [userPreferences, setUserPreferences] = useState<GlobalDataContextType['userPreferences']>({ peakEnergyTime: 'morning' });
   const [isLoading, setIsLoading] = useState(true);
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
 
-  // Ref to hold current data listener cleanup functions
-  // so we can tear them down when auth state changes
+  useEffect(() => {
+    initGoogleCalendar().then(() => setIsGoogleConnected(isSignedInToGoogle()));
+  }, []);
+
+  const connectGoogle = async () => {
+    await signInWithGoogle();
+    setIsGoogleConnected(isSignedInToGoogle());
+  };
+
+  // ── Auto-Login Health Monitor ──────────────────────────────────────────────
+  // Every 5 minutes, check if the Google token is near expiry.
+  // If token expires within 10 minutes AND user was previously connected,
+  // silently refresh it WITHOUT requiring any user interaction.
+  useEffect(() => {
+    const healthCheck = setInterval(async () => {
+      const timeLeft = getTokenTimeRemaining();
+      const wasConnected = !!localStorage.getItem('zen_gcal_access_token');
+
+      if (wasConnected && timeLeft < 10 * 60 * 1000 && timeLeft > 0) {
+        // Token is about to expire — silently refresh
+        console.log('[AutoLogin] Token expires in', Math.round(timeLeft / 60000), 'mins. Silently refreshing...');
+        try {
+          await signInWithGoogle();
+          setIsGoogleConnected(true);
+          console.log('[AutoLogin] ✅ Google token silently refreshed.');
+        } catch (err) {
+          console.warn('[AutoLogin] Silent refresh failed. Will retry or prompt on next agent call.', err);
+        }
+      } else if (wasConnected && timeLeft === 0) {
+        // Token has expired — update UI state
+        setIsGoogleConnected(false);
+      }
+    }, 5 * 60 * 1000); // check every 5 minutes
+
+    // Also listen for the google-token-refreshed event from the proactive refresh timer
+    const handleRefreshed = () => setIsGoogleConnected(true);
+    window.addEventListener('google-token-refreshed', handleRefreshed);
+
+    return () => {
+      clearInterval(healthCheck);
+      window.removeEventListener('google-token-refreshed', handleRefreshed);
+    };
+  }, []);
+
+  const disconnectGoogle = () => {
+    signOutGoogle();
+    setIsGoogleConnected(false);
+  };
+
   const dataUnsubsRef = useRef<(() => void)[]>([]);
   const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -91,14 +144,11 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   useEffect(() => {
-    // ── Watch auth state; re-attach data listeners on login, clean up on logout ──
-    // Fixes the timing race where reading auth.currentUser at mount could be null.
     const unsubAuth = onAuthStateChanged(auth, (user) => {
-      // Always clean up previous listeners before attaching new ones
       cleanupDataListeners();
 
       if (!user) {
-        setTodos([]); setDailyLogs([]); setHabitLogs([]); setHabits([]);
+        setTasks([]); setDailyLogs([]); setHabitLogs([]); setHabits([]);
         setJobs([]); setGoals([]); setLearningTopics([]); setGymLogs([]);
         setNotes([]); setAttendanceSubjects([]); setAssignments([]); setPomodoroSessions([]);
         setIsLoading(false);
@@ -108,73 +158,11 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       const uid = user.uid;
       setIsLoading(true);
 
-      // ── Recurring Task Auto-Forward Engine ─────────────────────────────────────────────
-      // Runs once per calendar day per user. Finds all isRecurring todos from
-      // before today that are still incomplete, and clones them to today.
-      // Deduplicates against any today task with the same text.
-      const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
-      const recurringKey = `recurring_forwarded_${uid}_${todayStr}`;
-      if (!localStorage.getItem(recurringKey)) {
-        (async () => {
-          try {
-            // 1. Fetch all incomplete recurring todos older than today
-            const recurringQ = query(
-              collection(db, 'todos'),
-              where('userId', '==', uid),
-              where('isRecurring', '==', true),
-              where('isCompleted', '==', false)
-            );
-            const snap = await getDocs(recurringQ);
-            const stale = snap.docs.filter(d => (d.data().date || '') < todayStr);
-            if (stale.length === 0) { localStorage.setItem(recurringKey, '1'); return; }
+      // ── Load personal Gemini key so ALL AI calls use it immediately ──
+      loadUserGeminiKey().then(key => {
+        if (key) console.log('[ZenAI] ✅ Personal Gemini key loaded for user.');
+      });
 
-            // 2. Fetch today's todos to dedup
-            const todayQ = query(
-              collection(db, 'todos'),
-              where('userId', '==', uid),
-              where('date', '==', todayStr)
-            );
-            const todaySnap = await getDocs(todayQ);
-            const todayTexts = new Set(todaySnap.docs.map(d => (d.data().text || '').trim().toLowerCase()));
-
-            // 3. Batch-write new copies for today (skip if already exists)
-            const batch = writeBatch(db);
-            let count = 0;
-            stale.forEach(d => {
-              const data = d.data();
-              const textKey = (data.text || '').trim().toLowerCase();
-              if (todayTexts.has(textKey)) return; // already exists today — skip
-              todayTexts.add(textKey); // prevent duplicates within this batch
-              const newRef = doc(collection(db, 'todos'));
-              batch.set(newRef, {
-                userId: uid,
-                text: data.text,
-                date: todayStr,
-                isCompleted: false,
-                priority: data.priority || 'medium',
-                isRecurring: true,
-                timeSlot: data.timeSlot || null,
-                subject: data.subject || null,
-                estimatedMinutes: data.estimatedMinutes || null,
-                subtasks: [],
-                createdAt: Date.now(),
-                order: 999,
-              });
-              count++;
-            });
-
-            if (count > 0) await batch.commit();
-            localStorage.setItem(recurringKey, '1');
-            console.info(`[Recurring] Forwarded ${count} recurring task(s) to today.`);
-          } catch (err) {
-            console.error('[Recurring] Auto-forward failed:', err);
-            // Don't set the key — will retry next session
-          }
-        })();
-      }
-      // ──────────────────────────────────────────────────────────────────────
-
-      // Track first-fire per listener to know when initial load is done
       const TOTAL = 14;
       let firedCount = 0;
       const onFirstFire = () => {
@@ -191,7 +179,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
 
       const unsubs: (() => void)[] = [
-        safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTodos), 'todos'),
+        safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTasks), 'todos'),
         safeSnapshot(query(collection(db, 'calendar_events'), where('userId', '==', uid)), makeHandler(setCalendarEvents), 'calendar_events'),
         safeSnapshot(query(collection(db, 'daily_logs'), where('userId', '==', uid)), makeHandler(setDailyLogs), 'daily_logs'),
         safeSnapshot(query(collection(db, 'habits'), where('userId', '==', uid)), makeHandler(setHabits), 'habits'),
@@ -213,9 +201,6 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       ];
 
       dataUnsubsRef.current = unsubs;
-
-      // Failsafe: if some empty collections never fire their first snapshot,
-      // still clear the loading state after 3 seconds
       failsafeRef.current = setTimeout(() => setIsLoading(false), 3000);
     });
 
@@ -223,15 +208,15 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       unsubAuth();
       cleanupDataListeners();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <GlobalDataContext.Provider value={{
-      todos, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
+      tasks, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
       learningTopics, gymLogs, notes, attendanceSubjects, assignments,
       pomodoroSessions, userPreferences,
-      isLoading
-    }}>
+      isLoading, isGoogleConnected, connectGoogle, disconnectGoogle
+    } as any}>
       {children}
     </GlobalDataContext.Provider>
   );

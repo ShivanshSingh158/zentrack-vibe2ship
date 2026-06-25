@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Plus, AlertTriangle, Clock, ExternalLink, Link2, Link2Off, RefreshCw, Zap, AlertCircle, Wand2 } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Plus, AlertTriangle, Clock, ExternalLink, Link2, Link2Off, RefreshCw, Zap, AlertCircle, Wand2, Menu, Search, Settings, HelpCircle, Check } from 'lucide-react';
 import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'framer-motion';
+import '../../styles/calendar.css';
 import { autoScheduleDay } from '../../services/gemini';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import {
@@ -11,7 +14,7 @@ import {
   addEventToGoogleCalendar, deleteGoogleCalendarEvent, pollGoogleCalendarChanges,
   getLastSyncTime,
 } from '../../services/googleCalendar';
-
+import { EventPopover } from './EventPopover';
 const GC_CLIENT_CONFIGURED = !!import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID &&
   import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID !== 'YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE';
 
@@ -29,9 +32,15 @@ interface CalendarEvent {
   sourceId?: string;
   gcalEventId?: string; // GCal event ID for events synced TO Google Calendar
   fromGCal?: boolean;  // true for events pulled FROM Google Calendar
+  startTime?: string;  // e.g. "14:00"
+  endTime?: string;    // e.g. "15:00"
+  location?: string;
+  description?: string;
+  guests?: string[];
+  meetLink?: string;
 }
 
-const EVENT_COLORS: Record<string, { color: string; bg: string; label: string; icon: string }> = {
+export const EVENT_COLORS: Record<string, { color: string; bg: string; label: string; icon: string }> = {
   exam: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)', label: 'Exam', icon: '📝' },
   assignment_due: { color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)', label: 'Assignment', icon: '📋' },
   holiday: { color: '#10b981', bg: 'rgba(16,185,129,0.1)', label: 'Holiday', icon: '🌴' },
@@ -49,31 +58,38 @@ export const CalendarModule = () => {
   const [gcalEvents, setGcalEvents] = useState<CalendarEvent[]>([]); // Events pulled FROM Google Calendar
   const [isLoading, setIsLoading] = useState(true);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('month');
+  const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('day');
   const [hideCompleted, setHideCompleted] = useState(false);
   const [selectedDayStr, setSelectedDayStr] = useState<string | null>(null);
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventType, setNewEventType] = useState<string>('exam');
   const [isAutoScheduling, setIsAutoScheduling] = useState(false);
+  const [visibleTypes, setVisibleTypes] = useState<Set<string>>(new Set(Object.keys(EVENT_COLORS)));
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showViewMenu, setShowViewMenu] = useState(false);
+  const [isMyCalendarsExpanded, setIsMyCalendarsExpanded] = useState(true);
+  const [isOtherCalendarsExpanded, setIsOtherCalendarsExpanded] = useState(true);
 
   // ── Google Calendar sync state ────────────────────────────────────────────────
-  const [gcConnected, setGcConnected] = useState(false);
   const [gcLoading, setGcLoading] = useState(false);
+  const [dragSelection, setDragSelection] = useState<{
+    isDragging: boolean;
+    dateStr: string;
+    startMins: number;
+    currentMins: number;
+    popoverPos: { x: number; y: number } | null;
+    existingEvent?: CalendarEvent;
+  } | null>(null);
+  const dragSelectionRef = useRef(dragSelection);
+  useEffect(() => { dragSelectionRef.current = dragSelection; }, [dragSelection]);
 
-  const { userPreferences } = useGlobalData();
+  const { userPreferences, isGoogleConnected: gcConnected, connectGoogle, disconnectGoogle } = useGlobalData();
   const [gcSyncing, setGcSyncing] = useState(false);
   const [gcApiError, setGcApiError] = useState<string | null>(null); // 'not_enabled' | error msg
   const [lastSynced, setLastSynced] = useState<number>(0);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Track gcalEventIds for events we've pushed: zentrackId -> gcalId
   const gcalIdMapRef = useRef<Record<string, string>>({});
-
-  // ── Init GIS Script on Mount ──────────────────────────────────────────────────
-  useEffect(() => {
-    if (GC_CLIENT_CONFIGURED) {
-      initGoogleCalendar().then(() => setGcConnected(isSignedInToGoogle()));
-    }
-  }, []);
 
   // ── GCal Polling ──────────────────────────────────────────────────────────────
   const runPoll = useCallback(async () => {
@@ -91,6 +107,13 @@ export const CalendarModule = () => {
       if (added.length > 0) {
         const newEvents: CalendarEvent[] = added.map(item => {
           const date = item.start.date ?? item.start.dateTime?.split('T')[0] ?? '';
+          let startTime, endTime;
+          if (item.start.dateTime && item.end.dateTime) {
+            const startD = new Date(item.start.dateTime);
+            const endD = new Date(item.end.dateTime);
+            startTime = `${String(startD.getHours()).padStart(2, '0')}:${String(startD.getMinutes()).padStart(2, '0')}`;
+            endTime = `${String(endD.getHours()).padStart(2, '0')}:${String(endD.getMinutes()).padStart(2, '0')}`;
+          }
           return {
             id: `gcal_${item.id}`,
             gcalEventId: item.id,
@@ -98,6 +121,10 @@ export const CalendarModule = () => {
             date,
             type: 'gcal' as const,
             fromGCal: true,
+            startTime,
+            endTime,
+            description: item.description,
+            location: (item as any).location,
           };
         }).filter(e => !!e.date);
 
@@ -155,18 +182,8 @@ export const CalendarModule = () => {
     setGcLoading(true);
     setGcApiError(null);
     try {
-      const ok = await initGoogleCalendar();
-      if (!ok) {
-        toast.error('Google Calendar not configured — add VITE_GOOGLE_CALENDAR_CLIENT_ID to .env');
-        return;
-      }
-      await signInWithGoogle();
-      if (isSignedInToGoogle()) {
-        setGcConnected(true);
-        toast.success('✅ Connected! Auto-syncing with Google Calendar…');
-      } else {
-        toast.error('Sign-in completed but no token received. Try again.');
-      }
+      await connectGoogle();
+      toast.success('✅ Connected! Auto-syncing with Google Calendar…');
     } catch (err: any) {
       const msg = err?.message || '';
       if (msg.includes('popup_closed') || msg.includes('access_denied')) {
@@ -180,8 +197,7 @@ export const CalendarModule = () => {
   };
 
   const handleGoogleDisconnect = () => {
-    signOutGoogle();
-    setGcConnected(false);
+    disconnectGoogle();
     setGcalEvents([]);
     setGcApiError(null);
     gcalIdMapRef.current = {};
@@ -190,16 +206,23 @@ export const CalendarModule = () => {
 
   // ── Auto-push event to GCal when added ────────────────────────────────────────
   const pushToGCal = useCallback(async (
-    zentrackId: string, title: string, date: string, type: string
+    zentrackId: string, title: string, date: string, type: string,
+    startTime?: string, endTime?: string, location?: string, description?: string, guests?: string[], meetLink?: string
   ) => {
     if (!isSignedInToGoogle()) return;
     try {
+      let finalDesc = description || `ZenTrack — ${EVENT_COLORS[type]?.icon ?? ''} ${EVENT_COLORS[type]?.label ?? type}: ${title}`;
+      if (meetLink) finalDesc += `\n\nMeet: ${meetLink}`;
       const gcalId = await addEventToGoogleCalendar({
         zentrackId,
         title,
         date,
         type,
-        description: `ZenTrack — ${EVENT_COLORS[type]?.icon ?? ''} ${EVENT_COLORS[type]?.label ?? type}: ${title}`,
+        startDateTime: startTime ? `${date}T${startTime}:00` : undefined,
+        endDateTime: endTime ? `${date}T${endTime}:00` : undefined,
+        location,
+        attendees: guests,
+        description: finalDesc,
       });
       gcalIdMapRef.current[zentrackId] = gcalId;
       // Persist gcalEventId back to Firestore so we can delete it later
@@ -258,7 +281,7 @@ export const CalendarModule = () => {
     try {
       const user = auth.currentUser;
       if (!user) throw new Error('Not logged in');
-      const uncompletedTodos = events.filter(e => e.type === 'todo' && !e.isCompleted);
+      const uncompletedTodos = events.filter(e => e.type === 'todo' && e.status !== 'completed');
       if (uncompletedTodos.length === 0) {
         toast.info('No pending tasks to schedule!');
         return;
@@ -313,7 +336,7 @@ export const CalendarModule = () => {
       todosEvents = [];
       snap.forEach(d => {
         const data = d.data();
-        if (data.date) todosEvents.push({ id: `todo_${d.id}`, title: data.text, date: data.date, type: 'todo', isCompleted: data.isCompleted });
+        if (data.date) todosEvents.push({ id: `todo_${d.id}`, title: data.text, date: data.date, type: 'todo', isCompleted: data.status === 'completed' });
       });
       updateEvents();
     });
@@ -372,12 +395,12 @@ export const CalendarModule = () => {
     });
 
     return () => { unsubTodos(); unsubJobs(); unsubGoals(); unsubAssignments(); unsubCustom(); };
-  }, [currentDate, pushToGCal]);
+  }, [pushToGCal]);
 
   const allEvents = useMemo(() => {
     const combined = [...events, ...customEvents, ...gcalEvents];
-    return hideCompleted ? combined.filter(e => !e.isCompleted) : combined;
-  }, [events, customEvents, gcalEvents, hideCompleted]);
+    return combined.filter(e => visibleTypes.has(e.type) && (!hideCompleted || e.status !== 'completed'));
+  }, [events, customEvents, gcalEvents, hideCompleted, visibleTypes]);
 
   // Upcoming exams countdown
   const upcomingExams = useMemo(() => {
@@ -403,8 +426,8 @@ export const CalendarModule = () => {
     try {
       if (newEventType === 'todo') {
         const ref = await addDoc(collection(db, 'todos'), {
-          userId: user.uid, text: newEventTitle.trim(), date: selectedDayStr,
-          isCompleted: false, priority: 'medium', createdAt: Date.now()
+          userId: user.uid, title: newEventTitle.trim(), date: selectedDayStr,
+          status: 'pending', priority: 'medium', createdAt: Date.now()
         });
         // Auto-push to GCal
         if (isSignedInToGoogle()) {
@@ -422,6 +445,52 @@ export const CalendarModule = () => {
       setNewEventTitle('');
       toast.success(gcConnected ? '✅ Added & synced to Google Calendar!' : 'Added!');
     } catch { toast.error('Failed to add'); }
+  };
+
+  const handlePopoverSave = async (data: any) => {
+    const user = auth.currentUser;
+    if (!user) return;
+    try {
+      const type = data.type;
+      const col = type === 'todo' ? 'todos' : 'calendar_events';
+      const payload: any = {
+        title: data.title,
+        date: data.date,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        location: data.location,
+        description: data.description,
+        meetLink: data.meetLink,
+      };
+      if (type === 'todo') {
+        payload.status = 'pending';
+        payload.priority = 'medium';
+      } else {
+        payload.type = type;
+      }
+
+      let eventId = '';
+      if (dragSelection?.existingEvent && !dragSelection.existingEvent.fromGCal) {
+         eventId = dragSelection.existingEvent.id;
+         const rawId = eventId.startsWith('todo_') ? eventId.replace('todo_', '') : eventId;
+         await updateDoc(doc(db, col, rawId), payload);
+      } else {
+         payload.userId = user.uid;
+         payload.createdAt = Date.now();
+         const ref = await addDoc(collection(db, col), payload);
+         eventId = type === 'todo' ? `todo_${ref.id}` : ref.id;
+      }
+      
+      if (isSignedInToGoogle() && !dragSelection?.existingEvent?.fromGCal) {
+        pushToGCal(
+          eventId,
+          data.title, data.date, type,
+          data.startTime, data.endTime, data.location, data.description, [], data.meetLink
+        ).catch(() => {});
+      }
+      setDragSelection(null);
+      toast.success(gcConnected ? '✅ Saved & synced!' : 'Saved!');
+    } catch { toast.error('Failed to save'); }
   };
 
   const handleDeleteCustomEvent = async (id: string) => {
@@ -475,7 +544,221 @@ export const CalendarModule = () => {
     setCurrentDate(d);
   };
 
-  const renderMonthView = () => {
+  const renderTimeGrid = (days: Date[]) => {
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const todayStr = getLocalDateString(new Date());
+
+    const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>, dateStr: string) => {
+      // Only left click
+      if (e.button !== 0) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const mins = Math.floor((y / 60) * 60); // 1px = 1min
+      const startMins = Math.floor(mins / 15) * 15; // Snap to 15 mins
+      
+      setDragSelection({
+        isDragging: true,
+        dateStr,
+        startMins,
+        currentMins: startMins + 30, // Default 30 min block
+        popoverPos: null,
+      });
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    };
+
+    const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>, dateStr: string) => {
+      if (!dragSelectionRef.current?.isDragging || dragSelectionRef.current.dateStr !== dateStr) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const y = Math.max(0, e.clientY - rect.top);
+      const mins = Math.floor((y / 60) * 60);
+      const currentMins = Math.max(dragSelectionRef.current.startMins + 15, Math.floor(mins / 15) * 15);
+      
+      setDragSelection(prev => prev ? { ...prev, currentMins } : null);
+    };
+
+    const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!dragSelectionRef.current?.isDragging) return;
+      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      
+      // Calculate popover position
+      const rect = e.currentTarget.getBoundingClientRect();
+      // Place popover near the dragged block
+      const topY = Math.min(dragSelectionRef.current.startMins, dragSelectionRef.current.currentMins);
+      const popoverPos = {
+        x: rect.width > 400 ? rect.left + rect.width / 2 - 200 : rect.right + 16,
+        y: rect.top + topY,
+      };
+
+      setDragSelection(prev => prev ? { ...prev, isDragging: false, popoverPos } : null);
+    };
+
+    return (
+      <div className="gc-content-area">
+        {/* Header: Timezone + Day Headers */}
+        <div className="gc-grid-header" style={{ alignItems: 'stretch' }}>
+          <div className="gc-timezone">GMT+05:30</div>
+          <div className="gc-day-headers" style={{ flexDirection: 'column' }}>
+            <div style={{ display: 'flex' }}>
+              {days.map((d, i) => {
+                const isToday = getLocalDateString(d) === todayStr;
+                return (
+                  <div key={i} className={`gc-day-header-cell ${isToday ? 'today' : ''}`} onClick={() => setSelectedDayStr(p => p === getLocalDateString(d) ? null : getLocalDateString(d))} style={{ cursor: 'pointer' }}>
+                    <div className="gc-day-header-day">{d.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                    <div className="gc-day-header-date">{d.getDate()}</div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* All-day events row */}
+            <div style={{ display: 'flex', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+              {days.map((d, i) => {
+                const dateStr = getLocalDateString(d);
+                const dayEvents = allEvents.filter(e => e.date === dateStr && !e.startTime);
+                return (
+                  <div key={i} style={{ flex: 1, borderRight: '1px solid rgba(255,255,255,0.08)', padding: '2px', minHeight: '24px' }}>
+                    {dayEvents.map(ev => {
+                      const cfg = EVENT_COLORS[ev.type] || EVENT_COLORS.todo;
+                      return (
+                        <div key={ev.id} className="gc-event" style={{
+                          position: 'relative', height: '22px', background: cfg.color, color: '#fff', marginBottom: '2px', padding: '2px 6px', left: 'auto', right: 'auto', borderRadius: '4px', fontSize: '11px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'
+                        }}>
+                          {ev.title}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Scrollable Grid */}
+        <div className="gc-grid-scroll" data-lenis-prevent>
+          <div className="gc-time-axis">
+            {hours.map(h => (
+              <div key={h} className="gc-time-label">
+                {h > 0 ? <span>{h === 12 ? '12 PM' : h > 12 ? `${h - 12} PM` : `${h} AM`}</span> : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="gc-grid-columns">
+            {/* Background horizontal lines */}
+            {hours.map(h => (
+              <div key={`line-${h}`} className="gc-hour-line" style={{ top: `${h * 60}px` }} />
+            ))}
+
+            {/* Current Time Line (only if today is visible) */}
+            {days.some(d => getLocalDateString(d) === todayStr) && (
+              <div className="gc-current-time-line" style={{ top: `${(new Date().getHours() * 60) + new Date().getMinutes()}px`, zIndex: 5 }}>
+                <div className="gc-current-time-dot" />
+              </div>
+            )}
+
+            {/* Day columns */}
+            {days.map((d, i) => {
+              const dateStr = getLocalDateString(d);
+              const dayTimedEvents = allEvents.filter(e => e.date === dateStr && e.startTime);
+
+              return (
+                <div 
+                  key={i} 
+                  className="gc-day-col"
+                  style={{ position: 'relative', flex: 1, borderRight: '1px solid rgba(255,255,255,0.08)', cursor: 'crosshair', minHeight: '1440px' }}
+                  onPointerDown={(e) => handlePointerDown(e, dateStr)}
+                  onPointerMove={(e) => handlePointerMove(e, dateStr)}
+                  onPointerUp={handlePointerUp}
+                >
+                  {/* Timed Events */}
+                  {dayTimedEvents.map(ev => {
+                    const cfg = EVENT_COLORS[ev.type] || EVENT_COLORS.todo;
+                    const [sH, sM] = ev.startTime!.split(':').map(Number);
+                    const [eH, eM] = (ev.endTime || ev.startTime!).split(':').map(Number);
+                    const top = sH * 60 + sM;
+                    const height = Math.max(15, (eH * 60 + eM) - top);
+                    
+                    const formatTimeShort = (time: string) => {
+                      const [h, m] = time.split(':').map(Number);
+                      const ampm = h >= 12 ? 'pm' : 'am';
+                      const h12 = h % 12 || 12;
+                      return m === 0 ? `${h12}${ampm}` : `${h12}:${m.toString().padStart(2, '0')}${ampm}`;
+                    };
+
+                    return (
+                      <div key={ev.id} onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setDragSelection({
+                          isDragging: false,
+                          dateStr: ev.date,
+                          startMins: top,
+                          currentMins: top + height,
+                          popoverPos: { x: rect.right + 16, y: rect.top },
+                          existingEvent: ev
+                        });
+                      }} style={{
+                        position: 'absolute',
+                        top: `${top}px`,
+                        height: `${height}px`,
+                        left: '4px',
+                        right: '8px',
+                        background: cfg.color,
+                        borderRadius: '4px',
+                        padding: height <= 30 ? '2px 6px' : '4px 6px',
+                        color: '#fff',
+                        fontSize: '12px',
+                        overflow: 'hidden',
+                        boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.2)',
+                        borderLeft: '4px solid rgba(0,0,0,0.15)',
+                        zIndex: 2,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        fontFamily: 'var(--font-sans)',
+                        transition: 'box-shadow 0.2s ease',
+                        lineHeight: 1.2
+                      }}>
+                        <div style={{ fontWeight: 600, fontSize: '12px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
+                          {ev.title}{height <= 30 && `, ${formatTimeShort(ev.startTime!)}`}
+                        </div>
+                        {height > 30 && (
+                          <div style={{ opacity: 0.9, fontSize: '11px', fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.2)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {formatTimeShort(ev.startTime!)} – {formatTimeShort(ev.endTime || ev.startTime!)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* Drag Ghost Block */}
+                  {dragSelection && dragSelection.dateStr === dateStr && (
+                    <div style={{
+                      position: 'absolute',
+                      top: `${Math.min(dragSelection.startMins, dragSelection.currentMins)}px`,
+                      height: `${Math.max(15, Math.abs(dragSelection.currentMins - dragSelection.startMins))}px`,
+                      left: '4px',
+                      right: '8px',
+                      background: 'rgba(138, 180, 248, 0.4)',
+                      border: '1px solid #8AB4F8',
+                      borderRadius: '4px',
+                      pointerEvents: 'none',
+                      zIndex: 10
+                    }}>
+                      <div style={{ padding: '4px', color: '#8AB4F8', fontSize: '12px', fontWeight: 500 }}>
+                        (No title)
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderMonthViewGoogle = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -484,117 +767,50 @@ export const CalendarModule = () => {
     const todayStr = getLocalDateString(new Date());
 
     for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`pad-${i}`} style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)' }} />);
+      days.push(<div key={`pad-${i}`} className="gc-month-cell" style={{ background: '#202124' }} />);
     }
 
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = getLocalDateString(new Date(year, month, d));
       const dayEvents = allEvents.filter(e => e.date === dateStr);
       const isToday = dateStr === todayStr;
-      const isSelected = dateStr === selectedDayStr;
 
       days.push(
-        <div key={d} onClick={() => setSelectedDayStr(p => p === dateStr ? null : dateStr)} style={{
-          background: isSelected ? 'rgba(99, 102, 241, 0.1)' : isToday ? 'var(--bg-surface-active)' : 'var(--bg-surface)',
-          border: isSelected ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
-          padding: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', cursor: 'pointer', transition: 'all 0.2s', minHeight: 0
-        }}>
-          <div style={{ fontWeight: isToday || isSelected ? 700 : 500, color: isSelected || isToday ? 'var(--accent-primary)' : 'var(--text-primary)', marginBottom: '0.25rem' }}>{d}</div>
-          <div style={{ flex: 1, overflow: 'hidden' }} className="cal-day-events">
+        <div key={d} className={`gc-month-cell ${isToday ? 'today' : ''}`} onClick={() => setSelectedDayStr(p => p === dateStr ? null : dateStr)} style={{ cursor: 'pointer' }}>
+          <div className="gc-month-date">{d}</div>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
             {dayEvents.slice(0, 4).map(ev => {
               const cfg = EVENT_COLORS[ev.type] || EVENT_COLORS.todo;
               return (
-                <div key={ev.id} title={ev.title} className="cal-event-pill" style={{
-                  fontSize: '0.7rem', padding: '0.15rem 0.35rem', borderRadius: '3px',
-                  background: cfg.bg, color: ev.isCompleted ? 'var(--text-muted)' : cfg.color,
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: '2px',
-                  textDecoration: ev.isCompleted ? 'line-through' : 'none'
-                }}>
-                  <span>{cfg.icon} {ev.title}</span>
+                <div key={ev.id} onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setDragSelection({
+                    isDragging: false,
+                    dateStr: ev.date,
+                    startMins: 600,
+                    currentMins: 630,
+                    popoverPos: { x: rect.right + 16, y: rect.top },
+                    existingEvent: ev
+                  });
+                }} className="gc-month-event all-day" style={{ background: cfg.color, color: '#fff', padding: '2px 6px', borderRadius: '4px', borderLeft: '3px solid rgba(0,0,0,0.15)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.1)', textShadow: '0 1px 2px rgba(0,0,0,0.2)', marginBottom: '2px', fontWeight: 500 }}>
+                  {ev.title}
                 </div>
               );
             })}
-            {dayEvents.length > 4 && <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>+{dayEvents.length - 4} more</div>}
+            {dayEvents.length > 4 && <div style={{ fontSize: '0.65rem', color: '#9AA0A6', paddingLeft: '4px' }}>{dayEvents.length - 4} more</div>}
           </div>
         </div>
       );
     }
-    return days;
-  };
-
-  const renderWeekView = () => {
-    const day = currentDate.getDay();
-    const startOfWeek = new Date(currentDate); startOfWeek.setDate(currentDate.getDate() - day);
-    const days = [];
-    const todayStr = getLocalDateString(new Date());
-
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(startOfWeek); d.setDate(d.getDate() + i);
-      const dateStr = getLocalDateString(d);
-      const dayEvents = allEvents.filter(e => e.date === dateStr);
-      const isToday = dateStr === todayStr;
-      const isSelected = dateStr === selectedDayStr;
-
-      days.push(
-        <div key={i} onClick={() => setSelectedDayStr(p => p === dateStr ? null : dateStr)} style={{
-          background: isSelected ? 'rgba(99, 102, 241, 0.1)' : isToday ? 'var(--bg-surface-active)' : 'var(--bg-surface)',
-          border: isSelected ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
-          padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', cursor: 'pointer', transition: 'all 0.2s'
-        }}>
-          <div style={{ fontWeight: isToday || isSelected ? 700 : 500, color: isSelected || isToday ? 'var(--accent-primary)' : 'var(--text-secondary)', textAlign: 'center', paddingBottom: '0.5rem', borderBottom: '1px solid var(--border-subtle)' }}>
-            {d.toLocaleDateString('en-US', { weekday: 'short' })} {d.getDate()}
-          </div>
-          {dayEvents.map(ev => {
-            const cfg = EVENT_COLORS[ev.type] || EVENT_COLORS.todo;
-            return (
-              <div key={ev.id} title={ev.title} style={{
-                fontSize: '0.8rem', padding: '0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.02)',
-                borderLeft: `3px solid ${cfg.color}`, color: ev.isCompleted ? 'var(--text-muted)' : 'var(--text-primary)',
-                textDecoration: ev.isCompleted ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-              }}>
-                {cfg.icon} {ev.title}
-              </div>
-            );
-          })}
-        </div>
-      );
-    }
-    return days;
-  };
-
-  const renderDayView = () => {
-    const dateStr = getLocalDateString(currentDate);
-    const dayEvents = allEvents.filter(e => e.date === dateStr);
     return (
-      <div style={{ gridColumn: '1 / -1', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', minHeight: '400px', padding: '2.5rem', borderRadius: 'var(--radius-lg)' }}>
-        <h2 style={{ fontSize: '1.5rem', fontWeight: 600, marginBottom: '2rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <CalendarIcon size={24} style={{ color: 'var(--accent-primary)' }} />
-          {currentDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-        </h2>
-        {dayEvents.length === 0 ? (
-          <div style={{ padding: '3rem', textAlign: 'center', background: 'var(--bg-base)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--border-subtle)' }}>
-            <p style={{ color: 'var(--text-muted)', fontSize: '1rem' }}>No events scheduled.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {dayEvents.map(ev => {
-              const cfg = EVENT_COLORS[ev.type] || EVENT_COLORS.todo;
-              return (
-                <div key={ev.id} style={{
-                  display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem', borderRadius: 'var(--radius-md)',
-                  background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderLeft: `4px solid ${cfg.color}`,
-                  textDecoration: ev.isCompleted ? 'line-through' : 'none', color: ev.isCompleted ? 'var(--text-muted)' : 'var(--text-primary)'
-                }}>
-                  <span style={{ fontSize: '1.5rem' }}>{cfg.icon}</span>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 500 }}>{ev.title}</div>
-                    <div style={{ fontSize: '0.75rem', color: cfg.color, fontWeight: 600, textTransform: 'uppercase' }}>{cfg.label}</div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: '#1A1B20' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', padding: '0.5rem 0', color: '#9AA0A6', fontSize: '0.75rem', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+          {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => <div key={day}>{day}</div>)}
+        </div>
+        <div className="gc-month-grid">
+          {days}
+        </div>
       </div>
     );
   };
@@ -610,261 +826,246 @@ export const CalendarModule = () => {
     headerLabel = currentDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   }
 
-  if (isLoading) return <div style={{ padding: '2rem' }}>Loading Calendar...</div>;
+  if (isLoading) return <div style={{ padding: '2rem', color: '#E8EAED' }}>Loading Calendar...</div>;
 
   return (
-    <div style={{ display: 'flex', height: '100%', overflow: 'hidden' }}>
-      <style>{`
-        @keyframes slideInRight { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
-        @keyframes slideInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .cal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 199; }
-        @media (max-width: 640px) {
-          .cal-header-row { flex-direction: column !important; align-items: flex-start !important; }
-          .cal-nav-row { width: 100%; justify-content: space-between !important; margin-top: 0.5rem; }
-          .cal-legend { display: none !important; }
-          .cal-exam-cards { flex-direction: column !important; }
-          .cal-exam-card { min-width: 0 !important; flex: none !important; width: 100% !important; }
-          .cal-main-pad { padding: 0.75rem !important; }
-          .cal-side-panel {
-            position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
-            top: auto !important; width: 100% !important; max-height: 65vh !important;
-            border-left: none !important; border-top: 1px solid var(--border-subtle) !important;
-            border-radius: 16px 16px 0 0 !important; z-index: 200 !important;
-            animation: slideInUp 0.3s ease-out !important;
-          }
-          .cal-backdrop { display: block !important; }
-          .cal-day-cell { padding: 0.25rem !important; min-height: 60px !important; }
-          .cal-day-events { display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; gap: 2px !important; }
-          .cal-event-pill { width: 6px !important; height: 6px !important; border-radius: 50% !important; padding: 0 !important; background: var(--accent-primary); border: none !important; margin-bottom: 0 !important; }
-          .cal-event-pill > span { display: none !important; }
-        }
-      `}</style>
-      <div className="cal-main-pad" style={{ flex: 1, padding: '1rem 2rem', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-
-        {/* Exam Countdown */}
-        {upcomingExams.length > 0 && (
-          <div className="cal-exam-cards" style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-            {upcomingExams.map(exam => (
-              <div key={exam.id} className="cal-exam-card" style={{
-                background: exam.daysLeft <= 3 ? 'rgba(239,68,68,0.08)' : exam.daysLeft <= 7 ? 'rgba(245,158,11,0.08)' : 'var(--bg-surface)',
-                border: `1px solid ${exam.daysLeft <= 3 ? 'rgba(239,68,68,0.3)' : exam.daysLeft <= 7 ? 'rgba(245,158,11,0.3)' : 'var(--border-subtle)'}`,
-                padding: '1rem 1.25rem', borderRadius: 'var(--radius-lg)', display: 'flex', alignItems: 'center', gap: '1rem', flex: '1', minWidth: '220px'
-              }}>
-                <div style={{
-                  width: '48px', height: '48px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: exam.daysLeft <= 3 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)',
-                  fontSize: '1.5rem', fontWeight: 800, fontFamily: 'var(--font-display)',
-                  color: exam.daysLeft <= 3 ? '#ef4444' : '#f59e0b'
-                }}>
-                  {exam.daysLeft}
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.85rem', fontWeight: 600 }}>{exam.title}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatDisplayDate(exam.date)} • {exam.daysLeft === 0 ? 'Today!' : exam.daysLeft === 1 ? 'Tomorrow' : `${exam.daysLeft} days left`}</div>
-                </div>
-              </div>
-            ))}
+    <div className="gc-app-container">
+      {/* HEADER */}
+      <header className="gc-header">
+        <div className="gc-header-left">
+          <div className="gc-hamburger">
+            <Menu size={20} />
           </div>
-        )}
-
-        {/* ── Google Calendar API Not Enabled Banner ─── */}
-        {gcApiError === 'not_enabled' && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.85rem 1rem', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 'var(--radius-md)', marginBottom: '1rem' }}>
-            <AlertCircle size={16} style={{ color: '#ef4444', flexShrink: 0, marginTop: '1px' }} />
-            <div style={{ flex: 1 }}>
-              <p style={{ fontSize: '0.82rem', color: '#ef4444', margin: 0, fontWeight: 600, lineHeight: 1.5 }}>
-                Google Calendar API is not enabled in your Google Cloud project.
-              </p>
-              <p style={{ fontSize: '0.78rem', color: 'rgba(239,68,68,0.85)', margin: '0.3rem 0 0', lineHeight: 1.5 }}>
-                Fix it in 30 seconds:{' '}
-                <a
-                  href={`https://console.cloud.google.com/apis/library/calendar-json.googleapis.com`}
-                  target="_blank" rel="noreferrer"
-                  style={{ color: '#ef4444', fontWeight: 700, textDecoration: 'underline' }}
-                >
-                  Enable Google Calendar API →
-                </a>
-                {' '}then come back and reconnect.
-              </p>
-            </div>
-            <button onClick={() => setGcApiError(null)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', opacity: 0.7, padding: '0.1rem' }}>
-              <X size={14} />
+          <div className="gc-logo-area">
+            <CalendarIcon size={24} color="#8AB4F8" />
+            <span>Calendar</span>
+          </div>
+          <button className="gc-today-btn" onClick={() => setCurrentDate(new Date())}>Today</button>
+          <div className="gc-nav-arrows">
+            <button onClick={handlePrev}><ChevronLeft size={20} /></button>
+            <button onClick={handleNext}><ChevronRight size={20} /></button>
+          </div>
+          <div className="gc-date-title">{headerLabel}</div>
+        </div>
+        
+        <div className="gc-header-right">
+          <div style={{ position: 'relative' }}>
+            <button 
+              className="gc-view-select" 
+              onClick={() => setShowViewMenu(!showViewMenu)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingRight: '1rem', paddingLeft: '1.25rem', backgroundImage: 'none' }}
+            >
+              {viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E8EAED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: showViewMenu ? 'rotate(180deg)' : 'rotate(0deg)' }}><polyline points="6 9 12 15 18 9"></polyline></svg>
             </button>
-          </div>
-        )}
 
-        {/* ── Google Calendar Setup Banner (no client ID) ─── */}
-        {!GC_CLIENT_CONFIGURED && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.65rem 0.9rem', background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 'var(--radius-md)', marginBottom: '1rem' }}>
-            <AlertTriangle size={14} style={{ color: '#6366f1', flexShrink: 0, marginTop: '2px' }} />
-            <p style={{ fontSize: '0.75rem', color: 'rgba(99,102,241,0.9)', margin: 0, lineHeight: 1.5 }}>
-              <strong>Google Calendar sync not configured.</strong> Add <code>VITE_GOOGLE_CALENDAR_CLIENT_ID</code> to your <code>.env</code> file.
-              {' '}<a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" style={{ color: '#6366f1' }}>Get Client ID →</a>
-            </p>
+            <AnimatePresence>
+              {showViewMenu && (
+                <motion.div 
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  style={{ position: 'absolute', top: '44px', right: '0', background: 'rgba(32,33,36,0.95)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '0.5rem', minWidth: '130px', zIndex: 100, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', display: 'flex', flexDirection: 'column' }}
+                >
+                  {['day', 'week', 'month'].map(mode => (
+                    <button
+                      key={mode}
+                      className="gc-view-option"
+                      onClick={() => { setViewMode(mode as any); setShowViewMenu(false); }}
+                      style={{ background: viewMode === mode ? 'rgba(138,180,248,0.1)' : 'transparent', border: 'none', color: viewMode === mode ? '#8AB4F8' : '#E8EAED', padding: '0.5rem 1rem', textAlign: 'left', cursor: 'pointer', fontSize: '0.95rem', fontWeight: viewMode === mode ? 600 : 500, borderRadius: '8px', transition: 'background 0.2s', marginBottom: '2px' }}
+                      onMouseEnter={e => e.currentTarget.style.background = viewMode === mode ? 'rgba(138,180,248,0.15)' : 'rgba(255,255,255,0.05)'}
+                      onMouseLeave={e => e.currentTarget.style.background = viewMode === mode ? 'rgba(138,180,248,0.1)' : 'transparent'}
+                    >
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
-        )}
-
-        {/* Header */}
-        <div className="cal-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <CalendarIcon size={24} style={{ color: 'var(--accent-primary)' }} /> Calendar
-          </h1>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            {/* Google Calendar connect/disconnect + sync status */}
-            {GC_CLIENT_CONFIGURED && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {gcConnected && gcSyncing && (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                    <RefreshCw size={11} style={{ animation: 'spin 1s linear infinite' }} /> Syncing…
-                  </span>
-                )}
-                {gcConnected && !gcSyncing && lastSynced > 0 && (
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }} title={new Date(lastSynced).toLocaleTimeString()}>
-                    <Zap size={11} style={{ display: 'inline', verticalAlign: 'middle', color: '#10b981' }} /> Live
-                  </span>
-                )}
-                {gcConnected ? (
-                  <button
-                    onClick={handleGoogleDisconnect}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,0.3)', background: 'rgba(16,185,129,0.08)', color: '#10b981', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 }}
-                    title="Click to disconnect Google Calendar"
-                  >
-                    <Link2 size={13} /> GCal ✓
-                  </button>
+          <div style={{ position: 'relative' }}>
+            {gcConnected ? (
+              <div onClick={() => setShowProfileMenu(!showProfileMenu)}>
+                {auth.currentUser?.photoURL ? (
+                  <img 
+                    src={auth.currentUser.photoURL} 
+                    alt="Profile" 
+                    style={{ width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', objectFit: 'cover' }}
+                  />
                 ) : (
-                  <button
-                    onClick={handleGoogleConnect}
-                    disabled={gcLoading}
-                    style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.35rem 0.75rem', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(99,102,241,0.3)', background: 'rgba(99,102,241,0.08)', color: '#6366f1', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, opacity: gcLoading ? 0.7 : 1 }}
-                    title="Connect Google Calendar for auto-sync"
+                  <div 
+                    style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', cursor: 'pointer', color: '#1A1B20' }}
                   >
-                    <Link2Off size={13} /> {gcLoading ? 'Connecting…' : 'Connect Google Cal'}
-                  </button>
+                    {auth.currentUser?.displayName?.[0]?.toUpperCase() || 'Z'}
+                  </div>
                 )}
+              </div>
+            ) : (
+              <button 
+                onClick={() => handleGoogleConnect()} 
+                style={{ background: 'transparent', border: '1px solid #8AB4F8', color: '#8AB4F8', padding: '6px 16px', borderRadius: '16px', fontSize: '14px', fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(138, 180, 248, 0.1)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+              >
+                Connect Google Calendar
+              </button>
+            )}
+
+            {showProfileMenu && gcConnected && (
+              <div style={{ position: 'absolute', top: '40px', right: '0', background: '#202124', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', padding: '0.5rem', minWidth: '220px', zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                <div style={{ padding: '0.5rem', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '0.5rem', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <span style={{ fontSize: '0.9rem', color: '#E8EAED', fontWeight: 500 }}>{auth.currentUser?.displayName || 'User'}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#9AA0A6' }}>{auth.currentUser?.email || ''}</span>
+                </div>
+                <button onClick={() => { handleGoogleDisconnect(); setShowProfileMenu(false); }} style={{ width: '100%', padding: '0.5rem', background: 'transparent', border: 'none', color: '#ef4444', textAlign: 'left', cursor: 'pointer', fontSize: '0.85rem' }}>Disconnect Google Calendar</button>
               </div>
             )}
-            
-            <button 
-              onClick={handleAutoSchedule} 
-              disabled={isAutoScheduling}
-              className="btn-primary" 
-              style={{ fontSize: '0.8rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-            >
-              <Wand2 size={14} />
-              {isAutoScheduling ? 'Scheduling...' : 'Auto-Schedule'}
-            </button>
+          </div>
+        </div>
+      </header>
 
-            <div style={{ display: 'flex', background: 'var(--bg-surface)', padding: '0.25rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
-              {(['month', 'week', 'day'] as const).map(mode => (
-                <button key={mode} className="btn-icon" onClick={() => setViewMode(mode)} style={{
-                  background: viewMode === mode ? 'var(--bg-surface-active)' : 'transparent',
-                  color: viewMode === mode ? 'var(--accent-primary)' : 'var(--text-muted)',
-                  fontSize: '0.8rem', padding: '0.2rem 0.5rem', textTransform: 'capitalize'
-                }}>{mode}</button>
+      <div className="gc-main">
+        {/* SIDEBAR */}
+        <div className="gc-sidebar" data-lenis-prevent>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <button className="gc-create-btn" style={{ flex: 1 }} onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const dateStr = getLocalDateString(currentDate);
+              const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+              const startMins = Math.floor(nowMins / 15) * 15;
+              setDragSelection({
+                isDragging: false,
+                dateStr,
+                startMins,
+                currentMins: startMins + 60,
+                popoverPos: { x: rect.right + 16, y: rect.top }
+              });
+            }}>
+              <Plus size={20} color="#EA4335" />
+              Create
+            </button>
+            <button 
+              className="gc-create-btn" 
+              style={{ flex: 1, padding: '0 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }} 
+              onClick={handleAutoSchedule}
+              disabled={isAutoScheduling}
+            >
+              <Wand2 size={16} color="#8AB4F8" style={{ marginRight: '6px' }} />
+              {isAutoScheduling ? 'Scheduling...' : 'Auto'}
+            </button>
+          </div>
+
+          {/* Mini Calendar (Static mock of current month) */}
+          <div className="gc-mini-cal">
+            <div className="gc-mini-cal-header">
+              <span>{monthNames[currentDate.getMonth()]} {currentDate.getFullYear()}</span>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <ChevronLeft size={16} cursor="pointer" onClick={handlePrev} />
+                <ChevronRight size={16} cursor="pointer" onClick={handleNext} />
+              </div>
+            </div>
+            <div className="gc-mini-grid">
+              {['S','M','T','W','T','F','S'].map(d => <div key={d} className="gc-mini-day">{d}</div>)}
+              {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay() }).map((_, i) => <div key={`p-${i}`} />)}
+              {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => (
+                <div key={i} className={`gc-mini-date ${getLocalDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), i+1)) === getLocalDateString(new Date()) ? 'today' : ''} ${selectedDayStr === getLocalDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), i+1)) ? 'active' : ''}`} onClick={() => {
+                  setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), i+1));
+                  setSelectedDayStr(getLocalDateString(new Date(currentDate.getFullYear(), currentDate.getMonth(), i+1)));
+                }}>
+                  {i + 1}
+                </div>
               ))}
             </div>
-            <div className="cal-nav-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <button className="btn-icon" onClick={handlePrev}><ChevronLeft size={20} /></button>
-              <span style={{ fontSize: '1.1rem', fontWeight: 600, minWidth: '180px', textAlign: 'center' }}>{headerLabel}</span>
-              <button className="btn-icon" onClick={handleNext}><ChevronRight size={20} /></button>
-            </div>
           </div>
-        </div>
 
-        {/* Legend */}
-        <div className="cal-legend" style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8rem', flexWrap: 'wrap' }}>
-            {Object.entries(EVENT_COLORS).map(([key, cfg]) => (
-              <span key={key} style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: cfg.color }}>
-                {cfg.icon} {cfg.label}
-              </span>
-            ))}
-          </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)', cursor: 'pointer', marginLeft: 'auto' }}>
-            <input type="checkbox" checked={hideCompleted} onChange={e => setHideCompleted(e.target.checked)} />
-            Hide Completed
-          </label>
-        </div>
-
-        {/* Calendar Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: viewMode === 'day' ? '1fr' : 'repeat(7, 1fr)', gridAutoRows: viewMode !== 'day' ? '1fr' : 'auto', gap: '1px', background: 'var(--border-subtle)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', overflow: 'hidden', flex: 1, minHeight: 0 }}>
-          {viewMode !== 'day' && ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-            <div key={day} style={{ background: 'var(--bg-surface)', padding: '0.5rem', textAlign: 'center', fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{day}</div>
-          ))}
-          {viewMode === 'month' && renderMonthView()}
-          {viewMode === 'week' && renderWeekView()}
-          {viewMode === 'day' && renderDayView()}
-        </div>
-      </div>
-
-      {/* Side Panel */}
-      {selectedDayStr && viewMode !== 'day' && (
-        <>
-          <div className="cal-backdrop" onClick={() => setSelectedDayStr(null)} />
-          <div className="cal-side-panel" style={{ width: '350px', background: 'var(--bg-surface)', borderLeft: '1px solid var(--border-subtle)', padding: '1.5rem', display: 'flex', flexDirection: 'column', animation: 'slideInRight 0.3s ease-out' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>Agenda</h2>
-            <button className="btn-icon" onClick={() => setSelectedDayStr(null)}><X size={18} /></button>
-          </div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-            {new Date(selectedDayStr + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}
-          </p>
-
-          {/* Quick Add */}
-          <form onSubmit={handleAddEvent} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '2rem', background: 'var(--bg-base)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)' }}>
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Plus size={16} /> Quick Add</div>
-            <select value={newEventType} onChange={e => setNewEventType(e.target.value)} className="todo-input" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }}>
-              <option value="exam">📝 Exam</option>
-              <option value="viva">🎤 Viva</option>
-              <option value="submission">📤 Submission</option>
-              <option value="holiday">🌴 Holiday</option>
-              <option value="todo">✅ Task</option>
-            </select>
-            <input type="text" value={newEventTitle} onChange={e => setNewEventTitle(e.target.value)} placeholder="Event title..." className="todo-input" style={{ width: '100%', padding: '0.5rem', fontSize: '0.85rem' }} />
-            <button type="submit" className="btn-primary" style={{ padding: '0.5rem', fontSize: '0.85rem', justifyContent: 'center', width: '100%' }} disabled={!newEventTitle.trim()}>
-              Add Event
-            </button>
-          </form>
-
-          {/* Events list */}
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {allEvents.filter(e => e.date === selectedDayStr).length === 0 ? (
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', marginTop: '2rem' }}>No events.</div>
-            ) : (
-              allEvents.filter(e => e.date === selectedDayStr).map(ev => {
-                const cfg = EVENT_COLORS[ev.type] || EVENT_COLORS.todo;
-                return (
-                  <div key={ev.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem', borderRadius: 'var(--radius-md)',
-                    background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderLeft: `3px solid ${cfg.color}`,
-                    textDecoration: ev.isCompleted ? 'line-through' : 'none'
-                  }}>
-                    <span>{cfg.icon}</span>
-                    <div style={{ flex: 1, fontSize: '0.85rem' }}>{ev.title}</div>
-                    {/* Export to Google Calendar */}
-                    {GC_CLIENT_CONFIGURED && !ev.isCompleted && (
-                      <button
-                        className="btn-icon"
-                        onClick={() => handleExportEvent(ev)}
-                        disabled={exportingId === ev.id}
-                        title="Add to Google Calendar"
-                        style={{ color: '#6366f1', opacity: exportingId === ev.id ? 0.5 : 1 }}
-                      >
-                        {exportingId === ev.id ? <Clock size={13} /> : <ExternalLink size={13} />}
-                      </button>
-                    )}
-                    {ev.id && !ev.id.startsWith('job_') && !ev.id.startsWith('goal_') && !ev.id.startsWith('assign_') && (
-                      <button className="btn-icon danger" onClick={() => handleDeleteCustomEvent(ev.id)} style={{ padding: '0.15rem' }} title="Delete event"><X size={14} /></button>
-                    )}
+          <div className="gc-filters">
+            <section>
+              <div className="gc-filter-title" onClick={() => setIsMyCalendarsExpanded(!isMyCalendarsExpanded)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                My calendars 
+                <ChevronRight size={16} style={{ transform: isMyCalendarsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}/>
+              </div>
+              {isMyCalendarsExpanded && Object.entries(EVENT_COLORS).filter(([k]) => k !== 'gcal' && k !== 'holiday').map(([key, cfg]) => (
+                <div key={key} className="gc-filter-item" onClick={() => {
+                  setVisibleTypes(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) next.delete(key);
+                    else next.add(key);
+                    return next;
+                  });
+                }}>
+                  <div className="gc-filter-checkbox" style={{ background: visibleTypes.has(key) ? cfg.color : 'transparent', border: `2px solid ${cfg.color}`, backgroundClip: visibleTypes.has(key) ? 'border-box' : 'content-box' }}>
+                    {visibleTypes.has(key) && <Check size={12} color="#1A1B20" />}
                   </div>
-                );
-              })
-            )}
+                  <span>{cfg.icon} {cfg.label}</span>
+                </div>
+              ))}
+            </section>
+            <section>
+              <div className="gc-filter-title" onClick={() => setIsOtherCalendarsExpanded(!isOtherCalendarsExpanded)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                Other calendars 
+                <ChevronRight size={16} style={{ transform: isOtherCalendarsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}/>
+              </div>
+              {isOtherCalendarsExpanded && Object.entries(EVENT_COLORS).filter(([k]) => k === 'gcal' || k === 'holiday').map(([key, cfg]) => (
+                <div key={key} className="gc-filter-item" onClick={() => {
+                  setVisibleTypes(prev => {
+                    const next = new Set(prev);
+                    if (next.has(key)) next.delete(key);
+                    else next.add(key);
+                    return next;
+                  });
+                }}>
+                  <div className="gc-filter-checkbox" style={{ background: visibleTypes.has(key) ? cfg.color : 'transparent', border: `2px solid ${cfg.color}`, backgroundClip: visibleTypes.has(key) ? 'border-box' : 'content-box' }}>
+                    {visibleTypes.has(key) && <Check size={12} color="#1A1B20" />}
+                  </div>
+                  <span>{cfg.icon} {cfg.label}</span>
+                </div>
+              ))}
+            </section>
           </div>
         </div>
-        </>
-      )}
+
+        {/* MAIN CONTENT AREA */}
+        <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={`${viewMode}-${currentDate.toISOString()}`}
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.98, y: -10 }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', width: '100%', minHeight: 0 }}
+            >
+              {viewMode === 'month' && renderMonthViewGoogle()}
+              {viewMode === 'day' && renderTimeGrid([currentDate])}
+              {viewMode === 'week' && renderTimeGrid(Array.from({ length: 7 }, (_, i) => {
+                const d = new Date(currentDate);
+                d.setDate(d.getDate() - d.getDay() + i);
+                return d;
+              }))}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* New Drag Selection Event Popover */}
+        {dragSelection && dragSelection.popoverPos && createPortal(
+          <EventPopover
+            x={dragSelection.popoverPos.x}
+            y={dragSelection.popoverPos.y}
+            initialDate={dragSelection.dateStr}
+            initialStartTime={`${String(Math.floor(Math.min(dragSelection.startMins, dragSelection.currentMins) / 60)).padStart(2, '0')}:${String(Math.min(dragSelection.startMins, dragSelection.currentMins) % 60).padStart(2, '0')}`}
+            initialEndTime={`${String(Math.floor(Math.max(dragSelection.startMins, dragSelection.currentMins) / 60)).padStart(2, '0')}:${String(Math.max(dragSelection.startMins, dragSelection.currentMins) % 60).padStart(2, '0')}`}
+            onClose={() => setDragSelection(null)}
+            onSave={handlePopoverSave}
+            existingEvent={dragSelection.existingEvent}
+            onDelete={(id) => {
+              handleDeleteCustomEvent(id);
+              setDragSelection(null);
+            }}
+          />,
+          document.body
+        )}
+      </div>
     </div>
   );
 };

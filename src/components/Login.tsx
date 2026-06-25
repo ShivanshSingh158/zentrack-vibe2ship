@@ -8,6 +8,14 @@ import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 
 export const Login: React.FC = () => {
   const googleProvider = new GoogleAuthProvider();
+  // Add required Google Workspace OAuth Scopes
+  googleProvider.addScope('https://www.googleapis.com/auth/calendar');
+  googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+  googleProvider.addScope('https://www.googleapis.com/auth/gmail.send');
+  googleProvider.addScope('https://www.googleapis.com/auth/tasks');
+  googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+  googleProvider.addScope('https://www.googleapis.com/auth/documents');
+  
   const [isLoading, setIsLoading] = useState(false);
 
   // Mouse tracking for 3D tilt
@@ -328,7 +336,8 @@ export const Login: React.FC = () => {
               letterSpacing: '0.1em'
             }}
           >
-            Secure Google Authentication
+            Secure Google Authentication<br/>
+            <span style={{ fontSize: '0.65rem', opacity: 0.7, textTransform: 'none' }}>Requires Gmail, Docs, and Drive API Scopes in GCP</span>
           </motion.p>
         </div>
       </motion.div>

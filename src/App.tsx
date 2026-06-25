@@ -10,10 +10,11 @@ import Lenis from 'lenis';
 
 // ─── Always-on components (tiny, needed immediately) ───────────────────────
 import { Login } from './components/Login';
-import { Sidebar } from './components/Sidebar';
-import { CommandPalette } from './components/CommandPalette';
+import { TopNav } from './components/TopNav';
+import { BackgroundEffects } from './components/BackgroundEffects';
 import { UpdatePrompt } from './components/UpdatePrompt';
-import { UpdateFlashcard } from './components/UpdateFlashcard';
+import { DeveloperMatrix } from './components/overlays/DeveloperMatrix';
+import { SecuritySettingsModal } from './components/overlays/SecuritySettingsModal';
 import { OnboardingCarousel } from './components/overlays/OnboardingCarousel';
 import { DailyBriefingOverlay } from './components/overlays/DailyBriefingOverlay';
 import { PomodoroProvider } from './contexts/PomodoroContext';
@@ -132,18 +133,21 @@ const lazyWithRetry = (componentImport: () => Promise<any>, name: string) => {
 
 // ─── Lazily-loaded page modules (~1.9 MB → ~300 KB initial bundle) ─────────
 const HomeDashboard = lazyWithRetry(() => import('./features/dashboard/HomeDashboard').then(m => ({ default: m.HomeDashboard })), 'HomeDashboard');
-const JobTracker = lazyWithRetry(() => import('./features/jobs/JobTracker').then(m => ({ default: m.JobTracker })), 'JobTracker');
 const TodoListModule = lazyWithRetry(() => import('./features/tasks/TodoListModule').then(m => ({ default: m.TodoListModule })), 'TodoListModule');
-const LearningChecklistModule = lazyWithRetry(() => import('./features/learning/LearningChecklistModule').then(m => ({ default: m.LearningChecklistModule })), 'LearningChecklistModule');
-const GoalsModule = lazyWithRetry(() => import('./features/goals/GoalsModule').then(m => ({ default: m.GoalsModule })), 'GoalsModule');
-const NotesModule = lazyWithRetry(() => import('./features/notes/NotesModule').then(m => ({ default: m.NotesModule })), 'NotesModule');
 const CalendarModule = lazyWithRetry(() => import('./features/calendar/CalendarModule').then(m => ({ default: m.CalendarModule })), 'CalendarModule');
-const HabitsModule = lazyWithRetry(() => import('./features/habits/HabitsModule').then(m => ({ default: m.HabitsModule })), 'HabitsModule');
+const NotesModule = lazyWithRetry(() => import('./features/notes/NotesModule').then(m => ({ default: m.NotesModule })), 'NotesModule');
+const GoalsModule = lazyWithRetry(() => import('./features/goals/GoalsModule').then(m => ({ default: m.GoalsModule })), 'GoalsModule');
 const AnalyticsModule = lazyWithRetry(() => import('./features/analytics/AnalyticsModule').then(m => ({ default: m.AnalyticsModule })), 'AnalyticsModule');
+const GymModule = lazyWithRetry(() => import('./features/gym/GymModule').then(m => ({ default: m.GymModule })), 'GymModule');
+const JobTracker = lazyWithRetry(() => import('./features/jobs/JobTracker').then(m => ({ default: m.JobTracker })), 'JobTracker');
+const HabitsModule = lazyWithRetry(() => import('./features/habits/HabitsModule').then(m => ({ default: m.HabitsModule })), 'HabitsModule');
+const LearningChecklistModule = lazyWithRetry(() => import('./features/learning/LearningChecklistModule').then(m => ({ default: m.LearningChecklistModule })), 'LearningChecklistModule');
+const ToolsHubModule = lazyWithRetry(() => import('./features/tools/ToolsHubModule').then(m => ({ default: m.ToolsHubModule })), 'ToolsHubModule');
+const IntegrationsModule = lazyWithRetry(() => import('./features/integrations/IntegrationsModule').then(m => ({ default: m.IntegrationsModule })), 'IntegrationsModule');
+const WeeklyReviewModule = lazyWithRetry(() => import('./features/review/WeeklyReviewModule').then(m => ({ default: m.WeeklyReviewModule })), 'WeeklyReviewModule');
 const AttendanceModule = lazyWithRetry(() => import('./features/academic/AttendanceModule').then(m => ({ default: m.AttendanceModule })), 'AttendanceModule');
 const AssignmentModule = lazyWithRetry(() => import('./features/academic/AssignmentModule').then(m => ({ default: m.AssignmentModule })), 'AssignmentModule');
-const ToolsHubModule = lazyWithRetry(() => import('./features/tools/ToolsHubModule').then(m => ({ default: m.ToolsHubModule })), 'ToolsHubModule');
-const GymModule = lazyWithRetry(() => import('./features/gym/GymModule').then(m => ({ default: m.GymModule })), 'GymModule');
+const GradeCalculatorModule = lazyWithRetry(() => import('./features/academic/GradeCalculatorModule').then(m => ({ default: m.GradeCalculatorModule })), 'GradeCalculatorModule');
 
 // ─── Page loading skeleton (replaces spinner — feels like content is loading, not waiting) ──
 const PageLoader = () => (
@@ -165,7 +169,7 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: mobile ? -8 : -15 }}
       transition={{ duration: mobile ? 0.18 : 0.3, ease: 'easeOut' }}
-      style={{ width: '100%', minHeight: '100%' }}
+      style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
     >
       {children}
     </motion.div>
@@ -182,19 +186,22 @@ const AnimatedRoutes = ({ user }: { user: User }) => {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/home"        element={<PageTransition><ErrorBoundary name="Dashboard"><HomeDashboard /></ErrorBoundary></PageTransition>} />
-        <Route path="/todo"        element={<PageTransition><ErrorBoundary name="Tasks"><TodoListModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/learning"    element={<PageTransition><ErrorBoundary name="Learning"><LearningChecklistModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/jobs"        element={<PageTransition><ErrorBoundary name="Job Tracker"><JobTracker user={user} /></ErrorBoundary></PageTransition>} />
-        <Route path="/goals"       element={<PageTransition><ErrorBoundary name="Goals"><GoalsModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/notes"       element={<PageTransition><ErrorBoundary name="Notes"><NotesModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><CalendarModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/habits"      element={<PageTransition><ErrorBoundary name="Habits"><HabitsModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><AttendanceModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/assignments" element={<PageTransition><ErrorBoundary name="Assignments"><AssignmentModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/analytics"   element={<PageTransition><ErrorBoundary name="Analytics"><AnalyticsModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/tools"       element={<PageTransition><ErrorBoundary name="Tools Hub"><ToolsHubModule /></ErrorBoundary></PageTransition>} />
-        <Route path="/gym"         element={<PageTransition><ErrorBoundary name="Gym"><GymModule /></ErrorBoundary></PageTransition>} />
-        <Route path="*"            element={<Navigate to="/todo" replace />} />
+        <Route path="/tasks"       element={<PageTransition><ErrorBoundary name="Tasks"><Suspense fallback={<PageLoader />}><TodoListModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><Suspense fallback={<PageLoader />}><CalendarModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/notes"       element={<PageTransition><ErrorBoundary name="Notes"><Suspense fallback={<PageLoader />}><NotesModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/goals"       element={<PageTransition><ErrorBoundary name="Goals"><Suspense fallback={<PageLoader />}><GoalsModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/analytics"   element={<PageTransition><ErrorBoundary name="Analytics"><Suspense fallback={<PageLoader />}><AnalyticsModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/gym"         element={<PageTransition><ErrorBoundary name="Gym"><Suspense fallback={<PageLoader />}><GymModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/jobs"        element={<PageTransition><ErrorBoundary name="Jobs"><Suspense fallback={<PageLoader />}><JobTracker /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/habits"      element={<PageTransition><ErrorBoundary name="Habits"><Suspense fallback={<PageLoader />}><HabitsModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/learning"    element={<PageTransition><ErrorBoundary name="Learning"><Suspense fallback={<PageLoader />}><LearningChecklistModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/tools"       element={<PageTransition><ErrorBoundary name="Tools"><Suspense fallback={<PageLoader />}><ToolsHubModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/integrations" element={<PageTransition><ErrorBoundary name="Integrations"><Suspense fallback={<PageLoader />}><IntegrationsModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/review"      element={<PageTransition><ErrorBoundary name="Review"><Suspense fallback={<PageLoader />}><WeeklyReviewModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><Suspense fallback={<PageLoader />}><AttendanceModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/assignments" element={<PageTransition><ErrorBoundary name="Assignments"><Suspense fallback={<PageLoader />}><AssignmentModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/grades"      element={<PageTransition><ErrorBoundary name="Grades"><Suspense fallback={<PageLoader />}><GradeCalculatorModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="*"            element={<Navigate to="/home" replace />} />
       </Routes>
     </AnimatePresence>
   );
@@ -205,6 +212,8 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
+  const [showDeveloperMatrix, setShowDeveloperMatrix] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
 
   // Use a ref to track previous user so we never add it to the effect dep array
   // (adding it caused multiple auth subscriptions on each login/logout cycle).
@@ -277,6 +286,18 @@ function App() {
     // handles all subsequent auth state changes via prevUserRef.
   }, []);
 
+  // Developer Matrix Shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        setShowDeveloperMatrix(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   if (authLoading) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)' }}>
@@ -303,19 +324,23 @@ function App() {
     <GlobalDataProvider>
     <PomodoroProvider>
       <UpdatePrompt />
-      <UpdateFlashcard />
       <Toaster theme="dark" position="top-right" />
       <OfflineIndicator />
       <ClassNotificationRunner />
       <ContextRemindersRunner />
       <DeadlineWatcherRunner />
-      <CommandPalette />
       <FocusModeOverlay />
       <DailyBriefingOverlay />
       <FloatingExtraWorks />
       <VoiceQuickCaptureWidget />
       <AgentTerminal />
       <SessionEnforcer />
+
+      {/* Developer Matrix Overlay */}
+      <AnimatePresence>
+        {showDeveloperMatrix && <DeveloperMatrix onClose={() => setShowDeveloperMatrix(false)} />}
+        {showSecurityModal && <SecuritySettingsModal onClose={() => setShowSecurityModal(false)} />}
+      </AnimatePresence>
 
       {/* Onboarding Carousel */}
       {showOnboarding && (
@@ -346,11 +371,10 @@ function App() {
 
       {/* Greeting Toast removed per user request */}
 
-      <div className="app-container">
-        <ErrorBoundary name="Sidebar">
-          <Sidebar user={user} onLogout={() => signOut(auth)} />
-        </ErrorBoundary>
-        <div className="main-content">
+      <BackgroundEffects />
+      <div className="app-container flex-col">
+        <TopNav />
+        <div className="main-content full-width">
           {/* Suspense wraps ALL lazy routes — PageLoader shown during chunk download */}
           <Suspense fallback={<PageLoader />}>
             <AnimatedRoutes user={user} />

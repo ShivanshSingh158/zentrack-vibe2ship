@@ -3,7 +3,7 @@ import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc
 import { db, auth } from '../../services/firebase';
 import { uploadFileToCloudinary } from '../../services/cloudinary';
 import type { StorageNode } from '../../types/index';
-import { Folder, File as FileIcon, FileText, Image as ImageIcon, Trash2, X, ChevronRight, Upload, ArrowLeft, MoreVertical, Edit2, Move, Search, HardDrive, Sparkles, List, MessageSquare, Download, AlignLeft, Columns, Eye, Loader2, User, Bot } from 'lucide-react';
+import { Folder, File as FileIcon, FileText, Image as ImageIcon, Trash2, X, ChevronRight, ChevronDown, Upload, ArrowLeft, MoreVertical, Edit2, Move, Search, HardDrive, Sparkles, List, MessageSquare, Download, AlignLeft, Columns, Eye, Loader2, User, Bot } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import ReactMarkdown from 'react-markdown';
@@ -72,7 +72,7 @@ export const NotesModule = () => {
   // Note Enhancements State
   const [viewMode, setViewMode] = useState<'split'|'edit'|'preview'>('split');
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const [chatHistory, setChatHistory] = useState<{role: 'user'|'model', text: string, model?: string}[]>([]);
+  const [chatHistory, setChatHistory] = useState<{role: 'user'|'model', title: string, model?: string}[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
   const [isAiExpanded, setIsAiExpanded] = useState(false);
@@ -349,7 +349,7 @@ export const NotesModule = () => {
       noteAiSession.current = startNoteAIChat(title, contentToAnalyze);
     }
     
-    setChatHistory(prev => [...prev, { role: 'user', text: prompt }]);
+    setChatHistory(prev => [...prev, { role: 'user', title: prompt }]);
     setIsAiLoading(true);
     setAiQuestion('');
     
@@ -362,7 +362,7 @@ export const NotesModule = () => {
           if (newHistory[newHistory.length - 1]?.role === 'model') {
             newHistory[newHistory.length - 1].text = fullText;
           } else {
-            newHistory.push({ role: 'model', text: fullText });
+            newHistory.push({ role: 'model', title: fullText });
           }
           return newHistory;
         });
@@ -442,7 +442,7 @@ export const NotesModule = () => {
     }
   };
 
-  const extractMarkdownBlocks = (text: string) => {
+  const extractMarkdownBlocks = (title: string) => {
     const regex = /```(?:markdown)?\n([\s\S]*?)(?:```|$)/g;
     let match;
     const blocks: string[] = [];
@@ -454,7 +454,7 @@ export const NotesModule = () => {
     return blocks;
   };
 
-  const renderChatMessage = (msg: { role: string, text: string, model?: string }, idx: number) => {
+  const renderChatMessage = (msg: { role: string, title: string, model?: string }, idx: number) => {
     const isModel = msg.role === 'model';
     const blocks = isModel ? extractMarkdownBlocks(msg.text) : [];
     
@@ -1113,7 +1113,7 @@ export const NotesModule = () => {
           )}
         </div>
         
-        <div className="storage-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+        <div className="storage-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'nowrap', overflow: 'visible' }}>
           {isSelectMode ? (
             <>
               <button className="storage-action-btn" onClick={() => { setIsSelectMode(false); setSelectedIds([]); }}>
@@ -1145,18 +1145,39 @@ export const NotesModule = () => {
             )}
           </div>
           
-          <select 
-            className="storage-sort-select"
-            value={sortBy} 
-            onChange={(e: any) => setSortBy(e.target.value)}
-            style={{ padding: '0.5rem 1rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
-          >
-            <option value="newest">Newest First</option>
-            <option value="oldest">Oldest First</option>
-            <option value="name-asc">Name (A-Z)</option>
-            <option value="name-desc">Name (Z-A)</option>
-            <option value="size-desc">Largest Size</option>
-          </select>
+          <div className="dropdown-container" style={{ position: 'relative', flexShrink: 0 }}>
+            <div 
+              className="storage-sort-select"
+              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between' }}
+            >
+              <span>
+                {sortBy === 'newest' ? 'Newest First' : 
+                 sortBy === 'oldest' ? 'Oldest First' : 
+                 sortBy === 'name-asc' ? 'Name (A-Z)' : 
+                 sortBy === 'name-desc' ? 'Name (Z-A)' : 
+                 'Largest Size'}
+              </span>
+              <ChevronDown size={14} />
+            </div>
+            <div className="dropdown-menu" style={{ display: 'none', position: 'absolute', top: '100%', right: 0, width: '100%', minWidth: '150px', paddingTop: '0.5rem', zIndex: 100 }}>
+              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.5rem', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+                {['newest', 'oldest', 'name-asc', 'name-desc', 'size-desc'].map(val => (
+                  <div 
+                    key={val}
+                    onClick={() => setSortBy(val)}
+                    className="menu-btn"
+                    style={{ color: sortBy === val ? 'var(--accent-primary)' : 'var(--text-secondary)' }}
+                  >
+                    {val === 'newest' ? 'Newest First' : 
+                     val === 'oldest' ? 'Oldest First' : 
+                     val === 'name-asc' ? 'Name (A-Z)' : 
+                     val === 'name-desc' ? 'Name (Z-A)' : 
+                     'Largest Size'}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
 
           <button className="storage-action-btn" onClick={() => { setNewFolderName(''); setNewFolderModal(true); }}>
             <Folder size={16} /> New Folder
@@ -1307,6 +1328,52 @@ export const NotesModule = () => {
         .storage-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-primary); }
         .dropdown-container:hover .dropdown-menu { display: block !important; }
 
+        .storage-action-btn {
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: var(--text-secondary);
+          padding: 0.5rem 0.75rem;
+          border-radius: var(--radius-md);
+          font-size: 0.85rem;
+          font-weight: 500;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .storage-action-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+          border-color: rgba(255, 255, 255, 0.15);
+          color: var(--text-primary);
+        }
+        .storage-upload-btn {
+          background: rgba(124, 58, 237, 0.15) !important;
+          color: #a78bfa !important;
+          border: 1px solid rgba(124, 58, 237, 0.3) !important;
+        }
+        .storage-upload-btn:hover {
+          background: rgba(124, 58, 237, 0.25) !important;
+          color: #ddd6fe !important;
+          border-color: rgba(124, 58, 237, 0.5) !important;
+        }
+        .storage-search-container input, .storage-sort-select {
+          padding: 0.5rem 1rem !important;
+          font-size: 0.85rem !important;
+          border-radius: var(--radius-md) !important;
+          background: rgba(255, 255, 255, 0.03) !important;
+          border: 1px solid rgba(255, 255, 255, 0.08) !important;
+          color: var(--text-primary) !important;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+        }
+        .storage-sort-select {
+          width: auto !important;
+          min-width: 120px;
+        }
+
         /* Custom Scrollbar for AI Chat */
         .ai-chat-scroll {
           /* Fallback for Firefox */
@@ -1322,44 +1389,8 @@ export const NotesModule = () => {
         /* Desktop Only Spacious Button Styles */
         @media (min-width: 768px) {
           .storage-actions { gap: 1rem !important; }
-          .storage-action-btn {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            color: var(--text-secondary);
-            padding: 0.65rem 1.25rem;
-            border-radius: var(--radius-md);
-            font-size: 0.9rem;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-          }
-          .storage-action-btn:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.15);
-            color: var(--text-primary);
-          }
-          .storage-upload-btn {
-            background: rgba(124, 58, 237, 0.15) !important;
-            color: #a78bfa !important;
-            border: 1px solid rgba(124, 58, 237, 0.3) !important;
-          }
-          .storage-upload-btn:hover {
-            background: rgba(124, 58, 237, 0.25) !important;
-            color: #ddd6fe !important;
-            border-color: rgba(124, 58, 237, 0.5) !important;
-          }
-          .storage-search-container input, .storage-sort-select {
-            padding: 0.65rem 1rem !important;
-            font-size: 0.9rem !important;
-            border-radius: var(--radius-md) !important;
-            background: rgba(255, 255, 255, 0.03) !important;
-            border: 1px solid rgba(255, 255, 255, 0.08) !important;
-            color: var(--text-primary) !important;
-            transition: all 0.2s ease;
-          }
+
+
           .storage-search-container input {
             padding-left: 2.5rem !important;
           }

@@ -53,7 +53,7 @@ type TabId = 'chat' | 'targets' | 'profile';
 interface ChatMessage {
   id: string;
   role: 'user' | 'model';
-  text: string;
+  title: string;
   ts: number;
   model?: string;
 }
@@ -319,14 +319,14 @@ function buildOpeningPrompt(mode: SessionMode, todayLog: GymDayLog | null, stats
 // ── Quick Prompts ──────────────────────────────────────────────────────────────
 
 const QUICK_PROMPTS = [
-  { label: '📊 30-day overview', text: 'Give me a detailed analysis of my last 30 days — volume trends, consistency, top progressions, and 2 things I need to fix.' },
-  { label: '🍽️ Meal plan', text: 'Build me a full meal plan for today based on my training goal and profile. Include specific foods, portions, and timing.' },
-  { label: '⚠️ Stall analysis', text: 'Which exercises have stalled? For each one, tell me the exact progression strategy to break through.' },
-  { label: '📅 Mesocycle plan', text: 'Design a 4-week periodization mesocycle based on my current training data.' },
-  { label: '🎯 Today targets', text: "What exact weights should I target for every exercise in today's session? Give me a table: Exercise | Recommended | Why." },
-  { label: '😴 Recovery check', text: 'Based on my training frequency and volume, am I recovered enough to train hard today? Give me a 1-5 recovery score.' },
-  { label: '💪 Weakest muscle', text: 'Which muscle group is getting the least stimulus? Give me 3 exercises to add and how to fit them in.' },
-  { label: '🎥 Form tip', text: "Give me one advanced form cue for my most frequent exercise. Include setup, execution, and a common mistake to avoid." },
+  { label: '📊 30-day overview', title: 'Give me a detailed analysis of my last 30 days — volume trends, consistency, top progressions, and 2 things I need to fix.' },
+  { label: '🍽️ Meal plan', title: 'Build me a full meal plan for today based on my training goal and profile. Include specific foods, portions, and timing.' },
+  { label: '⚠️ Stall analysis', title: 'Which exercises have stalled? For each one, tell me the exact progression strategy to break through.' },
+  { label: '📅 Mesocycle plan', title: 'Design a 4-week periodization mesocycle based on my current training data.' },
+  { label: '🎯 Today targets', title: "What exact weights should I target for every exercise in today's session? Give me a table: Exercise | Recommended | Why." },
+  { label: '😴 Recovery check', title: 'Based on my training frequency and volume, am I recovered enough to train hard today? Give me a 1-5 recovery score.' },
+  { label: '💪 Weakest muscle', title: 'Which muscle group is getting the least stimulus? Give me 3 exercises to add and how to fit them in.' },
+  { label: '🎥 Form tip', title: "Give me one advanced form cue for my most frequent exercise. Include setup, execution, and a common mistake to avoid." },
 ];
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -485,7 +485,7 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
       setIsLoading(false);
       const emptyStats: GymStats = { totalWorkouts: 0, totalVolume: 0, totalCardioMinutes: 0, avgCompletion: 0, streak: 0, stallAlerts: [], exerciseStats: [], logs: [], dowMuscleMap: {}, anomalies: [] };
       setStats(emptyStats);
-      setMessages([{ id: genId(), role: 'model', text: 'I had trouble loading your data. I can still chat but insights will be limited to this session!', ts: Date.now() }]);
+      setMessages([{ id: genId(), role: 'model', title: 'I had trouble loading your data. I can still chat but insights will be limited to this session!', ts: Date.now() }]);
       return;
     }
 
@@ -516,14 +516,14 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
     setIsLoading(true);
     try {
       const aiMsgId = genId();
-      setMessages([{ id: aiMsgId, role: 'model', text: '', ts: Date.now() }]);
+      setMessages([{ id: aiMsgId, role: 'model', title: '', ts: Date.now() }]);
       let finalModel = '';
-      const res = await chatSessionRef.current.sendMessageStream(opening, (text: string) => {
+      const res = await chatSessionRef.current.sendMessageStream(opening, (title: string) => {
         setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text } : m));
       });
       finalModel = res.model || '';
       setMessages(prev => {
-        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, text: res.text || res.text, model: finalModel } : m);
+        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, title: res.text || res.text, model: finalModel } : m);
         if (userId) saveMessages(nextMsgs, userId);
         return nextMsgs;
       });
@@ -551,21 +551,21 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
       const formatReminder = `\n\n(Remember to use proper markdown formatting, bullet points, and newlines for readability. Do not put everything on one line.)`;
       const msgWithContext = todayContextString ? `[LIVE WORKOUT STATE:${todayContextString}]\n\nUser: ${text}${formatReminder}` : `${text}${formatReminder}`;
       const aiMsgId = genId();
-      setMessages(prev => [...prev, { id: aiMsgId, role: 'model', text: '', ts: Date.now() }]);
+      setMessages(prev => [...prev, { id: aiMsgId, role: 'model', title: '', ts: Date.now() }]);
       let finalModel = '';
       
       const res = await chatSessionRef.current.sendMessageStream(msgWithContext, (textChunk: string) => {
-        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: textChunk } : m));
+        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, title: textChunk } : m));
       });
       finalModel = res.model || '';
       
       setMessages(prev => {
-        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, text: res.text || res.text, model: finalModel } : m);
+        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, title: res.text || res.text, model: finalModel } : m);
         if (userId) saveMessages(nextMsgs, userId);
         return nextMsgs;
       });
     } catch (e: any) {
-      setMessages(prev => [...prev, { id: genId(), role: 'model', text: `Sorry, something went wrong. ${e?.message || 'Please try again.'}`, ts: Date.now() }]);
+      setMessages(prev => [...prev, { id: genId(), role: 'model', title: `Sorry, something went wrong. ${e?.message || 'Please try again.'}`, ts: Date.now() }]);
     } finally {
       setIsLoading(false);
     }
@@ -640,9 +640,9 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
   }, [todayLog?.exercises, stats]);
 
   const headerStatus = (() => {
-    if (isLoadingContext) return { dot: '#a855f7', text: 'Loading your data…', pulse: true };
-    if (stats) return { dot: '#1db954', text: `${stats.totalWorkouts} sessions · ${stats.streak} day streak`, pulse: false };
-    return { dot: '#f59e0b', text: 'Ready — limited history', pulse: false };
+    if (isLoadingContext) return { dot: '#a855f7', title: 'Loading your data…', pulse: true };
+    if (stats) return { dot: '#1db954', title: `${stats.totalWorkouts} sessions · ${stats.streak} day streak`, pulse: false };
+    return { dot: '#f59e0b', title: 'Ready — limited history', pulse: false };
   })();
 
   // ── Render ─────────────────────────────────────────────────────────────────

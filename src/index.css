@@ -4,6 +4,7 @@
 @import './styles/todo.css';
 @import './styles/learning.css';
 @import './styles/mobile.css';
+@import './styles/agent-dashboard.css';
 
 * {
   box-sizing: border-box;
@@ -1322,4 +1323,58 @@ body.ai-panel-open #youtube-floating-pip {
 @keyframes urgency-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
   50%       { box-shadow: 0 0 0 4px rgba(239,68,68,0.2); }
+}
+
+/* ==========================================================================
+   Agent Capsule Premium Animations
+   ========================================================================== */
+
+@keyframes capsule-shudder {
+  0%   { transform: translate(0, 0); }
+  20%  { transform: translate(-2px, 1px) rotate(-0.5deg); }
+  40%  { transform: translate(1px, -2px) rotate(0.5deg); }
+  60%  { transform: translate(-1px, 2px) rotate(-0.2deg); }
+  80%  { transform: translate(2px, -1px) rotate(0.2deg); }
+  100% { transform: translate(0, 0); }
+}
+
+@keyframes siren-flash {
+  0%, 100% { background-color: rgba(239, 68, 68, 0.1); box-shadow: 0 0 10px rgba(239, 68, 68, 0); }
+  50%      { background-color: rgba(239, 68, 68, 0.8); box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); }
+}
+
+@keyframes hologram-flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; filter: brightness(1) drop-shadow(0 0 10px var(--accent-glow)); }
+  20%, 22%, 24%, 55%                     { opacity: 0.6; filter: brightness(0.8) drop-shadow(0 0 2px var(--accent-glow)); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes spin-reverse {
+  from { transform: rotate(360deg); }
+  to   { transform: rotate(0deg); }
+}
+
+@keyframes float-badge {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50%      { transform: translateY(-8px) scale(1.05); }
+}
+
+
+
+/* Hologram glow */
+.hologram-glow {
+  animation: hologram-flicker 4s infinite;
+  mix-blend-mode: screen;
+}
+
+.capsule-shuddering {
+  animation: capsule-shudder 0.3s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+.siren-active {
+  animation: siren-flash 1s infinite;
 }

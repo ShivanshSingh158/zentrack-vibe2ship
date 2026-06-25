@@ -14,16 +14,16 @@ export const seedDemoData = async () => {
   const batch = writeBatch(db);
   const now = new Date();
   
-  // 1. Todos
-  const todosRef = collection(db, 'users', uid, 'todos');
-  const todos = [
-    { text: 'Finish DB Schema', priority: 'high', date: new Date(now.getTime() - 2 * 3600000).toISOString(), isCompleted: false }, // Overdue
-    { text: 'Submit React Project', priority: 'high', date: new Date(now.getTime() + 4 * 3600000).toISOString(), isCompleted: false }, // Critical
-    { text: 'Review PRs', priority: 'medium', date: new Date(now.getTime() + 12 * 3600000).toISOString(), isCompleted: false }, // Urgent
-    { text: 'Buy Groceries', priority: 'low', date: new Date(now.getTime() + 48 * 3600000).toISOString(), isCompleted: false } // Upcoming
+  // 1. Tasks
+  const tasksRef = collection(db, 'tasks');
+  const tasks = [
+    { title: 'Finish DB Schema', priority: 'high', date: new Date(now.getTime() - 2 * 3600000).toISOString(), status: 'pending' }, // Overdue
+    { title: 'Submit React Project', priority: 'high', date: new Date(now.getTime() + 4 * 3600000).toISOString(), status: 'pending' }, // Critical
+    { title: 'Review PRs', priority: 'medium', date: new Date(now.getTime() + 12 * 3600000).toISOString(), status: 'pending' }, // Urgent
+    { title: 'Buy Groceries', priority: 'low', date: new Date(now.getTime() + 48 * 3600000).toISOString(), status: 'pending' } // Upcoming
   ];
-  todos.forEach(t => {
-    const newDoc = doc(todosRef);
+  tasks.forEach(t => {
+    const newDoc = doc(tasksRef);
     batch.set(newDoc, { ...t, createdAt: now.getTime(), userId: uid });
   });
 

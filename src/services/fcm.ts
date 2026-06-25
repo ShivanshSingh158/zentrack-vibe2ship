@@ -12,7 +12,7 @@
  */
 
 import { getMessaging, getToken, onMessage, type Messaging } from 'firebase/messaging';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
 
 // VAPID key — MUST be set as VITE_FIREBASE_VAPID_KEY in Vercel env vars.
@@ -127,21 +127,14 @@ export async function sendPushNotification(payload: {
   tag?: string;
 }) {
   try {
-    const res = await fetch('/api/send-notification', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        // Internal secret prevents unauthenticated callers from using this endpoint
-        'X-Internal-Secret': import.meta.env.VITE_INTERNAL_SECRET || '',
-      },
-      body: JSON.stringify(payload),
+    const queueRef = collection(db, 'pushNotificationQueue');
+    await addDoc(queueRef, {
+      ...payload,
+      status: 'pending',
+      createdAt: serverTimestamp()
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error('[FCM] Send failed:', err);
-    }
   } catch (err) {
-    console.error('[FCM] Network error sending notification:', err);
+    console.error('[FCM] Network error queuing notification:', err);
   }
 }
 

@@ -2,7 +2,7 @@ import { NavLink, Link } from 'react-router-dom';
 import {
   Briefcase, ListTodo, GraduationCap, LogOut, Play, Pause, Zap,
   Home, Calendar, Target, BookOpen, X, Flame, BarChart3, Menu,
-  ClipboardCheck, ClipboardList, Settings2, GripVertical, Check, Wrench, Dumbbell,
+  ClipboardCheck, ClipboardList, Settings2, GripVertical, Check, Wrench, Dumbbell, ShieldAlert
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { usePomodoroContext } from '../contexts/PomodoroContext';
@@ -11,6 +11,7 @@ import { useState, useCallback, useEffect } from 'react';
 interface SidebarProps {
   user: User;
   onLogout: () => void;
+  onOpenSecurity?: () => void;
 }
 
 // ── All available modules ──────────────────────────────────────────────────
@@ -42,6 +43,7 @@ const ALL_MODULES: ModuleDef[] = [
   { id: 'analytics',   label: 'Analytics',     shortLabel: 'Stats',   path: '/analytics',   icon: <BarChart3 size={20} /> },
   { id: 'attendance',  label: 'Attendance',    shortLabel: 'Attend.', path: '/attendance',  icon: <ClipboardCheck size={20} /> },
   { id: 'assignments', label: 'Assignments',   shortLabel: 'Assign.', path: '/assignments', icon: <ClipboardList size={20} /> },
+  { id: 'integrations',label: 'Integrations',  shortLabel: 'Connect', path: '/integrations',icon: <Zap size={20} /> },
 ];
 
 // The index where secondary modules start (after primary group)
@@ -70,7 +72,7 @@ function savePinned(pinned: string[]) {
 }
 
 // ── Sidebar Component ─────────────────────────────────────────────────────
-export const Sidebar = ({ user, onLogout }: SidebarProps) => {
+export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
   const { state, pauseTimer, resumeTimer, formatTime, dismissTimer, toggleFocusMode, setDuration } = usePomodoroContext();
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showCustomize, setShowCustomize] = useState(false);
@@ -276,13 +278,28 @@ export const Sidebar = ({ user, onLogout }: SidebarProps) => {
                 </NavLink>
               ))}
 
-              <div
-                className="sheet-item"
-                onClick={() => { onLogout(); closeAll(); }}
-                style={{ color: '#ef4444', cursor: 'pointer' }}
-              >
-                <div className="sheet-icon" style={{ background: 'rgba(239,68,68,0.1)' }}><LogOut size={22} /></div>
-                <span>Logout</span>
+              <div className="sidebar-bottom-actions">
+                <button 
+                  className="action-button logout-button"
+                  onClick={onOpenSecurity}
+                  title="Security & Privacy"
+                >
+                  <div className="action-icon" style={{ color: '#8b5cf6' }}>
+                    <ShieldAlert size={20} />
+                  </div>
+                  <span className="action-text">Security</span>
+                </button>
+
+                <button 
+                  className="action-button logout-button"
+                  onClick={onLogout}
+                  title="Logout"
+                >
+                  <div className="action-icon">
+                    <LogOut size={20} />
+                  </div>
+                  <span className="action-text">Logout</span>
+                </button>
               </div>
             </div>
           </div>

@@ -15,7 +15,7 @@ export const GoalsModule = () => {
   const {
     goals: globalGoals,
     jobs: extJobs,
-    todos: extTodos,
+    tasks: extTodos,
     learningTopics: extLearning,
     dailyLogs: extLogs,
     isLoading,
@@ -98,9 +98,9 @@ export const GoalsModule = () => {
           } else if (kr.syncType === 'interviews') {
             computedValue = extJobs.filter(j => j.status === 'interviewing' || j.status === 'offer').length;
           } else if (kr.syncType === 'todos_completed') {
-            computedValue = extTodos.filter(t => t.isCompleted && (!kr.syncQuery || (t.text && t.text.toLowerCase().includes(kr.syncQuery.toLowerCase())))).length;
+            computedValue = extTodos.filter(t => t.status === 'completed' && (!kr.syncQuery || (t.text && t.text.toLowerCase().includes(kr.syncQuery.toLowerCase())))).length;
           } else if (kr.syncType === 'learning_subtasks') {
-            computedValue = extLearning.reduce((acc, topic) => acc + (topic.subTasks || []).filter((s: any) => s.isCompleted && (!kr.syncQuery || (s.text && s.text.toLowerCase().includes(kr.syncQuery.toLowerCase())))).length, 0);
+            computedValue = extLearning.reduce((acc, topic) => acc + (topic.subTasks || []).filter((s: any) => s.status === 'completed' && (!kr.syncQuery || (s.text && s.text.toLowerCase().includes(kr.syncQuery.toLowerCase())))).length, 0);
           } else if (kr.syncType === 'gym_days') {
             computedValue = extLogs.filter(l => l.gymNotes && typeof l.gymNotes === 'string' && l.gymNotes.trim().length > 0).length;
           } else if (kr.syncType === 'productive_hours') {
@@ -196,7 +196,7 @@ export const GoalsModule = () => {
     if (!editingGoal) return;
     const newKR: KeyResult = {
       id: Date.now().toString(),
-      text: '',
+      title: '',
       targetValue: 100,
       currentValue: 0,
       unit: '%',
@@ -280,11 +280,11 @@ export const GoalsModule = () => {
         d.setDate(d.getDate() + (t.daysFromNow || 0));
         await addDoc(collection(db, 'todos'), {
           userId: auth.currentUser?.uid,
-          text: t.text,
+          title: t.text,
           priority: t.priority || 'medium',
           date: getLocalDateString(d),
           createdAt: Date.now(),
-          isCompleted: false,
+          status: 'pending',
           isOverdue: false,
           goalId: goal.id
         });

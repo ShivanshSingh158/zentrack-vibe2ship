@@ -79,6 +79,23 @@ service cloud.firestore {
       allow read, write: if isSignedIn() && isOwner(userId);
     }
 
+    // ── Push Notifications Queue ──────────────────────────────────────────────
+    // Users can only queue notifications targeting themselves.
+    match /pushNotificationQueue/{docId} {
+      allow create: if isSignedIn() 
+        && request.resource.data.keys().hasOnly(['userIds', 'title', 'body', 'url', 'tag', 'status', 'createdAt'])
+        && request.auth.uid in request.resource.data.userIds; // Can only target yourself
+      allow read, update, delete: if false; // Admin SDK only
+    }
+
+    // ── Scheduled Reminders ───────────────────────────────────────────────────
+    match /scheduledReminders/{docId} {
+      allow create: if isSignedIn() && isOwner(request.resource.data.userId);
+      allow read: if isSignedIn() && isOwner(resource.data.userId);
+      allow update: if isSignedIn() && isOwner(resource.data.userId);
+      allow delete: if isSignedIn() && isOwner(resource.data.userId);
+    }
+
     // ── Deny everything else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

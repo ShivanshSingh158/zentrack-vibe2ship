@@ -23,7 +23,7 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({ isOpen, onClose, t
 
   useEffect(() => {
     if (todo && isOpen) {
-      setText(todo.text || '');
+      setText(todo.title || '');
       setPriority(todo.priority || 'medium');
       setIsRecurring(todo.isRecurring || false);
       setEstimatedMinutes(todo.estimatedMinutes ? todo.estimatedMinutes.toString() : '');
@@ -42,7 +42,7 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({ isOpen, onClose, t
 
     try {
       const updates: Partial<TodoItem> = {
-        text: text.trim(),
+        title: text.trim(),
         priority,
         isRecurring,
         date: date || '',

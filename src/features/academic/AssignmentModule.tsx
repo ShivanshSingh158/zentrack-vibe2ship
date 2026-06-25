@@ -353,9 +353,9 @@ export const AssignmentModule = () => {
                         if (!user) return;
                         await addDoc(collection(db, 'todos'), {
                           userId: user.uid,
-                          text: a.title,
+                          title: a.title,
                           date: getLocalDateString(new Date()),
-                          isCompleted: false,
+                          status: 'pending',
                           priority: 'high',
                           isRecurring: false,
                           subtasks: [],

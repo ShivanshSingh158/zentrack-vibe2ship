@@ -1,6 +1,6 @@
 export interface LearningSubTask {
   id: string;
-  text: string;
+  title: string;
   category?: string;
   url?: string;
   notes?: string;

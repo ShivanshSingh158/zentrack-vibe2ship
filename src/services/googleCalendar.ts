@@ -13,7 +13,13 @@
  */
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID as string | undefined;
-const SCOPES = 'https://www.googleapis.com/auth/calendar';
+const SCOPES = 'https://www.googleapis.com/auth/calendar ' +
+               'https://www.googleapis.com/auth/gmail.readonly ' +
+               'https://www.googleapis.com/auth/gmail.send ' +
+               'https://www.googleapis.com/auth/gmail.modify ' +
+               'https://www.googleapis.com/auth/drive.file ' +
+               'https://www.googleapis.com/auth/documents ' +
+               'https://www.googleapis.com/auth/spreadsheets';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 
 // ZenTrack source tag stored on GCal events to identify them
@@ -73,11 +79,35 @@ export const initGoogleCalendar = async (): Promise<boolean> => {
 export const isSignedInToGoogle = (): boolean =>
   !!_accessToken && Date.now() < _tokenExpiry;
 
+export const wasEverConnectedToGoogle = (): boolean =>
+  !!localStorage.getItem('zen_gcal_access_token');
+
+export const getTokenTimeRemaining = (): number =>
+  _accessToken ? Math.max(0, _tokenExpiry - Date.now()) : 0;
+
+let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
 const storeToken = (accessToken: string, expiresIn: number) => {
   _accessToken = accessToken;
   _tokenExpiry = Date.now() + Math.min(expiresIn * 1000, 55 * 60 * 1000);
   localStorage.setItem('zen_gcal_access_token', _accessToken);
   localStorage.setItem('zen_gcal_token_expiry', _tokenExpiry.toString());
+
+  // Schedule a proactive silent refresh 5 minutes before expiry
+  if (_refreshTimer) clearTimeout(_refreshTimer);
+  const refreshIn = Math.max(0, _tokenExpiry - Date.now() - 5 * 60 * 1000);
+  _refreshTimer = setTimeout(async () => {
+    try {
+      console.log('[GoogleCalendar] 🔄 Proactive token refresh triggered...');
+      await signInWithGoogle();
+      console.log('[GoogleCalendar] ✅ Token silently refreshed.');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('google-token-refreshed'));
+      }
+    } catch (err) {
+      console.warn('[GoogleCalendar] Silent refresh failed (user will be prompted on next action):', err);
+    }
+  }, refreshIn);
 };
 
 // ─── OAuth Sign-in ────────────────────────────────────────────────────────────
@@ -129,11 +159,28 @@ export const signOutGoogle = (): void => {
 
 // ─── Token Refresh ────────────────────────────────────────────────────────────
 
-const ensureToken = async (): Promise<string> => {
-  if (isSignedInToGoogle() && _accessToken) return _accessToken;
-  await signInWithGoogle();
-  if (!_accessToken) throw new Error('Could not obtain Google access token');
-  return _accessToken;
+let _tokenRefreshPromise: Promise<string> | null = null;
+
+export const ensureToken = async (): Promise<string> => {
+  const BUFFER_MS = 5 * 60 * 1000; // 5 minutes
+  const isFresh = !!_accessToken && Date.now() < (_tokenExpiry - BUFFER_MS);
+  if (isFresh && _accessToken) return _accessToken;
+  
+  if (_tokenRefreshPromise) {
+    return _tokenRefreshPromise;
+  }
+
+  _tokenRefreshPromise = (async () => {
+    try {
+      await signInWithGoogle();
+      if (!_accessToken) throw new Error('Could not obtain Google access token');
+      return _accessToken;
+    } finally {
+      _tokenRefreshPromise = null;
+    }
+  })();
+
+  return _tokenRefreshPromise;
 };
 
 // ─── REST API Helper ──────────────────────────────────────────────────────────
@@ -155,6 +202,11 @@ const calendarFetch = async <T>(
   });
 
   if (!res.ok) {
+    if (res.status === 429) {
+      const retryAfter = parseInt(res.headers.get('Retry-After') || '60', 10);
+      throw new Error(`429 Rate Limited: retry after ${retryAfter}s`);
+    }
+
     let errorMsg = `HTTP ${res.status}`;
     try {
       const errData = await res.json();
@@ -182,6 +234,8 @@ export interface GCalEvent {
   startDateTime?: string; // ISO String
   endDateTime?: string;   // ISO String
   description?: string;
+  location?: string;
+  attendees?: string[];
   type?: string;
   zentrackId?: string; // Firestore document ID — stored in GCal for dedup
 }
@@ -210,6 +264,8 @@ const nextDay = (date: string): string => {
 const buildCalEventBody = (event: GCalEvent) => ({
   summary: event.title,
   description: event.description ?? `ZenTrack — ${event.type || 'Event'}`,
+  location: event.location,
+  attendees: event.attendees?.map(email => ({ email })),
   start: event.startDateTime ? { dateTime: event.startDateTime } : { date: event.date },
   end: event.endDateTime ? { dateTime: event.endDateTime } : { date: nextDay(event.date) },
   extendedProperties: {

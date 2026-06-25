@@ -5,7 +5,7 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import { toast } from 'sonner';
 import { collection, addDoc, getDocs, query, where, doc, updateDoc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
-import { parseUniversalVoiceCommand } from '../../services/gemini';
+import { orchestrateAgent } from '../../agent/orchestrator';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 
@@ -20,7 +20,7 @@ export const VoiceQuickCaptureWidget = () => {
   
   const location = useLocation();
   const navigate = useNavigate();
-  const { todos, calendarEvents } = useGlobalData();
+  const { tasks, calendarEvents } = useGlobalData();
 
   // Determine context-aware theme colors
   let baseColor = '#c084fc'; // Default light purple
@@ -101,428 +101,54 @@ export const VoiceQuickCaptureWidget = () => {
     }
 
     setIsProcessing(true);
-    const processToastId = toast.loading('Understanding voice command...');
+    const processToastId = toast.loading('Agent routing...');
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
     try {
-      const contextString = `Tasks: ${JSON.stringify(todos.slice(0, 10))}\nEvents: ${JSON.stringify(calendarEvents)}`;
-      const parsed = await parseUniversalVoiceCommand(text, contextString);
-      const { module, action, payload } = parsed;
+      const answer = await orchestrateAgent(
+        text,
+        tasks,
+        calendarEvents,
+        apiKey,
+        (step) => {
+          if (step.type === 'thinking') {
+             toast.loading(`Thinking: ${step.title}`, { id: processToastId });
+          } else if (step.type === 'tool_call') {
+             toast.loading(`Running Tool: ${step.toolName}`, { id: processToastId });
+          }
+        }
+      );
+      
+      toast.success('Mission complete', { 
+        id: processToastId,
+        description: 'Agent result ready',
+        duration: 5000,
+        action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report')) }
+      });
 
-      if (module === 'chat' && action === 'speak') {
-        toast.dismiss(processToastId);
-        toast.success(payload.response);
-        
-        // Use Web Speech API for TTS
-        const utterance = new SpeechSynthesisUtterance(payload.response);
-        utterance.rate = 1.0;
+      // Save to sessionStorage so dashboard can load it on route switch/mount
+      sessionStorage.setItem('pending_proactive_briefing', answer);
+
+      // Navigate to the home dashboard
+      navigate('/home');
+
+      // ✅ Surface result visually in Mission Report panel (same event the dashboard already listens for)
+      window.dispatchEvent(new CustomEvent('proactive-briefing', {
+        detail: { report: answer, fromVoice: true }
+      }));
+      
+      // Also speak the result via TTS for eyes-free UX
+      if (window.speechSynthesis) {
+        const utterance = new SpeechSynthesisUtterance(answer.slice(0, 500)); // limit TTS to 500 chars
+        utterance.rate = 1.05;
         utterance.pitch = 1.0;
         window.speechSynthesis.speak(utterance);
-        
-        setIsProcessing(false);
-        setTranscription('');
-        return;
-      }
-
-      if (module === 'todo') {
-        if (action === 'add') {
-          await addDoc(collection(db, 'todos'), {
-            userId: user.uid,
-            text: payload.text,
-            priority: payload.priority || 'medium',
-            isCompleted: false,
-            date: payload.date || getLocalDateString(new Date()),
-            subject: payload.subject || '',
-            estimatedMinutes: payload.estimatedMinutes || 25,
-            timeSlot: payload.timeSlot || null,
-            isRecurring: payload.isRecurring === 'daily' ? true : false,
-            createdAt: Date.now(),
-            subTasks: []
-          });
-          toast.success(`Added task: "${payload.text}"`, { id: processToastId });
-        } else if (action === 'complete') {
-          const q = query(collection(db, 'todos'), where('userId', '==', user.uid), where('isCompleted', '==', false));
-          const snap = await getDocs(q);
-          const tasks = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-          
-          const keyword = (payload.keyword || '').toLowerCase();
-          const match = tasks.find(t => t.text.toLowerCase().includes(keyword));
-          if (match) {
-            await updateDoc(doc(db, 'todos', match.id), { isCompleted: true });
-            toast.success(`Completed task: "${match.text}"`, { id: processToastId });
-          } else {
-            toast.error(`Could not find an active task matching "${keyword}"`, { id: processToastId });
-          }
-        }
-      } 
-      else if (module === 'gym') {
-        const todayStr = getLocalDateString(new Date());
-        const docId = `${user.uid}_${todayStr}`;
-        const logRef = doc(db, 'gymLogs', docId);
-        const logSnap = await getDoc(logRef);
-        
-        const spokenExerciseName = (payload.exercise || '').toLowerCase();
-        const weight = Number(payload.weight) || 0;
-        const reps = Number(payload.reps) || 0;
-
-        if (logSnap.exists()) {
-          const data = logSnap.data();
-          const exercises = data.exercises || [];
-          
-          // Check if it's a cardio command
-          if (spokenExerciseName.includes('treadmill') || spokenExerciseName.includes('cardio')) {
-            const cardio = data.cardio || [];
-            let matchIndex = cardio.findIndex((c: any) => c.type.toLowerCase().includes('treadmill') || c.id === 'permanent_treadmill');
-            
-            // AI might put distance in 'weight' and speed in 'reps' if it wasn't sure
-            const dist = Number(payload.distanceKm) || Number(payload.weight) || null;
-            const speed = Number(payload.speedKmh) || Number(payload.reps) || null;
-            const dur = Number(payload.durationMinutes) || null;
-
-            if (matchIndex >= 0) {
-              cardio[matchIndex] = { ...cardio[matchIndex], distanceKm: dist, speedKmh: speed, durationMinutes: dur, completed: true };
-            } else {
-              cardio.push({ id: 'permanent_treadmill', type: 'Treadmill', distanceKm: dist, speedKmh: speed, durationMinutes: dur, completed: true, isPermanent: true });
-            }
-            
-            await updateDoc(logRef, { cardio });
-            window.dispatchEvent(new Event('gym-log-updated'));
-            
-            const msgParts = [];
-            if (dist) msgParts.push(`${dist}km`);
-            if (dur) msgParts.push(`${dur} mins`);
-            if (speed) msgParts.push(`@ ${speed}km/h`);
-            toast.success(`Logged Treadmill: ${msgParts.join(' ')}`, { id: processToastId });
-            return;
-          }
-
-          // Check for explicit "add new" command
-          const isExplicitNew = spokenExerciseName.includes('add new') || (payload.text && payload.text.toLowerCase().includes('add new'));
-          const cleanExerciseName = spokenExerciseName.replace('add new ', '').trim();
-
-          // Fuzzy match for lifting exercises
-          const matchIndex = exercises.findIndex((ex: any) => 
-            ex.name.toLowerCase().includes(cleanExerciseName) || 
-            cleanExerciseName.includes(ex.name.toLowerCase().replace('standard ', '').replace('s', ''))
-          );
-
-          if (matchIndex >= 0) {
-            // Update existing exercise
-            const ex = exercises[matchIndex];
-            const setsLog = ex.setsLog || [];
-            
-            // Find first uncompleted set
-            const targetSetIndex = setsLog.findIndex((s: any) => !s.completed);
-            
-            if (targetSetIndex >= 0) {
-              setsLog[targetSetIndex] = { ...setsLog[targetSetIndex], weight, reps, completed: true };
-            } else {
-              // Add a new set if all are completed
-              setsLog.push({ setNumber: setsLog.length + 1, weight, reps, completed: true });
-            }
-            
-            exercises[matchIndex].setsLog = setsLog;
-            
-            await updateDoc(logRef, { exercises });
-            window.dispatchEvent(new Event('gym-log-updated'));
-            toast.success(`Logged ${weight}kg × ${reps} reps for ${ex.name}`, { id: processToastId });
-          } else if (isExplicitNew) {
-            // Add new custom exercise
-            const newExercise = {
-              exerciseId: Date.now().toString(),
-              name: payload.exercise.replace(/add new /i, '') || 'Unknown Exercise',
-              targetSets: 1,
-              targetReps: '1',
-              isCustom: true,
-              setsLog: [{ setNumber: 1, weight, reps, completed: true }]
-            };
-            await updateDoc(logRef, {
-              exercises: [...exercises, newExercise]
-            });
-            window.dispatchEvent(new Event('gym-log-updated'));
-            toast.success(`Added new exercise: ${newExercise.name}`, { id: processToastId });
-          } else {
-            toast.error(`Exercise "${cleanExerciseName}" not found. Say "Add new ${cleanExerciseName}" to add it.`, { id: processToastId });
-          }
-        } else {
-          // Create new log document
-          const newExercise = {
-            exerciseId: Date.now().toString(),
-            name: payload.exercise || 'Unknown Exercise',
-            targetSets: 1,
-            targetReps: '1',
-            isCustom: true,
-            setsLog: [{ setNumber: 1, weight, reps, completed: true }]
-          };
-          await setDoc(logRef, {
-            userId: user.uid,
-            date: todayStr,
-            exercises: [newExercise],
-            createdAt: Date.now(),
-            updatedAt: Date.now()
-          });
-          window.dispatchEvent(new Event('gym-log-updated'));
-          toast.success(`Logged ${payload.exercise} in Gym`, { id: processToastId });
-        }
-      }
-      else if (module === 'attendance') {
-        const dateStr = payload.date || getLocalDateString(new Date());
-        const q = query(collection(db, 'attendance_subjects'), where('userId', '==', user.uid));
-        const snap = await getDocs(q);
-        const subjects = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
-        
-        const keyword = (payload.subject || '').toLowerCase();
-        const match = subjects.find(s => s.name.toLowerCase() === keyword || s.name.toLowerCase().includes(keyword));
-        
-        let finalAction = action;
-        if (action === 'create_subject' && match) {
-          console.log("Auto-downgrading create_subject to update_schedule because subject exists:", match.name);
-          finalAction = 'update_schedule';
-        }
-
-        if (finalAction === 'create_subject' && payload.subject) {
-          const schedule: Record<string, { classCount: number, labCount: number }> = {};
-          
-          for (let i = 0; i <= 6; i++) {
-            schedule[i.toString()] = { classCount: 0, labCount: 0 };
-          }
-
-          if (payload.scheduleDays && Array.isArray(payload.scheduleDays)) {
-            payload.scheduleDays.forEach((sd: any) => {
-              if (typeof sd.dayText === 'string') {
-                const textLower = sd.dayText.toLowerCase();
-                const allDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-                const daysSet = new Set<string>();
-                
-                const rangeMatch = textLower.match(/(sun|mon|tue|wed|thu|fri|sat)[a-z]*\s+(?:to|through|-|till|until)\s+(sun|mon|tue|wed|thu|fri|sat)/);
-                if (rangeMatch) {
-                  const startIdx = allDays.indexOf(rangeMatch[1]);
-                  const endIdx = allDays.indexOf(rangeMatch[2]);
-                  if (startIdx !== -1 && endIdx !== -1) {
-                    let current = startIdx;
-                    while (true) {
-                      daysSet.add(current.toString());
-                      if (current === endIdx) break;
-                      current = (current + 1) % 7;
-                    }
-                  }
-                } else {
-                  allDays.forEach((day, index) => {
-                    if (textLower.includes(day)) daysSet.add(index.toString());
-                  });
-                }
-
-                Array.from(daysSet).forEach((idx: string) => {
-                  if (schedule[idx]) {
-                    const addClass = sd.classCount !== undefined ? Number(sd.classCount) : 0;
-                    const addLab = sd.labCount !== undefined ? Number(sd.labCount) : 0;
-                    
-                    if (addClass === 0 && addLab === 0) {
-                      schedule[idx].classCount += 1;
-                    } else {
-                      schedule[idx].classCount += addClass;
-                      schedule[idx].labCount += addLab;
-                    }
-                  }
-                });
-              }
-            });
-          }
-
-          await addDoc(collection(db, 'attendance_subjects'), {
-            userId: user.uid,
-            name: payload.subject,
-            classesAttended: 0,
-            classesTotal: 0,
-            labsAttended: 0,
-            labsTotal: 0,
-            targetPercentage: 75,
-            schedule
-          });
-
-          toast.success(`Created attendance subject: ${payload.subject}`, { id: processToastId });
-          setTranscription('');
-          setIsProcessing(false);
-          return;
-        }
-
-        if (finalAction === 'update_schedule' && match) {
-          const schedule = { ...match.schedule };
-          
-          if (payload.scheduleDays && Array.isArray(payload.scheduleDays)) {
-            payload.scheduleDays.forEach((sd: any) => {
-              if (typeof sd.dayText === 'string') {
-                const textLower = sd.dayText.toLowerCase();
-                const allDays = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-                const daysSet = new Set<string>();
-                
-                const rangeMatch = textLower.match(/(sun|mon|tue|wed|thu|fri|sat)[a-z]*\s+(?:to|through|-|till|until)\s+(sun|mon|tue|wed|thu|fri|sat)/);
-                if (rangeMatch) {
-                  const startIdx = allDays.indexOf(rangeMatch[1]);
-                  const endIdx = allDays.indexOf(rangeMatch[2]);
-                  if (startIdx !== -1 && endIdx !== -1) {
-                    let current = startIdx;
-                    while (true) {
-                      daysSet.add(current.toString());
-                      if (current === endIdx) break;
-                      current = (current + 1) % 7;
-                    }
-                  }
-                } else {
-                  allDays.forEach((day, index) => {
-                    if (textLower.includes(day)) daysSet.add(index.toString());
-                  });
-                }
-
-                Array.from(daysSet).forEach((idx: string) => {
-                  if (!schedule[idx]) schedule[idx] = { classCount: 0, labCount: 0 };
-                  
-                  const addClass = sd.classCount !== undefined ? Number(sd.classCount) : 0;
-                  const addLab = sd.labCount !== undefined ? Number(sd.labCount) : 0;
-                  
-                  if (addClass === 0 && addLab === 0) {
-                    schedule[idx].classCount += 1;
-                  } else {
-                    schedule[idx].classCount += addClass;
-                    schedule[idx].labCount += addLab;
-                  }
-                });
-              }
-            });
-          }
-
-          await updateDoc(doc(db, 'attendance_subjects', match.id), { schedule });
-          toast.success(`Updated schedule for ${match.name}`, { id: processToastId });
-          setTranscription('');
-          setIsProcessing(false);
-          return;
-        }
-
-        if (finalAction === 'update_schedule' && !match) {
-          toast.error(`Subject "${payload.subject}" not found to update. Say "Add NEW subject" first.`, { id: processToastId });
-          setTranscription('');
-          setIsProcessing(false);
-          return;
-        }
-        
-        if (match && finalAction === 'log_attendance') {
-          const type = payload.type === 'lab' ? 'lab' : 'class';
-          const isExtra = payload.isExtra === true;
-          const status = payload.status; // 'present', 'absent', 'cancelled'
-          
-          const batch = writeBatch(db);
-          
-          if (status !== 'cancelled') {
-            const isAttended = status === 'present';
-            const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
-            const totalKey = type === 'class' ? 'classesTotal' : 'labsTotal';
-            
-            batch.update(doc(db, 'attendance_subjects', match.id), {
-              [attendedKey]: (match[attendedKey] || 0) + (isAttended ? 1 : 0),
-              [totalKey]: (match[totalKey] || 0) + 1
-            });
-          }
-
-          const actionLabel = status === 'present' ? 'attended' : (status === 'absent' ? 'missed' : 'cancelled');
-          const logRef = doc(collection(db, 'attendance_logs'));
-          batch.set(logRef, {
-            userId: user.uid,
-            subjectId: match.id,
-            subjectName: match.name,
-            type,
-            action: actionLabel,
-            date: dateStr,
-            isExtra,
-            timestamp: Date.now()
-          });
-
-          await batch.commit();
-          toast.success(`Marked ${status} for ${match.name} ${type}`, { id: processToastId });
-        } else {
-          toast.error(`Subject "${payload.subject}" not found in Attendance`, { id: processToastId });
-        }
-      }
-      else if (module === 'tools') {
-        if (payload.type === 'job') {
-          await addDoc(collection(db, 'job_applications'), {
-            userId: user.uid,
-            company: payload.company || 'Unknown',
-            role: payload.role || 'Unknown',
-            status: payload.status || 'Applied',
-            dateApplied: getLocalDateString(new Date())
-          });
-          toast.success(`Added job application for ${payload.company}`, { id: processToastId });
-        } else {
-          await addDoc(collection(db, 'learning_topics'), {
-            userId: user.uid,
-            title: payload.topic || 'Unknown Topic',
-            subTasks: [],
-            status: 'Todo',
-            createdAt: Date.now(),
-            lastStudiedAt: Date.now()
-          });
-          toast.success(`Added learning topic: ${payload.topic}`, { id: processToastId });
-        }
-      }
-      else if (module === 'sleep') {
-        const todayStr = getLocalDateString(new Date());
-        const qLog = query(collection(db, 'daily_logs'), where('userId', '==', user.uid), where('date', '==', todayStr));
-        const logSnap = await getDocs(qLog);
-        
-        if (!logSnap.empty) {
-          const docId = logSnap.docs[0].id;
-          await updateDoc(doc(db, 'daily_logs', docId), {
-            wakeUpTime: payload.wakeUpTime || '',
-            sleepTime: payload.sleepTime || '',
-            updatedAt: Date.now()
-          });
-        } else {
-          await addDoc(collection(db, 'daily_logs'), {
-            userId: user.uid,
-            date: todayStr,
-            wakeUpTime: payload.wakeUpTime || '',
-            sleepTime: payload.sleepTime || '',
-            updatedAt: Date.now()
-          });
-        }
-        toast.success(`Logged sleep. Woke at ${payload.wakeUpTime || '--:--'}`, { id: processToastId });
-      }
-      else if (module === 'extraworks') {
-        const todayStr = getLocalDateString(new Date());
-        const qLog = query(collection(db, 'daily_logs'), where('userId', '==', user.uid), where('date', '==', todayStr));
-        const logSnap = await getDocs(qLog);
-        
-        if (!logSnap.empty) {
-          const docId = logSnap.docs[0].id;
-          const currentLog = logSnap.docs[0].data();
-          const currentExtra = currentLog.extraWorks || '';
-          const newExtra = currentExtra.trim() ? `${currentExtra}\n- ${payload.text}` : `- ${payload.text}`;
-          
-          await updateDoc(doc(db, 'daily_logs', docId), {
-            extraWorks: newExtra,
-            updatedAt: Date.now()
-          });
-        } else {
-          await addDoc(collection(db, 'daily_logs'), {
-            userId: user.uid,
-            date: todayStr,
-            extraWorks: `- ${payload.text}`,
-            updatedAt: Date.now()
-          });
-        }
-        toast.success(`Added to Extra Works: "${payload.text}"`, { id: processToastId });
       }
       
       setTranscription('');
     } catch (err: any) {
-      console.error('Voice parsing error:', err);
-      const msg = (err.message || '').toLowerCase();
-      let friendlyError = err.message || 'Unknown error occurred.';
-      if (msg.includes('401') || msg.includes('authentication')) {
-        friendlyError = 'Invalid Gemini API key. Please update it in your .env file.';
-      } else if (msg.includes('429') || msg.includes('quota')) {
-        friendlyError = 'Gemini API rate limit reached. Please try again later.';
-      }
-      toast.error('Voice failed: ' + friendlyError, { id: processToastId });
+      console.error('Agent execution error:', err);
+      toast.error('Agent failed: ' + (err.message || 'Unknown error'), { id: processToastId });
     } finally {
       setIsProcessing(false);
     }

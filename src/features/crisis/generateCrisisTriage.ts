@@ -1,9 +1,10 @@
 import { callWithFallback, parseAIJson } from '../../services/gemini';
 
 export const generateCrisisTriage = async (userData: any) => {
-  // Minimize payload
+  // Support both tasks (new) and todos (legacy) keys, and both t.title and t.text field names
+  const rawTasks = userData.tasks || userData.todos || [];
   const safeData = {
-    tasks: (userData.todos || []).filter((t: any) => !t.isCompleted).map((t: any) => ({ text: t.text, priority: t.priority, date: t.date })),
+    tasks: rawTasks.filter((t: any) => t.status !== 'completed').map((t: any) => ({ title: t.title || t.text, priority: t.priority, date: t.date })),
     goals: (userData.goals || []).map((g: any) => ({ title: g.title, deadline: g.deadline })),
     habits: (userData.habits || []).slice(0, 5)
   };

@@ -19,7 +19,7 @@ export interface JobApplication {
   attachedFileIds?: string[];
   followUpDate?: number;
   /** Interview prep checklist items */
-  prepChecklist?: { id: string; text: string; done: boolean }[];
+  prepChecklist?: { id: string; title: string; done: boolean }[];
 }
 
 export interface MockInterviewProblem {

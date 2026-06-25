@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, ListTodo, BookOpen, Activity, Briefcase, Plus, Droplets, Timer } from 'lucide-react';
+import { Search, ListTodo, BookOpen, Activity, Briefcase, Plus, Droplets, Timer, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
@@ -24,10 +24,11 @@ export const CommandPalette = () => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { startTimer } = usePomodoroContext();
 
-  // Global Ctrl+Shift+Z handler
+  // Global Ctrl+Shift+Z handler and Custom Event handler
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'z') {
@@ -38,9 +39,33 @@ export const CommandPalette = () => {
         setIsOpen(false);
       }
     };
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    const handleOpenEvent = () => setIsOpen(true);
+
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    window.addEventListener('open-command-palette', handleOpenEvent);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('open-command-palette', handleOpenEvent);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [isOpen]);
 
   // Focus input when opened
   useEffect(() => {
@@ -87,9 +112,9 @@ export const CommandPalette = () => {
           if (!user) return;
           await addDoc(collection(db, 'todos'), {
             userId: user.uid,
-            text: taskText,
+            title: taskText,
             priority: 'medium',
-            isCompleted: false,
+            status: 'pending',
             date: getLocalDateString(new Date()),
             createdAt: Date.now(),
             subTasks: []
@@ -265,28 +290,17 @@ export const CommandPalette = () => {
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div 
-      className="modal-overlay" 
-      onClick={(e) => { if (e.target === e.currentTarget) setIsOpen(false); }}
-      style={{ alignItems: 'flex-start', paddingTop: '15vh', zIndex: 1000 }}
-    >
-      <div style={{
-        width: '100%',
-        maxWidth: '580px',
-        background: 'rgba(18, 18, 20, 0.85)',
-        backdropFilter: 'blur(40px) saturate(200%)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        borderRadius: 'var(--radius-xl)',
-        boxShadow: '0 50px 100px -20px rgba(0, 0, 0, 0.9), 0 0 40px rgba(168, 85, 247, 0.15), inset 0 0 20px rgba(255,255,255,0.02)',
-        animation: 'slideUp 0.3s var(--spring-bouncy)',
-        overflow: 'hidden'
-      }}>
-        {/* Search Input */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.25rem', borderBottom: '1px solid var(--border-subtle)' }}>
-          <Search size={20} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+    <div className="command-palette-container" ref={containerRef} style={{ position: 'relative' }}>
+      <div 
+        className={`expandable-search ${isOpen ? 'expanded' : ''}`}
+        onClick={() => setIsOpen(true)}
+      >
+        <div className="search-icon-wrapper">
+          <Search size={20} />
+        </div>
+        
+        {isOpen ? (
           <input
             ref={inputRef}
             type="text"
@@ -307,17 +321,44 @@ export const CommandPalette = () => {
             }}
             style={{
               flex: 1, background: 'transparent', border: 'none', outline: 'none',
-              color: 'var(--text-primary)', fontSize: '1.05rem', fontFamily: 'var(--font-sans)'
+              color: 'var(--text-primary)', fontSize: '0.95rem', fontFamily: 'var(--font-sans)',
+              width: '100%'
             }}
           />
-          <kbd style={{
-            background: 'var(--bg-surface-active)', border: '1px solid var(--border-subtle)',
-            borderRadius: '4px', padding: '0.1rem 0.4rem', fontSize: '0.7rem',
-            color: 'var(--text-muted)', fontFamily: 'var(--font-sans)'
-          }}>ESC</kbd>
-        </div>
+        ) : (
+          <span className="search-placeholder">Search...</span>
+        )}
+        
+        {isOpen && (
+          <button 
+            className="clear-btn" 
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              setIsOpen(false);
+              setSearchQuery('');
+            }}
+          >
+            <X size={18} />
+          </button>
+        )}
+      </div>
 
-        {/* Results */}
+      {isOpen && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 0.25rem)',
+          right: 0,
+          width: '100%',
+          background: 'rgba(18, 18, 20, 0.95)',
+          backdropFilter: 'blur(40px) saturate(200%)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: 'var(--radius-xl)',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+          zIndex: 1000,
+          animation: 'slideUp 0.2s var(--spring-bouncy)',
+          overflow: 'hidden'
+        }}>
+          {/* Results */}
         <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '0.5rem' }}>
           {searchQuery.trim() === '' ? (
             <div style={{ padding: '2rem 1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
@@ -401,7 +442,8 @@ export const CommandPalette = () => {
             ))
           )}
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 };

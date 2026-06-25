@@ -1,6 +1,6 @@
 export interface KeyResult {
   id: string;
-  text: string;
+  title: string;
   targetValue: number;
   currentValue: number;
   unit: string;

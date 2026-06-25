@@ -9,7 +9,7 @@ export const parseVoiceToKanban = async (text: string) => {
   const prompt = `You are an AI assistant parsing voice commands into Kanban tasks.
 Your job is to extract actionable items from the user's spoken sentence and format them into a structured task.
 
-Current Date and Time for context: ${new Date().toLocaleString()}
+Current Date and Time for contitle: ${new Date().toLocaleString()}
 
 Voice Command:
 "${text}"
@@ -40,7 +40,7 @@ Return ONLY raw JSON (no markdown, no preamble):
     const safeP = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
 
     return {
-      text: typeof safeP.text === 'string' ? safeP.text : text,
+      title: typeof safeP.text === 'string' ? safeP.text : text,
       date: typeof safeP.date === 'string' ? safeP.date : getLocalDateString(new Date()),
       priority: ['high', 'medium', 'low'].includes(safeP.priority) ? safeP.priority : 'medium',
       subject: typeof safeP.subject === 'string' ? safeP.subject : '',
@@ -66,9 +66,9 @@ MODULES AND RULES:
 
 1. "todo" (Tasks, Homework, Reminders)
    - Actions: "add" or "complete"
-   - Example (add): "Remind me to finish the physics lab by Thursday for 45 mins" -> payload: { text: "Finish physics lab", date: "2026-06-12", priority: "high", estimatedMinutes: 45, isRecurring: "once" }
-   - Example (add): "do today till lecture 32 for 55 minute and do daily" -> payload: { text: "do today till lecture 32", estimatedMinutes: 55, isRecurring: "daily" }
-   - Example (add): "do dsa till lecture 28 from 7 pm to 9 pm" -> payload: { text: "do dsa till lecture 28", estimatedMinutes: 120, timeSlot: "19:00" }
+   - Example (add): "Remind me to finish the physics lab by Thursday for 45 mins" -> payload: { title: "Finish physics lab", date: "2026-06-12", priority: "high", estimatedMinutes: 45, isRecurring: "once" }
+   - Example (add): "do today till lecture 32 for 55 minute and do daily" -> payload: { title: "do today till lecture 32", estimatedMinutes: 55, isRecurring: "daily" }
+   - Example (add): "do dsa till lecture 28 from 7 pm to 9 pm" -> payload: { title: "do dsa till lecture 28", estimatedMinutes: 120, timeSlot: "19:00" }
    - Example (complete): "Mark physics assignment as done" -> payload: { keyword: "physics assignment" }
    - IMPORTANT: If user mentions a specific time range like "from 7 pm to 9 pm" or "at 5 pm for 2 hours", CALCULATE the exact total minutes between the times and set that as estimatedMinutes. ALSO extract the starting time as timeSlot in "HH:MM" 24-hour format (e.g., "19:00"). If no time range is given but they say "for X mins", extract that.
 
@@ -100,8 +100,8 @@ MODULES AND RULES:
 
 6. "extraworks" (Brain Dump, Scratchpad, Extra Works)
    - Actions: "add"
-   - Example: "Add buy groceries to extra works" -> payload: { text: "Buy groceries" }
-   - Example: "Brain dump I need to call mom tomorrow" -> payload: { text: "I need to call mom tomorrow" }
+   - Example: "Add buy groceries to extra works" -> payload: { title: "Buy groceries" }
+   - Example: "Brain dump I need to call mom tomorrow" -> payload: { title: "I need to call mom tomorrow" }
    - Simply extract the raw sentence/thought into the 'text' payload string.
 
 7. "chat" (Conversations, Questions, Summaries)

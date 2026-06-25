@@ -654,7 +654,7 @@ const SubTaskItem = React.memo(({
         </div>
       )}
       <div
-        className={`subtask-item ${subTask.isCompleted ? 'completed' : ''}`}
+        className={`subtask-item ${subTask.status === 'completed' ? 'completed' : ''}`}
         style={{ alignItems: 'center', position: 'relative', zIndex: 2 }}
         onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
@@ -679,10 +679,10 @@ const SubTaskItem = React.memo(({
             {isSelected && <Check size={11} color="#fff" strokeWidth={3} />}
           </button>
         ) : (
-          <button className={`todo-checkbox ${subTask.isCompleted ? 'checked' : ''}`}
+          <button className={`todo-checkbox ${subTask.status === 'completed' ? 'checked' : ''}`}
             onClick={() => toggleSubTask(topicId, subTask.id)}
-            role="checkbox" aria-checked={subTask.isCompleted} style={{ flexShrink: 0 }}>
-            {subTask.isCompleted && <Check size={13} strokeWidth={3} />}
+            role="checkbox" aria-checked={subTask.status === 'completed'} style={{ flexShrink: 0 }}>
+            {subTask.status === 'completed' && <Check size={13} strokeWidth={3} />}
           </button>
         )}
 
@@ -691,7 +691,7 @@ const SubTaskItem = React.memo(({
           <div style={{ flexShrink: 0, width: '40px', height: '27px', borderRadius: '4px', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
             onClick={() => onPlayVideo(videoId, subTask.id, topicId)}>
             <img src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`} alt="" loading="lazy"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: subTask.isCompleted ? 0.35 : 0.85, transition: 'opacity 200ms' }} />
+              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: subTask.status === 'completed' ? 0.35 : 0.85, transition: 'opacity 200ms' }} />
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
               <Play size={8} fill="#fff" color="#fff" />
             </div>
@@ -712,7 +712,7 @@ const SubTaskItem = React.memo(({
         )}
 
         {/* Saved timestamp indicator */}
-        {videoId && !isEditMode && !subTask.isCompleted && (() => {
+        {videoId && !isEditMode && subTask.status !== 'completed' && (() => {
           try {
             const s = Number(localStorage.getItem(TS_KEY(videoId)) || '0');
             if (s > 5) {
@@ -730,7 +730,7 @@ const SubTaskItem = React.memo(({
             <>
               {videoId && (
                 <button onClick={() => onPlayVideo(videoId, subTask.id, topicId)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', padding: '0.22rem 0.5rem', borderRadius: '7px', background: subTask.isCompleted ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.32)', color: subTask.isCompleted ? 'rgba(239,68,68,0.45)' : '#ef4444', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, minHeight: '28px' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', padding: '0.22rem 0.5rem', borderRadius: '7px', background: subTask.status === 'completed' ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.32)', color: subTask.status === 'completed' ? 'rgba(239,68,68,0.45)' : '#ef4444', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, minHeight: '28px' }}>
                   <Play size={10} fill="currentColor" /> Watch
                 </button>
               )}
@@ -847,7 +847,7 @@ const TopicBody = React.memo(({
                   <div onClick={() => toggleCategory(topic.id, category)}
                     style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', padding: '0.25rem 0.5rem', borderRadius: '7px', background: 'rgba(255,255,255,0.03)' }}>
                     <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-secondary)', flex: 1 }}>{category}</span>
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>{catSubTasks.filter(s => s.isCompleted).length}/{catSubTasks.length}</span>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.06)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>{catSubTasks.filter(s => s.status === 'completed').length}/{catSubTasks.length}</span>
                     {isCatExpanded ? <ChevronDown size={12} color="var(--text-muted)" /> : <ChevronRight size={12} color="var(--text-muted)" />}
                   </div>
                 )}
@@ -1153,7 +1153,7 @@ export const LearningChecklistModule = () => {
       .filter(Boolean) as Array<{ videoId: string; subtaskId: string; topicId: string; title: string }>;
 
     const indexInPlaylist = Math.max(0, videos.findIndex(v => v.subtaskId === subtaskId));
-    const watchedCount = topic.subTasks.filter(st => st.isCompleted).length;
+    const watchedCount = topic.subTasks.filter(st => st.status === 'completed').length;
     const current = videos[indexInPlaylist] || { videoId, subtaskId, topicId, title: 'Lecture' };
     const nextPlaying = {
       ...current,
@@ -1175,7 +1175,7 @@ export const LearningChecklistModule = () => {
     if (!topic) return;
 
     const firstVideo = topic.subTasks.find(st => {
-      if (st.isCompleted) return false;
+      if (st.status === 'completed') return false;
       if (st.url && extractYoutubeId(st.url)) return true;
       return st.resources?.some(r => extractYoutubeId(r.url));
     });
@@ -1211,7 +1211,7 @@ export const LearningChecklistModule = () => {
     const next = videos[nextIndex];
     setPlaying({
       ...next,
-      watchedCount: topic.subTasks.filter(st => st.isCompleted).length,
+      watchedCount: topic.subTasks.filter(st => st.status === 'completed').length,
       totalCount: videos.length,
       indexInPlaylist: nextIndex
     });
@@ -1221,8 +1221,8 @@ export const LearningChecklistModule = () => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
     const st = topic.subTasks.find(s => s.id === subtaskId);
-    if (!st || st.isCompleted) return;
-    const updated = topic.subTasks.map(s => s.id === subtaskId ? { ...s, isCompleted: true } : s);
+    if (!st || st.status === 'completed') return;
+    const updated = topic.subTasks.map(s => s.id === subtaskId ? { ...s, status: 'completed' } : s);
     playPopSound();
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
@@ -1303,7 +1303,7 @@ export const LearningChecklistModule = () => {
       if (!title) title = `Video (${videoId})`;
     }
     const newST: LearningSubTask = {
-      id: uniqueId(), text: title, category: 'Videos', isCompleted: false,
+      id: uniqueId(), title: title, category: 'Videos', status: 'pending',
       url, resources: [{ title: 'Watch Video', url, type: 'video' }],
     };
     const updated = [...topic.subTasks, newST];
@@ -1357,7 +1357,7 @@ export const LearningChecklistModule = () => {
     if (!topic) return;
     const toAdd: LearningSubTask[] = (videos as MergeVideo[])
       .filter(v => selected.has(v.id))
-      .map(v => ({ id: uniqueId(), text: v.title, category: 'Videos', isCompleted: false, url: v.url, resources: [{ title: 'Watch Video', url: v.url, type: 'video' }] }));
+      .map(v => ({ id: uniqueId(), title: v.title, category: 'Videos', status: 'pending', url: v.url, resources: [{ title: 'Watch Video', url: v.url, type: 'video' }] }));
     if (toAdd.length === 0) { toast.error('Select at least one video'); return; }
     const updated = [...topic.subTasks, ...toAdd];
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
@@ -1377,7 +1377,7 @@ export const LearningChecklistModule = () => {
     const { topicId, subtaskId } = renamingSubtask;
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, text: newTitle.trim() } : st);
+    const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, title: newTitle.trim() } : st);
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
     try {
       await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) });
@@ -1483,7 +1483,7 @@ export const LearningChecklistModule = () => {
     setImportingRoadmapId(roadmap.id);
     const subTasks: LearningSubTask[] = [];
     roadmap.modules.forEach(mod => mod.items.forEach(item => {
-      const task: LearningSubTask = { id: uniqueId(), text: item.text, category: mod.category, isCompleted: false };
+      const task: LearningSubTask = { id: uniqueId(), title: item.text, category: mod.category, status: 'pending' };
       if (item.url) task.url = item.url;
       subTasks.push(task);
     }));
@@ -1501,7 +1501,7 @@ export const LearningChecklistModule = () => {
     try {
       const data = await fetchYouTubePlaylist(playlistId);
       if (topics.some(t => t.title === data.title)) { toast.error(`"${data.title}" already imported.`); return; }
-      const subTasks: LearningSubTask[] = data.videos.map((v: any) => ({ id: uniqueId(), text: v.title, category: 'Videos', isCompleted: false, url: v.link, resources: [{ title: 'Watch Video', url: v.link, type: 'video' }] }));
+      const subTasks: LearningSubTask[] = data.videos.map((v: any) => ({ id: uniqueId(), title: v.title, category: 'Videos', status: 'pending', url: v.link, resources: [{ title: 'Watch Video', url: v.link, type: 'video' }] }));
       const newTopic: Omit<LearningTopic, 'id'> = { userId: user.uid, title: data.title, subTasks, createdAt: Date.now(), lastStudiedAt: Date.now(), order: topics.length, timeSpentMs: 0 };
       await addDoc(collection(db, 'learning_topics'), sanitize(newTopic));
       toast.success(`Imported ${data.videos.length} videos!`);
@@ -1525,9 +1525,9 @@ export const LearningChecklistModule = () => {
           const isYt = v.url.includes('youtube.com') || v.url.includes('youtu.be');
           return {
             id: uniqueId(),
-            text: v.title,
+            title: v.title,
             category: isYt ? 'Videos' : 'Reading',
-            isCompleted: false,
+            status: 'pending',
             url: v.url,
             resources: [{ title: isYt ? 'Watch Video' : 'Read Article', url: v.url, type: isYt ? 'video' : 'article' }]
           };
@@ -1557,7 +1557,7 @@ export const LearningChecklistModule = () => {
     if (!text) return;
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    const newST: LearningSubTask = { id: uniqueId(), text, isCompleted: false };
+    const newST: LearningSubTask = { id: uniqueId(), text, status: 'pending' };
     const updated = [...topic.subTasks, newST];
     // Optimistic
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
@@ -1570,7 +1570,7 @@ export const LearningChecklistModule = () => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
     let newStatus = false;
-    const updated = topic.subTasks.map(st => { if (st.id === subTaskId) { newStatus = !st.isCompleted; return { ...st, isCompleted: newStatus }; } return st; });
+    const updated = topic.subTasks.map(st => { if (st.id === subTaskId) { newStatus = st.status !== 'completed'; return { ...st, isCompleted: newStatus }; } return st; });
     if (newStatus) playPopSound();
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
@@ -1626,7 +1626,7 @@ export const LearningChecklistModule = () => {
         filtered = filtered.filter(st => st.text.toLowerCase().includes(q) || st.category?.toLowerCase().includes(q) || st.notes?.toLowerCase().includes(q));
         if (isTopicMatch && filtered.length === 0) filtered = topic.subTasks;
       }
-      if (showIncompleteOnly) filtered = filtered.filter(st => !st.isCompleted);
+      if (showIncompleteOnly) filtered = filtered.filter(st => st.status !== 'completed');
       if (isTopicMatch || filtered.length > 0) return { ...topic, subTasks: filtered };
       return null;
     }).filter(Boolean) as LearningTopic[];
@@ -1640,7 +1640,7 @@ export const LearningChecklistModule = () => {
     const topic = topics.find(t => t.id === continueWatching.topicId);
     if (!topic) return null;
     const st = topic.subTasks.find(s => s.id === continueWatching.subtaskId);
-    if (!st || st.isCompleted) return null; // Don't show if already watched
+    if (!st || st.status === 'completed') return null; // Don't show if already watched
     return continueWatching;
   }, [continueWatching, topics]);
 
@@ -1733,13 +1733,13 @@ export const LearningChecklistModule = () => {
             const isExpanded = searchQuery.trim() !== '' || expandedTopicId === topic.id;
             const orig = topics.find(t => t.id === topic.id);
             const total = (orig?.subTasks || []).length;
-            const done = (orig?.subTasks || []).filter(st => st.isCompleted).length;
+            const done = (orig?.subTasks || []).filter(st => st.status === 'completed').length;
             const progress = total === 0 ? 0 : Math.round((done / total) * 100);
             const daysSince = topic.lastStudiedAt ? (Date.now() - topic.lastStudiedAt) / 86400000 : 0;
             const needsReview = daysSince > 14 && progress >= 50 && progress < 100;
             const isEditMode = editModeTopics.has(topic.id!);
             const hasUnwatchedVideos = (orig?.subTasks || []).some(st => {
-              if (st.isCompleted) return false;
+              if (st.status === 'completed') return false;
               if (st.url && extractYoutubeId(st.url)) return true;
               return (st.resources || []).some(r => extractYoutubeId(r.url));
             });
@@ -1928,10 +1928,10 @@ export const LearningChecklistModule = () => {
       {playing && !isPipMode && (() => {
         // Compute completed topic names and overall progress for AI context
         const completedTopicNames = topics
-          .filter(t => t.subTasks.every(s => s.isCompleted))
+          .filter(t => t.subTasks.every(s => s.status === 'completed'))
           .map(t => t.title)
           .slice(-5);
-        const totalCompleted = topics.reduce((acc, t) => acc + t.subTasks.filter(s => s.isCompleted).length, 0);
+        const totalCompleted = topics.reduce((acc, t) => acc + t.subTasks.filter(s => s.status === 'completed').length, 0);
         const totalVideos = topics.reduce((acc, t) => acc + t.subTasks.length, 0);
         return (
           <VideoPlayerModal

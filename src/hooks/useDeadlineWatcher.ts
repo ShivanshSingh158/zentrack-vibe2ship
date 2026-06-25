@@ -34,20 +34,20 @@ export const useLiveTick = () => {
 };
 
 export const useDeadlineWatcher = () => {
-  const { todos, userPreferences } = useGlobalData();
+  const { tasks, userPreferences } = useGlobalData();
 
   useEffect(() => {
     // Demo-friendly: Check every 10 seconds instead of 15 minutes
     const interval = setInterval(() => {
-      if (!todos || todos.length === 0) return;
+      if (!tasks || tasks.length === 0) return;
       
       const now = new Date();
       const currentHour = now.getHours();
       let hasCriticalTasks = false;
       let criticalTaskTitle = '';
 
-      todos.forEach((task) => {
-        if (task.isCompleted || !task.date) return;
+      tasks.forEach((task) => {
+        if (task.status === 'completed' || !task.date) return;
         
         // Basic 24h fallback if no exact time is set
         const deadline = new Date(task.date).getTime() + (23 * 60 + 59) * 60000;
@@ -96,5 +96,5 @@ export const useDeadlineWatcher = () => {
     }, 10000); // 10 seconds for demo
 
     return () => clearInterval(interval);
-  }, [todos, userPreferences]);
+  }, [tasks, userPreferences]);
 };

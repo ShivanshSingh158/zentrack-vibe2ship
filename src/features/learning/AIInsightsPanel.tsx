@@ -73,10 +73,10 @@ export const AIInsightsPanel: React.FC<AIInsightsPanelProps> = ({ userData }) =>
       const todayStr = new Date().toLocaleDateString('en-CA');
       await addDoc(collection(db, 'todos'), {
         userId: user.uid,
-        text: task.title,
+        title: task.title,
         priority: task.priority || 'medium',
         estimatedMinutes: task.estimatedMinutes || 25,
-        isCompleted: false,
+        status: 'pending',
         date: todayStr,
         createdAt: Date.now(),
       });

@@ -10,7 +10,7 @@ export const DailyBriefingOverlay = () => {
   const [type, setType] = useState<'morning' | 'evening' | null>(null);
   const [data, setData] = useState<{ greeting: string; message: string; quote: string } | null>(null);
   const [loading, setLoading] = useState(true);
-  const { isLoading, todos, assignments, goals, gymLogs, habits, habitLogs } = useGlobalData();
+  const { isLoading, tasks, assignments, goals, gymLogs, habits, habitLogs } = useGlobalData();
 
   useEffect(() => {
     if (isLoading) return;
@@ -54,7 +54,7 @@ export const DailyBriefingOverlay = () => {
 
         if (currentType === 'morning') {
           const briefing = await generateMorningBriefing({ 
-            tasks: todos.filter((t:any) => !t.isCompleted),
+            tasks: tasks.filter((t:any) => t.status !== 'completed'),
             assignments: assignments.filter((a:any) => a.status !== 'submitted'),
             goals: goals,
             habits: habits,
@@ -62,7 +62,7 @@ export const DailyBriefingOverlay = () => {
           });
           setData(briefing);
         } else {
-          const completedTasks = todos.filter((t:any) => t.isCompleted && new Date(t.updatedAt || Date.now()).toDateString() === now.toDateString());
+          const completedTasks = tasks.filter((t:any) => t.status === 'completed' && new Date(t.updatedAt || Date.now()).toDateString() === now.toDateString());
           const completedHabitsCount = habitLogs.filter((l:any) => l.date === todayStr).length;
 
           const winddown = await generateEveningWindDown({ 

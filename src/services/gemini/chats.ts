@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import {  RobustChatSession } from './core';
-import { SAFETY_SETTINGS, MODEL_PRIORITY, allKeys, takeNextKeyIndex } from './core';
+import { SAFETY_SETTINGS, getPriorityModels, allKeys, takeNextKeyIndex } from './core';
 export const startWeeklyReviewChat = (userData: any, existingHistory: any[] = []) => {
   // Trim userData to avoid token overflow
   const safeData = {
@@ -128,7 +128,7 @@ NSCA-CSCS, CISSN, FMS Level 2, Precision Nutrition Level 1. Expert in: progressi
 - CRITICAL: DO NOT use markdown tables (e.g. | Column | Column |). They are unreadable and squished on mobile screens. ALWAYS use formatted lists instead.
 - Q&A responses: max 350 words. Plans: as long as needed.`;
 
-export const startGymAIChat = (gymContext: string, existingHistory: any[] = []) => {
+export const startGymAIChat = (gymContitle: string, existingHistory: any[] = []) => {
   if (allKeys.length === 0) throw new Error('Gemini API key is missing.');
 
   const systemWithContext = `${GYM_AI_SYSTEM_PROMPT}
@@ -153,10 +153,11 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
 
   // Try each model with round-robin key rotation
   let rawSession: any = null;
-  let workingModel = MODEL_PRIORITY[0];
+  const priorityModels = getPriorityModels(false);
+  let workingModel = priorityModels[0];
   let workingKeyIdx = startKeyIdx;
 
-  outer: for (const modelName of MODEL_PRIORITY) {
+  outer: for (const modelName of priorityModels) {
     for (let ki = 0; ki < allKeys.length; ki++) {
       const keyIdx = (startKeyIdx + ki) % allKeys.length;
       try {
@@ -179,13 +180,13 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
     // Last-resort fallback
     const genAI = new GoogleGenerativeAI(allKeys[0]);
     const model = genAI.getGenerativeModel({
-      model: MODEL_PRIORITY[0],
+      model: priorityModels[0],
       systemInstruction: systemWithContext,
       generationConfig: { temperature: 0.65, maxOutputTokens: 8192 },
       safetySettings: SAFETY_SETTINGS,
     });
     rawSession = model.startChat({ history: historyToUse });
-    workingModel = MODEL_PRIORITY[0];
+    workingModel = priorityModels[0];
     workingKeyIdx = 0;
   }
 
@@ -205,18 +206,14 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
 // this function uses their personal token instead of the shared API key.
 // This gives them their own quota pool, completely separate from the shared key.
 
-const CHAT_MODEL_PRIORITY = [
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-];
-
 async function callGymOAuthREST(
   token: string,
   systemInstruction: string,
   contents: any[],
   modelIndex = 0
 ): Promise<string> {
-  const model = CHAT_MODEL_PRIORITY[modelIndex];
+  const priorityModels = getPriorityModels(true);
+  const model = priorityModels[modelIndex];
   if (!model) throw new Error('All OAuth models exhausted.');
 
   const res = await fetch(
@@ -257,9 +254,10 @@ async function callGymOAuthRESTStream(
   systemInstruction: string,
   contents: any[],
   modelIndex = 0,
-  onChunk: (text: string) => void
-): Promise<{ text: string; model: string }> {
-  const model = CHAT_MODEL_PRIORITY[modelIndex];
+  onChunk: (title: string) => void
+): Promise<{ title: string; model: string }> {
+  const priorityModels = getPriorityModels(true);
+  const model = priorityModels[modelIndex];
   if (!model) throw new Error('All OAuth models exhausted.');
 
   const res = await fetch(
@@ -314,7 +312,8 @@ async function callGymOAuthRESTStream(
           try {
             const errJson = JSON.parse(trimmedLine);
             if (errJson.error) {
-              if (modelIndex < CHAT_MODEL_PRIORITY.length - 1) {
+              const priorityModels = getPriorityModels(true);
+              if (modelIndex < priorityModels.length - 1) {
                 return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
               }
               throw new Error(errJson.error.message || 'Stream error payload');
@@ -363,14 +362,15 @@ async function callGymOAuthRESTStream(
   }
 
   if (fullText.length > 0 && !sawFinishReason) {
-    if (modelIndex < CHAT_MODEL_PRIORITY.length - 1) {
+    const priorityModels = getPriorityModels(true);
+    if (modelIndex < priorityModels.length - 1) {
       return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
     }
     throw new Error('STREAM_ABORTED_NO_FINISH_REASON');
   }
 
   if (!fullText) throw new Error('Empty response from Gemini OAuth.');
-  return { text: fullText, model };
+  return { title: fullText, model };
 }
 
 /**
@@ -394,14 +394,14 @@ export class OAuthGymChatSession {
     }));
   }
 
-  async sendMessage(msg: string): Promise<{ response: { text: () => string } }> {
+  async sendMessage(msg: string): Promise<{ response: { title: () => string } }> {
     this.contents.push({ role: 'user', parts: [{ text: msg }] });
     const aiText = await callGymOAuthREST(this.token, this.systemInstruction, this.contents);
     this.contents.push({ role: 'model', parts: [{ text: aiText }] });
-    return { response: { text: () => aiText } };
+    return { response: { title: () => aiText } };
   }
 
-  async sendMessageStream(msg: string, onChunk: (text: string) => void): Promise<{ text: string, model: string }> {
+  async sendMessageStream(msg: string, onChunk: (title: string) => void): Promise<{ title: string, model: string }> {
     this.contents.push({ role: 'user', parts: [{ text: msg }] });
     const result = await callGymOAuthRESTStream(this.token, this.systemInstruction, this.contents, 0, onChunk);
     this.contents.push({ role: 'model', parts: [{ text: result.text }] });
@@ -414,7 +414,7 @@ export class OAuthGymChatSession {
 }
 
 export const startGymAIOAuthChat = (
-  gymContext: string,
+  gymContitle: string,
   oauthToken: string,
   existingHistory: any[] = []
 ): OAuthGymChatSession => {

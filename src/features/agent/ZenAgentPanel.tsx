@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { runAgentLoop } from '../../agent/runAgentLoop';
+import { orchestrateAgent } from '../../agent/orchestrator';
 import type { AgentStep } from '../../agent/runAgentLoop';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { Bot, Send, X, Loader2 } from 'lucide-react';
@@ -15,10 +15,9 @@ const STEP_ICON: Record<string, string> = {
 };
 
 export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
-  const { todos } = useGlobalData();
-  const calendarEvents: any[] = []; // If you have calendar events in context, use them here.
-  const [messages, setMessages] = useState<{ role: 'user' | 'agent'; text: string; steps?: AgentStep[] }[]>([
-    { role: 'agent', text: "Hey! I'm Zen Agent. I can read your tasks, schedule your calendar, create reminders, and more — all in one command. Try: \"Schedule my top 3 tasks for today\" or \"I'm overwhelmed, what should I do first?\"" }
+  const { tasks, calendarEvents } = useGlobalData();
+  const [messages, setMessages] = useState<{ role: 'user' | 'agent'; title: string; steps?: AgentStep[] }[]>([
+    { role: 'agent', title: "Hey! I'm Zen Agent — powered by the full 13-agent fleet. I can read tasks, schedule calendar, send emails, find Drive files, create meetings, and more. Try: \"Scan my inbox for hidden deadlines\" or \"I missed a deadline, help me recover.\"" }
   ]);
   const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
@@ -34,15 +33,16 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
     if (!input.trim() || isRunning) return;
     const userMsg = input.trim();
     setInput('');
-    setMessages(m => [...m, { role: 'user', text: userMsg }]);
+    setMessages(m => [...m, { role: 'user', title: userMsg }]);
     setIsRunning(true);
     setLiveSteps([]);
 
     try {
       const stepsAccumulated: AgentStep[] = [];
-      const answer = await runAgentLoop(
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+      const answer = await orchestrateAgent(
         userMsg,
-        todos,
+        tasks,
         calendarEvents,
         apiKey,
         (step) => {
@@ -52,11 +52,11 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
       );
       setMessages(m => [...m, { 
         role: 'agent', 
-        text: answer, 
+        title: answer, 
         steps: stepsAccumulated.filter(s => s.type === 'tool_call' || s.type === 'tool_result')
       }]);
     } catch (err: any) {
-      setMessages(m => [...m, { role: 'agent', text: `Sorry, something went wrong: ${err.message}` }]);
+      setMessages(m => [...m, { role: 'agent', title: `Sorry, something went wrong: ${err.message}` }]);
     } finally {
       setIsRunning(false);
       setLiveSteps([]);
@@ -106,7 +106,7 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
               color: '#fff', fontSize: '0.88rem', lineHeight: 1.5,
               whiteSpace: 'pre-wrap'
             }}>
-              {msg.text}
+              {msg.title}
             </div>
           </div>
         ))}

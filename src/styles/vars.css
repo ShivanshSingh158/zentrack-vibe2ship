@@ -1,6 +1,7 @@
 :root {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-display: 'Outfit', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   
   /* ── Aurora Theme — Base Palette ── */
   --bg-base: #09090b;
@@ -28,6 +29,13 @@
   --accent-gradient-danger: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
   --accent-glow: rgba(124, 58, 237, 0.4);
   --accent-glow-secondary: rgba(168, 85, 247, 0.3);
+  
+  /* ── Urgency System Tokens (default = calm) ── */
+  --urgency-primary: #7c3aed;
+  --urgency-secondary: #a855f7;
+  --urgency-glow: rgba(124, 58, 237, 0.2);
+  --urgency-bg-tint: rgba(124, 58, 237, 0.04);
+  --urgency-border: rgba(124, 58, 237, 0.25);
   
   /* ── Module-Specific Accents ── */
   --module-todo: #6366f1;
@@ -64,8 +72,116 @@
   --primary-light: #c4b5fd;
 
   /* ── Mobile Performance Tokens ── */
-  /* Used by index.css mobile block to cap transition durations on small screens */
   --mobile-transition: 150ms;
-  /* Nav bar height including safe area — used by main-content padding */
   --mobile-nav-height: 60px;
 }
+
+/* ════════════════════════════════════════════════════════════
+   URGENCY COLOR SYSTEM — Psychological Chroma Matrix
+   Applied to :root by useUrgencyState hook in App.tsx
+   ════════════════════════════════════════════════════════════ */
+
+/* CALM STATE — No urgent deadlines (Bioluminescent Cyan) */
+:root.state-calm {
+  --urgency-primary: #00BFA5;
+  --urgency-secondary: #00E5FF;
+  --urgency-glow: rgba(0, 229, 255, 0.15);
+  --urgency-bg-tint: rgba(0, 191, 165, 0.04);
+  --urgency-border: rgba(0, 191, 165, 0.2);
+}
+
+:root.state-calm body {
+  background-image:
+    radial-gradient(ellipse at 10% 20%, rgba(0, 191, 165, 0.07) 0%, transparent 40%),
+    radial-gradient(ellipse at 90% 80%, rgba(0, 229, 255, 0.05) 0%, transparent 35%),
+    radial-gradient(ellipse at 50% 50%, rgba(0, 191, 165, 0.03) 0%, transparent 50%);
+}
+
+/* ACTIVE STATE — Tasks due today (Sunset Orange / Mango) */
+:root.state-active {
+  --urgency-primary: #FF6D00;
+  --urgency-secondary: #FFC400;
+  --urgency-glow: rgba(255, 109, 0, 0.2);
+  --urgency-bg-tint: rgba(255, 109, 0, 0.05);
+  --urgency-border: rgba(255, 109, 0, 0.3);
+}
+
+:root.state-active body {
+  background-image:
+    radial-gradient(ellipse at 10% 20%, rgba(255, 109, 0, 0.08) 0%, transparent 40%),
+    radial-gradient(ellipse at 90% 80%, rgba(255, 196, 0, 0.06) 0%, transparent 35%),
+    radial-gradient(ellipse at 50% 50%, rgba(255, 109, 0, 0.04) 0%, transparent 50%);
+}
+
+/* CRITICAL STATE — Overdue tasks (Crimson / Electric Magenta) */
+:root.state-critical {
+  --urgency-primary: #FF0051;
+  --urgency-secondary: #D500F9;
+  --urgency-glow: rgba(255, 0, 81, 0.25);
+  --urgency-bg-tint: rgba(255, 0, 81, 0.06);
+  --urgency-border: rgba(255, 0, 81, 0.35);
+}
+
+:root.state-critical body {
+  background-image:
+    radial-gradient(ellipse at 10% 20%, rgba(255, 0, 81, 0.10) 0%, transparent 40%),
+    radial-gradient(ellipse at 90% 80%, rgba(213, 0, 249, 0.07) 0%, transparent 35%),
+    radial-gradient(ellipse at 50% 50%, rgba(255, 0, 81, 0.05) 0%, transparent 50%);
+  animation: critical-ambient-pulse 4s ease-in-out infinite;
+}
+
+@keyframes critical-ambient-pulse {
+  0%, 100% { background-size: 100% 100%; }
+  50% { background-size: 110% 110%; }
+}
+
+/* Urgency-aware component overrides */
+:root.state-active .fleet-node.orchestrator,
+:root.state-critical .fleet-node.orchestrator {
+  border-color: var(--urgency-primary);
+  box-shadow: 0 0 20px var(--urgency-glow), 0 0 40px var(--urgency-glow);
+}
+
+:root.state-critical .fleet-node.orchestrator {
+  animation: critical-orb-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes critical-orb-pulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(255,0,81,0.3), 0 0 40px rgba(255,0,81,0.15); }
+  50% { box-shadow: 0 0 35px rgba(255,0,81,0.6), 0 0 70px rgba(255,0,81,0.25); }
+}
+
+/* Urgency banner */
+.urgency-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  transition: all 0.5s ease;
+}
+.urgency-banner.calm {
+  background: rgba(0, 191, 165, 0.1);
+  color: #00BFA5;
+  border: 1px solid rgba(0, 191, 165, 0.25);
+}
+.urgency-banner.active {
+  background: rgba(255, 109, 0, 0.1);
+  color: #FF6D00;
+  border: 1px solid rgba(255, 109, 0, 0.3);
+  animation: banner-pulse 2s ease-in-out infinite;
+}
+.urgency-banner.critical {
+  background: rgba(255, 0, 81, 0.12);
+  color: #FF0051;
+  border: 1px solid rgba(255, 0, 81, 0.4);
+  animation: banner-pulse 1s ease-in-out infinite;
+}
+@keyframes banner-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+

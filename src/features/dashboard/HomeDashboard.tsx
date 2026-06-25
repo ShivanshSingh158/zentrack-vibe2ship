@@ -1,1377 +1,2145 @@
-/**
- * HomeDashboard — the main landing page of ZenTrack.
- *
- * Data strategy: ALL Firestore data comes from GlobalDataContext (already live-synced).
- * This component opens ZERO additional onSnapshot listeners — no double reads, no billing waste.
- *
- * Sub-components in this file:
- *  - DashboardHero         : greeting, date, streak badge
- *  - StudentWidgets        : attendance / assignments / classes grid
- *  - DailyCommandPanel     : water, habits, sleep log, brain dump, quick-add task
- *  - PomodoroWidget        : focus timer ring
- *  - WeeklyFocusChart      : 7-day productive hours chart
- *  - PriorityTasksList     : draggable unscheduled task list
- */
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { WisdomVideoCard } from './WisdomVideoCard';
-import { useNavigate } from 'react-router-dom';
-import { collection, updateDoc, doc, addDoc, deleteDoc } from 'firebase/firestore';
-import { db, auth } from '../../services/firebase';
-import { getLocalDateString } from '../../utils/dateUtils';
-import { usePomodoroContext } from '../../contexts/PomodoroContext';
-import { useGlobalData } from '../../contexts/GlobalDataContext';
-import {
-  Droplets, Timer, Flame, BarChart2, Maximize2, Plus, X,
-  RotateCcw, ClipboardList, Square, AlertTriangle, Calendar,
-  ClipboardCheck, Check, Moon, Briefcase, Play, Sparkles, Activity, BookOpen, Wand2, Target, Siren
+import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  FileText, Mail, Calendar, Check, AlertTriangle, Activity, 
+  Map, SortAsc, Terminal, UserCheck, Repeat, Search, BrainCircuit, Loader2, ArrowRight,
+  HardDrive, ShieldCheck, Send, Mic, MicOff, X, Zap, Video, ExternalLink
 } from 'lucide-react';
-import { generateNextActionRecommendation } from '../../services/gemini';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import { orchestrateAgent } from '../../agent/orchestrator';
+import { useGlobalData } from '../../contexts/GlobalDataContext';
+import { getUrgencyLevel, getCountdownText } from '../../hooks/useDeadlineWatcher';
+import { isSignedInToGoogle, wasEverConnectedToGoogle, getTokenTimeRemaining, initGoogleCalendar } from '../../services/googleCalendar';
+import { isPersonalGeminiTokenExpired, wasEverConnectedToPersonalGemini, requestGeminiToken } from '../../services/userGeminiAuth';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { toast } from 'sonner';
-import { sendPushNotification } from '../../services/fcm';
-import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import type { DropResult } from '@hello-pangea/dnd';
-import { TimeboxTimeline } from './TimeboxTimeline';
-import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
-import { PomodoroStatsPanel } from '../pomodoro/PomodoroStatsPanel';
-import { CrisisTriageModal } from '../crisis/CrisisTriageModal';
-import { AnimatePresence } from 'framer-motion';
+import { useUrgencyState } from '../../hooks/useUrgencyState';
+import { useProactiveAgent } from '../../hooks/useProactiveAgent';
+import { getKeyStatus } from '../../services/userGeminiAuth';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-interface LocalLog {
-  waterIntakeLiters: number;
-  wakeUpTime: string;
-  sleepTime: string;
-  extraWorks?: string;
-}
-
-// ─── DashboardHero ────────────────────────────────────────────────────────────
-const DashboardHero = ({ currentStreak, hasRollovers, pendingTaskCount, overdueTaskCount }: {
-  currentStreak: number;
-  hasRollovers: boolean;
-  pendingTaskCount: number;
-  overdueTaskCount: number;
-}) => {
-  const hour = new Date().getHours();
-  const greetingTime =
-    hour >= 5 && hour < 12 ? 'morning' :
-    hour >= 12 && hour < 17 ? 'afternoon' :
-    hour >= 17 && hour < 22 ? 'evening' : 'night';
-
-  const emoji   = { morning: '☀️', afternoon: '⚡', evening: '🌙', night: '✨' }[greetingTime];
-  const glow    = { morning: '#fbbf24', afternoon: '#7c3aed', evening: '#a855f7', night: '#7c3aed' }[greetingTime];
-  const gradient = {
-    morning:   'linear-gradient(135deg, rgba(251,191,36,0.15) 0%, rgba(249,115,22,0.10) 30%, rgba(124,58,237,0.12) 70%, rgba(168,85,247,0.08) 100%)',
-    afternoon: 'linear-gradient(135deg, rgba(124,58,237,0.18) 0%, rgba(168,85,247,0.14) 40%, rgba(124,58,237,0.10) 100%)',
-    evening:   'linear-gradient(135deg, rgba(168,85,247,0.18) 0%, rgba(124,58,237,0.14) 40%, rgba(192,132,252,0.08) 100%)',
-    night:     'linear-gradient(135deg, rgba(9,9,20,0.6) 0%, rgba(124,58,237,0.14) 50%, rgba(168,85,247,0.10) 100%)',
-  }[greetingTime];
-
-  const userName    = auth.currentUser?.displayName?.split(' ')[0] || 'Student';
-  const todayName   = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-  const todayFull   = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-
-  return (
-    <>
-      {hasRollovers && (
-        <div style={{ background: 'rgba(239,68,68,0.12)', color: '#ef4444', padding: '0.6rem 1rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 500, border: '1px solid rgba(239,68,68,0.2)' }}>
-          <span style={{ fontSize: '1rem' }}>🚨</span> You have overdue tasks! Address them today to keep your momentum.
-        </div>
-      )}
-      <div style={{ position: 'relative', background: gradient, border: '1px solid rgba(124,58,237,0.15)', borderRadius: 'var(--radius-xl)', padding: '1.75rem 2rem', marginBottom: '1.5rem', overflow: 'hidden' }} className="hero-header">
-        <div style={{ position: 'absolute', top: '-40px', right: '-40px', width: '180px', height: '180px', borderRadius: '50%', background: `radial-gradient(circle, ${glow}30 0%, transparent 70%)`, pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: '-30px', left: '20%', width: '120px', height: '120px', borderRadius: '50%', background: `radial-gradient(circle, ${glow}18 0%, transparent 70%)`, pointerEvents: 'none' }} />
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
-          <div>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '0.3rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: glow, display: 'inline-block', boxShadow: `0 0 6px ${glow}` }} />
-              {todayName} • {todayFull}
-            </div>
-            <h1 style={{ fontSize: 'clamp(1.5rem, 4vw, 2.2rem)', fontWeight: 800, letterSpacing: '-0.02em', margin: 0, lineHeight: 1.1, fontFamily: 'var(--font-display)' }}>
-              Good {greetingTime}, {userName} {emoji}
-            </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: '0.35rem 0 0', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {pendingTaskCount === 0
-                ? "You're all caught up today! 🎉"
-                : <><span>{pendingTaskCount} task{pendingTaskCount !== 1 ? 's' : ''} today</span>
-                  {overdueTaskCount > 0 && <span style={{ color: '#ef4444', fontWeight: 600, fontSize: '0.82rem', background: 'rgba(239,68,68,0.1)', padding: '0.05rem 0.4rem', borderRadius: '4px' }}>⚠ {overdueTaskCount} overdue</span>}
-                </>}
-            </p>
-          </div>
-
-          {currentStreak > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem', background: 'linear-gradient(135deg, rgba(251,146,60,0.15), rgba(249,115,22,0.08))', border: '1px solid rgba(251,146,60,0.3)', borderRadius: 'var(--radius-lg)', padding: '0.65rem 1.1rem', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px -6px rgba(251,146,60,0.3)', animation: 'pulse 3s ease-in-out infinite' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <Flame size={20} style={{ color: '#fb923c', filter: 'drop-shadow(0 0 4px rgba(251,146,60,0.5))' }} />
-                <span style={{ fontSize: '1.6rem', fontWeight: 800, color: '#fb923c', fontFamily: 'var(--font-display)', lineHeight: 1 }}>{currentStreak}</span>
-              </div>
-              <span style={{ fontSize: '0.65rem', color: '#fb923c', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', opacity: 0.85 }}>Day Streak</span>
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
+const parseMissionActions = (report: string) => {
+  if (!report) return { meetLinks: [], docLinks: [] };
+  const meetLinks = Array.from(new Set(report.match(/https:\/\/meet\.google\.com\/[a-z0-9-]+/g) || []));
+  const docLinks = Array.from(new Set(report.match(/https:\/\/docs\.google\.com\/[^\s)\]]+/g) || []));
+  return { meetLinks, docLinks };
 };
 
-// ─── ZenAIControlCenter ────────────────────────────────────────────────────────
-const ZenAIControlCenter = ({ onOpenCrisis }: { onOpenCrisis: () => void }) => {
-  const navigate = useNavigate();
-  return (
-    <div style={{
-      background: 'linear-gradient(135deg, rgba(168,85,247,0.1) 0%, rgba(236,72,153,0.1) 100%)',
-      border: '1px solid rgba(168,85,247,0.3)',
-      borderRadius: 'var(--radius-xl)',
-      padding: '1.5rem',
-      marginBottom: '1.5rem',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '1rem',
-      boxShadow: '0 8px 32px rgba(168,85,247,0.1)'
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <Sparkles size={24} style={{ color: '#c084fc' }} />
-        <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: '#fff' }}>Zen AI Control Center</h2>
-        <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '999px', background: 'rgba(168,85,247,0.2)', color: '#c084fc', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Autonomous</span>
-      </div>
-      
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-        <button className="ai-feature-btn" onClick={() => navigate('/calendar')} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '1rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(124,58,237,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#c084fc', fontWeight: 600 }}>
-            <Wand2 size={18} /> Auto-Schedule Today
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Click to let AI assign optimal times for your pending tasks.</div>
-        </button>
-
-        <button className="ai-feature-btn" onClick={() => navigate('/goals')} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '1rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(236,72,153,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f472b6', fontWeight: 600 }}>
-            <Target size={18} /> AI Goal Breakdown
-          </div>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Let AI break your long-term goals into a daily to-do list.</div>
-        </button>
-
-        <button className="ai-feature-btn" onClick={onOpenCrisis} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', padding: '1rem', borderRadius: 'var(--radius-lg)', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: '0.5rem', transition: 'all 0.2s' }} onMouseEnter={e => e.currentTarget.style.background = 'rgba(239,68,68,0.2)'} onMouseLeave={e => e.currentTarget.style.background = 'rgba(239,68,68,0.1)'}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444', fontWeight: 600 }}>
-            <AlertTriangle size={18} /> Crisis Triage
-          </div>
-          <div style={{ fontSize: '0.8rem', color: '#fca5a5' }}>Overwhelmed? Let AI identify the ONE thing that matters today.</div>
-        </button>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.75rem', marginTop: '1rem' }}>
-        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-doom-scroll'))} style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px dashed rgba(239,68,68,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
-          Test: Doom-Scroll
-        </button>
-        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-missed-gym'))} style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b', border: '1px dashed rgba(245,158,11,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
-          Test: Missed Gym
-        </button>
-        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-morning-brief'))} style={{ background: 'rgba(59,130,246,0.1)', color: '#3b82f6', border: '1px dashed rgba(59,130,246,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
-          Test: 8am Brief
-        </button>
-        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-accountability'))} style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', border: '1px dashed rgba(168,85,247,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
-          Test: 9pm Check
-        </button>
-        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-calendar-conflict'))} style={{ background: 'rgba(236,72,153,0.1)', color: '#ec4899', border: '1px dashed rgba(236,72,153,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
-          Test: Cal Conflict
-        </button>
-        <button className="btn-secondary" onClick={() => window.dispatchEvent(new CustomEvent('simulate-pattern-analysis'))} style={{ background: 'rgba(16,185,129,0.1)', color: '#10b981', border: '1px dashed rgba(16,185,129,0.4)', padding: '0.5rem', fontSize: '0.75rem' }}>
-          Test: Pattern Analysis
-        </button>
-      </div>
-    </div>
-  );
+const AGENT_DETAILS: Record<string, {
+  title: string;
+  tagline: string;
+  color: string;
+  secondaryColor: string;
+  description: string;
+  image: string;
+  icon: string;
+  depicts: string[];
+}> = {
+  ORCHESTRATOR: {
+    title: 'Cognitive Mastermind',
+    tagline: 'Orchestrating workflow, task allocation & DAG routing',
+    color: '#a78bfa',
+    secondaryColor: '#ec4899',
+    description: 'Manages agent task routing, parses request syntax, and synthesizes overall execution pipelines.',
+    image: '/agents/orchestrator.png',
+    icon: '🧠',
+    depicts: ['DAG Routing', 'Task Parser', 'Fleet Supervisor']
+  },
+  SEARCH: {
+    title: 'Neural Recon Sentry',
+    tagline: 'Google search, information aggregation & fact verification',
+    color: '#fbbf24',
+    secondaryColor: '#f97316',
+    description: 'Scours the web using Google APIs to gather real-time data, verify facts, and retrieve external documents.',
+    image: '/agents/search.png',
+    icon: '🔍',
+    depicts: ['Google Search API', 'Web Scraping', 'Fact Verification']
+  },
+  DOCS: {
+    title: 'Synthesis Engine',
+    tagline: 'Document analysis, markdown compiler & layout architect',
+    color: '#06b6d4',
+    secondaryColor: '#3b82f6',
+    description: 'Generates reports, parses document structures, reads PDF/DOCX contents, and compiles output markdown.',
+    image: '/agents/docs.png',
+    icon: '📄',
+    depicts: ['Markdown Compiler', 'Report Synthesizer', 'Layout Architect']
+  },
+  DATA: {
+    title: 'Quantum Analytics Unit',
+    tagline: 'Data processing, math operations & chart design',
+    color: '#34d399',
+    secondaryColor: '#10b981',
+    description: 'Computes formulas, extracts tables, plots charts, and performs numerical analysis on workspaces.',
+    image: '/agents/data.png',
+    icon: '📊',
+    depicts: ['Math Processor', 'Table Extractor', 'Stats Analyzer']
+  },
+  COMMS: {
+    title: 'Holographic Comms Terminal',
+    tagline: 'Gmail management, mail drafting & reply optimization',
+    color: '#f472b6',
+    secondaryColor: '#8b5cf6',
+    description: 'Accesses Gmail accounts, drafts messages, checks notifications, and formats clean emails.',
+    image: '/agents/comms.png',
+    icon: '✉️',
+    depicts: ['Gmail Inbox', 'Draft Composer', 'Reply Optimizer']
+  },
+  SCHEDULER: {
+    title: 'Chronos Coordinator',
+    tagline: 'Calendar orchestration, meeting books & time slot checks',
+    color: '#60a5fa',
+    secondaryColor: '#6366f1',
+    description: 'Queries Google Calendar, books events, resolves schedule conflicts, and notifies deadlines.',
+    image: '/agents/scheduler.png',
+    icon: '📅',
+    depicts: ['Calendar Queries', 'Conflict Solver', 'Event Booking']
+  },
+  DRIVE: {
+    title: 'Aether Storage Sentry',
+    tagline: 'Google Drive explorer, folder compiler & file tracker',
+    color: '#3b82f6',
+    secondaryColor: '#1d4ed8',
+    description: 'Navigates and searches Google Drive structures, tracks folders, downloads files, and uploads results.',
+    image: '/agents/drive.png',
+    icon: '💽',
+    depicts: ['Cloud Explorer', 'Folder Compiler', 'File Downloader']
+  },
+  CODING: {
+    title: 'Nexus Compiler Node',
+    tagline: 'Code generation, execution, script builder & debugger',
+    color: '#22c55e',
+    secondaryColor: '#16a34a',
+    description: 'Writes system scripts, debugs codebase structures, executes runtime scripts, and runs checks.',
+    image: '/agents/coding.png',
+    icon: '💻',
+    depicts: ['Compiler Core', 'Code Generator', 'Script Executor']
+  },
+  QA: {
+    title: 'Sentinel Guard Protocol',
+    tagline: 'System code checker, security auditor & log validator',
+    color: '#10b981',
+    secondaryColor: '#06b6d4',
+    description: 'Performs security audits, runs typechecks, validates inputs/outputs, and logs workflow errors.',
+    image: '/agents/qa.png',
+    icon: '🛡️',
+    depicts: ['Security Auditor', 'Typecheck Sentry', 'Log Validator']
+  },
+  PLANNER: {
+    title: 'Strategic Architect',
+    tagline: 'Goal decomposition, milestone mapping & project scaffolding',
+    color: '#f59e0b',
+    secondaryColor: '#d97706',
+    description: 'Breaks complex goals into milestones and actionable tasks. Injects tasks into ZenTrack and blocks calendar time for critical milestones.',
+    image: '/agents/planner.png',
+    icon: '🗺️',
+    depicts: ['Goal Decomposer', 'Milestone Mapper', 'Task Injector']
+  },
+  MONITOR: {
+    title: 'Risk Sentinel',
+    tagline: 'Deadline drift detection, risk scoring & proactive alerts',
+    color: '#ef4444',
+    secondaryColor: '#dc2626',
+    description: 'Continuously assesses task risk, sends proactive alerts, auto-reschedules low-priority items during emergencies, and scans email for deadline changes.',
+    image: '/agents/monitor.png',
+    icon: '🚨',
+    depicts: ['Risk Assessor', 'Alert Dispatcher', 'Auto-Rescheduler']
+  },
+  GHOST_DETECTOR: {
+    title: 'Ghost Deadline Finder',
+    tagline: 'Hidden commitment discovery, inbox scanning & deadline extraction',
+    color: '#8b5cf6',
+    secondaryColor: '#7c3aed',
+    description: 'Scans emails and calendar descriptions for hidden deadlines never explicitly logged — surfaces ghost tasks before they become missed commitments.',
+    image: '/agents/ghost.png',
+    icon: '👻',
+    depicts: ['Inbox Scanner', 'Deadline Extractor', 'Ghost Task Creator']
+  },
+  EXECUTOR: {
+    title: 'Hyper Action Engine',
+    tagline: 'Cross-system execution, multi-action chaining & delegation hub',
+    color: '#22d3ee',
+    secondaryColor: '#0891b2',
+    description: 'The most action-oriented agent. Chains email, docs, meetings, and tasks in a single autonomous workflow. Delegates recursively to specialist sub-agents.',
+    image: '/agents/executor.png',
+    icon: '⚡',
+    depicts: ['Action Chainer', 'Delegation Hub', 'Workflow Automator']
+  }
 };
 
-// ─── SituationReportWidget ───────────────────────────────────────────────────
-const SituationReportWidget = ({ tasks, overdueTaskCount, isGymDay, gymLogged }: {
-  tasks: any[];
-  overdueTaskCount: number;
-  isGymDay: boolean;
-  gymLogged: boolean;
-}) => {
-  const { startTimer } = usePomodoroContext();
-  const navigate = useNavigate();
-
-  const topTask = tasks.length > 0 ? tasks[0] : null;
-
-  return (
-    <div style={{
-      background: 'rgba(20,20,25,0.95)',
-      border: '1px solid rgba(255,255,255,0.1)',
-      borderRadius: 'var(--radius-xl)',
-      padding: '2rem',
-      marginBottom: '2.5rem',
-      boxShadow: '0 20px 40px rgba(0,0,0,0.4)',
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '1.5rem',
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '3px', background: 'linear-gradient(90deg, #ef4444, #f59e0b, #10b981)' }} />
-      
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-        <h2 style={{ margin: 0, fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', fontWeight: 700 }}>Current Situation</h2>
-        
-        {topTask ? (
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '1rem' }}>
-            <div style={{ padding: '0.5rem', borderRadius: '8px', background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>
-              <AlertTriangle size={20} />
-            </div>
-            <div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ef4444', fontFamily: 'var(--font-display)' }}>URGENT: {topTask.text}</div>
-              <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>Top priority based on your timeline and priority score.</div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ fontSize: '1.1rem', color: '#10b981', fontWeight: 600 }}>✅ You are completely caught up.</div>
-        )}
-
-        {overdueTaskCount > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b', fontSize: '0.9rem', fontWeight: 500, marginTop: '0.5rem' }}>
-            <AlertTriangle size={16} /> {overdueTaskCount} overdue task{overdueTaskCount > 1 ? 's' : ''} need attention
-          </div>
-        )}
-
-        {isGymDay && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: gymLogged ? '#10b981' : '#a855f7', fontSize: '0.9rem', fontWeight: 500 }}>
-            {gymLogged ? <Check size={16} /> : <AlertTriangle size={16} />}
-            Gym session: {gymLogged ? 'Logged for today' : 'Not logged yet (it is your gym day)'}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <Sparkles size={20} style={{ color: '#c084fc', flexShrink: 0, marginTop: '0.2rem' }} />
-          <div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.25rem' }}>Zen AI Assessment</div>
-            <p style={{ fontSize: '1.05rem', color: 'var(--text-primary)', lineHeight: 1.5, margin: 0 }}>
-              {topTask ? `You should spend your immediate focus on "${topTask.text}".` : "You have no urgent tasks right now. Consider reviewing your long term goals."}
-            </p>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-          {topTask && (
-            <button className="btn-primary" onClick={() => startTimer(topTask.id, topTask.text, undefined, undefined, topTask.estimatedMinutes)} style={{ background: 'linear-gradient(135deg, #a855f7, #ec4899)', boxShadow: '0 4px 15px rgba(168,85,247,0.3)' }}>
-              Start Focus Session
-            </button>
-          )}
-          <button className="btn-secondary" onClick={() => navigate('/calendar')} style={{ background: 'rgba(255,255,255,0.05)' }}>
-            Show Full Plan
-          </button>
-        </div>
-      </div>
-    </div>
+export function HomeDashboard() {
+  const [time, setTime] = useState('');
+  const { tasks, pomodoroSessions, isGoogleConnected, connectGoogle, calendarEvents } = useGlobalData();
+  const [agentStatus, setAgentStatus] = useState('System idle. Monitoring datastreams...');
+  const [commandInput, setCommandInput] = useState('');
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [agentResult, setAgentResult] = useState<string | null>(null);
+  const [agentHistory, setAgentHistory] = useState<{role: string, text: string}[]>([]);
+  const [isReportExpanded, setIsReportExpanded] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => 
+    typeof window !== 'undefined' && window.innerWidth < 640
   );
-};
+  const [missionComplete, setMissionComplete] = useState(false);
+  const [missionSummary, setMissionSummary] = useState('');
+  const [interimTranscript, setInterimTranscript] = useState('');
 
-// ─── StreakSummaryWidget ───────────────────────────────────────────────────────
-const StreakSummaryWidget = ({ gymLogs, learningTopics }: { gymLogs: any[], learningTopics: any[] }) => {
-  const gymStreak = useMemo(() => {
-    const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    startOfWeek.setHours(0,0,0,0);
-    return gymLogs.filter((l:any) => new Date(l.date) >= startOfWeek).length;
-  }, [gymLogs]);
-
-  const activeTopics = learningTopics.filter((t:any) => t.status === 'in_progress').length;
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-      <div style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(251,146,60,0.2)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <div style={{ background: 'rgba(251,146,60,0.1)', padding: '0.75rem', borderRadius: '12px' }}><Flame size={20} color="#fb923c" /></div>
-        <div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fb923c', fontFamily: 'var(--font-display)' }}>Daily</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Habits</div>
-        </div>
-      </div>
-      <div style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(59,130,246,0.2)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <div style={{ background: 'rgba(59,130,246,0.1)', padding: '0.75rem', borderRadius: '12px' }}><Activity size={20} color="#3b82f6" /></div>
-        <div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#3b82f6', fontFamily: 'var(--font-display)' }}>{gymStreak} <span style={{fontSize:'0.8rem'}}>this week</span></div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Gym Sessions</div>
-        </div>
-      </div>
-      <div style={{ background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(168,85,247,0.2)', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <div style={{ background: 'rgba(168,85,247,0.1)', padding: '0.75rem', borderRadius: '12px' }}><BookOpen size={20} color="#a855f7" /></div>
-        <div>
-          <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#a855f7', fontFamily: 'var(--font-display)' }}>{activeTopics}</div>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Active Topics</div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ─── StudentWidgets ────────────────────────────────────────────────────────────
-const StudentWidgets = ({ attendanceSubjects, assignments }: {
-  attendanceSubjects: any[];
-  assignments: any[];
-}) => {
-  const navigate = useNavigate();
-  const todayStr = getLocalDateString(new Date());
-  const dayOfWeek = new Date().getDay().toString();
-
-  const todayClasses = attendanceSubjects.filter(s => {
-    const sch = s.schedule?.[dayOfWeek];
-    return sch && (sch.classCount > 0 || sch.labCount > 0);
-  });
-
-  const pendingAssignments = assignments.filter(a => a.status !== 'submitted' && a.status !== 'graded');
-
-  const atRiskSubjects = attendanceSubjects.filter(s => {
-    const total = (s.classesTotal || 0) + (s.labsTotal || 0);
-    if (total === 0) return false;
-    const attended = (s.classesAttended || 0) + (s.labsAttended || 0);
-    return (attended / total * 100) < 80;
-  });
-
-  const hasAttendanceData = attendanceSubjects.some(s => (s.classesTotal || 0) + (s.labsTotal || 0) > 0);
-
-  const classesEmpty     = todayClasses.length === 0;
-  const assignmentsEmpty = assignments.length === 0;
-  const attendanceEmpty  = !hasAttendanceData;
-  const allEmpty = classesEmpty && assignmentsEmpty && attendanceEmpty;
-
-  const widgets = [
-    {
-      isEmpty: classesEmpty,
-      node: (
-        <div key="classes" style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', border: `1px solid ${classesEmpty ? 'var(--border-subtle)' : 'rgba(59,130,246,0.25)'}`, cursor: 'pointer', opacity: classesEmpty ? 0.65 : 1, transition: 'all 0.4s ease' }} onClick={() => navigate('/attendance')}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(59,130,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Calendar size={16} style={{ color: '#3b82f6' }} />
-            </div>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Today's Classes</span>
-            {classesEmpty && <span style={{ marginLeft: 'auto', fontSize: '0.65rem', background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', padding: '0.1rem 0.45rem', borderRadius: '9999px' }}>No classes today</span>}
-          </div>
-          {classesEmpty ? (
-            <div style={{ fontSize: '0.85rem', color: '#10b981', fontWeight: 500 }}>🌴 No classes today!</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              {todayClasses.slice(0, 4).map(s => {
-                const sch = s.schedule[dayOfWeek];
-                return (
-                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                    <span style={{ fontWeight: 500 }}>{s.name}</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{sch.classCount}C {sch.labCount > 0 ? `+ ${sch.labCount}L` : ''}</span>
-                  </div>
-                );
-              })}
-              {todayClasses.length > 4 && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>+{todayClasses.length - 4} more</div>}
-            </div>
-          )}
-        </div>
-      ),
-    },
-    {
-      isEmpty: assignmentsEmpty,
-      node: (
-        <div key="assignments" style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', border: `1px solid ${assignmentsEmpty ? 'var(--border-subtle)' : 'rgba(139,92,246,0.25)'}`, cursor: 'pointer', opacity: assignmentsEmpty ? 0.65 : 1, transition: 'all 0.4s ease' }} onClick={() => navigate('/assignments')}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(139,92,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ClipboardList size={16} style={{ color: '#8b5cf6' }} />
-            </div>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Assignments</span>
-            {assignmentsEmpty && <span style={{ marginLeft: 'auto', fontSize: '0.65rem', background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', padding: '0.1rem 0.45rem', borderRadius: '9999px' }}>Nothing added yet</span>}
-          </div>
-          {assignmentsEmpty ? (
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No assignments tracked yet. Tap to add one.</div>
-          ) : (
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
-              {[
-                { label: 'Overdue', count: assignments.filter(a => a.dueDate < todayStr && a.status !== 'submitted' && a.status !== 'graded').length, color: '#ef4444' },
-                { label: 'Due This Week', count: pendingAssignments.filter(a => { const d = new Date(a.dueDate + 'T00:00:00'); const now = new Date(); now.setHours(0,0,0,0); const diff = (d.getTime() - now.getTime()) / (1000*60*60*24); return diff >= 0 && diff <= 7; }).length, color: '#f59e0b' },
-                { label: 'Done', count: assignments.filter(a => a.status === 'submitted' || a.status === 'graded').length, color: '#10b981' },
-              ].map(({ label, count, color }) => (
-                <div key={label} style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '1.5rem', fontWeight: 700, fontFamily: 'var(--font-display)', color }}>{count}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{label}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ),
-    },
-    {
-      isEmpty: attendanceEmpty,
-      node: (
-        <div key="attendance" style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', border: `1px solid ${attendanceEmpty ? 'var(--border-subtle)' : atRiskSubjects.length > 0 ? 'rgba(239,68,68,0.25)' : 'rgba(16,185,129,0.25)'}`, cursor: 'pointer', opacity: attendanceEmpty ? 0.65 : 1, transition: 'all 0.4s ease' }} onClick={() => navigate('/attendance')}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(16,185,129,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ClipboardCheck size={16} style={{ color: '#10b981' }} />
-            </div>
-            <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Attendance</span>
-            {attendanceEmpty && <span style={{ marginLeft: 'auto', fontSize: '0.65rem', background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', padding: '0.1rem 0.45rem', borderRadius: '9999px' }}>Not tracked yet</span>}
-          </div>
-          {attendanceEmpty ? (
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Start logging attendance to see alerts here.</div>
-          ) : atRiskSubjects.length === 0 ? (
-            <div style={{ fontSize: '0.85rem', color: '#10b981', fontWeight: 500 }}>✅ All subjects above 80%</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              {atRiskSubjects.slice(0, 3).map(s => {
-                const total = (s.classesTotal || 0) + (s.labsTotal || 0);
-                const attended = (s.classesAttended || 0) + (s.labsAttended || 0);
-                const pct = total > 0 ? Math.round(attended / total * 100) : 100;
-                return (
-                  <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', alignItems: 'center' }}>
-                    <span style={{ fontWeight: 500 }}>{s.name}</span>
-                    <span style={{ color: pct < 75 ? '#ef4444' : '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <AlertTriangle size={12} /> {pct}%
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ),
-    },
-  ];
-
-  const sorted = [...widgets].sort((a, b) => (a.isEmpty === b.isEmpty ? 0 : a.isEmpty ? 1 : -1));
-  // Only show non-empty widgets — empty ones add visual noise and confuse new users
-  const visible = sorted.filter(w => !w.isEmpty);
-
-  if (allEmpty) return null;
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
-      {visible.map(w => w.node)}
-    </div>
-  );
-};
-
-// ─── DailyCommandPanel ────────────────────────────────────────────────────────
-const DailyCommandPanel = ({ localLog, habits, todayHabitLogs, onUpdate, onToggleHabit, aiRecommendation, isAiLoading, onAskAi }: {
-  localLog: LocalLog;
-  habits: any[];
-  todayHabitLogs: Record<string, boolean>;
-  onUpdate: (field: string, value: any) => void;
-  onToggleHabit: (habitId: string) => void;
-  aiRecommendation: any;
-  isAiLoading: boolean;
-  onAskAi: () => void;
-}) => {
-  const navigate = useNavigate();
-  const [quickTaskText, setQuickTaskText]   = useState('');
-  const [quickTaskPriority, setQuickTaskPriority] = useState<'high'|'medium'|'low'>('medium');
-  const [quickTaskEstimate, setQuickTaskEstimate] = useState('25');
-  const [quickTaskStartTime, setQuickTaskStartTime] = useState('');
-  const [quickTaskEndTime, setQuickTaskEndTime]   = useState('');
-  const [showTaskOptions, setShowTaskOptions] = useState(false);
-
-  // Auto-compute duration from start/end time
-  useEffect(() => {
-    if (!quickTaskStartTime || !quickTaskEndTime) return;
-    const [sh, sm] = quickTaskStartTime.split(':').map(Number);
-    const [eh, em] = quickTaskEndTime.split(':').map(Number);
-    let dur = (eh * 60 + em) - (sh * 60 + sm);
-    if (dur < 0) dur += 24 * 60;
-    setQuickTaskEstimate(dur.toString());
-  }, [quickTaskStartTime, quickTaskEndTime]);
-
-  const addQuickTask = async () => {
-    if (!quickTaskText.trim()) return;
-    await addDoc(collection(db, 'todos'), {
-      userId: auth.currentUser?.uid,
-      text: quickTaskText.trim(),
-      isCompleted: false,
-      priority: quickTaskPriority,
-      isRecurring: false,
-      estimatedMinutes: parseInt(quickTaskEstimate) || 25,
-      timeSlot: quickTaskStartTime || null,
-      subtasks: [],
-      createdAt: Date.now(),
-      order: Date.now(),
-      date: getLocalDateString(new Date()),
-    });
-    setQuickTaskText('');
-    setQuickTaskStartTime('');
-    setQuickTaskEndTime('');
-    setQuickTaskEstimate('25');
-    toast.success(quickTaskStartTime ? 'Task scheduled on timeline!' : 'Task added!');
-  };
-
-  const bentoStyle = (borderColor: string): React.CSSProperties => ({
-    background: 'rgba(20,20,25,0.6)',
-    backdropFilter: 'blur(12px)',
-    borderRadius: '24px',
-    border: `1px solid ${borderColor}`,
-    padding: '1.25rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-    boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.3)',
-    transition: 'transform 0.2s',
-    position: 'relative',
-    overflow: 'hidden',
-  });
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem', gridColumn: '1 / -1' }}>
-
-      {/* Water Intake */}
-      <div style={bentoStyle('rgba(59,130,246,0.2)')}
-        onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
-        onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}>
-        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '50%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(59,130,246,0.5), transparent)' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(59,130,246,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Droplets size={16} style={{ color: '#60a5fa' }} />
-          </div>
-          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Water Intake</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline' }}>
-            <span style={{ fontSize: '2rem', fontWeight: 800, fontFamily: 'var(--font-display)', color: '#60a5fa', textShadow: '0 0 15px rgba(59,130,246,0.4)' }}>{localLog.waterIntakeLiters}</span>
-            <span style={{ fontSize: '1rem', fontWeight: 600, color: 'rgba(255,255,255,0.5)', marginLeft: '4px' }}>L</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', padding: '0.25rem', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            {[{ label: '−', onClick: () => onUpdate('waterIntakeLiters', Math.max(0, localLog.waterIntakeLiters - 0.5)), bg: 'transparent', color: '#a1a1aa' },
-              { label: '+', onClick: () => onUpdate('waterIntakeLiters', localLog.waterIntakeLiters + 0.5), bg: 'rgba(59,130,246,0.2)', color: '#60a5fa' }
-            ].map(({ label, onClick, bg, color }) => (
-              <button key={label} onClick={onClick} style={{ width: '32px', height: '32px', borderRadius: '8px', background: bg, border: 'none', color, fontWeight: 700, fontSize: '1.2rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>{label}</button>
-            ))}
-          </div>
-        </div>
-        <div style={{ height: '6px', borderRadius: '9999px', background: 'rgba(0,0,0,0.5)', overflow: 'hidden' }}>
-          <div style={{ height: '100%', borderRadius: '9999px', background: 'linear-gradient(90deg, #3b82f6, #06b6d4)', width: `${Math.min(100, (localLog.waterIntakeLiters / 3) * 100)}%`, transition: 'width 0.5s cubic-bezier(0.4,0,0.2,1)', boxShadow: '0 0 10px rgba(6,182,212,0.8)' }} />
-        </div>
-      </div>
-
-      {/* Habit Checklist */}
-      <div style={bentoStyle('rgba(245,158,11,0.2)')}
-        onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
-        onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}>
-        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '50%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(245,158,11,0.5), transparent)' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(245,158,11,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Flame size={16} style={{ color: '#fbbf24' }} />
-          </div>
-          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Today's Habits</span>
-          {habits.length > 0 && (
-            <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 800, background: Object.values(todayHabitLogs).filter(Boolean).length === habits.length ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)', color: Object.values(todayHabitLogs).filter(Boolean).length === habits.length ? '#10b981' : '#fbbf24', padding: '2px 8px', borderRadius: '12px' }}>
-              {Object.values(todayHabitLogs).filter(Boolean).length}/{habits.length}
-            </span>
-          )}
-        </div>
-        {habits.length === 0 ? (
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontStyle: 'italic', flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            No habits yet. <span style={{ color: '#fbbf24', cursor: 'pointer', marginLeft: '4px', fontWeight: 600 }} onClick={() => navigate('/habits')}>Add one →</span>
-          </div>
-        ) : (
-          <div className="habit-scroll" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '120px', overflowY: 'auto', paddingRight: '4px' }}>
-            {habits.map((h: any) => {
-              const done = !!todayHabitLogs[h.id];
-              return (
-                <button key={h.id} onClick={() => onToggleHabit(h.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0.75rem', borderRadius: '10px', border: '1px solid', borderColor: done ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.05)', cursor: 'pointer', background: done ? 'rgba(16,185,129,0.1)' : 'rgba(0,0,0,0.3)', transition: 'all 0.2s', textAlign: 'left', width: '100%' }}>
-                  <div style={{ width: '18px', height: '18px', borderRadius: '5px', flexShrink: 0, border: done ? 'none' : '2px solid rgba(255,255,255,0.2)', background: done ? '#10b981' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {done && <Check size={12} style={{ color: '#fff' }} />}
-                  </div>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: done ? '#10b981' : '#fff', textDecoration: done ? 'line-through' : 'none', opacity: done ? 0.75 : 1 }}>
-                    {h.emoji || h.icon || '⚡'} {h.name}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Sleep Log */}
-      <div style={bentoStyle('rgba(99,102,241,0.2)')}
-        onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
-        onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}>
-        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '50%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(99,102,241,0.5), transparent)' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Moon size={16} style={{ color: '#818cf8' }} />
-          </div>
-          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Sleep Log</span>
-          {localLog.sleepTime && localLog.wakeUpTime && (() => {
-            const [sh, sm] = localLog.sleepTime.split(':').map(Number);
-            const [wh, wm] = localLog.wakeUpTime.split(':').map(Number);
-            let mins = (wh * 60 + wm) - (sh * 60 + sm);
-            if (mins <= 0) mins += 24 * 60;
-            const hrs = Math.floor(mins / 60);
-            const m = mins % 60;
-            return (
-              <span style={{ marginLeft: 'auto', fontSize: '0.75rem', fontWeight: 800, background: hrs >= 7 ? 'rgba(16,185,129,0.2)' : hrs >= 5 ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)', color: hrs >= 7 ? '#10b981' : hrs >= 5 ? '#fbbf24' : '#ef4444', padding: '2px 8px', borderRadius: '12px' }}>
-                {hrs}h {m > 0 ? `${m}m` : ''}
-              </span>
-            );
-          })()}
-        </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1 }}>
-          {[
-            { label: 'Slept at', field: 'sleepTime', value: localLog.sleepTime },
-            { label: 'Woke at', field: 'wakeUpTime', value: localLog.wakeUpTime },
-          ].map(({ label, field, value }, i) => (
-            <div key={field} style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {i === 1 && <div style={{ width: '1px', height: '40px', background: 'rgba(255,255,255,0.1)', position: 'absolute', left: '50%', top: '50%', transform: 'translateY(-50%)' }} />}
-              <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#a1a1aa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</label>
-              <input type="time" value={value} onChange={e => onUpdate(field, e.target.value)} style={{ padding: '0.75rem', borderRadius: '12px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.95rem', width: '100%', outline: 'none' }} onFocus={e => (e.currentTarget.style.borderColor = 'rgba(99,102,241,0.5)')} onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Brain Dump */}
-      <div style={bentoStyle('rgba(16,185,129,0.2)')}
-        onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
-        onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}>
-        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(16,185,129,0.5), transparent)' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ClipboardList size={16} style={{ color: '#10b981' }} />
-          </div>
-          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Brain Dump</span>
-          <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>Capture thoughts, ideas, anything...</span>
-        </div>
-        <textarea placeholder="Start typing freely here..." value={localLog.extraWorks || ''} onChange={e => onUpdate('extraWorks', e.target.value)} style={{ width: '100%', minHeight: '90px', padding: '1rem', borderRadius: '16px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.95rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5, boxSizing: 'border-box' }} onFocus={e => (e.currentTarget.style.borderColor = 'rgba(16,185,129,0.5)')} onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} />
-      </div>
-
-      {/* AI Priority */}
-      <div style={bentoStyle('rgba(236,72,153,0.2)')}
-        onMouseEnter={e => (e.currentTarget.style.transform = 'translateY(-2px)')}
-        onMouseLeave={e => (e.currentTarget.style.transform = 'translateY(0)')}>
-        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(236,72,153,0.5), transparent)' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(236,72,153,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Sparkles size={16} style={{ color: '#ec4899' }} />
-          </div>
-          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>AI Priority</span>
-        </div>
-        
-        {aiRecommendation ? (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '12px', border: '1px solid rgba(236,72,153,0.2)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginBottom: '0.4rem', lineHeight: 1.3 }}>{aiRecommendation.action}</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{aiRecommendation.reasoning}</div>
-          </div>
-        ) : (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem' }}>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center' }}>Got 45 minutes? Ask Zen AI what to do next.</div>
-            <button onClick={onAskAi} disabled={isAiLoading} style={{ padding: '0.6rem 1.5rem', borderRadius: '12px', background: 'linear-gradient(135deg, #a855f7, #ec4899)', border: 'none', color: '#fff', fontWeight: 700, cursor: isAiLoading ? 'not-allowed' : 'pointer', opacity: isAiLoading ? 0.7 : 1, transition: 'all 0.2s', boxShadow: '0 4px 15px rgba(236,72,153,0.3)' }}>
-              {isAiLoading ? 'Analyzing...' : 'Ask Zen AI'}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Quick Add Task — progressive disclosure */}
-      <motion.div style={{ gridColumn: '1 / -1', background: 'rgba(20,20,25,0.6)', backdropFilter: 'blur(12px)', borderRadius: '24px', border: '1px solid rgba(168,85,247,0.2)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden' }} whileHover={{ y: -2 }} transition={{ type: 'spring', stiffness: 400, damping: 10 }}>
-        <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.5), transparent)' }} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(168,85,247,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Plus size={16} style={{ color: '#c084fc' }} />
-          </div>
-          <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Quick Add Task</span>
-        </div>
-        {/* Row 1: text + add */}
-        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <input type="text" placeholder="What needs to get done…" value={quickTaskText} onChange={e => setQuickTaskText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addQuickTask(); }} style={{ flex: 1, padding: '0.65rem 0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.95rem', outline: 'none' }} onFocus={e => (e.currentTarget.style.borderColor = 'rgba(168,85,247,0.5)')} onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} />
-          <button onClick={() => setShowTaskOptions(s => !s)} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: showTaskOptions ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showTaskOptions ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: showTaskOptions ? '#c084fc' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="More options">
-            <Timer size={14} /> {showTaskOptions ? 'Less' : 'Schedule'}
-          </button>
-          <button id="btn-quick-add-task" onClick={addQuickTask} style={{ padding: '0.65rem 1.25rem', borderRadius: '10px', background: 'linear-gradient(135deg, #a855f7, #ec4899)', border: 'none', color: '#fff', fontSize: '0.9rem', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 15px rgba(168,85,247,0.4)', whiteSpace: 'nowrap' }}>
-            Add
-          </button>
-        </div>
-        {/* Row 2: options (collapsible) */}
-        {showTaskOptions && (
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.6rem 0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
-            {/* Priority pills */}
-            <div style={{ display: 'flex', gap: '0.3rem' }}>
-              {(['low', 'medium', 'high'] as const).map(p => (
-                <button key={p} onClick={() => setQuickTaskPriority(p)} style={{ padding: '0.3rem 0.65rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', border: '1px solid', borderColor: quickTaskPriority === p ? (p === 'high' ? '#ef4444' : p === 'medium' ? '#f59e0b' : '#10b981') : 'rgba(255,255,255,0.1)', background: quickTaskPriority === p ? (p === 'high' ? 'rgba(239,68,68,0.15)' : p === 'medium' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)') : 'transparent', color: quickTaskPriority === p ? (p === 'high' ? '#ef4444' : p === 'medium' ? '#f59e0b' : '#10b981') : 'var(--text-muted)', textTransform: 'capitalize', transition: 'all 0.15s' }}>
-                  {p === 'high' ? '🔴' : p === 'medium' ? '🟡' : '🟢'} {p}
-                </button>
-              ))}
-            </div>
-            {/* Time range */}
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-              <input type="time" value={quickTaskStartTime} onChange={e => setQuickTaskStartTime(e.target.value)} style={{ padding: '0.4rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '80px' }} title="Start Time" />
-              <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 0.2rem' }}>→</span>
-              <input type="time" value={quickTaskEndTime} onChange={e => setQuickTaskEndTime(e.target.value)} style={{ padding: '0.4rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '80px' }} title="End Time" />
-            </div>
-            {/* Duration */}
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0 0.4rem', width: '60px' }}>
-              <Timer size={12} color="rgba(255,255,255,0.5)" />
-              <input type="number" value={quickTaskEstimate} onChange={e => setQuickTaskEstimate(e.target.value)} min="1" max="480" style={{ width: '100%', padding: '0.4rem 0 0.4rem 0.2rem', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.82rem', outline: 'none' }} title="Duration (mins)" />
-            </div>
-          </div>
-        )}
-      </motion.div>
-    </div>
-  );
-};
-
-// ─── PomodoroWidget ────────────────────────────────────────────────────────────
-const PomodoroWidget = () => {
-  const { state: pomoState, startTimer, pauseTimer, resumeTimer, resetTimer, formatTime, setDuration, toggleFocusMode } = usePomodoroContext();
-  const [showStats, setShowStats] = useState(false);
-  return (
-    <div className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div className="panel-header">
-        <h2><Timer size={18} /> Focus Timer</h2>
-        <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-          <button
-            className="btn-icon"
-            onClick={() => setShowStats(s => !s)}
-            title={showStats ? 'Show Timer' : 'Show Stats'}
-            style={{ fontSize: '0.72rem', padding: '0.25rem 0.5rem', color: showStats ? 'var(--accent-primary)' : 'var(--text-muted)', background: showStats ? 'rgba(99,102,241,0.1)' : 'transparent', borderRadius: 'var(--radius-sm)', border: `1px solid ${showStats ? 'rgba(99,102,241,0.3)' : 'transparent'}` }}
-          >
-            <BarChart2 size={13} />
-          </button>
-          <button className="btn-icon" onClick={toggleFocusMode}><Maximize2 size={16} /></button>
-        </div>
-      </div>
-      {showStats ? (
-        <div className="panel-body" style={{ overflowY: 'auto' }}>
-          <PomodoroStatsPanel />
-        </div>
-      ) : (
-      <div className="panel-body" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', flex: 1, justifyContent: 'center' }}>
-        <div style={{ position: 'relative', width: '180px', height: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', background: 'rgba(15,15,20,0.5)', boxShadow: pomoState.isRunning ? '0 0 40px rgba(168,85,247,0.2), inset 0 0 20px rgba(168,85,247,0.1)' : 'inset 0 0 20px rgba(0,0,0,0.5)', transition: 'all 0.5s ease' }}>
-          <svg width="180" height="180" style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)', pointerEvents: 'none' }}>
-            <circle cx="90" cy="90" r="86" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="2" />
-            <circle cx="90" cy="90" r="86" fill="none" stroke="url(#timerGradient)" strokeWidth="4" strokeDasharray="100 40" style={{ transformOrigin: 'center', animation: pomoState.isRunning ? 'spin 10s linear infinite' : 'none', opacity: pomoState.isRunning ? 1 : 0.3, transition: 'opacity 0.5s ease' }} />
-            <defs>
-              <linearGradient id="timerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#a855f7" />
-                <stop offset="100%" stopColor="#ec4899" />
-              </linearGradient>
-            </defs>
-          </svg>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', zIndex: 1 }}>
-            {!pomoState.isRunning && <button className="btn-icon" onClick={() => setDuration(Math.max(1, Math.floor(pomoState.timeLeft / 60) - 5))} style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-muted)' }}>-</button>}
-            <span style={{ fontSize: '3.5rem', fontFamily: 'var(--font-display)', fontWeight: 800, color: pomoState.isRunning ? '#fff' : 'var(--text-muted)', textShadow: pomoState.isRunning ? '0 0 15px rgba(168,85,247,0.5)' : 'none', letterSpacing: '-0.02em', transition: 'all 0.5s ease' }}>{formatTime(pomoState.timeLeft)}</span>
-            {!pomoState.isRunning && <button className="btn-icon" onClick={() => setDuration(Math.floor(pomoState.timeLeft / 60) + 5)} style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-muted)' }}>+</button>}
-          </div>
-        </div>
-        <div style={{ fontSize: '0.95rem', color: pomoState.isRunning ? '#fff' : 'var(--text-muted)', fontWeight: pomoState.isRunning ? 600 : 400, textAlign: 'center', maxWidth: '80%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', transition: 'all 0.3s' }}>
-          {pomoState.taskText || 'Ready to focus?'}
-        </div>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          {pomoState.isRunning ? (
-            <button className="btn-secondary" onClick={pauseTimer} style={{ background: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.2)' }}><Square size={16} /> Pause</button>
-          ) : (
-            <button className="btn-primary hide-on-mobile" onClick={() => pomoState.timeLeft < 25 * 60 && pomoState.timeLeft > 0 ? resumeTimer() : startTimer('focus', 'Deep Work')} style={{ background: 'linear-gradient(135deg, #a855f7, #ec4899)', border: 'none', boxShadow: '0 4px 15px rgba(168,85,247,0.4)' }}>
-              <Play size={16} fill="currentColor" /> {pomoState.timeLeft < 25 * 60 && pomoState.timeLeft > 0 ? 'Resume' : `Start ${Math.floor(pomoState.timeLeft / 60)}m`}
-            </button>
-          )}
-          {pomoState.timeLeft > 0 && !pomoState.isRunning && pomoState.timeLeft < 25 * 60 && (
-            <button className="btn-icon" onClick={resetTimer} title="Reset Timer" style={{ background: 'rgba(255,255,255,0.05)', borderRadius: 'var(--radius-sm)', padding: '0.5rem' }}><RotateCcw size={16} /></button>
-          )}
-        </div>
-      </div>
-      )}
-    </div>
-  );
-};
-
-// ─── WeeklyFocusChart ─────────────────────────────────────────────────────────
-const WeeklyFocusChart = ({ dailyLogs }: { dailyLogs: any[] }) => {
-  const data = useMemo(() => {
-    const today = new Date(); today.setHours(0,0,0,0);
-    return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(today); d.setDate(d.getDate() - (6 - i));
-      const dStr = getLocalDateString(d);
-      const log = dailyLogs.find(l => l.date === dStr);
-      return { day: d.toLocaleDateString('en-US', { weekday: 'short' }), hours: log ? parseFloat(log.productiveHours || '0') : 0 };
-    });
-  }, [dailyLogs]);
-
-  return (
-    <div className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
-      <div className="panel-header">
-        <h3><BarChart2 size={16}/> Weekly Focus (Hours)</h3>
-      </div>
-      <div className="panel-body" style={{ flex: 1, minHeight: '140px', width: '100%' }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
-            <defs>
-              <linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#a855f7" stopOpacity={0.5}/>
-                <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
-            <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-            <Tooltip cursor={{ stroke: 'rgba(168,85,247,0.2)', strokeWidth: 2 }} contentStyle={{ background: 'rgba(20,20,25,0.9)', backdropFilter: 'blur(10px)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '12px', color: '#fff', padding: '8px 12px' }} itemStyle={{ color: '#c084fc', fontWeight: 600 }} />
-            <Area type="monotone" dataKey="hours" stroke="#a855f7" strokeWidth={3} fillOpacity={1} fill="url(#colorHours)" activeDot={{ r: 6, fill: '#fff', stroke: '#a855f7', strokeWidth: 2 }} />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-};
-
-// ─── PriorityTasksList ─────────────────────────────────────────────────────────
-const PriorityTasksList = ({ tasks, interviews, onToggleTask }: {
-  tasks: any[];
-  interviews: any[];
-  onToggleTask: (id: string) => void;
-}) => {
-  const unscheduled = tasks.filter(t => !t.timeSlot);
-  if (unscheduled.length === 0 && interviews.length === 0) return null;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {unscheduled.length > 0 && (
-        <div className="panel">
-          <div className="panel-header"><h2>Priority Tasks</h2></div>
-          <div className="panel-body">
-            <Droppable droppableId="priority-tasks">
-              {(provided) => (
-                <div ref={provided.innerRef} {...provided.droppableProps} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', paddingRight: '0.5rem' }}>
-                  {unscheduled.slice(0, 5).map((t, index) => (
-                    <Draggable key={t.id} draggableId={t.id} index={index}>
-                      {(provided, snapshot) => (
-                        <div ref={provided.innerRef} {...provided.draggableProps} {...provided.dragHandleProps} style={{ ...provided.draggableProps.style, display: 'flex', alignItems: 'center', gap: '0.75rem', background: snapshot.isDragging ? 'var(--bg-surface-active)' : 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: `1px solid ${snapshot.isDragging ? 'var(--accent-primary)' : 'var(--border-subtle)'}`, boxShadow: snapshot.isDragging ? '0 10px 25px rgba(0,0,0,0.5)' : 'none', opacity: snapshot.isDragging ? 0.9 : 1, overflow: 'hidden' }}>
-                          <button className="todo-checkbox" aria-label={`Complete task ${t.text}`} onClick={() => onToggleTask(t.id)} />
-                          <span style={{ flex: 1, fontSize: '0.9rem' }}>{t.text}</span>
-                          <span style={{ fontSize: '0.75rem', padding: '0.1rem 0.4rem', borderRadius: '4px', background: t.priority === 'high' ? 'rgba(239,68,68,0.2)' : 'var(--bg-surface-active)', color: t.priority === 'high' ? '#ef4444' : 'var(--text-muted)' }}>{t.priority}</span>
-                        </div>
-                      )}
-                    </Draggable>
-                  ))}
-                  {provided.placeholder}
-                </div>
-              )}
-            </Droppable>
-          </div>
-        </div>
-      )}
-
-      {interviews.length > 0 && (
-        <div style={{ background: 'var(--bg-surface)', padding: '1.5rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)' }}>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Briefcase size={18} /> Active Interviews
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }}>
-            {interviews.map(j => (
-              <div key={j.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.02)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: '#fbbf2420', color: '#fbbf24', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 600, fontSize: '0.8rem' }}>
-                  {j.company?.charAt(0).toUpperCase()}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 500 }}>{j.company}</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.role}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ─── HomeDashboard (orchestrator) ─────────────────────────────────────────────
-export const HomeDashboard = () => {
-  const dashboardRef = useRef<HTMLDivElement>(null);
-
-  // Throttle mouse tracking with rAF — only on pointer:fine (mouse) devices, not touch
-  const rafRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!window.matchMedia('(pointer: fine)').matches) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      if (rafRef.current) return; // already scheduled
-      rafRef.current = requestAnimationFrame(() => {
-        if (dashboardRef.current) {
-          const rect = dashboardRef.current.getBoundingClientRect();
-          dashboardRef.current.style.setProperty('--mouse-x', `${e.clientX - rect.left}px`);
-          dashboardRef.current.style.setProperty('--mouse-y', `${e.clientY - rect.top}px`);
-        }
-        rafRef.current = null;
-      });
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    };
-  }, []);
-
-  // ── All data from GlobalDataContext — ZERO extra Firestore listeners ──────
-  const { todos, dailyLogs, habitLogs, habits, jobs, attendanceSubjects, assignments, learningTopics, gymLogs, isLoading } = useGlobalData();
-
-  // ── AI Priority State ─────────────────────────────────────────────────────
-  const [aiRec, setAiRec] = useState<any>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [showCrisis, setShowCrisis] = useState(false);
-  const [showDoomScroll, setShowDoomScroll] = useState(false);
-  const [showMissedGym, setShowMissedGym] = useState(false);
-  const [showMorningBrief, setShowMorningBrief] = useState(false);
-  const [showAccountability, setShowAccountability] = useState(false);
-  const [accountabilityData, setAccountabilityData] = useState({ promised: 0, completed: 0, remaining: 0 });
-  const [hasSeenAccountability, setHasSeenAccountability] = useState(() => {
-     return localStorage.getItem('seenAccountability') === new Date().toLocaleDateString('en-CA');
-  });
-  const [showCalendarConflict, setShowCalendarConflict] = useState(false);
-  const [conflictDetails, setConflictDetails] = useState<any>(null);
-  const [showPatternAnalysis, setShowPatternAnalysis] = useState(false);
+  // Shutter Capsule door state machine
+  const [displayAgent, setDisplayAgent] = useState<string | null>(null);
+  const [doorsOpen, setDoorsOpen] = useState(false);
+  const [isShaking, setIsShaking] = useState(false);
 
   useEffect(() => {
-    const handleDoom = () => setShowDoomScroll(true);
-    const handleMissed = () => setShowMissedGym(true);
-    const handleMorning = () => setShowMorningBrief(true);
-    const handleAccountability = () => setShowAccountability(true);
-    const handleConflict = (e: any) => {
-      setConflictDetails(e.detail);
-      setShowCalendarConflict(true);
-    };
-    const handlePattern = () => setShowPatternAnalysis(true);
-    const handleTriageAlert = (e: any) => {
-      toast.error(`Guardian Alert: ${e.detail?.title || 'Task'} is due soon!`, { duration: 5000 });
-      setShowCrisis(true);
-    };
-    const handleGymAlert = () => setShowMissedGym(true);
-
-    window.addEventListener('simulate-doom-scroll', handleDoom);
-    window.addEventListener('simulate-missed-gym', handleMissed);
-    window.addEventListener('simulate-morning-brief', handleMorning);
-    window.addEventListener('simulate-accountability', handleAccountability);
-    window.addEventListener('guardian-calendar-conflict', handleConflict);
-    window.addEventListener('simulate-pattern-analysis', handlePattern);
-    
-    window.addEventListener('guardian-triage-alert', handleTriageAlert);
-    window.addEventListener('guardian-gym-alert', handleGymAlert);
-    
-    return () => {
-      window.removeEventListener('simulate-doom-scroll', handleDoom);
-      window.removeEventListener('simulate-missed-gym', handleMissed);
-      window.removeEventListener('simulate-morning-brief', handleMorning);
-      window.removeEventListener('simulate-accountability', handleAccountability);
-      window.removeEventListener('guardian-calendar-conflict', handleConflict);
-      window.removeEventListener('simulate-pattern-analysis', handlePattern);
-      
-      window.removeEventListener('guardian-triage-alert', handleTriageAlert);
-      window.removeEventListener('guardian-gym-alert', handleGymAlert);
+    if (!doorsOpen) {
+      // Trigger a mechanical slam shake when the doors finish closing (around 400ms)
+      const t = setTimeout(() => {
+        setIsShaking(true);
+        const t2 = setTimeout(() => setIsShaking(false), 400);
+        return () => clearTimeout(t2);
+      }, 400);
+      return () => clearTimeout(t);
     }
-  }, []);
+  }, [doorsOpen]);
 
-  // Automatic Accountability Check at 9:00 PM
   useEffect(() => {
-    const checkAccountability = () => {
-      const now = new Date();
-      const todayStr = now.toLocaleDateString('en-CA');
-      
-      if (now.getHours() >= 21 && !hasSeenAccountability && todos) {
-         const todayTodos = todos.filter(t => t.date === todayStr);
-         const completed = todayTodos.filter(t => t.isCompleted).length;
-         const total = todayTodos.length;
-         
-         setAccountabilityData({ promised: total, completed, remaining: total - completed });
-         setShowAccountability(true);
-         setHasSeenAccountability(true);
-         localStorage.setItem('seenAccountability', todayStr);
-      }
-    };
-    
-    checkAccountability();
-    const interval = setInterval(checkAccountability, 60000);
-    return () => clearInterval(interval);
-  }, [todos, hasSeenAccountability]);
-
-  const handleAskAi = async () => {
-    setAiLoading(true);
-    try {
-      const now = new Date();
-      const safeTodos = todos || [];
-      const safeAssignments = assignments || [];
-      const safeHabits = habits || [];
-      const safeGymLogs = gymLogs || [];
-      const safeTodayHabitLogs = todayHabitLogs || {};
-
-      const rec = await generateNextActionRecommendation({
-        todos: safeTodos,
-        assignments: safeAssignments,
-        habitsPending: Math.max(0, safeHabits.length - Object.values(safeTodayHabitLogs).filter(Boolean).length),
-        isGymDay: safeGymLogs.length > 0,
-        gymLogged: safeGymLogs.some((l: any) => l && l.date && new Date(l.date).toDateString() === now.toDateString())
-      });
-      setAiRec(rec);
-    } catch (err) {
-      console.error('[HomeDashboard] AI recommendation error:', err);
-      toast.error('Failed to get AI recommendation');
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  // ── Daily log local state (for debounced saves) ───────────────────────────
-  const [localLog, setLocalLog] = useState<LocalLog>({ waterIntakeLiters: 0, wakeUpTime: '', sleepTime: '' });
-  const dbLogRef = useRef<any>(null);
-  const initialLoadDone = useRef(false);
-
-  const todayStr = getLocalDateString(new Date());
-
-  // Sync dailyLogs → localLog (initial load only)
-  useEffect(() => {
-    const todayLog = dailyLogs.find(l => l.date === todayStr);
-    dbLogRef.current = todayLog || null;
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true;
-      if (todayLog) {
-        setLocalLog({ waterIntakeLiters: todayLog.waterIntakeLiters || 0, wakeUpTime: todayLog.wakeUpTime || '', sleepTime: todayLog.sleepTime || '', extraWorks: todayLog.extraWorks || '' });
-      }
-    }
-  }, [dailyLogs, todayStr]);
-
-  // Debounced save
-  useEffect(() => {
-    if (!initialLoadDone.current) return;
-    const user = auth.currentUser;
-    if (!user) return;
-    const dbLog = dbLogRef.current;
-
-    const needsSave =
-      localLog.waterIntakeLiters !== (dbLog?.waterIntakeLiters || 0) ||
-      localLog.wakeUpTime !== (dbLog?.wakeUpTime || '') ||
-      localLog.sleepTime !== (dbLog?.sleepTime || '') ||
-      localLog.extraWorks !== (dbLog?.extraWorks || '');
-
-    if (!needsSave) return;
-
-    const timer = setTimeout(async () => {
-      // Strip undefined fields — Firestore rejects them
-      const payload: Record<string, any> = {
-        waterIntakeLiters: localLog.waterIntakeLiters,
-        wakeUpTime: localLog.wakeUpTime || '',
-        sleepTime: localLog.sleepTime || '',
-        updatedAt: Date.now(),
-      };
-      if (localLog.extraWorks !== undefined) payload.extraWorks = localLog.extraWorks;
-
-      try {
-        if (dbLog?.id) {
-          await updateDoc(doc(db, 'daily_logs', dbLog.id), payload);
-        } else {
-          const newDoc = await addDoc(collection(db, 'daily_logs'), { userId: user.uid, date: todayStr, ...payload });
-          dbLogRef.current = { id: newDoc.id, ...payload };
-        }
-      } catch (err) {
-        console.error('Save error:', err);
-      }
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, [localLog]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Push notifications (assignments / follow-ups) ─────────────────────────
-  useEffect(() => {
-    if (!auth.currentUser || isLoading) return;
-    const notifiedKey = `notified_${todayStr}`;
-    if (localStorage.getItem(notifiedKey)) return;
-    if (assignments.length === 0) return;
-
-    const now = Date.now();
-    const dueAssignments = assignments.filter(a => a.dueDate === todayStr && a.status !== 'submitted' && a.status !== 'graded');
-    const dueFollowUps = jobs.filter(j => j.followUpDate && j.followUpDate <= now);
-
-    let body = '';
-    if (dueAssignments.length > 0) body += `You have ${dueAssignments.length} assignment(s) due today!\n`;
-    if (dueFollowUps.length > 0)   body += `You have ${dueFollowUps.length} job follow-up(s) pending!\n`;
-
-    if (body) {
-      // Set flag BEFORE the async call to prevent duplicate notifications on slow auth re-renders
-      localStorage.setItem(notifiedKey, 'true');
-      sendPushNotification({ userIds: [auth.currentUser!.uid], title: 'Zentrack Daily Reminder', body: body.trim() }).catch(console.error);
-    }
-  }, [assignments, jobs, isLoading, todayStr]);
-
-  // ── Derived data (no extra listeners) ────────────────────────────────────
-  const dayOfWeek = new Date().getDay();
-
-  const tasks = useMemo(() => {
-    const pScore: Record<string, number> = { high: 3, medium: 2, low: 1 };
-    return todos
-      .filter(t => !t.isCompleted && (!t.date || t.date === todayStr))
-      .sort((a, b) => (pScore[b.priority] || 0) - (pScore[a.priority] || 0) || a.createdAt - b.createdAt);
-  }, [todos, todayStr]);
-
-  const interviews = useMemo(() => jobs.filter(j => j.status === 'interviewing'), [jobs]);
-
-  const todayHabits = useMemo(() => habits.filter(h => !h.isArchived && h.activeDays?.includes(dayOfWeek)), [habits, dayOfWeek]);
-
-  const todayHabitLogs = useMemo(() => {
-    const map: Record<string, boolean> = {};
-    habitLogs.filter(l => l.date === todayStr && l.completed).forEach(l => { map[l.habitId] = true; });
-    return map;
-  }, [habitLogs, todayStr]);
-
-  const { currentStreak } = useMemo(() => {
-    let streak = 0;
-    const today = new Date(); today.setHours(0,0,0,0);
-    for (let i = 0; i < 365; i++) {
-      const d = new Date(today); d.setDate(d.getDate() - i);
-      const dateStr = getLocalDateString(d);
-      const log = dailyLogs.find(l => l.date === dateStr);
-      // Streak requires meaningful work: productive hours logged, OR at least 1 habit completed, OR at least 1 task completed
-      const hasHabit = habitLogs.some(l => l.date === dateStr && l.completed);
-      const hasTask = todos.some(t => t.date === dateStr && t.isCompleted);
-      if (log && (parseFloat(log.productiveHours || '0') > 0 || hasHabit || hasTask)) {
-        streak++;
-      } else if (i !== 0) {
-        break;
-      }
-    }
-    return { currentStreak: streak };
-  }, [dailyLogs, habitLogs, todos]);
-
-  // Fix: TodoItem uses `date` field, not `dueDate`
-  const overdueTaskCount = useMemo(() =>
-    todos.filter(t => t.date && t.date < todayStr && !t.isCompleted).length
-  , [todos, todayStr]);
-
-  const hasRollovers = overdueTaskCount > 0;
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleUpdateLocal = (field: string, value: any) => setLocalLog(prev => ({ ...prev, [field]: value }));
-
-  const handleToggleTask = async (taskId: string) => {
-    try {
-      await updateDoc(doc(db, 'todos', taskId), { isCompleted: true });
-      import('../../utils/notifications').then(({ sendSystemNotification }) => sendSystemNotification('Task Completed! 🎉', { body: 'Great job completing a priority task!' }, true));
-      toast.success('Task completed!');
-    } catch (err) { console.error(err); }
-  };
-
-  const handleToggleHabit = async (habitId: string) => {
-    const user = auth.currentUser;
-    if (!user) return;
-    try {
-      const isCompleted = todayHabitLogs[habitId];
-      if (isCompleted) {
-        // Log ID is already in habitLogs from GlobalDataContext — delete directly.
-        // No extra Firestore query needed.
-        const logDoc = habitLogs.find(
-          l => l.habitId === habitId && l.date === todayStr && l.completed
-        );
-        if (logDoc?.id) {
-          await deleteDoc(doc(db, 'habit_logs', logDoc.id));
-        }
-        toast.info('Habit unmarked');
+    if (isExecuting && activeAgent) {
+      if (activeAgent !== displayAgent) {
+        setDoorsOpen(false);
+        const t = setTimeout(() => {
+          setDisplayAgent(activeAgent);
+          setDoorsOpen(true);
+        }, 400);
+        return () => clearTimeout(t);
       } else {
-        await addDoc(collection(db, 'habit_logs'), { userId: user.uid, habitId, date: todayStr, completed: true });
-        import('../../utils/notifications').then(({ sendSystemNotification }) => sendSystemNotification('Habit Completed! 🔥', { body: 'Keep the streak going!' }, true));
-        toast.success('Habit completed! 🔥');
+        setDoorsOpen(true);
       }
-    } catch (e) { console.error(e); }
-  };
+    } else {
+      setDoorsOpen(false);
+      const t = setTimeout(() => {
+        setDisplayAgent(null);
+      }, 400);
+      return () => clearTimeout(t);
+    }
+  }, [activeAgent, isExecuting, displayAgent]);
 
-  const onDragEnd = async (result: DropResult) => {
-    const { destination, source, draggableId } = result;
-    if (!destination || (destination.droppableId === source.droppableId && destination.index === source.index)) return;
+  const displayAgentDetails = displayAgent ? AGENT_DETAILS[displayAgent] : null;
 
-    try {
-      if (destination.droppableId.startsWith('timeline-')) {
-        await updateDoc(doc(db, 'todos', draggableId), { timeSlot: destination.droppableId.replace('timeline-', '') });
-        toast.success(`Task scheduled for ${destination.droppableId.replace('timeline-', '')}`);
-      } else if (destination.droppableId === 'priority-tasks') {
-        await updateDoc(doc(db, 'todos', draggableId), { timeSlot: null });
-        toast.success('Task moved back to unscheduled');
+  // Get active agent details, default to Orchestrator if none set (but executing)
+  const activeAgentKey = activeAgent || 'ORCHESTRATOR';
+  const activeDetails = AGENT_DETAILS[activeAgentKey] || AGENT_DETAILS.ORCHESTRATOR;
+
+  // Compute pipeline step status based on current active agent and status string
+  const currentStep = useMemo(() => {
+    if (!isExecuting) return 0;
+    if (activeAgent === 'ORCHESTRATOR') {
+      if (agentStatus.toLowerCase().includes('initial') || agentStatus.toLowerCase().includes('route')) {
+        return 1; // ROUTING
       }
-    } catch (err) {
-      console.error('Drag error:', err);
-      toast.error('Failed to update task');
+      return 2; // THINKING
+    }
+    if (activeAgent === 'QA') {
+      return 4; // QA/VERIFYING
+    }
+    return 3; // EXECUTING
+  }, [isExecuting, activeAgent, agentStatus]);
+
+  const pipelineSteps = useMemo(() => [
+    { id: 1, name: 'Routing', status: currentStep === 1 ? 'active' : currentStep > 1 ? 'completed' : 'pending' },
+    { id: 2, name: 'Reasoning', status: currentStep === 2 ? 'active' : currentStep > 2 ? 'completed' : 'pending' },
+    { id: 3, name: 'Execution', status: currentStep === 3 ? 'active' : currentStep > 3 ? 'completed' : 'pending' },
+    { id: 4, name: 'Verification', status: currentStep === 4 ? 'active' : currentStep > 4 ? 'completed' : 'pending' }
+  ], [currentStep]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 640);
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // ── Urgency Color System — morphs entire app palette ──
+  const urgencyState = useUrgencyState(tasks);
+
+  // ── Proactive Agent — auto-fires on overdue/urgent detection ──
+  useProactiveAgent(tasks, calendarEvents, setIsExecuting);
+
+  // ── Listen for proactive briefing results ──
+  useEffect(() => {
+    const handleProactiveBriefing = (e: any) => {
+      setAgentResult(e.detail?.report || null);
+    };
+    const handleShowReport = () => {
+      // Scroll to or highlight report — already shown via agentResult state
+    };
+    window.addEventListener('proactive-briefing', handleProactiveBriefing);
+    window.addEventListener('show-proactive-report', handleShowReport);
+
+    // Read and clear any pending voice command reports from session storage
+    const pending = sessionStorage.getItem('pending_proactive_briefing');
+    if (pending) {
+      setAgentResult(pending);
+      sessionStorage.removeItem('pending_proactive_briefing');
+    }
+
+    return () => {
+      window.removeEventListener('proactive-briefing', handleProactiveBriefing);
+      window.removeEventListener('show-proactive-report', handleShowReport);
+    };
+  }, []);
+
+  // Initialize SpeechRecognition if available
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  const recognition = useMemo(() => {
+    if (!SpeechRecognition) return null;
+    const r = new SpeechRecognition();
+    r.continuous = false;
+    r.interimResults = true;
+    return r;
+  }, [SpeechRecognition]);
+
+  // We need a ref to capture the latest commandInput inside the recognition.onend closure
+  const commandInputRef = React.useRef('');
+  useEffect(() => { commandInputRef.current = commandInput; }, [commandInput]);
+
+  useEffect(() => {
+    if (!recognition) return;
+    
+    recognition.onresult = (event: any) => {
+      let interim = '';
+      let final = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      
+      setInterimTranscript(interim);
+      if (final) {
+        setCommandInput(prev => prev ? prev + ' ' + final : final);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+      setIsListening(false);
+      setInterimTranscript('');
+    };
+
+    // AUTO-SUBMIT: when speech ends and there's a transcript, fire directly to agent
+    recognition.onend = () => {
+      setIsListening(false);
+      setInterimTranscript('');
+      const captured = commandInputRef.current.trim();
+      if (captured) {
+        // Small delay so React state flushes commandInput before handleExecuteCommand reads it
+        setTimeout(() => handleExecuteCommand(captured), 80);
+      }
+    };
+  }, [recognition]);
+
+  const toggleListening = () => {
+    if (!recognition) {
+      toast.error('Voice input is not supported in this browser.');
+      return;
+    }
+    if (isListening) {
+      recognition.stop();
+      setIsListening(false);
+    } else {
+      recognition.start();
+      setIsListening(true);
+      toast.info('Listening... speak your command.');
     }
   };
 
-  if (isLoading) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading Zentrack...</div>;
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      setTime(now.toLocaleTimeString('en-US', { hour12: false }));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleConnectWorkspace = async () => {
+    setIsConnecting(true);
+    try {
+      await connectGoogle();
+      toast.success('Google Workspace integrated successfully');
+    } catch (err: any) {
+      toast.error('Google Workspace integration failed: ' + err.message);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const handleAgentLog = (e: any) => {
+      const type = e.detail?.type;
+      const text = e.detail?.title || e.detail?.message;
+      if (type === 'answer' && text) {
+        setMissionComplete(true);
+        setMissionSummary(text); // Show full report — content area scrolls
+      }
+      if (text) {
+        setAgentStatus(text);
+        if (text.match(/\[([A-Z_]+)\]/)) {
+           const match = text.match(/\[([A-Z_]+)\]/);
+           if (match) setActiveAgent(match[1]);
+        } else if (text.toLowerCase().includes('orchestrator')) {
+           setActiveAgent('ORCHESTRATOR');
+        } else if (text.includes('Routed to:')) {
+           const match = text.match(/Routed to:\s*([A-Z_]+)/);
+           if (match) setActiveAgent(match[1]);
+        }
+        
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          setActiveAgent(null);
+          setAgentStatus('System idle. Monitoring datastreams...');
+        }, 15000);
+      }
+    };
+    
+    const handleClearMemory = () => {
+      setAgentHistory([]);
+    };
+
+    window.addEventListener('agent-log', handleAgentLog);
+    window.addEventListener('agent-clear-memory', handleClearMemory);
+    return () => {
+      window.removeEventListener('agent-log', handleAgentLog);
+      window.removeEventListener('agent-clear-memory', handleClearMemory);
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  const handleExecuteCommand = async (overridePrompt?: string | any) => {
+    const prompt = typeof overridePrompt === 'string' ? overridePrompt : commandInput;
+    if (!prompt.trim() || isExecuting) return;
+    setCommandInput('');
+    setIsExecuting(true);
+    setAgentStatus('ORCHESTRATOR initializing DAG workflow...');
+    setActiveAgent('ORCHESTRATOR');
+    
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    
+    try {
+      setAgentResult(null);
+      setMissionComplete(false);
+
+      // --- SMART WORKSPACE AUTO-SIGN-IN ---
+      // Detect if the prompt requires Google Workspace (Gmail, Calendar, Drive, etc.)
+      // If so, and the user isn't connected, automatically open sign-in right now.
+      // We do this INSIDE the user gesture (button click) so popups are never blocked.
+      const WORKSPACE_KEYWORDS = [
+        'email', 'gmail', 'mail', 'inbox', 'draft', 'reply', 'send email',
+        'calendar', 'schedule', 'meeting', 'event', 'book', 'reschedule',
+        'drive', 'docs', 'document', 'spreadsheet', 'sheet', 'slides',
+        'meet', 'video call', 'google meet',
+        'check my', 'read my', 'show my', 'summarise my', 'summarize my',
+      ];
+      const promptLower = prompt.toLowerCase();
+      const needsWorkspace = WORKSPACE_KEYWORDS.some(kw => promptLower.includes(kw));
+
+      if (needsWorkspace && !isSignedInToGoogle()) {
+        setAgentStatus('🔐 This task needs Google Workspace — connecting...');
+        try {
+          await initGoogleCalendar();
+          await connectGoogle();
+          // Notify badge to refresh its state immediately
+          window.dispatchEvent(new Event('google-token-refreshed'));
+          setAgentStatus('✅ Google Workspace connected! Starting task...');
+        } catch (err: any) {
+          const msg = String(err?.message || '').toLowerCase();
+          if (!msg.includes('cancelled') && !msg.includes('popup-closed')) {
+            // Non-cancel error — warn but continue (agent will surface a clearer error)
+            console.warn('[AutoLogin] Workspace sign-in failed:', err);
+          } else {
+            // User dismissed the popup — abort the task cleanly
+            setAgentStatus('Sign-in cancelled. Connect your Google Workspace to use this task.');
+            setIsExecuting(false);
+            setActiveAgent(null);
+            return;
+          }
+        }
+      } else {
+        // Token exists — check if it's about to expire and proactively refresh
+        const timeRemaining = getTokenTimeRemaining();
+        if (wasEverConnectedToGoogle() && (!isSignedInToGoogle() || (timeRemaining > 0 && timeRemaining < 10 * 60 * 1000))) {
+          setAgentStatus('Refreshing Google Workspace connection...');
+          try {
+            await connectGoogle();
+            window.dispatchEvent(new Event('google-token-refreshed'));
+          } catch (err) {
+            console.warn('Auto-refresh failed. Continuing anyway.', err);
+          }
+        }
+      }
+
+      // Auto-refresh the Personal Gemini OAuth key if it expired
+      if (isPersonalGeminiTokenExpired() && wasEverConnectedToPersonalGemini()) {
+        setAgentStatus('Refreshing Personal Gemini AI token...');
+        try {
+          await requestGeminiToken();
+        } catch (err) {
+          console.warn('Auto-login failed for Personal Gemini AI key.', err);
+        }
+      }
+
+      const result = await orchestrateAgent(
+        prompt,
+        tasks,
+        calendarEvents,
+        apiKey,
+        (step) => {
+          // agent-log event is already dispatched inside orchestrator/runAgentLoop
+        },
+        agentHistory
+      );
+      
+      // Cap history at last 10 exchanges (20 entries) to prevent context window bloat
+      setAgentHistory(prev => [
+        ...prev, 
+        { role: 'user', text: prompt }, 
+        { role: 'model', text: result }
+      ].slice(-20));
+      setAgentResult(result);
+      setAgentStatus('Mission accomplished.');
+      setActiveAgent(null);
+    } catch (err: any) {
+      setAgentStatus(`Error: ${err.message}`);
+      toast.error('Workflow failed: ' + err.message);
+    } finally {
+      setIsExecuting(false);
+      setActiveAgent(null);
+    }
+  };
+
+  // ── Emergency Recovery — LEVEL_4 full fleet activation ──
+  const handleEmergencyRecovery = () => {
+    const today = getLocalDateString(new Date());
+    const overdueTasks = tasks.filter(t => t.status !== 'completed' && t.date && t.date < today);
+    const todayTasks = tasks.filter(t => t.status !== 'completed' && t.date === today);
+    const emergencyPrompt = `EMERGENCY RECOVERY PROTOCOL ACTIVATED. ` +
+      `I have ${overdueTasks.length} overdue task(s) and ${todayTasks.length} task(s) due today. ` +
+      `Deploy the full agent fleet: analyze my situation, identify the most critical items, ` +
+      `check my calendar for free slots today, draft any needed apology or status emails, ` +
+      `block emergency time for the top 2 priorities, and give me a complete recovery plan.`;
+    handleExecuteCommand(emergencyPrompt);
+  };
+
+  // ── Ghost Detector — scan inbox for hidden deadlines ──
+  const handleGhostDetector = () => {
+    handleExecuteCommand(
+      `GHOST DETECTION PROTOCOL: Scan my email inbox for any hidden deadlines, untracked commitments, ` +
+      `or urgent requests I haven't logged yet. Look for phrases like "by Friday", "due date", "ASAP", ` +
+      `"please submit by", "following up". For each ghost deadline found, create a task in ZenTrack and alert me.`
+    );
+  };
+
+  // ── Monitor Risk Check — full risk assessment ──
+  const handleMonitorRisk = () => {
+    handleExecuteCommand(
+      `RISK ASSESSMENT PROTOCOL: Run a full risk analysis on all my tasks. ` +
+      `Score each task as CRITICAL/HIGH/MEDIUM/LOW. Check my calendar for meeting conflicts. ` +
+      `Send me a prioritized alert for anything CRITICAL or HIGH risk. ` +
+      `Auto-reschedule any LOW priority tasks that are blocking my day.`
+    );
+  };
+
+  const todayStr = getLocalDateString(new Date());
+
+  const todayTasks = useMemo(() => tasks.filter(t => t.date === todayStr || !t.date), [tasks, todayStr]);
+  const activeTasks = todayTasks.filter(t => t.status !== 'completed');
+  const completedTodayCount = todayTasks.filter(t => t.status === 'completed').length;
+  
+  const highPriorityActive = activeTasks.filter(t => t.priority === 'high');
+  
+  // Sort tasks for Urgency Matrix
+  const sortedByUrgency = [...activeTasks].sort((a, b) => {
+    const getScore = (t: any) => {
+       const u = getUrgencyLevel(t.date);
+       let score = 0;
+       if (u === 'overdue') score += 100;
+       if (t.priority === 'high') score += 50;
+       if (u === 'critical') score += 25;
+       if (u === 'urgent') score += 10;
+       return score;
+    };
+    return getScore(b) - getScore(a);
+  });
+
+  const matrixTasks = sortedByUrgency.slice(0, 3);
+  
+  const totalToday = todayTasks.length;
+  const bandwidthPercent = totalToday === 0 ? 100 : Math.round((completedTodayCount / totalToday) * 100);
+
+  // ROI Analysis
+  const overdueCount = activeTasks.filter(t => getUrgencyLevel(t.date) === 'overdue').length;
+  
+  // Pomodoro hours calculation
+  const todaySessions = pomodoroSessions.filter(s => {
+      if(s.startTime) return new Date(s.startTime).toLocaleDateString('en-CA') === todayStr;
+      if(s.date) return s.date === todayStr;
+      if(s.createdAt) return new Date(s.createdAt).toLocaleDateString('en-CA') === todayStr;
+      return false;
+  });
+  let totalPomodoroMinutes = 0;
+  todaySessions.forEach(s => {
+      totalPomodoroMinutes += (s.durationMinutes || s.duration || s.minutes || 25);
+  });
+  const hoursSaved = (totalPomodoroMinutes / 60).toFixed(1);
 
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
-      <div ref={dashboardRef} className="page-pad" style={{ position: 'relative', width: '100%', minHeight: '100vh' }}>
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 0, background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(168,85,247,0.04), transparent 40%)', transition: 'background 0.2s ease-out' }} />
-
-        <div style={{ position: 'relative', zIndex: 1 }}>
-          <DashboardHero
-            currentStreak={currentStreak}
-            hasRollovers={hasRollovers}
-            pendingTaskCount={tasks.length}
-            overdueTaskCount={overdueTaskCount}
-          />
-          
-          <SituationReportWidget 
-            tasks={tasks} 
-            overdueTaskCount={overdueTaskCount} 
-            isGymDay={dayOfWeek !== 0} // Simplistic assumption for now, can be improved
-            gymLogged={gymLogs.some((l: any) => l.date === todayStr)} 
-          />
-
-          <div style={{ margin: '3rem 0 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', opacity: 0.5 }}>
-            <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
-            <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 600 }}>Below The Fold</span>
-            <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
-          </div>
-
-          <div className="dashboard-grid">
-            <ZenAIControlCenter onOpenCrisis={() => setShowCrisis(true)} />
-            <StreakSummaryWidget gymLogs={gymLogs} learningTopics={learningTopics} />
-
-            {/* Daily Wisdom Video — collapsible, rotates every 6 hours */}
-            <WisdomVideoCard />
-
-            {/* Rollover prompt — one-click reschedule for incomplete tasks from past days */}
-            {hasRollovers && (() => {
-              const staleKey = `rollover_prompted_${todayStr}`;
-              if (localStorage.getItem(staleKey)) return null;
-              return (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 'var(--radius-md)', padding: '0.65rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
-                  <span style={{ flex: 1, color: '#fbbf24', fontWeight: 500 }}>📋 You have {overdueTaskCount} incomplete task{overdueTaskCount !== 1 ? 's' : ''} from previous days. Roll them to today?</span>
-                  <button
-                    onClick={async () => {
-                      const staleTodos = todos.filter(t => t.date && t.date < todayStr && !t.isCompleted);
-                      const batch = (await import('firebase/firestore')).writeBatch(db);
-                      staleTodos.forEach(t => batch.update(doc(db, 'todos', t.id!), { date: todayStr }));
-                      await batch.commit();
-                      localStorage.setItem(staleKey, 'true');
-                      toast.success(`${staleTodos.length} task${staleTodos.length !== 1 ? 's' : ''} rolled to today!`);
-                    }}
-                    style={{ padding: '0.35rem 0.85rem', borderRadius: '8px', background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.4)', color: '#fbbf24', fontWeight: 600, cursor: 'pointer', fontSize: '0.82rem', whiteSpace: 'nowrap' }}
-                  >Roll Over →</button>
-                  <button onClick={() => { localStorage.setItem(staleKey, 'true'); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', padding: '0.2rem 0.4rem' }}>Dismiss</button>
-                </div>
-              );
-            })()}
-
-            {tasks.some(t => t.timeSlot) && <TimeboxTimeline tasks={tasks} />}
-
-            <StudentWidgets attendanceSubjects={attendanceSubjects} assignments={assignments} />
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '1.5rem', alignItems: 'start' }}>
-              <DailyCommandPanel
-                localLog={localLog}
-                habits={todayHabits}
-                todayHabitLogs={todayHabitLogs}
-                onUpdate={handleUpdateLocal}
-                onToggleHabit={handleToggleHabit}
-                aiRecommendation={aiRec}
-                isAiLoading={aiLoading}
-                onAskAi={handleAskAi}
-              />
-
-              <div className="hide-on-mobile" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'stretch', gridColumn: '1 / -1', gridRow: 'auto' }}>
-                <PomodoroWidget />
-                <WeeklyFocusChart dailyLogs={dailyLogs} />
+    <div className="agent-dashboard">
+      <div className="dashboard-grid">
+        
+        {/* LEFT COLUMN - Active Deployment */}
+        <div className="active-deployment-card">
+          <div className="card-header">
+            <div>
+              <h2 className="card-title">Active Deployment</h2>
+              <p className="card-subtitle">{highPriorityActive.length} Autonomous Agents engaged in "Current Sprint"</p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              {/* Dynamic Urgency Banner */}
+              <div className={`urgency-banner ${urgencyState.replace('state-', '')}`}>
+                {urgencyState === 'state-critical' && <><AlertTriangle size={12} /> CRITICAL</>}
+                {urgencyState === 'state-active' && <><Activity size={12} /> ACTIVE</>}
+                {urgencyState === 'state-calm' && <><Check size={12} /> FLOW STATE</>}
               </div>
-
-              <PriorityTasksList tasks={tasks} interviews={interviews} onToggleTask={handleToggleTask} />
+              {/* Emergency Recovery Button — always visible, style changes by urgency */}
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={handleEmergencyRecovery}
+                disabled={isExecuting}
+                title="Activate full fleet emergency recovery"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.35rem',
+                  background: urgencyState === 'state-critical'
+                    ? '#DC2626'
+                    : urgencyState === 'state-active'
+                    ? '#EA580C'
+                    : 'rgba(139,92,246,0.2)',
+                  border: urgencyState === 'state-calm' ? '1px solid rgba(139,92,246,0.4)' : 'none',
+                  borderRadius: '8px',
+                  padding: '0.4rem 0.75rem',
+                  color: urgencyState === 'state-calm' ? '#c4b5fd' : '#fff',
+                  fontSize: '0.7rem', fontWeight: 700,
+                  cursor: isExecuting ? 'not-allowed' : 'pointer',
+                  letterSpacing: '0.06em',
+                  boxShadow: 'none',
+                  opacity: isExecuting ? 0.6 : 1,
+                  transition: 'all 0.3s ease',
+                }}
+              >
+                {isExecuting 
+                  ? <><Loader2 size={12} className="spin" /> Agents Working...</>
+                  : <><Zap size={12} /> {urgencyState === 'state-calm' ? 'AI Assist' : '⚡ Get AI Help'}</>
+                }
+              </motion.button>
             </div>
           </div>
+          
+          <div className="quantum-deck-container">
+            {/* Embedded styles for our Quantum Deck to make sure it's 100% self-contained and gorgeous */}
+            <style>{`
+              .quantum-deck-container {
+                width: 100%;
+                min-height: 380px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                align-items: center;
+                background: rgba(10, 10, 16, 0.45);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 20px;
+                padding: 1.5rem;
+                position: relative;
+                overflow: hidden;
+                box-shadow: inset 0 0 30px rgba(124, 58, 237, 0.03), 0 10px 40px rgba(0, 0, 0, 0.4);
+                backdrop-filter: blur(16px);
+                -webkit-backdrop-filter: blur(16px);
+                margin: 1.5rem 0;
+              }
 
-          <AnimatePresence>
-            {showCrisis && <CrisisTriageModal onClose={() => setShowCrisis(false)} />}
-            
-            {showDoomScroll && (
-              <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(220, 38, 38, 0.95)', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem', textAlign: 'center', backdropFilter: 'blur(10px)' }}>
-                <AlertTriangle size={80} color="#fff" style={{ marginBottom: '2rem' }} />
-                <h1 style={{ color: '#fff', fontSize: '2.5rem', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: '1rem', fontFamily: 'var(--font-display)' }}>Put The Phone Down.</h1>
-                <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '1.25rem', maxWidth: '600px', lineHeight: 1.6, marginBottom: '3rem' }}>
-                  Warning: 45 minutes of mindless browsing detected. You have a critical task coming up. Do you want me to lock this app and start a 25-minute Pomodoro?
-                </p>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  <button onClick={() => { setShowDoomScroll(false); }} className="btn-primary" style={{ background: '#fff', color: '#dc2626', padding: '1rem 2rem', fontSize: '1.1rem', fontWeight: 800 }}>Start Focus</button>
-                  <button onClick={() => setShowDoomScroll(false)} style={{ background: 'transparent', border: '2px solid rgba(255,255,255,0.3)', color: '#fff', padding: '1rem 2rem', borderRadius: '12px', fontSize: '1.1rem', fontWeight: 600, cursor: 'pointer' }}>Dismiss</button>
-                </div>
+              /* Scanning line scan effect */
+              .quantum-deck-container::after {
+                content: '';
+                position: absolute;
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: linear-gradient(180deg, transparent, rgba(139, 92, 246, 0.06), transparent);
+                height: 100%;
+                width: 100%;
+                animation: scanline 6s infinite linear;
+                pointer-events: none;
+                z-index: 2;
+              }
+
+              @keyframes scanline {
+                0% { transform: translateY(-100%); }
+                100% { transform: translateY(100%); }
+              }
+
+              /* Quantum Chamber - Idle State */
+              .quantum-idle-chamber {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                flex: 1;
+                width: 100%;
+                position: relative;
+                gap: 1.5rem;
+              }
+
+              .quantum-core-reactor {
+                position: relative;
+                width: 140px;
+                height: 140px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              }
+
+              .quantum-reactor-ring {
+                position: absolute;
+                border-radius: 50%;
+                border: 1px dashed rgba(167, 139, 250, 0.35);
+                animation: reactor-rotate 15s linear infinite;
+              }
+
+              .quantum-reactor-ring.ring-1 { width: 140px; height: 140px; border-style: dotted; animation-duration: 25s; }
+              .quantum-reactor-ring.ring-2 { width: 110px; height: 110px; border-color: rgba(6, 182, 212, 0.4); animation-direction: reverse; animation-duration: 18s; }
+              .quantum-reactor-ring.ring-3 { width: 80px; height: 80px; border-style: double; border-width: 2px; border-color: rgba(167, 139, 250, 0.6); animation-duration: 10s; }
+
+              .quantum-reactor-orb {
+                width: 50px;
+                height: 50px;
+                border-radius: 50%;
+                background: radial-gradient(circle, rgba(167, 139, 250, 0.9) 0%, rgba(124, 58, 237, 0.4) 60%, rgba(99, 102, 241, 0) 100%);
+                box-shadow: 0 0 35px rgba(167, 139, 250, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.5);
+                animation: reactor-breath 3s ease-in-out infinite;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 5;
+              }
+
+              @keyframes reactor-rotate {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+              }
+
+              @keyframes reactor-breath {
+                0%, 100% { transform: scale(1); filter: brightness(1) drop-shadow(0 0 15px rgba(167, 139, 250, 0.6)); }
+                50% { transform: scale(1.1); filter: brightness(1.2) drop-shadow(0 0 30px rgba(167, 139, 250, 0.9)); }
+              }
+
+              .quantum-idle-text {
+                text-align: center;
+                z-index: 5;
+              }
+
+              .quantum-idle-title {
+                font-family: var(--font-display, 'Outfit', sans-serif);
+                font-size: 0.85rem;
+                font-weight: 800;
+                letter-spacing: 0.15em;
+                color: #e4e4e7;
+                text-transform: uppercase;
+                text-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+              }
+
+              .quantum-idle-subtitle {
+                font-size: 0.68rem;
+                color: #71717a;
+                margin-top: 0.25rem;
+                letter-spacing: 0.05em;
+              }
+
+              /* Sleek Quantum Dock */
+              .quantum-console-dock {
+                display: flex;
+                justify-content: center;
+                gap: 0.6rem;
+                width: 100%;
+                padding-top: 1rem;
+                border-top: 1px solid rgba(255, 255, 255, 0.04);
+                z-index: 5;
+              }
+
+              .quantum-dock-item {
+                position: relative;
+                width: 32px;
+                height: 32px;
+                border-radius: 50%;
+                background: rgba(20, 20, 30, 0.9);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+              }
+
+              .quantum-dock-img {
+                width: 100%;
+                height: 100%;
+                border-radius: 50%;
+                object-fit: cover;
+                filter: grayscale(1) opacity(0.4);
+                transition: all 0.3s ease;
+              }
+
+              .quantum-dock-item:hover {
+                transform: scale(1.25) translateY(-3px);
+                border-color: var(--hover-color, #c084fc);
+                box-shadow: 0 0 15px var(--hover-shadow, rgba(192, 132, 252, 0.4));
+              }
+
+              .quantum-dock-item:hover .quantum-dock-img {
+                filter: grayscale(0) opacity(1);
+              }
+
+              /* Capsule door styling */
+              .quantum-capsule {
+                position: relative;
+                width: 100%;
+                height: 200px;
+                background: rgba(5, 5, 10, 0.65);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.9);
+                display: flex;
+                margin-bottom: 0.5rem;
+              }
+
+              .capsule-chamber {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                position: relative;
+                z-index: 1;
+              }
+
+              .chamber-content {
+                display: flex;
+                width: 100%;
+                height: 100%;
+                padding: 1.2rem;
+                gap: 1.5rem;
+                align-items: center;
+              }
+
+              .chamber-left {
+                flex: 0 0 110px;
+                height: 110px;
+              }
+
+              .chamber-viewport {
+                width: 100%;
+                height: 100%;
+                border-radius: 12px;
+                border: 2px solid var(--agent-color, #c084fc);
+                box-shadow: 0 0 20px var(--agent-shadow, rgba(192, 132, 252, 0.2));
+                overflow: hidden;
+                position: relative;
+              }
+
+              .chamber-avatar {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                animation: avatar-breath 4s ease-in-out infinite;
+                z-index: 1;
+                position: relative;
+              }
+
+              @keyframes avatar-breath {
+                0%, 100% { transform: scale(1); filter: brightness(1); }
+                50% { transform: scale(1.04); filter: brightness(1.1); }
+              }
+
+              /* Spinning Diagnostic Rings inside viewport */
+              .hud-reticle-circle {
+                position: absolute;
+                top: 5%; left: 5%; right: 5%; bottom: 5%;
+                border: 1px dashed var(--agent-color, #c084fc);
+                border-radius: 50%;
+                opacity: 0.25;
+                pointer-events: none;
+                z-index: 2;
+              }
+              .hud-reticle-circle.ring-slow {
+                animation: reactor-rotate 25s linear infinite;
+              }
+              .hud-reticle-circle.ring-fast {
+                top: 15%; left: 15%; right: 15%; bottom: 15%;
+                border-style: dotted;
+                border-color: var(--agent-color, #c084fc);
+                animation: reactor-rotate 12s linear infinite reverse;
+                opacity: 0.45;
+              }
+              .hud-reticle-corners {
+                position: absolute;
+                inset: 8px;
+                pointer-events: none;
+                z-index: 2;
+              }
+              .hud-reticle-corners::before, .hud-reticle-corners::after {
+                content: '';
+                position: absolute;
+                width: 8px;
+                height: 8px;
+                border-color: var(--agent-color, #c084fc);
+                border-style: solid;
+                opacity: 0.7;
+              }
+              .hud-reticle-corners::before {
+                top: 0; left: 0;
+                border-width: 1.5px 0 0 1.5px;
+              }
+              .hud-reticle-corners::after {
+                bottom: 0; right: 0;
+                border-width: 0 1.5px 1.5px 0;
+              }
+
+              .hud-overlay-scanner {
+                position: absolute;
+                inset: 0;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                pointer-events: none;
+                z-index: 3;
+              }
+              .hud-overlay-scanner::before {
+                content: '';
+                position: absolute;
+                top: 5%; left: 5%; right: 5%; bottom: 5%;
+                border: 1px solid rgba(255, 255, 255, 0.03);
+                border-radius: 50%;
+                animation: reactor-rotate 20s linear infinite;
+              }
+              .hud-overlay-scanner::after {
+                content: '';
+                position: absolute;
+                top: 0; left: 0; right: 0;
+                height: 2px;
+                background: var(--agent-color, #c084fc);
+                box-shadow: 0 0 8px var(--agent-color, #c084fc);
+                animation: scanner-sweep 2.2s linear infinite;
+              }
+
+              @keyframes scanner-sweep {
+                0% { top: 0%; opacity: 0; }
+                10% { opacity: 1; }
+                90% { opacity: 1; }
+                100% { top: 100%; opacity: 0; }
+              }
+
+              .chamber-right {
+                flex: 1;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                gap: 0.35rem;
+                min-width: 0;
+              }
+
+              .chamber-metrics-header {
+                display: flex;
+                flex-direction: column;
+                gap: 0.1rem;
+              }
+
+              .chamber-agent-title {
+                font-family: var(--font-display, 'Outfit', sans-serif);
+                font-size: 0.95rem;
+                font-weight: 800;
+                color: #fff;
+                display: flex;
+                align-items: center;
+                gap: 0.4rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+              }
+
+              .chamber-agent-tagline {
+                font-size: 0.65rem;
+                color: var(--agent-color, #c084fc);
+                font-weight: 600;
+                letter-spacing: 0.03em;
+                text-transform: uppercase;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+
+              .chamber-description {
+                font-size: 0.72rem;
+                color: #a1a1aa;
+                line-height: 1.4;
+                background: rgba(255,255,255,0.02);
+                border: 1px solid rgba(255,255,255,0.04);
+                padding: 0.45rem 0.7rem;
+                border-radius: 8px;
+              }
+
+              /* Depicts badges styling */
+              .chamber-depicts-container {
+                display: flex;
+                flex-direction: column;
+                gap: 0.25rem;
+                margin-top: 0.1rem;
+              }
+              .depicts-title {
+                font-family: var(--font-mono, monospace);
+                font-size: 0.55rem;
+                font-weight: 700;
+                color: #52525b;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+              }
+              .depicts-grid {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.35rem;
+              }
+              .depicts-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 0.25rem;
+                padding: 0.15rem 0.4rem;
+                background: rgba(255, 255, 255, 0.02);
+                border: 1px solid rgba(255, 255, 255, 0.04);
+                border-radius: 4px;
+                font-size: 0.58rem;
+                font-family: var(--font-display, 'Outfit', sans-serif);
+                font-weight: 600;
+                color: #d4d4d8;
+                transition: all 0.3s;
+              }
+              .depicts-badge:hover {
+                border-color: var(--agent-color, #c084fc);
+                background: rgba(167, 139, 250, 0.04);
+                transform: translateY(-1px);
+              }
+              .depicts-badge-dot {
+                width: 4px;
+                height: 4px;
+                border-radius: 50%;
+                background: var(--agent-color, #c084fc);
+                box-shadow: 0 0 6px var(--agent-color, #c084fc);
+              }
+
+              /* Quantum Stasis Force Field Overlay */
+              .stasis-force-field {
+                position: absolute;
+                inset: 0;
+                background: radial-gradient(circle at center, rgba(12, 10, 24, 0.98) 0%, rgba(5, 5, 8, 0.99) 100%);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                z-index: 10;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                overflow: hidden;
+                transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
+                pointer-events: none;
+              }
+
+              .stasis-force-field.active {
+                opacity: 1;
+                transform: scale(1);
+                filter: blur(0px);
+                pointer-events: auto;
+              }
+
+              /* Dissolve transition: expands, blurs, and fades out */
+              .stasis-force-field.dissolved {
+                opacity: 0;
+                transform: scale(1.08);
+                filter: blur(12px) contrast(1.5);
+                clip-path: circle(0% at 50% 50%);
+                transition: 
+                  opacity 0.4s ease-out, 
+                  transform 0.45s cubic-bezier(0.25, 1, 0.5, 1), 
+                  filter 0.4s ease-out,
+                  clip-path 0.5s cubic-bezier(0.76, 0, 0.24, 1);
+              }
+
+              /* Shockwave when shield snaps shut */
+              .stasis-force-field.shield-shockwave {
+                animation: shield-snap 0.4s ease-out;
+              }
+
+              @keyframes shield-snap {
+                0% { 
+                  box-shadow: 0 0 0px transparent, inset 0 0 0px transparent;
+                  filter: brightness(2);
+                }
+                10% {
+                  box-shadow: 0 0 50px var(--agent-color, #c084fc), inset 0 0 30px var(--agent-color, #c084fc);
+                }
+                100% {
+                  box-shadow: 0 0 0px transparent, inset 0 0 0px transparent;
+                  filter: brightness(1);
+                }
+              }
+
+              /* Shield Grid and Scanner */
+              .shield-grid {
+                position: absolute;
+                inset: 0;
+                background-image: 
+                  radial-gradient(var(--agent-color, #c084fc) 1px, transparent 1px);
+                background-size: 15px 15px;
+                opacity: 0.15;
+                z-index: 1;
+              }
+
+              .shield-scanner {
+                position: absolute;
+                inset: 0;
+                background: linear-gradient(
+                  180deg, 
+                  transparent 0%, 
+                  rgba(255, 255, 255, 0.05) 45%, 
+                  var(--agent-color, #c084fc) 50%, 
+                  rgba(255, 255, 255, 0.05) 55%, 
+                  transparent 100%
+                );
+                height: 10%;
+                opacity: 0.35;
+                animation: scanner-sweep 5s linear infinite;
+                z-index: 2;
+                pointer-events: none;
+              }
+
+              @keyframes scanner-sweep {
+                0% { top: -10%; }
+                100% { top: 110%; }
+              }
+
+              .shield-energy-ripples {
+                position: absolute;
+                inset: 0;
+                background: 
+                  radial-gradient(circle at 30% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 40%),
+                  radial-gradient(circle at 70% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 40%),
+                  radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.03) 0%, transparent 60%);
+                animation: energy-pulse 6s ease-in-out infinite alternate;
+                z-index: 1;
+              }
+
+              @keyframes energy-pulse {
+                0% { opacity: 0.7; transform: scale(1); }
+                100% { opacity: 1; transform: scale(1.05); }
+              }
+
+              /* Center reactor portal key */
+              .shield-center-core {
+                position: relative;
+                width: 140px;
+                height: 140px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 5;
+              }
+
+              .core-orbit {
+                position: absolute;
+                border-radius: 50%;
+                border: 1px solid rgba(255, 255, 255, 0.08);
+              }
+
+              .core-orbit.ring-1 {
+                width: 130px;
+                height: 130px;
+                border-color: rgba(255, 255, 255, 0.05);
+                border-top: 1.5px dashed var(--agent-color, #c084fc);
+                animation: spin-slow 12s linear infinite;
+              }
+
+              .core-orbit.ring-2 {
+                width: 100px;
+                height: 100px;
+                border-color: rgba(255, 255, 255, 0.05);
+                border-bottom: 2px solid var(--agent-color, #c084fc);
+                animation: spin-reverse 8s linear infinite;
+              }
+
+              .core-orbit.ring-3 {
+                width: 70px;
+                height: 70px;
+                border-color: rgba(255, 255, 255, 0.05);
+                border-left: 1.5px dashed rgba(255, 255, 255, 0.2);
+                animation: spin-slow 6s linear infinite;
+              }
+
+              .core-power-node {
+                position: relative;
+                width: 40px;
+                height: 40px;
+                border-radius: 50%;
+                background: radial-gradient(circle, var(--agent-color, #c084fc) 20%, #0c0c16 80%);
+                border: 1.5px solid var(--agent-color, #c084fc);
+                box-shadow: 
+                  0 0 20px var(--agent-shadow, rgba(192, 132, 252, 0.45)),
+                  inset 0 0 10px var(--agent-color, #c084fc);
+                animation: core-glow 2s infinite alternate ease-in-out;
+              }
+
+              @keyframes core-glow {
+                0% { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 10px var(--agent-shadow, rgba(192, 132, 252, 0.25)), inset 0 0 5px var(--agent-color, #c084fc); }
+                100% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 25px var(--agent-shadow, rgba(192, 132, 252, 0.55)), inset 0 0 12px var(--agent-color, #c084fc); }
+              }
+
+              .core-lock-status {
+                position: absolute;
+                bottom: -25px;
+                font-family: var(--font-mono, monospace);
+                font-size: 0.52rem;
+                font-weight: 700;
+                color: #e4e4e7;
+                letter-spacing: 0.1em;
+                background: rgba(0, 0, 0, 0.6);
+                padding: 2px 8px;
+                border-radius: 4px;
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                white-space: nowrap;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+              }
+
+              /* HUD panels left & right */
+              .shield-hud-panel {
+                position: absolute;
+                top: 50%;
+                transform: translateY(-50%);
+                background: rgba(5, 5, 8, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.04);
+                padding: 10px 14px;
+                border-radius: 8px;
+                font-family: var(--font-mono, monospace);
+                width: 140px;
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+                z-index: 4;
+              }
+
+              .shield-hud-panel.panel-left {
+                left: 20px;
+              }
+
+              .shield-hud-panel.panel-right {
+                right: 20px;
+              }
+
+              .hud-header {
+                font-size: 0.54rem;
+                color: var(--agent-color, #c084fc);
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                margin-bottom: 2px;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                padding-bottom: 2px;
+              }
+
+              .hud-metric-row {
+                display: flex;
+                justify-content: space-between;
+                font-size: 0.48rem;
+                letter-spacing: 0.02em;
+              }
+
+              .metric-label {
+                color: #71717a;
+              }
+
+              .metric-val {
+                color: #a1a1aa;
+                font-weight: 700;
+              }
+
+              /* HUD Corners */
+              .shield-corner {
+                position: absolute;
+                width: 12px;
+                height: 12px;
+                border: 1.5px solid rgba(255, 255, 255, 0.15);
+                z-index: 3;
+                pointer-events: none;
+              }
+              .shield-corner.top-left { top: 12px; left: 12px; border-right: none; border-bottom: none; }
+              .shield-corner.top-right { top: 12px; right: 12px; border-left: none; border-bottom: none; }
+              .shield-corner.bottom-left { bottom: 12px; left: 12px; border-right: none; border-top: none; }
+              .shield-corner.bottom-right { bottom: 12px; right: 12px; border-left: none; border-top: none; }
+
+
+              /* Sirens / Warning beacons and Screen shake */
+              .quantum-capsule.capsule-active {
+                border-color: var(--agent-color, #c084fc);
+                box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.9), 0 0 15px var(--agent-shadow, rgba(192, 132, 252, 0.25));
+                animation: capsule-alert 1.5s infinite alternate ease-in-out;
+              }
+
+              @keyframes capsule-alert {
+                0% { border-color: rgba(255, 255, 255, 0.05); }
+                100% { border-color: var(--agent-color, #c084fc); }
+              }
+
+              .capsule-warning-beacon {
+                position: absolute;
+                top: 8px;
+                right: 12px;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+                font-family: var(--font-mono, monospace);
+                font-size: 0.52rem;
+                font-weight: 700;
+                color: #f59e0b;
+                z-index: 15;
+                background: rgba(0,0,0,0.7);
+                padding: 2px 6px;
+                border-radius: 4px;
+                border: 1px solid rgba(245, 158, 11, 0.3);
+                opacity: 0;
+                transition: opacity 0.3s;
+              }
+
+              .quantum-capsule.capsule-active .capsule-warning-beacon {
+                opacity: 1;
+              }
+
+              .beacon-dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #f59e0b;
+                box-shadow: 0 0 8px #f59e0b;
+                animation: beacon-blink 0.5s infinite alternate steps(2);
+              }
+
+              @keyframes beacon-blink {
+                0% { opacity: 0.2; }
+                100% { opacity: 1; }
+              }
+
+              /* Shake impact */
+              .capsule-shudder {
+                animation: slam-shake 0.35s cubic-bezier(.36,.07,.19,.97) both;
+                transform: translate3d(0, 0, 0);
+              }
+
+              @keyframes slam-shake {
+                10%, 90% { transform: translate3d(-1.5px, 0, 0); }
+                20%, 80% { transform: translate3d(3px, 0, 0); }
+                30%, 50%, 70% { transform: translate3d(-4.5px, 0, 0); }
+                40%, 60% { transform: translate3d(4.5px, 0, 0); }
+              }
+
+              /* HUD Terminal logs */
+              .hud-terminal-console {
+                flex: 1;
+                background: rgba(0, 0, 0, 0.45);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+                border-radius: 8px;
+                padding: 0.5rem 0.75rem;
+                margin: 0.4rem 0;
+                font-family: var(--font-mono, 'JetBrains Mono', monospace);
+                font-size: 0.68rem;
+                color: #22c55e;
+                overflow-y: auto;
+                line-height: 1.4;
+                text-shadow: 0 0 4px rgba(34, 197, 94, 0.2);
+                position: relative;
+              }
+
+              .hud-console-cursor {
+                display: inline-block;
+                width: 6px;
+                height: 10px;
+                background: #22c55e;
+                margin-left: 2px;
+                animation: cursor-blink 0.8s steps(2) infinite;
+              }
+
+              @keyframes cursor-blink {
+                0%, 100% { opacity: 0; }
+                50% { opacity: 1; }
+              }
+
+              .hud-footer-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 1rem;
+              }
+
+              /* Quantum Waveform Frequency Visualizer */
+              .quantum-waves {
+                display: flex;
+                align-items: flex-end;
+                gap: 2px;
+                height: 16px;
+              }
+
+              .quantum-wave-bar {
+                width: 2px;
+                height: 100%;
+                background: var(--agent-color, #c084fc);
+                border-radius: 1px;
+                animation: wave-bounce 0.8s ease-in-out infinite alternate;
+              }
+
+              .quantum-wave-bar:nth-child(2) { animation-delay: 0.15s; animation-duration: 0.6s; }
+              .quantum-wave-bar:nth-child(3) { animation-delay: 0.3s; animation-duration: 1s; }
+              .quantum-wave-bar:nth-child(4) { animation-delay: 0.05s; animation-duration: 0.7s; }
+              .quantum-wave-bar:nth-child(5) { animation-delay: 0.25s; animation-duration: 0.9s; }
+              .quantum-wave-bar:nth-child(6) { animation-delay: 0.1s; animation-duration: 0.5s; }
+              .quantum-wave-bar:nth-child(7) { animation-delay: 0.4s; animation-duration: 0.8s; }
+
+              @keyframes wave-bounce {
+                0% { height: 2px; }
+                100% { height: 16px; }
+              }
+
+              /* Dynamic Pipeline Nodes */
+              .quantum-pipeline {
+                display: flex;
+                gap: 0.5rem;
+              }
+
+              .pipeline-step {
+                display: flex;
+                align-items: center;
+                gap: 0.25rem;
+                font-size: 0.55rem;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                color: #71717a;
+                text-transform: uppercase;
+              }
+
+              .pipeline-indicator {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: #27272a;
+                border: 1px solid rgba(255, 255, 255, 0.04);
+                transition: all 0.3s;
+              }
+
+              .pipeline-step.completed {
+                color: #10b981;
+              }
+              .pipeline-step.completed .pipeline-indicator {
+                background: #10b981;
+                box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+              }
+
+              .pipeline-step.active {
+                color: var(--agent-color, #c084fc);
+              }
+              .pipeline-step.active .pipeline-indicator {
+                background: var(--agent-color, #c084fc);
+                box-shadow: 0 0 8px var(--agent-shadow, rgba(192, 132, 252, 0.6));
+                animation: cyber-pulse-purple 1.5s infinite ease-in-out;
+              }
+
+              /* Hover Tooltip/Detail Card for Dock Items */
+              .dock-tooltip {
+                position: absolute;
+                bottom: 45px;
+                left: 50%;
+                transform: translateX(-50%) translateY(10px);
+                background: rgba(10, 10, 15, 0.95);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(167, 139, 250, 0.1);
+                border-radius: 10px;
+                padding: 0.5rem 0.75rem;
+                width: 170px;
+                text-align: center;
+                pointer-events: none;
+                opacity: 0;
+                transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2);
+                z-index: 20;
+                backdrop-filter: blur(8px);
+              }
+
+              .quantum-dock-item:hover .dock-tooltip {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+              }
+
+              .tooltip-title {
+                font-family: var(--font-display, 'Outfit', sans-serif);
+                font-size: 0.68rem;
+                font-weight: 800;
+                color: #ffffff;
+                text-transform: uppercase;
+                margin-bottom: 0.15rem;
+              }
+
+              .tooltip-desc {
+                font-size: 0.58rem;
+                color: #a1a1aa;
+                line-height: 1.3;
+              }
+
+              /* Responsive tweaks for Quantum Deck */
+              @media (max-width: 640px) {
+                .quantum-deck-container {
+                  min-height: 320px;
+                  padding: 1rem;
+                }
+                .quantum-active-hud {
+                  flex-direction: column;
+                  gap: 1rem;
+                  height: auto;
+                }
+                .hud-viewport-panel {
+                  flex: 0 0 90px;
+                  width: 90px;
+                  height: 90px;
+                }
+                .hud-metrics-panel {
+                  height: auto;
+                  width: 100%;
+                  gap: 0.5rem;
+                }
+                .hud-terminal-console {
+                  min-height: 50px;
+                }
+                .quantum-console-dock {
+                  flex-wrap: wrap;
+                  justify-content: center;
+                  gap: 0.4rem;
+                }
+              }
+            `}</style>
+
+            {/* Quantum mechanical capsule interface */}
+            <div className={`quantum-capsule ${isShaking ? 'capsule-shudder' : ''} ${isExecuting ? 'capsule-active' : ''}`} style={{
+              '--agent-color': displayAgentDetails?.color || 'rgba(167, 139, 250, 0.5)',
+              '--agent-shadow': (displayAgentDetails?.secondaryColor || '#a855f7') + '40'
+            } as any}>
+              
+              {/* Flashing Warning Beacon */}
+              <div className="capsule-warning-beacon">
+                <span className="beacon-dot" />
+                <span>FLEET_ACTIVE</span>
               </div>
-            )}
 
-            {showMissedGym && (
-              <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
-                <div style={{ background: 'rgba(20,20,25,0.95)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '24px', padding: '2rem', width: '90%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: '#f59e0b', marginBottom: '1.5rem' }}>
-                    <div style={{ background: 'rgba(245,158,11,0.15)', padding: '0.75rem', borderRadius: '12px' }}><Siren size={24} /></div>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700 }}>Autonomous Re-Schedule</h2>
-                  </div>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: 1.5, marginBottom: '2rem' }}>
-                    You missed your 2 PM workout. Zentrack has autonomously moved it to 8 PM tonight and shifted your reading to tomorrow morning to keep you on track.
-                  </p>
-                  <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button onClick={() => setShowMissedGym(false)} className="btn-primary" style={{ flex: 1, background: '#f59e0b', color: '#000', fontWeight: 700 }}>Approve Changes</button>
-                    <button onClick={() => setShowMissedGym(false)} className="btn-secondary" style={{ flex: 1 }}>Reject</button>
-                  </div>
-                </div>
-              </div>
-            )}
+              {/* Inner Chamber */}
+              <div className="capsule-chamber">
+                {displayAgentDetails ? (
+                  <div className="chamber-content">
+                    <div className="chamber-left">
+                      <div className="chamber-viewport">
+                        {/* Concentric spinning diagnostic reticles */}
+                        <div className="hud-reticle-circle ring-slow" />
+                        <div className="hud-reticle-circle ring-fast" />
+                        <div className="hud-reticle-corners" />
 
-            {showMorningBrief && (
-              <div style={{ position: 'fixed', top: '10%', right: '5%', zIndex: 10000, display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'slideInRight 0.3s ease-out' }}>
-                <div style={{ background: 'rgba(20,20,25,0.95)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '16px', padding: '1.5rem', width: '350px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', borderLeft: '4px solid #3b82f6' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <span style={{ fontSize: '0.8rem', textTransform: 'uppercase', color: '#60a5fa', fontWeight: 700 }}>8:00 AM — Daily Briefing</span>
-                    <button onClick={() => setShowMorningBrief(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer' }}><X size={16}/></button>
-                  </div>
-                  <p style={{ color: 'var(--text-primary)', fontSize: '0.95rem', lineHeight: 1.5, margin: 0 }}>
-                    🚨 You have 2 OVERDUE items from yesterday. They won't disappear. I've blocked your morning from 9-11am to clear them. Let's build momentum.
-                  </p>
-                </div>
-              </div>
-            )}
+                        <img 
+                          src={displayAgentDetails.image} 
+                          alt={displayAgentDetails.title} 
+                          className="chamber-avatar hologram-glow" 
+                        />
+                        <div className="hud-overlay-scanner" />
+                      </div>
+                    </div>
+                    <div className="chamber-right">
+                      <div className="chamber-metrics-header">
+                        <div className="chamber-agent-title">
+                          <span>{displayAgentDetails.icon}</span>
+                          <span>{displayAgentDetails.title}</span>
+                        </div>
+                        <div className="chamber-agent-tagline">{displayAgentDetails.tagline}</div>
+                      </div>
+                      <div className="chamber-description">
+                        {displayAgentDetails.description}
+                      </div>
 
-            {showAccountability && (
-              <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', background: 'rgba(0,0,0,0.8)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
-                <div style={{ background: 'rgba(20,20,25,0.95)', border: '1px solid rgba(168,85,247,0.3)', borderRadius: '24px', padding: '2rem', width: '90%', maxWidth: '450px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)', textAlign: 'center' }}>
-                  <Target size={48} color="#c084fc" style={{ marginBottom: '1rem' }} />
-                  <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: 800, color: '#fff', marginBottom: '1rem' }}>9:00 PM Accountability Check</h2>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: 1.5, marginBottom: '2rem' }}>
-                    You promised to complete {accountabilityData.promised} tasks today, but you only finished {accountabilityData.completed}. The remaining {accountabilityData.remaining} have been carried over to tomorrow and tagged as <strong>[Promised]</strong>. 
-                  </p>
-                  <button onClick={() => setShowAccountability(false)} className="btn-primary" style={{ width: '100%', padding: '1rem', background: '#a855f7', color: '#fff', fontWeight: 700 }}>Understood.</button>
-                </div>
-              </div>
-            )}
-
-            {showCalendarConflict && conflictDetails && (
-              <div style={{ position: 'fixed', top: '20px', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, animation: 'slideDown 0.3s ease-out' }}>
-                <div style={{ background: 'rgba(236,72,153,0.1)', backdropFilter: 'blur(20px)', border: '1px solid rgba(236,72,153,0.3)', borderRadius: '16px', padding: '1.25rem', width: '400px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', display: 'flex', gap: '1rem' }}>
-                  <div style={{ marginTop: '0.2rem' }}><Calendar size={24} color="#f472b6" /></div>
-                  <div>
-                    <h3 style={{ margin: '0 0 0.5rem 0', color: '#fff', fontSize: '1.05rem' }}>Smart Time-Block Defender</h3>
-                    <p style={{ margin: '0 0 1rem 0', color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', lineHeight: 1.4 }}>
-                      A new meeting <strong>"{conflictDetails.gcalEvent.summary}"</strong> was added to your Google Calendar. This conflicts with your scheduled <strong>"{conflictDetails.task.text}"</strong> block. Should I shift your task block?
-                    </p>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
-                      <button onClick={async () => {
-                         // Automatically clear time slot so it gets rescheduled
-                         const { doc, updateDoc } = await import('firebase/firestore');
-                         await updateDoc(doc(db, 'todos', conflictDetails.task.id), { timeSlot: null });
-                         toast.success("Task block shifted to unscheduled.");
-                         setShowCalendarConflict(false);
-                      }} style={{ background: '#f472b6', color: '#000', border: 'none', padding: '0.4rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>Yes, move it</button>
-                      <button onClick={() => setShowCalendarConflict(false)} style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', padding: '0.4rem 1rem', borderRadius: '8px', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>No, I'll decline the meeting</button>
+                      {/* Depicted Capabilities section */}
+                      <div className="chamber-depicts-container">
+                        <div className="depicts-title">Depicted Capabilities //</div>
+                        <div className="depicts-grid">
+                          {displayAgentDetails.depicts.map((dep, idx) => (
+                            <div key={idx} className="depicts-badge">
+                              <span className="depicts-badge-dot" />
+                              <span>{dep}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  // Idle core inside chamber when closed or waiting
+                  <div className="quantum-idle-chamber">
+                    <div className="quantum-core-reactor">
+                      <div className="quantum-reactor-ring ring-1" />
+                      <div className="quantum-reactor-ring ring-2" />
+                      <div className="quantum-reactor-ring ring-3" />
+                      <div className="quantum-reactor-orb" />
+                    </div>
+                    <div className="quantum-idle-text">
+                      <div className="quantum-idle-title">Zenith OS Operational</div>
+                      <div className="quantum-idle-subtitle">Chamber locked · Awaiting dispatch command</div>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
 
-            {showPatternAnalysis && (
-              <div style={{ position: 'fixed', bottom: '20px', right: '20px', zIndex: 10000, animation: 'slideUp 0.3s ease-out' }}>
-                <div style={{ background: 'rgba(16,185,129,0.1)', backdropFilter: 'blur(20px)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '16px', padding: '1.25rem', width: '380px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', display: 'flex', gap: '1rem', borderTop: '3px solid #10b981' }}>
-                  <div style={{ marginTop: '0.2rem' }}><Activity size={24} color="#34d399" /></div>
-                  <div>
-                    <h3 style={{ margin: '0 0 0.5rem 0', color: '#fff', fontSize: '1.05rem' }}>Pattern Intelligence Update</h3>
-                    <p style={{ margin: '0 0 0.5rem 0', color: 'rgba(255,255,255,0.8)', fontSize: '0.9rem', lineHeight: 1.4 }}>
-                      I noticed you consistently underestimate "Physics" tasks by 2x. I have automatically updated your default estimates for future Physics tasks to prevent scheduling overflow.
-                    </p>
-                    <button onClick={() => setShowPatternAnalysis(false)} style={{ background: 'none', color: '#34d399', border: 'none', padding: 0, fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline' }}>Got it</button>
+              {/* Quantum Stasis Force Field Overlay */}
+              <div className={`stasis-force-field ${doorsOpen ? 'dissolved' : 'active'} ${isShaking ? 'shield-shockwave' : ''}`}>
+                <div className="shield-grid" />
+                <div className="shield-scanner" />
+                <div className="shield-energy-ripples" />
+                
+                <div className="shield-corner top-left" />
+                <div className="shield-corner top-right" />
+                <div className="shield-corner bottom-left" />
+                <div className="shield-corner bottom-right" />
+                
+                <div className="shield-center-core">
+                  <div className="core-orbit ring-1" />
+                  <div className="core-orbit ring-2" />
+                  <div className="core-orbit ring-3" />
+                  <div className="core-power-node" />
+                  <div className="core-lock-status">STASIS // SECURED</div>
+                </div>
+
+                <div className="shield-hud-panel panel-left">
+                  <div className="hud-header">SYS_CONTAINMENT //</div>
+                  <div className="hud-metric-row">
+                    <span className="metric-label">TEMP:</span>
+                    <span className="metric-val">0.04 K</span>
+                  </div>
+                  <div className="hud-metric-row">
+                    <span className="metric-label">SHLD:</span>
+                    <span className="metric-val">100%</span>
+                  </div>
+                  <div className="hud-metric-row">
+                    <span className="metric-label">PRSS:</span>
+                    <span className="metric-val">0.00 kPa</span>
+                  </div>
+                </div>
+
+                <div className="shield-hud-panel panel-right">
+                  <div className="hud-header">QUANTUM_DECK //</div>
+                  <div className="hud-metric-row">
+                    <span className="metric-label">VOLT:</span>
+                    <span className="metric-val">NOMINAL</span>
+                  </div>
+                  <div className="hud-metric-row">
+                    <span className="metric-label">SYNC:</span>
+                    <span className="metric-val">STABLE</span>
+                  </div>
+                  <div className="hud-metric-row">
+                    <span className="metric-label">GRID:</span>
+                    <span className="metric-val">SECURE</span>
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Terminal monitor area, always visible below capsule to trace agent work logs */}
+            <div className="quantum-monitor-row" style={{
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+              margin: '1rem 0 0.5rem 0',
+              '--agent-color': activeDetails.color,
+              '--agent-shadow': activeDetails.secondaryColor + '40'
+            } as any}>
+              <div className="hud-terminal-console" style={{ width: '100%', minHeight: '60px', margin: 0 }}>
+                <span style={{ color: '#71717a' }}>&gt;_ [SYS_PROMPT]:</span> {agentStatus}
+                <span className="hud-console-cursor" />
+              </div>
+
+              <div className="hud-footer-row" style={{ width: '100%', marginTop: '0.2rem' }}>
+                {/* Pulsing Quantum Waveform */}
+                <div className="quantum-waves">
+                  <div className="quantum-wave-bar" style={{ animationPlayState: isExecuting ? 'running' : 'paused' }} />
+                  <div className="quantum-wave-bar" style={{ animationPlayState: isExecuting ? 'running' : 'paused' }} />
+                  <div className="quantum-wave-bar" style={{ animationPlayState: isExecuting ? 'running' : 'paused' }} />
+                  <div className="quantum-wave-bar" style={{ animationPlayState: isExecuting ? 'running' : 'paused' }} />
+                  <div className="quantum-wave-bar" style={{ animationPlayState: isExecuting ? 'running' : 'paused' }} />
+                  <div className="quantum-wave-bar" style={{ animationPlayState: isExecuting ? 'running' : 'paused' }} />
+                  <div className="quantum-wave-bar" style={{ animationPlayState: isExecuting ? 'running' : 'paused' }} />
+                </div>
+
+                {/* Step Pipeline Progress */}
+                <div className="quantum-pipeline">
+                  {pipelineSteps.map(step => (
+                    <div key={step.id} className={`pipeline-step ${step.status}`}>
+                      <div className="pipeline-indicator" />
+                      <span>{step.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Dock showing all agents always (clickable/hoverable) */}
+            <div className="quantum-console-dock">
+              {Object.entries(AGENT_DETAILS).map(([key, value]) => {
+                const isThisAgentActive = activeAgent === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      // Pre-populate input when clicking an idle agent icon to guide user
+                      if (!isExecuting) {
+                        const inputPlaceholderMap: Record<string, string> = {
+                          ORCHESTRATOR: 'Draft a project summary plan',
+                          SEARCH: 'Search the web for the latest tech trends in AI',
+                          DOCS: 'Analyze file forensic_audit_report.md and extract key details',
+                          DATA: 'Run analysis on task statistics',
+                          COMMS: 'Check my workspace email inbox and summarize unread mail',
+                          SCHEDULER: 'Find a time slot and schedule a meeting with team next week',
+                          DRIVE: 'Show my latest files in Google Drive',
+                          CODING: 'Create a typescript utility to format currency values',
+                          QA: 'Run audit checks on the workspace code changes',
+                          PLANNER: 'Break down my goal to build a portfolio website into tasks',
+                          MONITOR: 'Run a full risk check on all my overdue and today tasks',
+                          GHOST_DETECTOR: 'Scan my inbox for any hidden deadlines I missed',
+                          EXECUTOR: 'Send a status update email to my team, block 2h focus time and create a follow-up task',
+                        };
+                        setCommandInput(inputPlaceholderMap[key] || '');
+                        toast.info(`Configured input for ${key} Agent`);
+                      }
+                    }}
+                    className="quantum-dock-item"
+                    style={{
+                      '--hover-color': value.color,
+                      '--hover-shadow': value.secondaryColor + '60',
+                      border: isThisAgentActive ? `2px solid ${value.color}` : undefined,
+                      transform: isThisAgentActive ? 'scale(1.2) translateY(-2px)' : undefined,
+                      boxShadow: isThisAgentActive ? `0 0 15px ${value.color}` : undefined,
+                      zIndex: isThisAgentActive ? 10 : undefined,
+                    } as any}
+                  >
+                    <img 
+                      src={value.image} 
+                      alt={value.title} 
+                      className="quantum-dock-img"
+                      style={{
+                        filter: isThisAgentActive || !isExecuting ? 'grayscale(0) opacity(1)' : undefined
+                      }}
+                    />
+                    
+                    {/* Tooltip on hover */}
+                    <div className="dock-tooltip">
+                      <div className="tooltip-title" style={{ color: value.color }}>{key}</div>
+                      <div className="tooltip-desc">{value.description}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+            
+            {/* Mission Report Backdrop & Overlay in Portal */}
+            {typeof window !== 'undefined' && typeof document !== 'undefined' && createPortal(
+              <>
+                {/* Mission Report Backdrop */}
+                <AnimatePresence>
+                  {agentResult && (
+                    <motion.div 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="mission-backdrop"
+                      onClick={() => setAgentResult(null)}
+                    />
+                  )}
+                </AnimatePresence>
+
+                {/* Mission Report Overlay */}
+                <AnimatePresence>
+                  {agentResult && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+                      animate={{ opacity: 1, scale: 1, x: "-50%", y: "-50%" }}
+                      exit={{ opacity: 0, scale: 0.95, x: "-50%", y: "-50%" }}
+                      className={`mission-report-overlay ${isReportExpanded ? 'expanded' : ''}`}
+                    >
+                      <div className="mission-report-header">
+                        <div className="mission-report-title">
+                          <BrainCircuit size={18} className="text-purple-400" />
+                          <span>Mission Report</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button className="mission-report-action" onClick={() => setIsReportExpanded(!isReportExpanded)} title={isReportExpanded ? "Collapse" : "Expand"}>
+                            <Zap size={16} />
+                          </button>
+                          <button className="mission-report-action" onClick={() => setAgentResult(null)}>
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mission-report-content markdown-body" data-lenis-prevent="true">
+                        {missionComplete && (
+                          <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.5rem' }}>
+                              <Check size={20} /> MISSION COMPLETE
+                            </div>
+                          </div>
+                        )}
+                        {/* Full agent result rendered as rich markdown */}
+                        {agentResult && (
+                          <div style={{ color: '#e4e4e7', fontSize: '0.92rem', lineHeight: 1.7, marginBottom: '1.5rem' }}>
+                            <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{agentResult}</ReactMarkdown>
+                          </div>
+                        )}
+                        {(() => {
+                          const { meetLinks, docLinks } = parseMissionActions(agentResult || '');
+                          if (meetLinks.length === 0 && docLinks.length === 0) return null;
+                          return (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                              {meetLinks.map(link => (
+                                <a key={link} href={link} target="_blank" rel="noopener noreferrer" 
+                                   style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem', background: '#2563eb', color: 'white', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)' }}>
+                                  <Video size={16} /> Join Meeting
+                                </a>
+                              ))}
+                              {docLinks.map(link => (
+                                <a key={link} href={link} target="_blank" rel="noopener noreferrer" 
+                                   style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem', background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600, textDecoration: 'none', transition: 'all 0.2s' }}>
+                                  <FileText size={16} /> Open Document
+                                </a>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <div className="mission-report-footer">
+                        <input
+                          type="text"
+                          value={commandInput}
+                          onChange={e => setCommandInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleExecuteCommand(); }}
+                          disabled={isExecuting}
+                          placeholder="Assign a follow-up task..."
+                          className="agent-command-input focus:outline-none focus:ring-0"
+                        />
+                        <button 
+                          className="execute-command-btn" 
+                          onClick={handleExecuteCommand}
+                          disabled={isExecuting || !commandInput.trim()}
+                        >
+                          {isExecuting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </>,
+              document.body
             )}
-          </AnimatePresence>
+
+
+          
+          <div className="status-bar" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1.2rem', background: 'rgba(5, 5, 10, 0.6)' }}>
+            <div className="status-text" style={{ fontSize: '0.85rem' }}>
+              <span className={`status-dot ${isExecuting ? 'pulsing' : ''}`} style={{ background: isExecuting ? '#a855f7' : '#ef4444' }}></span>
+              {agentStatus}
+            </div>
+            <div className="command-bar-container" style={{ position: 'relative' }}>
+              <AnimatePresence>
+                {isListening && interimTranscript && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 15px)',
+                      left: 0,
+                      background: 'rgba(168, 85, 247, 0.95)',
+                      backdropFilter: 'blur(8px)',
+                      padding: '0.6rem 1rem',
+                      borderRadius: '12px',
+                      color: '#fff',
+                      fontSize: '0.9rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 4px 20px rgba(168, 85, 247, 0.4)',
+                      zIndex: 20,
+                      maxWidth: '90%',
+                      pointerEvents: 'none',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}
+                  >
+                    <Mic size={14} style={{ animation: 'pulse 1.5s infinite alternate' }} />
+                    <span style={{ fontStyle: 'italic' }}>"{interimTranscript}"</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <input
+                type="text"
+                value={commandInput}
+                onChange={e => setCommandInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleExecuteCommand(); }}
+                disabled={isExecuting}
+                placeholder={isListening ? "Listening..." : "Assign a task to the Fleet... e.g. 'Read my latest emails and summarize'"}
+                className="agent-command-input focus:outline-none focus:ring-0 focus:border-transparent"
+              />
+              <div className="command-bar-actions">
+                <button 
+                  className={`voice-command-btn ${isListening ? 'listening' : ''}`} 
+                  onClick={toggleListening}
+                  disabled={isExecuting}
+                  title="Voice Command"
+                >
+                  {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                </button>
+                <button 
+                  className="execute-command-btn" 
+                  onClick={handleExecuteCommand}
+                  disabled={isExecuting || !commandInput.trim()}
+                >
+                  {isExecuting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bottom-indicator"></div>
+        </div>
+
+        {/* RIGHT COLUMN */}
+        <div className="right-column">
+          
+          {/* URGENCY MATRIX */}
+          <div className="urgency-matrix">
+            <h3 className="section-label">URGENCY MATRIX</h3>
+            
+            {matrixTasks.length === 0 ? (
+               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                 No urgent tasks pending.
+               </div>
+            ) : (
+              matrixTasks.map(task => {
+                const uLevel = getUrgencyLevel(task.date);
+                const isImmediate = uLevel === 'overdue' || uLevel === 'critical' || task.priority === 'high';
+                return (
+                  <div key={task.id} className={`urgency-card ${isImmediate ? 'immediate' : 'flow'}`}>
+                    <div className="urgency-header">
+                      <span className={`urgency-type ${isImmediate ? 'immediate-text' : 'flow-text'}`}>
+                        {isImmediate ? 'IMMEDIATE' : 'FLOW'}
+                      </span>
+                      <span className="urgency-time">{getCountdownText(task.date) || 'Today'}</span>
+                    </div>
+                    <div className="urgency-title">{task.title || task.text}</div>
+                  </div>
+                );
+              })
+            )}
+            
+            <div className="bandwidth-section">
+              <div className="bandwidth-bar-bg">
+                <div className="bandwidth-bar-fill" style={{ width: `${bandwidthPercent}%` }}></div>
+              </div>
+              <div className="bandwidth-text">Daily Bandwidth Capacity: {bandwidthPercent}%</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      {/* BOTTOM ROW 1 - Fleet Telemetry */}
+      <div className="bottom-row">
+        <div className="roi-card">
+          <div className="roi-ring-container" style={{ position: 'relative' }}>
+            <svg viewBox="0 0 36 36" className="circular-chart">
+              <path className="circle-bg"
+                d="M18 2.0845
+                  a 15.9155 15.9155 0 0 1 0 31.831
+                  a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+              <path className="circle"
+                strokeDasharray={`${bandwidthPercent}, 100`}
+                d="M18 2.0845
+                  a 15.9155 15.9155 0 0 1 0 31.831
+                  a 15.9155 15.9155 0 0 1 0 -31.831"
+              />
+            </svg>
+            <div className="ring-text" style={{ fontSize: '0.75rem', marginTop: '2px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f0f0f3', lineHeight: 1 }}>{bandwidthPercent}%</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.45rem', letterSpacing: '0.15em', marginTop: '2px' }}>CAPACITY</div>
+            </div>
+          </div>
+          
+          <div className="roi-content">
+            <h3 className="section-label">FLEET TELEMETRY & SYSTEM HEALTH</h3>
+            {urgencyState === 'state-critical' ? (
+                <div className="roi-status" style={{color: '#ef4444'}}>Threat Level: <span style={{color: '#ef4444'}}>CRITICAL</span></div>
+            ) : urgencyState === 'state-active' ? (
+                <div className="roi-status" style={{color: '#f97316'}}>System State: <span style={{color: '#f97316'}}>ELEVATED</span></div>
+            ) : (
+                <div className="roi-status">System State: <span className="highlight-green">OPTIMAL</span></div>
+            )}
+            
+            <div className="roi-stats" style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+              <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: getKeyStatus().hasPersonalKey ? '1px solid rgba(0,191,165,0.3)' : '1px solid rgba(255,255,255,0.1)' }}>
+                <BrainCircuit size={13} style={{ color: getKeyStatus().hasPersonalKey ? '#00BFA5' : '#a1a1aa' }} />
+                {getKeyStatus().hasPersonalKey ? 'Pro Neural Link' : 'Shared API Pool'}
+              </span>
+              <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Activity size={13} style={{ color: '#8b5cf6' }} />
+                {completedTodayCount} Operations Executed
+              </span>
+              <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <Zap size={13} style={{ color: '#eab308' }} />
+                +{hoursSaved}h Deep Focus
+              </span>
+            </div>
+
+            {/* ── Autonomous Quick-Fire Agent Buttons ── */}
+            <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem', flexWrap: 'wrap' }}>
+              <motion.button
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                onClick={handleGhostDetector}
+                disabled={isExecuting}
+                title="Scan inbox for hidden deadlines"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  background: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(124,58,237,0.1))',
+                  border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px',
+                  padding: '0.45rem 0.9rem', color: '#c4b5fd', fontSize: '0.72rem',
+                  fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
+                  letterSpacing: '0.04em', opacity: isExecuting ? 0.5 : 1,
+                  transition: 'all 0.2s', backdropFilter: 'blur(4px)'
+                }}
+              >
+                <Search size={12} /> 👻 Scan Ghost Deadlines
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                onClick={handleMonitorRisk}
+                disabled={isExecuting}
+                title="Run full risk assessment on all tasks"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  background: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.1))',
+                  border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px',
+                  padding: '0.45rem 0.9rem', color: '#fca5a5', fontSize: '0.72rem',
+                  fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
+                  letterSpacing: '0.04em', opacity: isExecuting ? 0.5 : 1,
+                  transition: 'all 0.2s', backdropFilter: 'blur(4px)'
+                }}
+              >
+                <AlertTriangle size={12} /> 🚨 Risk Assessment
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                onClick={() => handleExecuteCommand('PLANNER MODE: Help me break down my highest priority task into a clear action plan with milestones, create subtasks in ZenTrack, and block calendar time for the most critical milestone.')}
+                disabled={isExecuting}
+                title="Strategic project planner"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '0.4rem',
+                  background: 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(217,119,6,0.1))',
+                  border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px',
+                  padding: '0.45rem 0.9rem', color: '#fde68a', fontSize: '0.72rem',
+                  fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
+                  letterSpacing: '0.04em', opacity: isExecuting ? 0.5 : 1,
+                  transition: 'all 0.2s', backdropFilter: 'blur(4px)'
+                }}
+              >
+                <Map size={12} /> 🗺️ Plan Project
+              </motion.button>
+            </div>
+          </div>
         </div>
       </div>
-    </DragDropContext>
+
+      {/* BOTTOM ROW 2 - Workspace Integrated */}
+      <div className="bottom-row">
+        <div className="workspace-card" style={{ padding: isGoogleConnected ? '1.5rem 2rem' : '1.5rem', transition: 'all 0.3s ease' }}>
+          
+          <div className="app-icons" style={{ gap: '0.75rem', display: 'flex', flexWrap: 'wrap' }}>
+            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-drive.png" alt="Google Drive" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
+            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/gmail.png" alt="Gmail" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
+            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-calendar.png" alt="Google Calendar" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
+            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-docs.png" alt="Google Docs" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
+            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-sheets.png" alt="Google Sheets" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
+            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-meet.png" alt="Google Meet" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
+          </div>
+          
+          <div className="workspace-content" style={{ marginLeft: '1rem', flex: 1 }}>
+            <h3 className="section-label">GOOGLE WORKSPACE</h3>
+            {isGoogleConnected ? (
+              <div className="workspace-status" style={{ color: '#2dd4bf', fontWeight: 500 }}>
+                Data Synced with AI Fleet
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400, marginTop: '2px' }}>
+                  Drive, Mail, Calendar, Docs & More
+                </div>
+              </div>
+            ) : (
+              <div className="workspace-status" style={{ fontSize: '0.9rem' }}>Connect to enable automated workflows</div>
+            )}
+          </div>
+          
+          {isGoogleConnected ? (
+            <>
+              <div className="system-time" style={{ marginLeft: 'auto' }}>
+                <h3 className="section-label" style={{ textAlign: 'right' }}>SYSTEM TIME</h3>
+                <div className="time-display">{time || '00:00:00'}</div>
+              </div>
+              <button className="confirm-btn" style={{ background: 'rgba(45, 212, 191, 0.2)', color: '#2dd4bf', boxShadow: 'none' }}>
+                <Check size={28} />
+              </button>
+            </>
+          ) : (
+            <button 
+              onClick={handleConnectWorkspace}
+              disabled={isConnecting}
+              style={{
+                marginLeft: 'auto',
+                background: 'linear-gradient(135deg, #4285F4, #34A853, #FBBC05, #EA4335)',
+                border: 'none',
+                padding: '0.75rem 1.5rem',
+                borderRadius: '8px',
+                color: '#fff',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                boxShadow: '0 4px 15px rgba(66, 133, 244, 0.3)',
+                opacity: isConnecting ? 0.7 : 1
+              }}
+            >
+              {isConnecting ? <Loader2 size={18} className="spin" /> : 'Sign in with Google'}
+              {!isConnecting && <ArrowRight size={18} />}
+            </button>
+          )}
+          
+          {isGoogleConnected && <div className="bottom-indicator"></div>}
+        </div>
+      </div>
+      
+    </div>
   );
-};
+}

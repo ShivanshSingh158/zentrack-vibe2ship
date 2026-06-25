@@ -6,12 +6,12 @@ import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { toast } from 'sonner';
 
 export const CrisisTriageModal = ({ onClose }: { onClose: () => void }) => {
-  const { todos, goals, habits } = useGlobalData();
+  const { tasks, goals, habits } = useGlobalData();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    generateCrisisTriage({ todos, goals, habits })
+    generateCrisisTriage({ tasks, goals, habits })
       .then(res => {
         setData(res);
         setLoading(false);
@@ -20,7 +20,7 @@ export const CrisisTriageModal = ({ onClose }: { onClose: () => void }) => {
         console.error("Triage failed", err);
         setLoading(false);
       });
-  }, [todos, goals, habits]);
+  }, [tasks, goals, habits]);
 
   return (
     <div style={{
