@@ -5,7 +5,9 @@ export type UrgencyLevel = 'normal' | 'upcoming' | 'urgent' | 'critical' | 'over
 
 export const getUrgencyLevel = (dateStr: string): UrgencyLevel => {
   if (!dateStr) return 'normal';
-  const deadlineMs = new Date(dateStr).getTime() + 23.5 * 3600 * 1000;
+  const parsed = new Date(dateStr);
+  if (isNaN(parsed.getTime())) return 'normal';
+  const deadlineMs = parsed.getTime() + 23.5 * 3600 * 1000;
   const hoursLeft = (deadlineMs - Date.now()) / 3600000;
   if (hoursLeft < 0) return 'overdue';
   if (hoursLeft < 6) return 'critical';
@@ -15,7 +17,10 @@ export const getUrgencyLevel = (dateStr: string): UrgencyLevel => {
 };
 
 export const getCountdownText = (dateStr: string): string => {
-  const deadlineMs = new Date(dateStr).getTime() + 23.5 * 3600 * 1000;
+  if (!dateStr) return '';
+  const parsed = new Date(dateStr);
+  if (isNaN(parsed.getTime())) return '';
+  const deadlineMs = parsed.getTime() + 23.5 * 3600 * 1000;
   const diff = deadlineMs - Date.now();
   if (diff < 0) return 'Overdue';
   const h = Math.floor(diff / 3600000);

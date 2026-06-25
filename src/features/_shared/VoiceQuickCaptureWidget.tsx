@@ -8,6 +8,7 @@ import { db, auth } from '../../services/firebase';
 import { orchestrateAgent } from '../../agent/orchestrator';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
+import { agentMemoryStore } from '../../stores/agentMemoryStore';
 
 export const VoiceQuickCaptureWidget = () => {
   const [isListening, setIsListening] = useState(false);
@@ -105,6 +106,7 @@ export const VoiceQuickCaptureWidget = () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
     try {
+      agentMemoryStore.appendMessage({ role: 'user', title: text });
       const answer = await orchestrateAgent(
         text,
         tasks,
@@ -118,6 +120,7 @@ export const VoiceQuickCaptureWidget = () => {
           }
         }
       );
+      agentMemoryStore.appendMessage({ role: 'agent', title: answer });
       
       toast.success('Mission complete', { 
         id: processToastId,

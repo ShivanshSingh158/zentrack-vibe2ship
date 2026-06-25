@@ -39,7 +39,8 @@ export const executeTool = async (
   toolName: string,
   args: Record<string, unknown>,
   userTodos: Task[],
-  calendarEvents: CalendarEvent[]
+  calendarEvents: CalendarEvent[],
+  signal?: AbortSignal
 ): Promise<ToolResult> => {
 
   const user = auth.currentUser;
@@ -141,7 +142,7 @@ export const executeTool = async (
           startDateTime: startDate.toISOString(),
           endDateTime: endDate.toISOString(),
           description: 'Auto-scheduled by Zen AI Agent'
-        });
+        }, signal);
         logApi('POST', '/api/v1/schedule/auto-block', args, 'success');
         return { success: true, data: {}, message: `✅ Blocked ${args.startTime}–${args.durationMinutes}min for "${args.taskName}" on ${targetDate}` };
       } catch (err: any) {
@@ -155,7 +156,7 @@ export const executeTool = async (
 
       const targetDate = args.date || today;
       try {
-        const liveEvents = await listCalendarEventsOnDate(targetDate);
+        const liveEvents = await listCalendarEventsOnDate(targetDate, signal);
         const slots: string[] = [];
 
         // Determine if an event overlaps with an hour slot
@@ -199,7 +200,7 @@ export const executeTool = async (
       if (authErr) return authErr;
       const targetDate = args.date || today;
       try {
-        const events = await listCalendarEventsOnDate(targetDate);
+        const events = await listCalendarEventsOnDate(targetDate, signal);
         return {
           success: true,
           data: { events },
@@ -224,7 +225,7 @@ export const executeTool = async (
           description: args.description,
           location: args.location,
           attendees: attendeesList,
-        });
+        }, signal);
         return { success: true, data: result, message: `✅ Calendar event updated successfully. Link: ${result.calendarLink}` };
       } catch (e: any) {
         return { success: false, data: null, message: `Calendar Update Error: ${e.message}` };
@@ -244,7 +245,7 @@ export const executeTool = async (
           startDateTime: startDate.toISOString(),
           endDateTime: endDate.toISOString(),
           description: 'Auto-blocked by Zen AI Emergency Protocol'
-        });
+        }, signal);
         return { success: true, data: {}, message: `✅ Blocked ${args.durationHours}h for "${args.taskName}" starting at ${startDate.toLocaleTimeString()}` };
       } catch (err: any) {
         return { success: false, data: null, message: `Calendar API Error: ${err.message}` };
@@ -257,10 +258,10 @@ export const executeTool = async (
       let deletedCount = 0;
       const targetDate = args.date || today;
       try {
-        const liveEvents = await listCalendarEventsOnDate(targetDate);
+        const liveEvents = await listCalendarEventsOnDate(targetDate, signal);
         for (const ev of liveEvents) {
           if (ev.id) {
-            await deleteGoogleCalendarEvent(ev.id);
+            await deleteGoogleCalendarEvent(ev.id, signal);
             deletedCount++;
           }
         }
@@ -289,7 +290,7 @@ export const executeTool = async (
           endDateTime: endDT.toISOString(),
           description: args.description,
           attendees: attendeesList,
-        });
+        }, signal);
         logApi('POST', '/api/v1/google/meet/create', { title: args.title }, 'success');
         return {
           success: true,
@@ -307,7 +308,7 @@ export const executeTool = async (
       if (authErr) return authErr;
       logApi('GET', '/api/v1/google/gmail/read', { query: args.query }, 'pending');
       try {
-        const emails = await fetchUnreadEmails(args.query);
+        const emails = await fetchUnreadEmails(args.query, signal);
         logApi('GET', '/api/v1/google/gmail/read', { query: args.query }, 'success');
         return { success: true, data: { emails }, message: `Fetched ${emails.length} emails matching '${args.query || 'is:unread'}'` };
       } catch (e: any) {
@@ -320,7 +321,7 @@ export const executeTool = async (
       if (authErr) return authErr;
       logApi('POST', '/api/v1/google/gmail/send', { to: args.to }, 'pending');
       try {
-        await sendEmail(args.to, args.subject, args.bodyText);
+        await sendEmail(args.to, args.subject, args.bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/send', { to: args.to }, 'success');
         return { success: true, data: {}, message: `✅ Email sent successfully to ${args.to}` };
       } catch (e: any) {
@@ -333,7 +334,7 @@ export const executeTool = async (
       if (authErr) return authErr;
       logApi('POST', '/api/v1/google/gmail/draft', { to: args.to }, 'pending');
       try {
-        await createDraftEmail(args.to, args.subject, args.bodyText);
+        await createDraftEmail(args.to, args.subject, args.bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/draft', { to: args.to }, 'success');
         return { success: true, data: {}, message: `✅ Draft email saved successfully for ${args.to}` };
       } catch (e: any) {
@@ -343,7 +344,7 @@ export const executeTool = async (
 
     case 'schedule_google_meet': {
       // Alias for create_google_meet
-      return executeTool('create_google_meet', args, userTodos, calendarEvents);
+      return executeTool('create_google_meet', args, userTodos, calendarEvents, signal);
     }
 
     case 'notify_accountability_partner': {
@@ -353,7 +354,7 @@ export const executeTool = async (
       try {
         const subject = `[URGENT] Accountability Alert: ZenTrack Notification`;
         const bodyText = `Hello,\n\nYou are receiving this automated alert because you are listed as an accountability partner.\n\nMessage:\n${args.message}\n\nPlease check in with them.\n\n- ZenTrack AI`;
-        await sendEmail(args.partnerEmail, subject, bodyText);
+        await sendEmail(args.partnerEmail, subject, bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/send', { to: args.partnerEmail }, 'success');
         return { success: true, data: {}, message: `✅ Accountability partner (${args.partnerEmail}) notified successfully.` };
       } catch (e: any) {
@@ -366,7 +367,7 @@ export const executeTool = async (
       if (authErr) return authErr;
       logApi('POST', '/api/v1/google/gmail/reply', { to: args.to }, 'pending');
       try {
-        await replyToEmail(args.threadId, args.to, args.subject, args.bodyText);
+        await replyToEmail(args.threadId, args.to, args.subject, args.bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/reply', { to: args.to }, 'success');
         return { success: true, data: {}, message: `✅ Reply sent to ${args.to} in thread` };
       } catch (e: any) {
@@ -378,20 +379,20 @@ export const executeTool = async (
       const authErr = requireGoogleAuth();
       if (authErr) return authErr;
       try {
-        await archiveEmail(args.messageId);
+        await archiveEmail(args.messageId, signal);
         return { success: true, data: {}, message: `✅ Email archived successfully` };
       } catch (e: any) {
         return { success: false, data: null, message: `Gmail Archive Error: ${e.message}` };
       }
     }
 
-    // ─── GOOGLE DRIVE ─────────────────────────────────────────────────────────
+    // ─── GOOGLE ARCHIVE ─────────────────────────────────────────────────────────
     case 'search_google_drive': {
       const authErr = requireGoogleAuth();
       if (authErr) return authErr;
       logApi('GET', '/api/v1/google/drive/search', { query: args.query }, 'pending');
       try {
-        const files = await searchGoogleDrive(args.query);
+        const files = await searchGoogleDrive(args.query, signal);
         logApi('GET', '/api/v1/google/drive/search', { query: args.query }, 'success');
         return {
           success: true,
@@ -430,7 +431,7 @@ export const executeTool = async (
       }
     }
 
-    // ─── GOOGLE DOCS ─────────────────────────────────────────────────────────
+    // ─── GOOGLE SCRIBE ─────────────────────────────────────────────────────────
     case 'create_google_doc': {
       const authErr = requireGoogleAuth();
       if (authErr) return authErr;
@@ -458,13 +459,36 @@ export const executeTool = async (
     // ─── NOTIFICATIONS ───────────────────────────────────────────────────────
     case 'send_reminder': {
       try {
-        const fireAt = new Date(Date.now() + (args.delayMinutes || 5) * 60 * 1000);
+        const delayMs = (args.delayMinutes || 5) * 60 * 1000;
+        const fireAt = new Date(Date.now() + delayMs);
+
+        // ✅ FIXED: Also store in Firestore for persistence (Cloud Function can pick it up),
+        // AND fire a client-side setTimeout that calls FCM directly as a reliable fallback.
+        // The old code only wrote to Firestore which had no worker consuming it.
         await addDoc(collection(db, 'scheduledReminders'), {
           userId: user.uid,
           message: args.message,
           fireAt: fireAt.toISOString(),
-          status: 'pending'
+          status: 'pending',
+          createdAt: Date.now()
         });
+
+        // Client-side fallback: fire push notification after delay
+        // This works as long as the browser tab stays open during the delay.
+        if (delayMs <= 30 * 60 * 1000) { // Only for reminders <= 30 minutes
+          setTimeout(async () => {
+            try {
+              await sendPushNotification({
+                userIds: [user.uid],
+                title: '⏰ Reminder',
+                body: args.message
+              });
+            } catch (e) {
+              console.warn('[send_reminder] Client-side FCM fallback failed:', e);
+            }
+          }, delayMs);
+        }
+
         return { success: true, data: {}, message: `✅ Reminder scheduled for ${fireAt.toLocaleTimeString()}: "${args.message}"` };
       } catch (e: any) {
         return { success: false, data: null, message: `Failed to schedule reminder: ${e.message}` };
@@ -479,17 +503,6 @@ export const executeTool = async (
           body: args.message
         });
 
-        // Proactively send a Twilio SMS notification
-        try {
-          await fetch('/api/send-sms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: `🚨 ${args.title}: ${args.message}` })
-          });
-        } catch (smsErr) {
-          console.warn('[Twilio] SMS trigger failed:', smsErr);
-        }
-
         return { success: true, data: {}, message: `✅ Notification sent: "${args.title}"` };
       } catch {
         return { success: false, data: null, message: 'Failed to send notification' };
@@ -499,7 +512,7 @@ export const executeTool = async (
     // ─── AGENT SYSTEM ────────────────────────────────────────────────────────────
 
     case 'snooze_task': {
-      // Used by MONITOR agent to adaptively snooze at-risk tasks
+      // Used by ARGUS agent to adaptively snooze at-risk tasks
       if (!args.taskId) return { success: false, data: null, message: 'taskId is required for snooze_task' };
       const snoozeDate = args.snoozeUntilDate || (() => {
         const d = new Date();
@@ -516,7 +529,7 @@ export const executeTool = async (
     }
 
     case 'update_task_priority': {
-      // Used by MONITOR/DATA agents to escalate task priority based on risk
+      // Used by ARGUS/ENIGMA agents to escalate task priority based on risk
       if (!args.taskId || !args.priority) return { success: false, data: null, message: 'taskId and priority are required' };
       await updateDoc(doc(db, 'todos', args.taskId), { priority: args.priority });
       logApi('PATCH', `/api/v1/tasks/${args.taskId}`, { priority: args.priority }, 'success');
@@ -524,22 +537,38 @@ export const executeTool = async (
     }
     case 'delegate_task': {
       try {
+        // ✅ Delegation depth guard: prevents recursive agent death spirals.
+        // TITAN → HERMES → CHRONOS is depth 2 (max). Depth 3+ is always a hallucination loop.
+        const currentDepth = (args._delegationDepth as number) || 0;
+        if (currentDepth >= 2) {
+          console.warn(`[delegate_task] Max delegation depth (2) reached for role ${args.agentRole}. Returning context to parent.`);
+          return {
+            success: false, data: null,
+            message: `Max delegation depth reached. Cannot spawn ${args.agentRole} further. Use the data already in context to complete the task.`
+          };
+        }
+
         // Dynamically import to avoid circular dependency
         const { runAgentLoop } = await import('./runAgentLoop');
         const { getAgentPromptByRole } = await import('./orchestrator');
         const subAgentSystem = getAgentPromptByRole(args.agentRole);
         if (!subAgentSystem) {
-          return { success: false, data: null, message: `Unknown agent role: "${args.agentRole}". Valid roles: SEARCH, DATA, COMMS, SCHEDULER, MEET, DRIVE, DOCS, CODING, PLANNER, MONITOR, GHOST_DETECTOR, EXECUTOR, QA` };
+          return { success: false, data: null, message: `Unknown agent role: "${args.agentRole}". Valid roles: ORACLE, ENIGMA, HERMES, CHRONOS, MEET, ARCHIVE, SCRIBE, HEPHAESTUS, ATLAS, ARGUS, SPECTRE, TITAN, AEGIS` };
         }
         const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
-        logApi('POST', `/api/v1/agent/delegate/${args.agentRole}`, { instruction: args.instruction }, 'pending');
+        logApi('POST', `/api/v1/agent/delegate/${args.agentRole}`, { instruction: args.instruction, depth: currentDepth + 1 }, 'pending');
+        // Inject depth into the instruction so the sub-agent passes it along in its own delegations
+        const instructionWithDepth = `${args.instruction}\n[_DELEGATION_DEPTH: ${currentDepth + 1}]`;
         const result = await runAgentLoop(
-          args.instruction,
+          instructionWithDepth,
           userTodos,
           calendarEvents,
           apiKey,
           () => {}, // silent onStep — sub-agent runs in background
-          subAgentSystem
+          subAgentSystem,
+          undefined,
+          undefined,
+          true // ✅ isSubAgent: true -> bypasses semaphore to prevent deadlock
         );
         
         if (result.startsWith('Agent Loop Failed:')) {

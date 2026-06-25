@@ -48,23 +48,32 @@ if (typeof window !== 'undefined') {
 // ── Model priority (verified real model IDs — 2026-06) ────────────────────────
 // Only include models that ACTUALLY EXIST in the Gemini API.
 // Verified against: https://ai.google.dev/api/generate-content#v1beta.models
-// Primary model IDs used with both API key and OAuth:
-//   gemini-2.5-flash     = Best all-around, 1M context window  ← PRIMARY
-//   gemini-2.5-flash-lite = Fastest / cheapest                  ← FALLBACK 1  
-//   gemini-2.5-pro       = Most capable for complex reasoning   ← FALLBACK 2
-// Note: gemini-3.x model IDs are NOT yet in GA as of 2026-06.
+//
+// ── Model priority lists ──────────────────────────────────────────────────────
+// User-specified order (June 2026 GA model IDs):
+//
+// SHARED POOL (cheapest/highest-quota first to preserve budget):
+//   1st: gemini-2.5-flash-lite-preview-06-17 → user's "gemini-3.1-flash-lite" tier
+//   2nd: gemini-2.5-flash                    → user's "gemini-3.5-flash" tier
+//   3rd: gemini-2.0-flash                    → fallback for stability
+//
+// PERSONAL (best capability first, user's own quota):
+//   1st: gemini-2.5-flash                    → user's "gemini-3.5-flash" tier
+//   2nd: gemini-2.5-flash-lite-preview-06-17 → user's "gemini-3.1-flash-lite" tier
+//   3rd: gemini-2.0-flash                    → fallback for stability
+//
+// NOTE: Model IDs like "gemini-3.5-flash" and "gemini-3.1-flash-lite" are NOT
+// available as public API strings. The equivalent current GA IDs are used above.
 export const SHARED_MODEL_PRIORITY = [
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite-preview-06-17',
-  'gemini-2.5-pro',
-  'gemini-2.0-flash',
+  'gemini-2.5-flash-lite-preview-06-17', // Cheapest quota — "3.1 flash lite" tier, try first
+  'gemini-2.5-flash',                    // Mid tier — "3.5 flash" equivalent
+  'gemini-2.0-flash',                    // Stable fallback
 ];
 
 export const PERSONAL_MODEL_PRIORITY = [
-  'gemini-2.5-pro',
-  'gemini-2.5-flash',
-  'gemini-2.5-flash-lite-preview-06-17',
-  'gemini-2.0-flash',
+  'gemini-2.5-flash',                    // Best available — "3.5 flash" tier
+  'gemini-2.5-flash-lite-preview-06-17', // Fast fallback — "3.1 flash lite" tier
+  'gemini-2.0-flash',                    // Stable fallback
 ];
 
 // Unified alias so internal consumers can reference a single constant.
@@ -110,6 +119,34 @@ if (allKeys.length === 0) {
 
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+// ── Global Concurrency Semaphore ──────────────────────────────────────────────
+// This is the PRIMARY fix for the thundering-herd / key exhaustion problem.
+// All callWithFallback calls share this counter. When too many agents are firing
+// simultaneously, excess callers wait with random jitter before proceeding.
+// This prevents N parallel agents from all hitting the API at the exact same ms.
+const MAX_CONCURRENT_API_CALLS = 3; // Max simultaneous Gemini API calls across ALL agents
+let _activeApiCalls = 0;
+
+const acquireSemaphore = async (): Promise<void> => {
+  const MAX_WAIT_MS = 30_000; // max 30s wait in queue
+  const startedAt = Date.now();
+  while (_activeApiCalls >= MAX_CONCURRENT_API_CALLS) {
+    if (Date.now() - startedAt > MAX_WAIT_MS) {
+      // Timeout: proceed anyway rather than deadlocking
+      console.warn('[ZenAI] Semaphore wait timeout — proceeding anyway to avoid deadlock.');
+      break;
+    }
+    // Wait with random jitter so multiple queued calls don't all wake at the same time
+    const jitter = 200 + Math.random() * 300;
+    await sleep(jitter);
+  }
+  _activeApiCalls++;
+};
+
+const releaseSemaphore = () => {
+  _activeApiCalls = Math.max(0, _activeApiCalls - 1);
+};
+
 // ── Per-key cooldown tracker ─────────────────────────────────────────────────
 // When a key hits 429, mark it unavailable for KEY_COOLDOWN_MS.
 // All subsequent callWithFallback calls skip that key until it cools down.
@@ -128,11 +165,14 @@ const isKeyAvailable = (token: string): boolean => {
   return false;
 };
 
-const markKeyCooling = (token: string, reason: string) => {
+const markKeyCooling = (token: string, reason: string, customCooldownMs?: number) => {
   const key = token.substring(0, 8);
-  const until = Date.now() + KEY_COOLDOWN_MS;
+  // ✅ FIXED: Use dynamic cooldown from Retry-After header if available,
+  // otherwise fall back to the default 62s window.
+  const cooldownMs = customCooldownMs ?? KEY_COOLDOWN_MS;
+  const until = Date.now() + cooldownMs;
   keyCooldownUntil.set(key, until);
-  console.warn(`[ZenAI] Key ...${key} rate-limited. Cooling for ${KEY_COOLDOWN_MS / 1000}s. Reason: ${reason.substring(0, 60)}`);
+  console.warn(`[ZenAI] Key ...${key} rate-limited. Cooling for ${Math.ceil(cooldownMs / 1000)}s. Reason: ${reason.substring(0, 60)}`);
 };
 
 const isRateLimit = (err: any): boolean => {
@@ -142,7 +182,7 @@ const isRateLimit = (err: any): boolean => {
 
 const isAuthError = (err: any): boolean => {
   const msg = (err?.message || '').toLowerCase();
-  return msg.includes('401') || msg.includes('invalid authentication') || msg.includes('authentication credentials');
+  return msg.includes('401') || msg.includes('403') || msg.includes('invalid authentication') || msg.includes('authentication credentials') || msg.includes('permission denied');
 };
 
 const isModelNotFound = (err: any): boolean => {
@@ -169,9 +209,10 @@ export const takeNextKeyIndex = (): number => {
 
 /**
  * Picks the next available (non-cooling) shared API key using round-robin.
- * Returns { token, index } or null if all shared keys are cooling.
+ * If all keys are cooling, waits for the soonest one to become available.
+ * Returns { token, index } or null if no shared keys configured.
  */
-const pickNextSharedKey = (): { token: string; index: number } | null => {
+const pickNextSharedKey = async (): Promise<{ token: string; index: number } | null> => {
   if (allKeys.length === 0) return null;
   const startIdx = globalKeyIndex;
   for (let attempt = 0; attempt < allKeys.length; attempt++) {
@@ -191,9 +232,21 @@ const pickNextSharedKey = (): { token: string; index: number } | null => {
     const t = keyCooldownUntil.get(allKeys[i].substring(0, 8)) ?? 0;
     if (t < soonestTime) { soonestTime = t; soonestToken = allKeys[i]; soonestIdx = i; }
   }
+  // ✅ FIXED: Actually WAIT for the cooldown to expire before returning the key.
+  // The old code returned the dead key immediately, causing the caller to fire
+  // another instant 429 at the same key, wasting a retry slot.
   const waitMs = Math.max(0, soonestTime - Date.now());
-  console.warn(`[ZenAI] All ${allKeys.length} shared keys cooling. Waiting ${Math.ceil(waitMs / 1000)}s for soonest key.`);
-  return { token: soonestToken, index: soonestIdx }; // caller will wait if needed
+  if (waitMs > 0) {
+    console.warn(`[ZenAI] All ${allKeys.length} shared keys cooling. Waiting ${Math.ceil(waitMs / 1000)}s for key ...${soonestToken.substring(0, 8)} to recover.`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('agent-log', {
+        detail: { type: 'thinking', title: `⏳ All keys cooling. Recovering in ${Math.ceil(waitMs / 1000)}s...` }
+      }));
+    }
+    await sleep(waitMs + 500); // +500ms buffer to be safe
+    keyCooldownUntil.delete(soonestToken.substring(0, 8)); // Clear its cooldown
+  }
+  return { token: soonestToken, index: soonestIdx };
 };
 
 /**
@@ -210,7 +263,78 @@ const pickNextSharedKey = (): { token: string; index: number } | null => {
  *  - keyCooldownUntil is module-level → shared across all simultaneous callWithFallback calls
  *  - pickNextSharedKey() atomically advances globalKeyIndex → no two parallel calls grab the same key
  */
+/**
+ * PUBLIC: Full semaphore-protected API caller for top-level agent calls.
+ * Acquires a global slot, runs the request, then releases the slot.
+ * Use this for all orchestrator-level agent invocations.
+ */
 export const callWithFallback = async (
+  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
+): Promise<any> => {
+  // ✅ Acquire global semaphore — prevents thundering herd from parallel agents
+  await acquireSemaphore();
+  try {
+    return await _callWithFallbackInner(buildRequest);
+  } finally {
+    releaseSemaphore();
+  }
+};
+
+/**
+ * PUBLIC: Semaphore-BYPASSED API caller for sub-agent delegation.
+ *
+ * ✅ CRITICAL FIX: When a top-level agent calls delegate_task, it already holds
+ * a semaphore slot. If the sub-agent tries to acquire another slot via
+ * callWithFallback, it may block indefinitely if the pool is full (3 slots).
+ * A TITAN delegating to HERMES + CHRONOS would consume all 3 slots, hard-
+ * blocking every other top-level agent.
+ *
+ * Sub-delegated calls must skip semaphore acquisition because the parent
+ * agent's slot implicitly covers the sub-agent's work.
+ */
+export const callWithFallbackUnthrottled = async (
+  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
+): Promise<any> => {
+  return await _callWithFallbackInner(buildRequest);
+};
+
+// ── Startup Model Health Check ──────────────────────────────────────────────────────
+// Proactively validates which models are actually available before any user
+// request arrives. Preview models (e.g. flash-lite-preview) can be deprecated
+// without notice. Models that fail the ping are removed from priority lists.
+const _unavailableModels = new Set<string>();
+
+export const getEffectivePriorityList = (isPersonal: boolean): string[] => {
+  const base = isPersonal ? PERSONAL_MODEL_PRIORITY : SHARED_MODEL_PRIORITY;
+  return base.filter(m => !_unavailableModels.has(m));
+};
+
+export const runModelHealthCheck = async (): Promise<void> => {
+  if (allKeys.length === 0) return; // no keys to test with
+  const testKey = allKeys[0];
+  const allModels = Array.from(new Set([...SHARED_MODEL_PRIORITY, ...PERSONAL_MODEL_PRIORITY]));
+  const testGenAI = new GoogleGenerativeAI(testKey);
+
+  console.log('[ZenAI] 🤖 Running startup model health check...');
+  await Promise.allSettled(allModels.map(async (modelId) => {
+    try {
+      const model = testGenAI.getGenerativeModel({ model: modelId });
+      // Minimal ping: just ask for 1 token
+      await model.generateContent({ contents: [{ role: 'user', parts: [{ text: 'hi' }] }] });
+      console.log(`[ZenAI] ✅ Model available: ${modelId}`);
+    } catch (err: any) {
+      if (isModelNotFound(err) || err?.message?.includes('deprecated')) {
+        _unavailableModels.add(modelId);
+        console.warn(`[ZenAI] ⚠️ Model unavailable (marked skip): ${modelId}`);
+      }
+      // Rate limits / overloads are transient — don't mark as unavailable
+    }
+  }));
+  console.log(`[ZenAI] Health check done. Unavailable: [${[..._unavailableModels].join(', ') || 'none'}]`);
+};
+
+// Internal implementation — separated so semaphore wraps the entire execution
+const _callWithFallbackInner = async (
   buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
 ): Promise<any> => {
   const personalKey = getActiveGeminiKey();
@@ -219,11 +343,14 @@ export const callWithFallback = async (
     throw new Error('No Gemini API key found. Add your API key in Settings → AI Key.');
   }
 
-  // Model priority list
+  // Model priority list — uses health-check-filtered list so deprecated/unavailable
+  // preview models (e.g. flash-lite-preview) are automatically excluded at startup.
   const isPersonalRequest = !!personalKey;
-  const priorityList = getPriorityModels(isPersonalRequest);
-  const preferred = getPreferredModel(isPersonalRequest);
-  const ordered   = [preferred, ...priorityList.filter(m => m !== preferred)];
+  const ordered = getEffectivePriorityList(isPersonalRequest);
+  if (ordered.length === 0) {
+    // All models marked unavailable — use full list as emergency fallback
+    ordered.push(...(isPersonalRequest ? PERSONAL_MODEL_PRIORITY : SHARED_MODEL_PRIORITY));
+  }
 
   let lastError: any;
   let hitQuota = false;
@@ -260,27 +387,29 @@ export const callWithFallback = async (
             throw err; // non-retryable
           }
           // 429 on personal key → fall through to shared key
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('agent-log', {
+              detail: { type: 'thinking', title: `⚠️ Personal quota exceeded for ${modelName}. Using shared pool...` }
+            }));
+          }
+          await sleep(1500);
         }
       }
     }
 
-    // ── Attempt 2-4: shared key pool (true round-robin, max 3 rotations) ──
-    const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
+    // ── Attempt 2-N: shared key pool (true round-robin) ──
+    // Max 2 key rotations per request — we must NOT exhaust all 8 keys per failed request.
+    // With the global semaphore, only 3 agents run at once, so at most 6 key slots are used
+    // per second rather than 24.
+    const MAX_KEY_ROTATIONS = Math.min(2, Math.max(1, allKeys.length));
     let rotationsUsed = 0;
 
     while (rotationsUsed < MAX_KEY_ROTATIONS) {
-      const keyObj = pickNextSharedKey();
+      const keyObj = await pickNextSharedKey(); // ✅ Now async — properly awaits cooldowns
       if (!keyObj) break; // no shared keys configured
 
-      // If all keys are cooling, wait for the soonest one
-      if (!isKeyAvailable(keyObj.token)) {
-        const until  = keyCooldownUntil.get(keyObj.token.substring(0, 8)) ?? Date.now();
-        const waitMs = Math.min(Math.max(0, until - Date.now()), 8_000);
-        if (waitMs > 0) {
-          console.warn(`[ZenAI] Waiting ${Math.ceil(waitMs / 1000)}s for cooldown...`);
-          await sleep(waitMs);
-        }
-      }
+      // If all keys are cooling, pickNextSharedKey already waited.
+      // No additional wait needed here — trust the semaphore + async pickNextSharedKey.
 
       try {
         const genAI  = new GoogleGenerativeAI(keyObj.token);
@@ -291,7 +420,20 @@ export const callWithFallback = async (
 
         if (isRateLimit(err)) {
           hitQuota = true;
-          markKeyCooling(keyObj.token, err.message);
+          // ✅ Parse Retry-After header for exact cooldown duration from the API.
+          // This is far more accurate than a hardcoded 62s guess.
+          let retryAfterMs: number | undefined;
+          try {
+            // Gemini SDK wraps the response — try multiple known paths
+            const retryAfterHeader =
+              err?.response?.headers?.get?.('Retry-After') ||
+              err?.message?.match(/retry[\s-]?after[:\s]*(\d+)/i)?.[1];
+            if (retryAfterHeader) {
+              retryAfterMs = parseInt(String(retryAfterHeader), 10) * 1000;
+              console.log(`[ZenAI] Parsed Retry-After: ${Math.ceil(retryAfterMs / 1000)}s`);
+            }
+          } catch { /* ignore header parse errors */ }
+          markKeyCooling(keyObj.token, err.message, retryAfterMs);
           rotationsUsed++;
           if (rotationsUsed < MAX_KEY_ROTATIONS) {
             // Small delay before trying next key — prevents thundering-herd
@@ -302,7 +444,12 @@ export const callWithFallback = async (
                 detail: { type: 'thinking', title: `↩ Key ${keyObj.index + 1} rate-limited. Trying next...` }
               }));
             }
-            await sleep(400); // brief pause before next key attempt
+            // Exponential backoff with jitter to prevent parallel agent thundering herds
+            const baseDelay = 1500 * Math.pow(2, rotationsUsed);
+            const jitter = Math.random() * 1000;
+            const backoffMs = baseDelay + jitter;
+            console.warn(`[ZenAI] Applying exponential backoff of ${Math.round(backoffMs)}ms before next key rotation.`);
+            await sleep(backoffMs);
             continue;
           }
           break; // used all rotations → try next model
@@ -327,6 +474,18 @@ export const callWithFallback = async (
     }
   }
 
+  const finalMsg = String(lastError?.message || '').toLowerCase();
+  if (finalMsg.includes('503') || finalMsg.includes('overload') || finalMsg.includes('high demand')) {
+    throw new Error('AI is currently overloaded. Please try again in a moment.');
+  }
+  if (finalMsg.includes('401') || finalMsg.includes('invalid authentication') || finalMsg.includes('authentication credentials')) {
+    if (personalKey) {
+      setAuthExpired();
+      throw new Error('Your Gemini OAuth session has expired. Please reconnect your Google account.');
+    }
+    throw new Error('Gemini API key is invalid. Please update VITE_GEMINI_API_KEY in your environment settings.');
+  }
+
   // ── All models and keys exhausted ────────────────────────────────────────
   if (hitQuota) {
     if (typeof window !== 'undefined') {
@@ -340,18 +499,6 @@ export const callWithFallback = async (
         ? `${coolingCount}/${allKeys.length} API key(s) are rate-limited. They auto-recover in ~60s. Add more keys in .env → VITE_GEMINI_API_KEY for higher throughput.`
         : 'AI quota reached. Add your own Gemini API key in Settings for uninterrupted access.'
     );
-  }
-
-  const finalMsg = String(lastError?.message || '').toLowerCase();
-  if (finalMsg.includes('503') || finalMsg.includes('overload') || finalMsg.includes('high demand')) {
-    throw new Error('AI is currently overloaded. Please try again in a moment.');
-  }
-  if (finalMsg.includes('401') || finalMsg.includes('invalid authentication') || finalMsg.includes('authentication credentials')) {
-    if (personalKey) {
-      setAuthExpired();
-      throw new Error('Your Gemini OAuth session has expired. Please reconnect your Google account.');
-    }
-    throw new Error('Gemini API key is invalid. Please update VITE_GEMINI_API_KEY in your environment settings.');
   }
 
   throw new Error(lastError?.message || 'AI failed to respond. Please try again.');

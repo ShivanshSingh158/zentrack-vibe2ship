@@ -30,7 +30,7 @@ ANALYSIS FRAMEWORK — apply all of these:
 3. BEHAVIOUR GAPS: What's being neglected? What habits are slipping? What goals haven't moved?
 4. MOMENTUM SIGNALS: What is trending up? What is declining? Give week-over-week direction.
 5. GYM & WELLNESS INTEGRATION: If gym data exists, connect it to mood/productivity patterns
-6. JOB SEARCH FUNNEL: If job data exists, analyze pipeline health and application velocity
+6. JOB ORACLE FUNNEL: If job data exists, analyze pipeline health and application velocity
 
 RULES:
 - Every insight MUST cite actual numbers from the data (dates, counts, averages, percentages)

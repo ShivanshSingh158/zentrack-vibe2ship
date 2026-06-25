@@ -377,11 +377,11 @@
 }
 
 /* Positions around the circle */
-.agent-1 { top: 15%; left: 50%; transform: translate(-50%, -50%); } /* PLANNER */
+.agent-1 { top: 15%; left: 50%; transform: translate(-50%, -50%); } /* ATLAS */
 .agent-2 { top: 25%; left: 75%; transform: translate(-50%, -50%); } /* PRIORITIZER */
-.agent-3 { top: 50%; left: 85%; transform: translate(-50%, -50%); } /* SCHEDULER */
-.agent-4 { top: 75%; left: 75%; transform: translate(-50%, -50%); } /* EXECUTOR */
-.agent-5 { top: 85%; left: 50%; transform: translate(-50%, -50%); } /* MONITOR */
+.agent-3 { top: 50%; left: 85%; transform: translate(-50%, -50%); } /* CHRONOS */
+.agent-4 { top: 75%; left: 75%; transform: translate(-50%, -50%); } /* TITAN */
+.agent-5 { top: 85%; left: 50%; transform: translate(-50%, -50%); } /* ARGUS */
 .agent-6 { top: 75%; left: 25%; transform: translate(-50%, -50%); } /* COACH */
 .agent-7 { top: 50%; left: 15%; transform: translate(-50%, -50%); } /* HABIT */
 .agent-8 { top: 25%; left: 25%; transform: translate(-50%, -50%); } /* GHOST DETECTOR */
@@ -439,7 +439,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  height: 100%;
+  height: auto;
+  flex-shrink: 0;
 }
 
 .urgency-card {
@@ -513,11 +514,21 @@
 }
 
 /* Bottom Rows */
-.roi-card, .workspace-card {
+.roi-card {
   display: flex;
   align-items: center;
   gap: 2rem;
   padding: 1.5rem 2rem;
+  flex-shrink: 0;
+}
+
+.workspace-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  padding: 1.5rem 2rem;
+  flex-shrink: 0;
 }
 
 .roi-ring-container {
@@ -663,7 +674,7 @@
   z-index: 20;
 }
 
-/* PLANNER: Node Tree */
+/* ATLAS: Node Tree */
 .planner-anim .branch {
   position: absolute;
   width: 2px;
@@ -698,7 +709,7 @@
 @keyframes prior-sort-2 { to { top: 0px; } }
 @keyframes prior-sort-3 { to { top: 8px; } }
 
-/* SCHEDULER: Calendar Grid */
+/* CHRONOS: Calendar Grid */
 .scheduler-anim .cal-grid {
   position: absolute;
   width: 32px;
@@ -721,7 +732,7 @@
   100% { transform: translate(2px, 2px); }
 }
 
-/* EXECUTOR: Matrix Code */
+/* TITAN: Matrix Code */
 .executor-anim .matrix-line {
   position: absolute;
   width: 2px; height: 15px;
@@ -737,7 +748,7 @@
   100% { top: 40px; opacity: 0; }
 }
 
-/* MONITOR: Sine Wave Activity */
+/* ARGUS: Sine Wave Activity */
 .monitor-anim svg {
   position: absolute; width: 44px; height: 44px;
   top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -976,3 +987,276 @@
   overflow-x: auto;
   margin: 1.5rem 0;
 }
+
+
+/* =========================================================
+   MYTHOS PROTOCOL - CYBER-MYTHOS UI OVERRIDES
+   ========================================================= */
+
+/* Overhaul the generic dark cards into Ethereal Obsidian Monoliths */
+.active-deployment-card, .urgency-matrix, .roi-card, .workspace-card {
+  background: linear-gradient(145deg, rgba(15, 15, 20, 0.85), rgba(5, 5, 8, 0.95)) !important;
+  border: 1px solid rgba(251, 191, 36, 0.15) !important;
+  border-top: 1px solid rgba(251, 191, 36, 0.3) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), inset 0 0 30px rgba(6, 182, 212, 0.05) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+/* Typography for headers */
+.card-title {
+  color: #fef08a !important;
+  text-shadow: 0 0 15px rgba(251, 191, 36, 0.2) !important;
+  letter-spacing: 0.02em !important;
+}
+
+.section-label {
+  color: #fbbf24 !important;
+  opacity: 0.9 !important;
+  text-shadow: 0 0 8px rgba(251, 191, 36, 0.3) !important;
+  letter-spacing: 0.2em !important;
+}
+
+/* Command Bar */
+.command-bar-container {
+  background: rgba(5, 5, 10, 0.5) !important;
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+}
+.command-bar-container:focus-within {
+  border-color: rgba(6, 182, 212, 0.8) !important;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.25), inset 0 2px 10px rgba(0,0,0,0.5) !important;
+}
+
+/* Execute Button -> Ethereal Gold */
+.execute-command-btn {
+  background: linear-gradient(135deg, #fbbf24, #d97706) !important;
+  color: #18181b !important;
+  font-weight: 800 !important;
+  box-shadow: 0 4px 15px rgba(251, 191, 36, 0.4) !important;
+}
+.execute-command-btn:hover {
+  filter: brightness(1.1) !important;
+}
+
+/* Voice Mic Button -> Cyan */
+.voice-command-btn {
+  color: #22d3ee !important;
+}
+.voice-command-btn.listening {
+  color: #06b6d4 !important;
+}
+
+/* Bottom Glow Indicator -> Cyan */
+.bottom-indicator {
+  background: linear-gradient(90deg, #06b6d4, #22d3ee) !important;
+  box-shadow: 0 0 15px rgba(6, 182, 212, 0.6) !important;
+}
+
+/* Urgency Matrix Cards */
+.urgency-card.immediate {
+  border-left: 4px solid #fbbf24 !important;
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.1), transparent) !important;
+}
+.urgency-card.immediate .immediate-text {
+  color: #fef08a !important;
+}
+
+/* Tooltips */
+.dock-tooltip {
+  background: rgba(10, 10, 15, 0.98) !important;
+  border: 1px solid rgba(251, 191, 36, 0.3) !important;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8), 0 0 15px rgba(251, 191, 36, 0.15) !important;
+}
+.tooltip-title {
+  letter-spacing: 0.1em !important;
+}
+
+/* Quantum Capsule inner chamber - Gold */
+.capsule-chamber {
+  border: 1px solid rgba(251, 191, 36, 0.2) !important;
+}
+.quantum-idle-title {
+  color: #fef08a !important;
+}
+
+/* =========================================================
+   MYTHOS PROTOCOL OVERHAUL - OBSIDIAN / GOLD / CYAN THEMING
+   ========================================================= */
+
+/* Main Containers: Obsidian + glowing gold borders */
+.active-deployment-card, .urgency-matrix, .roi-card, .workspace-card {
+  background: linear-gradient(135deg, rgba(8, 8, 12, 0.9), rgba(4, 4, 6, 0.98)) !important;
+  border: 1px solid rgba(251, 191, 36, 0.15) !important;
+  border-top: 3px solid rgba(251, 191, 36, 0.45) !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75), inset 0 0 30px rgba(6, 182, 212, 0.02) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Hover effects on panels */
+.active-deployment-card:hover, .urgency-matrix:hover, .roi-card:hover, .workspace-card:hover {
+  border-color: rgba(251, 191, 36, 0.22) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.85), inset 0 0 40px rgba(6, 182, 212, 0.03) !important;
+}
+
+/* Active execution state glow: shifts from Gold highlight to Cyan highlight */
+.active-deployment-card.executing {
+  border-color: rgba(6, 182, 212, 0.35) !important;
+  border-top: 3px solid rgba(6, 182, 212, 0.75) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(6, 182, 212, 0.15), inset 0 0 30px rgba(6, 182, 212, 0.05) !important;
+}
+
+/* Dashboard Columns spacing */
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Futuristic Clock Dashboard Header Bar */
+.dashboard-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.25rem 2rem;
+  background: linear-gradient(135deg, rgba(8, 8, 12, 0.95), rgba(4, 4, 6, 0.98));
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-bottom: 2px solid rgba(6, 182, 212, 0.3);
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), inset 0 0 20px rgba(6, 182, 212, 0.05);
+  margin-bottom: 1.5rem;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.dashboard-main-title {
+  font-family: var(--font-display, 'Outfit', sans-serif);
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  color: #fbbf24;
+  text-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
+  margin: 0;
+  line-height: 1;
+}
+.dashboard-main-subtitle {
+  font-size: 0.72rem;
+  color: #22d3ee;
+  letter-spacing: 0.08em;
+  margin: 0.35rem 0 0 0;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.system-time-display {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.time-label {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.52rem;
+  color: #71717a;
+  letter-spacing: 0.15em;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.time-val {
+  font-family: var(--font-mono, monospace);
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #22d3ee;
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.4);
+  line-height: 1;
+}
+
+/* Sleek Pill Expand Button for Mission Report */
+.mission-report-expand-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.85rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  color: #d4d4d8;
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mission-report-expand-btn:hover {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.35);
+  color: #22d3ee;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+}
+
+/* Centered Full Screen View overlay */
+.mission-report-overlay.expanded {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 95vw !important;
+  max-width: 1200px !important;
+  height: 90vh !important;
+  max-height: 90vh !important;
+  border-radius: 20px !important;
+  z-index: 99999;
+  border-color: rgba(6, 182, 212, 0.5) !important;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.92), 0 0 50px rgba(6, 182, 212, 0.3) !important;
+  background: rgba(5, 5, 8, 0.99) !important;
+}
+
+/* Sleek Google Workspace integration tweaks */
+.workspace-card .app-icons img {
+  border-radius: 6px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.workspace-card .app-icons img:hover {
+  transform: scale(1.15) translateY(-2px);
+  filter: drop-shadow(0 0 8px rgba(6, 182, 212, 0.3));
+}
+
+/* Waveform visualizer color override */
+.quantum-wave-bar {
+  background: #22d3ee !important;
+}
+.quantum-reactor-ring.ring-2 {
+  border-color: rgba(6, 182, 212, 0.45) !important;
+}
+.quantum-reactor-ring.ring-3 {
+  border-color: rgba(251, 191, 36, 0.6) !important;
+}
+.quantum-reactor-orb {
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.9) 0%, rgba(217, 119, 6, 0.4) 60%, rgba(99, 102, 241, 0) 100%) !important;
+  box-shadow: 0 0 35px rgba(251, 191, 36, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Custom indicator pulses */
+@keyframes cyber-pulse-cyan {
+  0% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.4); }
+  70% { box-shadow: 0 0 0 8px rgba(6, 182, 212, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
+}
+.pipeline-step.active .pipeline-indicator {
+  animation: cyber-pulse-cyan 1.8s infinite ease-in-out !important;
+}
+.pipeline-step.active {
+  color: #22d3ee !important;
+}
+.pipeline-step.completed {
+  color: #fbbf24 !important;
+}
+.pipeline-step.completed .pipeline-indicator {
+  background: #fbbf24 !important;
+  box-shadow: 0 0 8px rgba(251, 191, 36, 0.6) !important;
+}
+
+/* Status light styling */
+.status-dot.pulsing {
+  background: #22d3ee !important;
+  box-shadow: 0 0 8px #22d3ee !important;
+}
+

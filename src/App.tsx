@@ -6,6 +6,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { auth, db } from './services/firebase';
+import { runModelHealthCheck } from './services/gemini/core';
 import Lenis from 'lenis';
 
 // ─── Always-on components (tiny, needed immediately) ───────────────────────
@@ -246,6 +247,9 @@ function App() {
       // Show greeting only on fresh login (null → logged-in transition)
       if (currentUser && !prevUserRef.current) {
 
+        // ✅ Run startup model health check to exclude deprecated preview models
+        runModelHealthCheck().catch(err => console.error("Model health check failed:", err));
+
         // Register for FCM push notifications (Option B — Firebase Cloud Messaging)
         import('./services/fcm').then(({ registerFCMToken, onForegroundMessage }) => {
           registerFCMToken();
@@ -373,7 +377,7 @@ function App() {
             shadow: 'rgba(239,68,68,0.5)',
             action: () => {
               window.dispatchEvent(new CustomEvent('agent-shortcut', {
-                detail: { prompt: 'LEVEL_4 EMERGENCY: Run a full risk assessment. Call MONITOR to score all overdue and high-priority tasks, check my calendar for time conflicts, send me a notification with the top 3 critical items, and give me a complete risk report.' }
+                detail: { prompt: 'LEVEL_4 EMERGENCY: Run a full risk assessment. Call ARGUS to score all overdue and high-priority tasks, check my calendar for time conflicts, send me a notification with the top 3 critical items, and give me a complete risk report.' }
               }));
               setShowFab(false);
             },

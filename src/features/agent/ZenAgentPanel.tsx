@@ -1,9 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import { motion } from 'framer-motion';
 import { orchestrateAgent } from '../../agent/orchestrator';
 import type { AgentStep } from '../../agent/runAgentLoop';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { Bot, Send, X, Loader2 } from 'lucide-react';
+import { agentMemoryStore } from '../../stores/agentMemoryStore';
 
 const STEP_ICON: Record<string, string> = {
   'get_tasks': '📋 Reading your tasks...',
@@ -16,9 +17,8 @@ const STEP_ICON: Record<string, string> = {
 
 export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
   const { tasks, calendarEvents } = useGlobalData();
-  const [messages, setMessages] = useState<{ role: 'user' | 'agent'; title: string; steps?: AgentStep[] }[]>([
-    { role: 'agent', title: "Hey! I'm Zen Agent — powered by the full 13-agent fleet. I can read tasks, schedule calendar, send emails, find Drive files, create meetings, and more. Try: \"Scan my inbox for hidden deadlines\" or \"I missed a deadline, help me recover.\"" }
-  ]);
+  const messages = useSyncExternalStore(agentMemoryStore.subscribe, agentMemoryStore.getSnapshot);
+  
   const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [liveSteps, setLiveSteps] = useState<AgentStep[]>([]);
@@ -33,13 +33,16 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
     if (!input.trim() || isRunning) return;
     const userMsg = input.trim();
     setInput('');
-    setMessages(m => [...m, { role: 'user', title: userMsg }]);
+    agentMemoryStore.appendMessage({ role: 'user', title: userMsg });
     setIsRunning(true);
     setLiveSteps([]);
 
     try {
       const stepsAccumulated: AgentStep[] = [];
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+      
+      const historyContext = messages.map(h => ({ role: h.role, text: h.title }));
+      
       const answer = await orchestrateAgent(
         userMsg,
         tasks,
@@ -48,15 +51,17 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
         (step) => {
           stepsAccumulated.push(step);
           setLiveSteps([...stepsAccumulated]);
-        }
+        },
+        historyContext
       );
-      setMessages(m => [...m, { 
+      
+      agentMemoryStore.appendMessage({ 
         role: 'agent', 
         title: answer, 
         steps: stepsAccumulated.filter(s => s.type === 'tool_call' || s.type === 'tool_result')
-      }]);
+      });
     } catch (err: any) {
-      setMessages(m => [...m, { role: 'agent', title: `Sorry, something went wrong: ${err.message}` }]);
+      agentMemoryStore.appendMessage({ role: 'agent', title: `Sorry, something went wrong: ${err.message}` });
     } finally {
       setIsRunning(false);
       setLiveSteps([]);
@@ -90,6 +95,36 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
 
       {/* Chat messages */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {messages.length === 0 && !isRunning && (
+          <div style={{ margin: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', opacity: 0.8, marginTop: '40%' }}>
+            <div style={{ fontSize: '0.9rem', color: '#a78bfa', marginBottom: '0.5rem' }}>Try asking me...</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '100%' }}>
+              {["📋 What's overdue?", "🚨 I missed a deadline, help!", "📅 Block 2h for studying"].map(suggestion => (
+                <motion.button
+                  key={suggestion}
+                  whileHover={{ scale: 1.02, backgroundColor: 'rgba(139,92,246,0.15)' }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    setInput(suggestion);
+                    // Slight delay to let user see input before sending
+                    setTimeout(() => {
+                      const event = new KeyboardEvent('keydown', { key: 'Enter' });
+                      document.getElementById('zen-agent-input')?.dispatchEvent(event);
+                    }, 100);
+                  }}
+                  style={{
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(139,92,246,0.2)',
+                    padding: '0.75rem 1rem', borderRadius: '12px', color: '#fff', fontSize: '0.85rem',
+                    cursor: 'pointer', textAlign: 'left', transition: 'background-color 0.2s'
+                  }}
+                >
+                  {suggestion}
+                </motion.button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {messages.map((msg, idx) => (
           <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
             {/* Tool steps (collapsed summary) */}
@@ -134,6 +169,7 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
       {/* Input */}
       <div style={{ padding: '1rem 1.25rem', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: '0.5rem' }}>
         <input
+          id="zen-agent-input"
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }}}

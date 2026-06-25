@@ -259,6 +259,7 @@ const AuthManagementPanel: React.FC<{
 
   const handleDisconnectWorkspace = () => {
     signOutGoogle();
+    deleteUserGeminiToken();
     onChanged();
     toast.info('Google Workspace disconnected.');
   };
@@ -298,8 +299,8 @@ const AuthManagementPanel: React.FC<{
       onClick={onClose}
       style={{
         position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.65)',
-        backdropFilter: 'blur(6px)',
+        background: 'rgba(5, 5, 8, 0.75)',
+        backdropFilter: 'blur(10px)',
         zIndex: 99999,
         display: 'flex',
         alignItems: 'center',
@@ -307,85 +308,87 @@ const AuthManagementPanel: React.FC<{
       }}
     >
       <motion.div
-        initial={{ opacity: 0, scale: 0.92, y: 20 }}
+        initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.92, y: 20 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
+        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'rgba(10, 10, 16, 0.99)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '22px',
-          padding: '2rem',
-          width: '440px',
+          background: 'linear-gradient(135deg, rgba(10, 10, 15, 0.98), rgba(5, 5, 8, 0.99))',
+          border: '1px solid rgba(251, 191, 36, 0.15)',
+          borderRadius: '24px',
+          padding: '2.2rem',
+          width: '460px',
           maxWidth: '95vw',
-          boxShadow: '0 28px 70px rgba(0,0,0,0.7), 0 0 60px rgba(124,58,237,0.08)',
+          boxShadow: '0 32px 80px rgba(0, 0, 0, 0.9), 0 0 50px rgba(6, 182, 212, 0.15)',
           display: 'flex',
           flexDirection: 'column',
-          gap: '1.25rem',
+          gap: '1.5rem',
           position: 'relative',
         }}
       >
         <button
           onClick={onClose}
-          style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', padding: '4px' }}
+          style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', padding: '4px', transition: 'color 0.2s' }}
         >
           <X size={18} />
         </button>
 
         {/* Header */}
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#e8eaf0', marginBottom: '0.25rem' }}>Connection Center</div>
-          <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)' }}>Manage Google Workspace & AI quota connections</div>
+          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fbbf24', marginBottom: '0.35rem', letterSpacing: '0.08em', textTransform: 'uppercase', textShadow: '0 0 12px rgba(251, 191, 36, 0.3)' }}>Connection Center</div>
+          <div style={{ fontSize: '0.78rem', color: '#a1a1aa', letterSpacing: '0.02em' }}>Manage Google Workspace & AI quota connections</div>
         </div>
 
         {/* ─── Google Workspace Section ─── */}
         <div style={{
-          background: workspaceConnected ? 'rgba(0,191,165,0.06)' : 'rgba(255,255,255,0.03)',
-          border: `1px solid ${workspaceConnected ? 'rgba(0,191,165,0.25)' : 'rgba(255,255,255,0.08)'}`,
-          borderRadius: '14px',
+          background: workspaceConnected ? 'rgba(6,182,212,0.06)' : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${workspaceConnected ? 'rgba(6,182,212,0.25)' : 'rgba(255,255,255,0.05)'}`,
+          borderRadius: '16px',
           padding: '1.25rem',
+          boxShadow: workspaceConnected ? 'inset 0 0 15px rgba(6,182,212,0.03)' : 'none',
+          transition: 'all 0.3s ease',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.85rem' }}>
             <div style={{ display: 'flex', gap: '6px' }}>
               {['gmail', 'google-calendar', 'google-drive'].map(svc => (
                 <img key={svc}
                   src={`https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/${svc}.png`}
                   alt={svc} width="22" height="22"
-                  style={{ filter: workspaceConnected ? 'none' : 'grayscale(1) opacity(0.4)', transition: 'filter 0.3s' }}
+                  style={{ filter: workspaceConnected ? 'none' : 'grayscale(1) opacity(0.3)', transition: 'all 0.3s' }}
                 />
               ))}
             </div>
             <div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: workspaceConnected ? '#00BFA5' : '#e4e4e7' }}>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: workspaceConnected ? '#06b6d4' : '#e4e4e7', letterSpacing: '0.01em' }}>
                 Google Workspace
               </div>
-              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>Gmail · Calendar · Drive · Docs · Meet</div>
+              <div style={{ fontSize: '0.68rem', color: '#71717a', marginTop: '1px' }}>Gmail · Calendar · Drive · Docs · Meet</div>
             </div>
             <div style={{ marginLeft: 'auto' }}>
               {workspaceConnected
-                ? <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#00BFA5', background: 'rgba(0,191,165,0.12)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(0,191,165,0.25)' }}>● LIVE</span>
-                : <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#71717a', background: 'rgba(255,255,255,0.05)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.1)' }}>● OFFLINE</span>
+                ? <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#06b6d4', background: 'rgba(6,182,212,0.12)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(6,182,212,0.25)', letterSpacing: '0.04em' }}>● LIVE</span>
+                : <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#71717a', background: 'rgba(255,255,255,0.04)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.08)', letterSpacing: '0.04em' }}>● OFFLINE</span>
               }
             </div>
           </div>
 
           {wsError && (
-            <div style={{ fontSize: '0.75rem', color: '#f87171', background: 'rgba(239,68,68,0.08)', padding: '0.5rem 0.75rem', borderRadius: '8px', marginBottom: '0.75rem', border: '1px solid rgba(239,68,68,0.15)' }}>
+            <div style={{ fontSize: '0.75rem', color: '#fca5a5', background: 'rgba(239,68,68,0.1)', padding: '0.6rem 0.8rem', borderRadius: '8px', marginBottom: '0.85rem', border: '1px solid rgba(239,68,68,0.2)' }}>
               {wsError}
             </div>
           )}
 
           {workspaceConnected ? (
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <div style={{ flex: 1, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-                Agents can read your Gmail, book Calendar events, and access Drive files.
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <div style={{ flex: 1, fontSize: '0.72rem', color: '#a1a1aa', lineHeight: 1.45 }}>
+                Agents have direct access to Calendar, Drive & Mail files.
               </div>
               <button
                 onClick={handleDisconnectWorkspace}
-                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', padding: '0.4rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', padding: '0.45rem 0.85rem', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem', transition: 'all 0.2s' }}
               >
-                <Trash2 size={13} /> Disconnect
+                <Trash2 size={12} /> Disconnect
               </button>
             </div>
           ) : (
@@ -393,92 +396,123 @@ const AuthManagementPanel: React.FC<{
               onClick={handleConnectWorkspace}
               disabled={signingInWS}
               style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
-                padding: '0.75rem 1.25rem', borderRadius: '10px', width: '100%',
-                border: '1px solid rgba(255,255,255,0.12)',
-                background: signingInWS ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)',
-                color: '#fff', cursor: signingInWS ? 'default' : 'pointer', fontSize: '0.88rem', fontWeight: 600, transition: 'all 0.2s',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                padding: '0.7rem 1.25rem', borderRadius: '10px', width: '100%',
+                border: '1px solid rgba(6,182,212,0.3)',
+                background: signingInWS 
+                  ? 'rgba(6,182,212,0.04)' 
+                  : 'linear-gradient(135deg, rgba(6,182,212,0.15), rgba(6,182,212,0.08))',
+                color: '#06b6d4', cursor: signingInWS ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase', transition: 'all 0.2s',
+                boxShadow: signingInWS ? 'none' : '0 4px 12px rgba(6,182,212,0.05)',
               }}
+              onMouseEnter={e => { if(!signingInWS) { e.currentTarget.style.background = 'rgba(6,182,212,0.22)'; e.currentTarget.style.borderColor = 'rgba(6,182,212,0.45)'; } }}
+              onMouseLeave={e => { if(!signingInWS) { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(6,182,212,0.15), rgba(6,182,212,0.08))'; e.currentTarget.style.borderColor = 'rgba(6,182,212,0.3)'; } }}
             >
-              {signingInWS ? <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} /> : (
-                <svg width="17" height="17" viewBox="0 0 18 18">
-                  <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-                  <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
-                  <path d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-                  <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                </svg>
-              )}
-              {signingInWS ? 'Connecting...' : 'Connect Google Workspace'}
+              {signingInWS ? <Loader2 size={14} className="spin" /> : <ShieldCheck size={14} />}
+              {signingInWS ? 'Establishing Workspace Link...' : 'Link Google Workspace'}
             </button>
           )}
         </div>
 
         {/* ─── Personal AI Quota Section ─── */}
         <div style={{
-          background: geminiStatus.hasPersonalKey ? 'rgba(167,139,250,0.06)' : 'rgba(255,255,255,0.03)',
-          border: `1px solid ${geminiStatus.hasPersonalKey ? 'rgba(167,139,250,0.25)' : 'rgba(255,255,255,0.08)'}`,
-          borderRadius: '14px',
+          background: geminiStatus.hasPersonalKey ? 'rgba(251,191,36,0.06)' : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${geminiStatus.hasPersonalKey ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.05)'}`,
+          borderRadius: '16px',
           padding: '1.25rem',
+          boxShadow: geminiStatus.hasPersonalKey ? 'inset 0 0 15px rgba(251,191,36,0.03)' : 'none',
+          transition: 'all 0.3s ease',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.2))', border: '1px solid rgba(99,102,241,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Bot size={20} style={{ color: '#a5b4fc' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.85rem' }}>
+            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'linear-gradient(135deg, rgba(251,191,36,0.15), rgba(251,191,36,0.08))', border: '1px solid rgba(251,191,36,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Bot size={18} style={{ color: '#fbbf24' }} />
             </div>
             <div>
-              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: geminiStatus.hasPersonalKey ? '#a78bfa' : '#e4e4e7' }}>Personal AI Quota</div>
-              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>Your private Gemini compute budget</div>
+              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: geminiStatus.hasPersonalKey ? '#fbbf24' : '#e4e4e7', letterSpacing: '0.01em' }}>Personal AI Quota</div>
+              <div style={{ fontSize: '0.68rem', color: '#71717a', marginTop: '1px' }}>Your private Gemini compute budget</div>
             </div>
             <div style={{ marginLeft: 'auto' }}>
               {geminiStatus.hasPersonalKey
-                ? <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(167,139,250,0.25)' }}>● ACTIVE</span>
-                : <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#71717a', background: 'rgba(255,255,255,0.05)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.1)' }}>● SHARED</span>
+                ? <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fbbf24', background: 'rgba(251,191,36,0.12)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(251,191,36,0.25)', letterSpacing: '0.04em' }}>● CONNECTED</span>
+                : <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#71717a', background: 'rgba(255,255,255,0.04)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.08)', letterSpacing: '0.04em' }}>● SHARED</span>
               }
             </div>
           </div>
 
           {aiError && (
-            <div style={{ fontSize: '0.75rem', color: '#f87171', background: 'rgba(239,68,68,0.08)', padding: '0.5rem 0.75rem', borderRadius: '8px', marginBottom: '0.75rem', border: '1px solid rgba(239,68,68,0.15)' }}>
+            <div style={{ fontSize: '0.75rem', color: '#fca5a5', background: 'rgba(239,68,68,0.1)', padding: '0.6rem 0.8rem', borderRadius: '8px', marginBottom: '0.85rem', border: '1px solid rgba(239,68,68,0.2)' }}>
               {aiError}
             </div>
           )}
 
           {geminiStatus.hasPersonalKey ? (
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <div style={{ flex: 1, fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-                All AI agents are running on your personal Google account quota for maximum speed.
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+              <div style={{ flex: 1, fontSize: '0.72rem', color: '#a1a1aa', lineHeight: 1.45 }}>
+                AI execution speed is optimized via your personal Google developer account.
               </div>
               <button
                 onClick={handleDisconnectAI}
-                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', padding: '0.4rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '8px', color: '#f87171', cursor: 'pointer', padding: '0.45rem 0.85rem', fontSize: '0.75rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.35rem', transition: 'all 0.2s' }}
               >
-                <Trash2 size={13} /> Disconnect
+                <Trash2 size={12} /> Disconnect
               </button>
             </div>
           ) : (
             <>
-              <button
-                onClick={handleConnectAI}
-                disabled={signingInAI}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
-                  padding: '0.75rem 1.25rem', borderRadius: '10px', width: '100%',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  background: signingInAI ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.07)',
-                  color: '#fff', cursor: signingInAI ? 'default' : 'pointer', fontSize: '0.88rem', fontWeight: 600, transition: 'all 0.2s',
-                }}
-              >
-                {signingInAI ? <Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} /> : (
-                  <svg width="17" height="17" viewBox="0 0 18 18">
-                    <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-                    <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z" fill="#34A853"/>
-                    <path d="M3.964 10.71c-.18-.54-.282-1.117-.282-1.71V4.958H.957C.347 6.173 0 7.548 0 9s.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-                    <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                  </svg>
-                )}
-                {signingInAI ? 'Connecting...' : 'Connect Personal AI Quota'}
-              </button>
-              <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', lineHeight: 1.5, marginTop: '0.5rem' }}>
-                Currently using the shared API pool. Connect your Google account for private, unthrottled AI access.
+              {signingInAI ? (
+                /* Sleek high-tech scanner connecting loader bar */
+                <div style={{
+                  background: 'rgba(251, 191, 36, 0.05)',
+                  border: '1px dashed rgba(251, 191, 36, 0.3)',
+                  borderRadius: '10px',
+                  padding: '0.8rem 1.25rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.4rem',
+                  position: 'relative',
+                  overflow: 'hidden',
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', fontWeight: 800, color: '#fbbf24', fontFamily: 'var(--font-mono, monospace)', letterSpacing: '0.05em' }}>
+                    <span>ESTABLISHING NEURAL LINK...</span>
+                    <Loader2 size={12} className="spin" style={{ color: '#fbbf24' }} />
+                  </div>
+                  <div style={{ width: '100%', height: '3px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden', position: 'relative' }}>
+                    <div style={{
+                      position: 'absolute',
+                      left: 0, top: 0, bottom: 0,
+                      background: 'linear-gradient(90deg, transparent, #fbbf24, transparent)',
+                      width: '40%',
+                      animation: 'scanline-sweep 1.8s infinite ease-in-out',
+                    }} />
+                  </div>
+                  <style>{`
+                    @keyframes scanline-sweep {
+                      0% { left: -40%; }
+                      100% { left: 110%; }
+                    }
+                  `}</style>
+                </div>
+              ) : (
+                <button
+                  onClick={handleConnectAI}
+                  disabled={signingInAI}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                    padding: '0.7rem 1.25rem', borderRadius: '10px', width: '100%',
+                    border: '1px solid rgba(251, 191, 36, 0.3)',
+                    background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.08))',
+                    color: '#fbbf24', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase', transition: 'all 0.2s',
+                    boxShadow: '0 4px 12px rgba(251, 191, 36, 0.05)',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(251, 191, 36, 0.22)'; e.currentTarget.style.borderColor = 'rgba(251, 191, 36, 0.45)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.08))'; e.currentTarget.style.borderColor = 'rgba(251, 191, 36, 0.3)'; }}
+                >
+                  <Bot size={14} />
+                  Connect Personal AI Quota
+                </button>
+              )}
+              <div style={{ fontSize: '0.62rem', color: '#71717a', lineHeight: 1.45, marginTop: '0.6rem', textAlign: 'center', fontFamily: 'var(--font-sans, sans-serif)' }}>
+                Runs on your private quota. Sync Workspace to enable instant authentication.
               </div>
             </>
           )}

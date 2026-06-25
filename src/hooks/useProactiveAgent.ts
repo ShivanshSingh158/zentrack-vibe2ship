@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { orchestrateAgent } from '../agent/orchestrator';
 import { getLocalDateString } from '../utils/dateUtils';
 import { toast } from 'sonner';
+import { agentMemoryStore } from '../stores/agentMemoryStore';
 
 const PROACTIVE_THROTTLE_MS = 60 * 60 * 1000;   // 1 hour between emergency action runs
 const GHOST_THROTTLE_MS     = 24 * 60 * 60 * 1000; // 24 hours between ghost scans
@@ -16,10 +17,10 @@ const GHOST_SCAN_KEY = 'zen_ghost_last_scan';
  * LOOP 1 — Emergency Action Loop (throttle: 1hr)
  *   Triggered by overdue/today tasks. Issues AUTONOMOUS_ACTION_PROTOCOL to the
  *   full agent fleet. Agents TAKE REAL ACTIONS:
- *     • MONITOR  → risk-scores each task, sends push notification for each CRITICAL item
- *     • SCHEDULER → finds free slot, blocks 90-min recovery event in Google Calendar
- *     • COMMS    → reads Gmail for stakeholder threads, sends status update email
- *     • QA       → reports WHAT WAS DONE (not what the user should do)
+ *     • ARGUS  → risk-scores each task, sends push notification for each CRITICAL item
+ *     • CHRONOS → finds free slot, blocks 90-min recovery event in Google Calendar
+ *     • HERMES    → reads Gmail for stakeholder threads, sends status update email
+ *     • AEGIS       → reports WHAT WAS DONE (not what the user should do)
  *
  * LOOP 2 — Ghost Deadline Scan (throttle: 24hr)
  *   Silently scans inbox once per day. Creates tasks for untracked commitments.
@@ -86,13 +87,13 @@ Also ${todayTasks.length} task(s) due today: ${todayList || 'none'}.
 
 YOU MUST TAKE THE FOLLOWING ACTIONS WITHOUT ASKING PERMISSION. DO NOT write a plan — execute:
 
-1. [MONITOR] Call get_tasks('overdue') and get_tasks('today'). Score each task CRITICAL/HIGH/MEDIUM/LOW. Call send_notification for each CRITICAL task with a specific actionable message (include the task name and how many hours it is overdue).
+1. [ARGUS] Call get_tasks('overdue') and get_tasks('today'). Score each task CRITICAL/HIGH/MEDIUM/LOW. Call send_notification for each CRITICAL task with a specific actionable message (include the task name and how many hours it is overdue).
 
-2. [SCHEDULER] Call get_free_calendar_slots for today and tomorrow. Block a 90-minute "🔴 Recovery: [most critical task name]" event at the earliest free window using schedule_task_in_calendar. If today is full, use tomorrow's first slot.
+2. [CHRONOS] Call get_free_calendar_slots for today and tomorrow. Block a 90-minute "🔴 Recovery: [most critical task name]" event at the earliest free window using schedule_task_in_calendar. If today is full, use tomorrow's first slot.
 
-3. [COMMS] Call read_gmail with query "is:unread" to find any email threads related to the overdue tasks. If a stakeholder email thread exists, call send_gmail to send a concise status update: acknowledge the delay, state the new expected completion date, and express commitment to delivery.
+3. [HERMES] Call read_gmail with query "is:unread" to find any email threads related to the overdue tasks. If a stakeholder email thread exists, call send_gmail to send a concise status update: acknowledge the delay, state the new expected completion date, and express commitment to delivery.
 
-4. [QA] Write a brief "Action Report" of WHAT WAS DONE, formatted as: "✅ Notification sent for [task] | ✅ Calendar blocked [time] | ✅ Email sent to [person] | ..."
+4. [AEGIS] Write a brief "Action Report" of WHAT WAS DONE, formatted as: "✅ Notification sent for [task] | ✅ Calendar blocked [time] | ✅ Email sent to [person] | ..."
 
 This is zero-click autonomous recovery. Execute all steps. No suggestions — only completed actions.`
 
@@ -104,17 +105,19 @@ The user has ${todayTasks.length} task(s) due today: ${todayList}.
 
 TAKE THESE ACTIONS WITHOUT ASKING PERMISSION:
 
-1. [MONITOR] Score each today task by risk (hours remaining vs task complexity). Call send_notification with today's exact priority order: "📋 Today's Priority Order: 1. [task] 2. [task] ..."
+1. [ARGUS] Score each today task by risk (hours remaining vs task complexity). Call send_notification with today's exact priority order: "📋 Today's Priority Order: 1. [task] 2. [task] ..."
 
-2. [SCHEDULER] Call get_free_calendar_slots. Block focused work windows for the top 2 priority tasks using schedule_task_in_calendar. Schedule the highest-risk task in the earliest available slot.
+2. [CHRONOS] Call get_free_calendar_slots. Block focused work windows for the top 2 priority tasks using schedule_task_in_calendar. Schedule the highest-risk task in the earliest available slot.
 
-3. [QA] Report exactly which calendar blocks were created, what time each task is scheduled, and confirm notifications were sent. Format: "Action Report: ✅ [action] | ✅ [action]"
+3. [AEGIS] Report exactly which calendar blocks were created, what time each task is scheduled, and confirm notifications were sent. Format: "Action Report: ✅ [action] | ✅ [action]"
 
 Execute everything now.`;
 
       try {
         const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+        agentMemoryStore.appendMessage({ role: 'user', title: actionPrompt });
         const result = await orchestrateAgent(actionPrompt, tasks, calendarEvents, apiKey, () => {});
+        agentMemoryStore.appendMessage({ role: 'agent', title: result });
 
         window.dispatchEvent(new CustomEvent('proactive-briefing', {
           detail: { report: result, overdueCount: overdueTasks.length, todayCount: todayTasks.length, isActionReport: true }
@@ -177,7 +180,9 @@ Be thorough. Be silent unless you find something.`;
 
       try {
         const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+        agentMemoryStore.appendMessage({ role: 'user', title: ghostPrompt });
         const result = await orchestrateAgent(ghostPrompt, tasks, calendarEvents, apiKey, () => {});
+        agentMemoryStore.appendMessage({ role: 'agent', title: result });
 
         const isClear = result.includes('GHOST_SCAN_CLEAR') || result.toLowerCase().includes('no ghost') || result.toLowerCase().includes('no hidden');
         if (!isClear) {

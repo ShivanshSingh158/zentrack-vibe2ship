@@ -12,7 +12,8 @@ export const workspaceFetch = async <T>(
   url: string,
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'GET',
   body?: object,
-  extraHeaders?: Record<string, string>
+  extraHeaders?: Record<string, string>,
+  signal?: AbortSignal
 ): Promise<T> => {
   const token = await ensureToken();
 
@@ -24,6 +25,7 @@ export const workspaceFetch = async <T>(
       ...extraHeaders,
     },
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
 
   if (!res.ok) {
@@ -49,17 +51,18 @@ export const workspaceFetch = async <T>(
 let _gmailCache: { data: any; timestamp: number } | null = null;
 const CACHE_TTL = 60000; // 1 minute cache
 
-export const fetchUnreadEmails = async (query: string = 'is:unread') => {
+export const fetchUnreadEmails = async (query: string = 'is:unread', signal?: AbortSignal) => {
   if (_gmailCache && Date.now() - _gmailCache.timestamp < CACHE_TTL) {
     return _gmailCache.data; // Return cached result within same session
   }
 
-  const data = await workspaceFetch<any>(`${GMAIL_API}/messages?q=${encodeURIComponent(query)}&maxResults=5`);
+  const data = await workspaceFetch<any>(`${GMAIL_API}/messages?q=${encodeURIComponent(query)}&maxResults=5`, 'GET', undefined, undefined, signal);
   if (!data.messages) return [];
 
   const detailPromises = data.messages.map((msg: any) => 
     workspaceFetch<any>(
-      `${GMAIL_API}/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Message-ID`
+      `${GMAIL_API}/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Message-ID`,
+      'GET', undefined, undefined, signal
     ).then((details) => {
       const headers = details.payload.headers;
       const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
@@ -74,7 +77,7 @@ export const fetchUnreadEmails = async (query: string = 'is:unread') => {
   return result;
 };
 
-export const sendEmail = async (to: string, subject: string, bodyText: string) => {
+export const sendEmail = async (to: string, subject: string, bodyText: string, signal?: AbortSignal) => {
   const rawEmail = `To: ${to}\r\n` +
                    `Subject: ${subject}\r\n` +
                    `Content-Type: text/plain; charset="UTF-8"\r\n\r\n` +
@@ -85,10 +88,10 @@ export const sendEmail = async (to: string, subject: string, bodyText: string) =
     .replace(/\//g, '_')
     .replace(/=+$/, '');
 
-  return await workspaceFetch<any>(`${GMAIL_API}/messages/send`, 'POST', { raw: encodedEmail });
+  return await workspaceFetch<any>(`${GMAIL_API}/messages/send`, 'POST', { raw: encodedEmail }, undefined, signal);
 };
 
-export const createDraftEmail = async (to: string, subject: string, bodyText: string) => {
+export const createDraftEmail = async (to: string, subject: string, bodyText: string, signal?: AbortSignal) => {
   const rawEmail = `To: ${to}\r\n` +
                    `Subject: ${subject}\r\n` +
                    `Content-Type: text/plain; charset="UTF-8"\r\n\r\n` +
@@ -99,11 +102,11 @@ export const createDraftEmail = async (to: string, subject: string, bodyText: st
     .replace(/\//g, '_')
     .replace(/=+$/, '');
 
-  return await workspaceFetch<any>(`${GMAIL_API}/drafts`, 'POST', { message: { raw: encodedEmail } });
+  return await workspaceFetch<any>(`${GMAIL_API}/drafts`, 'POST', { message: { raw: encodedEmail } }, undefined, signal);
 };
 
 /** Reply to an existing email thread */
-export const replyToEmail = async (threadId: string, to: string, subject: string, bodyText: string) => {
+export const replyToEmail = async (threadId: string, to: string, subject: string, bodyText: string, signal?: AbortSignal) => {
   const rawEmail = `To: ${to}\r\n` +
                    `Subject: Re: ${subject}\r\n` +
                    `Content-Type: text/plain; charset="UTF-8"\r\n\r\n` +
@@ -117,25 +120,25 @@ export const replyToEmail = async (threadId: string, to: string, subject: string
   return await workspaceFetch<any>(`${GMAIL_API}/messages/send`, 'POST', {
     raw: encodedEmail,
     threadId
-  });
+  }, undefined, signal);
 };
 
 /** Archive (remove from INBOX) an email by message ID */
-export const archiveEmail = async (messageId: string) => {
+export const archiveEmail = async (messageId: string, signal?: AbortSignal) => {
   return await workspaceFetch<any>(`${GMAIL_API}/messages/${messageId}/modify`, 'POST', {
     removeLabelIds: ['INBOX']
-  });
+  }, undefined, signal);
 };
 
 /** Permanently delete an email (moves to trash) */
-export const trashEmail = async (messageId: string) => {
-  return await workspaceFetch<any>(`${GMAIL_API}/messages/${messageId}/trash`, 'POST', {});
+export const trashEmail = async (messageId: string, signal?: AbortSignal) => {
+  return await workspaceFetch<any>(`${GMAIL_API}/messages/${messageId}/trash`, 'POST', {}, undefined, signal);
 };
 
-// ─── DOCS ───────────────────────────────────────────────────────────────────
+// ─── SCRIBE ───────────────────────────────────────────────────────────────────
 
-export const createGoogleDoc = async (title: string) => {
-  const data = await workspaceFetch<any>(DOCS_API, 'POST', { title });
+export const createGoogleDoc = async (title: string, signal?: AbortSignal) => {
+  const data = await workspaceFetch<any>(DOCS_API, 'POST', { title }, undefined, signal);
   return {
     docId: data.documentId,
     url: `https://docs.google.com/document/d/${data.documentId}/edit`
@@ -143,7 +146,7 @@ export const createGoogleDoc = async (title: string) => {
 };
 
 /** Appends text content to an existing Google Doc */
-export const writeToGoogleDoc = async (docId: string, content: string) => {
+export const writeToGoogleDoc = async (docId: string, content: string, signal?: AbortSignal) => {
   await workspaceFetch<any>(`${DOCS_API}/${docId}:batchUpdate`, 'POST', {
     requests: [
       {
@@ -153,30 +156,32 @@ export const writeToGoogleDoc = async (docId: string, content: string) => {
         }
       }
     ]
-  });
+  }, undefined, signal);
   return { docId, url: `https://docs.google.com/document/d/${docId}/edit` };
 };
 
-// ─── DRIVE ──────────────────────────────────────────────────────────────────
+// ─── ARCHIVE ──────────────────────────────────────────────────────────────────
 
-export const searchGoogleDrive = async (query: string) => {
+export const searchGoogleDrive = async (query: string, signal?: AbortSignal) => {
   const data = await workspaceFetch<any>(
-    `${DRIVE_API}?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType,webViewLink,modifiedTime,size)&pageSize=10&orderBy=modifiedTime desc`
+    `${DRIVE_API}?q=${encodeURIComponent(query)}&fields=files(id,name,mimeType,webViewLink,modifiedTime,size)&pageSize=10&orderBy=modifiedTime desc`,
+    'GET', undefined, undefined, signal
   );
   return data.files || [];
 };
 
 /** List recent files in Drive without a search query */
-export const listDriveFiles = async (pageSize = 15) => {
+export const listDriveFiles = async (pageSize = 15, signal?: AbortSignal) => {
   const data = await workspaceFetch<any>(
-    `${DRIVE_API}?fields=files(id,name,mimeType,webViewLink,modifiedTime)&pageSize=${pageSize}&orderBy=modifiedTime desc`
+    `${DRIVE_API}?fields=files(id,name,mimeType,webViewLink,modifiedTime)&pageSize=${pageSize}&orderBy=modifiedTime desc`,
+    'GET', undefined, undefined, signal
   );
   return data.files || [];
 };
 
 /** Open a specific file in the browser by Drive file ID */
-export const openDriveFile = async (fileId: string): Promise<{ url: string; name: string; mimeType: string }> => {
-  const data = await workspaceFetch<any>(`${DRIVE_API}/${fileId}?fields=id,name,mimeType,webViewLink,exportLinks`);
+export const openDriveFile = async (fileId: string, signal?: AbortSignal): Promise<{ url: string; name: string; mimeType: string }> => {
+  const data = await workspaceFetch<any>(`${DRIVE_API}/${fileId}?fields=id,name,mimeType,webViewLink,exportLinks`, 'GET', undefined, undefined, signal);
   const url = data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
 
   // Auto-open the file in a new tab
@@ -188,8 +193,8 @@ export const openDriveFile = async (fileId: string): Promise<{ url: string; name
 };
 
 /** Get the PDF export link for a Google Doc/Sheet */
-export const getFilePdfLink = async (fileId: string): Promise<string> => {
-  const data = await workspaceFetch<any>(`${DRIVE_API}/${fileId}?fields=exportLinks`);
+export const getFilePdfLink = async (fileId: string, signal?: AbortSignal): Promise<string> => {
+  const data = await workspaceFetch<any>(`${DRIVE_API}/${fileId}?fields=exportLinks`, 'GET', undefined, undefined, signal);
   const pdfUrl = data.exportLinks?.['application/pdf'];
   if (!pdfUrl) throw new Error('This file cannot be exported as PDF (not a Google Docs/Sheets file)');
   return pdfUrl;
@@ -198,11 +203,12 @@ export const getFilePdfLink = async (fileId: string): Promise<string> => {
 // ─── CALENDAR ───────────────────────────────────────────────────────────────
 
 /** List calendar events for a specific date */
-export const listCalendarEventsOnDate = async (date: string) => {
+export const listCalendarEventsOnDate = async (date: string, signal?: AbortSignal) => {
   const timeMin = new Date(date + 'T00:00:00').toISOString();
   const timeMax = new Date(date + 'T23:59:59').toISOString();
   const data = await workspaceFetch<any>(
-    `${CALENDAR_API}/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime`
+    `${CALENDAR_API}/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime`,
+    'GET', undefined, undefined, signal
   );
   return data.items || [];
 };
@@ -215,7 +221,7 @@ export const updateCalendarEvent = async (eventId: string, changes: {
   description?: string;
   location?: string;
   attendees?: string[];
-}) => {
+}, signal?: AbortSignal) => {
   const patch: any = {};
   if (changes.title) patch.summary = changes.title;
   if (changes.description) patch.description = changes.description;
@@ -227,7 +233,9 @@ export const updateCalendarEvent = async (eventId: string, changes: {
   const data = await workspaceFetch<any>(
     `${CALENDAR_API}/calendars/primary/events/${eventId}`,
     'PATCH',
-    patch
+    patch,
+    undefined,
+    signal
   );
   return { eventId: data.id, htmlLink: data.htmlLink };
 };
@@ -241,7 +249,7 @@ export const createGoogleMeet = async (params: {
   endDateTime: string;    // ISO 8601
   description?: string;
   attendees?: string[];   // Email addresses
-}): Promise<{ meetLink: string; eventId: string; calendarLink: string }> => {
+}, signal?: AbortSignal): Promise<{ meetLink: string; eventId: string; calendarLink: string }> => {
   const body: any = {
     summary: params.title,
     description: params.description || 'Created by ZenTrack AI Agent',
@@ -262,7 +270,9 @@ export const createGoogleMeet = async (params: {
   const data = await workspaceFetch<any>(
     `${CALENDAR_API}/calendars/primary/events?conferenceDataVersion=1`,
     'POST',
-    body
+    body,
+    undefined,
+    signal
   );
 
   const meetLink = data.conferenceData?.entryPoints?.find((e: any) => e.entryPointType === 'video')?.uri
@@ -285,10 +295,10 @@ export const createGoogleMeet = async (params: {
 
 // ─── GOOGLE SHEETS ───────────────────────────────────────────────────────────
 
-export const createGoogleSheet = async (title: string) => {
+export const createGoogleSheet = async (title: string, signal?: AbortSignal) => {
   const data = await workspaceFetch<any>(SHEETS_API, 'POST', {
     properties: { title }
-  });
+  }, undefined, signal);
   return {
     sheetId: data.spreadsheetId,
     url: `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}/edit`

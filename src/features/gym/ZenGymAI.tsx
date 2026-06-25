@@ -180,7 +180,7 @@ function buildContextString(stats: GymStats, profile: GymProfile | null): string
   // ── Last 5 Sessions Detail ────────────────────────────────────────────────
   const recentSessions = stats.logs.slice(0, 5);
   if (recentSessions.length > 0) {
-    lines.push(`=== LAST ${recentSessions.length} SESSIONS (FULL SET-LEVEL DATA) ===`);
+    lines.push(`=== LAST ${recentSessions.length} SESSIONS (FULL SET-LEVEL ENIGMA) ===`);
     recentSessions.forEach(log => {
       const completedSets = log.exercises?.reduce((s, e) => s + e.setsLog.filter(set => set.completed).length, 0) ?? 0;
       const totalSets = log.exercises?.reduce((s, e) => s + e.setsLog.length, 0) ?? 0;
@@ -423,7 +423,7 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
     const totalSets = todayLog.exercises.reduce((s, e) => s + e.setsLog.length, 0);
     const completedExercises = todayLog.exercises.filter(e => e.setsLog.every(s => s.completed) && !e.skipped);
     const lines = [
-      `\n=== TODAY'S SESSION (${todayLog.date}) — LIVE DATA ===`,
+      `\n=== TODAY'S SESSION (${todayLog.date}) — LIVE ENIGMA ===`,
       `Mode: ${sessionMode.toUpperCase()}`,
       `Progress: ${doneSets}/${totalSets} sets`,
       `Completed exercises: ${completedExercises.map(e => e.name).join(', ') || 'none yet'}`,

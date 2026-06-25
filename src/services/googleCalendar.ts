@@ -19,7 +19,12 @@ const SCOPES = 'https://www.googleapis.com/auth/calendar ' +
                'https://www.googleapis.com/auth/gmail.modify ' +
                'https://www.googleapis.com/auth/drive.file ' +
                'https://www.googleapis.com/auth/documents ' +
-               'https://www.googleapis.com/auth/spreadsheets';
+               'https://www.googleapis.com/auth/spreadsheets ' +
+               'https://www.googleapis.com/auth/generative-language.retriever';
+// NOTE: 'generative-language' (full) scope is NOT used here.
+// Gemini generateContent API only accepts API Keys, NOT OAuth bearer tokens.
+// Attempting to request this scope causes Error 400: invalid_scope unless the
+// GCP project has explicit Generative Language API enrollment + consent screen approval.
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 
 // ZenTrack source tag stored on GCal events to identify them
@@ -116,30 +121,48 @@ export const signInWithGoogle = (): Promise<void> => {
   if (!CLIENT_ID) return Promise.reject(new Error('VITE_GOOGLE_CALENDAR_CLIENT_ID not set'));
 
   return new Promise((resolve, reject) => {
+    // Add a 45-second timeout safeguard so the auth panel state does not hang indefinitely if the popup is blocked
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Authentication timed out or the Google authorization popup was blocked.'));
+    }, 45000);
+
     const doRequest = () => {
-      _tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (response: any) => {
-          if (response.error) {
-            reject(new Error(response.error_description || response.error));
-            return;
-          }
-          storeToken(response.access_token, response.expires_in ?? 3600);
-          console.log('[GoogleCalendar] ✅ Token obtained');
-          resolve();
-        },
-        error_callback: (err: any) => {
-          reject(new Error(err?.message || 'OAuth failed'));
-        },
-      });
-      _tokenClient.requestAccessToken({ prompt: '' });
+      try {
+        _tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: (response: any) => {
+            clearTimeout(timeoutId);
+            if (response.error) {
+              reject(new Error(response.error_description || response.error));
+              return;
+            }
+            storeToken(response.access_token, response.expires_in ?? 3600);
+            console.log('[GoogleCalendar] ✅ Token obtained');
+            resolve();
+          },
+          error_callback: (err: any) => {
+            clearTimeout(timeoutId);
+            reject(new Error(err?.message || 'OAuth failed'));
+          },
+        });
+        // Use prompt: 'select_account' so it reliably prompts user account chooser window
+        _tokenClient.requestAccessToken({ prompt: 'select_account' });
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        reject(new Error(err?.message || 'Failed to initialize Google Identity Services token client'));
+      }
     };
 
     if (_gisLoaded && (window as any).google?.accounts?.oauth2) {
       doRequest();
     } else {
-      loadGisScript().then(doRequest).catch(reject);
+      loadGisScript()
+        .then(doRequest)
+        .catch((err) => {
+          clearTimeout(timeoutId);
+          reject(err);
+        });
     }
   });
 };
@@ -188,7 +211,8 @@ export const ensureToken = async (): Promise<string> => {
 const calendarFetch = async <T>(
   path: string,
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'GET',
-  body?: object
+  body?: object,
+  signal?: AbortSignal
 ): Promise<T> => {
   const token = await ensureToken();
 
@@ -199,6 +223,7 @@ const calendarFetch = async <T>(
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : undefined,
+    signal,
   });
 
   if (!res.ok) {
@@ -287,11 +312,12 @@ const buildCalEventBody = (event: GCalEvent) => ({
 // ─── CREATE ───────────────────────────────────────────────────────────────────
 
 /** Creates event in Google Calendar and returns the GCal event ID */
-export const addEventToGoogleCalendar = async (event: GCalEvent): Promise<string> => {
+export const addEventToGoogleCalendar = async (event: GCalEvent, signal?: AbortSignal): Promise<string> => {
   const result = await calendarFetch<any>(
     '/calendars/primary/events',
     'POST',
-    buildCalEventBody(event)
+    buildCalEventBody(event),
+    signal
   );
   console.log('[GoogleCalendar] ✅ Created:', result?.summary, result?.id);
   return result.id as string;
@@ -300,11 +326,12 @@ export const addEventToGoogleCalendar = async (event: GCalEvent): Promise<string
 // ─── UPDATE ───────────────────────────────────────────────────────────────────
 
 /** Updates an existing GCal event by its GCal event ID */
-export const updateGoogleCalendarEvent = async (gcalEventId: string, event: GCalEvent): Promise<void> => {
+export const updateGoogleCalendarEvent = async (gcalEventId: string, event: GCalEvent, signal?: AbortSignal): Promise<void> => {
   await calendarFetch<any>(
     `/calendars/primary/events/${gcalEventId}`,
     'PUT',
-    buildCalEventBody(event)
+    buildCalEventBody(event),
+    signal
   );
   console.log('[GoogleCalendar] ✅ Updated:', event.title);
 };
@@ -312,8 +339,8 @@ export const updateGoogleCalendarEvent = async (gcalEventId: string, event: GCal
 // ─── DELETE ───────────────────────────────────────────────────────────────────
 
 /** Deletes a GCal event by its GCal event ID */
-export const deleteGoogleCalendarEvent = async (gcalEventId: string): Promise<void> => {
-  await calendarFetch<void>(`/calendars/primary/events/${gcalEventId}`, 'DELETE');
+export const deleteGoogleCalendarEvent = async (gcalEventId: string, signal?: AbortSignal): Promise<void> => {
+  await calendarFetch<void>(`/calendars/primary/events/${gcalEventId}`, 'DELETE', undefined, signal);
   console.log('[GoogleCalendar] ✅ Deleted gcalId:', gcalEventId);
 };
 
@@ -329,7 +356,7 @@ export interface GCalChangesResult {
  * Polls Google Calendar for changes since last sync.
  * First call does a full initial sync; subsequent calls use syncToken.
  */
-export const pollGoogleCalendarChanges = async (): Promise<GCalChangesResult> => {
+export const pollGoogleCalendarChanges = async (signal?: AbortSignal): Promise<GCalChangesResult> => {
   let url: string;
 
   if (_syncToken) {
@@ -346,7 +373,7 @@ export const pollGoogleCalendarChanges = async (): Promise<GCalChangesResult> =>
     items?: GCalListEvent[];
     nextSyncToken?: string;
     nextPageToken?: string;
-  }>(url);
+  }>(url, 'GET', undefined, signal);
 
   _syncToken = data.nextSyncToken ?? null;
   _lastSyncTime = Date.now();

@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FileText, Mail, Calendar, Check, AlertTriangle, Activity, 
   Map, SortAsc, Terminal, UserCheck, Repeat, Search, BrainCircuit, Loader2, ArrowRight,
-  HardDrive, ShieldCheck, Send, Mic, MicOff, X, Zap, Video, ExternalLink
+  HardDrive, ShieldCheck, Send, Mic, MicOff, X, Zap, Video, ExternalLink, Maximize2, Minimize2,
+  Square, Eraser
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -20,6 +21,7 @@ import { toast } from 'sonner';
 import { useUrgencyState } from '../../hooks/useUrgencyState';
 import { useProactiveAgent } from '../../hooks/useProactiveAgent';
 import { getKeyStatus } from '../../services/userGeminiAuth';
+import { agentMemoryStore } from '../../stores/agentMemoryStore';
 
 const parseMissionActions = (report: string) => {
   if (!report) return { meetLinks: [], docLinks: [] };
@@ -38,7 +40,7 @@ const AGENT_DETAILS: Record<string, {
   icon: string;
   depicts: string[];
 }> = {
-  ORCHESTRATOR: {
+  ATHENA: {
     title: 'Cognitive Mastermind',
     tagline: 'Orchestrating workflow, task allocation & DAG routing',
     color: '#a78bfa',
@@ -48,7 +50,7 @@ const AGENT_DETAILS: Record<string, {
     icon: '🧠',
     depicts: ['DAG Routing', 'Task Parser', 'Fleet Supervisor']
   },
-  SEARCH: {
+  ORACLE: {
     title: 'Neural Recon Sentry',
     tagline: 'Google search, information aggregation & fact verification',
     color: '#fbbf24',
@@ -58,7 +60,7 @@ const AGENT_DETAILS: Record<string, {
     icon: '🔍',
     depicts: ['Google Search API', 'Web Scraping', 'Fact Verification']
   },
-  DOCS: {
+  SCRIBE: {
     title: 'Synthesis Engine',
     tagline: 'Document analysis, markdown compiler & layout architect',
     color: '#06b6d4',
@@ -68,7 +70,7 @@ const AGENT_DETAILS: Record<string, {
     icon: '📄',
     depicts: ['Markdown Compiler', 'Report Synthesizer', 'Layout Architect']
   },
-  DATA: {
+  ENIGMA: {
     title: 'Quantum Analytics Unit',
     tagline: 'Data processing, math operations & chart design',
     color: '#34d399',
@@ -78,7 +80,7 @@ const AGENT_DETAILS: Record<string, {
     icon: '📊',
     depicts: ['Math Processor', 'Table Extractor', 'Stats Analyzer']
   },
-  COMMS: {
+  HERMES: {
     title: 'Holographic Comms Terminal',
     tagline: 'Gmail management, mail drafting & reply optimization',
     color: '#f472b6',
@@ -88,7 +90,7 @@ const AGENT_DETAILS: Record<string, {
     icon: '✉️',
     depicts: ['Gmail Inbox', 'Draft Composer', 'Reply Optimizer']
   },
-  SCHEDULER: {
+  CHRONOS: {
     title: 'Chronos Coordinator',
     tagline: 'Calendar orchestration, meeting books & time slot checks',
     color: '#60a5fa',
@@ -98,7 +100,7 @@ const AGENT_DETAILS: Record<string, {
     icon: '📅',
     depicts: ['Calendar Queries', 'Conflict Solver', 'Event Booking']
   },
-  DRIVE: {
+  ARCHIVE: {
     title: 'Aether Storage Sentry',
     tagline: 'Google Drive explorer, folder compiler & file tracker',
     color: '#3b82f6',
@@ -108,7 +110,7 @@ const AGENT_DETAILS: Record<string, {
     icon: '💽',
     depicts: ['Cloud Explorer', 'Folder Compiler', 'File Downloader']
   },
-  CODING: {
+  HEPHAESTUS: {
     title: 'Nexus Compiler Node',
     tagline: 'Code generation, execution, script builder & debugger',
     color: '#22c55e',
@@ -118,7 +120,7 @@ const AGENT_DETAILS: Record<string, {
     icon: '💻',
     depicts: ['Compiler Core', 'Code Generator', 'Script Executor']
   },
-  QA: {
+  AEGIS: {
     title: 'Sentinel Guard Protocol',
     tagline: 'System code checker, security auditor & log validator',
     color: '#10b981',
@@ -128,43 +130,43 @@ const AGENT_DETAILS: Record<string, {
     icon: '🛡️',
     depicts: ['Security Auditor', 'Typecheck Sentry', 'Log Validator']
   },
-  PLANNER: {
+  ATLAS: {
     title: 'Strategic Architect',
     tagline: 'Goal decomposition, milestone mapping & project scaffolding',
     color: '#f59e0b',
     secondaryColor: '#d97706',
     description: 'Breaks complex goals into milestones and actionable tasks. Injects tasks into ZenTrack and blocks calendar time for critical milestones.',
-    image: '/agents/planner.png',
+    image: '/agents/planner_v2.png',
     icon: '🗺️',
     depicts: ['Goal Decomposer', 'Milestone Mapper', 'Task Injector']
   },
-  MONITOR: {
+  ARGUS: {
     title: 'Risk Sentinel',
     tagline: 'Deadline drift detection, risk scoring & proactive alerts',
     color: '#ef4444',
     secondaryColor: '#dc2626',
     description: 'Continuously assesses task risk, sends proactive alerts, auto-reschedules low-priority items during emergencies, and scans email for deadline changes.',
-    image: '/agents/monitor.png',
+    image: '/agents/monitor_v2.png',
     icon: '🚨',
     depicts: ['Risk Assessor', 'Alert Dispatcher', 'Auto-Rescheduler']
   },
-  GHOST_DETECTOR: {
+  SPECTRE: {
     title: 'Ghost Deadline Finder',
     tagline: 'Hidden commitment discovery, inbox scanning & deadline extraction',
     color: '#8b5cf6',
     secondaryColor: '#7c3aed',
     description: 'Scans emails and calendar descriptions for hidden deadlines never explicitly logged — surfaces ghost tasks before they become missed commitments.',
-    image: '/agents/ghost.png',
+    image: '/agents/ghost_v2.png',
     icon: '👻',
     depicts: ['Inbox Scanner', 'Deadline Extractor', 'Ghost Task Creator']
   },
-  EXECUTOR: {
+  TITAN: {
     title: 'Hyper Action Engine',
     tagline: 'Cross-system execution, multi-action chaining & delegation hub',
     color: '#22d3ee',
     secondaryColor: '#0891b2',
     description: 'The most action-oriented agent. Chains email, docs, meetings, and tasks in a single autonomous workflow. Delegates recursively to specialist sub-agents.',
-    image: '/agents/executor.png',
+    image: '/agents/executor_v2.png',
     icon: '⚡',
     depicts: ['Action Chainer', 'Delegation Hub', 'Workflow Automator']
   }
@@ -173,14 +175,14 @@ const AGENT_DETAILS: Record<string, {
 export function HomeDashboard() {
   const [time, setTime] = useState('');
   const { tasks, pomodoroSessions, isGoogleConnected, connectGoogle, calendarEvents } = useGlobalData();
-  const [agentStatus, setAgentStatus] = useState('System idle. Monitoring datastreams...');
+  const [agentStatus, setAgentStatus] = useState('Pantheon idle. Scrying datastreams...');
   const [commandInput, setCommandInput] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [agentResult, setAgentResult] = useState<string | null>(null);
-  const [agentHistory, setAgentHistory] = useState<{role: string, text: string}[]>([]);
+  const agentHistory = React.useSyncExternalStore(agentMemoryStore.subscribe, agentMemoryStore.getSnapshot);
   const [isReportExpanded, setIsReportExpanded] = useState(false);
   const [isMobile, setIsMobile] = useState(() => 
     typeof window !== 'undefined' && window.innerWidth < 640
@@ -188,6 +190,21 @@ export function HomeDashboard() {
   const [missionComplete, setMissionComplete] = useState(false);
   const [missionSummary, setMissionSummary] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  const handleStopAgent = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setAgentStatus('Mission aborted by user.');
+      setIsExecuting(false);
+      setActiveAgent(null);
+    }
+  };
+
+  const handleClearMemory = () => {
+    agentMemoryStore.clear();
+    toast.success('Agent memory cleared. Ready for fresh start.');
+  };
 
   // Shutter Capsule door state machine
   const [displayAgent, setDisplayAgent] = useState<string | null>(null);
@@ -230,20 +247,20 @@ export function HomeDashboard() {
   const displayAgentDetails = displayAgent ? AGENT_DETAILS[displayAgent] : null;
 
   // Get active agent details, default to Orchestrator if none set (but executing)
-  const activeAgentKey = activeAgent || 'ORCHESTRATOR';
-  const activeDetails = AGENT_DETAILS[activeAgentKey] || AGENT_DETAILS.ORCHESTRATOR;
+  const activeAgentKey = activeAgent || 'ATHENA';
+  const activeDetails = AGENT_DETAILS[activeAgentKey] || AGENT_DETAILS.ATHENA;
 
   // Compute pipeline step status based on current active agent and status string
   const currentStep = useMemo(() => {
     if (!isExecuting) return 0;
-    if (activeAgent === 'ORCHESTRATOR') {
+    if (activeAgent === 'ATHENA') {
       if (agentStatus.toLowerCase().includes('initial') || agentStatus.toLowerCase().includes('route')) {
         return 1; // ROUTING
       }
       return 2; // THINKING
     }
-    if (activeAgent === 'QA') {
-      return 4; // QA/VERIFYING
+    if (activeAgent === 'AEGIS') {
+      return 4; // AEGIS/VERIFYING
     }
     return 3; // EXECUTING
   }, [isExecuting, activeAgent, agentStatus]);
@@ -519,7 +536,7 @@ export function HomeDashboard() {
            const match = text.match(/\[([A-Z_]+)\]/);
            if (match) setActiveAgent(match[1]);
         } else if (text.toLowerCase().includes('orchestrator')) {
-           setActiveAgent('ORCHESTRATOR');
+           setActiveAgent('ATHENA');
         } else if (text.includes('Routed to:')) {
            const match = text.match(/Routed to:\s*([A-Z_]+)/);
            if (match) setActiveAgent(match[1]);
@@ -528,13 +545,13 @@ export function HomeDashboard() {
         clearTimeout(timeout);
         timeout = setTimeout(() => {
           setActiveAgent(null);
-          setAgentStatus('System idle. Monitoring datastreams...');
+          setAgentStatus('Pantheon idle. Scrying datastreams...');
         }, 15000);
       }
     };
     
     const handleClearMemory = () => {
-      setAgentHistory([]);
+      agentMemoryStore.clear();
     };
 
     const handleShortcut = (e: Event) => {
@@ -559,16 +576,20 @@ export function HomeDashboard() {
   const handleExecuteCommand = async (overridePrompt?: string | any) => {
     const prompt = typeof overridePrompt === 'string' ? overridePrompt : commandInput;
     if (!prompt.trim() || isExecuting) return;
-    setCommandInput('');
     setIsExecuting(true);
-    setAgentStatus('ORCHESTRATOR initializing DAG workflow...');
-    setActiveAgent('ORCHESTRATOR');
+    agentMemoryStore.appendMessage({ role: 'user', title: prompt });
+    setCommandInput('');
+    setAgentStatus('ATHENA initializing DAG workflow...');
+    setActiveAgent('ATHENA');
     
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
     
     try {
       setAgentResult(null);
       setMissionComplete(false);
+
+      abortControllerRef.current = new AbortController();
+      const signal = abortControllerRef.current.signal;
 
       // --- SMART WORKSPACE AUTO-SIGN-IN ---
       // Detect if the prompt requires Google Workspace (Gmail, Calendar, Drive, etc.)
@@ -637,15 +658,11 @@ export function HomeDashboard() {
         (step) => {
           // agent-log event is already dispatched inside orchestrator/runAgentLoop
         },
-        agentHistory
+        agentHistory.map(h => ({ role: h.role, text: h.title })),
+        signal
       );
       
-      // Cap history at last 5 turns (10 entries) to prevent context window bloat
-      setAgentHistory(prev => [
-        ...prev, 
-        { role: 'user', text: prompt }, 
-        { role: 'model', text: result }
-      ].slice(-10));
+      agentMemoryStore.appendMessage({ role: 'agent', title: result });
       setAgentResult(result);
       setAgentStatus('Mission accomplished.');
       setActiveAgent(null);
@@ -735,13 +752,26 @@ export function HomeDashboard() {
 
   return (
     <div className="agent-dashboard">
+      <div className="dashboard-header-bar">
+        <div className="header-left">
+          <h1 className="dashboard-main-title">OLYMPUS PROTOCOL</h1>
+          <p className="dashboard-main-subtitle">AI Productivity Fleet Core Terminal</p>
+        </div>
+        <div className="header-right">
+          <div className="system-time-display">
+            <span className="time-label">SYSTEM CLOCK</span>
+            <span className="time-val">{time || '00:00:00'}</span>
+          </div>
+        </div>
+      </div>
+
       <div className="dashboard-grid">
         
-        {/* LEFT COLUMN - Active Deployment */}
-        <div className="active-deployment-card">
+        {/* LEFT COLUMN - Olympus Protocol */}
+        <div className={`active-deployment-card ${isExecuting ? 'executing' : ''}`}>
           <div className="card-header">
             <div>
-              <h2 className="card-title">Active Deployment</h2>
+              <h2 className="card-title">Olympus Protocol</h2>
               <p className="card-subtitle">{highPriorityActive.length} Autonomous Agents engaged in "Current Sprint"</p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -1660,9 +1690,12 @@ export function HomeDashboard() {
                   min-height: 50px;
                 }
                 .quantum-console-dock {
-                  flex-wrap: wrap;
-                  justify-content: center;
-                  gap: 0.4rem;
+                  display: grid;
+                  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+                  gap: 8px;
+                  overflow-x: auto;
+                  -webkit-overflow-scrolling: touch;
+                  padding-bottom: 0.5rem; /* Space for scrollbar */
                 }
               }
             `}</style>
@@ -1844,19 +1877,19 @@ export function HomeDashboard() {
                       // Pre-populate input when clicking an idle agent icon to guide user
                       if (!isExecuting) {
                         const inputPlaceholderMap: Record<string, string> = {
-                          ORCHESTRATOR: 'Draft a project summary plan',
-                          SEARCH: 'Search the web for the latest tech trends in AI',
-                          DOCS: 'Analyze file forensic_audit_report.md and extract key details',
-                          DATA: 'Run analysis on task statistics',
-                          COMMS: 'Check my workspace email inbox and summarize unread mail',
-                          SCHEDULER: 'Find a time slot and schedule a meeting with team next week',
-                          DRIVE: 'Show my latest files in Google Drive',
-                          CODING: 'Create a typescript utility to format currency values',
-                          QA: 'Run audit checks on the workspace code changes',
-                          PLANNER: 'Break down my goal to build a portfolio website into tasks',
-                          MONITOR: 'Run a full risk check on all my overdue and today tasks',
-                          GHOST_DETECTOR: 'Scan my inbox for any hidden deadlines I missed',
-                          EXECUTOR: 'Send a status update email to my team, block 2h focus time and create a follow-up task',
+                          ATHENA: 'Draft a project summary plan',
+                          ORACLE: 'Search the web for the latest tech trends in AI',
+                          SCRIBE: 'Analyze file forensic_audit_report.md and extract key details',
+                          ENIGMA: 'Run analysis on task statistics',
+                          HERMES: 'Check my workspace email inbox and summarize unread mail',
+                          CHRONOS: 'Find a time slot and schedule a meeting with team next week',
+                          ARCHIVE: 'Show my latest files in Google Drive',
+                          HEPHAESTUS: 'Create a typescript utility to format currency values',
+                          AEGIS: 'Run audit checks on the workspace code changes',
+                          ATLAS: 'Break down my goal to build a portfolio website into tasks',
+                          ARGUS: 'Run a full risk check on all my overdue and today tasks',
+                          SPECTRE: 'Scan my inbox for any hidden deadlines I missed',
+                          TITAN: 'Send a status update email to my team, block 2h focus time and create a follow-up task',
                         };
                         setCommandInput(inputPlaceholderMap[key] || '');
                         toast.info(`Configured input for ${key} Agent`);
@@ -1892,10 +1925,10 @@ export function HomeDashboard() {
             </div>
           </div>
             
-            {/* Mission Report Backdrop & Overlay in Portal */}
+            {/* Divine Mandate Report Backdrop & Overlay in Portal */}
             {typeof window !== 'undefined' && typeof document !== 'undefined' && createPortal(
               <>
-                {/* Mission Report Backdrop */}
+                {/* Divine Mandate Report Backdrop */}
                 <AnimatePresence>
                   {agentResult && (
                     <motion.div 
@@ -1908,7 +1941,7 @@ export function HomeDashboard() {
                   )}
                 </AnimatePresence>
 
-                {/* Mission Report Overlay */}
+                {/* Divine Mandate Report Overlay */}
                 <AnimatePresence>
                   {agentResult && (
                     <motion.div
@@ -1919,12 +1952,17 @@ export function HomeDashboard() {
                     >
                       <div className="mission-report-header">
                         <div className="mission-report-title">
-                          <BrainCircuit size={18} className="text-purple-400" />
-                          <span>Mission Report</span>
+                          <BrainCircuit size={18} style={{ color: '#06b6d4' }} />
+                          <span>Divine Mandate Report</span>
                         </div>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button className="mission-report-action" onClick={() => setIsReportExpanded(!isReportExpanded)} title={isReportExpanded ? "Collapse" : "Expand"}>
-                            <Zap size={16} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <button 
+                            className="mission-report-expand-btn" 
+                            onClick={() => setIsReportExpanded(!isReportExpanded)}
+                            title={isReportExpanded ? "Collapse View" : "Full Screen View"}
+                          >
+                            {isReportExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                            <span>{isReportExpanded ? 'Collapse' : 'Full Screen'}</span>
                           </button>
                           <button className="mission-report-action" onClick={() => setAgentResult(null)}>
                             <X size={16} />
@@ -2004,10 +2042,10 @@ export function HomeDashboard() {
               <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent('agent-shortcut', {
-                    detail: { prompt: 'Run a full MONITOR risk assessment: score all overdue and high-priority tasks, check my calendar for conflicts, send me a notification with the top 3 critical items.' }
+                    detail: { prompt: 'Run a full ARGUS risk assessment: score all overdue and high-priority tasks, check my calendar for conflicts, send me a notification with the top 3 critical items.' }
                   }))}
                   disabled={isExecuting}
-                  title="MONITOR — Run Risk Assessment"
+                  title="ARGUS — Run Risk Assessment"
                   style={{
                     background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
                     borderRadius: '8px', padding: '0.3rem 0.6rem', color: '#f87171',
@@ -2039,7 +2077,7 @@ export function HomeDashboard() {
                     detail: { prompt: 'Generate a Python script that exports all my current ZenTrack tasks to a CSV file with columns: title, priority, status, due_date. Include sample data in comments and instructions to run.' }
                   }))}
                   disabled={isExecuting}
-                  title="CODING Agent — Generate Script"
+                  title="HEPHAESTUS Agent — Generate Script"
                   style={{
                     background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.3)',
                     borderRadius: '8px', padding: '0.3rem 0.6rem', color: '#34d399',
@@ -2196,6 +2234,16 @@ export function HomeDashboard() {
                 style={{ borderColor: isListening ? (silencePercent > 80 ? '#10b981' : '#a78bfa') : undefined, transition: 'border-color 0.3s ease' }}
               />
               <div className="command-bar-actions">
+                {!isExecuting && agentHistory.length > 0 && (
+                  <button
+                    className="voice-command-btn"
+                    onClick={handleClearMemory}
+                    title="Clear agent memory for a fresh start"
+                    style={{ color: '#a1a1aa' }}
+                  >
+                    <Eraser size={16} />
+                  </button>
+                )}
                 {/* Mic button with active state ring */}
                 <div style={{ position: 'relative' }}>
                   <button
@@ -2218,10 +2266,12 @@ export function HomeDashboard() {
                 </div>
                 <button
                   className="execute-command-btn"
-                  onClick={handleExecuteCommand}
-                  disabled={isExecuting || !commandInput.trim()}
+                  onClick={isExecuting ? handleStopAgent : handleExecuteCommand}
+                  disabled={!isExecuting && !commandInput.trim()}
+                  title={isExecuting ? 'Stop Agent' : 'Send Task'}
+                  style={{ background: isExecuting ? 'rgba(239,68,68,0.1)' : undefined }}
                 >
-                  {isExecuting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                  {isExecuting ? <Square size={16} color="#ef4444" fill="#ef4444" /> : <Send size={16} />}
                 </button>
               </div>
             </div>
@@ -2233,9 +2283,9 @@ export function HomeDashboard() {
         {/* RIGHT COLUMN */}
         <div className="right-column">
           
-          {/* URGENCY MATRIX */}
+          {/* PROPHECY GRID */}
           <div className="urgency-matrix">
-            <h3 className="section-label">URGENCY MATRIX</h3>
+            <h3 className="section-label">PROPHECY GRID</h3>
             
             {matrixTasks.length === 0 ? (
                <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -2263,185 +2313,169 @@ export function HomeDashboard() {
               <div className="bandwidth-bar-bg">
                 <div className="bandwidth-bar-fill" style={{ width: `${bandwidthPercent}%` }}></div>
               </div>
-              <div className="bandwidth-text">Daily Bandwidth Capacity: {bandwidthPercent}%</div>
+              <div className="bandwidth-text">Mortal Bandwidth Capacity: {bandwidthPercent}%</div>
             </div>
           </div>
-        </div>
 
-      </div>
-
-      {/* BOTTOM ROW 1 - Fleet Telemetry */}
-      <div className="bottom-row">
-        <div className="roi-card">
-          <div className="roi-ring-container" style={{ position: 'relative' }}>
-            <svg viewBox="0 0 36 36" className="circular-chart">
-              <path className="circle-bg"
-                d="M18 2.0845
-                  a 15.9155 15.9155 0 0 1 0 31.831
-                  a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
-              <path className="circle"
-                strokeDasharray={`${bandwidthPercent}, 100`}
-                d="M18 2.0845
-                  a 15.9155 15.9155 0 0 1 0 31.831
-                  a 15.9155 15.9155 0 0 1 0 -31.831"
-              />
-            </svg>
-            <div className="ring-text" style={{ fontSize: '0.75rem', marginTop: '2px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f0f0f3', lineHeight: 1 }}>{bandwidthPercent}%</div>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.45rem', letterSpacing: '0.15em', marginTop: '2px' }}>CAPACITY</div>
+          {/* DIVINE TELEMETRY & CORE VITALITY */}
+          <div className="roi-card">
+            <div className="roi-ring-container" style={{ position: 'relative' }}>
+              <svg viewBox="0 0 36 36" className="circular-chart">
+                <path className="circle-bg"
+                  d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+                <path className="circle"
+                  strokeDasharray={`${bandwidthPercent}, 100`}
+                  d="M18 2.0845
+                    a 15.9155 15.9155 0 0 1 0 31.831
+                    a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+              <div className="ring-text" style={{ fontSize: '0.75rem', marginTop: '2px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#f0f0f3', lineHeight: 1 }}>{bandwidthPercent}%</div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.45rem', letterSpacing: '0.15em', marginTop: '2px' }}>CAPACITY</div>
+              </div>
             </div>
-          </div>
-          
-          <div className="roi-content">
-            <h3 className="section-label">FLEET TELEMETRY & SYSTEM HEALTH</h3>
-            {urgencyState === 'state-critical' ? (
-                <div className="roi-status" style={{color: '#ef4444'}}>Threat Level: <span style={{color: '#ef4444'}}>CRITICAL</span></div>
-            ) : urgencyState === 'state-active' ? (
-                <div className="roi-status" style={{color: '#f97316'}}>System State: <span style={{color: '#f97316'}}>ELEVATED</span></div>
-            ) : (
-                <div className="roi-status">System State: <span className="highlight-green">OPTIMAL</span></div>
-            )}
             
-            <div className="roi-stats" style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-              <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: getKeyStatus().hasPersonalKey ? '1px solid rgba(0,191,165,0.3)' : '1px solid rgba(255,255,255,0.1)' }}>
-                <BrainCircuit size={13} style={{ color: getKeyStatus().hasPersonalKey ? '#00BFA5' : '#a1a1aa' }} />
-                {getKeyStatus().hasPersonalKey ? 'Pro Neural Link' : 'Shared API Pool'}
-              </span>
-              <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Activity size={13} style={{ color: '#8b5cf6' }} />
-                {completedTodayCount} Operations Executed
-              </span>
-              <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Zap size={13} style={{ color: '#eab308' }} />
-                +{hoursSaved}h Deep Focus
-              </span>
-            </div>
+            <div className="roi-content">
+              <h3 className="section-label">DIVINE TELEMETRY & CORE VITALITY</h3>
+              {urgencyState === 'state-critical' ? (
+                  // ✅ FIXED: Changed "Chaos Level: CRITICAL" (red) to "Focus Priority: HIGH" (amber)
+                  // to avoid cognitive threat trigger for stressed users.
+                  <div className="roi-status" style={{color: '#f59e0b'}}>Focus Priority: <span style={{color: '#f59e0b'}}>HIGH</span></div>
+              ) : urgencyState === 'state-active' ? (
+                  <div className="roi-status" style={{color: '#f97316'}}>Aegis State: <span style={{color: '#f97316'}}>ELEVATED</span></div>
+              ) : (
+                  <div className="roi-status">Aegis State: <span className="highlight-green">OPTIMAL</span></div>
+              )}
+              
+              <div className="roi-stats" style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+                <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: getKeyStatus().hasPersonalKey ? '1px solid rgba(0,191,165,0.3)' : '1px solid rgba(255,255,255,0.1)' }}>
+                  <BrainCircuit size={13} style={{ color: getKeyStatus().hasPersonalKey ? '#00BFA5' : '#a1a1aa' }} />
+                  {getKeyStatus().hasPersonalKey ? 'Pro Neural Link' : 'Shared API Pool'}
+                </span>
+                <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Activity size={13} style={{ color: '#06b6d4' }} />
+                  {completedTodayCount} Operations
+                </span>
+                <span className="stat-pill" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Zap size={13} style={{ color: '#eab308' }} />
+                  +{hoursSaved}h Deep Focus
+                </span>
+              </div>
 
-            {/* ── Autonomous Quick-Fire Agent Buttons ── */}
-            <div style={{ display: 'flex', gap: '0.6rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-              <motion.button
-                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-                onClick={handleGhostDetector}
-                disabled={isExecuting}
-                title="Scan inbox for hidden deadlines"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  background: 'linear-gradient(135deg, rgba(139,92,246,0.2), rgba(124,58,237,0.1))',
-                  border: '1px solid rgba(139,92,246,0.4)', borderRadius: '8px',
-                  padding: '0.45rem 0.9rem', color: '#c4b5fd', fontSize: '0.72rem',
-                  fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
-                  letterSpacing: '0.04em', opacity: isExecuting ? 0.5 : 1,
-                  transition: 'all 0.2s', backdropFilter: 'blur(4px)'
-                }}
-              >
-                <Search size={12} /> 👻 Scan Ghost Deadlines
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-                onClick={handleMonitorRisk}
-                disabled={isExecuting}
-                title="Run full risk assessment on all tasks"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  background: 'linear-gradient(135deg, rgba(239,68,68,0.2), rgba(220,38,38,0.1))',
-                  border: '1px solid rgba(239,68,68,0.4)', borderRadius: '8px',
-                  padding: '0.45rem 0.9rem', color: '#fca5a5', fontSize: '0.72rem',
-                  fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
-                  letterSpacing: '0.04em', opacity: isExecuting ? 0.5 : 1,
-                  transition: 'all 0.2s', backdropFilter: 'blur(4px)'
-                }}
-              >
-                <AlertTriangle size={12} /> 🚨 Risk Assessment
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-                onClick={() => handleExecuteCommand('PLANNER MODE: Help me break down my highest priority task into a clear action plan with milestones, create subtasks in ZenTrack, and block calendar time for the most critical milestone.')}
-                disabled={isExecuting}
-                title="Strategic project planner"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '0.4rem',
-                  background: 'linear-gradient(135deg, rgba(245,158,11,0.2), rgba(217,119,6,0.1))',
-                  border: '1px solid rgba(245,158,11,0.4)', borderRadius: '8px',
-                  padding: '0.45rem 0.9rem', color: '#fde68a', fontSize: '0.72rem',
-                  fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
-                  letterSpacing: '0.04em', opacity: isExecuting ? 0.5 : 1,
-                  transition: 'all 0.2s', backdropFilter: 'blur(4px)'
-                }}
-              >
-                <Map size={12} /> 🗺️ Plan Project
-              </motion.button>
+              {/* Quick-Fire Buttons */}
+              <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.8rem', flexWrap: 'wrap' }}>
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={handleGhostDetector}
+                  disabled={isExecuting}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    background: 'rgba(6,182,212,0.15)', border: '1px solid rgba(6,182,212,0.35)', borderRadius: '6px',
+                    padding: '0.35rem 0.65rem', color: '#22d3ee', fontSize: '0.68rem',
+                    fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
+                    opacity: isExecuting ? 0.5 : 1
+                  }}
+                >
+                  <Search size={10} /> 👻 Ghost Scan
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={handleMonitorRisk}
+                  disabled={isExecuting}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: '6px',
+                    padding: '0.35rem 0.65rem', color: '#fca5a5', fontSize: '0.68rem',
+                    fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
+                    opacity: isExecuting ? 0.5 : 1
+                  }}
+                >
+                  <AlertTriangle size={10} /> 🚨 Risk Audit
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={() => handleExecuteCommand('ATLAS MODE: Help me break down my highest priority task into a clear action plan with milestones, create subtasks in ZenTrack, and block calendar time for the most critical milestone.')}
+                  disabled={isExecuting}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.3rem',
+                    background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)', borderRadius: '6px',
+                    padding: '0.35rem 0.65rem', color: '#fde68a', fontSize: '0.68rem',
+                    fontWeight: 700, cursor: isExecuting ? 'not-allowed' : 'pointer',
+                    opacity: isExecuting ? 0.5 : 1
+                  }}
+                >
+                  <Map size={10} /> 🗺️ Plan Project
+                </motion.button>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* BOTTOM ROW 2 - Workspace Integrated */}
-      <div className="bottom-row">
-        <div className="workspace-card" style={{ padding: isGoogleConnected ? '1.5rem 2rem' : '1.5rem', transition: 'all 0.3s ease' }}>
-          
-          <div className="app-icons" style={{ gap: '0.75rem', display: 'flex', flexWrap: 'wrap' }}>
-            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-drive.png" alt="Google Drive" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
-            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/gmail.png" alt="Gmail" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
-            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-calendar.png" alt="Google Calendar" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
-            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-docs.png" alt="Google Docs" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
-            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-sheets.png" alt="Google Sheets" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
-            <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-meet.png" alt="Google Meet" width="32" height="32" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.5)', transition: 'all 0.3s' }} />
-          </div>
-          
-          <div className="workspace-content" style={{ marginLeft: '1rem', flex: 1 }}>
-            <h3 className="section-label">GOOGLE WORKSPACE</h3>
-            {isGoogleConnected ? (
-              <div className="workspace-status" style={{ color: '#2dd4bf', fontWeight: 500 }}>
-                Data Synced with AI Fleet
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 400, marginTop: '2px' }}>
-                  Drive, Mail, Calendar, Docs & More
+          {/* GOOGLE WORKSPACE */}
+          <div className="workspace-card" style={{ padding: '1.2rem', transition: 'all 0.3s ease' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'space-between', width: '100%' }}>
+                <h3 className="section-label" style={{ margin: 0 }}>ORACLE WORKSPACE</h3>
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span className={`status-dot ${isGoogleConnected ? 'pulsing' : ''}`} style={{ background: isGoogleConnected ? '#06b6d4' : '#71717a', width: 6, height: 6 }} />
+                  <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: isGoogleConnected ? '#22d3ee' : '#71717a' }}>
+                    {isGoogleConnected ? 'ONLINE' : 'OFFLINE'}
+                  </span>
                 </div>
               </div>
-            ) : (
-              <div className="workspace-status" style={{ fontSize: '0.9rem' }}>Connect to enable automated workflows</div>
-            )}
-          </div>
-          
-          {isGoogleConnected ? (
-            <>
-              <div className="system-time" style={{ marginLeft: 'auto' }}>
-                <h3 className="section-label" style={{ textAlign: 'right' }}>SYSTEM TIME</h3>
-                <div className="time-display">{time || '00:00:00'}</div>
+
+              <div className="app-icons" style={{ gap: '0.5rem', display: 'flex', flexWrap: 'wrap' }}>
+                <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-drive.png" alt="Google Drive" width="24" height="24" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.3)', transition: 'all 0.3s' }} />
+                <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/gmail.png" alt="Gmail" width="24" height="24" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.3)', transition: 'all 0.3s' }} />
+                <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-calendar.png" alt="Google Calendar" width="24" height="24" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.3)', transition: 'all 0.3s' }} />
+                <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-docs.png" alt="Google Docs" width="24" height="24" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.3)', transition: 'all 0.3s' }} />
+                <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-sheets.png" alt="Google Sheets" width="24" height="24" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.3)', transition: 'all 0.3s' }} />
+                <img src="https://cdn.jsdelivr.net/gh/walkxcode/dashboard-icons/png/google-meet.png" alt="Google Meet" width="24" height="24" style={{ filter: isGoogleConnected ? 'none' : 'grayscale(100%) opacity(0.3)', transition: 'all 0.3s' }} />
               </div>
-              <button className="confirm-btn" style={{ background: 'rgba(45, 212, 191, 0.2)', color: '#2dd4bf', boxShadow: 'none' }}>
-                <Check size={28} />
-              </button>
-            </>
-          ) : (
-            <button 
-              onClick={handleConnectWorkspace}
-              disabled={isConnecting}
-              style={{
-                marginLeft: 'auto',
-                background: 'linear-gradient(135deg, #4285F4, #34A853, #FBBC05, #EA4335)',
-                border: 'none',
-                padding: '0.75rem 1.5rem',
-                borderRadius: '8px',
-                color: '#fff',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                boxShadow: '0 4px 15px rgba(66, 133, 244, 0.3)',
-                opacity: isConnecting ? 0.7 : 1
-              }}
-            >
-              {isConnecting ? <Loader2 size={18} className="spin" /> : 'Sign in with Google'}
-              {!isConnecting && <ArrowRight size={18} />}
-            </button>
-          )}
-          
-          {isGoogleConnected && <div className="bottom-indicator"></div>}
+              
+              <div className="workspace-content" style={{ margin: 0 }}>
+                {isGoogleConnected ? (
+                  <div className="workspace-status" style={{ color: '#2dd4bf', fontWeight: 500, fontSize: '0.78rem' }}>
+                    Active Cyber Link Synced
+                  </div>
+                ) : (
+                  <div className="workspace-status" style={{ fontSize: '0.78rem', color: '#71717a' }}>Link Workspace for automated flows</div>
+                )}
+              </div>
+              
+              {!isGoogleConnected && (
+                <button 
+                  onClick={handleConnectWorkspace}
+                  disabled={isConnecting}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(66, 133, 244, 0.15)',
+                    border: '1px solid rgba(66, 133, 244, 0.4)',
+                    padding: '0.5rem',
+                    borderRadius: '8px',
+                    color: '#fff',
+                    fontWeight: 600,
+                    fontSize: '0.75rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.4rem',
+                    opacity: isConnecting ? 0.7 : 1
+                  }}
+                >
+                  {isConnecting ? <Loader2 size={14} className="spin" /> : 'Connect Google Workspace'}
+                </button>
+              )}
+            </div>
+            {isGoogleConnected && <div className="bottom-indicator"></div>}
+          </div>
         </div>
+
       </div>
-      
     </div>
   );
 }

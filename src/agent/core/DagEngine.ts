@@ -1,6 +1,6 @@
 import type { SharedMemoryContext } from './SharedState';
 
-export type AgentRole = 'SEARCH' | 'DOCS' | 'DATA' | 'COMMS' | 'SCHEDULER' | 'DRIVE' | 'CODING' | 'QA' | 'MEET' | 'PLANNER' | 'MONITOR' | 'GHOST_DETECTOR' | 'EXECUTOR';
+export type AgentRole = 'ORACLE' | 'SCRIBE' | 'ENIGMA' | 'HERMES' | 'CHRONOS' | 'ARCHIVE' | 'HEPHAESTUS' | 'AEGIS' | 'MEET' | 'ATLAS' | 'ARGUS' | 'SPECTRE' | 'TITAN';
 
 export interface DagTask {
   id: string;
@@ -24,12 +24,35 @@ export class DagEngine {
   }
 
   getRunnableTasks(): DagTask[] {
+    // 1. Fully cascade any failures until the DAG state stabilizes
+    let stateChanged = true;
+    while (stateChanged) {
+      stateChanged = false;
+      for (const task of this.tasks.values()) {
+        if (task.status === 'pending' && task.assignedAgent !== 'AEGIS') {
+          let hasFailedDep = false;
+          for (const depId of task.dependencies) {
+            const dep = this.tasks.get(depId);
+            if (dep && dep.status === 'failed') {
+              hasFailedDep = true;
+              break;
+            }
+          }
+          if (hasFailedDep) {
+            this.updateTaskStatus(task.id, 'failed', 'Dependency failed (Cascaded)');
+            stateChanged = true;
+          }
+        }
+      }
+    }
+
+    // 2. Collect actually runnable tasks
     const runnable: DagTask[] = [];
     for (const task of this.tasks.values()) {
       if (task.status === 'pending') {
         
-        // QA runs as long as all dependencies are resolved (completed or failed)
-        if (task.assignedAgent === 'QA') {
+        // AEGIS runs as long as all dependencies are resolved (completed or failed)
+        if (task.assignedAgent === 'AEGIS') {
           const allResolved = task.dependencies.every(depId => {
             const dep = this.tasks.get(depId);
             return dep && (dep.status === 'completed' || dep.status === 'failed');
@@ -38,23 +61,17 @@ export class DagEngine {
           continue;
         }
 
-        let hasFailedDep = false;
         let allCompleted = true;
-
         for (const depId of task.dependencies) {
           const dep = this.tasks.get(depId);
           if (!dep) continue;
-          if (dep.status === 'failed') {
-            hasFailedDep = true;
-          }
           if (dep.status !== 'completed') {
             allCompleted = false;
+            break;
           }
         }
 
-        if (hasFailedDep) {
-          this.updateTaskStatus(task.id, 'failed', 'Dependency failed (Cascaded)');
-        } else if (allCompleted) {
+        if (allCompleted) {
           runnable.push(task);
         }
       }

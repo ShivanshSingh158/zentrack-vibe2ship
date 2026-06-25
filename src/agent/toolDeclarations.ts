@@ -60,7 +60,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'snooze_task',
-    description: 'Snooze a specific task to a later date. Used by MONITOR agent when a task cannot be completed today. Increments snooze counter.',
+    description: 'Snooze a specific task to a later date. Used by ARGUS agent when a task cannot be completed today. Increments snooze counter.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -73,7 +73,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'update_task_priority',
-    description: 'Update the priority of a task. Used by MONITOR/DATA agents to escalate priority when risk is detected.',
+    description: 'Update the priority of a task. Used by ARGUS/ENIGMA agents to escalate priority when risk is detected.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -272,7 +272,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
 
-  // ─── GOOGLE DRIVE ─────────────────────────────────────────────────────────────
+  // ─── GOOGLE ARCHIVE ─────────────────────────────────────────────────────────────
   {
     name: 'search_google_drive',
     description: 'Search for specific files in Google Drive by name, type, or content. Use this when you know what you\'re looking for.',
@@ -308,7 +308,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     }
   },
 
-  // ─── GOOGLE DOCS ─────────────────────────────────────────────────────────────
+  // ─── GOOGLE SCRIBE ─────────────────────────────────────────────────────────────
   {
     name: 'create_google_doc',
     description: 'Create a new blank Google Document.',
@@ -366,7 +366,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        agentRole: { type: SchemaType.STRING, description: 'Role to delegate to: SEARCH, DOCS, DATA, COMMS, SCHEDULER, DRIVE, CODING, QA, MEET, PLANNER, MONITOR, GHOST_DETECTOR, EXECUTOR' },
+        agentRole: { type: SchemaType.STRING, description: 'Role to delegate to: ORACLE, SCRIBE, ENIGMA, HERMES, CHRONOS, ARCHIVE, HEPHAESTUS, AEGIS, MEET, ATLAS, ARGUS, SPECTRE, TITAN' },
         instruction: { type: SchemaType.STRING, description: 'The exact instruction for the delegated agent. Be specific and include all context the sub-agent needs.' },
       },
       required: ['agentRole', 'instruction'],

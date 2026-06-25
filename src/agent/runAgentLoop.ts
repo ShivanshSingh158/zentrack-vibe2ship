@@ -1,7 +1,7 @@
 import { TOOL_DECLARATIONS } from './toolDeclarations';
 import type { ToolResult } from './toolExecutor';
 import { executeTool } from './toolExecutor';
-import { callWithFallback } from '../services/gemini/core';
+import { callWithFallback, callWithFallbackUnthrottled } from '../services/gemini/core';
 import type { Task, CalendarEvent } from '../types/domain';
 
 const AGENT_SYSTEM = `You are Zen Agent — an autonomous AI assistant with real tools.
@@ -30,14 +30,17 @@ export const runAgentLoop = async (
   apiKey: string,
   onStep: (step: AgentStep) => void,
   systemInstruction?: string,
-  modelOverride?: string
+  modelOverride?: string,
+  signal?: AbortSignal,
+  isSubAgent?: boolean
 ): Promise<string> => {
 
 
   const effectiveSystem = systemInstruction || AGENT_SYSTEM;
   const contents: any[] = [{ role: 'user', parts: [{ text: userMessage }] }];
   let finalAnswer = '';
-  const MAX_ITERATIONS = 10; // prevent infinite loops
+  const MAX_ITERATIONS = 6; // Reduced from 10 — agent looping 10+ times is likely stuck
+  let emptyResponseCount = 0; // Guard: break if AI returns nothing for 2+ consecutive turns
 
   // ── Per-session tool cache ───────────────────────────────────────────────
   // Read-only tools are cached for this agent loop duration.
@@ -49,9 +52,13 @@ export const runAgentLoop = async (
   let connectWorkspaceCalledThisSession = false; // prevent connect retry storm
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    if (signal?.aborted) {
+      return "Agent Loop Aborted: User cancelled execution.";
+    }
     let response;
     try {
-      response = await callWithFallback(async (genAI, modelName) => {
+      const caller = isSubAgent ? callWithFallbackUnthrottled : callWithFallback;
+      response = await caller(async (genAI, modelName) => {
         const activeModel = modelOverride || modelName;
         onStep({ type: 'thinking', title: `Zen AI is thinking... (${activeModel})` });
         safeDispatch({ type: 'thinking', title: `Zen AI is thinking... (${activeModel})` });
@@ -91,7 +98,7 @@ export const runAgentLoop = async (
           onStep({ type: 'tool_result', toolName: name, result: cachedConnect });
           safeDispatch({ type: 'tool_result', toolName: name, result: cachedConnect });
           contents.push({ role: 'model', parts: candidate.content.parts });
-          contents.push({ role: 'user', parts: [{ functionResponse: { name, response: { result: cachedConnect.data, message: cachedConnect.message } } }] });
+          contents.push({ role: 'function', parts: [{ functionResponse: { name, response: { result: cachedConnect.data, message: cachedConnect.message } } }] });
           continue;
         }
         connectWorkspaceCalledThisSession = true;
@@ -107,12 +114,12 @@ export const runAgentLoop = async (
         onStep({ type: 'tool_result', toolName: name, result: cached });
         safeDispatch({ type: 'tool_result', toolName: name, result: cached });
         contents.push({ role: 'model', parts: candidate.content.parts });
-        contents.push({ role: 'user', parts: [{ functionResponse: { name, response: { result: cached.data, message: cached.message } } }] });
+        contents.push({ role: 'function', parts: [{ functionResponse: { name, response: { result: cached.data, message: cached.message } } }] });
         continue;
       }
 
       // Execute the real tool
-      const result = await executeTool(name, args, userTodos, calendarEvents);
+      const result = await executeTool(name, args, userTodos, calendarEvents, signal);
       onStep({ type: 'tool_result', toolName: name, result });
       safeDispatch({ type: 'tool_result', toolName: name, result });
 
@@ -125,7 +132,7 @@ export const runAgentLoop = async (
       // Add AI's function call + our result to the conversation
       contents.push({ role: 'model', parts: candidate.content.parts });
       contents.push({
-        role: 'user',
+        role: 'function',
         parts: [{ functionResponse: { name, response: { result: result.data, message: result.message } } }]
       });
       continue; // loop again — AI may call more tools
@@ -136,6 +143,16 @@ export const runAgentLoop = async (
     if (textPart && textPart.text) {
       finalAnswer = textPart.text;
       onStep({ type: 'answer', title: finalAnswer });
+      safeDispatch({ type: 'answer', title: finalAnswer });
+      break;
+    }
+
+    // ✅ Empty response guard: AI returned neither a function call nor any text.
+    // This is a silent loop — break early to prevent wasting API quota.
+    emptyResponseCount++;
+    if (emptyResponseCount >= 2) {
+      console.warn('[ZenAgent] AI returned empty response twice in a row. Breaking loop.');
+      finalAnswer = '[Agent completed without producing a final response. The task may have been partially executed. Check your data.]';
       safeDispatch({ type: 'answer', title: finalAnswer });
       break;
     }
