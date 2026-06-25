@@ -341,73 +341,148 @@ export function HomeDashboard() {
     };
   }, [isExecuting, agentResult]);
 
-  // Initialize SpeechRecognition if available
+  // ── Best-in-class Voice Engine ───────────────────────────────────────────
+  // Uses continuous mode + silence-detection timer instead of one-shot recognition.
+  // The agent fires only after the user truly stops talking (1.8s silence),
+  // not at every natural mid-sentence pause.
+  // ─────────────────────────────────────────────────────────────────────────
   const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
   const recognition = useMemo(() => {
     if (!SpeechRecognition) return null;
     const r = new SpeechRecognition();
-    r.continuous = false;
-    r.interimResults = true;
+    r.continuous    = true;  // Never stop on natural pauses
+    r.interimResults = true;  // Stream live transcript while speaking
+    r.lang = 'en-US';
     return r;
   }, [SpeechRecognition]);
 
-  // We need a ref to capture the latest commandInput inside the recognition.onend closure
-  const commandInputRef = React.useRef('');
+  // Refs — needed inside event handler closures to avoid stale state
+  const commandInputRef  = React.useRef('');
+  const silenceTimerRef  = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const silenceStartRef  = React.useRef<number>(0);
+  const [silencePercent, setSilencePercent] = React.useState(0); // 0..100 countdown
+  const silenceAnimRef   = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const SILENCE_THRESHOLD_MS = 1800; // submit after 1.8s of no new words
+
   useEffect(() => { commandInputRef.current = commandInput; }, [commandInput]);
+
+  // Animate the silence countdown ring
+  const startSilenceCountdown = () => {
+    silenceStartRef.current = Date.now();
+    setSilencePercent(0);
+    if (silenceAnimRef.current) clearInterval(silenceAnimRef.current);
+    silenceAnimRef.current = setInterval(() => {
+      const elapsed = Date.now() - silenceStartRef.current;
+      const pct = Math.min(100, (elapsed / SILENCE_THRESHOLD_MS) * 100);
+      setSilencePercent(pct);
+      if (pct >= 100 && silenceAnimRef.current) {
+        clearInterval(silenceAnimRef.current);
+        silenceAnimRef.current = null;
+      }
+    }, 50);
+  };
+
+  const cancelSilenceCountdown = () => {
+    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
+    if (silenceAnimRef.current) { clearInterval(silenceAnimRef.current); silenceAnimRef.current = null; }
+    setSilencePercent(0);
+  };
+
+  // Fire submit after silence — called by the timer
+  const submitAfterSilence = React.useCallback(() => {
+    const captured = commandInputRef.current.trim();
+    if (!captured) return;
+    recognition?.stop(); // Stop recognition cleanly first
+    setIsListening(false);
+    setInterimTranscript('');
+    cancelSilenceCountdown();
+    setTimeout(() => handleExecuteCommand(captured), 80);
+  }, [recognition]);
 
   useEffect(() => {
     if (!recognition) return;
-    
+
     recognition.onresult = (event: any) => {
       let interim = '';
-      let final = '';
+      let finalChunk = '';
 
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
-          final += event.results[i][0].transcript;
+          finalChunk += event.results[i][0].transcript;
         } else {
           interim += event.results[i][0].transcript;
         }
       }
-      
+
       setInterimTranscript(interim);
-      if (final) {
-        setCommandInput(prev => prev ? prev + ' ' + final : final);
+
+      if (finalChunk) {
+        setCommandInput(prev => prev ? prev + ' ' + finalChunk.trim() : finalChunk.trim());
       }
+
+      // Every new word resets the silence timer — user is still talking
+      cancelSilenceCountdown();
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+      silenceTimerRef.current = setTimeout(() => {
+        // 1.8 seconds of silence → user done speaking → submit
+        submitAfterSilence();
+      }, SILENCE_THRESHOLD_MS);
+      startSilenceCountdown();
     };
 
     recognition.onerror = (event: any) => {
-      console.error('Speech recognition error', event.error);
+      // 'no-speech' is normal — don't treat it as failure, just keep waiting
+      if (event.error === 'no-speech') return;
+      console.error('[Voice] Recognition error:', event.error);
       setIsListening(false);
       setInterimTranscript('');
+      cancelSilenceCountdown();
     };
 
-    // AUTO-SUBMIT: when speech ends and there's a transcript, fire directly to agent
+    // continuous:true — onend only fires if we explicitly stop or browser cuts us
+    // If user spoke something, submit it; if they just stopped without speaking, do nothing
     recognition.onend = () => {
-      setIsListening(false);
+      cancelSilenceCountdown();
       setInterimTranscript('');
       const captured = commandInputRef.current.trim();
-      if (captured) {
-        // Small delay so React state flushes commandInput before handleExecuteCommand reads it
+      // Only auto-submit from onend if the silence timer didn't already handle it
+      if (captured && isListening) {
+        setIsListening(false);
         setTimeout(() => handleExecuteCommand(captured), 80);
+      } else {
+        setIsListening(false);
       }
     };
-  }, [recognition]);
+  }, [recognition, submitAfterSilence, isListening]);
 
   const toggleListening = () => {
     if (!recognition) {
-      toast.error('Voice input is not supported in this browser.');
+      toast.error('Voice input is not supported in this browser. Try Chrome.');
       return;
     }
     if (isListening) {
+      // User manually stopped — submit whatever was captured so far
       recognition.stop();
+      cancelSilenceCountdown();
       setIsListening(false);
+      const captured = commandInputRef.current.trim();
+      if (captured) setTimeout(() => handleExecuteCommand(captured), 80);
     } else {
-      recognition.start();
-      setIsListening(true);
-      toast.info('Listening... speak your command.');
+      setCommandInput(''); // Clear previous input when starting fresh voice session
+      try {
+        recognition.start();
+        setIsListening(true);
+        toast.info('🎙️ Listening... speak naturally. I\'ll send when you stop.', { duration: 3000 });
+      } catch (e: any) {
+        // Already running — stop and restart
+        try { recognition.stop(); } catch {} 
+        setTimeout(() => { try { recognition.start(); setIsListening(true); } catch {} }, 300);
+      }
     }
   };
+
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1915,56 +1990,157 @@ export function HomeDashboard() {
             </div>
             <div className="command-bar-container" style={{ position: 'relative' }}>
               <AnimatePresence>
-                {isListening && interimTranscript && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 10 }}
+                {isListening && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 14, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 14, scale: 0.97 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 28 }}
                     style={{
                       position: 'absolute',
-                      bottom: 'calc(100% + 15px)',
+                      bottom: 'calc(100% + 12px)',
                       left: 0,
-                      background: 'rgba(168, 85, 247, 0.95)',
-                      backdropFilter: 'blur(8px)',
-                      padding: '0.6rem 1rem',
-                      borderRadius: '12px',
+                      right: 0,
+                      background: silencePercent > 80
+                        ? 'rgba(16, 185, 129, 0.95)'
+                        : 'rgba(109, 40, 217, 0.96)',
+                      backdropFilter: 'blur(12px)',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '14px',
                       color: '#fff',
-                      fontSize: '0.9rem',
+                      fontSize: '0.88rem',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '0.5rem',
-                      boxShadow: '0 4px 20px rgba(168, 85, 247, 0.4)',
+                      gap: '0.75rem',
+                      boxShadow: silencePercent > 80
+                        ? '0 4px 24px rgba(16,185,129,0.45)'
+                        : '0 4px 24px rgba(139, 92, 246, 0.45)',
                       zIndex: 20,
-                      maxWidth: '90%',
                       pointerEvents: 'none',
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                      border: '1px solid rgba(255,255,255,0.18)',
+                      transition: 'background 0.3s ease, box-shadow 0.3s ease',
                     }}
                   >
-                    <Mic size={14} style={{ animation: 'pulse 1.5s infinite alternate' }} />
-                    <span style={{ fontStyle: 'italic' }}>"{interimTranscript}"</span>
+                    {/* Silence countdown ring */}
+                    <div style={{ position: 'relative', width: 28, height: 28, flexShrink: 0 }}>
+                      <svg width="28" height="28" viewBox="0 0 28 28" style={{ transform: 'rotate(-90deg)' }}>
+                        <circle cx="14" cy="14" r="11" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="2.5" />
+                        <circle
+                          cx="14" cy="14" r="11"
+                          fill="none"
+                          stroke={silencePercent > 80 ? '#6ee7b7' : '#c4b5fd'}
+                          strokeWidth="2.5"
+                          strokeDasharray={`${2 * Math.PI * 11}`}
+                          strokeDashoffset={`${2 * Math.PI * 11 * (1 - silencePercent / 100)}`}
+                          strokeLinecap="round"
+                          style={{ transition: 'stroke-dashoffset 0.05s linear, stroke 0.3s ease' }}
+                        />
+                      </svg>
+                      {/* Mic pulse dot in center */}
+                      <div style={{
+                        position: 'absolute', top: '50%', left: '50%',
+                        transform: 'translate(-50%,-50%)',
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: silencePercent > 80 ? '#10b981' : '#a78bfa',
+                        animation: silencePercent > 0 && silencePercent < 80 ? 'none' : 'pulse 0.8s infinite alternate',
+                        transition: 'background 0.3s ease',
+                      }} />
+                    </div>
+
+                    {/* Live voice bars */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                      {[0.4, 0.7, 1, 0.65, 0.45].map((h, i) => (
+                        <div key={i} style={{
+                          width: 3,
+                          borderRadius: 2,
+                          background: 'rgba(255,255,255,0.7)',
+                          height: silencePercent > 5 ? `${4 + h * 10}px` : '4px',
+                          animation: silencePercent > 5 && silencePercent < 80
+                            ? `voiceBar ${0.4 + i * 0.12}s ease-in-out infinite alternate`
+                            : 'none',
+                          transition: 'height 0.2s ease',
+                        }} />
+                      ))}
+                    </div>
+
+                    {/* Transcript text */}
+                    <span style={{ fontStyle: 'italic', flex: 1, lineHeight: 1.4, fontSize: '0.86rem' }}>
+                      {silencePercent > 80
+                        ? '⚡ Sending to agents...'
+                        : interimTranscript
+                          ? `"${commandInput ? commandInput + ' ' : ''}${interimTranscript}"`
+                          : commandInput
+                          ? `"${commandInput}" ✓`
+                          : 'Listening... speak naturally'
+                      }
+                    </span>
+
+                    {/* Hint text */}
+                    {silencePercent > 0 && silencePercent <= 80 && (
+                      <span style={{ fontSize: '0.72rem', opacity: 0.7, flexShrink: 0 }}>
+                        sending in {((1 - silencePercent / 100) * 1.8).toFixed(1)}s
+                      </span>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {/* Always-listening visual pulse ring around mic when active */}
+              {isListening && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  style={{
+                    position: 'absolute',
+                    right: 44,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 40, height: 40,
+                    borderRadius: '50%',
+                    border: `2px solid ${silencePercent > 80 ? '#10b981' : '#a78bfa'}`,
+                    animation: 'ping 1.5s cubic-bezier(0,0,0.2,1) infinite',
+                    pointerEvents: 'none',
+                    zIndex: 5,
+                  }}
+                />
+              )}
+
               <input
                 type="text"
                 value={commandInput}
                 onChange={e => setCommandInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleExecuteCommand(); }}
                 disabled={isExecuting}
-                placeholder={isListening ? "Listening..." : "Assign a task to the Fleet... e.g. 'Read my latest emails and summarize'"}
+                placeholder={isListening
+                  ? 'Listening... speak naturally, I\'ll auto-send when you stop'
+                  : "Assign a task to the Fleet... e.g. 'Read my latest emails and summarize'"}
                 className="agent-command-input focus:outline-none focus:ring-0 focus:border-transparent"
+                style={{ borderColor: isListening ? (silencePercent > 80 ? '#10b981' : '#a78bfa') : undefined, transition: 'border-color 0.3s ease' }}
               />
               <div className="command-bar-actions">
-                <button 
-                  className={`voice-command-btn ${isListening ? 'listening' : ''}`} 
-                  onClick={toggleListening}
-                  disabled={isExecuting}
-                  title="Voice Command"
-                >
-                  {isListening ? <MicOff size={16} /> : <Mic size={16} />}
-                </button>
-                <button 
-                  className="execute-command-btn" 
+                {/* Mic button with active state ring */}
+                <div style={{ position: 'relative' }}>
+                  <button
+                    className={`voice-command-btn ${isListening ? 'listening' : ''}`}
+                    onClick={toggleListening}
+                    disabled={isExecuting}
+                    title={isListening ? 'Stop & submit what you said' : 'Start voice command (auto-sends after 1.8s silence)'}
+                    style={{
+                      background: isListening
+                        ? silencePercent > 80 ? 'rgba(16,185,129,0.25)' : 'rgba(139,92,246,0.25)'
+                        : undefined,
+                      boxShadow: isListening
+                        ? `0 0 0 2px ${silencePercent > 80 ? '#10b981' : '#a78bfa'}`
+                        : undefined,
+                      transition: 'all 0.3s ease',
+                    }}
+                  >
+                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
+                </div>
+                <button
+                  className="execute-command-btn"
                   onClick={handleExecuteCommand}
                   disabled={isExecuting || !commandInput.trim()}
                 >
