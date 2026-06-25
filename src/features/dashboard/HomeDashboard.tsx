@@ -268,16 +268,63 @@ export function HomeDashboard() {
   // ── Proactive Agent — auto-fires on overdue/urgent detection ──
   useProactiveAgent(tasks, calendarEvents, setIsExecuting);
 
-  // ── Listen for proactive briefing results ──
+  // ── Listen for proactive briefing results + autonomous action events ──
   useEffect(() => {
     const handleProactiveBriefing = (e: any) => {
       setAgentResult(e.detail?.report || null);
+      // If this was an autonomous action report, also set missionComplete
+      if (e.detail?.isActionReport) {
+        setMissionComplete(true);
+        setMissionSummary(e.detail?.report || '');
+      }
     };
+
+    // show-proactive-report: open the mission report overlay
     const handleShowReport = () => {
-      // Scroll to or highlight report — already shown via agentResult state
+      const pending = sessionStorage.getItem('pending_proactive_briefing');
+      if (pending && !agentResult) setAgentResult(pending);
+      // Scroll window to top to reveal the overlay
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     };
+
+    // ghost-scan-complete: ghost deadlines were auto-found and tasks created
+    const handleGhostScanComplete = (e: any) => {
+      const { count } = e.detail || {};
+      const label = count ? `${count} hidden deadline${count !== 1 ? 's' : ''}` : 'Hidden deadlines';
+      toast.success('👻 Ghost Scan Complete', {
+        description: `${label} found in your inbox and added to ZenTrack automatically.`,
+        duration: 9000,
+        action: { label: 'View Tasks', onClick: () => window.location.hash = '#/todo' }
+      });
+      // Surface the ghost scan report in the mission report overlay
+      if (e.detail?.result) {
+        setAgentResult(e.detail.result);
+        setMissionComplete(true);
+        setMissionSummary(e.detail.result);
+      }
+    };
+
+    // guardian-autonomous-corrector: useDeadlineWatcher found tasks within 3h
+    // — now triggers real autonomous execution instead of just logging
+    const handleGuardianCorrector = (e: any) => {
+      const taskTitle = e.detail?.title || 'a task';
+      const recoveryPrompt = `GUARDIAN_AUTONOMOUS_CORRECTOR: The task "${taskTitle}" is due within 3 hours and has not been completed. Take autonomous action: ` +
+        `1. Send an urgent push notification to the user. ` +
+        `2. Check calendar for any conflicting events in the next 3 hours using list_calendar_events. ` +
+        `3. If there is a conflicting low-priority event, reschedule it using auto_reschedule. ` +
+        `4. Send a final reminder 30 minutes before deadline using send_reminder. ` +
+        `Report everything you did.`;
+      
+      // Only fire if not already executing to avoid conflicts
+      if (!isExecuting) {
+        handleExecuteCommand(recoveryPrompt);
+      }
+    };
+
     window.addEventListener('proactive-briefing', handleProactiveBriefing);
     window.addEventListener('show-proactive-report', handleShowReport);
+    window.addEventListener('ghost-scan-complete', handleGhostScanComplete);
+    window.addEventListener('guardian-autonomous-corrector', handleGuardianCorrector);
 
     // Read and clear any pending voice command reports from session storage
     const pending = sessionStorage.getItem('pending_proactive_briefing');
@@ -289,8 +336,10 @@ export function HomeDashboard() {
     return () => {
       window.removeEventListener('proactive-briefing', handleProactiveBriefing);
       window.removeEventListener('show-proactive-report', handleShowReport);
+      window.removeEventListener('ghost-scan-complete', handleGhostScanComplete);
+      window.removeEventListener('guardian-autonomous-corrector', handleGuardianCorrector);
     };
-  }, []);
+  }, [isExecuting, agentResult]);
 
   // Initialize SpeechRecognition if available
   const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
