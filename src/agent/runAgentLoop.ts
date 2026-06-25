@@ -2,6 +2,7 @@ import { TOOL_DECLARATIONS } from './toolDeclarations';
 import type { ToolResult } from './toolExecutor';
 import { executeTool } from './toolExecutor';
 import { callWithFallback } from '../services/gemini/core';
+import type { Task, CalendarEvent } from '../types/domain';
 
 const AGENT_SYSTEM = `You are Zen Agent — an autonomous AI assistant with real tools.
 You can read tasks, create tasks, schedule calendar blocks, and send reminders.
@@ -11,12 +12,12 @@ After you've taken all needed actions, respond naturally explaining what you did
 
 export type AgentStep = 
   | { type: 'thinking'; title: string }
-  | { type: 'tool_call'; toolName: string; args: any }
+  | { type: 'tool_call'; toolName: string; args: Record<string, unknown> }
   | { type: 'tool_result'; toolName: string; result: ToolResult }
   | { type: 'answer'; title: string };
 
 // Safe event dispatch — works in both browser and server contexts
-const safeDispatch = (detail: any) => {
+const safeDispatch = (detail: object) => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('agent-log', { detail }));
   }
@@ -24,13 +25,14 @@ const safeDispatch = (detail: any) => {
 
 export const runAgentLoop = async (
   userMessage: string,
-  userTodos: any[],
-  calendarEvents: any[],
+  userTodos: Task[],
+  calendarEvents: CalendarEvent[],
   apiKey: string,
   onStep: (step: AgentStep) => void,
   systemInstruction?: string,
   modelOverride?: string
 ): Promise<string> => {
+
 
   const effectiveSystem = systemInstruction || AGENT_SYSTEM;
   const contents: any[] = [{ role: 'user', parts: [{ text: userMessage }] }];

@@ -20,8 +20,9 @@ import {
   listCalendarEventsOnDate,
   createDraftEmail,
 } from '../services/googleWorkspace';
+import type { Task, CalendarEvent } from '../types/domain';
 
-export type ToolResult = { success: boolean; data: any; message: string };
+export type ToolResult = { success: boolean; data: unknown; message: string };
 
 const requireGoogleAuth = (): ToolResult | null => {
   if (!isSignedInToGoogle()) {
@@ -36,10 +37,11 @@ const requireGoogleAuth = (): ToolResult | null => {
 
 export const executeTool = async (
   toolName: string,
-  args: Record<string, any>,
-  userTodos: any[],
-  calendarEvents: any[]
+  args: Record<string, unknown>,
+  userTodos: Task[],
+  calendarEvents: CalendarEvent[]
 ): Promise<ToolResult> => {
+
   const user = auth.currentUser;
   if (!user) return { success: false, data: null, message: 'Not authenticated. User is not logged in.' };
   const today = getLocalDateString(new Date());

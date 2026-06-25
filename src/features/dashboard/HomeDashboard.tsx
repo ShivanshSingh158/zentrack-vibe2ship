@@ -630,12 +630,12 @@ export function HomeDashboard() {
         agentHistory
       );
       
-      // Cap history at last 10 exchanges (20 entries) to prevent context window bloat
+      // Cap history at last 5 turns (10 entries) to prevent context window bloat
       setAgentHistory(prev => [
         ...prev, 
         { role: 'user', text: prompt }, 
         { role: 'model', text: result }
-      ].slice(-20));
+      ].slice(-10));
       setAgentResult(result);
       setAgentStatus('Mission accomplished.');
       setActiveAgent(null);

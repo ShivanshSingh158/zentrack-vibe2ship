@@ -5,12 +5,14 @@ import { logApi, logWebSocket } from '../utils/networkLogger';
 import { DagEngine } from './core/DagEngine';
 import type { DagTask, AgentRole } from './core/DagEngine';
 import { createInitialState } from './core/SharedState';
+import type { Task, CalendarEvent, ConversationTurn } from '../types/domain';
 
 import { 
   SEARCH_SYSTEM, DOCS_SYSTEM, DATA_SYSTEM, COMMS_SYSTEM, 
   SCHEDULER_SYSTEM, DRIVE_SYSTEM, CODING_SYSTEM, QA_SYSTEM,
   MEET_SYSTEM, PLANNER_SYSTEM, MONITOR_SYSTEM, GHOST_DETECTOR_SYSTEM, EXECUTOR_SYSTEM
 } from './fleet/NewAgents';
+
 
 const SUPERVISOR_SYSTEM = `You are Agent 0 — The Supervisor and Master Orchestrator of DeadlineZero, an autonomous AI productivity system.
 Your mission: analyze user requests, classify their complexity, and delegate to the right agents.
@@ -98,12 +100,13 @@ const safeDispatch = (detail: any) => {
 
 export const orchestrateAgent = async (
   userMessage: string,
-  userTodos: any[],
-  calendarEvents: any[],
+  userTodos: Task[],
+  calendarEvents: CalendarEvent[],
   apiKey: string,
   onStep: (step: AgentStep) => void,
-  agentHistory: { role: string; text: string }[] = []
+  agentHistory: ConversationTurn[] = []
 ): Promise<string> => {
+
   onStep({ type: 'thinking', title: 'Supervisor (Agent 0) mapping workflow DAG...' });
   safeDispatch({ type: 'thinking', title: 'Supervisor mapping DAG...' });
   logApi('POST', '/api/v1/agent/supervisor', { userMessage }, 'pending');

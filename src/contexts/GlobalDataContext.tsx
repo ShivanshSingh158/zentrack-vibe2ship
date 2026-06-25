@@ -5,10 +5,11 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/firebase';
 import { initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle, getTokenTimeRemaining } from '../services/googleCalendar';
 import { loadUserGeminiKey } from '../services/userGeminiAuth';
+import type { Task, CalendarEvent } from '../types/domain';
 
 interface GlobalDataContextType {
-  tasks: any[];
-  calendarEvents: any[];
+  tasks: Task[];
+  calendarEvents: CalendarEvent[];
   dailyLogs: any[];
   habitLogs: any[];
   habits: any[];
@@ -30,6 +31,7 @@ interface GlobalDataContextType {
   connectGoogle: () => Promise<void>;
   disconnectGoogle: () => void;
 }
+
 
 const GlobalDataContext = createContext<GlobalDataContextType | null>(null);
 

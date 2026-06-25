@@ -47,26 +47,29 @@ if (typeof window !== 'undefined') {
 
 // ── Model priority (verified real model IDs — 2026-06) ────────────────────────
 // Only include models that ACTUALLY EXIST in the Gemini API.
-// Invalid model IDs return 404 or look like 401 (model not available to key).
-// Verified real IDs: https://ai.google.dev/api/generate-content#v1beta.models
-// Gemini 3.x series (GA as of 2026) — ordered by capability
-// These are the real API model IDs used with both API key and OAuth:
-//   gemini-3.1-pro      = 3.1 Pro  (Advanced math and code)   ← PRIMARY
-//   gemini-3.5-flash    = 3.5 Flash (All-around help)          ← FALLBACK 1
-//   gemini-3.1-flash-lite = 3.1 Flash-Lite (Fastest)           ← FALLBACK 2
+// Verified against: https://ai.google.dev/api/generate-content#v1beta.models
+// Primary model IDs used with both API key and OAuth:
+//   gemini-2.5-flash     = Best all-around, 1M context window  ← PRIMARY
+//   gemini-2.5-flash-lite = Fastest / cheapest                  ← FALLBACK 1  
+//   gemini-2.5-pro       = Most capable for complex reasoning   ← FALLBACK 2
+// Note: gemini-3.x model IDs are NOT yet in GA as of 2026-06.
 export const SHARED_MODEL_PRIORITY = [
-  'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
-  'gemini-3.1-pro',
+  'gemini-2.5-flash-lite-preview-06-17',
+  'gemini-2.5-pro',
+  'gemini-2.0-flash',
 ];
 
 export const PERSONAL_MODEL_PRIORITY = [
-  'gemini-3.5-flash',
-  'gemini-3.1-flash-lite',
-  'gemini-3.1-pro',
+  'gemini-2.5-pro',
   'gemini-2.5-flash',
+  'gemini-2.5-flash-lite-preview-06-17',
+  'gemini-2.0-flash',
 ];
+
+// Unified alias so internal consumers can reference a single constant.
+// Defaults to SHARED_MODEL_PRIORITY (used by RobustChatSession without personal key).
+export const MODEL_PRIORITY = SHARED_MODEL_PRIORITY;
 
 export const getPriorityModels = (isPersonal: boolean) => {
   return isPersonal ? PERSONAL_MODEL_PRIORITY : SHARED_MODEL_PRIORITY;
@@ -520,7 +523,7 @@ export class RobustChatSession {
  * Robustly parse JSON from an AI response.
  * Handles markdown fences, leading/trailing text, escaped JSON strings.
  */
-export const parseAIJson = (title: string): any => {
+export const parseAIJson = (text: string): any => {
   if (!text || typeof text !== 'string') throw new Error('parseAIJson received empty or non-string input');
   const t = text.trim();
   const errors: string[] = [];
@@ -560,8 +563,8 @@ export const parseAIJson = (title: string): any => {
         }
       }
       
-      // If we reach the end and stack is not empty, it means the JSON was cut off.
-      // Let's repair it by closing any open strings and brackets.
+      // If we reach the end and stack is not empty, the JSON was truncated.
+      // Repair it by closing any open strings and brackets.
       let repaired = src.slice(i);
       if (inStr) repaired += '"';
       while (stack.length > 0) {
@@ -587,6 +590,7 @@ export const parseAIJson = (title: string): any => {
     }
   }
 
-  console.error("AI JSON Parse Failed. Raw title:", text, "Errors:", errors);
+  console.error("AI JSON Parse Failed. Raw text:", text, "Errors:", errors);
   throw new Error(`Parse error: ${errors[0] || 'unknown'}. Raw: ${text.substring(0, 80)}...`);
 };
+
