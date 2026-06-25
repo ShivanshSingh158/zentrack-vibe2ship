@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import {  RobustChatSession } from './core';
-import { SAFETY_SETTINGS, getPriorityModels, allKeys, takeNextKeyIndex } from './core';
+import { SAFETY_SETTINGS, getPriorityModels, allKeys, takeNextKeyIndex, MODEL_PRIORITY } from './core';
 export const startWeeklyReviewChat = (userData: any, existingHistory: any[] = []) => {
   // Trim userData to avoid token overflow
   const safeData = {
@@ -128,7 +128,7 @@ NSCA-CSCS, CISSN, FMS Level 2, Precision Nutrition Level 1. Expert in: progressi
 - CRITICAL: DO NOT use markdown tables (e.g. | Column | Column |). They are unreadable and squished on mobile screens. ALWAYS use formatted lists instead.
 - Q&A responses: max 350 words. Plans: as long as needed.`;
 
-export const startGymAIChat = (gymContitle: string, existingHistory: any[] = []) => {
+export const startGymAIChat = (gymContext: string, existingHistory: any[] = []) => {
   if (allKeys.length === 0) throw new Error('Gemini API key is missing.');
 
   const systemWithContext = `${GYM_AI_SYSTEM_PROMPT}
@@ -404,7 +404,7 @@ export class OAuthGymChatSession {
   async sendMessageStream(msg: string, onChunk: (title: string) => void): Promise<{ title: string, model: string }> {
     this.contents.push({ role: 'user', parts: [{ text: msg }] });
     const result = await callGymOAuthRESTStream(this.token, this.systemInstruction, this.contents, 0, onChunk);
-    this.contents.push({ role: 'model', parts: [{ text: result.text }] });
+    this.contents.push({ role: 'model', parts: [{ text: result.title }] });
     return result;
   }
 
@@ -414,7 +414,7 @@ export class OAuthGymChatSession {
 }
 
 export const startGymAIOAuthChat = (
-  gymContitle: string,
+  gymContext: string,
   oauthToken: string,
   existingHistory: any[] = []
 ): OAuthGymChatSession => {

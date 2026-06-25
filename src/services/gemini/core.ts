@@ -93,7 +93,7 @@ if (typeof window !== 'undefined') {
   try { localStorage.removeItem('zen_working_model'); } catch {}
 }
 
-const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+const rawApiKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' && process.env?.VITE_GEMINI_API_KEY) || '';
 // Filter out empty strings and obviously invalid keys (too short)
 export const allKeys = rawApiKey
   .split(',')
@@ -422,11 +422,25 @@ export class RobustChatSession {
     let lastError: any;
     for (let mi = this.modelIndex; mi < MODEL_PRIORITY.length; mi++) {
       const modelName = MODEL_PRIORITY[mi];
-      const keyCount = Math.max(allKeys.length, 1);
-      for (let ki = 0; ki < keyCount; ki++) {
-        const keyIdx = (this.keyIndex + ki) % keyCount;
+      const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
+      let rotationsUsed = 0;
+
+      while (rotationsUsed < MAX_KEY_ROTATIONS) {
+        const keyObj = pickNextSharedKey();
+        const keyToken = keyObj ? keyObj.token : (allKeys[0] || '');
+        const keyIdx = keyObj ? keyObj.index : 0;
+
+        if (keyObj && !isKeyAvailable(keyObj.token)) {
+          const until  = keyCooldownUntil.get(keyObj.token.substring(0, 8)) ?? Date.now();
+          const waitMs = Math.min(Math.max(0, until - Date.now()), 8_000);
+          if (waitMs > 0) {
+            console.warn(`[ZenAI Stream] Waiting ${Math.ceil(waitMs / 1000)}s for cooldown...`);
+            await sleep(waitMs);
+          }
+        }
+
         try {
-          if (mi !== this.modelIndex || ki > 0) {
+          if (mi !== this.modelIndex || keyIdx !== this.keyIndex || rotationsUsed > 0) {
             const history = await this.getHistory();
             this.session    = await this.rebuildSession(modelName, keyIdx, history);
             this.modelName  = modelName;
@@ -453,13 +467,26 @@ export class RobustChatSession {
         } catch (err: any) {
           lastError = err;
           const errMsg = String(err?.message || '').toLowerCase();
-          const isAuth = errMsg.includes('401') || errMsg.includes('invalid authentication');
+          const isAuth = errMsg.includes('401') || errMsg.includes('invalid authentication') || errMsg.includes('authentication credentials');
           const isNotFound = errMsg.includes('404') || errMsg.includes('not found');
-          if (isAuth && ki < keyCount - 1) continue;
-          if (isNotFound || isAuth) break;
-          if (errMsg.includes('first content should be with role')) {
-            this.session = await this.rebuildSession(modelName, keyIdx, this.seedHistory);
+          const isRateLimit = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('rate limit') || errMsg.includes('resource_exhausted');
+          const isOverload = errMsg.includes('503') || errMsg.includes('overload') || errMsg.includes('high demand');
+
+          if (isAuth) {
+            console.warn(`[ZenAI Stream] ${modelName} auth error (key ${keyIdx}), trying next key`);
+            rotationsUsed++;
+            continue;
+          }
+
+          if (isNotFound) {
+            console.warn(`[ZenAI Stream] ${modelName} 404 not found, trying next model`);
+            break;
+          }
+
+          if (errMsg.includes('first content should be with role') || errMsg.includes('role \'user\'')) {
+            console.warn(`[ZenAI Stream] History role error, resetting to seed history`);
             try {
+              this.session = await this.rebuildSession(modelName, keyIdx, this.seedHistory);
               const retryResult = await this.session.sendMessageStream(msg);
               let ft = '';
               let sawRetryFinish = false;
@@ -473,8 +500,29 @@ export class RobustChatSession {
               }
               return { title: ft, model: modelName };
             } catch (e: any) { lastError = e; }
+            break;
           }
-          if (ki === keyCount - 1) break;
+
+          if (isRateLimit) {
+            console.warn(`[ZenAI Stream] ${modelName} rate limited (key ${keyIdx + 1}/${allKeys.length})`);
+            if (keyObj) {
+              markKeyCooling(keyObj.token, err.message);
+            }
+            rotationsUsed++;
+            if (rotationsUsed < MAX_KEY_ROTATIONS) {
+              await sleep(400);
+              continue;
+            }
+            break;
+          }
+
+          if (isOverload) {
+            console.warn(`[ZenAI Stream] ${modelName} overloaded, trying next model`);
+            await sleep(400);
+            break;
+          }
+
+          throw new Error(err.message || 'AI failed to respond. Please try again.');
         }
       }
     }
@@ -483,30 +531,37 @@ export class RobustChatSession {
 
   async sendMessage(msg: string) {
     let lastError: any;
-
-    // Try every model starting from current
     for (let mi = this.modelIndex; mi < MODEL_PRIORITY.length; mi++) {
       const modelName = MODEL_PRIORITY[mi];
+      const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
+      let rotationsUsed = 0;
 
-      // Try each API key for this model
-      const keyCount = Math.max(allKeys.length, 1);
-      for (let ki = 0; ki < keyCount; ki++) {
-        const keyIdx = (this.keyIndex + ki) % keyCount;
+      while (rotationsUsed < MAX_KEY_ROTATIONS) {
+        const keyObj = pickNextSharedKey();
+        const keyToken = keyObj ? keyObj.token : (allKeys[0] || '');
+        const keyIdx = keyObj ? keyObj.index : 0;
+
+        if (keyObj && !isKeyAvailable(keyObj.token)) {
+          const until  = keyCooldownUntil.get(keyObj.token.substring(0, 8)) ?? Date.now();
+          const waitMs = Math.min(Math.max(0, until - Date.now()), 8_000);
+          if (waitMs > 0) {
+            console.warn(`[ZenAI Chat] Waiting ${Math.ceil(waitMs / 1000)}s for cooldown...`);
+            await sleep(waitMs);
+          }
+        }
 
         try {
-          // Rebuild if we switched model or key
-          if (mi !== this.modelIndex || ki > 0) {
+          if (mi !== this.modelIndex || keyIdx !== this.keyIndex || rotationsUsed > 0) {
             const history = await this.getHistory();
-            this.session    = await this.rebuildSession(modelName, keyIdx, history);
-            this.modelName  = modelName;
+            this.session = await this.rebuildSession(modelName, keyIdx, history);
+            this.modelName = modelName;
             this.modelIndex = mi;
-            this.keyIndex   = keyIdx;
+            this.keyIndex = keyIdx;
           }
 
           const result = await this.session.sendMessage(msg);
           setPreferredModel(modelName);
           return result;
-
         } catch (err: any) {
           lastError = err;
           const errMsg = String(err?.message || '').toLowerCase();
@@ -514,14 +569,14 @@ export class RobustChatSession {
           const isAuth      = errMsg.includes('401') || errMsg.includes('invalid authentication') ||
                               errMsg.includes('authentication credentials');
           const isNotFound   = errMsg.includes('404') || errMsg.includes('not found');
-          const isRateLimit  = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('rate limit');
+          const isRateLimit  = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('rate limit') || errMsg.includes('resource_exhausted');
           const isOverload   = errMsg.includes('503') || errMsg.includes('overload') || errMsg.includes('high demand');
           const isHistoryBad = errMsg.includes('first content should be with role') || errMsg.includes('role \'user\'');
 
           if (isAuth) {
             console.warn(`[ZenAI Chat] ${modelName} auth error (key ${keyIdx}), trying next key`);
-            if (ki < keyCount - 1) continue;
-            break;
+            rotationsUsed++;
+            continue;
           }
 
           if (isNotFound) {
@@ -530,7 +585,6 @@ export class RobustChatSession {
           }
 
           if (isHistoryBad) {
-            // History format error → reset to seed history and retry SAME model
             console.warn(`[ZenAI Chat] History role error, resetting to seed history`);
             try {
               this.session = await this.rebuildSession(modelName, keyIdx, this.seedHistory);
@@ -542,28 +596,29 @@ export class RobustChatSession {
           }
 
           if (isRateLimit) {
-            // Rate limited → try next key, then next model
-            console.warn(`[ZenAI Chat] ${modelName} rate limited (key ${ki+1}/${keyCount})`);
-            if (ki < keyCount - 1) {
-              await new Promise(r => setTimeout(r, 300));
-              continue; // try next key
+            console.warn(`[ZenAI Chat] ${modelName} rate limited (key ${keyIdx + 1}/${allKeys.length})`);
+            if (keyObj) {
+              markKeyCooling(keyObj.token, err.message);
             }
-            break; // exhausted keys → try next model
+            rotationsUsed++;
+            if (rotationsUsed < MAX_KEY_ROTATIONS) {
+              await sleep(400);
+              continue;
+            }
+            break;
           }
 
           if (isOverload) {
             console.warn(`[ZenAI Chat] ${modelName} overloaded, trying next model`);
-            await new Promise(r => setTimeout(r, 300));
+            await sleep(400);
             break;
           }
 
-          // Unknown error → throw (not retryable)
           throw new Error(err.message || 'AI failed to respond. Please try again.');
         }
       }
     }
 
-    // All models exhausted
     console.error('[ZenAI Chat] All models failed:', lastError?.message);
     throw new Error('AI is temporarily unavailable. Please try again in a moment.');
   }
