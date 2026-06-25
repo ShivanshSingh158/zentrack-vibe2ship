@@ -110,28 +110,55 @@ if (allKeys.length === 0) {
 
 export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-const isRetryableError = (err: any): boolean => {
+// ── Per-key cooldown tracker ─────────────────────────────────────────────────
+// When a key hits 429, mark it unavailable for KEY_COOLDOWN_MS.
+// All subsequent callWithFallback calls skip that key until it cools down.
+// This prevents the 1/8→2/8→8/8 waterfall exhaustion spiral.
+const KEY_COOLDOWN_MS = 62_000; // 62s — just over Gemini's typical 60s 429 window
+const keyCooldownUntil = new Map<string, number>(); // token (first 8 chars) → available-at timestamp
+
+const isKeyAvailable = (token: string): boolean => {
+  const key = token.substring(0, 8); // use prefix as map key (never log full key)
+  const until = keyCooldownUntil.get(key);
+  if (!until) return true;
+  if (Date.now() >= until) {
+    keyCooldownUntil.delete(key);
+    return true;
+  }
+  return false;
+};
+
+const markKeyCooling = (token: string, reason: string) => {
+  const key = token.substring(0, 8);
+  const until = Date.now() + KEY_COOLDOWN_MS;
+  keyCooldownUntil.set(key, until);
+  console.warn(`[ZenAI] Key ...${key} rate-limited. Cooling for ${KEY_COOLDOWN_MS / 1000}s. Reason: ${reason.substring(0, 60)}`);
+};
+
+const isRateLimit = (err: any): boolean => {
   const msg = (err?.message || '').toLowerCase();
-  return (
-    msg.includes('503') || msg.includes('overload') || msg.includes('high demand') ||
-    msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') ||
-    (msg.includes('400') && msg.includes('size')) ||
-    // Note: 404 is NOT here — invalid model = skip immediately, handled separately
-    msg.includes('unavailable') ||
-    msg.includes('500') || msg.includes('internal') ||
-    // 401 on a specific model often means that model is not available to this key
-    // → retry on next model instead of treating as a hard auth failure
-    msg.includes('401') || msg.includes('invalid authentication') || msg.includes('authentication credentials')
-  );
+  return msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') || msg.includes('resource_exhausted');
 };
 
 const isAuthError = (err: any): boolean => {
   const msg = (err?.message || '').toLowerCase();
-  // Treat as auth error (key rotation) for quota/rate-limit AND 401 invalid credentials
-  return msg.includes('429') || msg.includes('quota') || msg.includes('rate limit') ||
-         msg.includes('401') || msg.includes('invalid authentication') || msg.includes('authentication credentials');
+  return msg.includes('401') || msg.includes('invalid authentication') || msg.includes('authentication credentials');
 };
 
+const isModelNotFound = (err: any): boolean => {
+  const msg = (err?.message || '').toLowerCase();
+  return msg.includes('404') || msg.includes('not found');
+};
+
+const isOverload = (err: any): boolean => {
+  const msg = (err?.message || '').toLowerCase();
+  return msg.includes('503') || msg.includes('overload') || msg.includes('high demand') || msg.includes('unavailable');
+};
+
+// ── True round-robin key pointer ──────────────────────────────────────────────
+// globalKeyIndex is the NEXT key to try. Each callWithFallback call picks the
+// first available (non-cooling) key starting at globalKeyIndex, then advances
+// the pointer. This distributes load across parallel agents correctly.
 export let globalKeyIndex = 0;
 
 export const takeNextKeyIndex = (): number => {
@@ -141,156 +168,178 @@ export const takeNextKeyIndex = (): number => {
 };
 
 /**
- * Core AI caller with:
- *  - Personal OAuth key first, shared key pool fallback (automatic, no errors shown)
- *  - Smart model ordering (cached winner first)
- *  - Capped exponential backoff (max 4s) on retryable errors
- *  - Automatic fallback through all models in MODEL_PRIORITY
- *  - Round-robin load balancing across all available shared API keys
+ * Picks the next available (non-cooling) shared API key using round-robin.
+ * Returns { token, index } or null if all shared keys are cooling.
  */
+const pickNextSharedKey = (): { token: string; index: number } | null => {
+  if (allKeys.length === 0) return null;
+  const startIdx = globalKeyIndex;
+  for (let attempt = 0; attempt < allKeys.length; attempt++) {
+    const idx = (startIdx + attempt) % allKeys.length;
+    const token = allKeys[idx];
+    if (isKeyAvailable(token)) {
+      // Advance global pointer so the NEXT call starts after this key
+      globalKeyIndex = (idx + 1) % allKeys.length;
+      return { token, index: idx };
+    }
+  }
+  // All shared keys are cooling — find the one that comes back soonest
+  let soonestToken = allKeys[0];
+  let soonestIdx   = 0;
+  let soonestTime  = keyCooldownUntil.get(allKeys[0].substring(0, 8)) ?? 0;
+  for (let i = 1; i < allKeys.length; i++) {
+    const t = keyCooldownUntil.get(allKeys[i].substring(0, 8)) ?? 0;
+    if (t < soonestTime) { soonestTime = t; soonestToken = allKeys[i]; soonestIdx = i; }
+  }
+  const waitMs = Math.max(0, soonestTime - Date.now());
+  console.warn(`[ZenAI] All ${allKeys.length} shared keys cooling. Waiting ${Math.ceil(waitMs / 1000)}s for soonest key.`);
+  return { token: soonestToken, index: soonestIdx }; // caller will wait if needed
+};
 
+/**
+ * Core AI caller — redesigned for correct key load distribution:
+ *
+ * STRATEGY:
+ *  1. Personal OAuth key first (if available)
+ *  2. ONE shared key per request (true round-robin, no waterfall)
+ *  3. If that key 429s → mark it cooling, pick next available key, one retry
+ *  4. Max 3 key rotations per request (not 8)
+ *  5. Model fallback: if model 404s or overloads, try next model in priority list
+ *
+ * PARALLEL AGENT SAFETY:
+ *  - keyCooldownUntil is module-level → shared across all simultaneous callWithFallback calls
+ *  - pickNextSharedKey() atomically advances globalKeyIndex → no two parallel calls grab the same key
+ */
 export const callWithFallback = async (
   buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
 ): Promise<any> => {
-  // ── Key Resolution: always call getActiveGeminiKey() FRESH (it auto-expires) ──
   const personalKey = getActiveGeminiKey();
 
   if (!personalKey && allKeys.length === 0) {
     throw new Error('No Gemini API key found. Add your API key in Settings → AI Key.');
   }
 
-  // Build the ordered key trial list: personal first (if valid), then round-robin shared
-  const keysToTry: { token: string, isPersonal: boolean, isSharedIndex?: number }[] = [];
-  
-  if (personalKey) {
-    keysToTry.push({ token: personalKey, isPersonal: true });
-  }
-
-  if (allKeys.length > 0) {
-    const startIndex = globalKeyIndex;
-    globalKeyIndex = (globalKeyIndex + 1) % allKeys.length;
-    for (let i = 0; i < allKeys.length; i++) {
-      const idx = (startIndex + i) % allKeys.length;
-      keysToTry.push({ token: allKeys[idx], isPersonal: false, isSharedIndex: idx });
-    }
-  }
-
-  const safeDispatchRotation = (nextKeyObj: any, reason?: string) => {
-    const label = nextKeyObj.isPersonal
-      ? 'personal key'
-      : `shared key [${(nextKeyObj.isSharedIndex ?? 0) + 1}/${allKeys.length}]`;
-    console.warn(`[ZenAI] → Rotating to ${label}. Reason: ${(reason || '').substring(0, 80)}`);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('agent-log', {
-        detail: { type: 'thinking', title: `↩ Rotating to ${label}...` }
-      }));
-    }
-  };
-
-  // Model order: cached winner first, then priority list
+  // Model priority list
   const isPersonalRequest = !!personalKey;
   const priorityList = getPriorityModels(isPersonalRequest);
   const preferred = getPreferredModel(isPersonalRequest);
-  const ordered = [preferred, ...priorityList.filter(m => m !== preferred)];
+  const ordered   = [preferred, ...priorityList.filter(m => m !== preferred)];
 
   let lastError: any;
   let hitQuota = false;
 
-  for (let i = 0; i < ordered.length; i++) {
-    const modelName = ordered[i];
-    let keyAttempts = 0;
+  for (let mi = 0; mi < ordered.length; mi++) {
+    const modelName = ordered[mi];
 
-    while (keyAttempts < keysToTry.length) {
-      const currentKeyObj = keysToTry[keyAttempts];
-      const isPersonalToken = currentKeyObj.isPersonal;
-
-      try {
-        // IMPORTANT: For the personal OAuth key, re-check validity at time of use.
-        // The token may have expired between when we built keysToTry and now.
-        if (isPersonalToken && !getActiveGeminiKey()) {
-          // Personal key is gone (expired). Skip directly to shared keys.
-          console.warn('[ZenAI] Personal key expired mid-loop. Skipping to shared key pool.');
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('agent-log', {
-              detail: { type: 'thinking', title: '🔄 Personal token expired. Using shared key pool...' }
-            }));
-          }
-          keyAttempts++;
-          continue;
+    // ── Attempt 1: personal OAuth key (if valid) ──────────────────────────
+    if (personalKey) {
+      // Re-check at time of use — token may have expired
+      const freshToken = getActiveGeminiKey();
+      if (!freshToken) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('agent-log', {
+            detail: { type: 'thinking', title: '🔄 Personal token expired. Using shared key pool...' }
+          }));
         }
+      } else {
+        try {
+          const genAI = new GoogleGenerativeAI('oauth_dummy_key');
+          const result = await buildRequest(genAI, modelName);
+          return result;
+        } catch (err: any) {
+          lastError = err;
+          const msg = String(err?.message || '').toLowerCase();
 
-        const genAI = new GoogleGenerativeAI(isPersonalToken ? 'oauth_dummy_key' : currentKeyObj.token);
-        const result = await buildRequest(genAI, modelName);
-        setPreferredModel(modelName);
-        return result;
-
-      } catch (err: any) {
-        lastError = err;
-        const msg = String(err?.message || '').toLowerCase();
-
-        if (msg.includes('429') || msg.includes('quota') || msg.includes('rate limit')) hitQuota = true;
-
-        // Personal token unavailable (detected by interceptor) → skip straight to shared key
-        if (msg.includes('personal_token_unavailable')) {
-          console.warn('[ZenAI] Interceptor: personal token unavailable. Rotating to shared key.');
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('agent-log', {
-              detail: { type: 'thinking', title: '🔄 Personal AI token unavailable. Switching to shared key...' }
-            }));
+          if (msg.includes('personal_token_unavailable') || isAuthError(err)) {
+            // Personal key failed — fall through to shared pool silently
+          } else if (isModelNotFound(err)) {
+            break; // this model doesn't exist → try next model
+          } else if (isOverload(err)) {
+            break; // overloaded → try next model
+          } else if (!isRateLimit(err)) {
+            throw err; // non-retryable
           }
-          keyAttempts++;
-          continue;
+          // 429 on personal key → fall through to shared key
         }
-
-        // 404 = model doesn't exist for this key/region → skip to next model immediately
-        if (msg.includes('404') || msg.includes('not found')) break;
-
-        // Rate limit / quota / auth error → try next key for the SAME model
-        if (isAuthError(err)) {
-          if (keyAttempts + 1 < keysToTry.length) {
-            safeDispatchRotation(keysToTry[keyAttempts + 1], err.message);
-            keyAttempts++;
-            continue;
-          }
-          // Exhausted all keys on auth error
-          break;
-        }
-
-        // Other retryable error (503, overload) → skip model entirely
-        if (isRetryableError(err)) break;
-
-        // Non-retryable → surface immediately
-        throw err;
       }
     }
 
-    // All keys failed for this model. Apply capped delay then try next model.
-    if (i < ordered.length - 1) {
-      let delay = Math.min(1000 * Math.pow(2, i), 4000);
-      if (lastError) {
-        const retryMatch = String(lastError.message).toLowerCase().match(/retry after (\d+)/);
-        if (retryMatch?.[1]) delay = parseInt(retryMatch[1], 10) * 1000;
+    // ── Attempt 2-4: shared key pool (true round-robin, max 3 rotations) ──
+    const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
+    let rotationsUsed = 0;
+
+    while (rotationsUsed < MAX_KEY_ROTATIONS) {
+      const keyObj = pickNextSharedKey();
+      if (!keyObj) break; // no shared keys configured
+
+      // If all keys are cooling, wait for the soonest one
+      if (!isKeyAvailable(keyObj.token)) {
+        const until  = keyCooldownUntil.get(keyObj.token.substring(0, 8)) ?? Date.now();
+        const waitMs = Math.min(Math.max(0, until - Date.now()), 8_000);
+        if (waitMs > 0) {
+          console.warn(`[ZenAI] Waiting ${Math.ceil(waitMs / 1000)}s for cooldown...`);
+          await sleep(waitMs);
+        }
       }
-      delay = Math.min(delay, 4000); // Hard cap — never sleep > 4s between model fallbacks
-      console.warn(`[ZenAI] ${modelName} exhausted, trying ${ordered[i + 1]} in ${delay}ms`);
+
+      try {
+        const genAI  = new GoogleGenerativeAI(keyObj.token);
+        const result = await buildRequest(genAI, modelName);
+        return result; // ✅ success
+      } catch (err: any) {
+        lastError = err;
+
+        if (isRateLimit(err)) {
+          hitQuota = true;
+          markKeyCooling(keyObj.token, err.message);
+          rotationsUsed++;
+          if (rotationsUsed < MAX_KEY_ROTATIONS) {
+            // Small delay before trying next key — prevents thundering-herd
+            const label = `shared key [${keyObj.index + 1}/${allKeys.length}]`;
+            console.warn(`[ZenAI] ${label} 429 — rotating to next available key (${rotationsUsed}/${MAX_KEY_ROTATIONS})`);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('agent-log', {
+                detail: { type: 'thinking', title: `↩ Key ${keyObj.index + 1} rate-limited. Trying next...` }
+              }));
+            }
+            await sleep(400); // brief pause before next key attempt
+            continue;
+          }
+          break; // used all rotations → try next model
+        }
+
+        if (isModelNotFound(err)) break;  // model not available → try next model
+        if (isOverload(err))    break;    // server overloaded → try next model
+        if (isAuthError(err)) { rotationsUsed++; continue; } // invalid key → skip
+        throw err; // non-retryable error
+      }
+    }
+
+    // All key attempts for this model exhausted. Brief delay then try next model.
+    if (mi < ordered.length - 1) {
+      let delay = Math.min(1200 * (mi + 1), 4000);
+      if (lastError) {
+        const retryMatch = String(lastError.message).match(/retry[\s-]?after[:\s]*(\d+)/i);
+        if (retryMatch?.[1]) delay = Math.min(parseInt(retryMatch[1], 10) * 1000, 8_000);
+      }
+      console.warn(`[ZenAI] ${modelName} exhausted. Trying ${ordered[mi + 1]} in ${delay}ms`);
       await sleep(delay);
     }
   }
 
-  // All models and keys exhausted
+  // ── All models and keys exhausted ────────────────────────────────────────
   if (hitQuota) {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('agent-log', {
-        detail: { type: 'thinking', title: '⚠️ All API keys hit rate limits.' }
+        detail: { type: 'thinking', title: '⚠️ Rate limits hit. Please wait ~60s before retrying.' }
       }));
     }
-    if (personalKey) {
-      throw new Error('Both your personal Gemini key AND the shared pool have hit their rate limits. Please try again in a minute.');
-    } else if (allKeys.length > 1) {
-      throw new Error(`All ${allKeys.length} shared API keys hit their rate limit. Add your personal Gemini key in Settings → AI Key.`);
-    } else {
-      throw new Error('AI quota reached. Add your own Gemini API key in Settings for uninterrupted access.');
-    }
+    const coolingCount = [...keyCooldownUntil.values()].filter(t => t > Date.now()).length;
+    throw new Error(
+      coolingCount > 0
+        ? `${coolingCount}/${allKeys.length} API key(s) are rate-limited. They auto-recover in ~60s. Add more keys in .env → VITE_GEMINI_API_KEY for higher throughput.`
+        : 'AI quota reached. Add your own Gemini API key in Settings for uninterrupted access.'
+    );
   }
 
   const finalMsg = String(lastError?.message || '').toLowerCase();
@@ -300,13 +349,15 @@ export const callWithFallback = async (
   if (finalMsg.includes('401') || finalMsg.includes('invalid authentication') || finalMsg.includes('authentication credentials')) {
     if (personalKey) {
       setAuthExpired();
-      throw new Error('Your Gemini OAuth session has expired. Please reconnect your Google account to continue using your private quota.');
+      throw new Error('Your Gemini OAuth session has expired. Please reconnect your Google account.');
     }
     throw new Error('Gemini API key is invalid. Please update VITE_GEMINI_API_KEY in your environment settings.');
   }
 
   throw new Error(lastError?.message || 'AI failed to respond. Please try again.');
 };
+
+
 
 // ── Robust Chat Wrapper ───────────────────────────────────────────────────────
 // Wraps a Gemini chat session with:
