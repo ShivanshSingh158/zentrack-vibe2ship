@@ -37,6 +37,15 @@ export const runAgentLoop = async (
   let finalAnswer = '';
   const MAX_ITERATIONS = 10; // prevent infinite loops
 
+  // ── Per-session tool cache ───────────────────────────────────────────────
+  // Read-only tools are cached for this agent loop duration.
+  // Same tool + same args = instant cache hit, no redundant API calls.
+  const READ_ONLY_TOOLS = new Set([
+    'get_tasks', 'list_calendar_events', 'get_free_calendar_slots', 'read_gmail'
+  ]);
+  const toolCache = new Map<string, any>(); // key: "toolName:argsHash" → result
+  let connectWorkspaceCalledThisSession = false; // prevent connect retry storm
+
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     let response;
     try {
@@ -70,11 +79,46 @@ export const runAgentLoop = async (
       const args = functionCallPart.functionCall.args as any;
       onStep({ type: 'tool_call', toolName: name, args });
       safeDispatch({ type: 'tool_call', toolName: name, args });
-      
+
+      // ── Deduplication guards ─────────────────────────────────────────────
+      // 1. connect_google_workspace: only call once per session — subsequent
+      //    calls return a cached success to prevent retry storms.
+      if (name === 'connect_google_workspace') {
+        if (connectWorkspaceCalledThisSession) {
+          const cachedConnect = { success: true, data: {}, message: 'Google Workspace already connected this session.' };
+          onStep({ type: 'tool_result', toolName: name, result: cachedConnect });
+          safeDispatch({ type: 'tool_result', toolName: name, result: cachedConnect });
+          contents.push({ role: 'model', parts: candidate.content.parts });
+          contents.push({ role: 'user', parts: [{ functionResponse: { name, response: { result: cachedConnect.data, message: cachedConnect.message } } }] });
+          continue;
+        }
+        connectWorkspaceCalledThisSession = true;
+      }
+
+      // 2. Read-only tools: cache by tool name + args fingerprint.
+      //    Duplicate call within same agent loop → instant cache hit.
+      const argsKey = JSON.stringify(args ?? {});
+      const cacheKey = `${name}:${argsKey}`;
+      if (READ_ONLY_TOOLS.has(name) && toolCache.has(cacheKey)) {
+        const cached = toolCache.get(cacheKey);
+        safeDispatch({ type: 'thinking', title: `[Cache hit] ${name} — reusing previous result` });
+        onStep({ type: 'tool_result', toolName: name, result: cached });
+        safeDispatch({ type: 'tool_result', toolName: name, result: cached });
+        contents.push({ role: 'model', parts: candidate.content.parts });
+        contents.push({ role: 'user', parts: [{ functionResponse: { name, response: { result: cached.data, message: cached.message } } }] });
+        continue;
+      }
+
       // Execute the real tool
       const result = await executeTool(name, args, userTodos, calendarEvents);
       onStep({ type: 'tool_result', toolName: name, result });
       safeDispatch({ type: 'tool_result', toolName: name, result });
+
+      // Store in cache if it's a read-only tool
+      if (READ_ONLY_TOOLS.has(name)) {
+        toolCache.set(cacheKey, result);
+      }
+
       
       // Add AI's function call + our result to the conversation
       contents.push({ role: 'model', parts: candidate.content.parts });

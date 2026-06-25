@@ -196,18 +196,30 @@ export const orchestrateAgent = async (
       try {
         const agentSystemPrompt = getAgentPrompt(task.assignedAgent);
 
-        // Build tight, size-capped context for this agent
+        // Build context payload for this agent
+        // Extract SEARCH's structured JSON block if available so downstream agents
+        // don't need to re-fetch the same data via tool calls.
+        const searchOutput = engine.state.completedTasks.find(t => t.startsWith('[SEARCH]:'));
+        let preloadedSearchData = '';
+        if (searchOutput) {
+          // Pull out the ```json block from SEARCH output
+          const jsonMatch = searchOutput.match(/```json([\s\S]*?)```/);
+          if (jsonMatch) {
+            preloadedSearchData = `\n\n## PRE-FETCHED DATA (DO NOT re-fetch these — use this data directly):\n\`\`\`json${jsonMatch[1]}\`\`\`\n⚠️ EFFICIENCY RULE: If the data you need (tasks, calendar slots, events) is already in PRE-FETCHED DATA above, use it directly WITHOUT calling get_tasks, list_calendar_events, or get_free_calendar_slots again. Only call tools for data NOT already provided.`;
+          }
+        }
+
         const contextPayload = {
           originalPrompt: engine.state.originalPrompt,
           completedTasksSummary: engine.state.completedTasks
-            .map(t => t.substring(0, 400))
+            .map(t => t.substring(0, 600))
             .slice(-5)
             .join('\n'),
           errors: engine.state.errors.slice(-3),
         };
         let serialized = JSON.stringify(contextPayload);
         if (serialized.length > 8000) serialized = serialized.substring(0, 8000) + '...[truncated]';
-        
+
         // Inject failed-agent context into QA
         if (task.assignedAgent === 'QA') {
           // Check for Context Staleness
@@ -216,7 +228,6 @@ export const orchestrateAgent = async (
             safeDispatch({ type: 'thinking', title: '⚠️ Refreshing stale context...' });
             const searchTask = [...engine.tasks.values()].find(t => t.assignedAgent === 'SEARCH');
             if (searchTask) {
-              // Re-run the search task to get fresh context
               await executeTask(searchTask);
               engine.state.contextBuiltAt = new Date().toISOString();
             }
@@ -231,7 +242,7 @@ export const orchestrateAgent = async (
         }
 
         const result = await runAgentLoop(
-          `${task.instruction}\n\nShared Context: ${serialized}\n${historyContext}`,
+          `${task.instruction}\n\nShared Context: ${serialized}${preloadedSearchData}\n${historyContext}`,
           userTodos,
           calendarEvents,
           apiKey,
@@ -257,6 +268,7 @@ export const orchestrateAgent = async (
         safeDispatch({ type: 'thinking', title: `⚠️ [${task.assignedAgent}] failed: ${e.message}` });
       }
     };
+
 
     const activePromises = new Set<Promise<void>>();
 
