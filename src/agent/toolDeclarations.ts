@@ -48,6 +48,17 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     }
   },
   {
+    name: 'delete_task',
+    description: 'Delete a specific task from ZenTrack. Use this to permanently remove a task when the user asks you to delete it.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        taskId: { type: SchemaType.STRING, description: 'The task ID to delete' }
+      },
+      required: ['taskId']
+    }
+  },
+  {
     name: 'auto_reschedule',
     description: 'Automatically reschedules all non-critical or low-priority tasks from today to tomorrow to make room for an emergency.',
     parameters: {

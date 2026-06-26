@@ -1,4 +1,4 @@
-import { addDoc, collection, updateDoc, doc } from 'firebase/firestore';
+import { addDoc, collection, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import { addEventToGoogleCalendar, deleteGoogleCalendarEvent, signInWithGoogle, isSignedInToGoogle } from '../services/googleCalendar';
 import { sendPushNotification } from '../services/fcm';
@@ -107,6 +107,14 @@ export const executeTool = async (
       logWebSocket('task.updated', { id: args.taskId, status: 'completed' });
       await updateDoc(doc(db, 'todos', args.taskId), { status: 'completed' });
       return { success: true, data: {}, message: `✅ Task marked as complete` };
+    }
+
+    case 'delete_task': {
+      if (!args.taskId) return { success: false, data: null, message: 'taskId is required to delete a task' };
+      logApi('DELETE', `/api/v1/tasks/${args.taskId}`, {}, 'success');
+      logWebSocket('task.deleted', { id: args.taskId });
+      await deleteDoc(doc(db, 'todos', args.taskId));
+      return { success: true, data: {}, message: `✅ Task successfully deleted` };
     }
 
     case 'auto_reschedule': {
