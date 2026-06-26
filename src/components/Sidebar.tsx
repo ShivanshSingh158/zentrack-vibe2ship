@@ -80,6 +80,7 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
 
   // Clean up any "ghost" tabs that no longer exist (like daily log)
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPinned(prev => {
       const valid = prev.filter(id => ALL_MODULES.some(m => m.id === id));
       if (valid.length !== prev.length) {

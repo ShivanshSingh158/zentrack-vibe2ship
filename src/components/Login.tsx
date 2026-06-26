@@ -57,20 +57,21 @@ export const Login: React.FC = () => {
     try {
       await signInWithPopup(auth, googleProvider);
       clearTimeout(timeout);
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
       clearTimeout(timeout);
       console.error('Sign-in error:', error);
-      if (error.code === 'auth/popup-blocked') {
+      if (err.code === 'auth/popup-blocked') {
         toast.info('Popup blocked — trying redirect sign-in instead...', { duration: 5000 });
         try {
           await signInWithRedirect(auth, googleProvider);
         } catch {
           toast.error('Sign-in failed. Please allow popups for this site.');
         }
-      } else if (error.code === 'auth/unauthorized-domain') {
+      } else if (err.code === 'auth/unauthorized-domain') {
         toast.error('This domain is not authorized for sign-in.', { duration: 12000 });
-      } else if (error.code !== 'auth/cancelled-popup-request' && error.code !== 'auth/popup-closed-by-user') {
-        toast.error(error.message || 'Failed to log in');
+      } else if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') {
+        toast.error(err.message || 'Failed to log in');
       }
     } finally {
       setIsLoading(false);
@@ -297,8 +298,8 @@ export const Login: React.FC = () => {
                 setIsLoading(true);
                 await signInWithEmailAndPassword(auth, 'demo@zentrack.com', 'demo123');
                 await seedDemoData();
-              } catch (e: any) {
-                toast.error('Demo login failed: ' + e.message);
+              } catch (e: unknown) {
+                toast.error('Demo login failed: ' + (e as { message?: string }).message);
                 setIsLoading(false);
               }
             }}

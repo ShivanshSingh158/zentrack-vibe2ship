@@ -9,6 +9,12 @@ const GHOST_THROTTLE_MS     = 24 * 60 * 60 * 1000; // 24 hours between ghost sca
 const STORAGE_KEY    = 'zen_proactive_last_run';
 const GHOST_SCAN_KEY = 'zen_ghost_last_scan';
 
+// ── Global guard: prevents simultaneous orchestrations ──────────────────────────────
+// Both the emergency loop and ghost scan spawn full orchestrations (3-5 agents each).
+// If both run simultaneously on page load, we get a 6-10 agent burst that exhausts
+// all 8 API keys at once. This flag ensures only ONE loop runs at a time.
+let _isProactiveRunning = false;
+
 /**
  * useProactiveAgent — Fully Autonomous Productivity Engine
  *
@@ -53,6 +59,15 @@ export const useProactiveAgent = (
         t => t.status !== 'completed' && t.date === today
       );
       if (overdueTasks.length === 0 && todayTasks.length === 0) return;
+
+      // ✅ GUARD: Do not start if another proactive loop is already running.
+      // This prevents the thundering-herd burst caused by emergency + ghost scan
+      // both spawning full orchestrations simultaneously on page load.
+      if (_isProactiveRunning) {
+        console.log('[ProactiveAgent] Skipping emergency loop — another proactive run is already active.');
+        return;
+      }
+      _isProactiveRunning = true;
 
       localStorage.setItem(STORAGE_KEY, Date.now().toString());
       if (setIsExecuting) setIsExecuting(true);
@@ -155,6 +170,7 @@ Execute everything now.`;
         console.warn('[ProactiveAgent] Autonomous action loop failed silently:', err);
       } finally {
         if (setIsExecuting) setIsExecuting(false);
+        _isProactiveRunning = false; // ✅ Always release the guard
       }
     };
 
@@ -162,6 +178,18 @@ Execute everything now.`;
     const runGhostScan = async () => {
       const lastGhostScan = parseInt(localStorage.getItem(GHOST_SCAN_KEY) || '0', 10);
       if (Date.now() - lastGhostScan < GHOST_THROTTLE_MS) return;
+
+      // ✅ GUARD: Do not start ghost scan if emergency loop is running.
+      // Ghost scan spawns a full orchestration (SPECTRE agent + AEGIS),
+      // which would compete with the emergency loop for the same API keys.
+      if (_isProactiveRunning) {
+        console.log('[GhostScanner] Skipping ghost scan — emergency loop is still active.');
+        // Retry in 2 minutes instead of wasting the 24h window
+        localStorage.setItem(GHOST_SCAN_KEY, (Date.now() - GHOST_THROTTLE_MS + 2 * 60 * 1000).toString());
+        return;
+      }
+      _isProactiveRunning = true;
+
       localStorage.setItem(GHOST_SCAN_KEY, Date.now().toString());
 
       const ghostPrompt = `GHOST_DETECTION_AUTO_SCAN — LEVEL_5 SILENT PROTOCOL
@@ -194,12 +222,18 @@ Be thorough. Be silent unless you find something.`;
         console.warn('[GhostScanner] Auto-scan failed silently:', err);
         // Retry in 1h instead of 24h on failure
         localStorage.setItem(GHOST_SCAN_KEY, (Date.now() - GHOST_THROTTLE_MS + 60 * 60 * 1000).toString());
+      } finally {
+        _isProactiveRunning = false; // ✅ Always release the guard
       }
     };
 
-    // Stagger loops to prevent simultaneous API hits
+    // ── Stagger loops to prevent simultaneous API hits ──────────────────────────────
+    // Emergency loop: fires 3s after app load.
+    // Ghost scan: fires 90s after load — well after emergency loop completes.
+    // This prevents the 6-10 agent thundering herd on page load that was
+    // previously caused by both loops starting within 5s of each other.
     const emergencyTimer = setTimeout(runEmergencyActionLoop, 3000);
-    const ghostTimer     = setTimeout(runGhostScan, 8000); // 5s after emergency loop
+    const ghostTimer     = setTimeout(runGhostScan, 90_000); // 90s after emergency loop
 
     return () => {
       clearTimeout(emergencyTimer);

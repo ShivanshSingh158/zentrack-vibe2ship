@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Search, Grid, User as UserIcon, Edit2, X, LogOut } from 'lucide-react';
+import { Grid, User as UserIcon, Edit2, X, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { auth } from '../services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -32,7 +32,7 @@ export function TopNav() {
   const [pinnedApps, setPinnedApps] = useState<string[]>(() => {
     const saved = localStorage.getItem('zentrack_pinned_apps');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) { return defaultPinnedApps; }
+      try { return JSON.parse(saved); } catch { return defaultPinnedApps; }
     }
     return defaultPinnedApps;
   });
@@ -55,6 +55,7 @@ export function TopNav() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!isDrawerOpen) setIsEditingDrawer(false);
   }, [isDrawerOpen]);
 
@@ -85,8 +86,8 @@ export function TopNav() {
     try {
       await signOut(auth);
       navigate('/login');
-    } catch (err: any) {
-      toast.error('Logout failed: ' + err.message);
+    } catch (err: unknown) {
+      toast.error('Logout failed: ' + (err as { message?: string }).message);
     }
   };
 

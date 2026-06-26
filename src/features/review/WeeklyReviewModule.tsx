@@ -277,7 +277,7 @@ export const WeeklyReviewModule = () => {
       unsubs.forEach(u => u());
       if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
     };
-  }, [userId, week.start, week.end, isCurrentWeek]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, week.start, week.end, isCurrentWeek]);  
 
   // ── Refresh on window focus (user switches tab and comes back) ───────────────
   const refreshStats = useCallback(async (silent = false) => {

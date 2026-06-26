@@ -169,7 +169,7 @@ export const signInWithGoogle = (): Promise<void> => {
 
 export const signOutGoogle = (): void => {
   if (_accessToken && (window as any).google?.accounts?.oauth2) {
-    try { (window as any).google.accounts.oauth2.revoke(_accessToken, () => {}); } catch {}
+    try { (window as any).google.accounts.oauth2.revoke(_accessToken, () => { /* best-effort revoke */ }); } catch { /* ignore — token revoke is best-effort */ }
   }
   _accessToken = null;
   _tokenExpiry = 0;

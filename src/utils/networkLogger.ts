@@ -6,12 +6,12 @@ export interface NetworkLog {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   endpoint?: string;
   event?: string;
-  payload: any;
+  payload: unknown;
   status: 'pending' | 'success' | 'error';
   timestamp: number;
 }
 
-export const logApi = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', endpoint: string, payload: any = {}, status: 'pending' | 'success' | 'error' = 'success') => {
+export const logApi = (method: 'GET' | 'POST' | 'PATCH' | 'DELETE', endpoint: string, payload: unknown = {}, status: 'pending' | 'success' | 'error' = 'success') => {
   const log: NetworkLog = {
     id: Math.random().toString(36).substring(2, 9),
     type: 'API',

@@ -38,7 +38,7 @@ export const workspaceFetch = async <T>(
     try {
       const errData = await res.json();
       errorMsg = errData?.error?.message || errorMsg;
-    } catch {}
+    } catch (e) { console.error('Failed to parse API error response', e); }
     throw new Error(`Google Workspace API error: ${errorMsg}`);
   }
 

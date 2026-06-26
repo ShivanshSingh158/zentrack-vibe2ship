@@ -37,7 +37,7 @@ export const runAgentLoop = async (
 
 
   const effectiveSystem = systemInstruction || AGENT_SYSTEM;
-  const contents: any[] = [{ role: 'user', parts: [{ text: userMessage }] }];
+  const contents: Array<{ role: string; parts: Array<{ text?: string; functionResponse?: unknown }> }> = [{ role: 'user', parts: [{ text: userMessage }] }];
   let finalAnswer = '';
   const MAX_ITERATIONS = 6; // Reduced from 10 — agent looping 10+ times is likely stuck
   let emptyResponseCount = 0; // Guard: break if AI returns nothing for 2+ consecutive turns
@@ -48,7 +48,7 @@ export const runAgentLoop = async (
   const READ_ONLY_TOOLS = new Set([
     'get_tasks', 'list_calendar_events', 'get_free_calendar_slots', 'read_gmail'
   ]);
-  const toolCache = new Map<string, any>(); // key: "toolName:argsHash" → result
+  const toolCache = new Map<string, ToolResult>(); // key: "toolName:argsHash" → result
   let connectWorkspaceCalledThisSession = false; // prevent connect retry storm
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -70,8 +70,8 @@ export const runAgentLoop = async (
         });
         return await model.generateContent({ contents });
       });
-    } catch (err: any) {
-      const friendlyError = err.message || 'Unknown error occurred.';
+    } catch (err: unknown) {
+      const friendlyError = (err as { message?: string }).message || 'Unknown error occurred.';
       safeDispatch({ type: 'answer', title: `⚠️ ${friendlyError}` });
       return `Agent Loop Failed: ${friendlyError}`;
     }
@@ -82,10 +82,10 @@ export const runAgentLoop = async (
     const parts = candidate.content.parts;
     
     // Check if AI wants to call a function
-    const functionCallPart = parts.find((p: any) => !!p.functionCall);
+    const functionCallPart = parts.find((p: { functionCall?: { name: string; args: Record<string, unknown> }; text?: string }) => !!p.functionCall);
     if (functionCallPart && functionCallPart.functionCall) {
       const name = functionCallPart.functionCall.name;
-      const args = functionCallPart.functionCall.args as any;
+      const args = functionCallPart.functionCall.args as Record<string, unknown>;
       onStep({ type: 'tool_call', toolName: name, args });
       safeDispatch({ type: 'tool_call', toolName: name, args });
 
@@ -139,7 +139,7 @@ export const runAgentLoop = async (
     }
 
     // No function call → AI has a text response → done
-    const textPart = parts.find((p: any) => !!p.text);
+    const textPart = parts.find((p: { functionCall?: unknown; text?: string }) => !!p.text);
     if (textPart && textPart.text) {
       finalAnswer = textPart.text;
       onStep({ type: 'answer', title: finalAnswer });

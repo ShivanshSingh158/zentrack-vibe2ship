@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, ListTodo, BookOpen, Activity, Briefcase, Plus, Droplets, Timer, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
@@ -13,7 +13,7 @@ interface SearchResult {
   subtitle: string;
   route?: string;
   action?: () => void | Promise<void>;
-  icon?: any;
+  icon?: React.ReactNode;
 }
 
 export const CommandPalette = () => {
@@ -67,15 +67,106 @@ export const CommandPalette = () => {
     }
   }, [isOpen]);
 
+
+  const loadAllData = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const items: SearchResult[] = [];
+
+    try {
+      // Load todos
+      const todosSnap = await getDocs(query(collection(db, 'todos'), where('userId', '==', user.uid)));
+      todosSnap.forEach(doc => {
+        const d = doc.data();
+        items.push({
+          type: 'todo',
+          title: d.text,
+          subtitle: `Task • ${d.date} • ${d.priority} priority`,
+          route: '/todo'
+        });
+      });
+
+      // Load learning topics + subtasks
+      const learningSnap = await getDocs(query(collection(db, 'learning_topics'), where('userId', '==', user.uid)));
+      learningSnap.forEach(doc => {
+        const d = doc.data();
+        items.push({
+          type: 'learning',
+          title: d.title,
+          subtitle: `Topic • ${d.subTasks?.length || 0} subtasks`,
+          route: '/learning'
+        });
+        d.subTasks?.forEach((st: { text: string; category?: string }) => {
+          items.push({
+            type: 'learning',
+            title: st.text,
+            subtitle: `${d.title} • ${st.category || 'General'}`,
+            route: '/learning'
+          });
+        });
+      });
+
+      // Load daily logs
+      const logsSnap = await getDocs(query(collection(db, 'daily_logs'), where('userId', '==', user.uid)));
+      logsSnap.forEach(doc => {
+        const d = doc.data();
+        const parts = [];
+        if (d.productiveHours) parts.push(`${formatHoursDisplay(d.productiveHours)} focus`);
+        if (d.gymNotes) parts.push('Gym');
+        if (d.extraWorks) parts.push('Extra notes');
+        items.push({
+          type: 'log',
+          title: `Daily Log — ${formatDisplayDate(d.date)}`,
+          subtitle: parts.join(' • ') || 'No data logged',
+          route: '/log'
+        });
+      });
+
+      // Load notes
+      const notesSnap = await getDocs(query(collection(db, 'notes'), where('userId', '==', user.uid)));
+      notesSnap.forEach(doc => {
+        const d = doc.data();
+        items.push({
+          type: 'note',
+          title: d.title || 'Untitled Note',
+          subtitle: `Note • Updated ${new Date(d.updatedAt).toLocaleDateString()}`,
+          route: '/notes'
+        });
+      });
+
+      // Load calendar events
+      const calendarSnap = await getDocs(query(collection(db, 'calendar_events'), where('userId', '==', user.uid)));
+      calendarSnap.forEach(doc => {
+        const d = doc.data();
+        items.push({
+          type: 'calendar',
+          title: d.title || 'Event',
+          subtitle: `Event • ${d.start} - ${d.end}`,
+          route: '/calendar'
+        });
+      });
+
+    } catch (err) {
+      console.error('Command palette load error:', err);
+    }
+
+    setAllData(items);
+    setIsLoaded(true);
+  }, []);
+
   // Focus input when opened
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 100);
       if (!isLoaded) loadAllData();
     } else {
+       
       setSearchQuery('');
+       
       setResults([]);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   const handleAction = async (actionFn: () => void | Promise<void>) => {
@@ -92,6 +183,7 @@ export const CommandPalette = () => {
   // Filter on query change
   useEffect(() => {
     if (!searchQuery.trim()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults([]);
       return;
     }
@@ -166,92 +258,6 @@ export const CommandPalette = () => {
     setSelectedIndex(0);
   }, [searchQuery, allData, startTimer]);
 
-  const loadAllData = async () => {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const items: SearchResult[] = [];
-
-    try {
-      // Load todos
-      const todosSnap = await getDocs(query(collection(db, 'todos'), where('userId', '==', user.uid)));
-      todosSnap.forEach(doc => {
-        const d = doc.data();
-        items.push({
-          type: 'todo',
-          title: d.text,
-          subtitle: `Task • ${d.date} • ${d.priority} priority`,
-          route: '/todo'
-        });
-      });
-
-      // Load learning topics + subtasks
-      const learningSnap = await getDocs(query(collection(db, 'learning_topics'), where('userId', '==', user.uid)));
-      learningSnap.forEach(doc => {
-        const d = doc.data();
-        items.push({
-          type: 'learning',
-          title: d.title,
-          subtitle: `Topic • ${d.subTasks?.length || 0} subtasks`,
-          route: '/learning'
-        });
-        d.subTasks?.forEach((st: any) => {
-          items.push({
-            type: 'learning',
-            title: st.text,
-            subtitle: `${d.title} • ${st.category || 'General'}`,
-            route: '/learning'
-          });
-        });
-      });
-
-      // Load daily logs
-      const logsSnap = await getDocs(query(collection(db, 'daily_logs'), where('userId', '==', user.uid)));
-      logsSnap.forEach(doc => {
-        const d = doc.data();
-        const parts = [];
-        if (d.productiveHours) parts.push(`${formatHoursDisplay(d.productiveHours)} focus`);
-        if (d.gymNotes) parts.push('Gym');
-        if (d.extraWorks) parts.push('Extra notes');
-        items.push({
-          type: 'log',
-          title: `Daily Log — ${formatDisplayDate(d.date)}`,
-          subtitle: parts.join(' • ') || 'No data logged',
-          route: '/log'
-        });
-      });
-
-      // Load notes
-      const notesSnap = await getDocs(query(collection(db, 'notes'), where('userId', '==', user.uid)));
-      notesSnap.forEach(doc => {
-        const d = doc.data();
-        items.push({
-          type: 'note',
-          title: d.title || 'Untitled Note',
-          subtitle: `Note • Updated ${new Date(d.updatedAt).toLocaleDateString()}`,
-          route: '/notes'
-        });
-      });
-
-      // Load calendar events
-      const calendarSnap = await getDocs(query(collection(db, 'calendar_events'), where('userId', '==', user.uid)));
-      calendarSnap.forEach(doc => {
-        const d = doc.data();
-        items.push({
-          type: 'calendar',
-          title: d.title || 'Event',
-          subtitle: `Event • ${d.start} - ${d.end}`,
-          route: '/calendar'
-        });
-      });
-
-    } catch (err) {
-      console.error('Command palette load error:', err);
-    }
-
-    setAllData(items);
-    setIsLoaded(true);
-  };
 
   const getIcon = (item: SearchResult) => {
     if (item.type === 'action' && item.icon) return item.icon;

@@ -22,14 +22,13 @@ import { PomodoroProvider } from './contexts/PomodoroContext';
 import { GlobalDataProvider } from './contexts/GlobalDataContext';
 import { FocusModeOverlay } from './components/overlays/FocusModeOverlay';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { FloatingExtraWorks } from './features/_shared/FloatingExtraWorks';
 import { SkeletonCard } from './components/ui/SkeletonCard';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
-import { VoiceQuickCaptureWidget } from './features/_shared/VoiceQuickCaptureWidget';
+import { FloatingExtraWorks, VoiceQuickCaptureWidget } from './features/_shared';
 import { ZenAgentPanel } from './features/agent/ZenAgentPanel';
-import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, X } from 'lucide-react';
+import { Bot, ShieldAlert, Ghost, Code2, MessageSquare } from 'lucide-react';
 import { AgentTerminal } from './components/AgentTerminal';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
 
@@ -82,12 +81,12 @@ const SessionEnforcer = () => {
 
 const CHUNK_ERR_RE = /failed to fetch|loading chunk|dynamically imported module|unexpected token/i;
 
-const lazyWithRetry = (componentImport: () => Promise<any>, name: string) => {
+const lazyWithRetry = (componentImport: () => Promise<{ default: React.ComponentType<object> }>, name: string) => {
   return lazy(async () => {
     try {
       return await componentImport();
-    } catch (error: any) {
-      const errMsg = (error?.message || error?.toString() || '');
+    } catch (error: unknown) {
+      const errMsg = ((error as { message?: string })?.message || String(error) || '');
       const isChunkError = CHUNK_ERR_RE.test(errMsg);
 
       if (isChunkError) {
@@ -97,7 +96,7 @@ const lazyWithRetry = (componentImport: () => Promise<any>, name: string) => {
         const lastReload = parseInt(localStorage.getItem(reloadKey) || '0', 10);
         if (Date.now() - lastReload < 8000) {
           // We already tried reloading for this chunk — give up and show error
-          throw new Error(`Module "${name}" failed to load after reload. Please close and reopen the app.`);
+          throw new Error(`Module "${name}" failed to load after reload. Please close and reopen the app.`, { cause: error });
         }
 
         console.warn(`[lazyWithRetry] Stale chunk for "${name}", reloading…`);
@@ -136,11 +135,11 @@ const lazyWithRetry = (componentImport: () => Promise<any>, name: string) => {
 // ─── Lazily-loaded page modules (~1.9 MB → ~300 KB initial bundle) ─────────
 const HomeDashboard = lazyWithRetry(() => import('./features/dashboard/HomeDashboard').then(m => ({ default: m.HomeDashboard })), 'HomeDashboard');
 const TodoListModule = lazyWithRetry(() => import('./features/tasks/TodoListModule').then(m => ({ default: m.TodoListModule })), 'TodoListModule');
-const CalendarModule = lazyWithRetry(() => import('./features/calendar/CalendarModule').then(m => ({ default: m.CalendarModule })), 'CalendarModule');
-const NotesModule = lazyWithRetry(() => import('./features/notes/NotesModule').then(m => ({ default: m.NotesModule })), 'NotesModule');
-const GoalsModule = lazyWithRetry(() => import('./features/goals/GoalsModule').then(m => ({ default: m.GoalsModule })), 'GoalsModule');
+const CalendarModule = lazyWithRetry(() => import('./features/calendar').then(m => ({ default: m.CalendarModule })), 'CalendarModule');
+const NotesModule = lazyWithRetry(() => import('./features/notes').then(m => ({ default: m.NotesModule })), 'NotesModule');
+const GoalsModule = lazyWithRetry(() => import('./features/goals').then(m => ({ default: m.GoalsModule })), 'GoalsModule');
 const AnalyticsModule = lazyWithRetry(() => import('./features/analytics/AnalyticsModule').then(m => ({ default: m.AnalyticsModule })), 'AnalyticsModule');
-const GymModule = lazyWithRetry(() => import('./features/gym/GymModule').then(m => ({ default: m.GymModule })), 'GymModule');
+const GymModule = lazyWithRetry(() => import('./features/gym').then(m => ({ default: m.GymModule })), 'GymModule');
 const JobTracker = lazyWithRetry(() => import('./features/jobs/JobTracker').then(m => ({ default: m.JobTracker })), 'JobTracker');
 const HabitsModule = lazyWithRetry(() => import('./features/habits/HabitsModule').then(m => ({ default: m.HabitsModule })), 'HabitsModule');
 const LearningChecklistModule = lazyWithRetry(() => import('./features/learning/LearningChecklistModule').then(m => ({ default: m.LearningChecklistModule })), 'LearningChecklistModule');
@@ -179,7 +178,7 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => {
 };
 
 // ─── Animated Routes ──────────────────────────────────────────────────────────
-const AnimatedRoutes = ({ user }: { user: User }) => {
+const AnimatedRoutes = () => {
   const location = useLocation();
   return (
     // mode='sync' means incoming and outgoing pages animate simultaneously
@@ -495,7 +494,7 @@ function App() {
         <div className="main-content full-width">
           {/* Suspense wraps ALL lazy routes — PageLoader shown during chunk download */}
           <Suspense fallback={<PageLoader />}>
-            <AnimatedRoutes user={user} />
+            <AnimatedRoutes />
           </Suspense>
         </div>
       </div>

@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { Mic, Loader2, X, Sparkles, CheckSquare, Dumbbell, GraduationCap, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getLocalDateString } from '../../utils/dateUtils';
 import { toast } from 'sonner';
-import { collection, addDoc, getDocs, query, where, doc, updateDoc, setDoc, getDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
+import { collection, addDoc, doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 import { orchestrateAgent } from '../../agent/orchestrator';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
@@ -15,7 +14,6 @@ export const VoiceQuickCaptureWidget = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcription, setTranscription] = useState('');
   const [supported, setSupported] = useState(true);
-  const [speechRecognitionError, setSpeechRecognitionError] = useState('');
   const [showRadialMenu, setShowRadialMenu] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   

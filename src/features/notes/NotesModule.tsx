@@ -14,26 +14,9 @@ import 'katex/dist/katex.min.css';
 import html2pdf from 'html2pdf.js';
 import { startNoteAIChat } from '../../services/gemini';
 import { extractTextFromPdf, extractTextFromDocx } from '../../services/documentParser';
+import { NotesEditor } from './NotesEditor';
+import { NotesAIPanel } from './NotesAIPanel';
 
-const TypingDots = () => (
-  <div style={{ padding: '0.4rem 0.6rem' }}>
-    <span style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}>
-      {[0, 1, 2].map(i => (
-        <span key={i} style={{ 
-          width: '6px', height: '6px', borderRadius: '50%', 
-          background: 'var(--accent-primary)', display: 'inline-block', 
-          animation: `typingBounce 1.3s ease-in-out ${i * 0.2}s infinite` 
-        }} />
-      ))}
-    </span>
-    <style>{`
-      @keyframes typingBounce {
-        0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-        30% { transform: translateY(-4px); opacity: 1; }
-      }
-    `}</style>
-  </div>
-);
 export const NotesModule = () => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [nodes, setNodes] = useState<StorageNode[]>([]);
@@ -442,58 +425,6 @@ export const NotesModule = () => {
     }
   };
 
-  const extractMarkdownBlocks = (title: string) => {
-    const regex = /```(?:markdown)?\n([\s\S]*?)(?:```|$)/g;
-    let match;
-    const blocks: string[] = [];
-    while ((match = regex.exec(text)) !== null) {
-      if (match[1].trim()) {
-        blocks.push(match[1].trim());
-      }
-    }
-    return blocks;
-  };
-
-  const renderChatMessage = (msg: { role: string, title: string, model?: string }, idx: number) => {
-    const isModel = msg.role === 'model';
-    const blocks = isModel ? extractMarkdownBlocks(msg.text) : [];
-    
-    // Strip markdown code block wrappers so it renders normally
-    let displayText = msg.text;
-    if (isModel) {
-      displayText = displayText.replace(/```(?:markdown)?\n/g, '\n').replace(/```/g, '\n');
-    }
-
-    return (
-      <div key={idx} style={{ marginBottom: '1rem', background: !isModel ? 'var(--bg-surface-hover)' : 'transparent', padding: '0.75rem', borderRadius: '8px' }}>
-        <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: !isModel ? 'var(--text-primary)' : 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {isModel ? <Sparkles size={14} /> : <User size={14} />}
-          {!isModel ? 'You' : 'Zen AI'}
-        </div>
-        <div className="markdown-body" style={{ fontSize: '0.9rem' }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{displayText}</ReactMarkdown>
-        </div>
-        {isModel && msg.model && (
-          <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right', fontStyle: 'italic', opacity: 0.8 }}>
-            Powered by {msg.model.includes('flash') ? '⚡' : '🧠'} {msg.model.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-          </div>
-        )}
-        {blocks.length > 0 && activeNote && (
-          <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Generated Note Actions</div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn-primary" style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', gap: '0.4rem' }} onClick={() => handleApplyMarkdown(blocks.join('\n\n'), 'replace')}>
-                <Edit2 size={14} /> Replace Note
-              </button>
-              <button className="btn-secondary" style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', gap: '0.4rem' }} onClick={() => handleApplyMarkdown(blocks.join('\n\n'), 'append')}>
-                <AlignLeft size={14} /> Append
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const processFileUpload = async (file: File) => {
     // 50MB limit
@@ -708,155 +639,31 @@ export const NotesModule = () => {
           background: 'var(--bg-base)'
         })
       }}>
-        {/* Editor Area */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Toolbar */}
-          <div style={{ padding: '0.75rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: '1rem', alignItems: 'center', background: 'var(--bg-surface)' }}>
-            <button className="btn-icon" onClick={() => { handleSaveNote(); setActiveNote(null); setShowAiPanel(false); }}><ArrowLeft size={18} /></button>
-            <input 
-              type="text" 
-              value={activeNote.name} 
-              onChange={e => setActiveNote({ ...activeNote, name: e.target.value })}
-              placeholder="Note Title..."
-              style={{ flex: 1, fontSize: '1.1rem', fontWeight: 600, background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none' }}
-            />
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Error'}
-            </div>
-            
-            {/* View Mode Toggles */}
-            <div style={{ display: 'flex', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0.15rem' }}>
-              <button onClick={() => setViewMode('edit')} style={{ padding: '0.4rem 0.6rem', border: 'none', background: viewMode === 'edit' ? 'var(--bg-surface-hover)' : 'transparent', color: viewMode === 'edit' ? 'var(--text-primary)' : 'var(--text-muted)', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="Edit"><AlignLeft size={16} /></button>
-              <button onClick={() => setViewMode('split')} style={{ padding: '0.4rem 0.6rem', border: 'none', background: viewMode === 'split' ? 'var(--bg-surface-hover)' : 'transparent', color: viewMode === 'split' ? 'var(--text-primary)' : 'var(--text-muted)', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="Split"><Columns size={16} /></button>
-              <button onClick={() => setViewMode('preview')} style={{ padding: '0.4rem 0.6rem', border: 'none', background: viewMode === 'preview' ? 'var(--bg-surface-hover)' : 'transparent', color: viewMode === 'preview' ? 'var(--text-primary)' : 'var(--text-muted)', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="Preview"><Eye size={16} /></button>
-            </div>
-
-            {/* Export */}
-            <button onClick={() => handleExport('pdf')} className="btn-secondary" style={{ padding: '0.5rem 0.75rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-              <Download size={16} /> Export PDF
-            </button>
-
-            {/* AI Tools Toggle */}
-            <button 
-              onClick={() => setShowAiPanel(!showAiPanel)}
-              className="btn-primary" 
-              style={{ padding: '0.5rem 0.75rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: showAiPanel ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'var(--bg-surface)', color: showAiPanel ? '#fff' : 'var(--accent-primary)', border: '1px solid var(--accent-primary)' }}
-            >
-              <Sparkles size={16} /> {showAiPanel ? 'Close AI' : 'AI Tools'}
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-            {/* Editor Pane */}
-            {(viewMode === 'edit' || viewMode === 'split') && (
-              <textarea 
-                value={activeNote.content || ''}
-                onChange={e => setActiveNote({ ...activeNote, content: e.target.value })}
-                placeholder="Start typing your note (Markdown supported)..."
-                style={{ flex: 1, padding: '1.5rem', background: 'var(--bg-base)', border: 'none', borderRight: viewMode === 'split' ? '1px solid var(--border-subtle)' : 'none', color: 'var(--text-primary)', outline: 'none', resize: 'none', fontSize: '1rem', lineHeight: 1.6 }}
-              />
-            )}
-
-            {/* Preview Pane */}
-            {(viewMode === 'preview' || viewMode === 'split') && (
-              <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto', background: 'var(--bg-surface)' }}>
-                <div className="markdown-body">
-                  {activeNote.content ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{activeNote.content}</ReactMarkdown>
-                  ) : (
-                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', opacity: 0.7 }}>Preview will appear here...</div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* AI Panel Slide-out */}
-        <div style={{ width: showAiPanel ? (isAiExpanded ? '40%' : '350px') : '0px', transition: 'width 0.3s ease', background: 'var(--bg-surface)', borderLeft: showAiPanel ? '1px solid var(--border-subtle)' : 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0, position: 'relative', top: 0, right: 0, bottom: 0, zIndex: 1 }}>
-          <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Sparkles size={18} style={{ color: 'var(--accent-primary)' }} />
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>Zen AI Assistant</h3>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn-icon" onClick={() => setIsAiExpanded(!isAiExpanded)} title={isAiExpanded ? "Collapse" : "Expand"}>
-                {isAiExpanded ? <Columns size={16} /> : <Eye size={16} />}
-              </button>
-              <button className="btn-icon" onClick={() => { setShowAiPanel(false); setIsAiExpanded(false); }}>
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-          
-          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderBottom: '1px solid var(--border-subtle)' }}>
-            <button className="btn-secondary" onClick={() => handleAiAction('summarize')} disabled={isAiLoading} style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-start', padding: '0.75rem', whiteSpace: 'nowrap' }}>
-              <AlignLeft size={16} /> Summarize Note
-            </button>
-            <button className="btn-secondary" onClick={() => handleAiAction('concepts')} disabled={isAiLoading} style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-start', padding: '0.75rem', whiteSpace: 'nowrap' }}>
-              <List size={16} /> Extract Key Concepts
-            </button>
-            <button className="btn-secondary" onClick={() => handleAiAction('flashcards')} disabled={isAiLoading} style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-start', padding: '0.75rem', whiteSpace: 'nowrap' }}>
-              <Sparkles size={16} /> Generate Flashcards
-            </button>
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <input 
-                type="text" 
-                value={aiQuestion} 
-                onChange={e => setAiQuestion(e.target.value)}
-                placeholder="Ask a question..."
-                onKeyDown={e => e.key === 'Enter' && handleAiAction('question')}
-                style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', outline: 'none' }}
-              />
-              <button className="btn-primary" onClick={() => handleAiAction('question')} disabled={isAiLoading || !aiQuestion.trim()} style={{ padding: '0.5rem' }}>
-                <MessageSquare size={16} />
-              </button>
-            </div>
-          </div>
-
-          <div 
-            data-lenis-prevent="true" 
-            onWheel={(e) => e.stopPropagation()}
-            style={{ flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
-            className="ai-chat-scroll"
-          >
-            {chatHistory.length === 0 && !isAiLoading ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', textAlign: 'center', opacity: 0.6 }}>
-                <Sparkles size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-                <p>Chat with Zen AI to summarize, explain concepts, or rewrite notes for you.</p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {chatHistory.map((msg, idx) => renderChatMessage(msg, idx))}
-                {isAiLoading && (
-                  <div style={{ 
-                    display: 'flex', flexDirection: 'column', 
-                    alignItems: 'flex-start', 
-                    marginBottom: '1.25rem', padding: '0 0.5rem',
-                    animation: 'fadeIn 0.3s ease-out'
-                  }}>
-                    <div style={{ 
-                      display: 'flex', alignItems: 'center', gap: '0.5rem', 
-                      marginBottom: '0.35rem', 
-                      color: 'var(--accent-primary)', 
-                      fontSize: '0.85rem', fontWeight: 600,
-                    }}>
-                      <Bot size={14} /> Zen AI
-                    </div>
-                    <div className="markdown-body chat-markdown" style={{ 
-                      background: 'transparent',
-                      padding: '0 0.5rem',
-                      borderRadius: '0',
-                      maxWidth: '90%'
-                    }}>
-                      <TypingDots />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
+        <NotesEditor 
+          activeNote={activeNote}
+          setActiveNote={setActiveNote}
+          saveStatus={saveStatus}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          handleSaveNote={handleSaveNote}
+          handleExport={handleExport}
+          showAiPanel={showAiPanel}
+          setShowAiPanel={setShowAiPanel}
+          onClose={() => { handleSaveNote(); setActiveNote(null); setShowAiPanel(false); }}
+        />
+        <NotesAIPanel 
+          showAiPanel={showAiPanel}
+          isAiExpanded={isAiExpanded}
+          setShowAiPanel={setShowAiPanel}
+          setIsAiExpanded={setIsAiExpanded}
+          handleAiAction={handleAiAction}
+          aiQuestion={aiQuestion}
+          setAiQuestion={setAiQuestion}
+          isAiLoading={isAiLoading}
+          chatHistory={chatHistory as any}
+          hasActiveNote={!!activeNote}
+          onApplyMarkdown={handleApplyMarkdown}
+        />
       </div>
     );
   }

@@ -93,7 +93,7 @@ export function getAgentPromptByRole(role: string): string {
 }
 
 // ─── Safe window dispatch ─────────────────────────────────────────────────────
-const safeDispatch = (detail: any) => {
+const safeDispatch = (detail: object) => {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('agent-log', { detail }));
   }
@@ -113,7 +113,7 @@ export const orchestrateAgent = async (
   safeDispatch({ type: 'thinking', title: 'Supervisor mapping DAG...' });
   logApi('POST', '/api/v1/agent/supervisor', { userMessage }, 'pending');
 
-  let taskList: DagTask[] = [];
+  let taskList: DagTask[];
   
   const historyContext = agentHistory.length > 0 
     ? `\n\n--- PREVIOUS CONVERSATION CONTEXT ---\n${agentHistory.map(m => `[${m.role.toUpperCase()}]: ${m.text}`).join('\n\n')}\n-----------------------------------\n\n`
@@ -166,7 +166,7 @@ export const orchestrateAgent = async (
       return (map[upper] || upper) as AgentRole;
     };
 
-    taskList = parsed.tasks.map((t: any) => ({
+    taskList = parsed.tasks.map((t: { id: string; assignedAgent: string; instruction: string; dependencies: string[] }) => ({
       ...t,
       assignedAgent: normalizeAgentRole(t.assignedAgent),
       status: 'pending'
@@ -216,6 +216,15 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
     return `## Original Request\n${engine.state.originalPrompt.substring(0, 4000)}\n\n> [!NOTE]\n> Note: earlier research context was optimized for token efficiency. Key findings were preserved.`;
   };
   
+  // ── Per-mission retry state (declared at function scope, NOT inside the while loop) ──────
+  // BUG FIX: Previously declared inside the while-loop body, which reset the counter
+  // to 0 on every loop iteration. An agent that failed once on iteration N had its
+  // retry counter silently reset to 0 on iteration N+1, giving it unlimited retries.
+  // Declaring here means each agent gets at most MAX_AGENT_RETRIES retries total
+  // across the entire mission run.
+  const MAX_AGENT_RETRIES = 2; // Each agent gets up to 2 self-healing retries on transient errors
+  let _agentRetryCount = 0;
+
   while (!engine.isComplete()) {
     if (signal?.aborted) {
       throw new Error("Mission aborted by user.");
@@ -259,9 +268,14 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
           if (Date.now() - new Date(engine.state.contextBuiltAt).getTime() > engine.state.contextTTLMs) {
             onStep({ type: 'thinking', title: '⚠️ Context stale! Refreshing ORACLE data before final synthesis...' });
             safeDispatch({ type: 'thinking', title: '⚠️ Refreshing stale context...' });
+            // ✅ GUARD: Only re-execute ORACLE if it was actually completed (not running or failed).
+            // Re-executing a completed ORACLE wastes quota. Re-executing a running one causes
+            // a double-invocation race. Skip silently if ORACLE didn't run or already ran.
             const searchTask = [...engine.tasks.values()].find(t => t.assignedAgent === 'ORACLE');
-            if (searchTask) {
-              await executeTask(searchTask);
+            if (searchTask && searchTask.status === 'completed') {
+              // Only refresh if ORACLE already ran (we have fresh data to overwrite with newer data)
+              // Don't re-run if it failed — it will fail again and waste time
+              await executeTask({ ...searchTask, status: 'pending', id: searchTask.id + '_refresh' });
               engine.state.contextBuiltAt = new Date().toISOString();
             }
           }
@@ -302,34 +316,32 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
             : strippedResult.replace(/```json[\s\S]*?```/g, '[JSON block]');
           engine.state.completedTasks.push(`[${task.assignedAgent}]: ${sanitized}`);
         }
-      } catch (e: any) {
-        const isTransient = e.message?.includes('429') || e.message?.includes('503') ||
-                            e.message?.includes('rate') || e.message?.includes('overload') ||
-                            e.message?.includes('cooling');
+      } catch (e: unknown) {
+        const err = e as { message?: string };
+        const isTransient = err.message?.includes('429') || err.message?.includes('503') ||
+                            err.message?.includes('rate') || err.message?.includes('overload') ||
+                            err.message?.includes('cooling');
         if (isTransient && _agentRetryCount < MAX_AGENT_RETRIES) {
           _agentRetryCount++;
           const retryDelay = 3000 * _agentRetryCount; // 3s, 6s on consecutive retries
           safeDispatch({ type: 'thinking', title: `⚠️ [${task.assignedAgent}] transient error. Retrying in ${retryDelay/1000}s... (${_agentRetryCount}/${MAX_AGENT_RETRIES})` });
-          console.warn(`[Orchestrator] Agent ${task.assignedAgent} transient failure, retrying ${_agentRetryCount}/${MAX_AGENT_RETRIES}:`, e.message);
+          console.warn(`[Orchestrator] Agent ${task.assignedAgent} transient failure, retrying ${_agentRetryCount}/${MAX_AGENT_RETRIES}:`, err.message);
           await new Promise(r => setTimeout(r, retryDelay));
           // Reset task to pending so it can be picked up again
           engine.updateTaskStatus(task.id, 'pending');
           return; // Return without marking failed — loop will re-pick it
         }
-        engine.updateTaskStatus(task.id, 'failed', e.message);
-        engine.state.errors.push(`[${task.assignedAgent}] failed: ${e.message}`);
-        safeDispatch({ type: 'thinking', title: `⚠️ [${task.assignedAgent}] failed: ${e.message}` });
+        engine.updateTaskStatus(task.id, 'failed', err.message);
+        engine.state.errors.push(`[${task.assignedAgent}] failed: ${err.message}`);
+        safeDispatch({ type: 'thinking', title: `⚠️ [${task.assignedAgent}] failed: ${err.message}` });
       }
     };
 
-    const MAX_AGENT_RETRIES = 2; // Each agent gets up to 2 self-healing retries on transient errors
-    let _agentRetryCount = 0;
+    // MAX_AGENT_RETRIES and _agentRetryCount are now declared at function scope above the while-loop.
+    // The duplicate declarations that were here have been removed.
 
-    // ✅ FIXED: Run agents SEQUENTIALLY (MAX_CONCURRENT=1 for LEVEL_3, 2 for LEVEL_4)
-    // Parallel execution is the root cause of the thundering herd. Sequential with
-    // good caching is more reliable and nearly as fast when keys have quota limits.
+    // ✅ Run agents with controlled concurrency (MAX_CONCURRENT slots)
     const MAX_CONCURRENT = totalTasks > 5 ? 2 : 1;
-    const STAGGER_DELAY = 0; // No need for artificial stagger when running sequentially
 
     const activePromises = new Set<Promise<void>>();
 

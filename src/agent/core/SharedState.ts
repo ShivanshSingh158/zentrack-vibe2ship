@@ -1,9 +1,9 @@
 export interface SharedMemoryContext {
   originalPrompt: string;
   extractedDeadlines: Record<string, string>;
-  filesContext: Record<string, any>;
-  emailsContext: Record<string, any>;
-  dataContext: Record<string, any>;
+  filesContext: Record<string, unknown>;
+  emailsContext: Record<string, unknown>;
+  dataContext: Record<string, unknown>;
   completedTasks: string[];
   pendingSubTasks: string[];
   finalOutput?: string;

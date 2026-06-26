@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { collection, query, where, onSnapshot, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import type { Query, DocumentData } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/firebase';
@@ -118,13 +118,16 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }, 5 * 60 * 1000); // check every 5 minutes
 
-    // Also listen for the google-token-refreshed event from the proactive refresh timer
+    // Also listen for events from GeminiAuthModal
     const handleRefreshed = () => setIsGoogleConnected(true);
+    const handleDisconnected = () => setIsGoogleConnected(false);
     window.addEventListener('google-token-refreshed', handleRefreshed);
+    window.addEventListener('google-token-disconnected', handleDisconnected);
 
     return () => {
       clearInterval(healthCheck);
       window.removeEventListener('google-token-refreshed', handleRefreshed);
+      window.removeEventListener('google-token-disconnected', handleDisconnected);
     };
   }, []);
 

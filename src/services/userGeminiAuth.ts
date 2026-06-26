@@ -8,7 +8,7 @@ const LOCAL_TOKEN_EXPIRY = 'zen_user_gemini_oauth_expiry';
 // explicit enrollment. 'generative-language.retriever' is the safe, valid scope
 // for Google AI Studio / Gemini API resource access.
 // Gemini generateContent() only accepts API keys — not OAuth bearer tokens.
-const GEMINI_SCOPE = 'https://www.googleapis.com/auth/generative-language.retriever';
+// const GEMINI_SCOPE = 'https://www.googleapis.com/auth/generative-language.retriever';
 
 let _cachedToken: string | null = null;
 let _tokenExpiry: number = 0;

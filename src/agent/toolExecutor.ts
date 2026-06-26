@@ -37,7 +37,7 @@ const requireGoogleAuth = (): ToolResult | null => {
 
 export const executeTool = async (
   toolName: string,
-  args: Record<string, unknown>,
+  args: any,
   userTodos: Task[],
   calendarEvents: CalendarEvent[],
   signal?: AbortSignal
@@ -60,8 +60,8 @@ export const executeTool = async (
         await signInWithGoogle();
         logApi('POST', '/api/v1/google/oauth/connect', {}, 'success');
         return { success: true, data: {}, message: 'Successfully connected to Google Workspace! Gmail, Calendar, Drive, Docs, and Meet are now active.' };
-      } catch (err: any) {
-        return { success: false, data: null, message: `Failed to connect Google Workspace: ${err.message}` };
+      } catch (err: unknown) {
+        return { success: false, data: null, message: `Failed to connect Google Workspace: ${(err as { message?: string }).message}` };
       }
     }
 
@@ -145,8 +145,8 @@ export const executeTool = async (
         }, signal);
         logApi('POST', '/api/v1/schedule/auto-block', args, 'success');
         return { success: true, data: {}, message: `✅ Blocked ${args.startTime}–${args.durationMinutes}min for "${args.taskName}" on ${targetDate}` };
-      } catch (err: any) {
-        return { success: false, data: null, message: `Calendar API Error: ${err.message}` };
+      } catch (err: unknown) {
+        return { success: false, data: null, message: `Calendar API Error: ${(err as { message?: string }).message}` };
       }
     }
 
@@ -167,7 +167,7 @@ export const executeTool = async (
           slotStart.setHours(hour, 0, 0, 0);
           slotEnd.setHours(hour + 1, 0, 0, 0);
 
-          const hasConflict = liveEvents.some((e: any) => {
+          const hasConflict = liveEvents.some((e: { start?: { date?: string; dateTime?: string }; end?: { dateTime?: string } }) => {
             if (e.start?.date) {
               // All-day event blocks the entire day
               return true;
@@ -190,8 +190,8 @@ export const executeTool = async (
           data: { date: targetDate, freeSlots: slots.slice(0, 8) }, 
           message: `Found ${slots.length} free slots on ${targetDate}` 
         };
-      } catch (err: any) {
-        return { success: false, data: null, message: `Calendar API Error: ${err.message}` };
+      } catch (err: unknown) {
+        return { success: false, data: null, message: `Calendar API Error: ${(err as { message?: string }).message}` };
       }
     }
 
@@ -206,8 +206,8 @@ export const executeTool = async (
           data: { events },
           message: `Found ${events.length} calendar events on ${targetDate}`
         };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Calendar API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Calendar API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -226,9 +226,9 @@ export const executeTool = async (
           location: args.location,
           attendees: attendeesList,
         }, signal);
-        return { success: true, data: result, message: `✅ Calendar event updated successfully. Link: ${result.calendarLink}` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Calendar Update Error: ${e.message}` };
+        return { success: true, data: result, message: `✅ Calendar event updated successfully. Link: ${result.htmlLink}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Calendar Update Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -247,8 +247,8 @@ export const executeTool = async (
           description: 'Auto-blocked by Zen AI Emergency Protocol'
         }, signal);
         return { success: true, data: {}, message: `✅ Blocked ${args.durationHours}h for "${args.taskName}" starting at ${startDate.toLocaleTimeString()}` };
-      } catch (err: any) {
-        return { success: false, data: null, message: `Calendar API Error: ${err.message}` };
+      } catch (err: unknown) {
+        return { success: false, data: null, message: `Calendar API Error: ${(err as { message?: string }).message}` };
       }
     }
 
@@ -266,8 +266,8 @@ export const executeTool = async (
           }
         }
         return { success: true, data: { deletedCount }, message: `✅ Cleared ${deletedCount} events from ${targetDate}'s schedule.` };
-      } catch (err: any) {
-        return { success: false, data: null, message: `Calendar API Error: ${err.message}` };
+      } catch (err: unknown) {
+        return { success: false, data: null, message: `Calendar API Error: ${(err as { message?: string }).message}` };
       }
     }
 
@@ -297,8 +297,8 @@ export const executeTool = async (
           data: result,
           message: `✅ Google Meet created: "${args.title}"\n🔗 Meet Link: ${result.meetLink}\n📅 Calendar: ${result.calendarLink}${attendeesList.length > 0 ? `\n👥 Invited: ${attendeesList.join(', ')}` : ''}`
         };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Google Meet API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Google Meet API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -311,8 +311,8 @@ export const executeTool = async (
         const emails = await fetchUnreadEmails(args.query, signal);
         logApi('GET', '/api/v1/google/gmail/read', { query: args.query }, 'success');
         return { success: true, data: { emails }, message: `Fetched ${emails.length} emails matching '${args.query || 'is:unread'}'` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Gmail API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Gmail API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -324,8 +324,8 @@ export const executeTool = async (
         await sendEmail(args.to, args.subject, args.bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/send', { to: args.to }, 'success');
         return { success: true, data: {}, message: `✅ Email sent successfully to ${args.to}` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Gmail API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Gmail API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -337,8 +337,8 @@ export const executeTool = async (
         await createDraftEmail(args.to, args.subject, args.bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/draft', { to: args.to }, 'success');
         return { success: true, data: {}, message: `✅ Draft email saved successfully for ${args.to}` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Gmail API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Gmail API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -357,8 +357,8 @@ export const executeTool = async (
         await sendEmail(args.partnerEmail, subject, bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/send', { to: args.partnerEmail }, 'success');
         return { success: true, data: {}, message: `✅ Accountability partner (${args.partnerEmail}) notified successfully.` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Gmail API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Gmail API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -370,8 +370,8 @@ export const executeTool = async (
         await replyToEmail(args.threadId, args.to, args.subject, args.bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/reply', { to: args.to }, 'success');
         return { success: true, data: {}, message: `✅ Reply sent to ${args.to} in thread` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Gmail Reply Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Gmail Reply Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -381,8 +381,8 @@ export const executeTool = async (
       try {
         await archiveEmail(args.messageId, signal);
         return { success: true, data: {}, message: `✅ Email archived successfully` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Gmail Archive Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Gmail Archive Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -399,8 +399,8 @@ export const executeTool = async (
           data: { files },
           message: `Found ${files.length} files in Drive matching '${args.query}'`
         };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Drive API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Drive API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -410,8 +410,8 @@ export const executeTool = async (
       try {
         const files = await listDriveFiles(args.limit || 15);
         return { success: true, data: { files }, message: `Listed ${files.length} recent Drive files` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Drive API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Drive API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -426,8 +426,8 @@ export const executeTool = async (
         }
         const result = await openDriveFile(args.fileId);
         return { success: true, data: result, message: `✅ Opened "${result.name}" in browser. URL: ${result.url}` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Drive Open Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Drive Open Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -440,8 +440,8 @@ export const executeTool = async (
         const docInfo = await createGoogleDoc(args.title);
         logApi('POST', '/api/v1/google/docs/create', { title: args.title }, 'success');
         return { success: true, data: docInfo, message: `✅ Created Google Document: "${args.title}" → ${docInfo.url}` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Docs API Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Docs API Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -451,8 +451,8 @@ export const executeTool = async (
       try {
         const result = await writeToGoogleDoc(args.docId, args.content);
         return { success: true, data: result, message: `✅ Content written to Google Doc. View: ${result.url}` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Docs Write Error: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Docs Write Error: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -490,8 +490,8 @@ export const executeTool = async (
         }
 
         return { success: true, data: {}, message: `✅ Reminder scheduled for ${fireAt.toLocaleTimeString()}: "${args.message}"` };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Failed to schedule reminder: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Failed to schedule reminder: ${(e as { message?: string }).message}` };
       }
     }
 
@@ -555,7 +555,7 @@ export const executeTool = async (
         if (!subAgentSystem) {
           return { success: false, data: null, message: `Unknown agent role: "${args.agentRole}". Valid roles: ORACLE, ENIGMA, HERMES, CHRONOS, MEET, ARCHIVE, SCRIBE, HEPHAESTUS, ATLAS, ARGUS, SPECTRE, TITAN, AEGIS` };
         }
-        const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+        const apiKey = (import.meta as { env?: { VITE_GEMINI_API_KEY?: string } }).env?.VITE_GEMINI_API_KEY || '';
         logApi('POST', `/api/v1/agent/delegate/${args.agentRole}`, { instruction: args.instruction, depth: currentDepth + 1 }, 'pending');
         // Inject depth into the instruction so the sub-agent passes it along in its own delegations
         const instructionWithDepth = `${args.instruction}\n[_DELEGATION_DEPTH: ${currentDepth + 1}]`;
@@ -587,8 +587,8 @@ export const executeTool = async (
           data: { agentRole: args.agentRole, result: result.substring(0, 500) },
           message: `✅ [${args.agentRole}] sub-agent completed: ${result.substring(0, 200)}`
         };
-      } catch (e: any) {
-        return { success: false, data: null, message: `Delegation to ${args.agentRole} failed: ${e.message}` };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Delegation to ${args.agentRole} failed: ${(e as { message?: string }).message}` };
       }
     }
 

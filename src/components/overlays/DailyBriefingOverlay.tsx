@@ -50,12 +50,12 @@ export const DailyBriefingOverlay = () => {
       try {
         const todayStr = new Date().toLocaleDateString('en-CA');
         const isGymDay = gymLogs.length > 0; // Simplified for now
-        const gymLogged = gymLogs.some((l: any) => new Date(l.date).toDateString() === now.toDateString());
+        const gymLogged = gymLogs.some((l: { date: string }) => new Date(l.date).toDateString() === now.toDateString());
 
         if (currentType === 'morning') {
           const briefing = await generateMorningBriefing({ 
-            tasks: tasks.filter((t:any) => t.status !== 'completed'),
-            assignments: assignments.filter((a:any) => a.status !== 'submitted'),
+            tasks: tasks.filter((t) => t.status !== 'completed'),
+            assignments: assignments.filter((a) => a.status !== 'submitted'),
             goals: goals,
             habits: habits,
             isGymDay

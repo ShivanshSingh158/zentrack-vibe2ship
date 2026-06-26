@@ -124,8 +124,18 @@ export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 // All callWithFallback calls share this counter. When too many agents are firing
 // simultaneously, excess callers wait with random jitter before proceeding.
 // This prevents N parallel agents from all hitting the API at the exact same ms.
-const MAX_CONCURRENT_API_CALLS = 3; // Max simultaneous Gemini API calls across ALL agents
+const MAX_CONCURRENT_API_CALLS = 4; // Max simultaneous Gemini API calls across ALL agents
 let _activeApiCalls = 0;
+
+// ── Active Agent Counter (for personal/shared routing policy) ─────────────────
+// Tracks how many top-level (semaphore-holding) agents are currently running.
+// Policy: if activeAgentCount <= PERSONAL_ONLY_THRESHOLD → route to personal key
+//         if activeAgentCount >  PERSONAL_ONLY_THRESHOLD → route to shared pool
+// This ensures personal account handles light load while shared pool absorbs bursts.
+const PERSONAL_ONLY_THRESHOLD = 2; // ≤2 active top-level agents → use personal key
+let _activeTopLevelAgents = 0; // count of agents holding semaphore slots
+
+export const getActiveAgentCount = (): number => _activeTopLevelAgents;
 
 const acquireSemaphore = async (): Promise<void> => {
   const MAX_WAIT_MS = 30_000; // max 30s wait in queue
@@ -141,10 +151,12 @@ const acquireSemaphore = async (): Promise<void> => {
     await sleep(jitter);
   }
   _activeApiCalls++;
+  _activeTopLevelAgents++;
 };
 
 const releaseSemaphore = () => {
   _activeApiCalls = Math.max(0, _activeApiCalls - 1);
+  _activeTopLevelAgents = Math.max(0, _activeTopLevelAgents - 1);
 };
 
 // ── Per-key cooldown tracker ─────────────────────────────────────────────────
@@ -196,9 +208,10 @@ const isOverload = (err: any): boolean => {
 };
 
 // ── True round-robin key pointer ──────────────────────────────────────────────
-// globalKeyIndex is the NEXT key to try. Each callWithFallback call picks the
-// first available (non-cooling) key starting at globalKeyIndex, then advances
-// the pointer. This distributes load across parallel agents correctly.
+// globalKeyIndex is the NEXT key to try. Each callWithFallback call atomically
+// claims a slot by reading AND advancing the pointer in one synchronous step.
+// This prevents two parallel agents (which interleave at await boundaries) from
+// claiming the same key simultaneously.
 export let globalKeyIndex = 0;
 
 export const takeNextKeyIndex = (): number => {
@@ -208,23 +221,36 @@ export const takeNextKeyIndex = (): number => {
 };
 
 /**
- * Picks the next available (non-cooling) shared API key using round-robin.
- * If all keys are cooling, waits for the soonest one to become available.
+ * Atomically claims the next available shared key slot.
+ *
+ * RACE-CONDITION FIX:
+ * The old implementation read globalKeyIndex, iterated forward, then set it.
+ * JS is single-threaded, but `await sleep()` inside the loop yields control to
+ * other microtasks, allowing another parallel agent to read the same index.
+ * Fix: claim the key index SYNCHRONOUSLY in one pass, then do any async waiting
+ * AFTER the claim so no other caller can grab the same key.
+ *
  * Returns { token, index } or null if no shared keys configured.
  */
 const pickNextSharedKey = async (): Promise<{ token: string; index: number } | null> => {
   if (allKeys.length === 0) return null;
+
+  // ── Phase 1: Synchronous scan — claim a key index atomically ────────────────
+  // We scan all keys and find the first available one, advancing globalKeyIndex
+  // in one synchronous step before any await can yield control.
   const startIdx = globalKeyIndex;
   for (let attempt = 0; attempt < allKeys.length; attempt++) {
     const idx = (startIdx + attempt) % allKeys.length;
     const token = allKeys[idx];
     if (isKeyAvailable(token)) {
-      // Advance global pointer so the NEXT call starts after this key
+      // ✅ Advance pointer synchronously — no other agent can claim this index
       globalKeyIndex = (idx + 1) % allKeys.length;
       return { token, index: idx };
     }
   }
-  // All shared keys are cooling — find the one that comes back soonest
+
+  // ── Phase 2: All keys cooling — find soonest recovery ───────────────────────
+  // We're here only if every key is cooling. Find which comes back first.
   let soonestToken = allKeys[0];
   let soonestIdx   = 0;
   let soonestTime  = keyCooldownUntil.get(allKeys[0].substring(0, 8)) ?? 0;
@@ -232,9 +258,11 @@ const pickNextSharedKey = async (): Promise<{ token: string; index: number } | n
     const t = keyCooldownUntil.get(allKeys[i].substring(0, 8)) ?? 0;
     if (t < soonestTime) { soonestTime = t; soonestToken = allKeys[i]; soonestIdx = i; }
   }
-  // ✅ FIXED: Actually WAIT for the cooldown to expire before returning the key.
-  // The old code returned the dead key immediately, causing the caller to fire
-  // another instant 429 at the same key, wasting a retry slot.
+
+  // Advance pointer past the key we're about to wait for (synchronous claim)
+  globalKeyIndex = (soonestIdx + 1) % allKeys.length;
+
+  // ── Phase 3: Async wait — AFTER claiming the slot ───────────────────────────
   const waitMs = Math.max(0, soonestTime - Date.now());
   if (waitMs > 0) {
     console.warn(`[ZenAI] All ${allKeys.length} shared keys cooling. Waiting ${Math.ceil(waitMs / 1000)}s for key ...${soonestToken.substring(0, 8)} to recover.`);
@@ -274,7 +302,8 @@ export const callWithFallback = async (
   // ✅ Acquire global semaphore — prevents thundering herd from parallel agents
   await acquireSemaphore();
   try {
-    return await _callWithFallbackInner(buildRequest);
+    // Pass isTopLevel=true so the routing policy can check _activeTopLevelAgents
+    return await _callWithFallbackInner(buildRequest, true);
   } finally {
     releaseSemaphore();
   }
@@ -291,11 +320,12 @@ export const callWithFallback = async (
  *
  * Sub-delegated calls must skip semaphore acquisition because the parent
  * agent's slot implicitly covers the sub-agent's work.
+ * isTopLevel=false so sub-agents don't artificially inflate the agent count.
  */
 export const callWithFallbackUnthrottled = async (
   buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
 ): Promise<any> => {
-  return await _callWithFallbackInner(buildRequest);
+  return await _callWithFallbackInner(buildRequest, false);
 };
 
 // ── Startup Model Health Check ──────────────────────────────────────────────────────
@@ -335,7 +365,8 @@ export const runModelHealthCheck = async (): Promise<void> => {
 
 // Internal implementation — separated so semaphore wraps the entire execution
 const _callWithFallbackInner = async (
-  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
+  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>,
+  isTopLevel: boolean = false // true when called from callWithFallback (semaphore-holding)
 ): Promise<any> => {
   const personalKey = getActiveGeminiKey();
 
@@ -343,9 +374,19 @@ const _callWithFallbackInner = async (
     throw new Error('No Gemini API key found. Add your API key in Settings → AI Key.');
   }
 
-  // Model priority list — uses health-check-filtered list so deprecated/unavailable
-  // preview models (e.g. flash-lite-preview) are automatically excluded at startup.
-  const isPersonalRequest = !!personalKey;
+  // ── Personal / Shared Routing Policy ─────────────────────────────────────────
+  // When a personal OAuth token exists, apply the agent-count routing rule:
+  //   ≤ PERSONAL_ONLY_THRESHOLD active top-level agents → personal key (better models, own quota)
+  //   > PERSONAL_ONLY_THRESHOLD active top-level agents → shared key pool (scale horizontally)
+  //
+  // Sub-agents (isSubAgent = true) always bypass the semaphore so they don't count
+  // toward _activeTopLevelAgents. They inherit the parent's routing slot.
+  // This ensures: 2 agents → personal, 3+ agents → shared pool handles the burst.
+  const shouldUsePersonal = !!personalKey && (
+    !isTopLevel || _activeTopLevelAgents <= PERSONAL_ONLY_THRESHOLD
+  );
+
+  const isPersonalRequest = shouldUsePersonal;
   const ordered = getEffectivePriorityList(isPersonalRequest);
   if (ordered.length === 0) {
     // All models marked unavailable — use full list as emergency fallback
@@ -358,9 +399,9 @@ const _callWithFallbackInner = async (
   for (let mi = 0; mi < ordered.length; mi++) {
     const modelName = ordered[mi];
 
-    // ── Attempt 1: personal OAuth key (if valid) ──────────────────────────
-    if (personalKey) {
-      // Re-check at time of use — token may have expired
+    // ── Attempt 1: personal OAuth key (if routing policy allows it) ───────────
+    if (shouldUsePersonal) {
+      // Re-check at time of use — token may have expired since routing decision
       const freshToken = getActiveGeminiKey();
       if (!freshToken) {
         if (typeof window !== 'undefined') {
@@ -368,6 +409,7 @@ const _callWithFallbackInner = async (
             detail: { type: 'thinking', title: '🔄 Personal token expired. Using shared key pool...' }
           }));
         }
+        // Fall through to shared pool below
       } else {
         try {
           const genAI = new GoogleGenerativeAI('oauth_dummy_key');
@@ -379,37 +421,47 @@ const _callWithFallbackInner = async (
 
           if (msg.includes('personal_token_unavailable') || isAuthError(err)) {
             // Personal key failed — fall through to shared pool silently
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('agent-log', {
+                detail: { type: 'thinking', title: '🔄 Personal key unavailable. Switching to shared pool...' }
+              }));
+            }
           } else if (isModelNotFound(err)) {
             break; // this model doesn't exist → try next model
           } else if (isOverload(err)) {
             break; // overloaded → try next model
           } else if (!isRateLimit(err)) {
             throw err; // non-retryable
+          } else {
+            // 429 on personal key → fall through to shared key
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('agent-log', {
+                detail: { type: 'thinking', title: `⚠️ Personal quota exceeded for ${modelName}. Using shared pool...` }
+              }));
+            }
+            await sleep(1500);
           }
-          // 429 on personal key → fall through to shared key
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('agent-log', {
-              detail: { type: 'thinking', title: `⚠️ Personal quota exceeded for ${modelName}. Using shared pool...` }
-            }));
-          }
-          await sleep(1500);
         }
       }
     }
 
-    // ── Attempt 2-N: shared key pool (true round-robin) ──
-    // Max 2 key rotations per request — we must NOT exhaust all 8 keys per failed request.
-    // With the global semaphore, only 3 agents run at once, so at most 6 key slots are used
-    // per second rather than 24.
-    const MAX_KEY_ROTATIONS = Math.min(2, Math.max(1, allKeys.length));
+    // ── Attempt 2-N: shared key pool (true round-robin, atomic slot claim) ────
+    // IMPORTANT: MAX_KEY_ROTATIONS is deliberately small (2) so a SINGLE failed
+    // request never consumes more than 2 keys from the pool. This prevents the
+    // N-agents × MAX_ROTATIONS waterfall exhaustion spiral.
+    // With semaphore (3 slots) × 2 rotations = at most 6 key-slot events per burst.
+    if (allKeys.length === 0) {
+      // No shared keys configured and personal key also failed
+      break;
+    }
+
+    const MAX_KEY_ROTATIONS = Math.min(2, allKeys.length);
     let rotationsUsed = 0;
 
     while (rotationsUsed < MAX_KEY_ROTATIONS) {
-      const keyObj = await pickNextSharedKey(); // ✅ Now async — properly awaits cooldowns
+      // ✅ pickNextSharedKey is now awaited — key claim is atomic (see function docs)
+      const keyObj = await pickNextSharedKey();
       if (!keyObj) break; // no shared keys configured
-
-      // If all keys are cooling, pickNextSharedKey already waited.
-      // No additional wait needed here — trust the semaphore + async pickNextSharedKey.
 
       try {
         const genAI  = new GoogleGenerativeAI(keyObj.token);
@@ -420,11 +472,9 @@ const _callWithFallbackInner = async (
 
         if (isRateLimit(err)) {
           hitQuota = true;
-          // ✅ Parse Retry-After header for exact cooldown duration from the API.
-          // This is far more accurate than a hardcoded 62s guess.
+          // Parse Retry-After header for exact cooldown duration from the API.
           let retryAfterMs: number | undefined;
           try {
-            // Gemini SDK wraps the response — try multiple known paths
             const retryAfterHeader =
               err?.response?.headers?.get?.('Retry-After') ||
               err?.message?.match(/retry[\s-]?after[:\s]*(\d+)/i)?.[1];
@@ -436,7 +486,6 @@ const _callWithFallbackInner = async (
           markKeyCooling(keyObj.token, err.message, retryAfterMs);
           rotationsUsed++;
           if (rotationsUsed < MAX_KEY_ROTATIONS) {
-            // Small delay before trying next key — prevents thundering-herd
             const label = `shared key [${keyObj.index + 1}/${allKeys.length}]`;
             console.warn(`[ZenAI] ${label} 429 — rotating to next available key (${rotationsUsed}/${MAX_KEY_ROTATIONS})`);
             if (typeof window !== 'undefined') {
@@ -444,7 +493,7 @@ const _callWithFallbackInner = async (
                 detail: { type: 'thinking', title: `↩ Key ${keyObj.index + 1} rate-limited. Trying next...` }
               }));
             }
-            // Exponential backoff with jitter to prevent parallel agent thundering herds
+            // Exponential backoff with jitter before next rotation
             const baseDelay = 1500 * Math.pow(2, rotationsUsed);
             const jitter = Math.random() * 1000;
             const backoffMs = baseDelay + jitter;
@@ -530,7 +579,9 @@ export class RobustChatSession {
   ) {
     this.session      = initialSession;
     this.modelName    = modelName;
-    this.modelIndex   = Math.max(0, MODEL_PRIORITY.indexOf(modelName));
+    // ✅ Use health-check-filtered list for model index resolution
+    const effectiveList = getEffectivePriorityList(false);
+    this.modelIndex   = Math.max(0, effectiveList.indexOf(modelName));
     this.systemPrompt = systemPrompt;
     this.genConfig    = genConfig;
     this.seedHistory  = seedHistory;
@@ -555,7 +606,28 @@ export class RobustChatSession {
 
   private async rebuildSession(modelName: string, keyIndex: number, history: any[]) {
     const safeHistory = this.sanitizeHistory(history);
-    const genAI = new GoogleGenerativeAI(allKeys[keyIndex] || allKeys[0]);
+    // ✅ FIXED: Don't fall back to allKeys[0] if keyIndex is invalid — that's the
+    // key we just rate-limited. Instead use round-robin to get a fresh available key.
+    let keyToUse: string;
+    if (allKeys[keyIndex] && isKeyAvailable(allKeys[keyIndex])) {
+      keyToUse = allKeys[keyIndex];
+    } else {
+      // Pick next available key via round-robin (sync part of pickNextSharedKey)
+      let found = false;
+      for (let attempt = 0; attempt < allKeys.length; attempt++) {
+        const idx = (keyIndex + attempt) % allKeys.length;
+        if (isKeyAvailable(allKeys[idx])) {
+          keyToUse = allKeys[idx];
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        // All cooling — use the provided index anyway (cooldown will expire soon)
+        keyToUse = allKeys[keyIndex] || allKeys[0] || '';
+      }
+    }
+    const genAI = new GoogleGenerativeAI(keyToUse);
     const model = genAI.getGenerativeModel({
       model: modelName,
       systemInstruction: this.systemPrompt,
@@ -567,24 +639,23 @@ export class RobustChatSession {
 
   async sendMessageStream(msg: string, onChunk: (title: string) => void): Promise<{ title: string, model: string }> {
     let lastError: any;
-    for (let mi = this.modelIndex; mi < MODEL_PRIORITY.length; mi++) {
-      const modelName = MODEL_PRIORITY[mi];
+    // ✅ FIXED: Use health-check-filtered model list, not raw MODEL_PRIORITY
+    const effectiveModels = getEffectivePriorityList(false);
+    const modelList = effectiveModels.length > 0 ? effectiveModels : SHARED_MODEL_PRIORITY;
+    for (let mi = this.modelIndex; mi < modelList.length; mi++) {
+      const modelName = modelList[mi];
       const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
       let rotationsUsed = 0;
 
       while (rotationsUsed < MAX_KEY_ROTATIONS) {
-        const keyObj = pickNextSharedKey();
-        const keyToken = keyObj ? keyObj.token : (allKeys[0] || '');
+        // ✅ CRITICAL BUG FIX: pickNextSharedKey is ASYNC — must await it.
+        // Previously called without await, returning a Promise object as the key.
+        // This made ALL key-cooling logic in RobustChatSession completely ineffective.
+        const keyObj = await pickNextSharedKey();
         const keyIdx = keyObj ? keyObj.index : 0;
 
-        if (keyObj && !isKeyAvailable(keyObj.token)) {
-          const until  = keyCooldownUntil.get(keyObj.token.substring(0, 8)) ?? Date.now();
-          const waitMs = Math.min(Math.max(0, until - Date.now()), 8_000);
-          if (waitMs > 0) {
-            console.warn(`[ZenAI Stream] Waiting ${Math.ceil(waitMs / 1000)}s for cooldown...`);
-            await sleep(waitMs);
-          }
-        }
+        // pickNextSharedKey already waits for cooldown internally, so no need
+        // to duplicate the wait here. Trust the async function's wait logic.
 
         try {
           if (mi !== this.modelIndex || keyIdx !== this.keyIndex || rotationsUsed > 0) {
@@ -678,24 +749,19 @@ export class RobustChatSession {
 
   async sendMessage(msg: string) {
     let lastError: any;
-    for (let mi = this.modelIndex; mi < MODEL_PRIORITY.length; mi++) {
-      const modelName = MODEL_PRIORITY[mi];
+    // ✅ FIXED: Use health-check-filtered model list, not raw MODEL_PRIORITY
+    const effectiveModels = getEffectivePriorityList(false);
+    const modelList = effectiveModels.length > 0 ? effectiveModels : SHARED_MODEL_PRIORITY;
+    for (let mi = this.modelIndex; mi < modelList.length; mi++) {
+      const modelName = modelList[mi];
       const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
       let rotationsUsed = 0;
 
       while (rotationsUsed < MAX_KEY_ROTATIONS) {
-        const keyObj = pickNextSharedKey();
-        const keyToken = keyObj ? keyObj.token : (allKeys[0] || '');
+        // ✅ CRITICAL BUG FIX: pickNextSharedKey is ASYNC — must await it.
+        const keyObj = await pickNextSharedKey();
         const keyIdx = keyObj ? keyObj.index : 0;
-
-        if (keyObj && !isKeyAvailable(keyObj.token)) {
-          const until  = keyCooldownUntil.get(keyObj.token.substring(0, 8)) ?? Date.now();
-          const waitMs = Math.min(Math.max(0, until - Date.now()), 8_000);
-          if (waitMs > 0) {
-            console.warn(`[ZenAI Chat] Waiting ${Math.ceil(waitMs / 1000)}s for cooldown...`);
-            await sleep(waitMs);
-          }
-        }
+        // pickNextSharedKey already waits for cooldown internally.
 
         try {
           if (mi !== this.modelIndex || keyIdx !== this.keyIndex || rotationsUsed > 0) {

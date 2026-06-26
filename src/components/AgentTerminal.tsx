@@ -7,7 +7,8 @@ interface LogEntry {
   time: string;
   type: 'thinking' | 'tool_call' | 'tool_result' | 'answer';
   title: string;
-  data?: any;
+  data?: unknown;
+  text?: string;
 }
 
 export const AgentTerminal: React.FC = () => {
@@ -46,13 +47,13 @@ export const AgentTerminal: React.FC = () => {
       setLogs(prev => [...prev, newLog]);
     };
 
-    window.addEventListener('agent-log' as any, handleLog);
+    window.addEventListener('agent-log', handleLog as EventListener);
 
     const handleToggle = () => setIsOpen(o => !o);
     window.addEventListener('agent-terminal-toggle', handleToggle);
 
     return () => {
-      window.removeEventListener('agent-log' as any, handleLog);
+      window.removeEventListener('agent-log', handleLog as EventListener);
       window.removeEventListener('agent-terminal-toggle', handleToggle);
     };
   }, []);

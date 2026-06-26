@@ -24,7 +24,7 @@ export function formatHoursDisplay(val: string | number | undefined): string {
   if (val === undefined || val === null || val === '') return '';
   
   // Try parsing as decimal hours
-  let numVal = typeof val === 'string' ? parseFloat(val) : val;
+  const numVal = typeof val === 'string' ? parseFloat(val) : val;
   
   if (isNaN(numVal)) {
     // Maybe they typed "50 min" already, just return it

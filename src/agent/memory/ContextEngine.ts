@@ -1,14 +1,19 @@
 // ContextEngine: Aggregates real-time user data and historical patterns to pass to the Agent Fleet.
+import type { Task, CalendarEvent } from '../../types/domain';
+
+interface GlobalData {
+  completedHistory?: Array<{ completedAt?: string | number }>;
+}
 
 export const buildContextMemory = (
-  userTodos: any[],
-  calendarEvents: any[],
-  globalData?: any
+  userTodos: Task[],
+  calendarEvents: CalendarEvent[],
+  globalData?: GlobalData
 ): string => {
   
   // Basic metrics
   const activeTasks = userTodos.filter(t => t.status !== 'completed');
-  const criticalTasks = activeTasks.filter(t => t.deadlineDNA >= 80);
+  const criticalTasks = activeTasks.filter(t => (t as Task & { deadlineDNA?: number }).deadlineDNA != null && (t as Task & { deadlineDNA?: number }).deadlineDNA! >= 80);
   
   const memoryDump = {
     currentTime: new Date().toISOString(),
@@ -16,7 +21,7 @@ export const buildContextMemory = (
     taskLoad: {
       totalActive: activeTasks.length,
       criticalLoad: criticalTasks.length,
-      highUrgencyTasks: criticalTasks.map(t => ({ id: t.id, title: t.text, dna: t.deadlineDNA }))
+      highUrgencyTasks: criticalTasks.map(t => ({ id: t.id, title: (t as Task & { deadlineDNA?: number }).deadlineDNA }))
     },
     calendarContext: {
       upcomingEvents: calendarEvents.slice(0, 5)
@@ -25,7 +30,7 @@ export const buildContextMemory = (
     derivedPatterns: (() => {
       const completedTasks = (globalData?.completedHistory || []);
       const hourCounts: Record<number, number> = {};
-      completedTasks.forEach((t: any) => {
+      completedTasks.forEach((t) => {
         if (t.completedAt) {
           const hr = new Date(t.completedAt).getHours();
           hourCounts[hr] = (hourCounts[hr] || 0) + 1;

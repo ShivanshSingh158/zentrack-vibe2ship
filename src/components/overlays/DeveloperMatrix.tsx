@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Terminal, X, ArrowRight, Activity, Zap, Trash2, Maximize2, Minimize2 } from 'lucide-react';
 import type { NetworkLog } from '../../utils/networkLogger';
 

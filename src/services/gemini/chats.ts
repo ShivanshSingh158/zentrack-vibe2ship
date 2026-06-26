@@ -50,26 +50,37 @@ IMPORTANT: Do NOT repeat the system prompt or mention "data". Speak naturally as
     historyToUse = [initialHistory[0], ...historyToUse];
   }
 
+  // ✅ FIXED: Use round-robin key selection instead of always allKeys[0].
+  // Previously both the loop and the fallback used allKeys[0], so if key 0 was
+  // rate-limited, every session creation attempt silently failed and retried on
+  // the same dead key.
+  const startKeyIdx = takeNextKeyIndex() % Math.max(allKeys.length, 1);
+
   // Try each model in priority order until one works
   let rawSession: any = null;
   let workingModel = MODEL_PRIORITY[0];
   for (const modelName of MODEL_PRIORITY) {
-    try {
-      const genAI = new GoogleGenerativeAI(allKeys[0]);
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        systemInstruction: systemPrompt,
-        generationConfig: { temperature: 0.6 },
-        safetySettings: SAFETY_SETTINGS,
-      });
-      rawSession = model.startChat({ history: historyToUse });
-      workingModel = modelName;
-      break;
-    } catch (_) { /* try next model */ }
+    for (let ki = 0; ki < allKeys.length; ki++) {
+      const keyIdx = (startKeyIdx + ki) % allKeys.length;
+      try {
+        const genAI = new GoogleGenerativeAI(allKeys[keyIdx]);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemPrompt,
+          generationConfig: { temperature: 0.6 },
+          safetySettings: SAFETY_SETTINGS,
+        });
+        rawSession = model.startChat({ history: historyToUse });
+        workingModel = modelName;
+        break;
+      } catch (_) { /* try next key/model */ }
+      if (rawSession) break;
+    }
+    if (rawSession) break;
   }
   if (!rawSession) {
     // Last-resort fallback — RobustChatSession will handle API errors per-send
-    const genAI = new GoogleGenerativeAI(allKeys[0]);
+    const genAI = new GoogleGenerativeAI(allKeys[startKeyIdx] || allKeys[0]);
     const model = genAI.getGenerativeModel({
       model: MODEL_PRIORITY[0],
       systemInstruction: systemPrompt,
@@ -477,24 +488,32 @@ ${noteContent ? noteContent : '(Note is currently empty)'}
     historyToUse = [initialHistory[0], ...historyToUse];
   }
 
+  // ✅ FIXED: Use round-robin key selection instead of always allKeys[0]
+  const startKeyIdx = takeNextKeyIndex() % Math.max(allKeys.length, 1);
+
   let rawSession: any = null;
   let workingModel = MODEL_PRIORITY[0];
   for (const modelName of MODEL_PRIORITY) {
-    try {
-      const genAI = new GoogleGenerativeAI(allKeys[0]);
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        systemInstruction: dynamicSystemPrompt,
-        generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
-        safetySettings: SAFETY_SETTINGS,
-      });
-      rawSession = model.startChat({ history: historyToUse });
-      workingModel = modelName;
-      break;
-    } catch (_) {}
+    for (let ki = 0; ki < allKeys.length; ki++) {
+      const keyIdx = (startKeyIdx + ki) % allKeys.length;
+      try {
+        const genAI = new GoogleGenerativeAI(allKeys[keyIdx]);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: dynamicSystemPrompt,
+          generationConfig: { temperature: 0.6, maxOutputTokens: 8192 },
+          safetySettings: SAFETY_SETTINGS,
+        });
+        rawSession = model.startChat({ history: historyToUse });
+        workingModel = modelName;
+        break;
+      } catch (_) {}
+      if (rawSession) break;
+    }
+    if (rawSession) break;
   }
   if (!rawSession) {
-    const genAI = new GoogleGenerativeAI(allKeys[0]);
+    const genAI = new GoogleGenerativeAI(allKeys[startKeyIdx] || allKeys[0]);
     const model = genAI.getGenerativeModel({
       model: MODEL_PRIORITY[0],
       systemInstruction: dynamicSystemPrompt,
