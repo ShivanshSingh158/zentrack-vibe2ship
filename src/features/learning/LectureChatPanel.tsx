@@ -76,7 +76,8 @@ const buildGlobalCtxString = (currentVideoId: string): string => {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-import { ChatMessage, ChatMessageBubble, TypingDots } from './ChatMessage';
+import type { ChatMessage } from './ChatMessage';
+import { ChatMessageBubble, TypingDots } from './ChatMessage';
 
 interface LectureChatPanelProps {
   videoId: string;

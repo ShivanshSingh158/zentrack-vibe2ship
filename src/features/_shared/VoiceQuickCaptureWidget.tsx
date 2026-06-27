@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Loader2, X, Sparkles, CheckSquare, Dumbbell, GraduationCap, Moon } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Mic, Loader2, X, Sparkles, CheckSquare, Dumbbell, GraduationCap, Moon, Ear } from 'lucide-react';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { toast } from 'sonner';
+import { missionReportStore } from '../../stores/missionReportStore';
 import { db, auth } from '../../services/firebase';
 import { collection, addDoc, doc, updateDoc, setDoc, getDoc } from 'firebase/firestore';
 import { orchestrateAgent } from '../../agent/orchestrator';
@@ -16,10 +17,21 @@ export const VoiceQuickCaptureWidget = () => {
   const [supported, setSupported] = useState(true);
   const [showRadialMenu, setShowRadialMenu] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const controls = useAnimation();
+  
+  const [wakeWordEnabled, setWakeWordEnabled] = useState(() => localStorage.getItem('zen_wake_word_enabled') === 'true');
+  const wakeWordRef = useRef<any>(null);
+  const wakeWordStateRef = useRef({ enabled: wakeWordEnabled, listening: isListening, processing: isProcessing });
+
+  useEffect(() => {
+    wakeWordStateRef.current = { enabled: wakeWordEnabled, listening: isListening, processing: isProcessing };
+    localStorage.setItem('zen_wake_word_enabled', wakeWordEnabled.toString());
+  }, [wakeWordEnabled, isListening, isProcessing]);
   
   const location = useLocation();
   const navigate = useNavigate();
-  const { tasks, calendarEvents } = useGlobalData();
+  const globalData = useGlobalData();
 
   // Determine context-aware theme colors
   let baseColor = '#c084fc'; // Default light purple
@@ -44,6 +56,65 @@ export const VoiceQuickCaptureWidget = () => {
   }
 
   const recognitionRef = useRef<any>(null);
+
+  const actionRefs = useRef<any>({});
+
+  useEffect(() => {
+    if (!supported) return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    if (!wakeWordRef.current) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript.toLowerCase();
+        }
+        
+        const match = transcript.match(/hey zen|heizen|hey then|haysen/i);
+        if (match) {
+          recognition.stop();
+          const commandPart = transcript.substring(match.index + match[0].length).trim();
+          
+          if (commandPart.length > 5) {
+            actionRefs.current.processTranscription?.(commandPart);
+          } else {
+            actionRefs.current.toggleListening?.();
+            // Play a small wake sound
+            try {
+              const ctx = new AudioContext();
+              const osc = ctx.createOscillator();
+              osc.frequency.value = 880;
+              osc.connect(ctx.destination);
+              osc.start();
+              osc.stop(ctx.currentTime + 0.1);
+            } catch(e) {}
+          }
+        }
+      };
+
+      recognition.onend = () => {
+        const state = wakeWordStateRef.current;
+        if (state.enabled && !state.listening && !state.processing) {
+          try { wakeWordRef.current?.start(); } catch(e) {}
+        }
+      };
+      
+      wakeWordRef.current = recognition;
+    }
+
+    const state = wakeWordStateRef.current;
+    if (state.enabled && !state.listening && !state.processing) {
+      try { wakeWordRef.current?.start(); } catch(e) {}
+    } else {
+      try { wakeWordRef.current?.stop(); } catch(e) {}
+    }
+  }, [wakeWordEnabled, isListening, isProcessing, supported]);
 
   useEffect(() => {
     // Check support for Web Speech API
@@ -92,6 +163,20 @@ export const VoiceQuickCaptureWidget = () => {
     }
   }, [isListening, transcription]);
 
+  const resetIdleTimer = () => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      controls.start({ x: 0, y: 0, transition: { type: 'spring', stiffness: 300, damping: 30 } });
+    }, 4 * 60 * 1000); // 4 minutes
+  };
+
+  useEffect(() => {
+    resetIdleTimer();
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, []);
+
   const processTranscription = async (text: string) => {
     const user = auth.currentUser;
     if (!user) {
@@ -104,11 +189,13 @@ export const VoiceQuickCaptureWidget = () => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 
     try {
+      // 1. Open agent terminal so user can see live steps
+      window.dispatchEvent(new CustomEvent('agent-terminal-open'));
+      
       agentMemoryStore.appendMessage({ role: 'user', title: text });
       const answer = await orchestrateAgent(
         text,
-        tasks,
-        calendarEvents,
+        globalData,
         apiKey,
         (step) => {
           if (step.type === 'thinking') {
@@ -124,26 +211,45 @@ export const VoiceQuickCaptureWidget = () => {
         id: processToastId,
         description: 'Agent result ready',
         duration: 5000,
-        action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report')) }
+        action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: answer } })) }
       });
 
       // Save to sessionStorage so dashboard can load it on route switch/mount
       sessionStorage.setItem('pending_proactive_briefing', answer);
+      missionReportStore.addReport(answer);
 
       // Navigate to the home dashboard
       navigate('/home');
 
-      // ✅ Surface result visually in Mission Report panel (same event the dashboard already listens for)
-      window.dispatchEvent(new CustomEvent('proactive-briefing', {
-        detail: { report: answer, fromVoice: true }
-      }));
+      // ✅ Surface result visually in Mission Report panel automatically
+      window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: answer } }));
       
       // Also speak the result via TTS for eyes-free UX
       if (window.speechSynthesis) {
-        const utterance = new SpeechSynthesisUtterance(answer.slice(0, 500)); // limit TTS to 500 chars
-        utterance.rate = 1.05;
-        utterance.pitch = 1.0;
-        window.speechSynthesis.speak(utterance);
+        window.speechSynthesis.cancel(); // Clear any ongoing speech
+        
+        let spokenText = answer;
+        const summaryMatch = answer.match(/Mission Complete:\s*([^\n]+)/i);
+        if (summaryMatch && summaryMatch[1]) {
+          spokenText = summaryMatch[1];
+        } else {
+          spokenText = answer.split('\n\n').slice(0, 2).join(' '); // max 2 paragraphs
+        }
+        
+        // Strip markdown and emojis for clean speech
+        spokenText = spokenText.replace(/[*_#|`~]/g, '').replace(/https?:\/\/[^\s]+/g, 'a link');
+        spokenText = spokenText.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
+
+        // Split into sentences to prevent the 15-second TTS timeout bug
+        const sentences = spokenText.match(/[^.!?]+[.!?]+/g) || [spokenText];
+        
+        sentences.forEach(sentence => {
+          if (!sentence.trim()) return;
+          const utterance = new SpeechSynthesisUtterance(sentence.trim());
+          utterance.rate = 1.35; // Fast speed
+          utterance.pitch = 1.0;
+          window.speechSynthesis.speak(utterance);
+        });
       }
       
       setTranscription('');
@@ -195,10 +301,17 @@ export const VoiceQuickCaptureWidget = () => {
       dragMomentum={false}
       dragElastic={0.1}
       whileDrag={{ scale: 1.05 }}
+      animate={controls}
+      onDragStart={() => {
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      }}
+      onDragEnd={() => {
+        resetIdleTimer();
+      }}
       style={{
         position: 'fixed',
         bottom: bottomPosition,
-        right: '1.25rem',
+        right: '2rem',
         zIndex: 200,
         display: 'flex',
         flexDirection: 'column',
@@ -240,11 +353,12 @@ export const VoiceQuickCaptureWidget = () => {
         {showRadialMenu && (
           <div style={{ position: 'absolute', top: '50%', left: '50%', zIndex: 0, pointerEvents: 'auto' }}>
             {[
+              { icon: <Ear size={20} />, label: wakeWordEnabled ? 'Wake Word: ON' : 'Wake Word: OFF', color: wakeWordEnabled ? '#a855f7' : '#6b7280', action: 'TOGGLE_WAKE_WORD' },
               { icon: <CheckSquare size={20} />, label: 'Todo', color: '#3b82f6', route: '/todo' },
               { icon: <Dumbbell size={20} />, label: 'Gym', color: '#ef4444', route: '/gym' },
               { icon: <GraduationCap size={20} />, label: 'Attendance', color: '#10b981', route: '/attendance' },
               { icon: <Moon size={20} />, label: 'Sleep', color: '#6366f1', route: '/log' },
-            ].map((item, index, arr) => {
+            ].map((item: any, index, arr) => {
               // Spread between -90deg (top) and -180deg (left)
               const angle = -Math.PI/2 - (Math.PI/2) * (index / (arr.length - 1));
               const radius = 80;
@@ -260,7 +374,11 @@ export const VoiceQuickCaptureWidget = () => {
                   transition={{ type: 'spring', stiffness: 300, damping: 20, delay: index * 0.05 }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(item.route);
+                    if (item.action === 'TOGGLE_WAKE_WORD') {
+                      setWakeWordEnabled(prev => !prev);
+                    } else if (item.route) {
+                      navigate(item.route);
+                    }
                     setShowRadialMenu(false);
                   }}
                   style={{
@@ -297,10 +415,10 @@ export const VoiceQuickCaptureWidget = () => {
           inset: '-2px',
           borderRadius: '50%',
           background: `linear-gradient(135deg, ${gradientColors})`,
-          opacity: isListening ? 1 : 0.8,
-          animation: isListening ? 'spin 2s linear infinite' : 'none',
+          opacity: isListening ? 1 : (wakeWordEnabled ? 0.9 : 0.8),
+          animation: isListening ? 'spin 2s linear infinite' : (wakeWordEnabled ? 'pulse 2s infinite' : 'none'),
           zIndex: 0,
-          filter: isListening ? 'blur(4px)' : 'none',
+          filter: isListening ? 'blur(4px)' : (wakeWordEnabled ? 'blur(2px)' : 'none'),
           transition: 'all 0.3s ease'
         }} />
         
@@ -354,7 +472,35 @@ export const VoiceQuickCaptureWidget = () => {
           }}
         >
           {isProcessing ? (
-            <Loader2 size={24} className="spin" color="#fff" />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
+              {/* Pulsing Ripple Effect */}
+              <motion.div
+                animate={{ 
+                  scale: [1, 1.8, 2.5], 
+                  opacity: [0.8, 0.3, 0],
+                }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
+                style={{
+                  position: 'absolute',
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  background: glowColor,
+                  zIndex: 0
+                }}
+              />
+              {/* Inner Glowing Mic */}
+              <motion.div
+                animate={{ 
+                  scale: [1, 1.15, 1],
+                  filter: ['drop-shadow(0 0 2px rgba(255,255,255,0.4))', 'drop-shadow(0 0 8px rgba(255,255,255,0.9))', 'drop-shadow(0 0 2px rgba(255,255,255,0.4))'] 
+                }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                style={{ zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Mic size={24} color="#fff" />
+              </motion.div>
+            </div>
           ) : (
             <div style={{ 
               position: 'relative', 

@@ -22,5 +22,5 @@ export const createInitialState = (prompt: string): SharedMemoryContext => ({
   pendingSubTasks: [],
   errors: [],
   contextBuiltAt: new Date().toISOString(),
-  contextTTLMs: 120000 // 2 minutes max context age
+  contextTTLMs: 900000 // 15 minutes max context age
 });

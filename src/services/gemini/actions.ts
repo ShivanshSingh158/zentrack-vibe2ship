@@ -7,7 +7,7 @@ export const generateAnalyticsInsights = async (userData: any) => {
   // Trim data to avoid token overflow — summarise arrays instead of dumping raw JSON
   const safe = {
     summary: userData.summary,
-    recentTasks: (userData.todos || []).slice(0, 20).map((t: any) => ({ title: t.text, done: t.status === 'completed', date: t.date, priority: t.priority })),
+    recentTasks: (userData.tasks || []).slice(0, 20).map((t: any) => ({ title: t.text, done: t.status === 'completed', date: t.date, priority: t.priority })),
     recentLogs: (userData.logs || []).slice(0, 14).map((l: any) => ({ date: l.date, mood: l.mood, hours: l.productiveHours, water: l.waterIntakeLiters, notes: l.notes })),
     habits: {
       totalCheckins: (userData.habits || []).length,
@@ -150,7 +150,7 @@ ${JSON.stringify(safeData, null, 2)}`;
 
 export const generateNextActionRecommendation = async (userData: any) => {
   const safeData = {
-    tasks: (userData.todos || []).map((t: any) => ({ title: t.text, priority: t.priority, isOverdue: t.isOverdue })),
+    tasks: (userData.tasks || []).map((t: any) => ({ title: t.text, priority: t.priority, isOverdue: t.isOverdue })),
     assignments: (userData.assignments || []).map((a: any) => ({ title: a.title, isOverdue: a.isOverdue, dueSoon: a.dueSoon })),
     habitsPending: userData.habitsPending || 0,
     isGymDay: userData.isGymDay || false,

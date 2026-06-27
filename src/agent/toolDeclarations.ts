@@ -10,7 +10,19 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     parameters: { type: SchemaType.OBJECT, properties: {}, required: [] }
   },
 
-  // ─── TASKS (ZENTRACK) ───────────────────────────────────────────────────────
+  // ─── TASKS & APP DATA (ZENTRACK) ───────────────────────────────────────────
+  {
+    name: 'query_internal_app_data',
+    description: 'Fetch internal app data for the user. Available modules: gymLogs, notes, habits, goals, learningTopics, jobs, dailyLogs, pomodoroSessions. Use this when the user asks about something specific to the app (like their gym schedule, habits, or notes) that is not in Google Calendar or Tasks.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        moduleName: { type: SchemaType.STRING, description: 'The internal module to query (e.g. "gymLogs", "notes", "habits", "goals")' },
+        query: { type: SchemaType.STRING, description: 'Optional text to filter the results by' }
+      },
+      required: ['moduleName']
+    }
+  },
   {
     name: 'get_tasks',
     description: 'Get the user\'s tasks and deadlines from ZenTrack. Returns id, title, priority, date, and status for each task.',
@@ -56,6 +68,39 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         taskId: { type: SchemaType.STRING, description: 'The task ID to delete' }
       },
       required: ['taskId']
+    }
+  },
+  {
+    name: 'delete_calendar_event',
+    description: 'Permanently delete a Google Calendar event. Use this when the user asks you to delete a meeting or calendar event.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        eventId: { type: SchemaType.STRING, description: 'The Google Calendar event ID to delete' }
+      },
+      required: ['eventId']
+    }
+  },
+  {
+    name: 'trash_email',
+    description: 'Move an email to the Trash folder in Gmail. Use this when the user asks to delete an email.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        messageId: { type: SchemaType.STRING, description: 'The Gmail message ID to trash' }
+      },
+      required: ['messageId']
+    }
+  },
+  {
+    name: 'trash_drive_file',
+    description: 'Move a file to the Trash folder in Google Drive. Use this when the user asks to delete a file or document.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        fileId: { type: SchemaType.STRING, description: 'The Google Drive file ID to trash' }
+      },
+      required: ['fileId']
     }
   },
   {
@@ -395,5 +440,40 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       },
       required: ['language', 'code'],
     },
-  }
+  },
+
+  // ─── IN-APP NAVIGATION ────────────────────────────────────────────────────────
+  {
+    name: 'navigate_to_module',
+    description: 'Navigate the user directly to a specific module/page within the ZenTrack app. Use when user says "open", "go to", "show me", "take me to", or "open my [module]". Can also open a specific lecture, topic, or gym workout view. Available routes: /home, /tasks, /calendar, /notes, /goals, /analytics, /gym, /jobs, /habits, /learning, /tools, /integrations, /review, /attendance, /assignments, /grades.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        route: { type: SchemaType.STRING, description: 'The app route to navigate to (e.g. "/gym", "/learning", "/tasks", "/habits")' },
+        subView: { type: SchemaType.STRING, description: 'Optional sub-view or tab to activate within the module (e.g. "workout", "logs", "stats")' },
+        lectureTopicTitle: { type: SchemaType.STRING, description: 'For /learning: the topic title to expand and focus on (e.g. "Data Structures", "Calculus")' },
+        lectureTitle: { type: SchemaType.STRING, description: 'For /learning: the specific lecture/video title to open and play (e.g. "Lecture 3 - Arrays", "Chapter 5")' },
+        reason: { type: SchemaType.STRING, description: 'Brief explanation of why navigating here (shown to user)' },
+      },
+      required: ['route'],
+    },
+  },
+  {
+    name: 'open_gym_workout',
+    description: 'Navigate to the Gym module and open today\'s or a specific day\'s workout plan. Use when user asks about gym workout, today\'s exercises, gym plan, what to train today, etc.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        day: { type: SchemaType.STRING, description: 'Optional day override (e.g. "Monday", "today", "tomorrow"). Defaults to today.' },
+        showLogs: { type: SchemaType.BOOLEAN, description: 'If true, show the workout logs tab. If false/omitted, show the plan tab.' },
+      },
+      required: [],
+    },
+  },
 ];
+
+// ── Authoritative tool name whitelist ─────────────────────────────────────────
+// Derived directly from TOOL_DECLARATIONS so it can NEVER go out of sync.
+// Used by runAgentLoop to configure toolConfig.functionCallingConfig.allowedFunctionNames,
+// which mathematically prevents the LLM from hallucinating non-existent tool names.
+export const TOOL_NAMES: string[] = TOOL_DECLARATIONS.map(t => t.name as string);

@@ -1,4 +1,5 @@
 import { ensureToken } from './googleCalendar';
+import { localDatabase } from './localDatabase';
 
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const DOCS_API = 'https://docs.googleapis.com/v1/documents';
@@ -48,33 +49,53 @@ export const workspaceFetch = async <T>(
 
 // ─── GMAIL ──────────────────────────────────────────────────────────────────
 
-let _gmailCache: { data: any; timestamp: number } | null = null;
-const CACHE_TTL = 60000; // 1 minute cache
-
 export const fetchUnreadEmails = async (query: string = 'is:unread', signal?: AbortSignal) => {
-  if (_gmailCache && Date.now() - _gmailCache.timestamp < CACHE_TTL) {
-    return _gmailCache.data; // Return cached result within same session
+  const cacheKey = `gmail_${query}`;
+  const cached = await localDatabase.getGmailCache(cacheKey);
+
+  const fetchFresh = async () => {
+    try {
+      const [profileData, data] = await Promise.all([
+        workspaceFetch<any>(`${GMAIL_API}/profile`, 'GET', undefined, undefined, signal).catch(() => ({ emailAddress: 'unknown' })),
+        workspaceFetch<any>(`${GMAIL_API}/messages?q=${encodeURIComponent(query)}&maxResults=15`, 'GET', undefined, undefined, signal)
+      ]);
+      
+      if (!data.messages) {
+        const emptyData = { emails: [], emailAddress: profileData.emailAddress };
+        await localDatabase.saveGmailCache(cacheKey, emptyData);
+        return emptyData;
+      }
+
+      const detailPromises = data.messages.map((msg: any) => 
+        workspaceFetch<any>(
+          `${GMAIL_API}/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Message-ID`,
+          'GET', undefined, undefined, signal
+        ).then((details) => {
+          const headers = details.payload.headers;
+          const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
+          const from = headers.find((h: any) => h.name === 'From')?.value || 'Unknown';
+          const date = headers.find((h: any) => h.name === 'Date')?.value || '';
+          return { id: msg.id, threadId: details.threadId, snippet: details.snippet, subject, from, date, labelIds: details.labelIds };
+        })
+      );
+
+      const result = await Promise.all(detailPromises);
+      const finalData = { emails: result, emailAddress: profileData.emailAddress };
+      await localDatabase.saveGmailCache(cacheKey, finalData);
+      return finalData;
+    } catch (e) {
+      console.error('[Gmail Sync Error]', e);
+      throw e;
+    }
+  };
+
+  if (cached) {
+    // Stale-While-Revalidate: return cache instantly, update silently
+    fetchFresh().catch(() => {});
+    return cached.data;
   }
 
-  const data = await workspaceFetch<any>(`${GMAIL_API}/messages?q=${encodeURIComponent(query)}&maxResults=5`, 'GET', undefined, undefined, signal);
-  if (!data.messages) return [];
-
-  const detailPromises = data.messages.map((msg: any) => 
-    workspaceFetch<any>(
-      `${GMAIL_API}/messages/${msg.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date&metadataHeaders=Message-ID`,
-      'GET', undefined, undefined, signal
-    ).then((details) => {
-      const headers = details.payload.headers;
-      const subject = headers.find((h: any) => h.name === 'Subject')?.value || 'No Subject';
-      const from = headers.find((h: any) => h.name === 'From')?.value || 'Unknown';
-      const date = headers.find((h: any) => h.name === 'Date')?.value || '';
-      return { id: msg.id, threadId: details.threadId, snippet: details.snippet, subject, from, date, labelIds: details.labelIds };
-    })
-  );
-
-  const result = await Promise.all(detailPromises);
-  _gmailCache = { data: result, timestamp: Date.now() };
-  return result;
+  return fetchFresh();
 };
 
 export const sendEmail = async (to: string, subject: string, bodyText: string, signal?: AbortSignal) => {
@@ -145,22 +166,134 @@ export const createGoogleDoc = async (title: string, signal?: AbortSignal) => {
   };
 };
 
-/** Appends text content to an existing Google Doc */
+/** Appends text content to an existing Google Doc with basic Markdown parsing */
 export const writeToGoogleDoc = async (docId: string, content: string, signal?: AbortSignal) => {
-  await workspaceFetch<any>(`${DOCS_API}/${docId}:batchUpdate`, 'POST', {
-    requests: [
-      {
-        insertText: {
-          location: { index: 1 },
-          text: content + '\n'
+  const requests: any[] = [];
+  let currentIndex = 1; // Google Docs text index is 1-based
+  let rawText = '';
+  
+  const lines = content.split('\n');
+  const bulletRanges: { start: number; end: number }[] = [];
+  
+  for (const line of lines) {
+    let processLine = line;
+    let headingType: string | null = null;
+    let isBullet = false;
+    
+    // Parse Headings
+    if (processLine.startsWith('# ')) {
+      headingType = 'HEADING_1';
+      processLine = processLine.substring(2);
+    } else if (processLine.startsWith('## ')) {
+      headingType = 'HEADING_2';
+      processLine = processLine.substring(3);
+    } else if (processLine.startsWith('### ')) {
+      headingType = 'HEADING_3';
+      processLine = processLine.substring(4);
+    }
+    // Parse Bullets (we only support top-level bullets for simplicity)
+    else if (processLine.startsWith('- ') || processLine.startsWith('* ')) {
+      isBullet = true;
+      processLine = processLine.substring(2);
+    }
+    
+    const boldRanges: { start: number; end: number }[] = [];
+    const italicRanges: { start: number; end: number }[] = [];
+    
+    // Parse Bold (**text**)
+    let boldMatch;
+    while ((boldMatch = /\*\*(.*?)\*\*/.exec(processLine)) !== null) {
+      const matchText = boldMatch[1];
+      const matchStart = boldMatch.index;
+      processLine = processLine.substring(0, matchStart) + matchText + processLine.substring(matchStart + matchText.length + 4);
+      boldRanges.push({ start: currentIndex + matchStart, end: currentIndex + matchStart + matchText.length });
+    }
+    
+    // Parse Italic (*text*)
+    let italicMatch;
+    while ((italicMatch = /\*(.*?)\*/.exec(processLine)) !== null) {
+      const matchText = italicMatch[1];
+      const matchStart = italicMatch.index;
+      processLine = processLine.substring(0, matchStart) + matchText + processLine.substring(matchStart + matchText.length + 2);
+      italicRanges.push({ start: currentIndex + matchStart, end: currentIndex + matchStart + matchText.length });
+    }
+
+    const lineStart = currentIndex;
+    rawText += processLine + '\n';
+    const lineEnd = currentIndex + processLine.length + 1; // +1 for the newline
+    
+    if (headingType) {
+      requests.push({
+        updateParagraphStyle: {
+          range: { startIndex: lineStart, endIndex: lineEnd },
+          paragraphStyle: { namedStyleType: headingType },
+          fields: 'namedStyleType'
         }
+      });
+    }
+    
+    if (isBullet) {
+      bulletRanges.push({ start: lineStart, end: lineEnd });
+    }
+    
+    for (const r of boldRanges) {
+      requests.push({
+        updateTextStyle: {
+          range: { startIndex: r.start, endIndex: r.end },
+          textStyle: { bold: true },
+          fields: 'bold'
+        }
+      });
+    }
+    
+    for (const r of italicRanges) {
+      requests.push({
+        updateTextStyle: {
+          range: { startIndex: r.start, endIndex: r.end },
+          textStyle: { italic: true },
+          fields: 'italic'
+        }
+      });
+    }
+    
+    currentIndex = lineEnd;
+  }
+  
+  if (bulletRanges.length > 0) {
+    for (const br of bulletRanges) {
+      requests.push({
+        createParagraphBullets: {
+          range: { startIndex: br.start, endIndex: br.end },
+          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE'
+        }
+      });
+    }
+  }
+  
+  // The first request MUST be the text insertion. All subsequent styling requests 
+  // will apply perfectly since we tracked indices based on the rawText structure.
+  const finalRequests = [
+    {
+      insertText: {
+        location: { index: 1 },
+        text: rawText
       }
-    ]
+    },
+    ...requests
+  ];
+
+  await workspaceFetch<any>(`${DOCS_API}/${docId}:batchUpdate`, 'POST', {
+    requests: finalRequests
   }, undefined, signal);
   return { docId, url: `https://docs.google.com/document/d/${docId}/edit` };
 };
 
 // ─── ARCHIVE ──────────────────────────────────────────────────────────────────
+
+/** Moves a file to the trash in Google Drive */
+export const trashDriveFile = async (fileId: string, signal?: AbortSignal) => {
+  return await workspaceFetch<any>(`${DRIVE_API}/${fileId}`, 'PATCH', { trashed: true }, undefined, signal);
+};
 
 export const searchGoogleDrive = async (query: string, signal?: AbortSignal) => {
   const data = await workspaceFetch<any>(
@@ -204,13 +337,33 @@ export const getFilePdfLink = async (fileId: string, signal?: AbortSignal): Prom
 
 /** List calendar events for a specific date */
 export const listCalendarEventsOnDate = async (date: string, signal?: AbortSignal) => {
-  const timeMin = new Date(date + 'T00:00:00').toISOString();
-  const timeMax = new Date(date + 'T23:59:59').toISOString();
-  const data = await workspaceFetch<any>(
-    `${CALENDAR_API}/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime`,
-    'GET', undefined, undefined, signal
-  );
-  return data.items || [];
+  const cacheKey = `cal_${date}`;
+  const cached = await localDatabase.getCalendarCache(cacheKey);
+
+  const fetchFresh = async () => {
+    try {
+      const timeMin = new Date(date + 'T00:00:00').toISOString();
+      const timeMax = new Date(date + 'T23:59:59').toISOString();
+      const data = await workspaceFetch<any>(
+        `${CALENDAR_API}/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime`,
+        'GET', undefined, undefined, signal
+      );
+      const items = data.items || [];
+      await localDatabase.saveCalendarCache(cacheKey, items);
+      return items;
+    } catch (e) {
+      console.error('[Calendar Sync Error]', e);
+      throw e;
+    }
+  };
+
+  if (cached) {
+    // Stale-While-Revalidate: return cache instantly, update silently
+    fetchFresh().catch(() => {});
+    return cached.data;
+  }
+
+  return fetchFresh();
 };
 
 /** Update an existing calendar event (patch by event ID) */

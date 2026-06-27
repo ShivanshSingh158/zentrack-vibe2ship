@@ -364,6 +364,74 @@ export const LearningChecklistModule = () => {
     return () => unsub();
   }, [user]);
 
+  // ── Agent-triggered lecture opening ───────────────────────────────────────
+  // Listens for 'agent-open-lecture' events dispatched by the AgentNavigator
+  // in App.tsx when the user asks the AI to "open lecture X".
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        topicTitle?: string;
+        lectureTitle?: string;
+      };
+      if (!detail) return;
+
+      // Find the matching topic (fuzzy match on title)
+      const lowerTopic = (detail.topicTitle || '').toLowerCase();
+      const lowerLecture = (detail.lectureTitle || '').toLowerCase();
+
+      // Find best matching topic
+      let targetTopic = topics.find(t =>
+        lowerTopic && t.title?.toLowerCase().includes(lowerTopic)
+      ) || (lowerTopic ? null : topics[0]);
+
+      if (!targetTopic && lowerLecture) {
+        // Search all topics for the lecture
+        targetTopic = topics.find(t =>
+          t.subTasks?.some(st => (st.text || st.title || '').toLowerCase().includes(lowerLecture))
+        );
+      }
+
+      if (!targetTopic) {
+        toast.info(`Couldn't find topic "${detail.topicTitle || detail.lectureTitle}". Try searching manually.`);
+        return;
+      }
+
+      // Expand the topic
+      setAndPersistExpanded(targetTopic.id!);
+
+      if (lowerLecture) {
+        // Find matching lecture within the topic
+        const matchingSubtask = targetTopic.subTasks?.find(st =>
+          (st.text || st.title || '').toLowerCase().includes(lowerLecture)
+        );
+
+        if (matchingSubtask) {
+          // Delay slightly so topic expands first
+          setTimeout(() => {
+            const videoId = matchingSubtask.url
+              ? extractYoutubeId(matchingSubtask.url)
+              : matchingSubtask.resources?.map((r: any) => extractYoutubeId(r.url)).find(Boolean);
+
+            if (videoId) {
+              handlePlayVideo(videoId, matchingSubtask.id, targetTopic!.id!);
+              toast.success(`🎬 Opening: "${matchingSubtask.text || matchingSubtask.title}"`);
+            } else {
+              toast.info(`Found lecture but no video URL. Topic expanded.`);
+            }
+          }, 300);
+        } else {
+          toast.info(`Topic found. Couldn't find lecture "${detail.lectureTitle}" — topic expanded for you.`);
+        }
+      } else {
+        toast.success(`📚 Opened topic: "${targetTopic.title}"`);
+      }
+    };
+
+    window.addEventListener('agent-open-lecture', handler);
+    return () => window.removeEventListener('agent-open-lecture', handler);
+  }, [topics, handlePlayVideo]);
+
+
   // ── Video Handlers ────────────────────────────────────────────────────────
 
   const handlePlayVideo = useCallback((videoId: string, subtaskId: string, topicId: string) => {

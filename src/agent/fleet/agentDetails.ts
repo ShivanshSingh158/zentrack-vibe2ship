@@ -147,4 +147,24 @@ export const AGENT_DETAILS: Record<string, AgentDetail> = {
     icon: '⚡',
     depicts: ['Action Chainer', 'Delegation Hub', 'Workflow Automator'],
   },
+  NAVIGATOR: {
+    title: 'Interface Pilot',
+    tagline: 'UI navigation, view switching & contextual routing',
+    color: '#4ade80',
+    secondaryColor: '#16a34a',
+    description: 'Specializes in navigating the ZenTrack application interface. Opens specific views, triggers modal states, and routes the user to the correct workspace.',
+    image: '/agents/search.png',
+    icon: '🧭',
+    depicts: ['View Router', 'Modal Trigger', 'Interface Driver'],
+  },
+  MEET: {
+    title: 'Virtual Presence Coordinator',
+    tagline: 'Meeting prep, auto-transcription & brief generation',
+    color: '#f87171',
+    secondaryColor: '#dc2626',
+    description: 'Prepares for upcoming meetings, retrieves context, manages virtual presence, and generates pre-meeting briefs based on recent emails and tasks.',
+    image: '/agents/comms.png',
+    icon: '🎥',
+    depicts: ['Brief Generator', 'Prep Coordinator', 'Context Retriever'],
+  }
 };

@@ -5,8 +5,7 @@ import { DragDropContext } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
 import { toast } from 'sonner';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { db } from '../../services/firebase';
-import type { User } from 'firebase/auth';
+import { db, auth } from '../../services/firebase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 import type { JobApplication } from '../../types/index';
@@ -23,11 +22,8 @@ const COLUMNS: { title: string; status: JobApplication['status'] }[] = [
   { title: 'Rejected', status: 'rejected' }
 ];
 
-interface JobTrackerProps {
-  user: User;
-}
-
-export const JobTracker = ({ user }: JobTrackerProps) => {
+export const JobTracker = () => {
+  const user = auth.currentUser;
   const navigate = useNavigate();
   const [jobs, setJobs] = useState<JobApplication[]>([]);
   const [learningTopics, setLearningTopics] = useState<{id: string, title: string}[]>([]);
@@ -44,6 +40,8 @@ export const JobTracker = ({ user }: JobTrackerProps) => {
   useEffect(() => {
     setIsLoading(true);
 
+    if (!user) return;
+    
     const qJobs = query(collection(db, 'job_applications'), where('userId', '==', user.uid));
     const unsubscribeJobs = onSnapshot(qJobs, (snapshot) => {
       const jobsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication));
@@ -66,17 +64,17 @@ export const JobTracker = ({ user }: JobTrackerProps) => {
       unsubscribeJobs();
       unsubscribeTopics();
     };
-  }, [user.uid]);
+  }, [user]);
 
 
 
   const handleSaveJob = async (jobData: Partial<JobApplication>) => {
     try {
+      if (!user) return;
       const isEditing = !!jobData.id;
 
       if (isEditing) {
-        const jobRef = doc(db, 'job_applications', jobData.id!);
-        await updateDoc(jobRef, jobData as any);
+        await updateDoc(doc(db, 'job_applications', jobData.id as string), jobData as any);
         toast.success('Job updated successfully');
       } else {
         await addDoc(collection(db, 'job_applications'), { ...jobData, userId: user.uid });

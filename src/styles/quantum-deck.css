@@ -483,6 +483,8 @@
   font-size: 0.68rem; color: #22c55e;
   overflow-y: auto; line-height: 1.4;
   text-shadow: 0 0 4px rgba(34, 197, 94, 0.2); position: relative;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .hud-console-cursor { display: inline-block; width: 6px; height: 10px; background: #22c55e; margin-left: 2px; animation: cursor-blink 0.8s steps(2) infinite; }

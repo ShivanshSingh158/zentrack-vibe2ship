@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Terminal, X, Minimize2, Maximize2, Trash } from 'lucide-react';
+import { Terminal, X, Minimize2, Maximize2, Trash, Archive } from 'lucide-react';
 
 interface LogEntry {
   id: string;
@@ -16,6 +16,7 @@ export const AgentTerminal: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const handleLog = (e: CustomEvent) => {
@@ -29,32 +30,87 @@ export const AgentTerminal: React.FC = () => {
         title: '',
       };
 
+      const getActionText = (tool: string) => {
+        const mapping: Record<string, string> = {
+          read_gmail: 'Scanning inbox radar...',
+          send_gmail: 'Dispatching secure email...',
+          reply_gmail: 'Drafting reply...',
+          archive_gmail: 'Archiving thread...',
+          get_tasks: 'Analyzing ZenTrack backlog...',
+          get_free_calendar_slots: 'Scanning calendar availability...',
+          list_calendar_events: 'Reviewing schedule...',
+          create_google_doc: 'Initializing new document...',
+          write_google_doc: 'Finalizing document...',
+          send_notification: 'Pinging user...',
+          delegate_task: 'Deploying sub-agent...',
+        };
+        return mapping[tool] || `Executing Protocol: ${tool}`;
+      };
+
+      const getResultText = (tool: string) => {
+        const mapping: Record<string, string> = {
+          read_gmail: 'Inbox scan complete',
+          send_gmail: 'Email dispatched',
+          reply_gmail: 'Reply sent',
+          archive_gmail: 'Thread archived',
+          get_tasks: 'Backlog retrieved',
+          get_free_calendar_slots: 'Availability confirmed',
+          list_calendar_events: 'Schedule verified',
+          create_google_doc: 'Document initialized',
+          write_google_doc: 'Document written',
+          send_notification: 'Ping delivered',
+          delegate_task: 'Sub-agent deployed',
+        };
+        return mapping[tool] || `Protocol complete: ${tool}`;
+      };
+
       if (step.type === 'thinking') {
-        newLog.text = step.text || step.title || step.message;
+        let text = step.text || step.title || step.message || '';
+        text = text.replace('Supervisor mapping DAG...', 'Fleet Commander organizing mission...');
+        text = text.replace(/Zen AI is thinking\.\.\. \(.*?\)/, 'Synthesizing neural pathways...');
+        text = text.replace(/\[(.*?)\] Running\.\.\./, 'Deploying $1 agent...');
+        newLog.text = text;
       } else if (step.type === 'tool_call') {
-        newLog.text = `Executing: ${step.toolName || step.title}`;
+        newLog.text = getActionText(step.toolName || step.title || '');
         newLog.data = step.args || step.data;
       } else if (step.type === 'tool_result') {
-        newLog.text = `Result: ${step.toolName || step.title}`;
+        newLog.text = `✓ ${getResultText(step.toolName || step.title || '')}`;
         newLog.data = step.result || step.data;
       } else if (step.type === 'answer') {
         const fullText = step.text || step.title || step.message || '';
-        newLog.text = fullText.length > 80 ? fullText.substring(0, 80) + '... (See Mission Report)' : fullText;
+        if (fullText.length > 120) {
+          newLog.text = fullText.substring(0, 120) + '...';
+        } else {
+          newLog.text = fullText;
+        }
       } else {
         newLog.text = step.text || step.title || step.message || JSON.stringify(step);
       }
 
       setLogs(prev => [...prev, newLog]);
+
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        setLogs([]);
+      }, 120000); // 2 minutes auto-clear
     };
 
     window.addEventListener('agent-log', handleLog as EventListener);
 
     const handleToggle = () => setIsOpen(o => !o);
+    const handleOpen = () => setIsOpen(true);
+    const handleClose = () => setIsOpen(false);
+    
     window.addEventListener('agent-terminal-toggle', handleToggle);
+    window.addEventListener('agent-terminal-open', handleOpen);
+    window.addEventListener('agent-terminal-close', handleClose);
 
     return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       window.removeEventListener('agent-log', handleLog as EventListener);
       window.removeEventListener('agent-terminal-toggle', handleToggle);
+      window.removeEventListener('agent-terminal-open', handleOpen);
+      window.removeEventListener('agent-terminal-close', handleClose);
     };
   }, []);
 
@@ -99,9 +155,16 @@ export const AgentTerminal: React.FC = () => {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a855f7', fontSize: '14px', fontWeight: 'bold' }}>
             <Terminal size={16} />
-            ZEN AGENT TERMINAL
+            <span>ZEN AGENT TERMINAL</span>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('show-report-archive'))}
+              style={{ background: 'none', border: 'none', color: '#a855f7', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', padding: 0 }}
+              title="View Mission Archives"
+            >
+              <Archive size={14} /> Archives
+            </button>
             <button 
               onClick={() => {
                 setLogs([]);
@@ -137,15 +200,17 @@ export const AgentTerminal: React.FC = () => {
           >
             {logs.map((log) => (
               <div key={log.id} style={{ fontSize: '13px', lineHeight: 1.4 }}>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <span style={{ color: '#6b7280' }}>[{log.time}]</span>
-                  <span style={{ 
-                    color: log.type === 'tool_call' ? '#eab308' : 
-                           log.type === 'tool_result' ? '#10b981' : 
-                           log.type === 'answer' ? '#a855f7' : '#9ca3af'
-                  }}>
-                    {log.text}
-                  </span>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <span style={{ color: '#6b7280', flexShrink: 0 }}>[{log.time}]</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ 
+                      color: log.type === 'tool_call' ? '#eab308' : 
+                             log.type === 'tool_result' ? '#10b981' : 
+                             log.type === 'answer' ? '#a855f7' : '#9ca3af'
+                    }}>
+                      {log.text}
+                    </span>
+                  </div>
                 </div>
               </div>
             ))}

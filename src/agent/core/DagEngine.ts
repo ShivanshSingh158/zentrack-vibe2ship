@@ -1,6 +1,6 @@
 import type { SharedMemoryContext } from './SharedState';
 
-export type AgentRole = 'ORACLE' | 'SCRIBE' | 'ENIGMA' | 'HERMES' | 'CHRONOS' | 'ARCHIVE' | 'HEPHAESTUS' | 'AEGIS' | 'MEET' | 'ATLAS' | 'ARGUS' | 'SPECTRE' | 'TITAN';
+export type AgentRole = 'ORACLE' | 'SCRIBE' | 'ENIGMA' | 'HERMES' | 'CHRONOS' | 'ARCHIVE' | 'HEPHAESTUS' | 'AEGIS' | 'MEET' | 'ATLAS' | 'ARGUS' | 'SPECTRE' | 'TITAN' | 'NAVIGATOR';
 
 export interface DagTask {
   id: string;

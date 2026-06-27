@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { getActiveGeminiKey, setAuthExpired } from '../userGeminiAuth';
+import { apiQuotaStore } from '../../stores/apiQuotaStore';
 
 // ── Global Fetch Interceptor for Gemini OAuth ───────────────────────────────
 // The official GoogleGenerativeAI SDK does not natively support OAuth Bearer tokens
@@ -61,27 +62,58 @@ if (typeof window !== 'undefined') {
 //   1st: gemini-2.5-flash                    → user's "gemini-3.5-flash" tier
 //   2nd: gemini-2.5-flash-lite-preview-06-17 → user's "gemini-3.1-flash-lite" tier
 //   3rd: gemini-2.0-flash                    → fallback for stability
-//
-// NOTE: Model IDs like "gemini-3.5-flash" and "gemini-3.1-flash-lite" are NOT
-// available as public API strings. The equivalent current GA IDs are used above.
-export const SHARED_MODEL_PRIORITY = [
-  'gemini-2.5-flash-lite-preview-06-17', // Cheapest quota — "3.1 flash lite" tier, try first
-  'gemini-2.5-flash',                    // Mid tier — "3.5 flash" equivalent
-  'gemini-2.0-flash',                    // Stable fallback
+// ── HYBRID ROUTING SYSTEM ──────────────────────────────────────────────────────
+// TOP-LEVEL AGENTS (Supervisors): Require higher intelligence for master planning.
+// We prioritize the Pro/Standard models here.
+export const SHARED_TOP_LEVEL_PRIORITY = [
+  'gemini-2.5-flash',                    // Best available working Standard model
+  'gemini-3.1-flash-lite',               // Fallback to Lite
+  'gemini-3.5-flash',                    // 20 RPD limit
+  'gemini-2.0-flash',                    // 0 RPD limit
+  'gemini-2.0-flash-lite',               // 0 RPD limit
+  'gemini-2.5-flash-lite-preview-06-17', // 404 Not Found
 ];
 
-export const PERSONAL_MODEL_PRIORITY = [
-  'gemini-2.5-flash',                    // Best available — "3.5 flash" tier
-  'gemini-2.5-flash-lite-preview-06-17', // Fast fallback — "3.1 flash lite" tier
-  'gemini-2.0-flash',                    // Stable fallback
+export const PERSONAL_TOP_LEVEL_PRIORITY = [
+  'gemini-2.5-flash',                    
+  'gemini-3.1-flash-lite',               
+  'gemini-3.5-flash',                    
+  'gemini-2.0-flash',                    
+  'gemini-2.0-flash-lite',               
+  'gemini-2.5-flash-lite-preview-06-17', 
+];
+
+// SUB-AGENTS (Workers: Oracle, Enigma): Require high speed and low quota usage.
+// We prioritize the Flash-Lite models here.
+export const SHARED_SUB_AGENT_PRIORITY = [
+  'gemini-3.1-flash-lite',               // Massive 1,500/day quota — Try first!
+  'gemini-2.5-flash',                    // Fallback to Standard
+  'gemini-3.5-flash',                    
+  'gemini-2.0-flash',                    
+  'gemini-2.0-flash-lite',               
+  'gemini-2.5-flash-lite-preview-06-17', 
+];
+
+export const PERSONAL_SUB_AGENT_PRIORITY = [
+  'gemini-3.1-flash-lite',               
+  'gemini-2.5-flash',                    
+  'gemini-3.5-flash',                    
+  'gemini-2.0-flash',                    
+  'gemini-2.0-flash-lite',               
+  'gemini-2.5-flash-lite-preview-06-17', 
 ];
 
 // Unified alias so internal consumers can reference a single constant.
-// Defaults to SHARED_MODEL_PRIORITY (used by RobustChatSession without personal key).
-export const MODEL_PRIORITY = SHARED_MODEL_PRIORITY;
+// Unified alias so internal consumers can reference a single constant.
+// Defaults to SHARED_TOP_LEVEL_PRIORITY (used by RobustChatSession without personal key).
+export const MODEL_PRIORITY = SHARED_TOP_LEVEL_PRIORITY;
 
-export const getPriorityModels = (isPersonal: boolean) => {
-  return isPersonal ? PERSONAL_MODEL_PRIORITY : SHARED_MODEL_PRIORITY;
+export const getPriorityModels = (isPersonal: boolean, isTopLevel: boolean = true) => {
+  if (isTopLevel) {
+    return isPersonal ? PERSONAL_TOP_LEVEL_PRIORITY : SHARED_TOP_LEVEL_PRIORITY;
+  } else {
+    return isPersonal ? PERSONAL_SUB_AGENT_PRIORITY : SHARED_SUB_AGENT_PRIORITY;
+  }
 };
 
 export const SAFETY_SETTINGS = [
@@ -92,8 +124,8 @@ export const SAFETY_SETTINGS = [
 ];
 
 // Always try the best model first (avoid permanent sticky downgrades due to transient errors)
-const getPreferredModel = (isPersonal: boolean): string => {
-  return getPriorityModels(isPersonal)[0];
+const getPreferredModel = (isPersonal: boolean, isTopLevel: boolean = true): string => {
+  return getPriorityModels(isPersonal, isTopLevel)[0];
 };
 const setPreferredModel = (m: string) => {
   // No-op to prevent permanent sticky downgrades
@@ -102,22 +134,104 @@ if (typeof window !== 'undefined') {
   try { localStorage.removeItem('zen_working_model'); } catch {}
 }
 
+// ── Runtime Key Store (localStorage-backed) ───────────────────────────────────
+// Keys stored here survive page reloads and are merged with .env keys at runtime.
+// Use addRuntimeApiKey / removeRuntimeApiKey to manage them from the UI.
+const RUNTIME_KEYS_STORAGE = 'zen_runtime_api_keys';
+
+const _loadRuntimeKeys = (): string[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(RUNTIME_KEYS_STORAGE);
+    if (!raw) return [];
+    return JSON.parse(raw).filter((k: string) => typeof k === 'string' && k.length > 10);
+  } catch { return []; }
+};
+
+const _saveRuntimeKeys = (keys: string[]) => {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem(RUNTIME_KEYS_STORAGE, JSON.stringify(keys)); } catch {}
+};
+
+/** Add a new API key at runtime. Returns true if added, false if duplicate/invalid. */
+export const addRuntimeApiKey = (key: string): boolean => {
+  const trimmed = key.trim();
+  if (trimmed.length < 10) return false;
+  const current = _loadRuntimeKeys();
+  if (current.includes(trimmed)) return false;
+  const envBase = rawApiKey.split(',').map((k: string) => k.trim()).filter((k: string) => k.length > 10);
+  if (envBase.includes(trimmed)) return false; // already in .env pool
+  const updated = [...current, trimmed];
+  _saveRuntimeKeys(updated);
+  // Notify subscribers (e.g. quota store)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('zen-api-keys-changed'));
+  }
+  console.log(`[ZenAI] ➕ Runtime key added. Total pool size: ${getActiveKeyPool().length}`);
+  return true;
+};
+
+/** Remove a runtime API key by its masked prefix (first 8 chars). */
+export const removeRuntimeApiKey = (keyPrefix: string): boolean => {
+  const current = _loadRuntimeKeys();
+  const updated = current.filter(k => !k.startsWith(keyPrefix));
+  if (updated.length === current.length) return false;
+  _saveRuntimeKeys(updated);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('zen-api-keys-changed'));
+  }
+  console.log(`[ZenAI] ➖ Runtime key removed. Total pool size: ${getActiveKeyPool().length}`);
+  return true;
+};
+
+/** Get all runtime-added keys (masked for display). */
+export const getRuntimeKeysMasked = (): { prefix: string; masked: string }[] => {
+  return _loadRuntimeKeys().map(k => ({
+    prefix: k.substring(0, 8),
+    masked: k.substring(0, 6) + '••••••••' + k.slice(-4),
+  }));
+};
+
+/** Get the live, merged API key pool (.env + runtime localStorage keys). */
+export const getActiveKeyPool = (): string[] => {
+  const envBase = rawApiKey
+    .split(',')
+    .map((k: string) => k.trim())
+    .filter((k: string) => k.length > 10);
+  const runtimeKeys = _loadRuntimeKeys();
+  // Merge: deduplicate (runtime may overlap with env if user re-enters same key)
+  const all = [...envBase];
+  for (const k of runtimeKeys) {
+    if (!all.includes(k)) all.push(k);
+  }
+  return all;
+};
+
 const rawApiKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' && process.env?.VITE_GEMINI_API_KEY) || '';
-// Filter out empty strings and obviously invalid keys (too short)
-export const allKeys = rawApiKey
-  .split(',')
-  .map((k: string) => k.trim())
-  .filter((k: string) => k.length > 10);
+
+// ── Live key pool — always reflects current .env + runtime additions ──────────
+// DO NOT read `allKeys` directly in other files — use `getActiveKeyPool()` instead.
+// `allKeys` is kept for backward compatibility with code written before dynamic keys.
+export const allKeys = getActiveKeyPool();
 
 if (allKeys.length === 0) {
-  console.error('[ZenAI] ❌ VITE_GEMINI_API_KEY is missing or empty. Set it in Vercel → Settings → Environment Variables.');
+  console.error('[ZenAI] ❌ No API keys found. Add a key in the Agent Settings panel.');
 } else {
   console.log(`[ZenAI] ✅ ${allKeys.length} Gemini API key(s) loaded.`);
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-export const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+export const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) return reject(new Error('Aborted'));
+  const timer = setTimeout(resolve, ms);
+  if (signal) {
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new Error('Aborted'));
+    }, { once: true });
+  }
+});
 
 // ── Global Concurrency Semaphore ──────────────────────────────────────────────
 // This is the PRIMARY fix for the thundering-herd / key exhaustion problem.
@@ -137,10 +251,11 @@ let _activeTopLevelAgents = 0; // count of agents holding semaphore slots
 
 export const getActiveAgentCount = (): number => _activeTopLevelAgents;
 
-const acquireSemaphore = async (): Promise<void> => {
+const acquireSemaphore = async (signal?: AbortSignal): Promise<void> => {
   const MAX_WAIT_MS = 30_000; // max 30s wait in queue
   const startedAt = Date.now();
   while (_activeApiCalls >= MAX_CONCURRENT_API_CALLS) {
+    if (signal?.aborted) throw new Error('Aborted');
     if (Date.now() - startedAt > MAX_WAIT_MS) {
       // Timeout: proceed anyway rather than deadlocking
       console.warn('[ZenAI] Semaphore wait timeout — proceeding anyway to avoid deadlock.');
@@ -148,8 +263,13 @@ const acquireSemaphore = async (): Promise<void> => {
     }
     // Wait with random jitter so multiple queued calls don't all wake at the same time
     const jitter = 200 + Math.random() * 300;
-    await sleep(jitter);
+    try {
+      await sleep(jitter, signal);
+    } catch (e) {
+      throw new Error('Aborted');
+    }
   }
+  if (signal?.aborted) throw new Error('Aborted');
   _activeApiCalls++;
   _activeTopLevelAgents++;
 };
@@ -167,24 +287,23 @@ const KEY_COOLDOWN_MS = 62_000; // 62s — just over Gemini's typical 60s 429 wi
 const keyCooldownUntil = new Map<string, number>(); // token (first 8 chars) → available-at timestamp
 
 const isKeyAvailable = (token: string): boolean => {
-  const key = token.substring(0, 8); // use prefix as map key (never log full key)
-  const until = keyCooldownUntil.get(key);
+  const until = keyCooldownUntil.get(token);
   if (!until) return true;
   if (Date.now() >= until) {
-    keyCooldownUntil.delete(key);
+    keyCooldownUntil.delete(token);
     return true;
   }
   return false;
 };
 
 const markKeyCooling = (token: string, reason: string, customCooldownMs?: number) => {
-  const key = token.substring(0, 8);
+  const keyLog = token.substring(0, 8);
   // ✅ FIXED: Use dynamic cooldown from Retry-After header if available,
   // otherwise fall back to the default 62s window.
   const cooldownMs = customCooldownMs ?? KEY_COOLDOWN_MS;
   const until = Date.now() + cooldownMs;
-  keyCooldownUntil.set(key, until);
-  console.warn(`[ZenAI] Key ...${key} rate-limited. Cooling for ${Math.ceil(cooldownMs / 1000)}s. Reason: ${reason.substring(0, 60)}`);
+  keyCooldownUntil.set(token, until); // Use full token to avoid prefix collisions!
+  console.warn(`[ZenAI] Key ...${keyLog} rate-limited. Cooling for ${Math.ceil(cooldownMs / 1000)}s. Reason: ${reason.substring(0, 60)}`);
 };
 
 const isRateLimit = (err: any): boolean => {
@@ -229,52 +348,91 @@ export const takeNextKeyIndex = (): number => {
  * other microtasks, allowing another parallel agent to read the same index.
  * Fix: claim the key index SYNCHRONOUSLY in one pass, then do any async waiting
  * AFTER the claim so no other caller can grab the same key.
- *
  * Returns { token, index } or null if no shared keys configured.
  */
-const pickNextSharedKey = async (): Promise<{ token: string; index: number } | null> => {
-  if (allKeys.length === 0) return null;
 
-  // ── Phase 1: Synchronous scan — claim a key index atomically ────────────────
-  // We scan all keys and find the first available one, advancing globalKeyIndex
-  // in one synchronous step before any await can yield control.
-  const startIdx = globalKeyIndex;
-  for (let attempt = 0; attempt < allKeys.length; attempt++) {
-    const idx = (startIdx + attempt) % allKeys.length;
-    const token = allKeys[idx];
-    if (isKeyAvailable(token)) {
-      // ✅ Advance pointer synchronously — no other agent can claim this index
-      globalKeyIndex = (idx + 1) % allKeys.length;
-      return { token, index: idx };
+class Mutex {
+  private queue: Array<() => void> = [];
+  private locked = false;
+
+  async acquire(signal?: AbortSignal): Promise<() => void> {
+    if (!this.locked) {
+      this.locked = true;
+      return () => this.release();
+    }
+    return new Promise((resolve, reject) => {
+      const onAcquire = () => {
+        if (signal?.aborted) reject(new Error('Aborted'));
+        else resolve(() => this.release());
+      };
+      this.queue.push(onAcquire);
+      if (signal) signal.addEventListener('abort', onAcquire, { once: true });
+    });
+  }
+
+  private release() {
+    if (this.queue.length > 0) {
+      const next = this.queue.shift()!;
+      next();
+    } else {
+      this.locked = false;
     }
   }
+}
 
-  // ── Phase 2: All keys cooling — find soonest recovery ───────────────────────
-  // We're here only if every key is cooling. Find which comes back first.
-  let soonestToken = allKeys[0];
-  let soonestIdx   = 0;
-  let soonestTime  = keyCooldownUntil.get(allKeys[0].substring(0, 8)) ?? 0;
-  for (let i = 1; i < allKeys.length; i++) {
-    const t = keyCooldownUntil.get(allKeys[i].substring(0, 8)) ?? 0;
-    if (t < soonestTime) { soonestTime = t; soonestToken = allKeys[i]; soonestIdx = i; }
-  }
+const keySelectionMutex = new Mutex();
+// globalApiPauseUntil removed
+const pickNextSharedKey = async (signal?: AbortSignal): Promise<{ token: string; index: number } | null> => {
+  const release = await keySelectionMutex.acquire(signal);
+  try {
+    // ✅ Always get the LIVE pool so newly added runtime keys are included immediately
+    const liveKeys = getActiveKeyPool();
+    if (liveKeys.length === 0) return null;
 
-  // Advance pointer past the key we're about to wait for (synchronous claim)
-  globalKeyIndex = (soonestIdx + 1) % allKeys.length;
-
-  // ── Phase 3: Async wait — AFTER claiming the slot ───────────────────────────
-  const waitMs = Math.max(0, soonestTime - Date.now());
-  if (waitMs > 0) {
-    console.warn(`[ZenAI] All ${allKeys.length} shared keys cooling. Waiting ${Math.ceil(waitMs / 1000)}s for key ...${soonestToken.substring(0, 8)} to recover.`);
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('agent-log', {
-        detail: { type: 'thinking', title: `⏳ All keys cooling. Recovering in ${Math.ceil(waitMs / 1000)}s...` }
-      }));
+    // ── Phase 1: Synchronous scan — claim a key index atomically ────────────────
+    const startIdx = globalKeyIndex;
+    for (let attempt = 0; attempt < liveKeys.length; attempt++) {
+      const idx = (startIdx + attempt) % liveKeys.length;
+      const token = liveKeys[idx];
+      if (isKeyAvailable(token)) {
+        globalKeyIndex = (idx + 1) % liveKeys.length;
+        return { token, index: idx };
+      }
     }
-    await sleep(waitMs + 500); // +500ms buffer to be safe
-    keyCooldownUntil.delete(soonestToken.substring(0, 8)); // Clear its cooldown
+
+    if (signal?.aborted) throw new Error('Aborted');
+
+    // ── Phase 2: All keys cooling — find soonest recovery ───────────────────────
+    let soonestToken = liveKeys[0];
+    let soonestIdx   = 0;
+    let soonestTime  = keyCooldownUntil.get(liveKeys[0]) ?? 0;
+    for (let i = 1; i < liveKeys.length; i++) {
+      const t = keyCooldownUntil.get(liveKeys[i]) ?? 0;
+      if (t < soonestTime) { soonestTime = t; soonestToken = liveKeys[i]; soonestIdx = i; }
+    }
+
+    globalKeyIndex = (soonestIdx + 1) % liveKeys.length;
+
+    // ── Phase 3: Async wait — AFTER claiming the slot ───────────────────────────
+    const waitMs = Math.max(0, soonestTime - Date.now());
+    if (waitMs > 0) {
+      console.warn(`[ZenAI] All ${liveKeys.length} shared keys cooling. Waiting ${Math.ceil(waitMs / 1000)}s for key ...${soonestToken.substring(0, 8)} to recover.`);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('agent-log', {
+          detail: { type: 'thinking', title: `⏳ All ${liveKeys.length} keys cooling. Recovering in ${Math.ceil(waitMs / 1000)}s...` }
+        }));
+      }
+      try {
+        await sleep(waitMs + 500, signal);
+      } catch (e) {
+        throw new Error('Aborted');
+      }
+      keyCooldownUntil.delete(soonestToken);
+    }
+    return { token: soonestToken, index: soonestIdx };
+  } finally {
+    release();
   }
-  return { token: soonestToken, index: soonestIdx };
 };
 
 /**
@@ -297,13 +455,14 @@ const pickNextSharedKey = async (): Promise<{ token: string; index: number } | n
  * Use this for all orchestrator-level agent invocations.
  */
 export const callWithFallback = async (
-  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
+  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>,
+  signal?: AbortSignal
 ): Promise<any> => {
   // ✅ Acquire global semaphore — prevents thundering herd from parallel agents
-  await acquireSemaphore();
+  await acquireSemaphore(signal);
   try {
     // Pass isTopLevel=true so the routing policy can check _activeTopLevelAgents
-    return await _callWithFallbackInner(buildRequest, true);
+    return await _callWithFallbackInner(buildRequest, true, signal);
   } finally {
     releaseSemaphore();
   }
@@ -323,26 +482,36 @@ export const callWithFallback = async (
  * isTopLevel=false so sub-agents don't artificially inflate the agent count.
  */
 export const callWithFallbackUnthrottled = async (
-  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>
+  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>,
+  signal?: AbortSignal
 ): Promise<any> => {
-  return await _callWithFallbackInner(buildRequest, false);
+  return await _callWithFallbackInner(buildRequest, false, signal);
 };
 
-// ── Startup Model Health Check ──────────────────────────────────────────────────────
-// Proactively validates which models are actually available before any user
-// request arrives. Preview models (e.g. flash-lite-preview) can be deprecated
-// without notice. Models that fail the ping are removed from priority lists.
-const _unavailableModels = new Set<string>();
+// Startup Model Health Check ──────────────────────────────────────────────────────
+// Proactively validates which models are actually available.
+// If a model 404s, it goes on a 60-second cooldown before being tried again.
+const _unavailableModels = new Map<string, number>();
+const MODEL_COOLDOWN_MS = 60_000; // 60 seconds
 
-export const getEffectivePriorityList = (isPersonal: boolean): string[] => {
-  const base = isPersonal ? PERSONAL_MODEL_PRIORITY : SHARED_MODEL_PRIORITY;
-  return base.filter(m => !_unavailableModels.has(m));
+export const getEffectivePriorityList = (isPersonal: boolean, isTopLevel: boolean = true): string[] => {
+  const base = getPriorityModels(isPersonal, isTopLevel);
+  const now = Date.now();
+  return base.filter(m => {
+    const cooldown = _unavailableModels.get(m);
+    return !cooldown || now >= cooldown;
+  });
 };
 
 export const runModelHealthCheck = async (): Promise<void> => {
   if (allKeys.length === 0) return; // no keys to test with
   const testKey = allKeys[0];
-  const allModels = Array.from(new Set([...SHARED_MODEL_PRIORITY, ...PERSONAL_MODEL_PRIORITY]));
+  const allModels = Array.from(new Set([
+    ...SHARED_TOP_LEVEL_PRIORITY, 
+    ...PERSONAL_TOP_LEVEL_PRIORITY,
+    ...SHARED_SUB_AGENT_PRIORITY,
+    ...PERSONAL_SUB_AGENT_PRIORITY
+  ]));
   const testGenAI = new GoogleGenerativeAI(testKey);
 
   console.log('[ZenAI] 🤖 Running startup model health check...');
@@ -354,19 +523,22 @@ export const runModelHealthCheck = async (): Promise<void> => {
       console.log(`[ZenAI] ✅ Model available: ${modelId}`);
     } catch (err: any) {
       if (isModelNotFound(err) || err?.message?.includes('deprecated')) {
-        _unavailableModels.add(modelId);
-        console.warn(`[ZenAI] ⚠️ Model unavailable (marked skip): ${modelId}`);
+        console.warn(`[ZenAI] ⚠️ Model returned 404/deprecated during health check: ${modelId}`);
       }
       // Rate limits / overloads are transient — don't mark as unavailable
     }
   }));
-  console.log(`[ZenAI] Health check done. Unavailable: [${[..._unavailableModels].join(', ') || 'none'}]`);
+  const unavailableList = Array.from(_unavailableModels.keys());
+  console.log(`[ZenAI] Health check done. Unavailable: [${unavailableList.join(', ') || 'none'}]`);
 };
+
+let lastPersonalWarningLog = 0;
 
 // Internal implementation — separated so semaphore wraps the entire execution
 const _callWithFallbackInner = async (
   buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>,
-  isTopLevel: boolean = false // true when called from callWithFallback (semaphore-holding)
+  isTopLevel: boolean = false, // true when called from callWithFallback (semaphore-holding)
+  signal?: AbortSignal
 ): Promise<any> => {
   const personalKey = getActiveGeminiKey();
 
@@ -387,10 +559,10 @@ const _callWithFallbackInner = async (
   );
 
   const isPersonalRequest = shouldUsePersonal;
-  const ordered = getEffectivePriorityList(isPersonalRequest);
+  const ordered = getEffectivePriorityList(isPersonalRequest, isTopLevel);
   if (ordered.length === 0) {
     // All models marked unavailable — use full list as emergency fallback
-    ordered.push(...(isPersonalRequest ? PERSONAL_MODEL_PRIORITY : SHARED_MODEL_PRIORITY));
+    ordered.push(...getPriorityModels(isPersonalRequest, isTopLevel));
   }
 
   let lastError: any;
@@ -404,15 +576,17 @@ const _callWithFallbackInner = async (
       // Re-check at time of use — token may have expired since routing decision
       const freshToken = getActiveGeminiKey();
       if (!freshToken) {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && Date.now() - lastPersonalWarningLog > 60000) {
+          lastPersonalWarningLog = Date.now();
           window.dispatchEvent(new CustomEvent('agent-log', {
-            detail: { type: 'thinking', title: '🔄 Personal token expired. Using shared key pool...' }
+            detail: { type: 'thinking', title: '🔄 Personal token expired. Using shared pool...' }
           }));
         }
         // Fall through to shared pool below
       } else {
         try {
           const genAI = new GoogleGenerativeAI('oauth_dummy_key');
+          apiQuotaStore.recordRequest();
           const result = await buildRequest(genAI, modelName);
           return result;
         } catch (err: any) {
@@ -421,7 +595,8 @@ const _callWithFallbackInner = async (
 
           if (msg.includes('personal_token_unavailable') || isAuthError(err)) {
             // Personal key failed — fall through to shared pool silently
-            if (typeof window !== 'undefined') {
+            if (typeof window !== 'undefined' && Date.now() - lastPersonalWarningLog > 60000) {
+              lastPersonalWarningLog = Date.now();
               window.dispatchEvent(new CustomEvent('agent-log', {
                 detail: { type: 'thinking', title: '🔄 Personal key unavailable. Switching to shared pool...' }
               }));
@@ -434,37 +609,37 @@ const _callWithFallbackInner = async (
             throw err; // non-retryable
           } else {
             // 429 on personal key → fall through to shared key
-            if (typeof window !== 'undefined') {
+            if (typeof window !== 'undefined' && Date.now() - lastPersonalWarningLog > 60000) {
+              lastPersonalWarningLog = Date.now();
               window.dispatchEvent(new CustomEvent('agent-log', {
-                detail: { type: 'thinking', title: `⚠️ Personal quota exceeded for ${modelName}. Using shared pool...` }
+                detail: { type: 'thinking', title: `⚠️ Personal quota exceeded. Using shared pool...` }
               }));
             }
-            await sleep(1500);
           }
         }
       }
     }
 
     // ── Attempt 2-N: shared key pool (true round-robin, atomic slot claim) ────
-    // IMPORTANT: MAX_KEY_ROTATIONS is deliberately small (2) so a SINGLE failed
-    // request never consumes more than 2 keys from the pool. This prevents the
-    // N-agents × MAX_ROTATIONS waterfall exhaustion spiral.
-    // With semaphore (3 slots) × 2 rotations = at most 6 key-slot events per burst.
+    // The semaphore ensures we only have 4 parallel requests at most,
+    // so we can safely allow a full rotation through all available keys
+    // before declaring a model exhausted.
     if (allKeys.length === 0) {
       // No shared keys configured and personal key also failed
       break;
     }
 
-    const MAX_KEY_ROTATIONS = Math.min(2, allKeys.length);
+    const MAX_KEY_ROTATIONS = allKeys.length;
     let rotationsUsed = 0;
 
     while (rotationsUsed < MAX_KEY_ROTATIONS) {
       // ✅ pickNextSharedKey is now awaited — key claim is atomic (see function docs)
-      const keyObj = await pickNextSharedKey();
+      const keyObj = await pickNextSharedKey(signal);
       if (!keyObj) break; // no shared keys configured
 
       try {
         const genAI  = new GoogleGenerativeAI(keyObj.token);
+        apiQuotaStore.recordRequest();
         const result = await buildRequest(genAI, modelName);
         return result; // ✅ success
       } catch (err: any) {
@@ -472,6 +647,7 @@ const _callWithFallbackInner = async (
 
         if (isRateLimit(err)) {
           hitQuota = true;
+
           // Parse Retry-After header for exact cooldown duration from the API.
           let retryAfterMs: number | undefined;
           try {
@@ -483,7 +659,7 @@ const _callWithFallbackInner = async (
               console.log(`[ZenAI] Parsed Retry-After: ${Math.ceil(retryAfterMs / 1000)}s`);
             }
           } catch { /* ignore header parse errors */ }
-          markKeyCooling(keyObj.token, err.message, retryAfterMs);
+          markKeyCooling(keyObj.token, err?.message || 'Rate Limited', retryAfterMs);
           rotationsUsed++;
           if (rotationsUsed < MAX_KEY_ROTATIONS) {
             const label = `shared key [${keyObj.index + 1}/${allKeys.length}]`;
@@ -493,18 +669,18 @@ const _callWithFallbackInner = async (
                 detail: { type: 'thinking', title: `↩ Key ${keyObj.index + 1} rate-limited. Trying next...` }
               }));
             }
-            // Exponential backoff with jitter before next rotation
-            const baseDelay = 1500 * Math.pow(2, rotationsUsed);
-            const jitter = Math.random() * 1000;
-            const backoffMs = baseDelay + jitter;
-            console.warn(`[ZenAI] Applying exponential backoff of ${Math.round(backoffMs)}ms before next key rotation.`);
-            await sleep(backoffMs);
+            // Switch to the next key instantly. We only need a tiny jitter to prevent thundering herds.
+            // (If ALL keys are actually rate-limited, pickNextSharedKey will handle the true waiting).
+            const jitter = 50 + Math.random() * 100;
+            await sleep(jitter);
             continue;
           }
           break; // used all rotations → try next model
         }
 
-        if (isModelNotFound(err)) break;  // model not available → try next model
+        if (isModelNotFound(err)) {
+          break; // model not available → try next model
+        }
         if (isOverload(err))    break;    // server overloaded → try next model
         if (isAuthError(err)) { rotationsUsed++; continue; } // invalid key → skip
         throw err; // non-retryable error
@@ -513,13 +689,8 @@ const _callWithFallbackInner = async (
 
     // All key attempts for this model exhausted. Brief delay then try next model.
     if (mi < ordered.length - 1) {
-      let delay = Math.min(1200 * (mi + 1), 4000);
-      if (lastError) {
-        const retryMatch = String(lastError.message).match(/retry[\s-]?after[:\s]*(\d+)/i);
-        if (retryMatch?.[1]) delay = Math.min(parseInt(retryMatch[1], 10) * 1000, 8_000);
-      }
-      console.warn(`[ZenAI] ${modelName} exhausted. Trying ${ordered[mi + 1]} in ${delay}ms`);
-      await sleep(delay);
+      console.warn(`[ZenAI] ${modelName} exhausted. Trying ${ordered[mi + 1]} instantly`);
+      await sleep(10);
     }
   }
 
@@ -641,7 +812,7 @@ export class RobustChatSession {
     let lastError: any;
     // ✅ FIXED: Use health-check-filtered model list, not raw MODEL_PRIORITY
     const effectiveModels = getEffectivePriorityList(false);
-    const modelList = effectiveModels.length > 0 ? effectiveModels : SHARED_MODEL_PRIORITY;
+    const modelList = effectiveModels.length > 0 ? effectiveModels : MODEL_PRIORITY;
     for (let mi = this.modelIndex; mi < modelList.length; mi++) {
       const modelName = modelList[mi];
       const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
@@ -751,7 +922,7 @@ export class RobustChatSession {
     let lastError: any;
     // ✅ FIXED: Use health-check-filtered model list, not raw MODEL_PRIORITY
     const effectiveModels = getEffectivePriorityList(false);
-    const modelList = effectiveModels.length > 0 ? effectiveModels : SHARED_MODEL_PRIORITY;
+    const modelList = effectiveModels.length > 0 ? effectiveModels : MODEL_PRIORITY;
     for (let mi = this.modelIndex; mi < modelList.length; mi++) {
       const modelName = modelList[mi];
       const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);

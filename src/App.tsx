@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'sonner';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -28,7 +28,9 @@ import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
 import { FloatingExtraWorks, VoiceQuickCaptureWidget } from './features/_shared';
 import { ZenAgentPanel } from './features/agent/ZenAgentPanel';
-import { Bot, ShieldAlert, Ghost, Code2, MessageSquare } from 'lucide-react';
+import { MissionReport } from './features/dashboard/MissionReport';
+import { ReportArchive } from './features/dashboard/ReportArchive';
+import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap } from 'lucide-react';
 import { AgentTerminal } from './components/AgentTerminal';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
 
@@ -49,6 +51,76 @@ const ContextRemindersRunner = () => {
 
 const DeadlineWatcherRunner = () => {
   useDeadlineWatcher();
+  return null;
+};
+
+/**
+ * AgentNavigator — listens for 'agent-navigate' events dispatched by toolExecutor
+ * and uses React Router's useNavigate to change the route.
+ * Also dispatches 'agent-open-lecture' for the Learning module to open a specific lecture.
+ */
+const AgentNavigator = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        route: string;
+        subView?: string;
+        lectureTopicTitle?: string;
+        lectureTitle?: string;
+        day?: string;
+      };
+
+      if (!detail?.route) return;
+
+      // Navigate to the route
+      navigate(detail.route);
+
+      // For learning module: fire a secondary event so LearningChecklistModule
+      // can find and play the specific lecture
+      if (detail.route === '/learning' && (detail.lectureTitle || detail.lectureTopicTitle)) {
+        // Small delay to let the component mount after navigation
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('agent-open-lecture', {
+            detail: {
+              topicTitle: detail.lectureTopicTitle,
+              lectureTitle: detail.lectureTitle,
+            }
+          }));
+        }, 600);
+      }
+
+      // For gym module: fire sub-view event
+      if (detail.route === '/gym' && detail.subView) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('agent-gym-subview', {
+            detail: { subView: detail.subView, day: detail.day }
+          }));
+        }, 400);
+      }
+    };
+
+    window.addEventListener('agent-navigate', handler);
+    
+    const shortcutHandler = (e: Event) => {
+      const currentPath = window.location.pathname;
+      if (currentPath !== '/' && currentPath !== '/home') {
+        // We are not on the dashboard. Route back to dashboard and re-trigger.
+        navigate('/');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: (e as CustomEvent).detail }));
+        }, 400);
+      }
+    };
+    window.addEventListener('agent-shortcut', shortcutHandler);
+
+    return () => {
+      window.removeEventListener('agent-navigate', handler);
+      window.removeEventListener('agent-shortcut', shortcutHandler);
+    };
+  }, [navigate]);
+
   return null;
 };
 
@@ -166,10 +238,10 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => {
   const mobile = isMobileDevice();
   return (
     <motion.div
-      initial={{ opacity: 0, y: mobile ? 8 : 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: mobile ? -8 : -15 }}
-      transition={{ duration: mobile ? 0.18 : 0.3, ease: 'easeOut' }}
+      initial={{ opacity: 0, scale: 0.97, filter: 'blur(4px)' }}
+      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+      exit={{ opacity: 0, scale: 1.02, filter: 'blur(4px)' }}
+      transition={{ duration: mobile ? 0.25 : 0.4, ease: [0.22, 1, 0.36, 1] }}
       style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
     >
       {children}
@@ -334,11 +406,14 @@ function App() {
       <ClassNotificationRunner />
       <ContextRemindersRunner />
       <DeadlineWatcherRunner />
+      <AgentNavigator />
       <FocusModeOverlay />
       <DailyBriefingOverlay />
       <FloatingExtraWorks />
       <VoiceQuickCaptureWidget />
       <AgentTerminal />
+      <MissionReport />
+      <ReportArchive />
       <SessionEnforcer />
 
       {/* Developer Matrix Overlay */}
@@ -395,18 +470,57 @@ function App() {
             },
           },
           {
-            id: 'script',
-            label: 'Generate Script',
-            icon: <Code2 size={16} />,
-            color: 'linear-gradient(135deg,#10b981,#059669)',
-            shadow: 'rgba(16,185,129,0.5)',
+            id: 'inbox',
+            label: 'Inbox Zero',
+            icon: <Mail size={16} />,
+            color: 'linear-gradient(135deg,#eab308,#ca8a04)',
+            shadow: 'rgba(234,179,8,0.5)',
             action: () => {
               window.dispatchEvent(new CustomEvent('agent-shortcut', {
-                detail: { prompt: 'Generate a Python script that exports all my current ZenTrack tasks to a CSV file with columns: title, priority, status, due_date. Include sample data in comments.' }
+                detail: { prompt: 'INBOX ZERO ROUTINE: Read all my unread emails and messages. Summarize the important ones into actionable ZenTrack tasks with priorities. Draft replies for the urgent ones and archive the junk.' }
               }));
               setShowFab(false);
             },
           },
+          {
+            id: 'schedule',
+            label: 'Auto-Schedule',
+            icon: <Calendar size={16} />,
+            color: 'linear-gradient(135deg,#10b981,#059669)',
+            shadow: 'rgba(16,185,129,0.5)',
+            action: () => {
+              window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                detail: { prompt: 'SCHEDULE OPTIMIZER: Review my calendar and my high-priority ZenTrack tasks. Suggest exactly when I should work on each task today to maximize my productivity, and identify any overlapping meeting conflicts.' }
+              }));
+              setShowFab(false);
+            },
+          },
+          {
+            id: 'focus',
+            label: 'Deep Focus',
+            icon: <Target size={16} />,
+            color: 'linear-gradient(135deg,#f43f5e,#e11d48)',
+            shadow: 'rgba(244,63,94,0.5)',
+            action: () => {
+              window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                detail: { prompt: 'DEEP FOCUS PROTOCOL: Enable focus mode immediately. Hide all non-essential notifications, start a 60-minute Pomodoro timer, and pull up my highest priority task so I can start working on it right now.' }
+              }));
+              setShowFab(false);
+            },
+          },
+          {
+            id: 'briefing',
+            label: 'Daily Briefing',
+            icon: <Sun size={16} />,
+            color: 'linear-gradient(135deg,#f59e0b,#d97706)',
+            shadow: 'rgba(245,158,11,0.5)',
+            action: () => {
+              window.dispatchEvent(new CustomEvent('agent-shortcut', {
+                detail: { prompt: 'MORNING BRIEFING: Give me a comprehensive overview of today. Summarize my key goals, list any pending deadlines I need to worry about, and prepare me for the day ahead.' }
+              }));
+              setShowFab(false);
+            },
+          }
         ];
 
         return (

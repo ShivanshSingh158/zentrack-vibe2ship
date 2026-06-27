@@ -1,7 +1,8 @@
 /**
  * googleCalendar.ts — Full bidirectional Google Calendar sync
  *
- * Uses Google Identity Services (GIS) OAuth + direct REST API calls.
+ * Uses Google Identity Services (GIS) OAuth Authorization Code Flow
+ * Supports offline access and background auto-refresh via /api/auth/refresh
  * Supports: create, update, delete, poll for external changes.
  *
  * REQUIRED SETUP:
@@ -11,6 +12,8 @@
  *      Authorized JS Origins: http://localhost:5173, https://myzentrack.vercel.app
  *   4. Set VITE_GOOGLE_CALENDAR_CLIENT_ID in .env
  */
+
+import { auth } from './firebase';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CALENDAR_CLIENT_ID as string | undefined;
 const SCOPES = 'https://www.googleapis.com/auth/calendar ' +
@@ -43,6 +46,10 @@ let _lastSyncTime: number = 0;
 // ─── Script Loader ────────────────────────────────────────────────────────────
 
 const loadGisScript = (): Promise<void> => {
+  if ((window as any).google?.accounts?.oauth2) {
+    _gisLoaded = true;
+    return Promise.resolve();
+  }
   if (_gisLoaded) return Promise.resolve();
   const existing = document.getElementById('__gis_script__');
   if (existing) {
@@ -72,6 +79,16 @@ export const initGoogleCalendar = async (): Promise<boolean> => {
   }
   try {
     await loadGisScript();
+
+    // If we have a refresh token and the current access token is expired (or close to it)
+    if (localStorage.getItem('zen_gcal_refresh_token') && Date.now() > _tokenExpiry - 10 * 60 * 1000) {
+      try {
+        await forceSilentRefresh();
+      } catch (err) {
+        console.warn('[GoogleCalendar] Initial silent refresh failed:', err);
+      }
+    }
+
     return true;
   } catch (err) {
     console.error('[GoogleCalendar] Failed to load GIS script:', err);
@@ -92,33 +109,75 @@ export const getTokenTimeRemaining = (): number =>
 
 let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-const storeToken = (accessToken: string, expiresIn: number) => {
+export const forceSilentRefresh = async (): Promise<void> => {
+  console.log('[GoogleCalendar] 🔄 Proactive token refresh triggered...');
+  const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
+  if (!refreshToken) throw new Error('No refresh token available for silent refresh');
+  
+  const res = await fetch('/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken })
+  });
+  
+  if (!res.ok) throw new Error('Failed to refresh token from server');
+  const data = await res.json();
+  // Don't call storeToken here if it creates a loop, wait, storeToken is what sets the timer.
+  // Actually, we can just call storeToken from here!
+  storeToken(data.access_token, data.expires_in, data.refresh_token);
+  console.log('[GoogleCalendar] ✅ Token silently refreshed.');
+  
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('google-token-refreshed'));
+  }
+};
+
+const storeToken = (accessToken: string, expiresIn: number, refreshToken?: string) => {
   _accessToken = accessToken;
   _tokenExpiry = Date.now() + Math.min(expiresIn * 1000, 55 * 60 * 1000);
   localStorage.setItem('zen_gcal_access_token', _accessToken);
   localStorage.setItem('zen_gcal_token_expiry', _tokenExpiry.toString());
+  if (refreshToken) {
+    localStorage.setItem('zen_gcal_refresh_token', refreshToken);
+  }
 
   // Schedule a proactive silent refresh 5 minutes before expiry
   if (_refreshTimer) clearTimeout(_refreshTimer);
   const refreshIn = Math.max(0, _tokenExpiry - Date.now() - 5 * 60 * 1000);
   _refreshTimer = setTimeout(async () => {
     try {
-      console.log('[GoogleCalendar] 🔄 Proactive token refresh triggered...');
-      await signInWithGoogle();
-      console.log('[GoogleCalendar] ✅ Token silently refreshed.');
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('google-token-refreshed'));
-      }
+      await forceSilentRefresh();
     } catch (err) {
-      console.warn('[GoogleCalendar] Silent refresh failed (user will be prompted on next action):', err);
+      console.warn('[GoogleCalendar] Silent refresh failed:', err);
+      // If it fails, clear token to force re-auth
+      _accessToken = null;
+      localStorage.removeItem('zen_gcal_access_token');
+      localStorage.removeItem('zen_gcal_token_expiry');
     }
   }, refreshIn);
 };
 
 // ─── OAuth Sign-in ────────────────────────────────────────────────────────────
 
-export const signInWithGoogle = (): Promise<void> => {
+let _isAuthFailingLoop = false;
+
+export const signInWithGoogle = async (): Promise<void> => {
   if (!CLIENT_ID) return Promise.reject(new Error('VITE_GOOGLE_CALENDAR_CLIENT_ID not set'));
+  
+  if (_isAuthFailingLoop) {
+    return Promise.reject(new Error('Auth is in a failing loop. Please restart the app.'));
+  }
+
+  // Attempt silent refresh first if we have a refresh token
+  if (localStorage.getItem('zen_gcal_refresh_token')) {
+    try {
+      await forceSilentRefresh();
+      return; // Success! No popup needed.
+    } catch (err) {
+      console.warn('[GoogleCalendar] signInWithGoogle silent refresh fallback failed, prompting user...', err);
+      // Fall through to manual popup
+    }
+  }
 
   return new Promise((resolve, reject) => {
     // Add a 45-second timeout safeguard so the auth panel state does not hang indefinitely if the popup is blocked
@@ -128,26 +187,66 @@ export const signInWithGoogle = (): Promise<void> => {
 
     const doRequest = () => {
       try {
-        _tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+        const needsConsent = !localStorage.getItem('zen_gcal_refresh_token');
+        const authConfig: any = {
           client_id: CLIENT_ID,
           scope: SCOPES,
-          callback: (response: any) => {
+          ux_mode: 'popup',
+          access_type: 'offline', // Crucial for getting a refresh_token
+          callback: async (response: any) => {
             clearTimeout(timeoutId);
             if (response.error) {
               reject(new Error(response.error_description || response.error));
               return;
             }
-            storeToken(response.access_token, response.expires_in ?? 3600);
-            console.log('[GoogleCalendar] ✅ Token obtained');
-            resolve();
+            try {
+              const user = auth.currentUser;
+              if (!user) throw new Error('You must be logged into the app first.');
+              const idToken = await user.getIdToken();
+              
+              // Exchange code via backend
+              const res = await fetch('/api/auth/google', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code: response.code, idToken })
+              });
+              
+              const contentType = res.headers.get('content-type');
+              if (contentType && contentType.includes('text/html')) {
+                _isAuthFailingLoop = true;
+                throw new Error('Backend returned HTML (404). You must run the app with "npx vercel dev" instead of "npm run dev" to use API routes!');
+              }
+
+              if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.error || 'Failed to exchange token');
+              }
+              
+              const data = await res.json();
+              storeToken(data.access_token, data.expires_in ?? 3600, data.refresh_token);
+              console.log('[GoogleCalendar] ✅ Token obtained via backend');
+              _isAuthFailingLoop = false;
+              resolve();
+            } catch (err: any) {
+              reject(new Error(err.message || 'Server exchange failed'));
+            }
           },
           error_callback: (err: any) => {
             clearTimeout(timeoutId);
             reject(new Error(err?.message || 'OAuth failed'));
           },
-        });
-        // Use prompt: 'select_account' so it reliably prompts user account chooser window
-        _tokenClient.requestAccessToken({ prompt: 'select_account' });
+        };
+
+        // If we don't have a refresh token saved locally, force the consent screen so Google gives us one
+        if (needsConsent) {
+          authConfig.prompt = 'consent';
+        }
+
+        _tokenClient = (window as any).google.accounts.oauth2.initCodeClient(authConfig);
+
+        
+        // initCodeClient uses requestCode instead of requestAccessToken
+        _tokenClient.requestCode();
       } catch (err: any) {
         clearTimeout(timeoutId);
         reject(new Error(err?.message || 'Failed to initialize Google Identity Services token client'));
@@ -185,23 +284,47 @@ export const signOutGoogle = (): void => {
 let _tokenRefreshPromise: Promise<string> | null = null;
 
 export const ensureToken = async (): Promise<string> => {
-  const BUFFER_MS = 5 * 60 * 1000; // 5 minutes
-  const isFresh = !!_accessToken && Date.now() < (_tokenExpiry - BUFFER_MS);
-  if (isFresh && _accessToken) return _accessToken;
+  if (isSignedInToGoogle()) return _accessToken!;
   
+  // Attempt silent refresh via backend if we were connected before
+  if (wasEverConnectedToGoogle()) {
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        const idToken = await user.getIdToken();
+        const res = await fetch('/api/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          storeToken(data.access_token, data.expires_in);
+          return _accessToken!;
+        }
+      }
+    } catch (e) {
+      console.warn('[GoogleCalendar] Background refresh failed, falling back to popup', e);
+    }
+  }
+
   if (_tokenRefreshPromise) {
     return _tokenRefreshPromise;
   }
 
-  _tokenRefreshPromise = (async () => {
-    try {
-      await signInWithGoogle();
-      if (!_accessToken) throw new Error('Could not obtain Google access token');
-      return _accessToken;
-    } finally {
-      _tokenRefreshPromise = null;
-    }
-  })();
+  // If we get here, either we have no token, or it expired
+  // Since we rely on GIS popup, this WILL prompt the user if they interact
+  if (_isAuthFailingLoop) {
+    throw new Error('Backend is not running. Please use "npx vercel dev".');
+  }
+
+  _tokenRefreshPromise = signInWithGoogle().then(() => {
+    _tokenRefreshPromise = null;
+    return _accessToken!;
+  }).catch(err => {
+    _tokenRefreshPromise = null;
+    throw err;
+  });
 
   return _tokenRefreshPromise;
 };

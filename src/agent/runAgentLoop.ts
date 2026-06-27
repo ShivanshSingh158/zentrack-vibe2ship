@@ -1,4 +1,4 @@
-import { TOOL_DECLARATIONS } from './toolDeclarations';
+import { TOOL_DECLARATIONS, TOOL_NAMES } from './toolDeclarations';
 import type { ToolResult } from './toolExecutor';
 import { executeTool } from './toolExecutor';
 import { callWithFallback, callWithFallbackUnthrottled } from '../services/gemini/core';
@@ -23,19 +23,18 @@ const safeDispatch = (detail: object) => {
   }
 };
 
-export const runAgentLoop = async (
+export async function runAgentLoop(
   userMessage: string,
-  userTodos: Task[],
-  calendarEvents: CalendarEvent[],
+  appContext: any,
   apiKey: string,
   onStep: (step: AgentStep) => void,
   systemInstruction?: string,
   modelOverride?: string,
   signal?: AbortSignal,
-  isSubAgent?: boolean
-): Promise<string> => {
-
-
+  isSubAgent?: boolean,
+  depth: number = 0,
+  forceToolCallFirstIteration: boolean = false
+): Promise<string> {
   const effectiveSystem = systemInstruction || AGENT_SYSTEM;
   const contents: Array<{ role: string; parts: Array<{ text?: string; functionResponse?: unknown }> }> = [{ role: 'user', parts: [{ text: userMessage }] }];
   let finalAnswer = '';
@@ -56,23 +55,55 @@ export const runAgentLoop = async (
       return "Agent Loop Aborted: User cancelled execution.";
     }
     let response;
+    let hasLoggedThinking = false;
     try {
       const caller = isSubAgent ? callWithFallbackUnthrottled : callWithFallback;
       response = await caller(async (genAI, modelName) => {
         const activeModel = modelOverride || modelName;
-        onStep({ type: 'thinking', title: `Zen AI is thinking... (${activeModel})` });
-        safeDispatch({ type: 'thinking', title: `Zen AI is thinking... (${activeModel})` });
+        if (!hasLoggedThinking) {
+          onStep({ type: 'thinking', title: `Zen AI is thinking... (${activeModel})` });
+          hasLoggedThinking = true;
+        }
 
+        const filteredDeclarations = depth >= 2
+          ? TOOL_DECLARATIONS.filter(t => t.name !== 'delegate_task')
+          : TOOL_DECLARATIONS;
+        const filteredNames = depth >= 2
+          ? TOOL_NAMES.filter(n => n !== 'delegate_task')
+          : TOOL_NAMES;
+          
         const model = genAI.getGenerativeModel({
           model: activeModel,
           systemInstruction: effectiveSystem,
-          tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+          tools: [{ functionDeclarations: filteredDeclarations }],
         });
-        return await model.generateContent({ contents });
-      });
+        
+        const timeoutPromise = new Promise<any>((_, reject) => {
+          setTimeout(() => reject(new Error('Timeout: Gemini API took longer than 120 seconds to respond.')), 120000);
+        });
+        
+        return await Promise.race([
+          model.generateContent(
+            {
+              contents,
+              // ── Anti-Hallucination Guard ────────────────────────────────────────
+              // toolConfig restricts the model to ONLY call functions in our declared
+              // whitelist. The Gemini API rejects any function call not in this list,
+              // eliminating wasted 2-4 second retry cycles from hallucinated tool names.
+              toolConfig: {
+                functionCallingConfig: (forceToolCallFirstIteration && i === 0 && filteredNames.length > 0)
+                  ? { mode: 'ANY' as any, allowedFunctionNames: filteredNames }
+                  : { mode: 'AUTO' as any },
+              },
+            },
+            { requestOptions: { timeout: 120000, signal } }
+          ),
+          timeoutPromise
+        ]);
+      }, signal);
     } catch (err: unknown) {
       const friendlyError = (err as { message?: string }).message || 'Unknown error occurred.';
-      safeDispatch({ type: 'answer', title: `⚠️ ${friendlyError}` });
+      onStep({ type: 'answer', title: `⚠️ ${friendlyError}` });
       return `Agent Loop Failed: ${friendlyError}`;
     }
 
@@ -81,60 +112,76 @@ export const runAgentLoop = async (
 
     const parts = candidate.content.parts;
     
-    // Check if AI wants to call a function
-    const functionCallPart = parts.find((p: { functionCall?: { name: string; args: Record<string, unknown> }; text?: string }) => !!p.functionCall);
-    if (functionCallPart && functionCallPart.functionCall) {
-      const name = functionCallPart.functionCall.name;
-      const args = functionCallPart.functionCall.args as Record<string, unknown>;
-      onStep({ type: 'tool_call', toolName: name, args });
-      safeDispatch({ type: 'tool_call', toolName: name, args });
+    // Check if AI wants to call functions
+    const functionCallParts = parts.filter((p: { functionCall?: unknown }) => !!p.functionCall);
+    if (functionCallParts.length > 0) {
+      // Execute all tool calls concurrently
+      const results = await Promise.all(functionCallParts.map(async (part: any) => {
+        const name = part.functionCall.name;
+        const args = part.functionCall.args as Record<string, unknown>;
+        
+        onStep({ type: 'tool_call', toolName: name, args });
 
-      // ── Deduplication guards ─────────────────────────────────────────────
-      // 1. connect_google_workspace: only call once per session — subsequent
-      //    calls return a cached success to prevent retry storms.
-      if (name === 'connect_google_workspace') {
-        if (connectWorkspaceCalledThisSession) {
-          const cachedConnect = { success: true, data: {}, message: 'Google Workspace already connected this session.' };
-          onStep({ type: 'tool_result', toolName: name, result: cachedConnect });
-          safeDispatch({ type: 'tool_result', toolName: name, result: cachedConnect });
-          contents.push({ role: 'model', parts: candidate.content.parts });
-          contents.push({ role: 'function', parts: [{ functionResponse: { name, response: { result: cachedConnect.data, message: cachedConnect.message } } }] });
-          continue;
+        // ── Deduplication guards ─────────────────────────────────────────────
+        if (name === 'connect_google_workspace') {
+          if (connectWorkspaceCalledThisSession) {
+            const cachedConnect = { success: true, data: {}, message: 'Google Workspace already connected this session.' };
+            onStep({ type: 'tool_result', toolName: name, result: cachedConnect });
+            return { name, result: cachedConnect };
+          }
+          connectWorkspaceCalledThisSession = true;
         }
-        connectWorkspaceCalledThisSession = true;
-      }
 
-      // 2. Read-only tools: cache by tool name + args fingerprint.
-      //    Duplicate call within same agent loop → instant cache hit.
-      const argsKey = JSON.stringify(args ?? {});
-      const cacheKey = `${name}:${argsKey}`;
-      if (READ_ONLY_TOOLS.has(name) && toolCache.has(cacheKey)) {
-        const cached = toolCache.get(cacheKey);
-        safeDispatch({ type: 'thinking', title: `[Cache hit] ${name} — reusing previous result` });
-        onStep({ type: 'tool_result', toolName: name, result: cached });
-        safeDispatch({ type: 'tool_result', toolName: name, result: cached });
-        contents.push({ role: 'model', parts: candidate.content.parts });
-        contents.push({ role: 'function', parts: [{ functionResponse: { name, response: { result: cached.data, message: cached.message } } }] });
-        continue;
-      }
+        const argsKey = JSON.stringify(args ?? {});
+        const cacheKey = `${name}:${argsKey}`;
+        if (READ_ONLY_TOOLS.has(name) && toolCache.has(cacheKey)) {
+          const cached = toolCache.get(cacheKey)!;
+          onStep({ type: 'thinking', title: `[Cache hit] ${name} — reusing previous result` });
+          onStep({ type: 'tool_result', toolName: name, result: cached });
+          return { name, result: cached };
+        }
 
-      // Execute the real tool
-      const result = await executeTool(name, args, userTodos, calendarEvents, signal);
-      onStep({ type: 'tool_result', toolName: name, result });
-      safeDispatch({ type: 'tool_result', toolName: name, result });
+        // Execute the real tool
+        const result = await executeTool(name, args, appContext, signal, depth);
+        onStep({ type: 'tool_result', toolName: name, result });
 
-      // Store in cache if it's a read-only tool
-      if (READ_ONLY_TOOLS.has(name)) {
-        toolCache.set(cacheKey, result);
-      }
+        if (READ_ONLY_TOOLS.has(name)) {
+          toolCache.set(cacheKey, result);
+        } else if (result.success) {
+          // Invalidate cache for write operations
+          if (name.includes('task')) {
+            for (const k of toolCache.keys()) {
+              if (k.startsWith('get_tasks:')) toolCache.delete(k);
+            }
+          }
+          if (name.includes('calendar') || name.includes('meet')) {
+            for (const k of toolCache.keys()) {
+              if (k.startsWith('list_calendar_events:') || k.startsWith('get_free_calendar_slots:')) {
+                toolCache.delete(k);
+              }
+            }
+          }
+          if (name.includes('gmail') || name.includes('email')) {
+            for (const k of toolCache.keys()) {
+              if (k.startsWith('read_gmail:')) toolCache.delete(k);
+            }
+          }
+        }
 
+        return { name, result };
+      }));
+
+      // Add AI's function calls + our results to the conversation
+      // CRITICAL FIX: Gemini API throws 400 Bad Request if a text part is empty.
+      // Often the model returns [{ text: "" }, { functionCall: ... }]. We must strip empty text parts.
+      const safeParts = candidate.content.parts.filter((p: any) => !('text' in p) || (typeof p.text === 'string' && p.text.trim() !== ''));
+      contents.push({ role: 'model', parts: safeParts.length > 0 ? safeParts : candidate.content.parts });
       
-      // Add AI's function call + our result to the conversation
-      contents.push({ role: 'model', parts: candidate.content.parts });
-      contents.push({
-        role: 'function',
-        parts: [{ functionResponse: { name, response: { result: result.data, message: result.message } } }]
-      });
+      const functionResponseParts = results.map(({ name, result }) => ({
+        functionResponse: { name, response: { result: result.data, message: result.message } }
+      }));
+      contents.push({ role: 'function', parts: functionResponseParts });
+      
       continue; // loop again — AI may call more tools
     }
 
@@ -143,7 +190,6 @@ export const runAgentLoop = async (
     if (textPart && textPart.text) {
       finalAnswer = textPart.text;
       onStep({ type: 'answer', title: finalAnswer });
-      safeDispatch({ type: 'answer', title: finalAnswer });
       break;
     }
 
@@ -153,7 +199,7 @@ export const runAgentLoop = async (
     if (emptyResponseCount >= 2) {
       console.warn('[ZenAgent] AI returned empty response twice in a row. Breaking loop.');
       finalAnswer = '[Agent completed without producing a final response. The task may have been partially executed. Check your data.]';
-      safeDispatch({ type: 'answer', title: finalAnswer });
+      onStep({ type: 'answer', title: finalAnswer });
       break;
     }
     break;

@@ -35,10 +35,10 @@ let _isProactiveRunning = false;
  * This is what takes ZenTrack from "reactive chatbot" to "autonomous AI agent."
  */
 export const useProactiveAgent = (
-  tasks: any[],
-  calendarEvents: any[],
+  globalData: any,
   setIsExecuting?: (b: boolean) => void
 ) => {
+  const { tasks = [] } = globalData || {};
   const hasRun = useRef(false);
 
   useEffect(() => {
@@ -91,6 +91,9 @@ export const useProactiveAgent = (
           title: `🤖 Autonomous Action Mode — ${overdueTasks.length} overdue, ${todayTasks.length} due today. Executing recovery protocol...`
         }
       }));
+      
+      // Auto-open terminal so the user sees the autonomous background work
+      window.dispatchEvent(new Event('agent-terminal-open'));
 
       const actionPrompt = overdueTasks.length > 0
         ? `${temporalCtx}
@@ -128,10 +131,14 @@ TAKE THESE ACTIONS WITHOUT ASKING PERMISSION:
 
 Execute everything now.`;
 
+      const abortController = new AbortController();
+      const onStop = () => abortController.abort();
+      window.addEventListener('agent-stop', onStop);
+
       try {
         const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
         agentMemoryStore.appendMessage({ role: 'user', title: actionPrompt });
-        const result = await orchestrateAgent(actionPrompt, tasks, calendarEvents, apiKey, () => {});
+        const result = await orchestrateAgent(actionPrompt, globalData, apiKey, () => {}, [], abortController.signal);
         agentMemoryStore.appendMessage({ role: 'agent', title: result });
 
         window.dispatchEvent(new CustomEvent('proactive-briefing', {
@@ -169,6 +176,7 @@ Execute everything now.`;
       } catch (err) {
         console.warn('[ProactiveAgent] Autonomous action loop failed silently:', err);
       } finally {
+        window.removeEventListener('agent-stop', onStop);
         if (setIsExecuting) setIsExecuting(false);
         _isProactiveRunning = false; // ✅ Always release the guard
       }
@@ -206,10 +214,14 @@ STEPS (execute all without user input):
 
 Be thorough. Be silent unless you find something.`;
 
+      const abortController = new AbortController();
+      const onStop = () => abortController.abort();
+      window.addEventListener('agent-stop', onStop);
+
       try {
         const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
         agentMemoryStore.appendMessage({ role: 'user', title: ghostPrompt });
-        const result = await orchestrateAgent(ghostPrompt, tasks, calendarEvents, apiKey, () => {});
+        const result = await orchestrateAgent(ghostPrompt, globalData, apiKey, () => {}, [], abortController.signal);
         agentMemoryStore.appendMessage({ role: 'agent', title: result });
 
         const isClear = result.includes('GHOST_SCAN_CLEAR') || result.toLowerCase().includes('no ghost') || result.toLowerCase().includes('no hidden');
@@ -223,6 +235,7 @@ Be thorough. Be silent unless you find something.`;
         // Retry in 1h instead of 24h on failure
         localStorage.setItem(GHOST_SCAN_KEY, (Date.now() - GHOST_THROTTLE_MS + 60 * 60 * 1000).toString());
       } finally {
+        window.removeEventListener('agent-stop', onStop);
         _isProactiveRunning = false; // ✅ Always release the guard
       }
     };
@@ -239,5 +252,5 @@ Be thorough. Be silent unless you find something.`;
       clearTimeout(emergencyTimer);
       clearTimeout(ghostTimer);
     };
-  }, [tasks, calendarEvents, setIsExecuting]);
+  }, [globalData, tasks, setIsExecuting]);
 };

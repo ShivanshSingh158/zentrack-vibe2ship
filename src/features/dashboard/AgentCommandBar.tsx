@@ -19,7 +19,7 @@
  *  - hasHistory      — whether there's history to clear
  */
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Square, Eraser, Mic, MicOff } from 'lucide-react';
+import { Send, Square, Eraser, Mic, MicOff, Archive } from 'lucide-react';
 
 interface AgentCommandBarProps {
   isExecuting: boolean;
@@ -171,6 +171,15 @@ export function AgentCommandBar({
             <Eraser size={16} />
           </button>
         )}
+
+        <button
+          className="voice-command-btn"
+          onClick={() => window.dispatchEvent(new CustomEvent('show-report-archive'))}
+          title="View Mission Archives"
+          style={{ color: '#a855f7' }}
+        >
+          <Archive size={16} />
+        </button>
 
         <div style={{ position: 'relative' }}>
           <button

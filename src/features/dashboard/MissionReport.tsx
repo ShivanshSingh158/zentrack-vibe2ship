@@ -7,7 +7,7 @@
  *
  * Uses React.createPortal to render on document.body, above all other UI.
  */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -16,10 +16,10 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import {
   BrainCircuit, Check, X, Maximize2, Minimize2,
-  Video, FileText, Loader2, Send,
+  Video, FileText, Loader2, Send, AlertTriangle, Key
 } from 'lucide-react';
+import { signInWithGoogle, isSignedInToGoogle, wasEverConnectedToGoogle } from '../../services/googleCalendar';
 
-/** Extract Meet / Docs links from the report text for quick-access buttons */
 function parseMissionActions(report: string) {
   if (!report) return { meetLinks: [] as string[], docLinks: [] as string[] };
   const meetLinks = Array.from(new Set(
@@ -31,32 +31,63 @@ function parseMissionActions(report: string) {
   return { meetLinks, docLinks };
 }
 
-interface MissionReportProps {
-  agentResult: string | null;
-  missionComplete: boolean;
-  isExecuting: boolean;
-  commandInput: string;
-  onClose: () => void;
-  onCommandChange: (value: string) => void;
-  onFollowUp: () => void;
-}
-
-export function MissionReport({
-  agentResult,
-  missionComplete,
-  isExecuting,
-  commandInput,
-  onClose,
-  onCommandChange,
-  onFollowUp,
-}: MissionReportProps) {
+export function MissionReport() {
+  const [agentResult, setAgentResult] = useState<string | null>(null);
+  const [missionComplete, setMissionComplete] = useState(false);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [commandInput, setCommandInput] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+
+  useEffect(() => {
+    const handleShow = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.result) {
+        setAgentResult(detail.result);
+        setMissionComplete(true);
+        setIsExecuting(false);
+      }
+    };
+    const handleProactive = (e: Event) => {
+      // Sometimes proactive report is stored globally or passed in detail
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.report) {
+        setAgentResult(detail.report);
+      } else {
+        // Fallback for proactive event without detail (handled via ref in some places, we assume detail.report is passed now)
+        // If not, we rely on the dispatching component to send the report text.
+      }
+      setMissionComplete(true);
+      setIsExecuting(false);
+    };
+    const handleExec = () => {
+      setIsExecuting(true);
+      setAgentResult(null);
+    };
+
+    window.addEventListener('show-mission-report', handleShow);
+    window.addEventListener('show-proactive-report', handleProactive);
+    window.addEventListener('agent-executing', handleExec);
+    return () => {
+      window.removeEventListener('show-mission-report', handleShow);
+      window.removeEventListener('show-proactive-report', handleProactive);
+      window.removeEventListener('agent-executing', handleExec);
+    };
+  }, []);
+
+  const onClose = () => setAgentResult(null);
+
+  const onFollowUp = () => {
+    if (!commandInput.trim() || isExecuting) return;
+    window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: commandInput } }));
+    setCommandInput('');
+    setIsExecuting(true);
+    setAgentResult(null);
+  };
 
   if (typeof document === 'undefined') return null;
 
   return createPortal(
     <>
-      {/* Backdrop */}
       <AnimatePresence>
         {agentResult && (
           <motion.div
@@ -69,7 +100,6 @@ export function MissionReport({
         )}
       </AnimatePresence>
 
-      {/* Report Panel */}
       <AnimatePresence>
         {agentResult && (
           <motion.div
@@ -78,7 +108,6 @@ export function MissionReport({
             exit={{   opacity: 0, scale: 0.95, x: '-50%', y: '-50%' }}
             className={`mission-report-overlay ${isExpanded ? 'expanded' : ''}`}
           >
-            {/* Header */}
             <div className="mission-report-header">
               <div className="mission-report-title">
                 <BrainCircuit size={18} style={{ color: '#06b6d4' }} />
@@ -99,7 +128,6 @@ export function MissionReport({
               </div>
             </div>
 
-            {/* Body */}
             <div className="mission-report-content markdown-body" data-lenis-prevent="true">
               {missionComplete && (
                 <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
@@ -111,11 +139,10 @@ export function MissionReport({
 
               <div style={{ color: '#e4e4e7', fontSize: '0.92rem', lineHeight: 1.7, marginBottom: '1.5rem' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {agentResult}
+                  {agentResult.replace(/<b>/gi, '**').replace(/<\/b>/gi, '**')}
                 </ReactMarkdown>
               </div>
 
-              {/* Quick-access buttons for Meet/Docs links found in the report */}
               {(() => {
                 const { meetLinks, docLinks } = parseMissionActions(agentResult);
                 if (meetLinks.length === 0 && docLinks.length === 0) return null;
@@ -136,14 +163,42 @@ export function MissionReport({
                   </div>
                 );
               })()}
+
+              {!isSignedInToGoogle() && wasEverConnectedToGoogle() && (
+                <div style={{ marginTop: '1rem', padding: '1.25rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f87171', fontWeight: 600, marginBottom: '0.75rem' }}>
+                    <AlertTriangle size={18} /> Google Workspace Disconnected
+                  </div>
+                  <p style={{ color: '#e4e4e7', fontSize: '0.9rem', marginBottom: '1rem', lineHeight: 1.5 }}>
+                    Your session timed out. Click the button below to instantly re-authenticate and allow the agents to resume execution.
+                  </p>
+                  <button
+                    onClick={() => {
+                      signInWithGoogle().then(() => {
+                        window.location.reload(); // Quick refresh to resume agent fleet
+                      }).catch(err => {
+                        console.error('Failed to sign in', err);
+                        alert('Failed to connect: ' + err.message);
+                      });
+                    }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      padding: '0.75rem 1.25rem', background: '#ef4444', color: 'white',
+                      border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer',
+                      boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                    }}
+                  >
+                    <Key size={18} /> Re-Connect Google Workspace
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Follow-up input */}
             <div className="mission-report-footer">
               <input
                 type="text"
                 value={commandInput}
-                onChange={e => onCommandChange(e.target.value)}
+                onChange={e => setCommandInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') onFollowUp(); }}
                 disabled={isExecuting}
                 placeholder="Assign a follow-up task..."

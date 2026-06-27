@@ -6,6 +6,7 @@ import { db, auth } from '../services/firebase';
 import { initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle, getTokenTimeRemaining } from '../services/googleCalendar';
 import { loadUserGeminiKey } from '../services/userGeminiAuth';
 import type { Task, CalendarEvent } from '../types/domain';
+import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 
 interface GlobalDataContextType {
   tasks: Task[];
@@ -17,6 +18,7 @@ interface GlobalDataContextType {
   goals: any[];
   learningTopics: any[];
   gymLogs: any[];
+  gymSchedule: any;
   notes: any[];
   attendanceSubjects: any[];
   assignments: any[];
@@ -97,8 +99,9 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Every 5 minutes, check if the Google token is near expiry.
   // If token expires within 10 minutes AND user was previously connected,
   // silently refresh it WITHOUT requiring any user interaction.
+  // If token is fully expired, aggressively attempt to reconnect.
   useEffect(() => {
-    const healthCheck = setInterval(async () => {
+    const healthCheckFn = async () => {
       const timeLeft = getTokenTimeRemaining();
       const wasConnected = !!localStorage.getItem('zen_gcal_access_token');
 
@@ -113,10 +116,20 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           console.warn('[AutoLogin] Silent refresh failed. Will retry or prompt on next agent call.', err);
         }
       } else if (wasConnected && timeLeft === 0) {
-        // Token has expired — update UI state
-        setIsGoogleConnected(false);
+        // Token has completely expired. User demanded aggressive reconnection!
+        console.log('[AutoLogin] Workspace offline! Forcing aggressive emergency reconnection...');
+        try {
+          await connectGoogle();
+        } catch (err) {
+          console.warn('[AutoLogin] Emergency reconnection failed:', err);
+          setIsGoogleConnected(false);
+        }
       }
-    }, 5 * 60 * 1000); // check every 5 minutes
+    };
+
+    // Run immediately on mount, then every 5 minutes
+    setTimeout(healthCheckFn, 2000);
+    const healthCheck = setInterval(healthCheckFn, 5 * 60 * 1000);
 
     // Also listen for events from GeminiAuthModal
     const handleRefreshed = () => setIsGoogleConnected(true);
@@ -219,8 +232,8 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     <GlobalDataContext.Provider value={{
       tasks, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
       learningTopics, gymLogs, notes, attendanceSubjects, assignments,
-      pomodoroSessions, userPreferences,
-      isLoading, isGoogleConnected, connectGoogle, disconnectGoogle
+      pomodoroSessions, userPreferences, isLoading, isGoogleConnected, connectGoogle, disconnectGoogle,
+      gymSchedule: GYM_PLAN.find(p => p.dayIndex === WEEKDAY_TO_PLAN[new Date().getDay()]) || { isRest: true, name: 'Rest Day' }
     } as any}>
       {children}
     </GlobalDataContext.Provider>
