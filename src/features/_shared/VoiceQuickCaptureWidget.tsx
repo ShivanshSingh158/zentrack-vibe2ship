@@ -76,25 +76,30 @@ export const VoiceQuickCaptureWidget = () => {
           transcript += event.results[i][0].transcript.toLowerCase();
         }
         
+        console.log("[WakeWord] Heard:", transcript);
         const match = transcript.match(/hey zen|heizen|hey then|haysen/i);
         if (match) {
           recognition.stop();
-          const commandPart = transcript.substring(match.index + match[0].length).trim();
           
-          if (commandPart.length > 5) {
-            actionRefs.current.processTranscription?.(commandPart);
-          } else {
-            actionRefs.current.toggleListening?.();
-            // Play a small wake sound
+          // Play a small wake sound immediately
+          try {
+            const ctx = new AudioContext();
+            const osc = ctx.createOscillator();
+            osc.frequency.value = 880;
+            osc.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.1);
+          } catch(e) {}
+          
+          // Wait 400ms for the background recognition to fully release the audio hardware
+          // before starting the main foreground recognition engine.
+          setTimeout(() => {
             try {
-              const ctx = new AudioContext();
-              const osc = ctx.createOscillator();
-              osc.frequency.value = 880;
-              osc.connect(ctx.destination);
-              osc.start();
-              osc.stop(ctx.currentTime + 0.1);
-            } catch(e) {}
-          }
+              actionRefs.current.toggleListening?.();
+            } catch (err) {
+              console.error("[WakeWord] Error starting main mic", err);
+            }
+          }, 400);
         }
       };
 
@@ -240,16 +245,27 @@ export const VoiceQuickCaptureWidget = () => {
         spokenText = spokenText.replace(/[*_#|`~]/g, '').replace(/https?:\/\/[^\s]+/g, 'a link');
         spokenText = spokenText.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
 
-        // Split into sentences to prevent the 15-second TTS timeout bug
-        const sentences = spokenText.match(/[^.!?]+[.!?]+/g) || [spokenText];
+        const utterance = new SpeechSynthesisUtterance(spokenText);
         
-        sentences.forEach(sentence => {
-          if (!sentence.trim()) return;
-          const utterance = new SpeechSynthesisUtterance(sentence.trim());
-          utterance.rate = 1.35; // Fast speed
-          utterance.pitch = 1.0;
-          window.speechSynthesis.speak(utterance);
-        });
+        // Find a premium, natural-sounding MALE voice
+        const voices = window.speechSynthesis.getVoices();
+        let bestVoice = voices.find(v => v.name.includes('Google') && v.name.includes('Male'))
+          || voices.find(v => v.name.includes('Natural') && v.lang.startsWith('en') && v.name.includes('Male'))
+          || voices.find(v => v.name.includes('Premium') && v.lang.startsWith('en') && v.name.includes('Male'))
+          || voices.find(v => v.name.includes('Daniel')) // Excellent Mac/iOS male voice
+          || voices.find(v => v.name.includes('Arthur')) // Good Windows male voice
+          || voices.find(v => v.name.includes('Guy'))    // Another good Windows natural male voice
+          || voices.find(v => v.lang.startsWith('en') && (v.name.includes('Male') || v.name.includes('David') || v.name.includes('Mark')))
+          || voices.find(v => v.lang === 'en-US');
+          
+        if (bestVoice) {
+          utterance.voice = bestVoice;
+        }
+        
+        // Reset rate to standard speed for a relaxed, natural cadence
+        utterance.rate = 1.0; 
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
       }
       
       setTranscription('');
@@ -353,7 +369,6 @@ export const VoiceQuickCaptureWidget = () => {
         {showRadialMenu && (
           <div style={{ position: 'absolute', top: '50%', left: '50%', zIndex: 0, pointerEvents: 'auto' }}>
             {[
-              { icon: <Ear size={20} />, label: wakeWordEnabled ? 'Wake Word: ON' : 'Wake Word: OFF', color: wakeWordEnabled ? '#a855f7' : '#6b7280', action: 'TOGGLE_WAKE_WORD' },
               { icon: <CheckSquare size={20} />, label: 'Todo', color: '#3b82f6', route: '/todo' },
               { icon: <Dumbbell size={20} />, label: 'Gym', color: '#ef4444', route: '/gym' },
               { icon: <GraduationCap size={20} />, label: 'Attendance', color: '#10b981', route: '/attendance' },
@@ -422,6 +437,34 @@ export const VoiceQuickCaptureWidget = () => {
           transition: 'all 0.3s ease'
         }} />
         
+        {/* Quick Toggle for Wake Word */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setWakeWordEnabled(prev => !prev);
+          }}
+          style={{
+            position: 'absolute',
+            top: '-15px',
+            right: '-10px',
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            background: wakeWordEnabled ? '#a855f7' : 'rgba(20, 20, 25, 0.95)',
+            border: `1px solid ${wakeWordEnabled ? '#d8b4fe' : '#4b5563'}`,
+            color: wakeWordEnabled ? '#fff' : '#9ca3af',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: 10,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
+          }}
+          title={wakeWordEnabled ? "Wake Word: ON" : "Wake Word: OFF"}
+        >
+          <Ear size={14} />
+        </button>
+
         <button
           onClick={(e) => {
              if (showRadialMenu) {

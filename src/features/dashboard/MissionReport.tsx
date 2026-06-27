@@ -7,7 +7,7 @@
  *
  * Uses React.createPortal to render on document.body, above all other UI.
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
@@ -16,7 +16,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import {
   BrainCircuit, Check, X, Maximize2, Minimize2,
-  Video, FileText, Loader2, Send, AlertTriangle, Key
+  Video, FileText, Loader2, Send, AlertTriangle, Key, Mic
 } from 'lucide-react';
 import { signInWithGoogle, isSignedInToGoogle, wasEverConnectedToGoogle } from '../../services/googleCalendar';
 
@@ -37,6 +37,35 @@ export function MissionReport() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    // Check support for Web Speech API
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => setIsListening(true);
+      recognition.onresult = (event: any) => {
+        let currentTranscript = '';
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          currentTranscript += event.results[i][0].transcript;
+        }
+        setCommandInput(prev => {
+           // We might want to append if there was existing text, but overwriting is cleaner for dictation
+           return currentTranscript; 
+        });
+      };
+      recognition.onerror = () => setIsListening(false);
+      recognition.onend = () => setIsListening(false);
+      
+      recognitionRef.current = recognition;
+    }
+  }, []);
 
   useEffect(() => {
     const handleShow = (e: Event) => {
@@ -78,10 +107,27 @@ export function MissionReport() {
 
   const onFollowUp = () => {
     if (!commandInput.trim() || isExecuting) return;
+    if (isListening && recognitionRef.current) recognitionRef.current.stop();
     window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: commandInput } }));
     setCommandInput('');
     setIsExecuting(true);
     setAgentResult(null);
+  };
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert('Voice typing is not supported in this browser.');
+      return;
+    }
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      try {
+        recognitionRef.current.start();
+      } catch (e) {
+        console.error(e);
+      }
+    }
   };
 
   if (typeof document === 'undefined') return null;
@@ -201,9 +247,32 @@ export function MissionReport() {
                 onChange={e => setCommandInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') onFollowUp(); }}
                 disabled={isExecuting}
-                placeholder="Assign a follow-up task..."
+                placeholder={isListening ? "Listening..." : "Assign a follow-up task..."}
                 className="agent-command-input focus:outline-none focus:ring-0"
               />
+              <button
+                type="button"
+                onClick={toggleListening}
+                disabled={isExecuting}
+                style={{ 
+                  background: isListening ? 'rgba(239, 68, 68, 0.2)' : 'transparent', 
+                  border: `1px solid ${isListening ? '#ef4444' : 'transparent'}`,
+                  color: isListening ? '#ef4444' : '#a1a1aa',
+                  borderRadius: '8px',
+                  width: '36px',
+                  height: '36px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  marginRight: '8px',
+                  transition: 'all 0.2s',
+                  flexShrink: 0
+                }}
+                title="Voice Dictation"
+              >
+                <Mic size={18} />
+              </button>
               <button
                 className="execute-command-btn"
                 onClick={onFollowUp}
