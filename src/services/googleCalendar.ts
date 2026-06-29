@@ -98,8 +98,15 @@ export const initGoogleCalendar = async (): Promise<boolean> => {
 
 // ─── Token State ──────────────────────────────────────────────────────────────
 
-export const isSignedInToGoogle = (): boolean =>
-  !!_accessToken && Date.now() < _tokenExpiry;
+// ✅ FIX BUG 4: Was evaluated at module init — stale localStorage could show connected when offline.
+// Now also checks navigator.onLine and adds a 5-minute buffer before expiry to prevent
+// stale-token API failures when the token is about to expire.
+export const isSignedInToGoogle = (): boolean => {
+  if (!navigator.onLine) return false; // offline — don't pretend we're connected
+  if (!_accessToken) return false;
+  const BUFFER_MS = 5 * 60 * 1000; // 5min buffer before expiry
+  return Date.now() < (_tokenExpiry - BUFFER_MS);
+};
 
 export const wasEverConnectedToGoogle = (): boolean =>
   !!localStorage.getItem('zen_gcal_access_token');
@@ -277,56 +284,51 @@ export const signOutGoogle = (): void => {
   _lastSyncTime = 0;
   localStorage.removeItem('zen_gcal_access_token');
   localStorage.removeItem('zen_gcal_token_expiry');
+  localStorage.removeItem('zen_gcal_refresh_token'); // ✅ BUG FIX: was missing — caused silent re-auth on next page load
 };
 
 // ─── Token Refresh ────────────────────────────────────────────────────────────
 
-let _tokenRefreshPromise: Promise<string> | null = null;
+/**
+ * Custom error class to distinguish "not connected" from other errors.
+ * Callers (agent, workspace services) can catch this and show a friendly
+ * "please connect Google Workspace" message WITHOUT opening a popup.
+ *
+ * IMPORTANT: This function NEVER opens an OAuth popup automatically.
+ * Popups must only be triggered by explicit user gestures (button clicks).
+ */
+export class GoogleNotConnectedError extends Error {
+  constructor() {
+    super('Google Workspace is not connected. Please connect it from the app banner or Integrations page.');
+    this.name = 'GoogleNotConnectedError';
+  }
+}
 
 export const ensureToken = async (): Promise<string> => {
+  // Fast path — valid token exists
   if (isSignedInToGoogle()) return _accessToken!;
-  
-  // Attempt silent refresh via backend if we were connected before
-  if (wasEverConnectedToGoogle()) {
+
+  // Try silent refresh via backend — this requires NO user gesture
+  const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
+  if (refreshToken) {
     try {
-      const user = auth.currentUser;
-      if (user) {
-        const idToken = await user.getIdToken();
-        const res = await fetch('/api/auth/refresh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          storeToken(data.access_token, data.expires_in);
-          return _accessToken!;
-        }
-      }
+      await forceSilentRefresh();
+      if (isSignedInToGoogle()) return _accessToken!;
     } catch (e) {
-      console.warn('[GoogleCalendar] Background refresh failed, falling back to popup', e);
+      console.warn('[GoogleCalendar] ensureToken: silent refresh failed:', e);
+      // Clear stale tokens so the disconnected state is accurately reflected
+      _accessToken = null;
+      _tokenExpiry = 0;
+      localStorage.removeItem('zen_gcal_access_token');
+      localStorage.removeItem('zen_gcal_token_expiry');
+      localStorage.removeItem('zen_gcal_refresh_token');
     }
   }
 
-  if (_tokenRefreshPromise) {
-    return _tokenRefreshPromise;
-  }
-
-  // If we get here, either we have no token, or it expired
-  // Since we rely on GIS popup, this WILL prompt the user if they interact
-  if (_isAuthFailingLoop) {
-    throw new Error('Backend is not running. Please use "npx vercel dev".');
-  }
-
-  _tokenRefreshPromise = signInWithGoogle().then(() => {
-    _tokenRefreshPromise = null;
-    return _accessToken!;
-  }).catch(err => {
-    _tokenRefreshPromise = null;
-    throw err;
-  });
-
-  return _tokenRefreshPromise;
+  // ❌ DO NOT call signInWithGoogle() here — that opens an OAuth popup
+  // which will be BLOCKED by browsers since there is no user gesture.
+  // Instead, throw a well-typed error so callers can show a "connect" prompt.
+  throw new GoogleNotConnectedError();
 };
 
 // ─── REST API Helper ──────────────────────────────────────────────────────────
@@ -492,20 +494,38 @@ export const pollGoogleCalendarChanges = async (signal?: AbortSignal): Promise<G
     url = `/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&maxResults=250`;
   }
 
-  const data = await calendarFetch<{
-    items?: GCalListEvent[];
-    nextSyncToken?: string;
-    nextPageToken?: string;
-  }>(url, 'GET', undefined, signal);
+  // ✅ FIX: Handle nextPageToken — without this, >250 events were silently truncated
+  const allItems: GCalListEvent[] = [];
+  let currentUrl = url;
 
-  _syncToken = data.nextSyncToken ?? null;
-  _lastSyncTime = Date.now();
+  while (currentUrl) {
+    const data = await calendarFetch<{
+      items?: GCalListEvent[];
+      nextSyncToken?: string;
+      nextPageToken?: string;
+    }>(currentUrl, 'GET', undefined, signal);
 
-  const items = data.items ?? [];
+    if (data.nextSyncToken) {
+      _syncToken = data.nextSyncToken;
+    }
+    _lastSyncTime = Date.now();
+
+    const pageItems = data.items ?? [];
+    allItems.push(...pageItems);
+
+    // If there are more pages, follow them
+    if (data.nextPageToken) {
+      const baseUrl = currentUrl.split('&pageToken=')[0];
+      currentUrl = `${baseUrl}&pageToken=${encodeURIComponent(data.nextPageToken)}`;
+    } else {
+      break;
+    }
+  }
+
   const added: GCalListEvent[] = [];
   const deleted: string[] = [];
 
-  for (const item of items) {
+  for (const item of allItems) {
     if (item.status === 'cancelled') {
       deleted.push(item.id);
       continue;

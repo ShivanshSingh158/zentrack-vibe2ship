@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ShieldAlert, X, Database, Lock, EyeOff, Save, Trash2, AlertTriangle, UserCheck, Key } from 'lucide-react';
+import { ShieldAlert, X, Database, Lock, EyeOff, Save, Trash2, AlertTriangle, UserCheck, Key, Bell, Phone, CheckCircle } from 'lucide-react';
 import { auth, db } from '../../services/firebase';
-import { collection, query, where, getDocs, writeBatch, updateDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, writeBatch, updateDoc, doc, setDoc, getDoc } from 'firebase/firestore';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 
 export const SecuritySettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { userPreferences } = useGlobalData();
-  const [activeTab, setActiveTab] = useState<'permissions' | 'data'>('permissions');
+  const [activeTab, setActiveTab] = useState<'permissions' | 'notifications' | 'data'>('permissions');
   const [isWiping, setIsWiping] = useState(false);
   const [wipeConfirm, setWipeConfirm] = useState('');
   
@@ -15,6 +15,72 @@ export const SecuritySettingsModal: React.FC<{ onClose: () => void }> = ({ onClo
   const [agentLevel, setAgentLevel] = useState<number>(userPreferences?.defaultPermissionLevel || 1);
   const [ghostDetectorEnabled, setGhostDetectorEnabled] = useState(userPreferences?.ghostDetectorEnabled ?? true);
   const [isSaving, setIsSaving] = useState(false);
+
+  // ── Notification / SMS settings ──────────────────────────────────────────────
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneLoaded, setPhoneLoaded] = useState(false);
+  const [isSavingPhone, setIsSavingPhone] = useState(false);
+  const [phoneSaved, setPhoneSaved] = useState(false);
+  const [testSmsSent, setTestSmsSent] = useState(false);
+  const [testSmsError, setTestSmsError] = useState('');
+
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
+    getDoc(doc(db, 'user_profiles', user.uid)).then(snap => {
+      if (snap.exists()) {
+        const phone = snap.data()?.phoneNumber || snap.data()?.phone || '';
+        setPhoneNumber(phone);
+      }
+      setPhoneLoaded(true);
+    }).catch(() => setPhoneLoaded(true));
+  }, []);
+
+  const handleSavePhone = async () => {
+    const user = auth.currentUser;
+    if (!user || !phoneNumber.trim()) return;
+    setIsSavingPhone(true);
+    try {
+      await setDoc(doc(db, 'user_profiles', user.uid), {
+        phoneNumber: phoneNumber.trim(),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      setPhoneSaved(true);
+      setTimeout(() => setPhoneSaved(false), 3000);
+    } catch (e) {
+      console.error('Failed to save phone:', e);
+    } finally {
+      setIsSavingPhone(false);
+    }
+  };
+
+  const handleTestSms = async () => {
+    setTestSmsSent(false);
+    setTestSmsError('');
+    try {
+      const VERCEL_BASE = import.meta.env.VITE_APP_URL || 'https://myzentrack.vercel.app';
+      const resp = await fetch(`${VERCEL_BASE}/api/send-sms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Secret': import.meta.env.VITE_INTERNAL_SECRET || '',
+        },
+        body: JSON.stringify({
+          message: `✅ ZenTrack test SMS\n\nThis confirms your phone number is correctly linked.\nHigh-priority task alerts will arrive here.\n\nmyzentrack.vercel.app`,
+          toPhone: phoneNumber,
+        }),
+      });
+      if (resp.ok) {
+        setTestSmsSent(true);
+        setTimeout(() => setTestSmsSent(false), 5000);
+      } else {
+        const d = await resp.json();
+        setTestSmsError(d.error || `HTTP ${resp.status}`);
+      }
+    } catch (e: any) {
+      setTestSmsError(e.message || 'Network error');
+    }
+  };
 
   const handleSave = async () => {
     const user = auth.currentUser;
@@ -97,6 +163,12 @@ export const SecuritySettingsModal: React.FC<{ onClose: () => void }> = ({ onClo
             <Lock size={16} /> Agent Permissions
           </button>
           <button 
+            onClick={() => setActiveTab('notifications')}
+            style={{ flex: 1, padding: '1rem', background: 'none', border: 'none', borderBottom: activeTab === 'notifications' ? '2px solid #6366f1' : '2px solid transparent', color: activeTab === 'notifications' ? '#6366f1' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+          >
+            <Bell size={16} /> SMS Alerts
+          </button>
+          <button 
             onClick={() => setActiveTab('data')}
             style={{ flex: 1, padding: '1rem', background: 'none', border: 'none', borderBottom: activeTab === 'data' ? '2px solid #ef4444' : '2px solid transparent', color: activeTab === 'data' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
           >
@@ -105,6 +177,87 @@ export const SecuritySettingsModal: React.FC<{ onClose: () => void }> = ({ onClo
         </div>
 
         <div style={{ padding: '2rem', maxHeight: '60vh', overflowY: 'auto' }}>
+
+          {/* ── NOTIFICATIONS TAB ──────────────────────────────────────────── */}
+          {activeTab === 'notifications' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.75rem' }}>
+              <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '12px', padding: '1rem', display: 'flex', gap: '0.75rem' }}>
+                <Bell size={18} color="#6366f1" style={{ flexShrink: 0, marginTop: 2 }} />
+                <div style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                  ZenTrack sends <strong style={{ color: '#a5b4fc' }}>Twilio SMS alerts</strong> for high-priority and overdue tasks — even when your browser tab is closed. Add your phone number to receive these alerts.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <label style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Phone size={15} /> Your Phone Number
+                </label>
+                <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>Include country code, e.g. +919876543210</p>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <input
+                    type="tel"
+                    value={phoneLoaded ? phoneNumber : 'Loading...'}
+                    onChange={e => setPhoneNumber(e.target.value)}
+                    disabled={!phoneLoaded}
+                    placeholder="+91XXXXXXXXXX"
+                    style={{
+                      flex: 1, padding: '0.75rem 1rem',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: '10px', color: '#fff',
+                      fontSize: '0.95rem', outline: 'none',
+                    }}
+                  />
+                  <button
+                    onClick={handleSavePhone}
+                    disabled={isSavingPhone || !phoneNumber.trim()}
+                    style={{
+                      padding: '0.75rem 1.25rem',
+                      background: phoneSaved ? 'rgba(34,197,94,0.2)' : 'rgba(99,102,241,0.2)',
+                      border: `1px solid ${phoneSaved ? '#22c55e' : '#6366f1'}`,
+                      borderRadius: '10px', color: phoneSaved ? '#22c55e' : '#a5b4fc',
+                      cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {phoneSaved ? <><CheckCircle size={15} /> Saved</> : <><Save size={15} /> Save</>}
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '1.5rem' }}>
+                <p style={{ margin: '0 0 1rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>Test SMS Alert</p>
+                <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Send a test message to verify your number is correctly linked.</p>
+                <button
+                  onClick={handleTestSms}
+                  disabled={!phoneNumber.trim() || testSmsSent}
+                  style={{
+                    padding: '0.75rem 1.5rem',
+                    background: testSmsSent ? 'rgba(34,197,94,0.15)' : 'rgba(99,102,241,0.15)',
+                    border: `1px solid ${testSmsSent ? '#22c55e' : '#6366f1'}`,
+                    borderRadius: '10px', color: testSmsSent ? '#22c55e' : '#a5b4fc',
+                    cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem'
+                  }}
+                >
+                  {testSmsSent ? <><CheckCircle size={15} /> Test SMS Sent!</> : <><Bell size={15} /> Send Test SMS</>}
+                </button>
+                {testSmsError && (
+                  <p style={{ margin: '0.75rem 0 0', fontSize: '0.8rem', color: '#f87171' }}>❌ {testSmsError}</p>
+                )}
+              </div>
+
+              <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '12px', padding: '1rem' }}>
+                <p style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-primary)' }}>When will you get SMS alerts?</p>
+                <ul style={{ margin: 0, padding: '0 0 0 1.25rem', fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.8 }}>
+                  <li>🚨 High-priority task overdue</li>
+                  <li>⏰ High-priority task due within 2 hours</li>
+                  <li>☀️ Morning briefing (7:30am)</li>
+                  <li>📚 Assignment due within 24h (HIGH priority)</li>
+                </ul>
+                <p style={{ margin: '0.75rem 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>Throttled: same alert won't fire more than once per 3 hours.</p>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'permissions' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
               

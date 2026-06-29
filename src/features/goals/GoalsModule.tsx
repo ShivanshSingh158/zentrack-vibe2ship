@@ -112,6 +112,8 @@ export const GoalsModule = () => {
             const newHistory = [...(kr.history || [])];
             if (newHistory.length === 0 || newHistory[newHistory.length - 1].value !== computedValue) {
               newHistory.push({ timestamp: now, value: computedValue });
+              // ✅ FIX: Cap history at 100 entries to prevent Firestore document bloat
+              if (newHistory.length > 100) newHistory.splice(0, newHistory.length - 100);
             }
             return { ...kr, currentValue: computedValue, history: newHistory };
           }
@@ -134,7 +136,11 @@ export const GoalsModule = () => {
     return () => {
       if (syncDebounceRef.current) clearTimeout(syncDebounceRef.current);
     };
-  }, [goals, extJobs, extTodos, extLearning, extLogs, isLoading]);
+    // ✅ FIX: Removed extTodos and extLogs from dep array.
+    // These fire on every single task completion, causing the 4s debounce to reset
+    // constantly during active sessions — goals sync was being perpetually delayed.
+    // goals already reflects KR computed values; extJobs/extLearning update less frequently.
+  }, [goals, extJobs, extLearning, isLoading]);
 
   const openNewGoal = () => {
     setEditingGoal({
@@ -237,9 +243,9 @@ export const GoalsModule = () => {
       if (kr.id === krId) {
         // Append to history
         const newHistory = [...(kr.history || [])];
-        // If we want "per day", we could replace the last entry if it's the same day, but let's just append per-update for simplicity, or just append. 
-        // Actually, to keep it clean, let's just append. Recharts handles multiple data points well.
         newHistory.push({ timestamp: Date.now(), value: finalValue });
+        // ✅ FIX: Cap history at 100 entries to prevent Firestore document bloat
+        if (newHistory.length > 100) newHistory.splice(0, newHistory.length - 100);
         return { ...kr, currentValue: finalValue, history: newHistory };
       }
       return kr;

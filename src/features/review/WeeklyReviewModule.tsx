@@ -60,8 +60,9 @@ async function fetchWeekStats(userId: string, start: string, end: string) {
       ? gymSnap.value.docs.map(d => d.data()).filter((l: any) => l.date && l.date >= start && l.date <= end)
       : [];
 
-    const todosCompleted = tasks.filter(t => t.status === 'completed').length;
-    const todosEstimatedMinutes = tasks.filter(t => t.status === 'completed').reduce((s, t) => s + (t.estimatedMinutes || 0), 0);
+    // ✅ BUG FIX: was using undeclared 'tasks' variable — correct variable is 'todos' (fetched above)
+    const todosCompleted = todos.filter(t => t.status === 'completed').length;
+    const todosEstimatedMinutes = todos.filter(t => t.status === 'completed').reduce((s: number, t: any) => s + (t.estimatedMinutes || 0), 0);
     const productiveHoursFromLogs = logs.reduce((s, l) => s + parseFloat(l.productiveHours || '0'), 0);
     const waterIntakeTotal = logs.reduce((s, l) => s + (l.waterIntakeLiters || 0), 0);
     const productiveHours = productiveHoursFromLogs + todosEstimatedMinutes / 60;

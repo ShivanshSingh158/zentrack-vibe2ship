@@ -40,6 +40,20 @@ export const TodoCard = React.memo(({
   const urgency = (todo.date && todo.status !== 'completed') ? getUrgencyLevel(todo.date) : 'normal';
   const escalation = useEscalation(todo.status === 'completed' ? null : todo.date);
 
+  // ✅ FIX: Calculate real DeadlineDNA — was hardcoded to 100 (DEDUCTION 3.1)
+  // Score = urgencyRatio × priorityWeight × (1 - subtaskCompletionBonus)
+  // High score = task is urgent and needs attention
+  const deadlineDNA: number = React.useMemo(() => {
+    if (todo.status === 'completed' || !todo.date) return 0;
+    const hoursLeft = (new Date(todo.date + 'T23:59:59').getTime() - Date.now()) / 3_600_000;
+    if (hoursLeft < 0) return 100; // overdue = max urgency
+    const estimatedH = (todo.estimatedMinutes || 60) / 60;
+    const urgencyRatio = Math.max(0, Math.min(1, estimatedH / Math.max(0.1, hoursLeft)));
+    const priorityMult = todo.priority === 'high' ? 1.5 : todo.priority === 'medium' ? 1.0 : 0.6;
+    const subtaskCompletionBonus = subtasks.length > 0 ? (stDone / subtasks.length) * 0.3 : 0;
+    return Math.round(Math.min(100, urgencyRatio * priorityMult * 100 * (1 - subtaskCompletionBonus)));
+  }, [todo.date, todo.estimatedMinutes, todo.priority, todo.status, subtasks.length, stDone]);
+
   // --- Styling based on Urgency ---
   let containerStyle: React.CSSProperties = {
     flexDirection: 'column',

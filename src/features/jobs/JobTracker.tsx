@@ -4,9 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { DragDropContext } from '@hello-pangea/dnd';
 import type { DropResult } from '@hello-pangea/dnd';
 import { toast } from 'sonner';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { useGlobalData } from '../../contexts/GlobalDataContext'; // ✅ FIX: Use shared context
 
 import type { JobApplication } from '../../types/index';
 import { Column } from './Column';
@@ -25,6 +26,10 @@ const COLUMNS: { title: string; status: JobApplication['status'] }[] = [
 export const JobTracker = () => {
   const user = auth.currentUser;
   const navigate = useNavigate();
+  // ✅ FIX: Use GlobalDataContext instead of creating duplicate Firestore listeners
+  // GlobalDataContext already has onSnapshot listeners for job_applications and learning_topics.
+  // The old code created 2nd copies of these listeners, causing double-reads on every change.
+  const { jobs: globalJobs, learningTopics: globalLearningTopics } = useGlobalData();
   const [jobs, setJobs] = useState<JobApplication[]>([]);
   const [learningTopics, setLearningTopics] = useState<{id: string, title: string}[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -37,34 +42,15 @@ export const JobTracker = () => {
   const [statusFilter, setStatusFilter] = useState<JobApplication['status'] | 'all'>('all');
   const [viewMode, setViewMode] = useState<'kanban' | 'timeline' | 'analytics'>('kanban');
 
+  // ✅ FIX: Sync from GlobalDataContext instead of creating our own Firestore listeners
   useEffect(() => {
-    setIsLoading(true);
+    setJobs(globalJobs as JobApplication[]);
+    setIsLoading(false);
+  }, [globalJobs]);
 
-    if (!user) return;
-    
-    const qJobs = query(collection(db, 'job_applications'), where('userId', '==', user.uid));
-    const unsubscribeJobs = onSnapshot(qJobs, (snapshot) => {
-      const jobsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication));
-      setJobs(jobsData);
-      setIsLoading(false);
-    }, (error) => {
-      console.error('Error listening to jobs:', error);
-      toast.error('Failed to load jobs');
-      setIsLoading(false);
-    });
-
-    const qTopics = query(collection(db, 'learning_topics'), where('userId', '==', user.uid));
-    const unsubscribeTopics = onSnapshot(qTopics, (snapshot) => {
-      setLearningTopics(snapshot.docs.map(d => ({ id: d.id, title: d.data().title })));
-    }, (error) => {
-      console.error('Error listening to learning topics:', error);
-    });
-
-    return () => {
-      unsubscribeJobs();
-      unsubscribeTopics();
-    };
-  }, [user]);
+  useEffect(() => {
+    setLearningTopics(globalLearningTopics.map((t: any) => ({ id: t.id, title: t.title })));
+  }, [globalLearningTopics]);
 
 
 

@@ -1,17 +1,43 @@
-name: Background Class Notifications Cron
+name: ZenTrack Background Watchdog
 
 on:
   schedule:
-    # Runs every 5 minutes
+    # Every 5 minutes — checks overdue tasks, approaching deadlines, class alerts
     - cron: '*/5 * * * *'
-  workflow_dispatch: # Allows manual triggering from the GitHub Actions tab for testing
+  workflow_dispatch: # Manual trigger from GitHub Actions tab
 
 jobs:
-  ping_vercel:
+  watchdog:
+    name: Background Watchdog (Twilio SMS + Push)
     runs-on: ubuntu-latest
+    timeout-minutes: 2
+
     steps:
-      - name: Ping Vercel Cron Endpoint
+      - name: Ping ZenTrack Watchdog
         run: |
-          curl -f -X POST "https://myzentrack.vercel.app/api/cron-classes" \
+          STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST "https://myzentrack.vercel.app/api/cron-watchdog" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json")
+
+          echo "HTTP Status: $STATUS"
+          echo "Response: $(cat /tmp/response.json)"
+
+          if [ "$STATUS" != "200" ]; then
+            echo "Watchdog call failed with status $STATUS"
+            cat /tmp/response.json
+            exit 1
+          fi
+
+          echo "Watchdog ran successfully"
+
+      - name: Ping Class Notifications (student alerts)
+        run: |
+          STATUS=$(curl -s -o /tmp/class_response.json -w "%{http_code}" \
+            -X POST "https://myzentrack.vercel.app/api/cron-classes" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json")
+
+          echo "Class cron status: $STATUS"
+          # Don't fail the workflow if class cron fails — it's non-critical
+          echo "Response: $(cat /tmp/class_response.json)" || true

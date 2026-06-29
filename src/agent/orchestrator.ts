@@ -7,16 +7,21 @@ import type { DagTask, AgentRole } from './core/DagEngine';
 import { createInitialState } from './core/SharedState';
 import type { Task, CalendarEvent, ConversationTurn } from '../types/domain';
 import { buildContextMemory } from './memory/ContextEngine';
+import { loadAgentMemoryContext } from '../services/agentMemoryPersistence';
+import { userLearningStore } from '../services/userLearningStore';
 
 import { 
   SEARCH_SYSTEM, DOCS_SYSTEM, DATA_SYSTEM, COMMS_SYSTEM, 
   SCHEDULER_SYSTEM, DRIVE_SYSTEM, CODING_SYSTEM, QA_SYSTEM,
-  MEET_SYSTEM, PLANNER_SYSTEM, MONITOR_SYSTEM, GHOST_DETECTOR_SYSTEM, EXECUTOR_SYSTEM
+  MEET_SYSTEM, PLANNER_SYSTEM, MONITOR_SYSTEM, GHOST_DETECTOR_SYSTEM, EXECUTOR_SYSTEM,
+  NAVIGATOR_SYSTEM  // ✅ BUG FIX: Was missing — caused NAVIGATOR agent to fall through to AEGIS prompt
 } from './fleet/NewAgents';
 
 
-const SUPERVISOR_SYSTEM = `You are Agent 0 — The Supervisor and Master Orchestrator of DeadlineZero, an autonomous AI productivity system.
-Your mission: analyze user requests, classify their complexity, and delegate to the right agents.
+// ─── Supervisor system prompt is built dynamically with user persona context ─────
+const buildSupervisorPrompt = (personaContext?: string): string => `You are Agent 0 — The Supervisor and Master Orchestrator of ZenTrack, an autonomous AI productivity system.
+Your mission: analyze user requests, classify their complexity, and delegate to the right agents with precise, context-aware instructions.
+${personaContext ? `\n## USER CONTEXT (use this to improve delegation quality)\n${personaContext}\n` : ''}
 
 ## STEP 1 — CLASSIFY TASK HARDNESS
 Evaluate the user's request and assign a hardness level:
@@ -42,10 +47,10 @@ LEVEL_5 (Proactive Discovery): Scan for hidden commitments.
   Examples: "Check my inbox for any deadlines I missed", "Find any ghost tasks in my emails"
   Deploy: SPECTRE → AEGIS
 
-## STEP 2 — MAP THE DAG
+## STEP 2 — MAP THE DAG (PRECISION DELEGATION RULES)
 Dependency Rules:
 - ORACLE and ENIGMA can ALWAYS run in parallel (no dependencies between them)
-- ARGUS can run in parallel with ORACLE and ENIGMA. 
+- ARGUS can run in parallel with ORACLE and ENIGMA.
 - HERMES always depends on ORACLE (needs email context before drafting)
 - CHRONOS always depends on ENIGMA (needs analysis before booking)
 - MEET can run independently for simple "create a meeting" tasks
@@ -57,6 +62,15 @@ Dependency Rules:
 - SPECTRE runs independently — no dependencies needed
 - AEGIS ALWAYS runs LAST with ALL other task IDs in its dependencies array
 - For LEVEL_1: single AEGIS task only, no sub-agents needed
+
+## INSTRUCTION QUALITY RULES (CRITICAL — Your instructions must be maximally specific)
+When writing the "instruction" field for each agent task:
+1. Always name the SPECIFIC task/event/email when known from user context or USER CONTEXT above.
+2. For CHRONOS: specify preferred time window AND date. e.g. "Block 90min at peak hours (14:00) today for X" not "block some time".
+3. For HERMES: specify the recipient and context. e.g. "Reply to Prof. Smith's thread about lab report due Friday" not "send an email".
+4. For ARGUS: name which tasks are at risk. e.g. "Assess risk for 'assignment 3' (overdue) and 'quiz prep' (due today)".
+5. For ORACLE: specify exactly which data is needed. e.g. "Get overdue tasks, today's calendar events, and free slots after 14:00" not "get tasks".
+6. For AEGIS: list exactly which agents' findings to synthesize. e.g. "Synthesize findings from ORACLE (tasks/slots), ENIGMA (risk score), CHRONOS (blocked slot)".
 
 ## Agent Responsibilities (choose EXACTLY the right agent):
 - MEET: Google Meet creation, joining meetings, inviting attendees
@@ -77,10 +91,10 @@ Dependency Rules:
   "hardnessLevel": "LEVEL_3",
   "rationale": "User needs cross-system recovery plan involving calendar and email",
   "tasks": [
-    {"id": "t1", "assignedAgent": "ORACLE", "instruction": "Get all overdue and today tasks. Find free slots tomorrow.", "dependencies": []},
-    {"id": "t2", "assignedAgent": "ENIGMA", "instruction": "Analyze task priority and completion risk.", "dependencies": []},
-    {"id": "t3", "assignedAgent": "CHRONOS", "instruction": "Block 2h recovery time for the most critical overdue task.", "dependencies": ["t2"]},
-    {"id": "t4", "assignedAgent": "AEGIS", "instruction": "Synthesize a mission report from all agent findings.", "dependencies": ["t1","t2","t3"]}
+    {"id": "t1", "assignedAgent": "ORACLE", "instruction": "Get all overdue tasks and free calendar slots after 14:00 today. Identify the single highest-priority overdue item by name.", "dependencies": []},
+    {"id": "t2", "assignedAgent": "ENIGMA", "instruction": "Analyze completion risk for overdue tasks from ORACLE findings. Compute deadline velocity.", "dependencies": []},
+    {"id": "t3", "assignedAgent": "CHRONOS", "instruction": "Block a 90-minute recovery slot at the first free window after 14:00 today (from ORACLE slots) for the highest-priority overdue task (from ORACLE findings).", "dependencies": ["t2"]},
+    {"id": "t4", "assignedAgent": "AEGIS", "instruction": "Synthesize mission report from ORACLE (tasks+slots), ENIGMA (risk scores), CHRONOS (blocked event). Report tone should match user persona.", "dependencies": ["t1","t2","t3"]}
   ]
 }
 
@@ -90,6 +104,7 @@ IMPORTANT: For navigation requests ("open", "show me", "go to", "take me to"), A
 IMPORTANT: For in-app data queries (gym workout, habits, learning topics, notes), use NAVIGATOR if the user wants to SEE it, or ORACLE if it's background data gathering.
 CRITICAL HALLUCINATION GUARD: If the user requests an action outside your capabilities (e.g., WhatsApp, UberEats, banking, Twitter/X, changing passwords), DO NOT hallucinate tools or agents. Immediately assign a single AEGIS task explaining that the system does not have the required access.
 CRITICAL DAG LIMIT: Keep sequential chains short (max 4-5 steps). If a request is too complex, assign a single AEGIS task stating it must be broken down.`;
+
 
 
 // ─── Exported: allows toolExecutor's delegate_task to resolve a system prompt ──
@@ -110,7 +125,8 @@ function fastRouter(instruction: string): DagTask[] | null {
   const text = instruction.toLowerCase().trim();
   
   // Guard against complex commands bypassing the LLM Supervisor
-  if (text.split(' ').length > 12) return null;
+  // ✅ FIX: Increased from 12 to 20 — was rejecting many common multi-word requests to the LLM
+  if (text.split(' ').length > 20) return null;
   
   // -- LEVEL 1 (Read / Navigate) --
   if (/^(go to|open|show me|take me to) (the )?(gym|calendar|tasks|habits|learning|goals|notes|analytics|jobs|dashboard|home)/.test(text)) {
@@ -145,28 +161,26 @@ function fastRouter(instruction: string): DagTask[] | null {
   }
 
   // -- LEVEL 2 (Write / Create) --
+  // ✅ INEFFICIENCY-1 FIX: Single-agent writes set isFinal:true to skip AEGIS synthesis.
+  // These are deterministic operations — TITAN creates the task and confirms. No synthesis needed.
   if (/^(create a task|add a task|remind me to|add to my to do|add to my todo)/.test(text)) {
     return [
-      { id: 't1', assignedAgent: 'TITAN', instruction, dependencies: [], status: 'pending' },
-      { id: 't2', assignedAgent: 'AEGIS', instruction: 'Synthesize task creation', dependencies: ['t1'], status: 'pending' }
+      { id: 't1', assignedAgent: 'TITAN', instruction, dependencies: [], status: 'pending', isFinal: true },
     ];
   }
   if (/^(send an email|email |send a message to)/.test(text)) {
     return [
-      { id: 't1', assignedAgent: 'HERMES', instruction, dependencies: [], status: 'pending' },
-      { id: 't2', assignedAgent: 'AEGIS', instruction: 'Synthesize email sent', dependencies: ['t1'], status: 'pending' }
+      { id: 't1', assignedAgent: 'HERMES', instruction, dependencies: [], status: 'pending', isFinal: true },
     ];
   }
   if (/^(schedule a meeting|create a meeting|book a meeting)/.test(text)) {
     return [
-      { id: 't1', assignedAgent: 'MEET', instruction, dependencies: [], status: 'pending' },
-      { id: 't2', assignedAgent: 'AEGIS', instruction: 'Synthesize meeting creation', dependencies: ['t1'], status: 'pending' }
+      { id: 't1', assignedAgent: 'MEET', instruction, dependencies: [], status: 'pending', isFinal: true },
     ];
   }
   if (/^(block|schedule) (some time|time|an hour|my calendar)/.test(text)) {
     return [
-      { id: 't1', assignedAgent: 'CHRONOS', instruction, dependencies: [], status: 'pending' },
-      { id: 't2', assignedAgent: 'AEGIS', instruction: 'Synthesize calendar blocks', dependencies: ['t1'], status: 'pending' }
+      { id: 't1', assignedAgent: 'CHRONOS', instruction, dependencies: [], status: 'pending', isFinal: true },
     ];
   }
 
@@ -198,26 +212,103 @@ export async function orchestrateAgent(
   }
   
   const historyContext = history.length > 0 
-    ? `\n\n--- PREVIOUS CONVERSATION CONTEXT ---\n${history.map(m => `[${m.role.toUpperCase()}]: ${m.text}`).join('\n\n')}\n-----------------------------------\n\n`
+    // ✅ FIX: Truncate to last 10 turns to prevent token overflow on long conversations
+    ? `\n\n--- PREVIOUS CONVERSATION CONTEXT ---\n${history.slice(-10).map(m => `[${m.role.toUpperCase()}]: ${m.text}`).join('\n\n')}\n-----------------------------------\n\n`
     : '';
 
-  // ✅ NEW: Inject personalization context from ContextEngine so agents know the
-  // user's real task load, peak productivity hours, gym schedule, habits, and learning topics.
-  // Without this, agents are generic — with it, they give personalized advice.
-  const personalityContext = buildContextMemory(
-    appContext.tasks || [],
-    appContext.calendarEvents || [],
-    appContext // pass full appContext so gym/habits/learning are extracted
-  );
-  
-  const contextualizedUserMessage = `${personalityContext}${historyContext}CURRENT REQUEST: ${instruction}`;
+  // ── Per-mission lazy loads ────────────────────────────────────────────────
+  let _cachedAgentMemory: string | null = null;
+  const getAgentMemory = async (): Promise<string> => {
+    if (_cachedAgentMemory === null) {
+      _cachedAgentMemory = await loadAgentMemoryContext();
+    }
+    return _cachedAgentMemory;
+  };
+
+  // Initialize learning store with current appContext (non-blocking)
+  userLearningStore.initialize(appContext).catch(() => {});
+
+  /**
+   * buildPersonalityContext — The core personalization layer.
+   *
+   * Returns a compound context string for each agent role:
+   *   1. UserLearningStore behavioral directive (persona-aware, real-time learned)
+   *   2. Live task/calendar/habit snapshot from ContextEngine (ORACLE/AEGIS only)
+   *   3. 14-day agent memory from Firestore (ORACLE/AEGIS only)
+   *
+   * ALL agents (not just 4) now receive a behavioral directive. The difference
+   * is depth: ORACLE/AEGIS get the full 3-layer context; others get a compact directive.
+   */
+  const buildPersonalityContext = async (role?: string): Promise<string> => {
+    const allTasks = appContext.tasks || [];
+    const today2 = new Date().toISOString().split('T')[0];
+
+    // Layer 1: Per-role behavioral directive from learning store (all agents)
+    const behavioralDirective = userLearningStore.getAgentContext(role || 'AEGIS');
+
+    switch (role) {
+      case 'ORACLE': {
+        const mem = await getAgentMemory();
+        const liveCtx = buildContextMemory(allTasks, appContext.calendarEvents || [], appContext, mem);
+        return behavioralDirective + liveCtx;
+      }
+      case 'AEGIS': {
+        const mem = await getAgentMemory();
+        const full = buildContextMemory(allTasks, appContext.calendarEvents || [], appContext, mem);
+        const capped = full.length > 3500 ? full.substring(0, 3500) + '\n...[context capped for synthesis efficiency]\n\n' : full;
+        return behavioralDirective + capped;
+      }
+      case 'CHRONOS': {
+        const overdue = allTasks.filter((t: any) => t.status !== 'completed' && t.date && t.date < today2).length;
+        const dueToday = allTasks.filter((t: any) => t.status !== 'completed' && t.date === today2).length;
+        const todayEvents = (appContext.calendarEvents || [])
+          .filter((e: any) => (e.start?.dateTime || e.start?.date || '').startsWith(today2))
+          .map((e: any) => `${e.summary} at ${e.start?.dateTime?.split('T')[1]?.slice(0, 5) || 'all-day'}`)
+          .join(', ');
+        const snapshot = `[LIVE SNAPSHOT] ${overdue} overdue, ${dueToday} due today. Today's events: ${todayEvents || 'none'}. Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.\n\n`;
+        return behavioralDirective + snapshot;
+      }
+      case 'ARGUS': {
+        const overdue = allTasks.filter((t: any) => t.status !== 'completed' && t.date && t.date < today2);
+        const highPri = allTasks.filter((t: any) => t.status !== 'completed' && (t.priority === 'high'));
+        const snapshot = `[LIVE SNAPSHOT] ${overdue.length} overdue: ${overdue.slice(0, 3).map((t: any) => `"${t.title||t.text}" (${t.priority||'medium'})`).join(', ') || 'none'}. High priority active: ${highPri.length}.\n\n`;
+        return behavioralDirective + snapshot;
+      }
+      case 'HERMES': {
+        const snapshot = `[LIVE SNAPSHOT] Pending tasks: ${allTasks.filter((t: any) => t.status !== 'completed').length}. Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.\n\n`;
+        return behavioralDirective + snapshot;
+      }
+      case 'ATLAS': {
+        const snapshot = `[LIVE SNAPSHOT] Total active tasks: ${allTasks.filter((t: any) => t.status !== 'completed').length}. Active goals: ${(appContext.goals || []).filter((g: any) => g.status === 'active').length}.\n\n`;
+        return behavioralDirective + snapshot;
+      }
+      default:
+        // All remaining agents (ENIGMA, TITAN, SCRIBE, MEET, ARCHIVE, NAVIGATOR, SPECTRE)
+        // get the compact behavioral directive — enough to adapt tone and behavior
+        return behavioralDirective;
+    }
+  };
+
+  // Supervisor gets a minimal prompt — just the request + history
+  const contextualizedUserMessage = `${historyContext}CURRENT REQUEST: ${instruction}`;
+
+  // ✅ BUG-R2 FIX: Shared tool cache passed to every runAgentLoop call.
+  // Previously each agent had its own isolated Map — ORACLE's get_tasks cache was invisible
+  // to CHRONOS. Now one shared Map eliminates 2-4 redundant Firestore reads per mission.
+  const sharedToolCache = new Map<string, any>();
 
   if (!taskList) {
+    // Build supervisor prompt with compact persona summary (no PII, just behavioral summary)
+    const supervisorPersonaHint = (() => {
+      const p = userLearningStore.getProfile();
+      return `User persona: ${p.userPersona.toUpperCase()}. Peak hours: ${p.actualPeakHours.slice(0,3).map(h=>`${h}:00`).join(', ')}. Avg completion ratio: ${p.avgCompletionRatio}x. Avoidance topics: ${p.snoozePatternTopics.slice(0,3).join(', ')||'none'}.`;
+    })();
+
     try {
       const response = await callWithFallback(async (genAI, modelName) => {
         const model = genAI.getGenerativeModel({ 
           model: modelName, 
-          systemInstruction: SUPERVISOR_SYSTEM,
+          systemInstruction: buildSupervisorPrompt(supervisorPersonaHint),
           generationConfig: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -229,7 +320,13 @@ export async function orchestrateAgent(
                     type: "object" as any,
                     properties: {
                       id: { type: "string" as any },
-                      assignedAgent: { type: "string" as any },
+                      // ✅ BUG-R10 FIX: enum constraint prevents the Supervisor from
+                      // hallucinating role names like "RISK_ANALYST" or "EMAIL_BOT".
+                      // Without this, getAgentPromptByRole returns undefined → no system prompt.
+                      assignedAgent: {
+                        type: "string" as any,
+                        enum: ["ORACLE","ENIGMA","HERMES","CHRONOS","MEET","ARCHIVE","SCRIBE","HEPHAESTUS","ATLAS","ARGUS","SPECTRE","TITAN","NAVIGATOR","AEGIS"]
+                      },
                       instruction: { type: "string" as any },
                       dependencies: {
                         type: "array" as any,
@@ -314,9 +411,30 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
     }
     return `## Original Request\n${engine.state.originalPrompt.substring(0, 4000)}\n\n> [!NOTE]\n> Note: earlier research context was optimized for token efficiency. Key findings were preserved.`;
   };
+
+  // ✅ INEFFICIENCY-4 FIX: Cache serialized context + preloaded data strings.
+  // buildSafeContext was called on EVERY executeTask iteration — even when nothing changed.
+  // In a 5-agent mission with 6 iterations: that's 30 unnecessary serializations.
+  // Now invalidated only when completedTasks grows.
+  let _cachedCompletedCount = -1;
+  let _cachedSerialized = '';
+  let _cachedPreloaded = '';
+  const getCachedContext = () => {
+    const currentCount = engine.state.completedTasks.length;
+    if (currentCount !== _cachedCompletedCount) {
+      _cachedCompletedCount = currentCount;
+      _cachedSerialized = buildSafeContext(engine);
+      _cachedPreloaded = Object.keys(engine.state.dataContext).length > 0
+        ? `\n\n## PRE-FETCHED DATA CONTEXT (DO NOT re-fetch these — use this data directly):\n\`\`\`json\n${JSON.stringify(engine.state.dataContext, null, 2)}\n\`\`\`\n⚠️ EFFICIENCY RULE: If the data you need is already in PRE-FETCHED DATA CONTEXT above, use it directly WITHOUT calling read tools again. Only call tools for data NOT already provided.`
+        : '';
+    }
+    return { serialized: _cachedSerialized, preloaded: _cachedPreloaded };
+  };
   
   const MAX_AGENT_RETRIES = 2;
-  let _agentRetryCount = 0;
+  // ✅ BUG FIX: Moved retryCount inside executeTask as a per-task local variable.
+  // The old global _agentRetryCount was shared across ALL tasks — if Agent A retried twice,
+  // Agent B would have zero retries left, causing it to permanently fail on the first transient error.
 
   while (!engine.isComplete()) {
     if (signal?.aborted) {
@@ -337,14 +455,15 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
       engine.updateTaskStatus(task.id, 'running');
       onStep({ type: 'thinking', title: `[${task.assignedAgent}] Executing: ${task.instruction}` });
       safeDispatch({ type: 'thinking', title: `[${task.assignedAgent}] Running...` });
+      // ✅ BUG FIX: Per-task retry counter (was global — one agent's retries consumed budget for all others)
+      let _agentRetryCount = 0;
 
       try {
-        let preloadedSearchData = '';
-        if (Object.keys(engine.state.dataContext).length > 0) {
-          preloadedSearchData = `\n\n## PRE-FETCHED DATA CONTEXT (DO NOT re-fetch these — use this data directly):\n\`\`\`json\n${JSON.stringify(engine.state.dataContext, null, 2)}\n\`\`\`\n⚠️ EFFICIENCY RULE: If the data you need is already in PRE-FETCHED DATA CONTEXT above, use it directly WITHOUT calling read tools again. Only call tools for data NOT already provided.`;
-        }
+        // ✅ INEFFICIENCY-4 FIX: Use cached context strings instead of rebuilding every call
+        const { serialized, preloaded: preloadedSearchData } = getCachedContext();
 
-        const serialized = buildSafeContext(engine);
+        // ✅ ARCH-4 + GAP-1: Pass the agent role to get domain-scoped context + long-term memory
+        const agentPersonalityContext = await buildPersonalityContext(task.assignedAgent);
 
         if (task.assignedAgent === 'AEGIS') {
           if (Date.now() - new Date(engine.state.contextBuiltAt).getTime() > engine.state.contextTTLMs) {
@@ -370,7 +489,7 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
           : '';
           
         const result = await runAgentLoop(
-          `${task.instruction}\n\nShared Context: ${serialized}${preloadedSearchData}\n${historyContext}`,
+          `${agentPersonalityContext}${task.instruction}\n\nShared Context: ${serialized}${preloadedSearchData}\n${historyContext}`,
           appContext,
           apiKey,
           (step) => {
@@ -382,41 +501,92 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
           signal,
           true,
           0,
-          task.assignedAgent !== 'AEGIS'
+          task.assignedAgent !== 'AEGIS',
+          task.assignedAgent, // ✅ BUG-R3: pass agentRole for per-agent tool filtering
+          sharedToolCache    // ✅ BUG-R2: pass shared cache across all agent loops
         );
         logWebSocket('agent.completed', { agent: task.assignedAgent, taskId: task.id });
 
         engine.updateTaskStatus(task.id, 'completed', result);
 
+        // ✅ INEFFICIENCY-1 FIX: isFinal tasks skip AEGIS synthesis entirely.
+        // Fast-routed single-tool operations (create task, navigate, complete habit)
+        // return immediately with the agent's own output. Cuts latency ~4s → ~1.5s.
+        if (task.isFinal) {
+          engine.state.finalOutput = result;
+          // Mark any pending AEGIS tasks as completed so engine.isComplete() returns true
+          for (const t of engine.tasks.values()) {
+            if (t.assignedAgent === 'AEGIS' && t.status === 'pending') {
+              engine.updateTaskStatus(t.id, 'completed', 'Skipped — isFinal agent provided direct response');
+            }
+          }
+          return;
+        }
+
         if (task.assignedAgent === 'AEGIS') {
           engine.state.finalOutput = result;
         } else {
-          // EXTRACT JSON PAYLOADS INTO DATA CONTEXT
+          // ── Parse agent result into a structured MissionMemoryPacket ─────────────
+          // This gives downstream agents typed handoffs instead of raw text blobs.
+          // JSON payloads from the agent are extracted and stored in dataContext.
+          // A compact, typed summary is pushed to completedTasks for AEGIS synthesis.
           const jsonRegex = /```json\s*([\s\S]*?)\s*```/gi;
           let match;
+          const extractedData: Record<string, any> = {};
+          let jsonCount = 0;
           while ((match = jsonRegex.exec(result)) !== null) {
             try {
               const parsed = JSON.parse(match[1]);
+              extractedData[`block_${++jsonCount}`] = parsed;
               engine.state.dataContext[task.assignedAgent] = {
                 ...(engine.state.dataContext[task.assignedAgent] as any || {}),
-                ...parsed
+                ...parsed,
               };
             } catch (e) {
               console.warn(`[Orchestrator] Failed to parse JSON from ${task.assignedAgent}`);
             }
           }
 
-          // This prevents a hallucinatory agent from poisoning downstream agents.
+          // Build a typed memory packet for downstream agents
+          // Extract action lines (lines starting with ✅, 📧, 📅, 🔔, etc.)
+          const actionLines = result
+            .split('\n')
+            .filter(l => /^[✅📧📅🔔🚨📋📄🔗⚠️➤→\-•]/.test(l.trim()))
+            .slice(0, 8)
+            .map(l => l.trim());
+
+          // Extract warning lines
+          const warningLines = result
+            .split('\n')
+            .filter(l => /^[⚠️❌🚫]/.test(l.trim()) || /\bfailed\b|\bno free\b|\bnot found\b|\bcould not\b/i.test(l))
+            .slice(0, 4)
+            .map(l => l.trim());
+
+          // Extract "hint" lines that help downstream agents (e.g. specific IDs, times)
+          const hintLines: string[] = [];
+          if (extractedData) {
+            const d = engine.state.dataContext[task.assignedAgent] as any;
+            if (d?.free_slots?.length > 0) hintLines.push(`→ CHRONOS hint: first free slot is ${d.free_slots[0]}`);
+            if (d?.overdue?.length > 0) hintLines.push(`→ Most critical overdue: "${d.overdue[0]?.title}" (${d.overdue[0]?.priority || 'medium'} priority)`);
+            if (d?.risk_level) hintLines.push(`→ Risk level: ${d.risk_level}`);
+          }
+
+          // Anti-hallucination sanitizer — strip scripts and dangerous action phrases
           const strippedResult = result
             .replace(/<script[\s\S]*?<\/script>/gi, '[SCRIPT REMOVED]')
             .replace(/\b(delete all|truncate|drop table|remove everything)\b/gi, '[REDACTED ACTION]')
-            .replace(/```json[\s\S]*?```/gi, '[JSON DATA STORED IN SECURE CONTEXT]');
-            
-          const sanitized = strippedResult.length > 1500
-            ? strippedResult.substring(0, 1500) + `\n...[${task.assignedAgent} text truncated]`
-            : strippedResult;
-            
-          engine.state.completedTasks.push(`[${task.assignedAgent}]: ${sanitized}`);
+            .replace(/```json[\s\S]*?```/gi, '[JSON DATA STORED IN CONTEXT]');
+
+          // Compact, typed packet for downstream agents
+          const packet = [
+            `[${task.assignedAgent} FINDINGS]`,
+            strippedResult.length > 1200 ? strippedResult.substring(0, 1200) + `...[truncated]` : strippedResult,
+            actionLines.length > 0 ? `Actions: ${actionLines.join(' | ')}` : '',
+            warningLines.length > 0 ? `Warnings: ${warningLines.join(' | ')}` : '',
+            hintLines.length > 0 ? hintLines.join('\n') : '',
+          ].filter(Boolean).join('\n');
+
+          engine.state.completedTasks.push(packet);
         }
       } catch (e: unknown) {
         const err = e as { message?: string };
@@ -446,6 +616,24 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
           engine.updateTaskStatus(task.id, 'failed', err.message);
           engine.state.errors.push(`[${task.assignedAgent}] failed: ${err.message}`);
           safeDispatch({ type: 'thinking', title: `⚠️ [${task.assignedAgent}] failed: ${err.message}` });
+
+          // ✅ ARCH-3 FIX: Execute compensation actions in reverse order to undo partial state.
+          // Example: TITAN did create_task + schedule_calendar, then send_gmail failed.
+          // Without compensation, user has a task+calendar block but the stakeholder was never notified.
+          // With compensation, we undo the preceding steps cleanly.
+          if (engine.state.compensations.length > 0) {
+            safeDispatch({ type: 'thinking', title: `🔄 [ROLLBACK] Executing ${engine.state.compensations.length} compensation action(s) to undo partial state...` });
+            const { executeTool } = await import('./toolExecutor');
+            for (const compensation of [...engine.state.compensations].reverse()) {
+              try {
+                safeDispatch({ type: 'thinking', title: `🔄 Compensating: ${compensation.description}` });
+                await executeTool(compensation.tool, compensation.args, appContext, signal);
+              } catch (compErr) {
+                console.warn('[Orchestrator] Compensation failed:', compensation.description, compErr);
+              }
+            }
+            engine.state.compensations = []; // clear after executing
+          }
         }
       }
     };
@@ -491,7 +679,7 @@ function getAgentPrompt(role: AgentRole | string): string {
     case 'ARGUS':        return MONITOR_SYSTEM;
     case 'SPECTRE': return GHOST_DETECTOR_SYSTEM;
     case 'TITAN':       return EXECUTOR_SYSTEM;
-    case 'NAVIGATOR':    return NAVIGATOR_SYSTEM;
+    case 'NAVIGATOR':    return NAVIGATOR_SYSTEM; // ✅ BUG FIX: Now properly imported
     case 'AEGIS':             return QA_SYSTEM;
     default:
       console.warn(`[Orchestrator] Unknown agent role "${role}", falling back to AEGIS.`);

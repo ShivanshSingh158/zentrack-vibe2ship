@@ -70,6 +70,52 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ['taskId']
     }
   },
+  // ✅ NEW TOOL: update_task — missing from the fleet, agents had to delete+recreate to update fields
+  {
+    name: 'update_task',
+    description: 'Update the properties of an existing ZenTrack task. Use this to change the title, priority, date, or estimated time of a task. Prefer this over delete + create.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        taskId: { type: SchemaType.STRING, description: 'The task ID to update' },
+        title: { type: SchemaType.STRING, description: 'Optional: new title for the task' },
+        priority: { type: SchemaType.STRING, description: 'Optional: new priority — "high", "medium", or "low"' },
+        date: { type: SchemaType.STRING, description: 'Optional: new date in YYYY-MM-DD format' },
+        estimatedMinutes: { type: SchemaType.NUMBER, description: 'Optional: new estimated duration in minutes' },
+        status: { type: SchemaType.STRING, description: 'Optional: new status — "pending" or "completed"' }
+      },
+      required: ['taskId']
+    }
+  },
+  // ✅ NEW TOOL: complete_habit — agents couldn't mark habits without this
+  {
+    name: 'complete_habit',
+    description: 'Mark a habit as completed for today. Use when the user says they did their habit, or when ARGUS wants to auto-log a completed habit.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        habitId: { type: SchemaType.STRING, description: 'The habit ID to mark as completed' },
+        date: { type: SchemaType.STRING, description: 'Optional: date in YYYY-MM-DD format (defaults to today)' },
+        notes: { type: SchemaType.STRING, description: 'Optional: brief notes about this habit completion' }
+      },
+      required: ['habitId']
+    }
+  },
+  // ✅ NEW TOOL: mark_attendance — needed for attendance tracking from agent
+  {
+    name: 'mark_attendance',
+    description: 'Log an attendance record for today. Use when the user says they attended a class, lecture, or event.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        subject: { type: SchemaType.STRING, description: 'The class/lecture/event name' },
+        status: { type: SchemaType.STRING, description: '"present" or "absent"' },
+        date: { type: SchemaType.STRING, description: 'Optional: date in YYYY-MM-DD (defaults to today)' },
+        notes: { type: SchemaType.STRING, description: 'Optional: any notes about the attendance' }
+      },
+      required: ['subject', 'status']
+    }
+  },
   {
     name: 'delete_calendar_event',
     description: 'Permanently delete a Google Calendar event. Use this when the user asks you to delete a meeting or calendar event.',
@@ -139,6 +185,49 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ['taskId', 'priority']
     }
   },
+  // ✅ NEW TOOL: search_tasks — prevents loading ALL tasks to find ONE
+  {
+    name: 'search_tasks',
+    description: 'Search tasks by keyword. Use instead of get_tasks("all") when looking for a specific task. More efficient and less token waste.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        query: { type: SchemaType.STRING, description: 'Keyword to search for in task titles' },
+        filter: { type: SchemaType.STRING, description: 'Optional status filter: "pending", "completed", "overdue"' }
+      },
+      required: ['query']
+    }
+  },
+  // ✅ NEW TOOL: start_pomodoro — agent can now trigger focus sessions
+  {
+    name: 'start_pomodoro',
+    description: 'Start a Pomodoro focus session for a specific task. Use when the user says "help me focus on X" or "start a timer for X".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        taskId: { type: SchemaType.STRING, description: 'The task ID to focus on' },
+        taskTitle: { type: SchemaType.STRING, description: 'The task title (used for display)' },
+        durationMinutes: { type: SchemaType.NUMBER, description: 'Session duration in minutes (default: 25)' }
+      },
+      required: ['taskTitle']
+    }
+  },
+  // ✅ NEW TOOL: create_assignment — agent can now add academic assignments
+  {
+    name: 'create_assignment',
+    description: 'Create an academic assignment with a subject, title, due date, and priority. Use for students saying "I have an assignment due X".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        title: { type: SchemaType.STRING, description: 'Assignment title' },
+        subject: { type: SchemaType.STRING, description: 'Subject or course name' },
+        dueDate: { type: SchemaType.STRING, description: 'Due date in YYYY-MM-DD format' },
+        priority: { type: SchemaType.STRING, description: '"high", "medium", or "low"' },
+        notes: { type: SchemaType.STRING, description: 'Optional additional notes' }
+      },
+      required: ['title', 'subject', 'dueDate']
+    }
+  },
 
   // ─── GOOGLE CALENDAR ─────────────────────────────────────────────────────────
   {
@@ -196,12 +285,14 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   },
   {
     name: 'block_calendar',
-    description: 'Blocks a chunk of time on the user\'s calendar TODAY for deep work on a critical task. Use in emergency mode.',
+    description: 'Blocks a chunk of time on the calendar for deep work. Can start immediately (emergency) or at a specific time if startTime is provided.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
-        taskName: { type: SchemaType.STRING, description: 'Name of the critical task to block time for.' },
+        taskName: { type: SchemaType.STRING, description: 'Name of the task to block time for.' },
         durationHours: { type: SchemaType.NUMBER, description: 'Number of hours to block (e.g., 2).' },
+        startTime: { type: SchemaType.STRING, description: 'Optional. Start time in HH:MM format (e.g. "15:00" for 3pm today) or ISO datetime. If omitted, defaults to 15 minutes from now.' },
+        date: { type: SchemaType.STRING, description: 'Optional. Date in YYYY-MM-DD. Only used when startTime is also provided. Defaults to today.' },
       },
       required: ['taskName', 'durationHours'],
     },
@@ -467,6 +558,128 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         day: { type: SchemaType.STRING, description: 'Optional day override (e.g. "Monday", "today", "tomorrow"). Defaults to today.' },
         showLogs: { type: SchemaType.BOOLEAN, description: 'If true, show the workout logs tab. If false/omitted, show the plan tab.' },
       },
+      required: [],
+    },
+  },
+  // ─── STUDENT FEATURES ───────────────────────────────────────────────────────
+  {
+    name: 'calculate_bunk_capacity',
+    description: 'Calculate how many more classes a student can miss in a subject before falling below their target attendance percentage (default 75%). The #1 most-requested student feature.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        subject: { type: SchemaType.STRING, description: 'Subject name (e.g. "Physics", "Data Structures", "Maths")' },
+        targetPercentage: { type: SchemaType.NUMBER, description: 'Target attendance percentage to maintain (default 75).' },
+      },
+      required: ['subject'],
+    },
+  },
+  {
+    name: 'plan_study_schedule',
+    description: 'Auto-schedule study sessions for an upcoming exam. Creates daily study tasks and blocks calendar slots. Call when user says "my exam is on [date]" or "schedule my study plan for [subject]".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        subject: { type: SchemaType.STRING, description: 'Subject to study (e.g. "Operating Systems", "Calculus")' },
+        examDate: { type: SchemaType.STRING, description: 'Exam date in YYYY-MM-DD format' },
+        syllabusTopics: { type: SchemaType.STRING, description: 'Optional comma-separated list of syllabus topics' },
+        dailyHours: { type: SchemaType.NUMBER, description: 'Hours available per day for studying (default 2).' },
+      },
+      required: ['subject', 'examDate'],
+    },
+  },
+  // ─── ENTREPRENEUR / PROFESSIONAL FEATURES ───────────────────────────────────
+  {
+    name: 'get_email_thread',
+    description: 'Fetch the full conversation thread of an email (all messages, not just latest). Use when user asks "what did I promise X?" or "summarize my conversation with Y". Returns thread messages for summarization.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        threadId: { type: SchemaType.STRING, description: 'Gmail thread ID to fetch (get from read_gmail response)' },
+        query: { type: SchemaType.STRING, description: 'Alternative: search by sender or keyword if threadId unknown (e.g. "from:rahul@co.in")' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_meeting_prep_brief',
+    description: 'Generate a meeting prep brief: pulls attendees from a calendar event, finds recent email threads with them, and surfaces open action items. Use 30 minutes before any important meeting.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        eventId: { type: SchemaType.STRING, description: 'Google Calendar event ID (from list_calendar_events)' },
+        eventTitle: { type: SchemaType.STRING, description: 'Meeting title for context (if eventId not available)' },
+        attendeeEmails: { type: SchemaType.STRING, description: 'Comma-separated attendee emails (if known)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_day_review',
+    description: 'Generate an end-of-day review: tasks completed vs planned (Day Score %), meetings kept, emails handled, and top 3 tasks for tomorrow. Call at 6pm or when user asks for daily review.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        date: { type: SchemaType.STRING, description: 'Date to review in YYYY-MM-DD format. Defaults to today.' },
+      },
+      required: [],
+    },
+  },
+  // ─── PART 6: LAST-MINUTE LIFE SAVER FEATURES ────────────────────────────────
+  {
+    name: 'panic_mode',
+    description: 'EMERGENCY: 1-tap panic mode for when everything is falling apart. Surfaces all overdue+critical tasks, schedules a 4h recovery calendar block, and gives the agent a structured action plan to email stakeholders and reschedule the day. Use when user says "I\'m in panic", "everything is on fire", "emergency", "help me".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        reason: { type: SchemaType.STRING, description: 'Optional brief context for why panic mode was triggered' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'smart_email_triage',
+    description: 'Batch-process the full unread inbox: classifies all emails into critical/high/medium/low priority using keyword analysis. Use when user says "process my emails", "triage my inbox", "I have 50 unread emails".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'deadline_negotiator',
+    description: 'Draft a professional, honest deadline extension request email. Calculates the new deadline, factors in current progress percentage, and writes a proactive communication. Use when user says "I can\'t finish X by Friday", "need more time", "how do I ask for extension".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        taskTitle: { type: SchemaType.STRING, description: 'The task or project that needs an extension' },
+        originalDeadline: { type: SchemaType.STRING, description: 'Original deadline in YYYY-MM-DD format' },
+        recipientEmail: { type: SchemaType.STRING, description: 'Email of the person to send the request to' },
+        daysNeeded: { type: SchemaType.NUMBER, description: 'How many additional days needed (default 3)' },
+        progressPercent: { type: SchemaType.NUMBER, description: 'Current completion percentage (e.g. 60 for 60%)' },
+        reason: { type: SchemaType.STRING, description: 'Brief reason for the extension request' },
+      },
+      required: ['taskTitle', 'originalDeadline', 'recipientEmail'],
+    },
+  },
+  {
+    name: 'focus_lock',
+    description: 'Activate Focus Lock: blocks a calendar event for the session and dispatches a UI focus lock event. Use when user says "focus 90 min", "lock my focus", "do not disturb", "handle everything while I focus".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        taskName: { type: SchemaType.STRING, description: 'What the user is focusing on' },
+        durationHours: { type: SchemaType.NUMBER, description: 'Focus session length in hours (default 1.5)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'rebuild_day',
+    description: 'Intelligent 1-click day rebuild: scores all today\'s + overdue tasks by urgency+priority+time, reorders them optimally, and defers low-impact tasks to tomorrow. Use when user says "my day is broken", "rebuild my schedule", "I\'m overwhelmed, fix my day", "reorder everything".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
       required: [],
     },
   },

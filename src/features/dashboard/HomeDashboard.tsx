@@ -29,6 +29,11 @@ import { AgentShutter } from './AgentShutter';
 import { AgentCommandBar } from './AgentCommandBar';
 import { AGENT_DETAILS } from '../../agent/fleet/agentDetails';
 import { missionReportStore } from '../../stores/missionReportStore';
+// GAP-5 + GAP-6 + ART-6: New proactive UI components
+import { SnoozeInterventionDialog } from './SnoozeInterventionDialog';
+import { ConflictCard } from './ConflictCard';
+import { PanicModeWarRoom } from './PanicModeWarRoom';
+import { FocusLockOverlay } from './FocusLockOverlay';
 
 export function HomeDashboard() {
   const [time, setTime] = useState('');
@@ -44,6 +49,8 @@ export function HomeDashboard() {
   const [missionComplete, setMissionComplete] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [proactiveReport, setProactiveReport] = useState<string | null>(null);
+  // ART-6: Panic Mode War Room state
+  const [panicActive, setPanicActive] = useState(false);
   
   // Use a ref so the event listener doesn't need to re-bind on state changes
   const proactiveReportRef = useRef<string | null>(null);
@@ -164,15 +171,20 @@ export function HomeDashboard() {
       }
     };
 
+    // ART-6: Listen for zen-panic-mode event from toolExecutor panic_mode tool
+    const handlePanicMode = () => setPanicActive(true);
+
     window.addEventListener('agent-log', handleAgentLog as EventListener);
     window.addEventListener('agent-shortcut', handleShortcut);
     window.addEventListener('proactive-briefing', handleProactiveBriefing);
     window.addEventListener('show-proactive-report', handleShowProactiveReport);
+    window.addEventListener('zen-panic-mode', handlePanicMode);
     return () => {
       window.removeEventListener('agent-log', handleAgentLog as EventListener);
       window.removeEventListener('agent-shortcut', handleShortcut);
       window.removeEventListener('proactive-briefing', handleProactiveBriefing);
       window.removeEventListener('show-proactive-report', handleShowProactiveReport);
+      window.removeEventListener('zen-panic-mode', handlePanicMode);
     };
   }, []);
 
@@ -318,6 +330,19 @@ export function HomeDashboard() {
 
   return (
     <div className="agent-dashboard">
+      {/* ART-6: Focus Lock persistent top banner */}
+      <FocusLockOverlay />
+
+      {/* ART-6: Panic Mode War Room — triggered by zen-panic-mode event or urgency */}
+      {panicActive && (
+        <PanicModeWarRoom
+          onExit={() => setPanicActive(false)}
+          onAgentCommand={handleExecuteCommand}
+        />
+      )}
+
+      {/* GAP-5: Snooze Intervention Dialog — triggered by zen-snooze-intervention event */}
+      <SnoozeInterventionDialog onAgentCommand={handleExecuteCommand} />
       <div className="dashboard-header-bar">
         <div className="header-left">
           <h1 className="dashboard-main-title">OLYMPUS PROTOCOL</h1>
@@ -396,6 +421,9 @@ export function HomeDashboard() {
         {/* RIGHT COLUMN */}
         <div className="right-column">
           
+          {/* GAP-6: Cross-Module Conflict Card — zero LLM cost, pure event-driven */}
+          <ConflictCard onAgentCommand={handleExecuteCommand} />
+
           {/* PROPHECY GRID */}
           <div className="urgency-matrix">
             <h3 className="section-label">PROPHECY GRID</h3>

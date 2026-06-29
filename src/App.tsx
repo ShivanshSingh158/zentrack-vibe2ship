@@ -33,6 +33,7 @@ import { ReportArchive } from './features/dashboard/ReportArchive';
 import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap } from 'lucide-react';
 import { AgentTerminal } from './components/AgentTerminal';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
+import { GoogleWorkspaceBanner } from './components/GoogleWorkspaceBanner';
 
 
 import { useContextReminders } from './hooks/useContextReminders';
@@ -605,6 +606,7 @@ function App() {
       <BackgroundEffects />
       <div className="app-container flex-col">
         <TopNav />
+        <GoogleWorkspaceBanner />
         <div className="main-content full-width">
           {/* Suspense wraps ALL lazy routes — PageLoader shown during chunk download */}
           <Suspense fallback={<PageLoader />}>

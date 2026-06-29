@@ -56,7 +56,8 @@ export const WarRoomMode = ({ task, onExit }: { task: any; onExit: () => void })
         width: '600px',
         textAlign: 'center'
       }}>
-        <h2 style={{ color: '#fff', fontSize: '32px', margin: '0 0 20px 0' }}>{task.text}</h2>
+        {/* ✅ BUG FIX: was task.text — agent-created tasks only have task.title */}
+        <h2 style={{ color: '#fff', fontSize: '32px', margin: '0 0 20px 0' }}>{task.title || task.text}</h2>
         
         <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', marginTop: '20px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '20px', color: '#ffaaaa' }}>
@@ -65,7 +66,13 @@ export const WarRoomMode = ({ task, onExit }: { task: any; onExit: () => void })
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '20px', color: '#ffaaaa' }}>
             <AlertTriangle size={24} />
-            DNA Score: {task.deadlineDNA || '100'}
+            DNA Score: {task.deadlineDNA ?? (() => {
+              const hoursLeft = (new Date(task.date).getTime() - Date.now()) / 3_600_000;
+              const estimatedH = (task.estimatedMinutes || 60) / 60;
+              const urgencyRatio = Math.max(0, Math.min(1, estimatedH / Math.max(0.1, hoursLeft)));
+              const priorityMult = task.priority === 'high' ? 1.5 : task.priority === 'medium' ? 1.0 : 0.6;
+              return Math.round(Math.min(100, urgencyRatio * priorityMult * 100));
+            })()}
           </div>
         </div>
 

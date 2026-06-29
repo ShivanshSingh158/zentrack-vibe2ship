@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Siren, CheckCircle2, Trash2 } from 'lucide-react';
+import { X, Siren, CheckCircle2, Trash2, Loader2 } from 'lucide-react';
 import { generateCrisisTriage } from './generateCrisisTriage';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { toast } from 'sonner';
+import { addEventToGoogleCalendar } from '../../services/googleCalendar';
 
 export const CrisisTriageModal = ({ onClose }: { onClose: () => void }) => {
   const { tasks, goals, habits } = useGlobalData();
@@ -96,12 +97,37 @@ export const CrisisTriageModal = ({ onClose }: { onClose: () => void }) => {
               </div>
             </div>
             
-            <button onClick={() => {
-              // Simulate blocking the calendar via toast
-              toast.success("Calendar blocked for your top 3 tasks.");
+            <button onClick={async () => {
+              // ✅ FIX: Actually book calendar — was previously just a fake toast
+              if (!data.blockCalendarTop3?.length) { onClose(); return; }
+              const toastId = toast.loading('Blocking calendar for your top tasks...');
+              try {
+                let startHour = new Date();
+                startHour.setMinutes(0, 0, 0);
+                startHour.setHours(startHour.getHours() + 1); // start next full hour
+
+                for (const block of data.blockCalendarTop3.slice(0, 3)) {
+                  const endTime = new Date(startHour.getTime() + (block.durationMinutes || 60) * 60_000);
+                  await addEventToGoogleCalendar({
+                    summary: `🔴 Crisis Focus: ${block.task}`,
+                    description: 'Auto-blocked by ZenTrack Crisis Triage Mode',
+                    start: { dateTime: startHour.toISOString() },
+                    end: { dateTime: endTime.toISOString() },
+                    colorId: '11', // red
+                  }, undefined);
+                  startHour = new Date(endTime.getTime() + 10 * 60_000); // 10min gap between blocks
+                }
+                toast.dismiss(toastId);
+                toast.success(`✅ ${data.blockCalendarTop3.length} focus blocks added to your calendar`);
+              } catch (err: any) {
+                toast.dismiss(toastId);
+                // If not connected to Google, still allow user to proceed
+                toast.warning('Calendar not connected — blocks not saved, but your priorities are set!');
+                console.warn('[CrisisTriage] Calendar booking failed:', err);
+              }
               onClose();
             }} style={{ width: '100%', padding: '1rem', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '12px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer', marginTop: '0.5rem' }}>
-              I Understand. I'm Doing It Now.
+              I Understand. Block My Calendar Now.
             </button>
           </div>
         ) : (

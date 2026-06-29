@@ -58,6 +58,11 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   }, [onMarkWatched, playing.topicId, playing.subtaskId]);
 
   useEffect(() => {
+    // ✅ FIX: Add opt-out via localStorage + guard for short videos (< 15 min)
+    const checkinEnabled = localStorage.getItem('zen_video_checkin_enabled') !== 'false';
+    const videoDurationMin = playing.videoDurationSeconds ? playing.videoDurationSeconds / 60 : 999;
+    if (!checkinEnabled || videoDurationMin < 15) return; // skip check-in for short videos
+
     // 5-minute proactive check-in
     const timer = setTimeout(() => {
       setShowChat(true);

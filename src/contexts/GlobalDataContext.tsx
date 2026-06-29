@@ -3,7 +3,7 @@ import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import type { Query, DocumentData } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/firebase';
-import { initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle, getTokenTimeRemaining } from '../services/googleCalendar';
+import { initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle, getTokenTimeRemaining, forceSilentRefresh, pollGoogleCalendarChanges } from '../services/googleCalendar';
 import { loadUserGeminiKey } from '../services/userGeminiAuth';
 import type { Task, CalendarEvent } from '../types/domain';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
@@ -30,6 +30,7 @@ interface GlobalDataContextType {
   };
   isLoading: boolean;
   isGoogleConnected: boolean;
+  googleStatus: 'checking' | 'connected' | 'disconnected';
   connectGoogle: () => Promise<void>;
   disconnectGoogle: () => void;
 }
@@ -86,67 +87,150 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [isLoading, setIsLoading] = useState(true);
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
 
-  useEffect(() => {
-    initGoogleCalendar().then(() => setIsGoogleConnected(isSignedInToGoogle()));
-  }, []);
+  // ── Google Connection Status ────────────────────────────────────────────────
+  // 'checking'    = we are in the middle of a silent token refresh attempt
+  // 'connected'   = Google Workspace is authorized and tokens are valid
+  // 'disconnected'= no valid token and silent refresh failed / no refresh token
+  //
+  // RULE: This system NEVER opens an OAuth popup automatically.
+  // Popups must only fire when the user explicitly clicks a "Connect" button.
+  const [googleStatus, setGoogleStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 
-  const connectGoogle = async () => {
-    await signInWithGoogle();
-    setIsGoogleConnected(isSignedInToGoogle());
+  // Attempt a silent refresh and update status accordingly.
+  // Safe to call at any time — never opens a popup.
+  const attemptSilentRefresh = async (): Promise<boolean> => {
+    if (isSignedInToGoogle()) {
+      setIsGoogleConnected(true);
+      setGoogleStatus('connected');
+      return true;
+    }
+
+    const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
+    if (!refreshToken) {
+      setIsGoogleConnected(false);
+      setGoogleStatus('disconnected');
+      return false;
+    }
+
+    try {
+      await forceSilentRefresh();
+      const connected = isSignedInToGoogle();
+      setIsGoogleConnected(connected);
+      setGoogleStatus(connected ? 'connected' : 'disconnected');
+      return connected;
+    } catch (err) {
+      console.warn('[GoogleWorkspace] Silent refresh failed:', err);
+      // Clear stale tokens so we accurately report disconnected state
+      localStorage.removeItem('zen_gcal_access_token');
+      localStorage.removeItem('zen_gcal_token_expiry');
+      localStorage.removeItem('zen_gcal_refresh_token');
+      setIsGoogleConnected(false);
+      setGoogleStatus('disconnected');
+      return false;
+    }
   };
 
-  // ── Auto-Login Health Monitor ──────────────────────────────────────────────
-  // Every 5 minutes, check if the Google token is near expiry.
-  // If token expires within 10 minutes AND user was previously connected,
-  // silently refresh it WITHOUT requiring any user interaction.
-  // If token is fully expired, aggressively attempt to reconnect.
+  // On mount: initialize GIS script + attempt silent restore
+  useEffect(() => {
+    initGoogleCalendar().then(() => attemptSilentRefresh());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Periodic Health Monitor ─────────────────────────────────────────────────
+  // Every 5 minutes AND every time the page becomes visible (user returns to tab):
+  // check if the token is still valid and refresh silently if needed.
+  // This handles the Google 60-minute session timeout gracefully.
   useEffect(() => {
     const healthCheckFn = async () => {
       const timeLeft = getTokenTimeRemaining();
-      const wasConnected = !!localStorage.getItem('zen_gcal_access_token');
+      const hasRefreshToken = !!localStorage.getItem('zen_gcal_refresh_token');
 
-      if (wasConnected && timeLeft < 10 * 60 * 1000 && timeLeft > 0) {
-        // Token is about to expire — silently refresh
-        console.log('[AutoLogin] Token expires in', Math.round(timeLeft / 60000), 'mins. Silently refreshing...');
-        try {
-          await signInWithGoogle();
-          setIsGoogleConnected(true);
-          console.log('[AutoLogin] ✅ Google token silently refreshed.');
-        } catch (err) {
-          console.warn('[AutoLogin] Silent refresh failed. Will retry or prompt on next agent call.', err);
-        }
-      } else if (wasConnected && timeLeft === 0) {
-        // Token has completely expired. User demanded aggressive reconnection!
-        console.log('[AutoLogin] Workspace offline! Forcing aggressive emergency reconnection...');
-        try {
-          await connectGoogle();
-        } catch (err) {
-          console.warn('[AutoLogin] Emergency reconnection failed:', err);
-          setIsGoogleConnected(false);
-        }
+      if (!hasRefreshToken) return; // Never was connected — nothing to do
+
+      if (timeLeft === 0) {
+        // Token fully expired — attempt silent refresh
+        console.log('[GoogleWorkspace] Token expired. Attempting silent refresh...');
+        await attemptSilentRefresh();
+      } else if (timeLeft < 10 * 60 * 1000) {
+        // Token expiring within 10 min — proactively refresh
+        console.log('[GoogleWorkspace] Token near expiry, proactively refreshing...');
+        await attemptSilentRefresh();
       }
+      // else: token is fine, do nothing
     };
 
-    // Run immediately on mount, then every 5 minutes
-    setTimeout(healthCheckFn, 2000);
-    const healthCheck = setInterval(healthCheckFn, 5 * 60 * 1000);
+    // Check every 5 minutes
+    const intervalId = setInterval(healthCheckFn, 5 * 60 * 1000);
 
-    // Also listen for events from GeminiAuthModal
-    const handleRefreshed = () => setIsGoogleConnected(true);
-    const handleDisconnected = () => setIsGoogleConnected(false);
+    // Also re-check whenever the user switches back to this tab
+    // This catches the case where the app was in the background for >60 min
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        healthCheckFn();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // Listen for external token events (e.g., from signInWithGoogle success)
+    const handleRefreshed = () => { setIsGoogleConnected(true); setGoogleStatus('connected'); };
+    const handleDisconnected = () => { setIsGoogleConnected(false); setGoogleStatus('disconnected'); };
     window.addEventListener('google-token-refreshed', handleRefreshed);
     window.addEventListener('google-token-disconnected', handleDisconnected);
 
     return () => {
-      clearInterval(healthCheck);
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('google-token-refreshed', handleRefreshed);
       window.removeEventListener('google-token-disconnected', handleDisconnected);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /**
+   * Initiates a user-interactive Google OAuth popup.
+   * MUST only be called from a user-gesture handler (button click).
+   * Never call this from useEffect, setInterval, or agent code.
+   */
+  const connectGoogle = async (): Promise<void> => {
+    await signInWithGoogle();
+    const connected = isSignedInToGoogle();
+    setIsGoogleConnected(connected);
+    setGoogleStatus(connected ? 'connected' : 'disconnected');
+    // ✅ FIX: After connecting, immediately poll calendar so agents see live events
+    if (connected) {
+      try {
+        const events = await pollGoogleCalendarChanges();
+        if (events && events.length > 0) setCalendarEvents(events);
+      } catch (err) {
+        console.warn('[GlobalData] Calendar poll after connect failed:', err);
+      }
+    }
+  };
+
+  // ── Calendar Poll (every 15 min while Google is connected) ─────────────────
+  // ✅ FIX: calendarEvents was always [] — agents always saw "0 events today"
+  // Now we poll Google Calendar and populate calendarEvents state
+  useEffect(() => {
+    if (!isGoogleConnected) return;
+    const doPoll = async () => {
+      try {
+        const events = await pollGoogleCalendarChanges();
+        if (events && events.length > 0) setCalendarEvents(events);
+      } catch (err) {
+        console.warn('[GlobalData] Calendar poll failed:', err);
+      }
+    };
+    doPoll(); // immediate poll on connect
+    const intervalId = setInterval(doPoll, 15 * 60 * 1000); // re-poll every 15 min
+    return () => clearInterval(intervalId);
+  }, [isGoogleConnected]);
+
 
   const disconnectGoogle = () => {
     signOutGoogle();
     setIsGoogleConnected(false);
+    setGoogleStatus('disconnected');
+    window.dispatchEvent(new CustomEvent('google-token-disconnected'));
   };
 
   const dataUnsubsRef = useRef<(() => void)[]>([]);
@@ -232,7 +316,8 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     <GlobalDataContext.Provider value={{
       tasks, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
       learningTopics, gymLogs, notes, attendanceSubjects, assignments,
-      pomodoroSessions, userPreferences, isLoading, isGoogleConnected, connectGoogle, disconnectGoogle,
+      pomodoroSessions, userPreferences, isLoading,
+      isGoogleConnected, googleStatus, connectGoogle, disconnectGoogle,
       gymSchedule: GYM_PLAN.find(p => p.dayIndex === WEEKDAY_TO_PLAN[new Date().getDay()]) || { isRest: true, name: 'Rest Day' }
     } as any}>
       {children}

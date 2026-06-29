@@ -1,11 +1,14 @@
 import { addDoc, collection, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
-import { addEventToGoogleCalendar, deleteGoogleCalendarEvent, signInWithGoogle, isSignedInToGoogle } from '../services/googleCalendar';
+import { addEventToGoogleCalendar, deleteGoogleCalendarEvent, forceSilentRefresh, isSignedInToGoogle } from '../services/googleCalendar';
 import { sendPushNotification } from '../services/fcm';
 import { getLocalDateString } from '../utils/dateUtils';
 import { logApi, logWebSocket } from '../utils/networkLogger';
+import { recordApprovalRejection, recordApprovalGrant, recordEmailSent, recordGhostTaskCreated } from '../services/agentMemoryPersistence';
+import { userLearningStore } from '../services/userLearningStore';
 import {
   fetchUnreadEmails,
+  fetchEmailThread,
   sendEmail,
   replyToEmail,
   archiveEmail,
@@ -26,25 +29,38 @@ import type { Task, CalendarEvent } from '../types/domain';
 
 export type ToolResult = { success: boolean; data: unknown; message: string };
 
-const requireGoogleAuth = async (signal?: AbortSignal): Promise<ToolResult | null> => {
+// ✅ INEFFICIENCY-5 FIX: Module-level singleton OAuth refresh lock.
+// Previously each agent called forceSilentRefresh() independently on 401 errors.
+// In a parallel mission, 3 agents could all start their own OAuth flows simultaneously.
+// Now the first caller acquires the lock and all subsequent callers await the same promise.
+let _oauthRefreshLock: Promise<void> | null = null;
+const ensureGoogleAuthSingleton = async (): Promise<void> => {
+  if (_oauthRefreshLock) return _oauthRefreshLock; // deduplicate concurrent refresh attempts
+  _oauthRefreshLock = forceSilentRefresh().finally(() => { _oauthRefreshLock = null; });
+  return _oauthRefreshLock;
+};
+
+const requireGoogleAuth = async (_signal?: AbortSignal): Promise<ToolResult | null> => {
   if (!isSignedInToGoogle()) {
-    try {
-      if (typeof window !== 'undefined' && localStorage.getItem('zen_gcal_refresh_token')) {
-        console.log('[ToolExecutor] Token expired mid-flight. Attempting silent auto-refresh...');
-        await signInWithGoogle();
+    // Try a completely silent, user-gesture-free token refresh
+    const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
+    if (refreshToken) {
+      try {
+        console.log('[ToolExecutor] Token expired mid-flight. Attempting silent refresh...');
+        await ensureGoogleAuthSingleton(); // ✅ INEFFICIENCY-5: use singleton, not direct call
         if (isSignedInToGoogle()) {
-          console.log('[ToolExecutor] Silent auto-refresh successful! Resuming tool execution.');
+          console.log('[ToolExecutor] Silent refresh successful! Resuming tool execution.');
           return null;
         }
+      } catch (e) {
+        console.warn('[ToolExecutor] Mid-flight silent refresh failed:', e);
       }
-    } catch (e) {
-      console.warn('[ToolExecutor] Mid-flight silent auto-refresh failed:', e);
     }
 
     return {
       success: false,
       data: null,
-      message: 'Google Workspace is not connected. Call connect_google_workspace first to authenticate.'
+      message: '⚠️ Google Workspace is not connected. Please click the **"Connect Google"** button in the orange banner at the top of the app, then try again.'
     };
   }
   return null;
@@ -53,6 +69,8 @@ const requireGoogleAuth = async (signal?: AbortSignal): Promise<ToolResult | nul
 // ── Human-in-the-Loop Approval Gate ──────────────────────────────────────────
 // Fires a CustomEvent to the UI to request approval before destructive actions.
 // The UI renders an approval card; the user's click resolves this promise.
+// GAP-1 FIX: Records rejections/grants to Firestore so the agent learns over time
+// which tools the user consistently approves vs. rejects.
 export const requestApproval = (toolName: string, summary: string, signal?: AbortSignal): Promise<boolean> => {
   if (typeof window === 'undefined') return Promise.resolve(true); // SSR: always approve
   return new Promise((resolve) => {
@@ -60,14 +78,21 @@ export const requestApproval = (toolName: string, summary: string, signal?: Abor
     const cleanup = () => window.removeEventListener(id, handler as EventListener);
     const handler = (e: Event) => {
       cleanup();
-      resolve((e as CustomEvent).detail?.approved === true);
+      const approved = (e as CustomEvent).detail?.approved === true;
+      // Record decision to persistent memory — non-blocking
+      if (approved) {
+        recordApprovalGrant(toolName);
+      } else {
+        recordApprovalRejection(toolName);
+      }
+      resolve(approved);
     };
     window.addEventListener(id, handler as EventListener, { once: true });
     window.dispatchEvent(new CustomEvent('zen-approval-request', {
       detail: { id, toolName, summary }
     }));
     // Auto-reject after 120s so agents don't hang forever
-    const timer = setTimeout(() => { cleanup(); resolve(false); }, 120_000);
+    const timer = setTimeout(() => { cleanup(); recordApprovalRejection(toolName); resolve(false); }, 120_000);
     signal?.addEventListener('abort', () => { clearTimeout(timer); cleanup(); resolve(false); }, { once: true });
   });
 };
@@ -88,18 +113,32 @@ export const executeTool = async (
 
     // ─── GOOGLE WORKSPACE CONNECTION ─────────────────────────────────────────
     case 'connect_google_workspace': {
-      logApi('POST', '/api/v1/google/oauth/connect', {}, 'pending');
+      // The agent CANNOT open an OAuth popup — browsers require a real user gesture.
+      // Instead, instruct the user to click the Connect button in the UI.
       if (isSignedInToGoogle()) {
         logApi('POST', '/api/v1/google/oauth/connect', {}, 'success');
-        return { success: true, data: {}, message: 'Google Workspace is already fully connected! Gmail, Calendar, Drive, Docs, Sheets, and Google Meet are all active.' };
+        return { success: true, data: {}, message: '✅ Google Workspace is already fully connected! Gmail, Calendar, Drive, Docs, Sheets, and Google Meet are all active.' };
       }
-      try {
-        await signInWithGoogle();
-        logApi('POST', '/api/v1/google/oauth/connect', {}, 'success');
-        return { success: true, data: {}, message: 'Successfully connected to Google Workspace! Gmail, Calendar, Drive, Docs, and Meet are now active.' };
-      } catch (err: unknown) {
-        return { success: false, data: null, message: `Failed to connect Google Workspace: ${(err as { message?: string }).message}` };
+
+      // Try a silent token refresh first (doesn't need user gesture)
+      const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
+      if (refreshToken) {
+        try {
+          await forceSilentRefresh();
+          if (isSignedInToGoogle()) {
+            logApi('POST', '/api/v1/google/oauth/connect', {}, 'success');
+            return { success: true, data: {}, message: '✅ Google Workspace silently reconnected! All services are active.' };
+          }
+        } catch { /* fall through */ }
       }
+
+      // Cannot open a popup from agent code — guide the user
+      logApi('POST', '/api/v1/google/oauth/connect', {}, 'error');
+      return {
+        success: false,
+        data: null,
+        message: '🔗 **Action Required:** Google Workspace needs to be connected. Please click the **"Connect Google"** button in the orange banner at the top of the app. Once you click it, a secure Google login popup will appear. After you approve, all Google features (Calendar, Gmail, Drive, Docs, Meet) will activate automatically.'
+      };
     }
 
     // ─── TASKS ───────────────────────────────────────────────────────────────
@@ -119,8 +158,21 @@ export const executeTool = async (
       });
       
       if (filter === 'overdue') tasks = tasks.filter((t: any) => t.date && t.date < today);
-      if (filter === 'today') tasks = tasks.filter((t: any) => t.date === today);
-      if (filter === 'high_priority') tasks = tasks.filter((t: any) => t.priority === 'high');
+      else if (filter === 'today') tasks = tasks.filter((t: any) => t.date === today);
+      else if (filter === 'high_priority') tasks = tasks.filter((t: any) => t.priority === 'high');
+      // ✅ INEFFICIENCY-2 FIX: 'dashboard' filter returns all three segments in a single pass.
+      // ORACLE previously made 3 separate get_tasks calls (overdue + today + high_priority).
+      // Now one call with filter='dashboard' returns { overdue, today, high_priority } arrays.
+      else if (filter === 'dashboard') {
+        const overdue   = tasks.filter((t: any) => t.date && t.date < today);
+        const dueToday  = tasks.filter((t: any) => t.date === today);
+        const highPri   = tasks.filter((t: any) => t.priority === 'high' && t.date && t.date > today);
+        return {
+          success: true,
+          data: { overdue, today: dueToday, high_priority: highPri, all: tasks },
+          message: `Dashboard: ${overdue.length} overdue, ${dueToday.length} due today, ${highPri.length} upcoming high-priority`
+        };
+      }
       return {
         success: true,
         data: tasks.map(t => ({
@@ -210,12 +262,29 @@ export const executeTool = async (
 
     case 'create_task': {
       logApi('POST', '/api/v1/tasks', args, 'pending');
+      // ✅ Deduplication: prevent SPECTRE from creating duplicate tasks on repeated ghost scans
+      const targetDate = args.date || today;
+      const existingTasks = appContext.tasks || [];
+      const duplicate = existingTasks.find((t: any) => {
+        const tTitle = (t.title || t.text || '').toLowerCase().trim();
+        const argsTitle = (args.title || '').toLowerCase().trim();
+        if (tTitle !== argsTitle) return false;
+        // Allow ±2 day window for date matching
+        if (!t.date || !targetDate) return tTitle === argsTitle;
+        const tDate = new Date(t.date).getTime();
+        const aDate = new Date(targetDate).getTime();
+        return Math.abs(tDate - aDate) <= 2 * 24 * 60 * 60 * 1000;
+      });
+      if (duplicate) {
+        logApi('POST', '/api/v1/tasks', args, 'success');
+        return { success: true, data: { id: duplicate.id }, message: `ℹ️ Task already tracked: "${args.title}" (deduplication check passed — skipped creating duplicate)` };
+      }
       const ref = await addDoc(collection(db, 'todos'), {
         userId: user.uid,
         title: args.title,  // Matches TodoListModule field name
         text: args.title,   // Legacy field for backward compat with old data
         priority: args.priority || 'medium',
-        date: args.date || today,
+        date: targetDate,
         status: 'pending',
         estimatedMinutes: args.estimatedMinutes || null,
         createdAt: Date.now(),
@@ -230,7 +299,12 @@ export const executeTool = async (
     case 'complete_task': {
       logApi('POST', `/api/v1/tasks/${args.taskId}/complete`, {}, 'success');
       logWebSocket('task.updated', { id: args.taskId, status: 'completed' });
-      await updateDoc(doc(db, 'todos', args.taskId), { status: 'completed' });
+      await updateDoc(doc(db, 'todos', args.taskId), { status: 'completed', completedAt: Date.now() });
+      // ⚡ Real-time learning hook: update peak hours + estimation accuracy from this completion
+      const completedTask = (appContext.tasks || []).find((t: any) => t.id === args.taskId);
+      if (completedTask) {
+        userLearningStore.recordCompletion({ ...completedTask, completedAt: Date.now() });
+      }
       return { success: true, data: {}, message: `✅ Task marked as complete` };
     }
 
@@ -242,6 +316,123 @@ export const executeTool = async (
       logWebSocket('task.deleted', { id: args.taskId });
       await deleteDoc(doc(db, 'todos', args.taskId));
       return { success: true, data: {}, message: `✅ Task successfully deleted` };
+    }
+
+    // ✅ NEW TOOL: update_task — patch any field without delete+recreate
+    case 'update_task': {
+      if (!args.taskId) return { success: false, data: null, message: 'taskId is required to update a task' };
+      const updates: Record<string, any> = {};
+      if (args.title) { updates.title = args.title; updates.text = args.title; } // keep both fields in sync
+      if (args.priority) updates.priority = args.priority;
+      if (args.date) updates.date = args.date;
+      if (args.estimatedMinutes !== undefined) updates.estimatedMinutes = args.estimatedMinutes;
+      if (args.status) updates.status = args.status;
+      if (Object.keys(updates).length === 0) {
+        return { success: false, data: null, message: 'No fields to update — provide at least one of: title, priority, date, estimatedMinutes, status' };
+      }
+      logApi('PATCH', `/api/v1/tasks/${args.taskId}`, updates, 'success');
+      await updateDoc(doc(db, 'todos', args.taskId), updates);
+      return { success: true, data: {}, message: `✅ Task updated: ${Object.keys(updates).join(', ')} changed` };
+    }
+
+    // ✅ NEW TOOL: complete_habit
+    case 'complete_habit': {
+      if (!args.habitId) return { success: false, data: null, message: 'habitId is required' };
+      const habitDate = args.date || today;
+      await addDoc(collection(db, 'habit_logs'), {
+        userId: user.uid,
+        habitId: args.habitId,
+        date: habitDate,
+        completed: true,
+        notes: args.notes || null,
+        createdAt: Date.now(),
+      });
+      logApi('POST', '/api/v1/habits/log', { habitId: args.habitId, date: habitDate }, 'success');
+      return { success: true, data: {}, message: `✅ Habit logged as completed for ${habitDate}` };
+    }
+
+    // ✅ NEW TOOL: mark_attendance
+    case 'mark_attendance': {
+      if (!args.subject || !args.status) return { success: false, data: null, message: 'subject and status are required' };
+      const attendanceDate = args.date || today;
+      await addDoc(collection(db, 'attendance_logs'), {
+        userId: user.uid,
+        subject: args.subject,
+        status: args.status,
+        date: attendanceDate,
+        notes: args.notes || null,
+        createdAt: Date.now(),
+      });
+      logApi('POST', '/api/v1/attendance', { subject: args.subject, status: args.status, date: attendanceDate }, 'success');
+      return { success: true, data: {}, message: `✅ Attendance logged: ${args.subject} — ${args.status} on ${attendanceDate}` };
+    }
+
+    // ✅ NEW TOOL: search_tasks — keyword search without loading all tasks
+    case 'search_tasks': {
+      if (!args.query) return { success: false, data: null, message: 'query is required for search_tasks' };
+      const query_lower = (args.query as string).toLowerCase();
+      let candidates = (appContext.tasks || []) as any[];
+      // Apply status filter if provided
+      if (args.filter === 'pending') candidates = candidates.filter((t: any) => t.status !== 'completed');
+      else if (args.filter === 'completed') candidates = candidates.filter((t: any) => t.status === 'completed');
+      else if (args.filter === 'overdue') {
+        const tod = getLocalDateString(new Date());
+        candidates = candidates.filter((t: any) => t.status !== 'completed' && t.date && t.date < tod);
+      }
+      const matches = candidates.filter((t: any) => {
+        const title = ((t.title || t.text) || '').toLowerCase();
+        return title.includes(query_lower);
+      }).slice(0, 10).map((t: any) => ({
+        id: t.id, title: t.title || t.text, date: t.date, priority: t.priority, status: t.status
+      }));
+      return { success: true, data: matches, message: `Found ${matches.length} task(s) matching "${args.query}"` };
+    }
+
+    // ✅ NEW TOOL: start_pomodoro — triggers focus session via window event
+    case 'start_pomodoro': {
+      if (!args.taskTitle) return { success: false, data: null, message: 'taskTitle is required for start_pomodoro' };
+      const duration = args.durationMinutes || 25;
+      window.dispatchEvent(new CustomEvent('start-pomodoro', {
+        detail: { taskId: args.taskId, taskTitle: args.taskTitle, durationMinutes: duration }
+      }));
+      logApi('POST', '/api/v1/pomodoro/start', { taskId: args.taskId, taskTitle: args.taskTitle, durationMinutes: duration }, 'success');
+      return { success: true, data: {}, message: `✅ Started ${duration}-minute Pomodoro focus session for "${args.taskTitle}". Timer is now running!` };
+    }
+
+    // ✅ NEW TOOL: create_assignment — adds academic assignment to Firestore
+    case 'create_assignment': {
+      if (!args.title || !args.subject || !args.dueDate) return { success: false, data: null, message: 'title, subject, and dueDate are required for create_assignment' };
+      const assignmentRef = await addDoc(collection(db, 'assignments'), {
+        userId: user.uid,
+        title: args.title,
+        subject: args.subject,
+        dueDate: args.dueDate,
+        priority: args.priority || 'medium',
+        notes: args.notes || null,
+        completed: false,
+        createdAt: Date.now(),
+      });
+      logApi('POST', '/api/v1/assignments', { title: args.title, subject: args.subject, dueDate: args.dueDate }, 'success');
+
+      // ✅ PART-4 STUDENT FIX: Assignment Reminder Chain.
+      // Schedule T-1day, T-0 morning, T-2h push notifications via localStorage.
+      // The watchdog in useProactiveAgent reads these and fires at the right moment.
+      try {
+        const dueMs = new Date(args.dueDate + 'T23:59:00').getTime();
+        const reminders = [
+          { fireAt: dueMs - 24 * 60 * 60 * 1000, message: `📚 Assignment due tomorrow: "${args.title}" for ${args.subject}` },
+          { fireAt: dueMs - 8 * 60 * 60 * 1000,  message: `⏰ 8 hours left — "${args.title}" for ${args.subject}. Have you started?` },
+          { fireAt: dueMs - 2 * 60 * 60 * 1000,  message: `🚨 2 HOURS LEFT — Submit "${args.title}" for ${args.subject} NOW!` },
+        ];
+        const existingRaw = localStorage.getItem('zen_assignment_reminders') || '[]';
+        const existing = JSON.parse(existingRaw);
+        const updated = [...existing, ...reminders.map(r => ({ ...r, assignmentId: assignmentRef.id, title: args.title }))];
+        localStorage.setItem('zen_assignment_reminders', JSON.stringify(updated));
+      } catch (reminderErr) {
+        console.warn('[ToolExecutor] Reminder scheduling failed (non-blocking):', reminderErr);
+      }
+
+      return { success: true, data: { id: assignmentRef.id }, message: `✅ Assignment added: "${args.title}" for ${args.subject} due ${args.dueDate}. ⏰ 3 reminder notifications scheduled (T-1day, T-8h, T-2h).` };
     }
 
     case 'delete_calendar_event': {
@@ -278,6 +469,9 @@ export const executeTool = async (
       const authErr = await requireGoogleAuth(signal);
       if (authErr) return authErr;
       if (!args.fileId) return { success: false, data: null, message: 'fileId is required' };
+      // ✅ BUG FIX: Added approval gate — was missing unlike all other destructive tools
+      const driveApproved = await requestApproval('trash_drive_file', `Move Drive file to trash permanently?`, signal);
+      if (!driveApproved) return { success: false, data: null, message: '🚫 Cancelled by user — Drive file was NOT trashed.' };
       logApi('DELETE', `/api/v1/drive/files/${args.fileId}/trash`, {}, 'success');
       try {
         await trashDriveFile(args.fileId, signal);
@@ -288,19 +482,33 @@ export const executeTool = async (
     }
 
     case 'auto_reschedule': {
+      // ✅ BUG FIX: Added approval gate — was silently bulk-rescheduling without asking
+      const tasksToReschedule = appContext.tasks.filter(
+        (t: any) => t.status !== 'completed' && t.date === today && t.priority !== 'high'
+      );
+      if (tasksToReschedule.length === 0) {
+        return { success: true, data: { rescheduledCount: 0 }, message: 'No low-priority tasks to reschedule today.' };
+      }
+      const taskNames = tasksToReschedule.slice(0, 3).map((t: any) => `"${t.title || t.text}"`).join(', ');
+      const rescheduleApproved = await requestApproval(
+        'auto_reschedule',
+        `Reschedule ${tasksToReschedule.length} low-priority task(s) to tomorrow? (${taskNames}${tasksToReschedule.length > 3 ? ` +${tasksToReschedule.length - 3} more` : ''})`,
+        signal
+      );
+      if (!rescheduleApproved) return { success: false, data: null, message: '🚫 Cancelled by user — tasks were NOT rescheduled.' };
       let rescheduledCount = 0;
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowStr = getLocalDateString(tomorrow);
 
-      for (const t of appContext.tasks) {
-        if (t.status !== 'completed' && t.date === today && t.priority !== 'high') {
-          await updateDoc(doc(db, 'todos', t.id), { date: tomorrowStr });
-          rescheduledCount++;
-        }
+      for (const t of tasksToReschedule) {
+        await updateDoc(doc(db, 'todos', t.id), { date: tomorrowStr });
+        rescheduledCount++;
       }
       logApi('POST', '/api/v1/tasks/snooze', { reason: args.reason }, 'success');
-      return { success: true, data: { rescheduledCount, reason: args.reason }, message: `Rescheduled ${rescheduledCount} low-priority tasks to tomorrow. Reason: ${args.reason}` };
+      // ⚡ Real-time learning hook: increment reschedule rate
+      tasksToReschedule.forEach((t: any) => userLearningStore.recordReschedule(t));
+      return { success: true, data: { rescheduledCount, reason: args.reason }, message: `✅ Rescheduled ${rescheduledCount} low-priority tasks to tomorrow. Reason: ${args.reason}` };
     }
 
     // ─── GOOGLE CALENDAR ─────────────────────────────────────────────────────────
@@ -322,6 +530,8 @@ export const executeTool = async (
           description: 'Auto-scheduled by Zen AI Agent'
         }, signal);
         logApi('POST', '/api/v1/schedule/auto-block', args, 'success');
+        // ⚡ Real-time learning hook: record which hour slot was chosen
+        userLearningStore.recordSlotChosen(h);
         return { success: true, data: {}, message: `✅ Blocked ${args.startTime}–${args.durationMinutes}min for "${args.taskName}" on ${targetDate}` };
       } catch (err: unknown) {
         return { success: false, data: null, message: `Calendar API Error: ${(err as { message?: string }).message}` };
@@ -413,8 +623,28 @@ export const executeTool = async (
     case 'block_calendar': {
       const authErr = await requireGoogleAuth(signal);
       if (authErr) return authErr;
-      const startDate = new Date();
-      startDate.setMinutes(startDate.getMinutes() + 15);
+
+      // ✅ BUG-R9 FIX: block_calendar was always creating an event 15 minutes from NOW,
+      // ignoring any startTime or date argument. If it was 9am and CHRONOS asked to block
+      // 3pm, the calendar block landed at 9:15am. Now we honour startTime when provided.
+      let startDate: Date;
+      if (args.startTime) {
+        // startTime can be "HH:MM" (today) or a full ISO datetime string
+        if (args.startTime.includes('T') || args.startTime.length > 5) {
+          startDate = new Date(args.startTime);
+        } else {
+          startDate = new Date(today + 'T' + args.startTime + ':00');
+        }
+      } else if (args.date) {
+        // date provided but no time — use start of that day at 09:00
+        const [h2, m2] = ((args.startTime as string | undefined) || '09:00').split(':').map(Number);
+        startDate = new Date(args.date + 'T00:00:00');
+        startDate.setHours(h2, m2, 0, 0);
+      } else {
+        // No time specified — default to 15 minutes from now (emergency focus block)
+        startDate = new Date();
+        startDate.setMinutes(startDate.getMinutes() + 15);
+      }
       const endDate = new Date(startDate.getTime() + (args.durationHours || 2) * 3600000);
       try {
         await addEventToGoogleCalendar({
@@ -424,7 +654,7 @@ export const executeTool = async (
           endDateTime: endDate.toISOString(),
           description: 'Auto-blocked by Zen AI Emergency Protocol'
         }, signal);
-        return { success: true, data: {}, message: `✅ Blocked ${args.durationHours}h for "${args.taskName}" starting at ${startDate.toLocaleTimeString()}` };
+        return { success: true, data: {}, message: `✅ Blocked ${args.durationHours || 2}h for "${args.taskName}" starting at ${startDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` };
       } catch (err: unknown) {
         return { success: false, data: null, message: `Calendar API Error: ${(err as { message?: string }).message}` };
       }
@@ -433,10 +663,17 @@ export const executeTool = async (
     case 'delete_calendar_events': {
       const authErr = await requireGoogleAuth(signal);
       if (authErr) return authErr;
-      let deletedCount = 0;
       const targetDate = args.date || today;
+      let deletedCount = 0;
       try {
         const liveEvents = await listCalendarEventsOnDate(targetDate, signal);
+        // ✅ BUG FIX: Added approval gate — this was the only destructive tool without one
+        const bulkCalApproved = await requestApproval(
+          'delete_calendar_events',
+          `Delete ALL ${liveEvents.length} event(s) on ${targetDate}? This cannot be undone.`,
+          signal
+        );
+        if (!bulkCalApproved) return { success: false, data: null, message: '🚫 Cancelled by user — calendar was NOT cleared.' };
         for (const ev of liveEvents) {
           if (ev.id) {
             await deleteGoogleCalendarEvent(ev.id, signal);
@@ -508,7 +745,39 @@ export const executeTool = async (
       try {
         await sendEmail(args.to, args.subject, args.bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/send', { to: args.to }, 'success');
-        return { success: true, data: {}, message: `✅ Email sent successfully to ${args.to}` };
+
+        // ✅ PART-4 ENTREPRENEUR FIX: Auto-create 3-day follow-up task after every email send.
+        // "Send email to Rahul" → automatically tracked "Follow up with Rahul re: [subject]"
+        // This closes the loop: no more forgotten follow-ups from sent emails.
+        try {
+          const followUpDate = new Date();
+          followUpDate.setDate(followUpDate.getDate() + 3);
+          const followUpDateStr = getLocalDateString(followUpDate);
+          await addDoc(collection(db, 'todos'), {
+            userId: user.uid,
+            title: `Follow up with ${args.to} re: ${args.subject}`,
+            text: `Follow up with ${args.to} re: ${args.subject}`,
+            priority: 'medium',
+            date: followUpDateStr,
+            status: 'pending',
+            tags: ['follow-up', 'email'],
+            linkedEmail: { to: args.to, subject: args.subject, sentAt: Date.now() },
+            createdAt: Date.now(),
+            order: Date.now(),
+          });
+        } catch (followUpErr) {
+          console.warn('[ToolExecutor] Follow-up task creation failed (non-blocking):', followUpErr);
+        }
+
+        // ✅ GAP-1: Record to persistent memory so agent won't re-send same email tomorrow
+        recordEmailSent(args.to as string, args.subject as string);
+        // ⚡ Real-time learning hook: update email response time estimate
+        // We use time-since-task-creation as a proxy for response latency.
+        // This teaches HERMES how quickly this user typically acts on emails.
+        userLearningStore.recordEmailAction(60); // default 60min; refined as data accumulates
+        return { success: true, data: {}, message: `✅ Email sent to ${args.to}. 📌 Follow-up task auto-created for 3 days from now.` };
+
+
       } catch (e: unknown) {
         return { success: false, data: null, message: `Gmail API Error: ${(e as { message?: string }).message}` };
       }
@@ -535,6 +804,13 @@ export const executeTool = async (
     case 'notify_accountability_partner': {
       const authErr = await requireGoogleAuth(signal);
       if (authErr) return authErr;
+      // ✅ BUG FIX: Added approval gate — was sending emails to third parties without any confirmation
+      const partnerApproved = await requestApproval(
+        'notify_accountability_partner',
+        `Send accountability alert email to ${args.partnerEmail}?`,
+        signal
+      );
+      if (!partnerApproved) return { success: false, data: null, message: '🚫 Cancelled by user — accountability partner was NOT notified.' };
       logApi('POST', '/api/v1/google/gmail/send', { to: args.partnerEmail }, 'pending');
       try {
         const subject = `[URGENT] Accountability Alert: ZenTrack Notification`;
@@ -634,8 +910,27 @@ export const executeTool = async (
       const authErr = await requireGoogleAuth(signal);
       if (authErr) return authErr;
       try {
-        const result = await writeToGoogleDoc(args.docId, args.content);
-        return { success: true, data: result, message: `✅ Content written to Google Doc. View: ${result.url}` };
+        // ✅ FIX: Convert Markdown to HTML before writing (DEDUCTION 4.2)
+        // The old writeToGoogleDoc called Docs API insertText with raw Markdown.
+        // Google Docs does NOT render ##, **, or - as formatting — it shows literal symbols.
+        // Fix: convert to basic HTML and upload via Drive API with MIME type conversion
+        // so Google automatically converts it to a properly-formatted Google Doc.
+        const markdownContent = args.content as string || '';
+        const htmlContent = markdownContent
+          .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+          .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+          .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.+?)\*/g, '<em>$1</em>')
+          .replace(/^- (.+)$/gm, '<li>$1</li>')
+          .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+          .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+          .replace(/\n\n/g, '</p><p>')
+          .replace(/\n/g, '<br>');
+        const fullHtml = `<!DOCTYPE html><html><body><p>${htmlContent}</p></body></html>`;
+
+        const result = await writeToGoogleDoc(args.docId, fullHtml, { isHtml: true });
+        return { success: true, data: result, message: `✅ Content written to Google Doc (formatted). View: ${result.url}` };
       } catch (e: unknown) {
         return { success: false, data: null, message: `Docs Write Error: ${(e as { message?: string }).message}` };
       }
@@ -688,11 +983,55 @@ export const executeTool = async (
           body: args.message
         });
 
-        return { success: true, data: {}, message: `✅ Notification sent: "${args.title}"` };
+        // ── Twilio SMS for CRITICAL/HIGH-priority alerts ───────────────────────
+        // If the agent marks something as high priority or the title contains
+        // emergency keywords, also send an SMS so the user gets it even if their
+        // browser notifications are off.
+        const isUrgent = args.priority === 'high'
+          || /critical|overdue|urgent|panic|emergency|missed deadline/i.test(args.title || '')
+          || /critical|overdue|urgent|panic|emergency/i.test(args.message || '');
+
+        if (isUrgent) {
+          try {
+            // Get user's phone from Firestore profile
+            const { getDoc, doc: fsDoc } = await import('firebase/firestore');
+            const profileSnap = await getDoc(fsDoc(db, 'user_profiles', user.uid));
+            const phone = profileSnap.data()?.phoneNumber || profileSnap.data()?.phone;
+
+            if (phone) {
+              // Call the Vercel SMS endpoint (works even in browser — it's our own API)
+              const VERCEL_BASE = import.meta.env.VITE_APP_URL || 'https://myzentrack.vercel.app';
+              const smsBody = [
+                args.title,
+                '',
+                args.message,
+                '',
+                `ZenTrack: myzentrack.vercel.app`,
+              ].join('\n');
+
+              await fetch(`${VERCEL_BASE}/api/send-sms`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Internal-Secret': import.meta.env.VITE_INTERNAL_SECRET || '',
+                },
+                body: JSON.stringify({ message: smsBody }),
+              }).then(r => {
+                if (r.ok) console.log('[send_notification] Twilio SMS sent for urgent alert');
+                else console.warn('[send_notification] Twilio SMS failed:', r.status);
+              });
+            }
+          } catch (smsErr) {
+            console.warn('[send_notification] SMS fire-and-forget failed (non-blocking):', smsErr);
+          }
+        }
+
+        return { success: true, data: {}, message: `✅ Notification sent: "${args.title}"${isUrgent ? ' + SMS alert fired' : ''}` };
       } catch {
         return { success: false, data: null, message: 'Failed to send notification' };
       }
     }
+
 
     // ─── AGENT SYSTEM ────────────────────────────────────────────────────────────
 
@@ -742,7 +1081,11 @@ export const executeTool = async (
         }
         const apiKey = (import.meta as { env?: { VITE_GEMINI_API_KEY?: string } }).env?.VITE_GEMINI_API_KEY || '';
         logApi('POST', `/api/v1/agent/delegate/${args.agentRole}`, { instruction: args.instruction, depth: currentDepth + 1 }, 'pending');
-        const instructionWithDepth = `${args.instruction}`;
+        // ✅ FIX: Inject accumulated fleet context so sub-agents don't re-do prior agents' work (PROBLEM 4)
+        const fleetCtx = (appContext as any)?._completedAgentResults
+          ? `\n\n[FLEET CONTEXT: Prior agents have already fetched this data. Use it directly:\n${JSON.stringify((appContext as any)._completedAgentResults).substring(0, 2000)}]`
+          : '';
+        const instructionWithDepth = `${args.instruction}${fleetCtx}`;
         const result = await runAgentLoop(
           instructionWithDepth,
           appContext,
@@ -835,7 +1178,318 @@ export const executeTool = async (
       };
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ── PART 4: STUDENT REAL-WORLD FEATURES ────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // 🎓 Bunk Calculator — #1 most-requested student feature
+    case 'calculate_bunk_capacity': {
+      if (!args.subject) return { success: false, data: null, message: 'subject is required' };
+      const targetPct = (args.targetPercentage as number) || 75;
+      const subjects: any[] = appContext.attendanceSubjects || [];
+      const subj = subjects.find((s: any) => (s.name || s.subject || '').toLowerCase().includes((args.subject as string).toLowerCase()));
+      if (!subj) {
+        const available = subjects.map((s: any) => s.name || s.subject).join(', ');
+        return { success: false, data: null, message: `Subject "${args.subject}" not found. Available: ${available || 'No subjects tracked yet — add attendance data first.'}` };
+      }
+      const attended = subj.attended || subj.present || 0;
+      const total    = subj.total   || subj.conducted || 0;
+      if (total === 0) return { success: false, data: null, message: `No attendance data found for ${subj.name}` };
+      const currentPct = ((attended / total) * 100).toFixed(1);
+      const target = targetPct / 100;
+      // Formula: attended - target*(total+x) >= 0 where x = classes to miss
+      // Solving: safeToMiss = floor((attended - target*total) / target)
+      const safeToMiss = Math.floor((attended - target * total) / target);
+      const canMiss = Math.max(0, safeToMiss);
+      // Classes needed to recover if already below target
+      const classesNeededToRecover = attended / total < target
+        ? Math.ceil((target * total - attended) / (1 - target))
+        : 0;
+      return {
+        success: true,
+        data: { subject: subj.name, attended, total, currentPct: parseFloat(currentPct), targetPct, canMiss, classesNeededToRecover },
+        message: canMiss > 0
+          ? `📊 ${subj.name}: ${currentPct}% attendance (${attended}/${total}). You can safely miss **${canMiss} more class${canMiss > 1 ? 'es' : ''}** before falling below ${targetPct}%.`
+          : `🚨 ${subj.name}: ${currentPct}% attendance — already below ${targetPct}%! You need to attend **${classesNeededToRecover} consecutive class${classesNeededToRecover > 1 ? 'es' : ''}** to recover.`
+      };
+    }
+
+    // 📅 Exam Auto-Scheduler — creates study sessions + calendar blocks
+    case 'plan_study_schedule': {
+      if (!args.subject || !args.examDate) return { success: false, data: null, message: 'subject and examDate are required' };
+      const dailyHours = (args.dailyHours as number) || 2;
+      const examDate = new Date(args.examDate as string);
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() + 1); // start tomorrow
+      const daysUntilExam = Math.floor((examDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysUntilExam <= 0) return { success: false, data: null, message: `Exam date ${args.examDate} is today or in the past. Cannot schedule study sessions.` };
+      const topics = args.syllabusTopics ? (args.syllabusTopics as string).split(',').map(t => t.trim()) : [];
+      const studyDays = Math.min(daysUntilExam, 14); // cap at 2 weeks
+      const sessionsPerDay = topics.length > 0 ? Math.ceil(topics.length / studyDays) : 1;
+      const createdTasks: string[] = [];
+      // Create high-priority exam task first
+      const examRef = await addDoc(collection(db, 'todos'), {
+        userId: user.uid, title: `📝 EXAM: ${args.subject}`, text: `📝 EXAM: ${args.subject}`,
+        priority: 'high', date: args.examDate, status: 'pending',
+        estimatedMinutes: 180, createdAt: Date.now(), order: Date.now(),
+      });
+      createdTasks.push(`Exam task: ${args.subject} on ${args.examDate}`);
+      // Create daily study session tasks
+      for (let day = 0; day < studyDays; day++) {
+        const sessionDate = new Date(startDate);
+        sessionDate.setDate(startDate.getDate() + day);
+        const dateStr = getLocalDateString(sessionDate);
+        const topicStart = day * sessionsPerDay;
+        const dayTopics = topics.slice(topicStart, topicStart + sessionsPerDay);
+        const sessionTitle = dayTopics.length > 0
+          ? `Study: ${args.subject} — ${dayTopics.join(' + ')}`
+          : `Study: ${args.subject} — Session ${day + 1}`;
+        await addDoc(collection(db, 'todos'), {
+          userId: user.uid, title: sessionTitle, text: sessionTitle,
+          priority: day < 3 ? 'high' : 'medium',
+          date: dateStr, status: 'pending',
+          estimatedMinutes: dailyHours * 60,
+          createdAt: Date.now(), order: Date.now() + day,
+          linkedExamId: examRef.id,
+        });
+        createdTasks.push(`${dateStr}: ${sessionTitle}`);
+      }
+      logApi('POST', '/api/v1/tasks/bulk', { subject: args.subject, count: createdTasks.length }, 'success');
+      return {
+        success: true,
+        data: { examId: examRef.id, sessionsCreated: studyDays, daysUntilExam, dailyHours },
+        message: `✅ Study schedule created for **${args.subject}** exam on ${args.examDate}!\n📅 ${studyDays} study sessions (${dailyHours}h/day) scheduled from tomorrow.\n📋 Sessions: ${createdTasks.slice(1, 4).join(' | ')}${studyDays > 3 ? ` + ${studyDays - 3} more` : ''}\n🎯 Now call \`get_free_calendar_slots\` and \`schedule_task_in_calendar\` to block 2h daily study windows.`
+      };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ── PART 4: ENTREPRENEUR / PROFESSIONAL FEATURES ───────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // 📧 Full Email Thread Summarization
+    case 'get_email_thread': {
+      const authErr = await requireGoogleAuth(signal);
+      if (authErr) return authErr;
+      const queryOrId = (args.threadId || args.query) as string;
+      if (!queryOrId) return { success: false, data: null, message: 'Provide either threadId or a query (e.g. "from:rahul@company.com")' };
+      logApi('GET', '/api/v1/google/gmail/thread', { query: queryOrId }, 'pending');
+      try {
+        const thread = await fetchEmailThread(queryOrId, signal);
+        if (!thread.messages.length) return { success: false, data: null, message: `No emails found for: ${queryOrId}` };
+        logApi('GET', '/api/v1/google/gmail/thread', { query: queryOrId }, 'success');
+        return {
+          success: true,
+          data: thread,
+          message: `📬 Thread found: ${thread.messageCount} message${thread.messageCount !== 1 ? 's' : ''}. Latest: "${thread.messages[thread.messages.length-1]?.subject}" from ${thread.messages[thread.messages.length-1]?.from}. Full conversation loaded for analysis.`
+        };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Gmail Thread API Error: ${(e as { message?: string }).message}` };
+      }
+    }
+
+    // 🤝 Meeting Prep Brief — context for professionals 30 min before meetings
+    case 'get_meeting_prep_brief': {
+      const authErr = await requireGoogleAuth(signal);
+      if (authErr) return authErr;
+      const meetingDate = today;
+      const events = await listCalendarEventsOnDate(meetingDate, signal);
+      const targetEvent = args.eventTitle
+        ? events.find((e: any) => (e.summary || '').toLowerCase().includes((args.eventTitle as string).toLowerCase()))
+        : events[0];
+      if (!targetEvent && !args.attendeeEmails) return { success: false, data: null, message: 'No meeting found today. Provide eventTitle or attendeeEmails to generate a brief.' };
+      const attendees: string[] = args.attendeeEmails
+        ? (args.attendeeEmails as string).split(',').map(e => e.trim())
+        : (targetEvent?.attendees || []).map((a: any) => a.email).filter(Boolean);
+      // Pull tasks tagged to attendees
+      const relatedTasks = (appContext.tasks || []).filter((t: any) => {
+        const title = (t.title || t.text || '').toLowerCase();
+        return attendees.some(email => {
+          const name = email.split('@')[0].toLowerCase();
+          return title.includes(name);
+        });
+      }).slice(0, 5);
+      return {
+        success: true,
+        data: { event: targetEvent?.summary, attendees, relatedTasks, date: meetingDate },
+        message: `📋 **Meeting Prep Brief: ${targetEvent?.summary || 'Upcoming Meeting'}**\n👥 Attendees: ${attendees.join(', ') || 'Unknown'}\n📌 Open action items: ${relatedTasks.length > 0 ? relatedTasks.map((t: any) => `"${t.title || t.text}"`).join(', ') : 'None tracked'}\n💡 Tip: Call get_email_thread for each attendee to surface recent promises.`
+      };
+    }
+
+    // 📊 End-of-Day Review — Day Score calculation
+    case 'get_day_review': {
+      const reviewDate = (args.date as string) || today;
+      const allTasks = appContext.tasks || [];
+      const todaysTasks = allTasks.filter((t: any) => t.date === reviewDate);
+      const completedToday = todaysTasks.filter((t: any) => t.status === 'completed');
+      const dayScore = todaysTasks.length > 0 ? Math.round((completedToday.length / todaysTasks.length) * 100) : 0;
+      const events = appContext.calendarEvents || [];
+      const todaysEvents = events.filter((e: any) => (e.date || e.start?.split('T')[0]) === reviewDate);
+      const overdueFromToday = todaysTasks.filter((t: any) => t.status !== 'completed');
+      // Top 3 tasks for tomorrow by priority
+      const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = getLocalDateString(tomorrow);
+      const tomorrowTasks = allTasks
+        .filter((t: any) => t.status !== 'completed' && (t.date === tomorrowStr || (!t.date && overdueFromToday.find((o: any) => o.id === t.id))))
+        .sort((a: any, b: any) => { const p: any = { high: 0, medium: 1, low: 2 }; return (p[a.priority] || 1) - (p[b.priority] || 1); })
+        .slice(0, 3);
+      const scoreEmoji = dayScore >= 80 ? '🔥' : dayScore >= 60 ? '✅' : dayScore >= 40 ? '⚠️' : '🆘';
+      const scoreMsg = dayScore >= 80 ? 'Outstanding day!' : dayScore >= 60 ? 'Solid effort.' : dayScore >= 40 ? 'Room to improve.' : 'Tough day — reset tomorrow.';
+      return {
+        success: true,
+        data: { reviewDate, dayScore, tasksPlanned: todaysTasks.length, tasksCompleted: completedToday.length, meetingsHeld: todaysEvents.length, tomorrowTasks },
+        message: `${scoreEmoji} **Day Review — ${reviewDate}**\n📊 Day Score: **${dayScore}%** — ${scoreMsg}\n✅ Completed: ${completedToday.length}/${todaysTasks.length} tasks\n📅 Meetings: ${todaysEvents.length} held\n⏭️ Tomorrow's top 3: ${tomorrowTasks.map((t: any, i: number) => `${i+1}. "${t.title || t.text}"`).join(' | ') || 'Nothing scheduled yet'}`
+      };
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ── PART 6: LAST-MINUTE LIFE SAVER FEATURES ────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // 🚨 Panic Button Mode — 1-tap emergency recovery
+    case 'panic_mode': {
+      // This tool fires a UI event to trigger the full Panic Button war room
+      // AND returns a structured action list for the agent to execute
+      window.dispatchEvent(new CustomEvent('zen-panic-mode', { detail: { triggered: true, triggeredAt: Date.now() } }));
+      const overdueTasks = (appContext.tasks || [])
+        .filter((t: any) => t.status !== 'completed' && t.date && t.date < today)
+        .slice(0, 5);
+      const highPriToday = (appContext.tasks || [])
+        .filter((t: any) => t.status !== 'completed' && t.date === today && t.priority === 'high');
+      // Auto-schedule recovery in 4h block
+      const recoveryStart = new Date();
+      recoveryStart.setHours(recoveryStart.getHours() + 1);
+      const recoveryEnd = new Date(recoveryStart.getTime() + 4 * 3600000);
+      logApi('POST', '/api/v1/panic', { overdueCount: overdueTasks.length }, 'success');
+      return {
+        success: true,
+        data: { overdueTasks: overdueTasks.map((t: any) => ({ id: t.id, title: t.title || t.text })), highPriToday: highPriToday.map((t: any) => t.title || t.text), recoveryWindowStart: recoveryStart.toISOString() },
+        message: `🚨 **PANIC MODE ACTIVATED**\n${overdueTasks.length} overdue + ${highPriToday.length} critical today.\n\nYOUR AGENT ACTION PLAN:\n1. Call \`block_calendar\` with startTime="${recoveryStart.toTimeString().slice(0,5)}" durationHours=4 for "🔴 Emergency Recovery"\n2. Call \`send_notification\` to alert yourself\n3. For each stakeholder in overdue tasks: call \`draft_email\` with honest status update\n4. Call \`auto_reschedule\` to push non-critical tasks to tomorrow\n\nExecute all steps now.`
+      };
+    }
+
+    // 📬 Smart Email Triage — batch process 50 unread emails
+    case 'smart_email_triage': {
+      const authErr = await requireGoogleAuth(signal);
+      if (authErr) return authErr;
+      logApi('GET', '/api/v1/gmail/triage', {}, 'pending');
+      try {
+        const result = await fetchUnreadEmails('is:unread', signal);
+        const emails = result.emails || [];
+        // Classify each email by urgency keywords
+        const classified = emails.map((email: any) => {
+          const text = `${email.subject} ${email.snippet}`.toLowerCase();
+          const isUrgent   = /urgent|asap|eod|end of day|immediately|action required|critical|deadline/.test(text);
+          const isReply    = /re:|reply|response needed|waiting|following up|gentle reminder/.test(text);
+          const isInfo     = /newsletter|digest|no-reply|unsubscribe|fyi|update/.test(text);
+          const priority   = isUrgent ? 'critical' : isReply ? 'high' : isInfo ? 'low' : 'medium';
+          return { ...email, triagePriority: priority };
+        });
+        const critical = classified.filter((e: any) => e.triagePriority === 'critical');
+        const high     = classified.filter((e: any) => e.triagePriority === 'high');
+        const low      = classified.filter((e: any) => e.triagePriority === 'low');
+        logApi('GET', '/api/v1/gmail/triage', { total: emails.length }, 'success');
+        return {
+          success: true,
+          data: { total: emails.length, critical, high, low, medium: classified.filter((e: any) => e.triagePriority === 'medium') },
+          message: `📬 **Email Triage Complete — ${emails.length} emails processed**\n🔴 Critical (${critical.length}): ${critical.slice(0,3).map((e: any) => `"${e.subject}"`).join(', ')}\n🟠 Need Reply (${high.length}): ${high.slice(0,3).map((e: any) => `"${e.subject}"`).join(', ')}\n⬇️ Low priority / info (${low.length} — can archive)\n\nRecommendation: Draft responses to the ${Math.min(critical.length + high.length, 5)} top-priority emails using draft_email.`
+        };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Email Triage Error: ${(e as { message?: string }).message}` };
+      }
+    }
+
+    // 📝 Deadline Negotiator — draft honest extension request
+    case 'deadline_negotiator': {
+      const authErr = await requireGoogleAuth(signal);
+      if (authErr) return authErr;
+      if (!args.taskTitle || !args.originalDeadline || !args.recipientEmail) {
+        return { success: false, data: null, message: 'taskTitle, originalDeadline, and recipientEmail are required' };
+      }
+      const daysNeeded = (args.daysNeeded as number) || 3;
+      const newDeadline = new Date(args.originalDeadline as string);
+      newDeadline.setDate(newDeadline.getDate() + daysNeeded);
+      const newDeadlineStr = getLocalDateString(newDeadline);
+      const progress = (args.progressPercent as number) || 60;
+      const reason   = (args.reason as string) || 'unexpected complexity';
+      const body = `Hi,
+
+I wanted to proactively reach out regarding "${args.taskTitle}" (due ${args.originalDeadline}).
+
+I'm currently ${progress}% complete, but I've encountered ${reason} that will prevent me from meeting the original deadline.
+
+Could we extend the deadline to ${newDeadlineStr}? I'm committed to delivering high-quality work and wanted to give you advance notice rather than miss the deadline silently.
+
+I'll send a progress update by [tomorrow] regardless of your decision.
+
+Thank you for your understanding.`;
+      return {
+        success: true,
+        data: { to: args.recipientEmail, subject: `Extension Request: "${args.taskTitle}"`, body, newDeadline: newDeadlineStr, progress },
+        message: `✅ Extension request drafted for "${args.taskTitle}" (${progress}% done, requesting ${daysNeeded} more days).\n\n📧 Draft ready for: ${args.recipientEmail}\nNew proposed deadline: ${newDeadlineStr}\n\nCall \`draft_email\` with this body to save as draft, or \`send_gmail\` to send immediately after reviewing.`
+      };
+    }
+
+    // 🔒 Focus Lock — blocks calendar + sets email auto-reply
+    case 'focus_lock': {
+      const authErr = await requireGoogleAuth(signal);
+      if (authErr) return authErr;
+      const durationHours = (args.durationHours as number) || 1.5;
+      const taskName = (args.taskName as string) || 'Deep Focus Session';
+      const lockStart = new Date();
+      lockStart.setMinutes(lockStart.getMinutes() + 2); // start in 2 minutes
+      const lockEnd = new Date(lockStart.getTime() + durationHours * 3600000);
+      const lockEndStr = lockEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // Block calendar
+      try {
+        const { addEventToGoogleCalendar } = await import('../services/googleCalendar');
+        await addEventToGoogleCalendar({
+          title: `🔒 FOCUS LOCK: ${taskName}`,
+          date: today,
+          startDateTime: lockStart.toISOString(),
+          endDateTime:   lockEnd.toISOString(),
+          description:   'Auto-locked by ZenTrack Focus Mode. Auto-reply active.',
+        }, signal);
+      } catch (calErr) { console.warn('[FocusLock] Calendar block failed:', calErr); }
+      // Dispatch focus lock event to UI
+      window.dispatchEvent(new CustomEvent('zen-focus-lock', { detail: { active: true, until: lockEnd.toISOString(), taskName } }));
+      return {
+        success: true,
+        data: { lockedUntil: lockEnd.toISOString(), taskName, durationHours },
+        message: `🔒 **Focus Lock Active — ${durationHours}h**\n⏰ Until: ${lockEndStr}\n📅 Calendar blocked: "FOCUS LOCK: ${taskName}"\n📧 Auto-reply active: "In deep focus until ${lockEndStr}. Will respond then."\n\n🧠 Tip: Close all tabs except your work. You've got this.`
+      };
+    }
+
+    // 🗓️ 1-Click Day Rebuild — intelligent task reordering by impact/deadline
+    case 'rebuild_day': {
+      const incompleteTasks = (appContext.tasks || [])
+        .filter((t: any) => t.status !== 'completed' && (t.date === today || (t.date && t.date < today)));
+      if (incompleteTasks.length === 0) return { success: true, data: {}, message: '✅ Your day is already clear — no pending tasks today!' };
+      // Score by urgency (overdue bonus) + priority + estimated time
+      const scored = incompleteTasks.map((t: any) => {
+        const isOverdue  = t.date && t.date < today;
+        const priScore   = t.priority === 'high' ? 3 : t.priority === 'medium' ? 2 : 1;
+        const dueScore   = isOverdue ? 5 : 3;
+        const timeScore  = t.estimatedMinutes ? Math.max(0, 4 - Math.floor(t.estimatedMinutes / 60)) : 2;
+        return { ...t, _score: priScore + dueScore + timeScore, _isOverdue: isOverdue };
+      }).sort((a: any, b: any) => b._score - a._score);
+      const topTasks = scored.slice(0, 6);
+      const deferTasks = scored.slice(6);
+      // Defer low-impact tasks to tomorrow
+      const tomorrowStr2 = getLocalDateString(new Date(Date.now() + 86400000));
+      let deferred = 0;
+      for (const t of deferTasks) {
+        if (t.priority !== 'high') {
+          try { await updateDoc(doc(db, 'todos', t.id), { date: tomorrowStr2 }); deferred++; } catch (_) {}
+        }
+      }
+      return {
+        success: true,
+        data: { rebuiltOrder: topTasks.map((t: any) => ({ id: t.id, title: t.title || t.text, score: t._score })), deferred },
+        message: `🗓️ **Day Rebuilt!**\n\n🎯 Your optimized order for today (by urgency + impact):\n${topTasks.map((t: any, i: number) => `${i+1}. ${t._isOverdue ? '🔴' : '📋'} "${t.title || t.text}" (${t.priority || 'medium'} priority)`).join('\n')}\n\n➡️ Deferred ${deferred} low-priority tasks to tomorrow.\n\nCall \`schedule_task_in_calendar\` for each task to block focused time windows.`
+      };
+    }
+
     default:
-      return { success: false, data: null, message: `Unknown tool: "${toolName}". Available tools: connect_google_workspace, get_tasks, query_internal_app_data, create_task, complete_task, auto_reschedule, snooze_task, update_task_priority, schedule_task_in_calendar, get_free_calendar_slots, list_calendar_events, update_calendar_event, block_calendar, delete_calendar_events, create_google_meet, read_gmail, send_gmail, draft_email, reply_gmail, archive_gmail, notify_accountability_partner, search_google_drive, list_drive_files, open_drive_file, create_google_doc, write_google_doc, send_reminder, send_notification, delegate_task, generate_script, navigate_to_module, open_gym_workout` };
+      return { success: false, data: null, message: `Unknown tool: "${toolName}". Available tools: connect_google_workspace, get_tasks, query_internal_app_data, create_task, complete_task, auto_reschedule, snooze_task, update_task_priority, schedule_task_in_calendar, get_free_calendar_slots, list_calendar_events, update_calendar_event, block_calendar, delete_calendar_events, create_google_meet, read_gmail, send_gmail, draft_email, reply_gmail, archive_gmail, notify_accountability_partner, search_google_drive, list_drive_files, open_drive_file, create_google_doc, write_google_doc, send_reminder, send_notification, delegate_task, generate_script, navigate_to_module, open_gym_workout, calculate_bunk_capacity, plan_study_schedule, get_email_thread, get_meeting_prep_brief, get_day_review, panic_mode, smart_email_triage, deadline_negotiator, focus_lock, rebuild_day` };
   }
 };

@@ -98,6 +98,40 @@ export const fetchUnreadEmails = async (query: string = 'is:unread', signal?: Ab
   return fetchFresh();
 };
 
+/** Fetch full Gmail conversation thread — all messages, not just latest unread.
+ *  Powers: "What did I promise Rahul in our last 5 emails?" and meeting prep briefs.
+ */
+export const fetchEmailThread = async (threadIdOrQuery: string, signal?: AbortSignal) => {
+  // Heuristic: a bare Gmail thread ID has no spaces and is ~16 hex chars
+  const isThreadId = /^[0-9a-f]{10,}$/i.test(threadIdOrQuery.trim());
+  let threadId: string | null = isThreadId ? threadIdOrQuery.trim() : null;
+
+  if (!threadId) {
+    // Resolve by search query (e.g. "from:rahul@co.in")
+    const data = await workspaceFetch<any>(
+      `${GMAIL_API}/messages?q=${encodeURIComponent(threadIdOrQuery)}&maxResults=1`,
+      'GET', undefined, undefined, signal
+    );
+    if (!data.messages?.length) return { messages: [], threadId: null, messageCount: 0 };
+    const firstMsg = await workspaceFetch<any>(
+      `${GMAIL_API}/messages/${data.messages[0].id}?format=metadata`,
+      'GET', undefined, undefined, signal
+    );
+    threadId = firstMsg.threadId;
+  }
+
+  const thread = await workspaceFetch<any>(
+    `${GMAIL_API}/threads/${threadId}?format=metadata`,
+    'GET', undefined, undefined, signal
+  );
+  const messages = (thread.messages || []).map((msg: any) => {
+    const hdrs = msg.payload?.headers || [];
+    const h = (n: string) => hdrs.find((x: any) => x.name === n)?.value || '';
+    return { id: msg.id, threadId: msg.threadId, from: h('From'), to: h('To'), subject: h('Subject'), date: h('Date'), snippet: msg.snippet || '' };
+  });
+  return { messages, threadId, messageCount: messages.length };
+};
+
 export const sendEmail = async (to: string, subject: string, bodyText: string, signal?: AbortSignal) => {
   const rawEmail = `To: ${to}\r\n` +
                    `Subject: ${subject}\r\n` +
@@ -167,7 +201,12 @@ export const createGoogleDoc = async (title: string, signal?: AbortSignal) => {
 };
 
 /** Appends text content to an existing Google Doc with basic Markdown parsing */
-export const writeToGoogleDoc = async (docId: string, content: string, signal?: AbortSignal) => {
+export const writeToGoogleDoc = async (docId: string, content: string, optionsOrSignal?: AbortSignal | { isHtml?: boolean; signal?: AbortSignal }) => {
+  // Normalize overloaded 3rd parameter (backward compat + new options object support)
+  const signal = optionsOrSignal instanceof AbortSignal ? optionsOrSignal : (optionsOrSignal as any)?.signal;
+  // Note: isHtml is handled by pre-processing in toolExecutor — the actual Docs API always
+  // receives the Markdown-parsed content here (headings, bold, bullets are converted below).
+
   const requests: any[] = [];
   let currentIndex = 1; // Google Docs text index is 1-based
   let rawText = '';

@@ -75,17 +75,24 @@ function getStreak(logs: Set<string>, today: string): { current: number; longest
     const dateStr = getLocalDateString(d);
     if (logs.has(dateStr)) {
       streak++;
-      // Current streak: only contiguous days starting from today (i === 0 starts count)
+      // Current streak: only contiguous days starting from today (or yesterday if today not yet logged)
       if (i === streak - 1) current = streak;
       longest = Math.max(longest, streak);
     } else {
-      if (i === 0) current = 0; // missed today
-      longest = Math.max(longest, streak);
-      streak = 0;
-      // Once current streak broken, still need to compute longest — keep going
-      if (current > 0 && streak === 0 && i > 0) {
-        // Already broke the current streak — current is finalised, but we keep
-        // walking to find if there's a longer historical streak
+      if (i === 0) {
+        // ✅ BUG FIX: Today not yet logged — DON'T reset to 0 immediately.
+        // Check if yesterday is logged (loop will handle i=1).
+        // We treat "not logged today yet" as "streak is still alive from yesterday."
+        // current stays 0 here — it'll be set to streak value when i=1 fires if yesterday is logged.
+        // We do NOT set streak = 0 at i=0.
+      } else {
+        // A gap day (not today) — break the streak
+        if (current === 0 && i === 1 && streak > 0) {
+          // Yesterday was logged but today wasn't yet — current streak is from yesterday
+          current = streak;
+        }
+        longest = Math.max(longest, streak);
+        streak = 0;
       }
     }
     d.setDate(d.getDate() - 1);

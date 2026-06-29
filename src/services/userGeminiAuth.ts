@@ -1,4 +1,4 @@
-import { ensureToken, signInWithGoogle } from './googleCalendar';
+import { ensureToken, signInWithGoogle, forceSilentRefresh } from './googleCalendar';
 
 const LOCAL_TOKEN_STORE  = 'zen_user_gemini_oauth_token';
 const LOCAL_TOKEN_EXPIRY = 'zen_user_gemini_oauth_expiry';
@@ -43,12 +43,23 @@ const scheduleTokenRefresh = (expiryMs: number) => {
 
   console.log(`[ZenAI] Personal token refresh scheduled in ${Math.round(refreshIn / 60000)} minutes.`);
   _refreshTimer = setTimeout(async () => {
-    console.log('[ZenAI] 🔄 Proactively refreshing personal OAuth token...');
+    console.log('[ZenAI] 🔄 Proactively refreshing personal OAuth token (silent)...');
     try {
-      await requestGeminiToken();
+      // Use forceSilentRefresh — this calls the backend /api/auth/refresh endpoint
+      // and NEVER opens an OAuth popup (which would be blocked without a user gesture).
+      await forceSilentRefresh();
+      const token = await ensureToken();
+      _cachedToken = token;
+      const gcalExpiry = localStorage.getItem('zen_gcal_token_expiry');
+      _tokenExpiry = gcalExpiry ? parseInt(gcalExpiry, 10) : (Date.now() + 55 * 60 * 1000);
+      localStorage.setItem(LOCAL_TOKEN_STORE, token);
+      localStorage.setItem(LOCAL_TOKEN_EXPIRY, _tokenExpiry.toString());
+      scheduleTokenRefresh(_tokenExpiry);
+      dispatchAuthChange();
       console.log('[ZenAI] ✅ Personal OAuth token silently refreshed.');
     } catch (err) {
       console.warn('[ZenAI] ⚠️ Silent token refresh failed. Will use shared pool if personal key expires.', err);
+      // Do NOT open a popup here — user must re-connect manually via GeminiAuthModal
     }
   }, refreshIn);
 };

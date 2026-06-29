@@ -105,9 +105,10 @@ export const TodoListModule = () => {
     sessionStorage.setItem(`recurring_gen_${todayStr}`, 'true');
 
     const recurringTemplates = globalTodos.filter(t => t.isRecurring && t.date < todayStr);
-    const todayTexts = new Set(globalTodos.filter(t => t.date === todayStr).map(t => t.text.trim().toLowerCase()));
+    // ✅ BUG FIX: Use (t.title || t.text) — new tasks store 'title', old tasks store 'text'
+    const todayTexts = new Set(globalTodos.filter(t => t.date === todayStr).map(t => (t.title || t.text || '').trim().toLowerCase()));
 
-    const missing = recurringTemplates.filter(t => !todayTexts.has(t.text.trim().toLowerCase()));
+    const missing = recurringTemplates.filter(t => !todayTexts.has((t.title || t.text || '').trim().toLowerCase()));
     if (missing.length === 0) return;
 
     Promise.all(missing.map(t =>
@@ -150,6 +151,7 @@ export const TodoListModule = () => {
     const newTodo: any = {
       userId: user.uid,
       title: newTaskText.trim(),
+      text: newTaskText.trim(), // ✅ BUG FIX: Add 'text' field for legacy search/filter/recurring/DnD compatibility
       date: selectedDate,
       status: 'pending',
       priority: newTaskPriority,
@@ -233,7 +235,8 @@ export const TodoListModule = () => {
   };
 
   const addSubtask = useCallback(async (todoId: string, title: string) => {
-    const trimmedText = text?.trim();
+    // ✅ BUG FIX: was using undefined 'text' variable instead of the 'title' parameter
+    const trimmedText = title?.trim();
     if (!trimmedText) return;
     
     const todo = globalTodos.find(t => t.id === todoId);
@@ -259,11 +262,15 @@ export const TodoListModule = () => {
     const todo = globalTodos.find(t => t.id === todoId);
     if (!todo) return;
     
+    // ✅ BUG FIX: standardize schema — write 'status' field, not 'isCompleted'
+    // Old code wrote isCompleted but addSubtask creates with status:'pending', causing permanent mismatch
+    const wasCompleted = (todo.subtasks || []).find((s: any) => s.id === subtaskId)?.status === 'completed';
     const updated = (todo.subtasks || []).map((st: any) =>
-      st.id === subtaskId ? { ...st, isCompleted: st.status !== 'completed' } : st
+      st.id === subtaskId 
+        ? { ...st, status: wasCompleted ? 'pending' : 'completed' } 
+        : st
     );
     
-    const wasCompleted = (todo.subtasks || []).find((s: any) => s.id === subtaskId)?.status === 'completed';
     if (!wasCompleted) playPopSound();
 
     try {
@@ -340,7 +347,8 @@ export const TodoListModule = () => {
     
     // Reordering logic
     const filtered = todos.filter(t => {
-      if (searchTerm && !t.text.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+      // ✅ BUG FIX: Use (t.title || t.text) for DnD reorder filter as well
+      if (searchTerm && !(t.title || t.text || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
       if (filter === 'high' && t.priority !== 'high') return false;
       if (filter === 'recurring' && !t.isRecurring) return false;
       return true;
@@ -365,18 +373,20 @@ export const TodoListModule = () => {
           batch.update(doc(db, 'todos', todo.id), { order: index });
         }
       });
-      batch.commit();
+      await batch.commit(); // ✅ BUG FIX: was not awaited — rapid drags could race and corrupt order
     } catch (err) {
       console.error("Reorder failed", err);
     }
   }, [isBulkEdit, todos, searchTerm, filter]);
 
   const handleUpdateNewSubtaskText = useCallback((todoId: string, title: string) => {
-    setNewSubtaskTexts(prev => ({ ...prev, [todoId]: text }));
+    // ✅ BUG FIX: was using undefined 'text' variable instead of the 'title' parameter
+    setNewSubtaskTexts(prev => ({ ...prev, [todoId]: title }));
   }, []);
 
   const filteredTodos = todos.filter(t => {
-    if (searchTerm && !t.text.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+    // ✅ BUG FIX: Use (t.title || t.text) — agent-created tasks use 'title', old tasks use 'text'
+    if (searchTerm && !(t.title || t.text || '').toLowerCase().includes(searchTerm.toLowerCase())) return false;
     if (filter === 'high' && t.priority !== 'high') return false;
     if (filter === 'recurring' && !t.isRecurring) return false;
     return true;

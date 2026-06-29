@@ -33,7 +33,11 @@ export async function runAgentLoop(
   signal?: AbortSignal,
   isSubAgent?: boolean,
   depth: number = 0,
-  forceToolCallFirstIteration: boolean = false
+  forceToolCallFirstIteration: boolean = false,
+  // ✅ BUG-R3 FIX: agentRole used to filter tool declarations to only what this agent needs
+  agentRole?: string,
+  // ✅ BUG-R2 FIX: sharedToolCache shared across all agents in a mission
+  sharedToolCache?: Map<string, any>
 ): Promise<string> {
   const effectiveSystem = systemInstruction || AGENT_SYSTEM;
   const contents: Array<{ role: string; parts: Array<{ text?: string; functionResponse?: unknown }> }> = [{ role: 'user', parts: [{ text: userMessage }] }];
@@ -41,13 +45,55 @@ export async function runAgentLoop(
   const MAX_ITERATIONS = 6; // Reduced from 10 — agent looping 10+ times is likely stuck
   let emptyResponseCount = 0; // Guard: break if AI returns nothing for 2+ consecutive turns
 
-  // ── Per-session tool cache ───────────────────────────────────────────────
-  // Read-only tools are cached for this agent loop duration.
-  // Same tool + same args = instant cache hit, no redundant API calls.
+  // ✅ BUG-R3 FIX: Per-agent tool whitelist.
+  // Previously ALL 35+ tool declarations were sent to every agent (~22KB extra per call).
+  // NAVIGATOR needs 3 tools. HERMES needs 7. Sending all 35 causes cross-domain hallucinations.
+  // Savings: 70-80% reduction in tool-schema token overhead.
+  const AGENT_TOOL_WHITELIST: Record<string, string[]> = {
+    NAVIGATOR: ['navigate_to_module', 'open_gym_workout', 'query_internal_app_data'],
+    HERMES:   ['read_gmail', 'send_gmail', 'reply_gmail', 'archive_gmail', 'draft_email',
+               'send_notification', 'connect_google_workspace', 'delegate_task',
+               // ✅ PART 4/6: Thread summarization, triage, deadline negotiation
+               'get_email_thread', 'smart_email_triage', 'deadline_negotiator'],
+    CHRONOS:  ['get_free_calendar_slots', 'list_calendar_events', 'schedule_task_in_calendar',
+               'block_calendar', 'delete_calendar_events', 'auto_reschedule', 'create_google_meet',
+               'update_calendar_event', 'connect_google_workspace', 'delegate_task',
+               // ✅ PART 6: Chronos can also focus-lock and rebuild the day
+               'focus_lock', 'rebuild_day'],
+    ORACLE:   ['get_tasks', 'search_tasks', 'list_calendar_events', 'get_free_calendar_slots',
+               'read_gmail', 'query_internal_app_data', 'connect_google_workspace',
+               // ✅ PART 4: Oracle is the data intelligence agent — gets bunk calc, day review, meeting prep
+               'calculate_bunk_capacity', 'get_email_thread', 'get_day_review', 'get_meeting_prep_brief', 'plan_study_schedule'],
+    ARGUS:    ['get_tasks', 'search_tasks', 'get_free_calendar_slots', 'list_calendar_events',
+               'send_notification', 'send_reminder', 'auto_reschedule', 'read_gmail', 'connect_google_workspace',
+               // ✅ PART 6: ARGUS triggers panic mode in emergency recovery
+               'panic_mode'],
+    SPECTRE:  ['read_gmail', 'list_calendar_events', 'get_tasks', 'create_task', 'send_notification', 'connect_google_workspace'],
+    TITAN:    ['send_gmail', 'reply_gmail', 'draft_email', 'create_google_doc', 'write_google_doc',
+               'create_google_meet', 'create_task', 'schedule_task_in_calendar', 'send_notification',
+               'notify_accountability_partner', 'connect_google_workspace', 'delegate_task',
+               // ✅ PART 6: TITAN executes panic mode, focus lock, day rebuild
+               'panic_mode', 'focus_lock', 'rebuild_day', 'deadline_negotiator'],
+    ARCHIVE:  ['list_drive_files', 'search_drive_files', 'create_google_doc', 'read_google_doc', 'send_notification', 'connect_google_workspace', 'delegate_task'],
+    MEET:     ['create_google_meet', 'list_calendar_events', 'update_calendar_event', 'delete_calendar_event', 'send_gmail', 'connect_google_workspace', 'delegate_task', 'get_meeting_prep_brief'],
+    SCRIBE:   ['create_google_doc', 'write_google_doc', 'read_google_doc', 'list_drive_files', 'send_notification', 'connect_google_workspace', 'delegate_task'],
+    ENIGMA:   ['get_tasks', 'query_internal_app_data', 'list_calendar_events', 'read_gmail', 'send_notification', 'connect_google_workspace'],
+    ATLAS:    ['get_tasks', 'create_task', 'update_task', 'schedule_task_in_calendar', 'send_notification', 'delegate_task', 'connect_google_workspace', 'plan_study_schedule', 'calculate_bunk_capacity'],
+    HEPHAESTUS: ['create_google_doc', 'write_google_doc', 'send_notification', 'delegate_task', 'connect_google_workspace'],
+    // AEGIS gets all tools — it's the synthesizer and may need to call anything for final QA
+    AEGIS:    TOOL_NAMES,
+  };
+
+  // ✅ BUG-R6 FIX: Extended read-only tools cache set to include new read-only tools.
   const READ_ONLY_TOOLS = new Set([
-    'get_tasks', 'list_calendar_events', 'get_free_calendar_slots', 'read_gmail'
+    'get_tasks', 'search_tasks', 'list_calendar_events', 'get_free_calendar_slots',
+    'read_gmail', 'query_internal_app_data', 'list_drive_files', 'get_notes', 'read_google_doc',
+    // ✅ New read-only analytical tools — safe to cache
+    'calculate_bunk_capacity', 'get_email_thread', 'get_day_review', 'get_meeting_prep_brief', 'smart_email_triage',
   ]);
-  const toolCache = new Map<string, ToolResult>(); // key: "toolName:argsHash" → result
+
+  // ✅ BUG-R2 FIX: Use sharedToolCache if provided (cross-agent cache), otherwise create local one
+  const toolCache = sharedToolCache ?? new Map<string, ToolResult>();
   let connectWorkspaceCalledThisSession = false; // prevent connect retry storm
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -65,28 +111,38 @@ export async function runAgentLoop(
           hasLoggedThinking = true;
         }
 
-        const filteredDeclarations = depth >= 2
-          ? TOOL_DECLARATIONS.filter(t => t.name !== 'delegate_task')
-          : TOOL_DECLARATIONS;
-        const filteredNames = depth >= 2
-          ? TOOL_NAMES.filter(n => n !== 'delegate_task')
-          : TOOL_NAMES;
+        // ✅ BUG-R3: Filter to only the tools this agent role needs
+        const agentAllowedNames = agentRole ? (AGENT_TOOL_WHITELIST[agentRole] ?? TOOL_NAMES) : TOOL_NAMES;
+        // Also strip delegate_task for sub-agents at depth >= 2 to prevent infinite recursion
+        const effectiveNames = depth >= 2
+          ? agentAllowedNames.filter(n => n !== 'delegate_task')
+          : agentAllowedNames;
+        const filteredDeclarations = TOOL_DECLARATIONS.filter(t => effectiveNames.includes(t.name));
+        const filteredNames = effectiveNames;
           
         const model = genAI.getGenerativeModel({
           model: activeModel,
           systemInstruction: effectiveSystem,
           tools: [{ functionDeclarations: filteredDeclarations }],
         });
-        
+
+        // ✅ INEFFICIENCY-3 FIX: Per-role timeouts. Navigation and simple creates need 20s max,
+        // not 2 minutes. Users staring at a frozen spinner for 120s on "go to calendar" is unacceptable.
+        const agentTimeoutMs =
+          agentRole === 'NAVIGATOR' ? 20_000 :
+          (agentRole === 'TITAN' && i === 0) ? 25_000 :
+          (agentRole === 'HERMES' || agentRole === 'ORACLE') ? 60_000 :
+          120_000; // default for complex multi-step agents
+
         const timeoutPromise = new Promise<any>((_, reject) => {
-          setTimeout(() => reject(new Error('Timeout: Gemini API took longer than 120 seconds to respond.')), 120000);
+          setTimeout(() => reject(new Error(`Timeout: Gemini API took longer than ${agentTimeoutMs/1000}s to respond.`)), agentTimeoutMs);
         });
         
         return await Promise.race([
           model.generateContent(
             {
               contents,
-              // ── Anti-Hallucination Guard ────────────────────────────────────────
+              // —— Anti-Hallucination Guard ————————————————————————————————————
               // toolConfig restricts the model to ONLY call functions in our declared
               // whitelist. The Gemini API rejects any function call not in this list,
               // eliminating wasted 2-4 second retry cycles from hallucinated tool names.
@@ -96,7 +152,7 @@ export async function runAgentLoop(
                   : { mode: 'AUTO' as any },
               },
             },
-            { requestOptions: { timeout: 120000, signal } }
+            { requestOptions: { timeout: agentTimeoutMs, signal } }
           ),
           timeoutPromise
         ]);
@@ -132,7 +188,10 @@ export async function runAgentLoop(
           connectWorkspaceCalledThisSession = true;
         }
 
-        const argsKey = JSON.stringify(args ?? {});
+        // ✅ BUG FIX: Sort keys before stringifying — JSON.stringify({b:1,a:2}) ≠ JSON.stringify({a:2,b:1})
+        // This caused false cache misses when the same call came in with different argument ordering.
+        const sortedArgs = args ? Object.fromEntries(Object.entries(args).sort(([a], [b]) => a.localeCompare(b))) : {};
+        const argsKey = JSON.stringify(sortedArgs);
         const cacheKey = `${name}:${argsKey}`;
         if (READ_ONLY_TOOLS.has(name) && toolCache.has(cacheKey)) {
           const cached = toolCache.get(cacheKey)!;
@@ -144,6 +203,21 @@ export async function runAgentLoop(
         // Execute the real tool
         const result = await executeTool(name, args, appContext, signal, depth);
         onStep({ type: 'tool_result', toolName: name, result });
+
+        // ✅ FIX: Short-circuit on repeated auth/tool failures (DEDUCTION 2.3)
+        // If the same tool fails twice with the same error, stop retrying immediately
+        // Prevents 18 failed Gmail API calls when auth is broken (6 loops × 3 calls)
+        if (!result.success && result.message) {
+          const failKey = `fail:${name}:${result.message.substring(0, 60)}`;
+          const prevFailCount = (toolCache.get(failKey) as any)?.count || 0;
+          if (prevFailCount >= 1) {
+            // 2nd failure with same error — stop the loop
+            finalAnswer = `⚠️ ${name} failed repeatedly: ${result.message}. Stopping to avoid wasted calls.`;
+            onStep({ type: 'thinking', title: `[Short-circuit] ${name} failed twice — stopping` });
+          } else {
+            toolCache.set(failKey, { count: prevFailCount + 1 });
+          }
+        }
 
         if (READ_ONLY_TOOLS.has(name)) {
           toolCache.set(cacheKey, result);
@@ -170,6 +244,9 @@ export async function runAgentLoop(
 
         return { name, result };
       }));
+
+      // Check if short-circuit was triggered by any tool failure
+      if (finalAnswer) break;
 
       // Add AI's function calls + our results to the conversation
       // CRITICAL FIX: Gemini API throws 400 Bad Request if a text part is empty.

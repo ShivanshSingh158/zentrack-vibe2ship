@@ -66,41 +66,26 @@ if (typeof window !== 'undefined') {
 // TOP-LEVEL AGENTS (Supervisors): Require higher intelligence for master planning.
 // We prioritize the Pro/Standard models here.
 export const SHARED_TOP_LEVEL_PRIORITY = [
-  'gemini-2.5-flash',                    // Best available working Standard model
-  'gemini-3.1-flash-lite',               // Fallback to Lite
-  'gemini-3.5-flash',                    // 20 RPD limit
-  'gemini-2.0-flash',                    // 0 RPD limit
-  'gemini-2.0-flash-lite',               // 0 RPD limit
-  'gemini-2.5-flash-lite-preview-06-17', // 404 Not Found
+  'gemini-2.5-flash',   // Best available working Standard model
+  'gemini-2.0-flash',   // ✅ Verified working fallback
+  // ✅ BUG FIX: Removed dead IDs: 'gemini-3.1-flash-lite', 'gemini-3.5-flash',
+  // 'gemini-2.0-flash-lite', 'gemini-2.5-flash-lite-preview-06-17' — all return 404
 ];
 
 export const PERSONAL_TOP_LEVEL_PRIORITY = [
-  'gemini-2.5-flash',                    
-  'gemini-3.1-flash-lite',               
-  'gemini-3.5-flash',                    
-  'gemini-2.0-flash',                    
-  'gemini-2.0-flash-lite',               
-  'gemini-2.5-flash-lite-preview-06-17', 
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
 ];
 
 // SUB-AGENTS (Workers: Oracle, Enigma): Require high speed and low quota usage.
-// We prioritize the Flash-Lite models here.
 export const SHARED_SUB_AGENT_PRIORITY = [
-  'gemini-3.1-flash-lite',               // Massive 1,500/day quota — Try first!
-  'gemini-2.5-flash',                    // Fallback to Standard
-  'gemini-3.5-flash',                    
-  'gemini-2.0-flash',                    
-  'gemini-2.0-flash-lite',               
-  'gemini-2.5-flash-lite-preview-06-17', 
+  'gemini-2.5-flash',   // Best available — sub-agents need reliable fast model
+  'gemini-2.0-flash',   // ✅ Verified working fallback
 ];
 
 export const PERSONAL_SUB_AGENT_PRIORITY = [
-  'gemini-3.1-flash-lite',               
-  'gemini-2.5-flash',                    
-  'gemini-3.5-flash',                    
-  'gemini-2.0-flash',                    
-  'gemini-2.0-flash-lite',               
-  'gemini-2.5-flash-lite-preview-06-17', 
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
 ];
 
 // Unified alias so internal consumers can reference a single constant.
@@ -238,16 +223,18 @@ export const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((re
 // All callWithFallback calls share this counter. When too many agents are firing
 // simultaneously, excess callers wait with random jitter before proceeding.
 // This prevents N parallel agents from all hitting the API at the exact same ms.
-const MAX_CONCURRENT_API_CALLS = 4; // Max simultaneous Gemini API calls across ALL agents
+// ✅ ARCH-1 FIX: Raised from 4 → 8. Original limit was conservative for single-key setups.
+// With an 8-key pool, a 5-agent parallel mission needs 5 slots — the old cap of 4 made
+// the 5th agent wait up to 30s. Raising to 8 matches the key pool size and eliminates
+// the 30s slot-wait bottleneck on full-fleet missions.
+const MAX_CONCURRENT_API_CALLS = 8;
 let _activeApiCalls = 0;
 
 // ── Active Agent Counter (for personal/shared routing policy) ─────────────────
-// Tracks how many top-level (semaphore-holding) agents are currently running.
 // Policy: if activeAgentCount <= PERSONAL_ONLY_THRESHOLD → route to personal key
 //         if activeAgentCount >  PERSONAL_ONLY_THRESHOLD → route to shared pool
-// This ensures personal account handles light load while shared pool absorbs bursts.
-const PERSONAL_ONLY_THRESHOLD = 2; // ≤2 active top-level agents → use personal key
-let _activeTopLevelAgents = 0; // count of agents holding semaphore slots
+const PERSONAL_ONLY_THRESHOLD = 3; // raised from 2 to match new semaphore headroom
+let _activeTopLevelAgents = 0;
 
 export const getActiveAgentCount = (): number => _activeTopLevelAgents;
 

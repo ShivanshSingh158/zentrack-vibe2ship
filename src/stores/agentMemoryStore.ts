@@ -33,7 +33,12 @@ class AgentMemoryStore {
   }
 
   appendMessage(msg: AgentMessage) {
-    this.messages = [...this.messages, msg];
+    // \u2705 BUG-R5 FIX: Cap at 50 entries with rolling eviction.
+    // Previously the store grew forever in long browser sessions (hourly proactive loops
+    // add entries indefinitely). After 12h, 12+ large entries accumulate in RAM with zero
+    // benefit since the store resets on page refresh anyway.
+    const next = [...this.messages, msg];
+    this.messages = next.length > 50 ? next.slice(next.length - 50) : next;
     this.emit();
   }
 
