@@ -1,4 +1,4 @@
-export const DB_NAME = 'ZenTrackCacheDB';
+const DB_NAME = 'ZenTrackCacheDB';
 const DB_VERSION = 1;
 
 const STORE_CALENDAR = 'calendar_cache';

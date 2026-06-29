@@ -1,4 +1,4 @@
-export type LogType = 'API' | 'WEBSOCKET';
+type LogType = 'API' | 'WEBSOCKET';
 
 export interface NetworkLog {
   id: string;

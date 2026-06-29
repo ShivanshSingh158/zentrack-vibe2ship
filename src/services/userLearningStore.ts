@@ -28,9 +28,9 @@ import {
   type UserBehaviorProfile,
 } from './patternEngine';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types (internal) ─────────────────────────────────────────────────────────
 
-export interface LearningEvent {
+interface LearningEvent {
   type:
     | 'task_completed'
     | 'task_rescheduled'

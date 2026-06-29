@@ -5,11 +5,10 @@ const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const DOCS_API = 'https://docs.googleapis.com/v1/documents';
 const DRIVE_API = 'https://www.googleapis.com/drive/v3/files';
 const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
-const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets';
 
-// ─── Core Fetch Helper ───────────────────────────────────────────────────────
+// ─── Core Fetch Helper (internal) ───────────────────────────────────────────
 
-export const workspaceFetch = async <T>(
+const workspaceFetch = async <T>(
   url: string,
   method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'GET',
   body?: object,
@@ -485,14 +484,3 @@ export const createGoogleMeet = async (params: {
   };
 };
 
-// ─── GOOGLE SHEETS ───────────────────────────────────────────────────────────
-
-export const createGoogleSheet = async (title: string, signal?: AbortSignal) => {
-  const data = await workspaceFetch<any>(SHEETS_API, 'POST', {
-    properties: { title }
-  }, undefined, signal);
-  return {
-    sheetId: data.spreadsheetId,
-    url: `https://docs.google.com/spreadsheets/d/${data.spreadsheetId}/edit`
-  };
-};

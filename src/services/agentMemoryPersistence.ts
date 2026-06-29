@@ -48,8 +48,6 @@ export const recordApprovalRejection = (tool: string) =>
 export const recordApprovalGrant = (tool: string) =>
   recordMemory({ type: 'approval_granted', tool, summary: 'User approved ' + tool, date: getToday() });
 
-export const recordPreference = (key: string, value: string) =>
-  recordMemory({ type: 'preference_expressed', key, value, summary: 'Preference: ' + key + '=' + value, date: getToday() });
 
 export const recordGhostTaskCreated = (taskTitle: string, sourceEmailId?: string) =>
   recordMemory({ type: 'ghost_task_created', taskTitle, sourceEmailId, summary: 'Ghost task: ' + taskTitle, date: getToday() });
