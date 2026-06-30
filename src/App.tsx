@@ -421,8 +421,15 @@ function App() {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-          <div style={{ width: '48px', height: '48px', borderRadius: '50%', border: '3px solid var(--border-subtle)', borderTopColor: 'var(--accent-primary)', animation: 'spin 0.8s linear infinite' }} />
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>Loading Zentrack...</p>
+          <div style={{ position: 'relative', width: 56, height: 56 }}>
+            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(139,92,246,0.15)' }} />
+            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#8b5cf6', animation: 'spin 0.8s linear infinite' }} />
+            <div style={{ position: 'absolute', inset: 6, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#3b82f6', animation: 'spin 1.2s linear infinite reverse' }} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
+            <p style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 600, margin: 0 }}>Loading Zentrack...</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: 0 }}>Authenticating...</p>
+          </div>
         </div>
       </div>
     );
