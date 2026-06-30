@@ -7,7 +7,17 @@ const localApiPlugin = (): Plugin => ({
   name: 'local-api',
   configureServer(server) {
     server.middlewares.use('/api/youtube', async (req: any, res: any) => {
-      const INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+      // ✅ SEC-1 FIX: API key moved from hardcoded string to environment variable.
+      // Previously: const INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+      // Now reads from VITE_INNERTUBE_KEY env var. Add it to your .env file:
+      //   VITE_INNERTUBE_KEY=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8
+      const env = loadEnv('development', process.cwd(), '');
+      const INNERTUBE_KEY = env.VITE_INNERTUBE_KEY || process.env.VITE_INNERTUBE_KEY || '';
+      if (!INNERTUBE_KEY) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'VITE_INNERTUBE_KEY environment variable is not set. Add it to your .env file.' }));
+        return;
+      }
       const CLIENT = { clientName: 'WEB', clientVersion: '2.20231219.01.00' };
 
       const url = new URL(req.url, 'http://localhost');
@@ -256,6 +266,20 @@ export default defineConfig({
   build: {
     minify: true,
     rollupOptions: {
+      // ✅ CRITICAL-DEPS FIX: Exclude server-only packages from the browser bundle.
+      // firebase-admin (~1.5 MB) and twilio (~1 MB) are server-side SDKs that use
+      // Node.js-only APIs (fs, http, crypto). They MUST NOT appear in browser output.
+      // node-fetch is dead weight in the browser (native fetch exists).
+      // youtube-transcript uses Node.js APIs and cannot run in a browser context.
+      external: [
+        'firebase-admin',
+        'firebase-admin/app',
+        'firebase-admin/auth',
+        'firebase-admin/firestore',
+        'twilio',
+        'node-fetch',
+        'youtube-transcript',
+      ],
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/recharts')) {

@@ -72,6 +72,35 @@ service cloud.firestore {
         && isOwner(request.resource.data.userId);
     }
 
+    // ── User Behavior Profiles (MED-5 FIX) ───────────────────────────────────
+    // Stores behavioral learning data: peak hours, persona, completion ratio, etc.
+    // Written by patternEngine.ts saveBehaviorProfile() → MUST be allowed or
+    // the entire UserLearningStore silently fails to persist across sessions.
+    match /user_profiles/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    // ── Agent Long-Term Memory (MED-6 FIX) ───────────────────────────────────
+    // Subcollection: agent_memory/{userId}/interactions/{entryId}
+    // Written by agentMemoryPersistence.ts recordMemory().
+    // Without this rule, approval history, ghost task dedup, and email memory
+    // silently fail — agents lose cross-session learning every page reload.
+    match /agent_memory/{userId}/interactions/{entryId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    // ── Generated Scripts (MED-7 FIX) ────────────────────────────────────────
+    // Written by toolExecutor.ts case 'generate_script' (HEPHAESTUS agent).
+    // Without this rule, every HEPHAESTUS script persists to Firestore silently fails.
+    match /generated_scripts/{docId} {
+      allow read, write: if isSignedIn()
+        && resource != null
+        && isOwner(resource.data.userId);
+
+      allow create: if isSignedIn()
+        && isOwner(request.resource.data.userId);
+    }
+
     // ── Lecture Chat History (subcollection path) ─────────────────────────────
     // lectureChats/{userId}/videos/{videoId}
     // Each user can only access their own chat history.
@@ -94,6 +123,14 @@ service cloud.firestore {
       allow read: if isSignedIn() && isOwner(resource.data.userId);
       allow update: if isSignedIn() && isOwner(resource.data.userId);
       allow delete: if isSignedIn() && isOwner(resource.data.userId);
+    }
+
+    // ── Notification History (FEAT-7) ─────────────────────────────────────────
+    // Subcollection: notifications/{userId}/history/{entryId}
+    // Written by toolExecutor.ts send_notification case (non-blocking fire-and-forget).
+    // Enables a notification history panel so users can review past agent alerts.
+    match /notifications/{userId}/history/{entryId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
     }
 
     // ── Deny everything else ──────────────────────────────────────────────────

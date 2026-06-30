@@ -484,3 +484,38 @@ export const createGoogleMeet = async (params: {
   };
 };
 
+// ─── GOOGLE DOCS — READ ─────────────────────────────────────────────────────
+// ✅ BUG-C2 / ISSUE-T6 FIX: Implement the missing read_google_doc service function.
+// ARCHIVE and SCRIBE both had read_google_doc in their tool whitelists but the
+// executor had no case for it — it fell through to "Unknown tool" every time.
+// This function reads a Doc via the Docs API and extracts all paragraph text.
+export const readGoogleDoc = async (fileId: string, signal?: AbortSignal): Promise<{ title: string; content: string; charCount: number }> => {
+  // Strip any URL prefix if user passed the full Doc URL instead of the ID
+  const docId = fileId.replace(/.*\/document\/d\/([a-zA-Z0-9_-]+).*/i, '$1');
+
+  const data = await workspaceFetch<any>(
+    `${DOCS_API}/${docId}?fields=title,body`,
+    'GET',
+    undefined,
+    undefined,
+    signal
+  );
+
+  // Walk the document body content array and extract all paragraph text
+  const lines: string[] = [];
+  for (const el of (data.body?.content || [])) {
+    if (!el.paragraph) continue;
+    const lineText = (el.paragraph.elements || [])
+      .map((e: any) => e.textRun?.content || '')
+      .join('');
+    if (lineText.trim()) lines.push(lineText.trimEnd());
+  }
+
+  const content = lines.join('\n');
+  return {
+    title: data.title || 'Untitled',
+    content,
+    charCount: content.length,
+  };
+};
+

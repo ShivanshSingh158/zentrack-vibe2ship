@@ -9,6 +9,8 @@ import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 // Core Services & Context
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { orchestrateAgent } from '../../agent/orchestrator';
+import { tryAcquireLock, releaseLock } from '../../agent/orchestrationLock'; // ✅ U7
+
 import { getUrgencyLevel, getCountdownText } from '../../hooks/useDeadlineWatcher';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { toast } from 'sonner';
@@ -20,8 +22,9 @@ import { isPersonalGeminiTokenExpired, wasEverConnectedToPersonalGemini, request
 // State & Hooks
 import { useUrgencyState } from '../../hooks/useUrgencyState';
 import { useProactiveAgent } from '../../hooks/useProactiveAgent';
-import { agentMemoryStore } from '../../agent/core/agentMemoryStore';
+import { agentMemoryStore } from '../../stores/agentMemoryStore';
 import { useAgentVoice } from '../../hooks/useAgentVoice';
+
 import { useApiQuota, apiQuotaStore } from '../../stores/apiQuotaStore';
 
 // Subcomponents
@@ -38,7 +41,8 @@ import { FocusLockOverlay } from './FocusLockOverlay';
 export function HomeDashboard() {
   const [time, setTime] = useState('');
   const globalData = useGlobalData();
-  const { tasks, pomodoroSessions, isGoogleConnected, connectGoogle, calendarEvents } = globalData;
+  const { tasks, pomodoroSessions, isGoogleConnected, connectGoogle } = globalData;
+
   const [agentStatus, setAgentStatus] = useState('Pantheon idle. Scrying datastreams...');
   const [commandInput, setCommandInput] = useState('');
   const [isExecuting, setIsExecuting] = useState(false);
@@ -149,7 +153,7 @@ export function HomeDashboard() {
 
     const handleShortcut = (e: Event) => {
       const { prompt } = (e as CustomEvent).detail || {};
-      if (typeof prompt === 'string') setTimeout(() => handleExecuteCommand(prompt), 120);
+      if (typeof prompt === 'string') handleExecuteCommand(prompt);
     };
 
     const handleProactiveBriefing = (e: Event) => {
@@ -221,12 +225,24 @@ export function HomeDashboard() {
   const handleExecuteCommand = async (overridePrompt?: string) => {
     const prompt = typeof overridePrompt === 'string' ? overridePrompt : commandInput;
     if (!prompt.trim() || isExecuting) return;
-    
+
+    // ✅ U7 FIX: Acquire global orchestration lock before starting.
+    // If a proactive loop is running, tryAcquireLock('user') will preempt it (abort it)
+    // so the user command always wins. If another user command is running (isExecuting guard
+    // above would catch it, but lock is a defense-in-depth).
+    const abortControllerForProactive = abortControllerRef.current || undefined;
+    if (!tryAcquireLock('user', abortControllerForProactive as any)) {
+      // This should not happen due to isExecuting guard, but log defensively
+      console.warn('[HomeDashboard] Could not acquire orchestration lock — another user command is already running.');
+      return;
+    }
+
     setIsExecuting(true);
     agentMemoryStore.appendMessage({ role: 'user', title: prompt });
     setCommandInput('');
     setAgentStatus('ATHENA initializing DAG workflow...');
     setActiveAgent('ATHENA');
+
     
     // Notify global components that execution is starting
     window.dispatchEvent(new Event('agent-executing'));
@@ -294,8 +310,10 @@ export function HomeDashboard() {
     } finally {
       setIsExecuting(false);
       setActiveAgent(null);
+      releaseLock('user'); // ✅ U7: always release on exit
     }
   };
+
 
   // ── Telemetry & Analytics Variables ──
   const todayStr = getLocalDateString(new Date());

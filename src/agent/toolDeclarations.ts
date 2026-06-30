@@ -101,6 +101,16 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ['habitId']
     }
   },
+  // ✅ FEAT-5: get_habit_stats — pre-computed habit analytics (no LLM arithmetic needed)
+  {
+    name: 'get_habit_stats',
+    description: 'Get computed habit analytics: current streak, 30-day completion rate, and today\'s completion status for all habits. Use when user asks "how are my habits going?", "what is my habit streak?", or when ENIGMA needs habit performance data for analytics.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+      required: []
+    }
+  },
   // ✅ NEW TOOL: mark_attendance — needed for attendance tracking from agent
   {
     name: 'mark_attendance',
@@ -226,6 +236,20 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
         notes: { type: SchemaType.STRING, description: 'Optional additional notes' }
       },
       required: ['title', 'subject', 'dueDate']
+    }
+  },
+  // ✅ NEW TOOL: generate_script — HEPHAESTUS uses this to write code snippets
+  {
+    name: 'generate_script',
+    description: 'Generates a code script or snippet in a specified language, providing an explanation of how it works. Use this whenever the user asks for a script, code snippet, or automation code.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        language: { type: SchemaType.STRING, description: 'The programming language (e.g. python, javascript, bash)' },
+        code: { type: SchemaType.STRING, description: 'The actual code to generate' },
+        explanation: { type: SchemaType.STRING, description: 'Optional explanation of how the code works and how to run it' }
+      },
+      required: ['language', 'code']
     }
   },
 
@@ -479,6 +503,20 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ['docId', 'content']
     }
   },
+  // ✅ BUG-C2 / ISSUE-T6 FIX: read_google_doc was referenced in ARCHIVE and SCRIBE whitelists
+  // but never declared here, so it was stripped from the filtered tool list before the model
+  // could ever call it. Added proper declaration so ARCHIVE/SCRIBE can now read Doc content.
+  {
+    name: 'read_google_doc',
+    description: 'Read the full text content of a Google Document by its file ID or document URL. Use when ARCHIVE or SCRIBE needs to retrieve an existing document\'s content for analysis, summarization, or editing.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        fileId: { type: SchemaType.STRING, description: 'The Google Drive file ID or document ID (from search_google_drive, list_drive_files, or extracted from the Doc URL)' },
+      },
+      required: ['fileId'],
+    },
+  },
 
   // ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
   {
@@ -683,7 +721,85 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: [],
     },
   },
+
+  // ─── NOTES MODULE ─────────────────────────────────────────────────────────
+  {
+    name: 'create_note',
+    description: 'Create a new note in the ZenTrack Notes module. Use when user says "save this", "note that down", "remember this", "write a note about X", or after any research/summary the user wants to keep.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        title: { type: SchemaType.STRING, description: 'Short title/heading for the note' },
+        content: { type: SchemaType.STRING, description: 'The full text content of the note (markdown supported)' },
+        tags: { type: SchemaType.STRING, description: 'Optional comma-separated tags (e.g. "work,important,follow-up")' },
+      },
+      required: ['title', 'content'],
+    },
+  },
+  {
+    name: 'search_notes',
+    description: 'Search note content by keyword. Unlike query_internal_app_data which returns all notes, this performs targeted content search and returns only matching notes with relevance context. Use when user says "find my note about X", "what did I write about Y", "search notes for Z".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        query: { type: SchemaType.STRING, description: 'Search term to find in note title or content' },
+        maxResults: { type: SchemaType.NUMBER, description: 'Maximum number of results to return (default 5)' },
+      },
+      required: ['query'],
+    },
+  },
+
+  // ─── GOALS MODULE ─────────────────────────────────────────────────────────
+  {
+    name: 'create_goal',
+    description: 'Create a new goal in the ZenTrack Goals module. Use when user says "add a goal", "I want to achieve X", "set a goal for Y", "help me track my goal to Z". Goals are different from tasks — they are high-level objectives with milestones.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        title: { type: SchemaType.STRING, description: 'The goal title or objective' },
+        description: { type: SchemaType.STRING, description: 'Detailed description of what achieving this goal looks like' },
+        targetDate: { type: SchemaType.STRING, description: 'Target completion date in YYYY-MM-DD format' },
+        category: { type: SchemaType.STRING, description: 'Category: "career", "health", "learning", "finance", "personal", or "other"' },
+        milestones: { type: SchemaType.STRING, description: 'Optional comma-separated milestone descriptions' },
+      },
+      required: ['title'],
+    },
+  },
+
+  // ─── HABITS MODULE ─────────────────────────────────────────────────────────
+  {
+    name: 'create_habit',
+    description: 'Create a new habit in the ZenTrack Habits module. Use when user says "add a habit", "I want to track X daily", "help me build a habit of Y", "remind me to Z every day".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        name: { type: SchemaType.STRING, description: 'The habit name (e.g. "Drink 8 glasses of water")' },
+        description: { type: SchemaType.STRING, description: 'Why this habit matters or how to do it' },
+        frequency: { type: SchemaType.STRING, description: '"daily", "weekdays", "weekends", or specific days like "Mon,Wed,Fri"' },
+        reminderTime: { type: SchemaType.STRING, description: 'Optional reminder time in HH:MM format (24h)' },
+        icon: { type: SchemaType.STRING, description: 'Optional emoji icon for the habit (e.g. "💧", "🏃", "📚")' },
+      },
+      required: ['name'],
+    },
+  },
+
+  // ─── WEEKLY REVIEW MODULE ─────────────────────────────────────────────────
+  {
+    name: 'generate_weekly_review',
+    description: 'Generate a comprehensive weekly review report by analyzing all available data: completed tasks, habit streaks, gym performance, assignment progress, and productivity patterns. Writes the structured review to Firestore. Use when user says "weekly review", "how was my week", "generate my review", "summarize my week".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        weekStartDate: { type: SchemaType.STRING, description: 'Monday of the review week in YYYY-MM-DD format. Defaults to last Monday.' },
+        includeGym: { type: SchemaType.BOOLEAN, description: 'Include gym performance analysis (default true)' },
+        includeHabits: { type: SchemaType.BOOLEAN, description: 'Include habit streak analysis (default true)' },
+        includeGoals: { type: SchemaType.BOOLEAN, description: 'Include goal progress analysis (default true)' },
+      },
+      required: [],
+    },
+  },
 ];
+
 
 // ── Authoritative tool name whitelist ─────────────────────────────────────────
 // Derived directly from TOOL_DECLARATIONS so it can NEVER go out of sync.

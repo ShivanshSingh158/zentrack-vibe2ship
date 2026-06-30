@@ -209,16 +209,23 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
     }
 
     if (state.isRunning && state.timeLeft > 0) {
-      // Snapshot session start time so elapsed is always accurate
+      // Snapshot session start time and compute target end time
       if (sessionStartTimeRef.current === 0) {
         sessionStartTimeRef.current = Date.now();
       }
+      
+      // Calculate the exact time this timer should hit 0, based on the *current* timeLeft.
+      // E.g. if we have 300 seconds left, target time is Date.now() + 300000
+      const targetEndTime = Date.now() + (state.timeLeft * 1000);
+
       timerRef.current = window.setInterval(() => {
         setState(prev => {
-          const newTimeLeft = Math.max(0, prev.timeLeft - 1);
-          // Track elapsed as seconds counted up — not computed from DEFAULT_DURATION
+          // Calculate precise time left using Date.now() to prevent drift when tab is backgrounded
+          const exactTimeLeft = Math.max(0, Math.ceil((targetEndTime - Date.now()) / 1000));
+          
+          // Track elapsed as minutes counted up
           elapsedRef.current = Math.floor((Date.now() - sessionStartTimeRef.current) / 60000);
-          return { ...prev, timeLeft: newTimeLeft };
+          return { ...prev, timeLeft: exactTimeLeft };
         });
       }, 1000);
     } else if (!state.isRunning) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { orchestrateAgent } from '../agent/orchestrator';
 import { getLocalDateString } from '../utils/dateUtils';
 import { toast } from 'sonner';
@@ -8,17 +8,31 @@ import { runPatternEngine, formatProfileForAgent, loadBehaviorProfile } from '..
 import { userLearningStore } from '../services/userLearningStore';
 import { detectConflicts, createDebouncedDetector } from '../services/conflictDetector';
 import { recordSnoozeIntervention, recordAgentAction } from '../services/agentMemoryPersistence';
+// ✅ U7 FIX: Import shared orchestration lock so proactive loops compete correctly
+// with user commands from HomeDashboard and ZenAgentPanel.
+import { tryAcquireLock, releaseLock } from '../agent/orchestrationLock';
+// ✅ U5 FIX: Import shared briefing keys for deduplication
+import { BRIEFING_CONTENT_KEY, BRIEFING_GENERATED_AT_KEY, BRIEFING_TTL_MS } from '../components/overlays/DailyBriefingOverlay';
+
 
 const PROACTIVE_THROTTLE_MS = 60 * 60 * 1000;   // 1 hour between emergency action runs
 const GHOST_THROTTLE_MS     = 24 * 60 * 60 * 1000; // 24 hours between ghost scans
 const STORAGE_KEY    = 'zen_proactive_last_run';
 const GHOST_SCAN_KEY = 'zen_ghost_last_scan';
 
-// ── Global guard: prevents simultaneous orchestrations ──────────────────────────────
-// Both the emergency loop and ghost scan spawn full orchestrations (3-5 agents each).
-// If both run simultaneously on page load, we get a 6-10 agent burst that exhausts
-// all 8 API keys at once. This flag ensures only ONE loop runs at a time.
+// ✅ U7 FIX: _isProactiveRunning is KEPT as a guard between proactive loops themselves
+// (e.g., prevent ghost scan starting while morning briefing runs).
+// The shared orchestrationLock handles competition with USER commands.
+// This two-level guard prevents BOTH proactive-vs-proactive AND proactive-vs-user races.
 let _isProactiveRunning = false;
+// ✅ BUG-C4 FIX: Move hasRun to MODULE scope (not inside the hook as a useRef).
+// When hasRun is a useRef, it is tied to the component instance. On every
+// globalData reference change (which happens on every Firestore onSnapshot—
+// multiple times per task status change), React re-runs the useEffect and
+// resets hasRun.current = false in the closure, re-triggering the entire
+// emergency loop. Module-scope guarantees a single guard per browser session.
+let _proactiveHasRun = false;
+
 
 /**
  * useProactiveAgent — Fully Autonomous Productivity Engine
@@ -44,12 +58,20 @@ export const useProactiveAgent = (
   setIsExecuting?: (b: boolean) => void
 ) => {
   const { tasks = [] } = globalData || {};
-  const hasRun = useRef(false);
+
+  // ✅ BUG-C4 FIX: Compute a stable task-IDs hash as the effect dependency.
+  // Using the raw `tasks` array or `globalData` object causes the effect to
+  // re-fire on every Firestore update (even just status changes), which can
+  // reset the proactive loops multiple times per minute.
+  // A sorted comma-joined ID string only changes when tasks are ADDED/REMOVED,
+  // not when their content changes — preventing timer reset storms.
+  const taskIdsHash = tasks.map((t: any) => t.id).sort().join(',');
 
   useEffect(() => {
     if (!tasks || tasks.length === 0) return;
-    if (hasRun.current) return;
-    hasRun.current = true;
+    // ✅ BUG-C4: Use module-level guard instead of useRef
+    if (_proactiveHasRun) return;
+    _proactiveHasRun = true;
 
     // ⚡ STEP 0: Initialize the UserLearningStore IMMEDIATELY (before any agent runs).
     // This loads the behavior profile from localStorage cache (<1ms) and then
@@ -81,7 +103,13 @@ export const useProactiveAgent = (
         console.log('[ProactiveAgent] Skipping emergency loop — another proactive run is already active.');
         return;
       }
+      // ✅ U7: Try to acquire the global orchestration lock before starting
+      if (!tryAcquireLock('proactive')) {
+        console.log('[ProactiveAgent] Emergency loop skipped — user command is running.');
+        return;
+      }
       _isProactiveRunning = true;
+
 
       localStorage.setItem(STORAGE_KEY, Date.now().toString());
       if (setIsExecuting) setIsExecuting(true);
@@ -221,13 +249,13 @@ This is zero-click autonomous recovery. Execute all steps. No suggestions — on
               ? `ARGUS + CHRONOS acting on "${mostCriticalOverdue?.title || mostCriticalOverdue?.text}".`
               : `Nudge sent for "${overdueTasks[0]?.title || overdueTasks[0]?.text}".`,
             duration: tier === 'L3' ? 10000 : 7000,
-            action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report')) }
+            action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report', { detail: { report: result } })) }
           });
         } else {
           toast.info('🤖 Morning Autonomy Complete', {
             description: `Zen AI scheduled ${todayTasks.length} task${todayTasks.length > 1 ? 's' : ''} into focus blocks. Check your calendar.`,
             duration: 7000,
-            action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report')) }
+            action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report', { detail: { report: result } })) }
           });
         }
       } catch (err) {
@@ -279,8 +307,22 @@ Be thorough. Be silent unless you find something.`;
         const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
       // ✅ FIX: Inject already-scanned email IDs into the ghost prompt so SPECTRE skips them
       // Without this, the same unread email gets processed every 24h → duplicate tasks after 7 days
-      const scannedIdsRaw = localStorage.getItem('zen_ghost_scanned_ids') || '[]';
-      const scannedIds: string[] = JSON.parse(scannedIdsRaw).slice(-200); // keep last 200
+      // ✅ MED-3 FIX: Purge scanned IDs older than 30 days to keep the list lean.
+      // Previously entries never expired, bloating the ghost prompt after months of use.
+      const GHOST_ID_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+      const now30 = Date.now();
+      let scannedEntries: Array<{ id: string; scannedAt: number }> = [];
+      try {
+        const raw = localStorage.getItem('zen_ghost_scanned_ids') || '[]';
+        const parsed = JSON.parse(raw);
+        // Support both old format (plain string array) and new format (objects with timestamps)
+        scannedEntries = Array.isArray(parsed)
+          ? parsed.map((x: any) => typeof x === 'string' ? { id: x, scannedAt: now30 } : x)
+          : [];
+      } catch { scannedEntries = []; }
+      // Purge expired entries
+      scannedEntries = scannedEntries.filter(e => now30 - e.scannedAt < GHOST_ID_TTL_MS);
+      const scannedIds = scannedEntries.slice(-200).map(e => e.id);
       const scannedNote = scannedIds.length > 0
         ? `\n\nIMPORTANT: The following email message IDs have ALREADY been processed. DO NOT create tasks for these — they are previously scanned:\n${scannedIds.join(', ')}\nFor any NEW tasks you create, also tell me the email message ID in your response prefixed with "EMAIL_ID:".`
         : '';
@@ -293,12 +335,14 @@ Be thorough. Be silent unless you find something.`;
       };
       const result = await orchestrateAgent(ghostPrompt + scannedNote, globalData, apiKey, ghostOnStep, [], abortController.signal);
 
-      // Extract and store any new email IDs that were processed
+      // Extract and store any new email IDs that were processed (with timestamp)
       const newIdMatches = result.match(/EMAIL_ID:\s*([\w-]+)/g) || [];
       if (newIdMatches.length > 0) {
         const newIds = newIdMatches.map(m => m.replace('EMAIL_ID:', '').trim());
-        const updated = [...new Set([...scannedIds, ...newIds])];
-        localStorage.setItem('zen_ghost_scanned_ids', JSON.stringify(updated));
+        const newEntries = newIds.map(id => ({ id, scannedAt: now30 }));
+        const existingIds = new Set(scannedEntries.map(e => e.id));
+        const merged = [...scannedEntries, ...newEntries.filter(e => !existingIds.has(e.id))];
+        localStorage.setItem('zen_ghost_scanned_ids', JSON.stringify(merged));
       }
         agentMemoryStore.appendMessage({ role: 'agent', title: result });
 
@@ -367,19 +411,44 @@ Be thorough. Be silent unless you find something.`;
     }, 60_000); // every minute, zero LLM, zero API cost
 
     // ── Morning Briefing: 7:30am – 9:00am daily ─────────────────────────────
-    // Fires once per day in the morning window. Uses ORACLE to generate a personalized
-    // Day Score / task briefing. Throttled to 24h via localStorage key.
+    // ✅ U5 FIX: DailyBriefingOverlay is the PRIMARY authority for briefing generation.
+    // runMorningBriefing now checks the shared dedup key first. If DailyBriefingOverlay
+    // already generated content today, this function reuses it and skips the LLM call.
     const MORNING_BRIEF_KEY = 'zen_morning_brief_last';
     const runMorningBriefing = async () => {
       if (!isSignedInToGoogle()) return;
       const lastBrief = parseInt(localStorage.getItem(MORNING_BRIEF_KEY) || '0', 10);
-      if (Date.now() - lastBrief < 20 * 60 * 60 * 1000) return; // 20h throttle (not exactly 24h to catch edge cases)
+      if (Date.now() - lastBrief < 20 * 60 * 60 * 1000) return;
       const hour = new Date().getHours();
-      if (hour < 7 || hour >= 9) return; // only during 7:30-9am
-      if (new Date().getMinutes() < 30 && hour === 7) return; // wait until 7:30
+      if (hour < 7 || hour >= 9) return;
+      if (new Date().getMinutes() < 30 && hour === 7) return;
       if (_isProactiveRunning) return;
-      localStorage.setItem(MORNING_BRIEF_KEY, Date.now().toString());
+
+      // ✅ U5: Check if DailyBriefingOverlay already generated briefing content today
+      const briefingGeneratedAt = parseInt(localStorage.getItem(BRIEFING_GENERATED_AT_KEY) || '0', 10);
+      const existingContent = localStorage.getItem(BRIEFING_CONTENT_KEY);
+      if (existingContent && Date.now() - briefingGeneratedAt < BRIEFING_TTL_MS) {
+        console.log('[MorningBriefing] DailyBriefingOverlay already ran today — reusing cached content, skipping LLM call.');
+        localStorage.setItem(MORNING_BRIEF_KEY, Date.now().toString());
+        // Emit as proactive-briefing so HomeDashboard can display it if needed
+        try {
+          const parsed = JSON.parse(existingContent);
+          const msg = `☀️ Morning briefing (cached from overlay):
+
+**${parsed.greeting || 'Good morning!'}**
+
+${parsed.message || ''}
+
+_"${parsed.quote || ''}_"`;
+          window.dispatchEvent(new CustomEvent('proactive-briefing', { detail: { report: msg, type: 'morning' } }));
+        } catch (_) {}
+        return;
+      }
+
+      // No cached content — generate via orchestrateAgent
+      if (!tryAcquireLock('proactive')) return; // ✅ U7
       _isProactiveRunning = true;
+      localStorage.setItem(MORNING_BRIEF_KEY, Date.now().toString());
       try {
         const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
         const briefPrompt = `MORNING_BRIEFING_PROTOCOL — Generate today's personalized morning briefing.
@@ -400,8 +469,9 @@ Keep it under 200 words. Be direct.`;
         });
         window.dispatchEvent(new CustomEvent('proactive-briefing', { detail: { report: result, type: 'morning' } }));
       } catch (e) { console.warn('[MorningBriefing] Failed:', e); }
-      finally { _isProactiveRunning = false; }
+      finally { _isProactiveRunning = false; releaseLock('proactive'); } // ✅ U7
     };
+
 
     // ── End-of-Day Review: 5:30pm – 7:00pm daily ────────────────────────────
     const EOD_KEY = 'zen_eod_review_last';
@@ -433,9 +503,15 @@ Keep it under 150 words. Be honest.`;
           duration: 12000,
           action: { label: 'View Review', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report', { detail: { report: result } })) }
         });
-        window.dispatchEvent(new CustomEvent('proactive-briefing', { detail: { report: result, type: 'eod' } }));
-      } catch (e) { console.warn('[EODReview] Failed:', e); }
-      finally { _isProactiveRunning = false; }
+        window.dispatchEvent(new CustomEvent('proactive-briefing', {
+          detail: { report: result, type: 'emergency' }
+        }));
+      } catch (e) { console.warn('[EmergencyLoop] Failed:', e); }
+      finally {
+        _isProactiveRunning = false;
+        releaseLock('proactive'); // ✅ U7: release global lock
+        if (setIsExecuting) setIsExecuting(false);
+      }
     };
 
     // ── Meeting Prep Brief: 30 min before any calendar event ─────────────────
@@ -585,18 +661,24 @@ Keep it under 200 words.`;
     // Morning/EOD/Meeting-prep: checked every 5 minutes via a lightweight clock.
     const emergencyTimer = setTimeout(runWithGoogleGuard, 3000);
     const ghostTimer     = setTimeout(runGhostScan, 90_000);
-    // Clock for time-triggered proactive features (morning briefing, EOD, meeting prep)
-    // Runs every 5 minutes — very low cost (just reads localStorage + checks time).
-    const proactiveClock = setInterval(async () => {
-      await runMorningBriefing().catch(() => {});
-      await runEodReview().catch(() => {});
-      await runMeetingPrepCheck().catch(() => {});
+    // ✅ BUG-H4 FIX: Run all three time-triggered loops concurrently with Promise.allSettled.
+    // Previously they were awaited sequentially: if runMorningBriefing() hung due to a rate
+    // limit or network error, runEodReview and runMeetingPrepCheck never ran that tick.
+    // Promise.allSettled guarantees all three are attempted independently every 5 minutes.
+    const proactiveClock = setInterval(() => {
+      Promise.allSettled([
+        runMorningBriefing().catch(() => {}),
+        runEodReview().catch(() => {}),
+        runMeetingPrepCheck().catch(() => {}),
+      ]);
     }, 5 * 60_000);
     // Also run once immediately in case app opens during the time window
     setTimeout(() => {
-      runMorningBriefing().catch(() => {});
-      runEodReview().catch(() => {});
-      runMeetingPrepCheck().catch(() => {});
+      Promise.allSettled([
+        runMorningBriefing().catch(() => {}),
+        runEodReview().catch(() => {}),
+        runMeetingPrepCheck().catch(() => {}),
+      ]);
     }, 10_000);
 
     // GAP-4: Pattern engine — run after 5s delay (non-blocking, low priority)
@@ -612,5 +694,8 @@ Keep it under 200 words.`;
       // Flush any pending learning store writes on unmount (page close / nav)
       userLearningStore.flush().catch(() => {});
     };
-  }, [globalData, tasks, setIsExecuting]);
+  // ✅ BUG-C4: Use taskIdsHash (stable string) instead of globalData/tasks (live object refs).
+  // This ensures the effect only re-fires when tasks are structurally added/removed,
+  // NOT on every Firestore status update (which was causing multiple timer resets per minute).
+  }, [taskIdsHash]); // eslint-disable-line react-hooks/exhaustive-deps
 };

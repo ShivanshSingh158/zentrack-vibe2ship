@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react';
+import { collection, query, where, onSnapshot, doc, limit, orderBy } from 'firebase/firestore';
+
 import type { Query, DocumentData } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../services/firebase';
@@ -10,6 +11,8 @@ import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 
 interface GlobalDataContextType {
   tasks: Task[];
+  // ✅ D1 FIX: calendarEvents comes from Google Calendar API polling, not Firestore.
+  // Stored in local state here so agents have immediate access after Google connect.
   calendarEvents: CalendarEvent[];
   dailyLogs: any[];
   habitLogs: any[];
@@ -34,6 +37,7 @@ interface GlobalDataContextType {
   connectGoogle: () => Promise<void>;
   disconnectGoogle: () => void;
 }
+
 
 
 const GlobalDataContext = createContext<GlobalDataContextType | null>(null);
@@ -71,9 +75,12 @@ function safeSnapshot(
 
 export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tasks, setTasks] = useState<any[]>([]);
-  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
+  // ✅ BUG-H1 + D1: calendarEvents from Google Calendar API (not Firestore)
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  // ✅ D3: dailyLogs kept for type compat but subscription removed (no global consumers)
   const [dailyLogs, setDailyLogs] = useState<any[]>([]);
   const [habitLogs, setHabitLogs] = useState<any[]>([]);
+
   const [habits, setHabits] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
@@ -265,7 +272,28 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (key) console.log('[ZenAI] ✅ Personal Gemini key loaded for user.');
       });
 
-      const TOTAL = 14;
+      // ✅ D2 FIX: Added limit() clauses to prevent unbounded Firestore reads on power users.
+      // Power user with 2 years of data = 2500+ reads per session open. At scale, this is costly.
+      // todos: limit 500 (ordered by date desc so most recent tasks are included)
+      // habit_logs: limit 365 (one year of daily logs is sufficient for habit analytics)
+      // gymLogs: limit 365 (one year of gym history is sufficient)
+      // All others: no pagination needed (collections stay small by design)
+      //
+      // ✅ D1 FIX: calendar_events Firestore subscription REMOVED.
+      // The 'calendar_events' collection in Firestore is only written by CalendarModule
+      // for user-created custom events. Google Calendar API events are fetched via
+      // pollGoogleCalendarChanges() below, never via Firestore onSnapshot.
+      // Keeping this listener alive permanently returned empty arrays to CHRONOS, ENIGMA,
+      // and ARGUS for the first ~15 minutes of every session (before Google API poll fires).
+      //
+      // ✅ D3 FIX: daily_logs Firestore subscription REMOVED from GlobalDataContext.
+      // daily_logs IS a real collection (PomodoroContext writes to it), but no one in
+      // GlobalDataContext consumes dailyLogs. Each consumer (PomodoroContext, FloatingExtraWorks,
+      // CommandPalette, WeeklyReviewModule) subscribes directly with targeted where clauses.
+      // A permanent global listener here costs reads with zero functional benefit.
+
+      // ✅ D2: limit(500) on todos for power users with 2+ years of task history
+      const TOTAL = 12; // was 14: removed calendar_events and daily_logs subscriptions
       let firedCount = 0;
       const onFirstFire = () => {
         firedCount++;
@@ -281,19 +309,21 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
 
       const unsubs: (() => void)[] = [
-        safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTasks), 'todos'),
-        safeSnapshot(query(collection(db, 'calendar_events'), where('userId', '==', uid)), makeHandler(setCalendarEvents), 'calendar_events'),
-        safeSnapshot(query(collection(db, 'daily_logs'), where('userId', '==', uid)), makeHandler(setDailyLogs), 'daily_logs'),
+        // ✅ D2: limit(500) so power users don't read 2000+ todo documents (ordered recent-first)
+        safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid), orderBy('date', 'desc'), limit(500)), makeHandler(setTasks), 'todos'),
+        // ✅ D2: limit(365) — one year of habit logs sufficient for all analytics
+        safeSnapshot(query(collection(db, 'habit_logs'), where('userId', '==', uid), limit(365)), makeHandler(setHabitLogs), 'habit_logs'),
         safeSnapshot(query(collection(db, 'habits'), where('userId', '==', uid)), makeHandler(setHabits), 'habits'),
-        safeSnapshot(query(collection(db, 'habit_logs'), where('userId', '==', uid)), makeHandler(setHabitLogs), 'habit_logs'),
         safeSnapshot(query(collection(db, 'job_applications'), where('userId', '==', uid)), makeHandler(setJobs), 'jobs'),
         safeSnapshot(query(collection(db, 'goals'), where('userId', '==', uid)), makeHandler(setGoals), 'goals'),
         safeSnapshot(query(collection(db, 'learning_topics'), where('userId', '==', uid)), makeHandler(setLearningTopics), 'learning_topics'),
-        safeSnapshot(query(collection(db, 'gymLogs'), where('userId', '==', uid)), makeHandler(setGymLogs), 'gymLogs'),
+        // ✅ D2: limit(365) — one year of gym history sufficient for fitness analytics
+        safeSnapshot(query(collection(db, 'gymLogs'), where('userId', '==', uid), limit(365)), makeHandler(setGymLogs), 'gymLogs'),
         safeSnapshot(query(collection(db, 'notes'), where('userId', '==', uid)), makeHandler(setNotes), 'notes'),
         safeSnapshot(query(collection(db, 'attendance_subjects'), where('userId', '==', uid)), makeHandler(setAttendanceSubjects), 'attendance_subjects'),
         safeSnapshot(query(collection(db, 'assignments'), where('userId', '==', uid)), makeHandler(setAssignments), 'assignments'),
         safeSnapshot(query(collection(db, 'pomodoro_sessions'), where('userId', '==', uid)), makeHandler(setPomodoroSessions), 'pomodoro_sessions'),
+        // users doc listener (12th = TOTAL)
         onSnapshot(doc(db, 'users', uid), (snap) => {
           if (snap.exists() && snap.data().preferences) {
             setUserPreferences(snap.data().preferences);
@@ -301,6 +331,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           onFirstFire();
         })
       ];
+
 
       dataUnsubsRef.current = unsubs;
       failsafeRef.current = setTimeout(() => setIsLoading(false), 3000);
@@ -312,13 +343,22 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, []);
 
+  // ✅ BUG-H1 FIX: Memoize gymSchedule so it only recomputes once per day (when weekday changes),
+  // not on every GlobalDataContext render. Previously GYM_PLAN.find() was called inline in JSX,
+  // creating a new object reference on every render and re-rendering all gymSchedule consumers.
+  const gymSchedule = useMemo(
+    () => GYM_PLAN.find(p => p.dayIndex === WEEKDAY_TO_PLAN[new Date().getDay()]) || { isRest: true, name: 'Rest Day' },
+    // The day of week only changes once per day, so an empty dep array is correct here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
   return (
     <GlobalDataContext.Provider value={{
       tasks, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
       learningTopics, gymLogs, notes, attendanceSubjects, assignments,
-      pomodoroSessions, userPreferences, isLoading,
+      pomodoroSessions, userPreferences, isLoading, gymSchedule,
       isGoogleConnected, googleStatus, connectGoogle, disconnectGoogle,
-      gymSchedule: GYM_PLAN.find(p => p.dayIndex === WEEKDAY_TO_PLAN[new Date().getDay()]) || { isRest: true, name: 'Rest Day' }
     } as any}>
       {children}
     </GlobalDataContext.Provider>

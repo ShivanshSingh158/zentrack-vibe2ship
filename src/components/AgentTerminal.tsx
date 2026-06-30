@@ -9,6 +9,7 @@ interface LogEntry {
   title: string;
   data?: unknown;
   text?: string;
+  isProactive?: boolean; // ✅ U6: distinguishes background proactive logs from user-initiated logs
 }
 
 export const AgentTerminal: React.FC = () => {
@@ -23,11 +24,21 @@ export const AgentTerminal: React.FC = () => {
       // Accumulate logs silently — user opens terminal explicitly via toggle button
       const step = e.detail;
       const now = new Date().toLocaleTimeString([], { hour12: false });
+
+      // ✅ U6 FIX: Tag log entries by source (user command vs. proactive background loop).
+      // ZenAgentPanel tags its events with source:'user'.
+      // useProactiveAgent tags its events with isProactive:true.
+      // AgentTerminal is the DEVELOPER DEBUG view — it shows ALL sources with clear labels.
+      // ZenAgentPanel (user-facing chat) only shows source:'user' logs (handled in ZenAgentPanel itself).
+      const isProactive = step.isProactive === true || step.source === 'proactive';
+      const sourceLabel = isProactive ? '[PROACTIVE] ' : '';
+
       const newLog: LogEntry = {
         id: Math.random().toString(36).substr(2, 9),
         time: now,
         type: step.type,
         title: '',
+        isProactive,
       };
 
       const getActionText = (tool: string) => {
@@ -69,22 +80,22 @@ export const AgentTerminal: React.FC = () => {
         text = text.replace('Supervisor mapping DAG...', 'Fleet Commander organizing mission...');
         text = text.replace(/Zen AI is thinking\.\.\. \(.*?\)/, 'Synthesizing neural pathways...');
         text = text.replace(/\[(.*?)\] Running\.\.\./, 'Deploying $1 agent...');
-        newLog.text = text;
+        newLog.text = sourceLabel + text;
       } else if (step.type === 'tool_call') {
-        newLog.text = getActionText(step.toolName || step.title || '');
+        newLog.text = sourceLabel + getActionText(step.toolName || step.title || '');
         newLog.data = step.args || step.data;
       } else if (step.type === 'tool_result') {
-        newLog.text = `✓ ${getResultText(step.toolName || step.title || '')}`;
+        newLog.text = `${sourceLabel}✓ ${getResultText(step.toolName || step.title || '')}`;
         newLog.data = step.result || step.data;
       } else if (step.type === 'answer') {
         const fullText = step.text || step.title || step.message || '';
         if (fullText.length > 120) {
-          newLog.text = fullText.substring(0, 120) + '...';
+          newLog.text = sourceLabel + fullText.substring(0, 120) + '...';
         } else {
-          newLog.text = fullText;
+          newLog.text = sourceLabel + fullText;
         }
       } else {
-        newLog.text = step.text || step.title || step.message || JSON.stringify(step);
+        newLog.text = sourceLabel + (step.text || step.title || step.message || JSON.stringify(step));
       }
 
       setLogs(prev => [...prev, newLog]);
@@ -94,6 +105,7 @@ export const AgentTerminal: React.FC = () => {
         setLogs([]);
       }, 120000); // 2 minutes auto-clear
     };
+
 
     window.addEventListener('agent-log', handleLog as EventListener);
 
@@ -133,52 +145,52 @@ export const AgentTerminal: React.FC = () => {
           bottom: '20px',
           right: '20px',
           width: '500px',
-          background: 'rgba(5, 5, 10, 0.95)',
-          border: '1px solid rgba(168, 85, 247, 0.3)',
-          borderRadius: '12px',
-          boxShadow: '0 10px 40px rgba(0,0,0,0.8), 0 0 20px rgba(168,85,247,0.15)',
+          background: 'rgba(5, 5, 10, 0.85)',
+          border: '1px solid rgba(0, 240, 255, 0.4)',
+          borderRadius: '8px',
+          boxShadow: '0 10px 40px rgba(0,0,0,0.9), 0 0 30px rgba(0, 240, 255, 0.2)',
           zIndex: 9999,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          fontFamily: 'monospace',
-          backdropFilter: 'blur(10px)',
+          fontFamily: 'var(--font-mono)',
+          backdropFilter: 'blur(20px) saturate(150%)',
         }}
       >
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '8px 12px',
-          background: 'rgba(255,255,255,0.05)',
-          borderBottom: '1px solid rgba(168,85,247,0.2)'
+          padding: '10px 14px',
+          background: 'linear-gradient(90deg, rgba(0, 240, 255, 0.1), transparent)',
+          borderBottom: '1px solid rgba(0, 240, 255, 0.3)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#a855f7', fontSize: '14px', fontWeight: 'bold' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#00F0FF', fontSize: '13px', fontFamily: 'var(--font-display)', fontWeight: 600, letterSpacing: '0.1em' }}>
             <Terminal size={16} />
-            <span>ZEN AGENT TERMINAL</span>
+            <span>SYS.OP // ZEN_AGENT</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
               onClick={() => window.dispatchEvent(new CustomEvent('show-report-archive'))}
-              style={{ background: 'none', border: 'none', color: '#a855f7', cursor: 'pointer', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', padding: 0 }}
+              style={{ background: 'none', border: 'none', color: '#00F0FF', cursor: 'pointer', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', padding: 0, fontFamily: 'var(--font-display)', textTransform: 'uppercase' }}
               title="View Mission Archives"
             >
-              <Archive size={14} /> Archives
+              <Archive size={12} /> Data_Logs
             </button>
             <button 
               onClick={() => {
                 setLogs([]);
                 window.dispatchEvent(new CustomEvent('agent-clear-memory'));
               }} 
-              style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              style={{ background: 'transparent', border: 'none', color: '#506070', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
               title="Clear Terminal & Agent Memory"
             >
               <Trash size={14} />
             </button>
-            <button onClick={() => setIsMinimized(!isMinimized)} style={{ background: 'transparent', border: 'none', color: '#888', cursor: 'pointer' }}>
+            <button onClick={() => setIsMinimized(!isMinimized)} style={{ background: 'transparent', border: 'none', color: '#506070', cursor: 'pointer' }}>
               {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
             </button>
-            <button onClick={() => { setIsOpen(false); setLogs([]); window.dispatchEvent(new CustomEvent('agent-clear-memory')); }} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
+            <button onClick={() => { setIsOpen(false); setLogs([]); window.dispatchEvent(new CustomEvent('agent-clear-memory')); }} style={{ background: 'transparent', border: 'none', color: '#FF0055', cursor: 'pointer' }}>
               <X size={14} />
             </button>
           </div>
@@ -195,18 +207,35 @@ export const AgentTerminal: React.FC = () => {
               display: 'flex', 
               flexDirection: 'column', 
               gap: '8px',
-              overscrollBehavior: 'contain'
+              overscrollBehavior: 'contain',
+              position: 'relative'
             }}
           >
+            {/* Radar Scan Overlay */}
+            <div style={{
+              position: 'absolute',
+              top: 0, left: 0, right: 0, height: '50%',
+              background: 'linear-gradient(to bottom, transparent, rgba(0, 240, 255, 0.05))',
+              borderBottom: '1px solid rgba(0, 240, 255, 0.3)',
+              animation: 'radar-scan 4s linear infinite',
+              pointerEvents: 'none',
+              zIndex: 10
+            }} />
             {logs.map((log) => (
               <div key={log.id} style={{ fontSize: '13px', lineHeight: 1.4 }}>
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                   <span style={{ color: '#6b7280', flexShrink: 0 }}>[{log.time}]</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <span style={{ 
-                      color: log.type === 'tool_call' ? '#eab308' : 
-                             log.type === 'tool_result' ? '#10b981' : 
-                             log.type === 'answer' ? '#a855f7' : '#9ca3af'
+                    <span style={{
+                      // ✅ U6: proactive logs are visually dimmer (slate) so developers can
+                      // immediately distinguish background autonomous activity from user-initiated commands
+                      color: log.isProactive
+                        ? (log.type === 'tool_call' ? '#506070' : log.type === 'tool_result' ? '#00FF88' : '#90A0B0')
+                        : (log.type === 'tool_call' ? '#FF8A00' :
+                           log.type === 'tool_result' ? '#00F0FF' :
+                           log.type === 'answer' ? '#B534FF' : '#ffffff'),
+                      fontStyle: log.isProactive ? 'italic' : 'normal',
+                      textShadow: log.type === 'answer' ? '0 0 8px rgba(181,52,255,0.4)' : 'none'
                     }}>
                       {log.text}
                     </span>
@@ -214,11 +243,12 @@ export const AgentTerminal: React.FC = () => {
                 </div>
               </div>
             ))}
+
             {logs.length > 0 && logs[logs.length - 1].type !== 'answer' && (
               <motion.div 
                 animate={{ opacity: [1, 0] }} 
                 transition={{ repeat: Infinity, duration: 0.8 }}
-                style={{ width: '8px', height: '14px', background: '#a855f7', marginTop: '4px', marginLeft: '60px' }}
+                style={{ width: '8px', height: '14px', background: '#00F0FF', marginTop: '4px', marginLeft: '60px', boxShadow: '0 0 8px #00F0FF' }}
               />
             )}
           </div>

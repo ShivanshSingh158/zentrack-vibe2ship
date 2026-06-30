@@ -13,7 +13,7 @@ import { db, auth } from './firebase';
 
 export interface AgentMemoryEntry {
   date: string;
-  type: 'approval_rejected' | 'approval_granted' | 'preference_expressed'
+  type: 'approval_rejected' | 'approval_granted' | 'approval_timeout' | 'preference_expressed'
       | 'ghost_task_created' | 'email_sent' | 'agent_action' | 'snooze_intervention';
   tool?: string;
   key?: string;
@@ -43,7 +43,15 @@ export const recordMemory = async (entry: AgentMemoryEntry): Promise<void> => {
 };
 
 export const recordApprovalRejection = (tool: string) =>
-  recordMemory({ type: 'approval_rejected', tool, summary: 'User rejected ' + tool, date: getToday() });
+  recordMemory({ type: 'approval_rejected', tool, summary: 'User explicitly rejected ' + tool, date: getToday() });
+
+// ✅ SEC-5 FIX: 120-second AFK timeout records as 'approval_timeout' NOT 'approval_rejected'.
+// After a week of proactive background operation, agent memory was accumulating
+// 'REJECTED: send_gmail, delete_calendar_event' entries from AFK auto-rejects,
+// permanently suppressing capabilities the user never consciously rejected.
+// 'approval_timeout' is loaded in loadAgentMemoryContext as a NOTE, not as a USER PREFERENCE.
+export const recordApprovalTimeout = (tool: string) =>
+  recordMemory({ type: 'approval_timeout' as any, tool, summary: 'Approval timed out (user AFK) for ' + tool + ' — NOT a deliberate rejection', date: getToday() });
 
 export const recordApprovalGrant = (tool: string) =>
   recordMemory({ type: 'approval_granted', tool, summary: 'User approved ' + tool, date: getToday() });

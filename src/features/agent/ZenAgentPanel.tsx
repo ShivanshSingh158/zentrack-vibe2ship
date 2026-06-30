@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useSyncExternalStore, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { orchestrateAgent } from '../../agent/orchestrator';
+import { tryAcquireLock, releaseLock } from '../../agent/orchestrationLock'; // ✅ U7
 import type { AgentStep } from '../../agent/runAgentLoop';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { Bot, Send, X, Loader2, Mic, MicOff, Volume2, VolumeX, Sparkles, Download, ExternalLink } from 'lucide-react';
 import { agentMemoryStore } from '../../stores/agentMemoryStore';
-import { speakAgentResponse, stopSpeaking, parseAgentResponse } from '../../agent/tts/AgentTTS';
 import { ApiKeyManager } from './ApiKeyManager';
+
 
 // ── Rich inline content parser (bold, italic, code, links) ────────────────────
 const parseInline = (text: string): string => {
@@ -317,10 +318,18 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
     const userMsg = (msgOverride || input).trim();
     if (!userMsg || isRunning) return;
 
+    // ✅ U7 FIX: Acquire the global orchestration lock before calling orchestrateAgent.
+    // This prevents simultaneous orchestrations from ZenAgentPanel + HomeDashboard + proactive loops.
+    // tryAcquireLock('user') also preempts any running proactive loop.
+    if (!tryAcquireLock('user')) {
+      console.warn('[ZenAgentPanel] Could not acquire orchestration lock — another command is running.');
+      return;
+    }
+
     setInput('');
     setInterimTranscript('');
-    stopSpeaking();
     setIsSpeakingState(false);
+
 
     agentMemoryStore.appendMessage({ role: 'user', title: userMsg });
     setIsRunning(true);
@@ -341,29 +350,21 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
           stepsAccumulated.push(step);
           setLiveSteps([...stepsAccumulated]);
           if (step.type === 'thinking') setLiveThinkingText(step.title);
+          // ✅ U6: Tag all events from ZenAgentPanel with source:'user'
+          // so AgentTerminal can distinguish them from proactive background logs
+          window.dispatchEvent(new CustomEvent('agent-log', { detail: { ...step, source: 'user' } }));
         },
         historyContext,
         abortRef.current.signal
       );
 
-      const parsed = parseAgentResponse(answer);
-
       agentMemoryStore.appendMessage({
         role: 'agent',
-        title: parsed.uiText,
+        title: answer,
         steps: stepsAccumulated.filter(s => s.type === 'tool_call' || s.type === 'tool_result')
       });
-
-      // 🔊 TTS: speak the synthesized SPOKEN_SUMMARY (not the full report)
-      if (ttsEnabled && answer) {
-        setIsSpeakingState(true);
-        await speakAgentResponse(
-          answer,
-          () => setIsSpeakingState(true),
-          () => setIsSpeakingState(false)
-        );
-      }
     } catch (err: any) {
+
       if (err.name !== 'AbortError') {
         agentMemoryStore.appendMessage({ role: 'agent', title: `Sorry, something went wrong: ${err.message}` });
       }
@@ -371,8 +372,10 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
       setIsRunning(false);
       setLiveSteps([]);
       setLiveThinkingText('');
+      releaseLock('user'); // ✅ U7: always release
     }
   }, [input, isRunning, messages, globalData, apiKey, ttsEnabled]);
+
 
   // STT voice recognition
   const handleTranscript = useCallback((text: string, isFinal: boolean) => {
@@ -427,29 +430,29 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
       transition={{ type: 'spring', damping: 25, stiffness: 200 }}
       style={{
         position: 'fixed', top: 0, right: 0, height: '100vh', width: 'clamp(340px, 28vw, 460px)',
-        background: 'rgba(8,8,13,0.98)', backdropFilter: 'blur(24px)',
-        borderLeft: '1px solid rgba(139,92,246,0.25)', zIndex: 1000,
+        background: 'rgba(5,5,10,0.95)', backdropFilter: 'blur(30px) saturate(150%)',
+        borderLeft: '1px solid rgba(0,240,255,0.3)', zIndex: 1000,
         display: 'flex', flexDirection: 'column',
-        boxShadow: '-24px 0 80px rgba(0,0,0,0.6)',
+        boxShadow: '-24px 0 80px rgba(0,0,0,0.8), -2px 0 20px rgba(0,240,255,0.1)',
       }}
     >
       {/* ── Header ── */}
       <div style={{
-        padding: '1rem 1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)',
+        padding: '1rem 1.25rem', borderBottom: '1px solid rgba(0,240,255,0.2)',
         display: 'flex', alignItems: 'center', gap: '0.75rem',
-        background: 'rgba(139,92,246,0.04)',
+        background: 'linear-gradient(90deg, rgba(0,240,255,0.05), transparent)',
       }}>
         <div style={{
-          width: 36, height: 36, borderRadius: '10px', flexShrink: 0,
-          background: 'linear-gradient(135deg,#8b5cf6,#3b82f6)',
+          width: 36, height: 36, borderRadius: '8px', flexShrink: 0,
+          background: 'linear-gradient(135deg, #00F0FF, #B534FF)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 16px rgba(139,92,246,0.4)',
+          boxShadow: '0 0 15px rgba(0,240,255,0.5)',
         }}>
           <Bot size={18} style={{ color: '#fff' }} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fff' }}>Zen Agent</div>
-          <div style={{ fontSize: '0.68rem', color: '#a78bfa', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <div style={{ fontWeight: 700, fontSize: '1rem', color: '#fff', fontFamily: 'var(--font-display)', letterSpacing: '0.05em' }}>SYS.OP // ZEN</div>
+          <div style={{ fontSize: '0.68rem', color: '#00F0FF', display: 'flex', alignItems: 'center', gap: '0.35rem', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>
             {isSpeakingState && (
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#34d399' }}>
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#34d399', animation: 'pulse 1s infinite' }} />

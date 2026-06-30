@@ -5,6 +5,16 @@ import { auth } from '../../services/firebase';
 import { Sun, Moon, CheckCircle2 } from 'lucide-react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 
+// ✅ U5 FIX: Shared briefing deduplication keys.
+// DailyBriefingOverlay is the PRIMARY authority for morning/evening briefing generation.
+// When it generates a briefing, it persists the result here so that
+// useProactiveAgent's runMorningBriefing() can detect that the content already exists
+// and skip the duplicate orchestrateAgent() call — preventing 2x identical API calls.
+export const BRIEFING_CONTENT_KEY = 'zen_briefing_content';
+export const BRIEFING_GENERATED_AT_KEY = 'zen_briefing_generated_at';
+export const BRIEFING_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+
+
 export const DailyBriefingOverlay = () => {
   const [isVisible, setIsVisible] = useState(false);
   const [type, setType] = useState<'morning' | 'evening' | null>(null);
@@ -61,6 +71,11 @@ export const DailyBriefingOverlay = () => {
             isGymDay
           });
           setData(briefing);
+          // ✅ U5: Persist result so useProactiveAgent skips duplicate call
+          try {
+            localStorage.setItem(BRIEFING_CONTENT_KEY, JSON.stringify({ type: 'morning', ...briefing }));
+            localStorage.setItem(BRIEFING_GENERATED_AT_KEY, Date.now().toString());
+          } catch (_) {}
         } else {
           const completedTasks = tasks.filter((t:any) => t.status === 'completed' && new Date(t.updatedAt || Date.now()).toDateString() === now.toDateString());
           const completedHabitsCount = habitLogs.filter((l:any) => l.date === todayStr).length;
@@ -72,7 +87,13 @@ export const DailyBriefingOverlay = () => {
             gymLogged
           });
           setData(winddown);
+          // ✅ U5: Persist result so useProactiveAgent skips duplicate call
+          try {
+            localStorage.setItem(BRIEFING_CONTENT_KEY, JSON.stringify({ type: 'evening', ...winddown }));
+            localStorage.setItem(BRIEFING_GENERATED_AT_KEY, Date.now().toString());
+          } catch (_) {}
         }
+
       } catch (error) {
         console.error('Error generating briefing:', error);
         setData({

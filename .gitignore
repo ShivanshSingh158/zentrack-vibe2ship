@@ -31,4 +31,17 @@ pnpm-debug.log*
 # Vercel deployment internals
 .vercel
 
-.vercel
+# ── Dead/Debug artifacts (never commit these) ─────────────────────────────────
+# ESLint bulk results — run eslint --output-file if needed, don't commit the output
+eslint_results.json
+# Raw git diff output files generated during audits
+diff_output.txt
+diff_utf8.txt
+# One-off debug/fix scripts
+fix.cjs
+# One-off API payload test files
+test_gemini_payload.ts
+# Development scratch notes
+scratch/
+# Planning artifacts from superseded project planning phases
+project-apex/

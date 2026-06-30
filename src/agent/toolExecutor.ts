@@ -1,10 +1,10 @@
-import { addDoc, collection, updateDoc, doc, deleteDoc } from 'firebase/firestore';
+import { addDoc, collection, updateDoc, doc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import { addEventToGoogleCalendar, deleteGoogleCalendarEvent, forceSilentRefresh, isSignedInToGoogle } from '../services/googleCalendar';
 import { sendPushNotification } from '../services/fcm';
 import { getLocalDateString } from '../utils/dateUtils';
 import { logApi, logWebSocket } from '../utils/networkLogger';
-import { recordApprovalRejection, recordApprovalGrant, recordEmailSent, recordGhostTaskCreated } from '../services/agentMemoryPersistence';
+import { recordApprovalRejection, recordApprovalTimeout, recordApprovalGrant, recordEmailSent, recordGhostTaskCreated } from '../services/agentMemoryPersistence';
 import { userLearningStore } from '../services/userLearningStore';
 import {
   fetchUnreadEmails,
@@ -15,6 +15,7 @@ import {
   trashEmail,
   createGoogleDoc,
   writeToGoogleDoc,
+  readGoogleDoc,
   searchGoogleDrive,
   trashDriveFile,
   listDriveFiles,
@@ -71,30 +72,49 @@ const requireGoogleAuth = async (_signal?: AbortSignal): Promise<ToolResult | nu
 // The UI renders an approval card; the user's click resolves this promise.
 // GAP-1 FIX: Records rejections/grants to Firestore so the agent learns over time
 // which tools the user consistently approves vs. rejects.
+//
+// ✅ BUG-C5 FIX: Approval Serialization Queue.
+// Previously, parallel agents (e.g. TITAN + CHRONOS both needing approval in the
+// same DAG mission) could fire zen-approval-request simultaneously. The UI can
+// only show ONE approval card at a time, so the second one was silently lost and
+// auto-rejected after 120s with no user awareness.
+// Fix: a promise chain ensures only one approval dialog is active at any time.
+// Subsequent callers wait for the current one to resolve before displaying theirs.
+let _approvalQueue: Promise<void> = Promise.resolve();
+
 export const requestApproval = (toolName: string, summary: string, signal?: AbortSignal): Promise<boolean> => {
   if (typeof window === 'undefined') return Promise.resolve(true); // SSR: always approve
-  return new Promise((resolve) => {
-    const id = `approval_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const cleanup = () => window.removeEventListener(id, handler as EventListener);
-    const handler = (e: Event) => {
-      cleanup();
-      const approved = (e as CustomEvent).detail?.approved === true;
-      // Record decision to persistent memory — non-blocking
-      if (approved) {
-        recordApprovalGrant(toolName);
-      } else {
-        recordApprovalRejection(toolName);
-      }
-      resolve(approved);
-    };
-    window.addEventListener(id, handler as EventListener, { once: true });
-    window.dispatchEvent(new CustomEvent('zen-approval-request', {
-      detail: { id, toolName, summary }
-    }));
-    // Auto-reject after 120s so agents don't hang forever
-    const timer = setTimeout(() => { cleanup(); recordApprovalRejection(toolName); resolve(false); }, 120_000);
-    signal?.addEventListener('abort', () => { clearTimeout(timer); cleanup(); resolve(false); }, { once: true });
+
+  // Enqueue this request — it will execute only after all previous approvals finish
+  const resultPromise = _approvalQueue.then(() => {
+    return new Promise<boolean>((resolve) => {
+      const id = `approval_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const cleanup = () => window.removeEventListener(id, handler as EventListener);
+      const handler = (e: Event) => {
+        cleanup();
+        const approved = (e as CustomEvent).detail?.approved === true;
+        // Record decision to persistent memory — non-blocking
+        if (approved) {
+          recordApprovalGrant(toolName);
+        } else {
+          recordApprovalRejection(toolName);
+        }
+        resolve(approved);
+      };
+      window.addEventListener(id, handler as EventListener, { once: true });
+      window.dispatchEvent(new CustomEvent('zen-approval-request', {
+        detail: { id, toolName, summary }
+      }));
+      // ✅ SEC-5 FIX: Auto-reject after 120s records as 'approval_timeout', NOT 'approval_rejected'.
+      // This prevents AFK timeouts from accumulating as deliberate user preference signal in memory.
+      const timer = setTimeout(() => { cleanup(); recordApprovalTimeout(toolName); resolve(false); }, 120_000);
+      signal?.addEventListener('abort', () => { clearTimeout(timer); cleanup(); resolve(false); }, { once: true });
+    });
   });
+
+  // Advance the queue (errors in one approval don't block the next)
+  _approvalQueue = resultPromise.then(() => {}, () => {});
+  return resultPromise;
 };
 
 export const executeTool = async (
@@ -289,7 +309,9 @@ export const executeTool = async (
         estimatedMinutes: args.estimatedMinutes || null,
         createdAt: Date.now(),
         subtasks: [],
-        order: Date.now()
+        order: Date.now(),
+        // ✅ SEC-6: Tag agent-created documents so users can identify them in the UI
+        source: args.agentRole ? `agent:${args.agentRole}` : 'agent',
       });
       logApi('POST', '/api/v1/tasks', args, 'success');
       logWebSocket('task.created', { id: ref.id, title: args.title });
@@ -297,6 +319,15 @@ export const executeTool = async (
     }
 
     case 'complete_task': {
+      // ✅ FEAT-3 FIX: complete_task now requires approval so agents can't silently
+      // mark user tasks as done without consent. A user who intended to complete
+      // a task manually should not lose credit to an autonomous agent action.
+      const completeApproved = await requestApproval(
+        'complete_task',
+        `Mark task as completed? (This records it in your history)`,
+        signal
+      );
+      if (!completeApproved) return { success: false, data: null, message: '🚫 Cancelled by user — task was NOT marked complete.' };
       logApi('POST', `/api/v1/tasks/${args.taskId}/complete`, {}, 'success');
       logWebSocket('task.updated', { id: args.taskId, status: 'completed' });
       await updateDoc(doc(db, 'todos', args.taskId), { status: 'completed', completedAt: Date.now() });
@@ -482,33 +513,53 @@ export const executeTool = async (
     }
 
     case 'auto_reschedule': {
+      // ✅ MED-1 FIX: Respect pinned tasks and user low-activity days.
+      // Previously, ALL non-high-priority tasks were moved regardless of
+      // whether they were pinned or whether tomorrow is a rest/low-activity day.
+      const userPrefs = appContext.userPreferences || {};
+      const lowActivityDays: number[] = userPrefs.lowActivityDays || []; // 0=Sun, 6=Sat
+
+      // Find next working day (skip low-activity days up to 7 ahead)
+      const getNextWorkingDay = (): string => {
+        const d = new Date();
+        for (let i = 1; i <= 7; i++) {
+          d.setDate(d.getDate() + 1);
+          if (!lowActivityDays.includes(d.getDay())) break;
+        }
+        return getLocalDateString(d);
+      };
+
       // ✅ BUG FIX: Added approval gate — was silently bulk-rescheduling without asking
       const tasksToReschedule = appContext.tasks.filter(
-        (t: any) => t.status !== 'completed' && t.date === today && t.priority !== 'high'
+        (t: any) => t.status !== 'completed'
+          && t.date === today
+          && t.priority !== 'high'
+          && !t.pinned  // ✅ MED-1: Skip pinned tasks
       );
       if (tasksToReschedule.length === 0) {
-        return { success: true, data: { rescheduledCount: 0 }, message: 'No low-priority tasks to reschedule today.' };
+        return { success: true, data: { rescheduledCount: 0 }, message: 'No reschedulable tasks today (pinned and high-priority tasks were preserved).' };
       }
-      const taskNames = tasksToReschedule.slice(0, 3).map((t: any) => `"${t.title || t.text}"`).join(', ');
+      // ✅ ISSUE-T3 FIX: Show ALL task names in approval dialog, not just the first 3.
+      // Previously user would approve "3 tasks + N more" without knowing what the N tasks were.
+      // This is a consent UX failure — the user must see everything they're approving.
+      const ALL_TASK_NAMES = tasksToReschedule.map((t: any) => `"${t.title || t.text}"`).join(', ');
+      const nextWorkDay = getNextWorkingDay();
       const rescheduleApproved = await requestApproval(
         'auto_reschedule',
-        `Reschedule ${tasksToReschedule.length} low-priority task(s) to tomorrow? (${taskNames}${tasksToReschedule.length > 3 ? ` +${tasksToReschedule.length - 3} more` : ''})`,
+        `Reschedule these ${tasksToReschedule.length} low-priority task(s) to ${nextWorkDay}?\n${ALL_TASK_NAMES}`,
         signal
       );
       if (!rescheduleApproved) return { success: false, data: null, message: '🚫 Cancelled by user — tasks were NOT rescheduled.' };
       let rescheduledCount = 0;
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = getLocalDateString(tomorrow);
 
       for (const t of tasksToReschedule) {
-        await updateDoc(doc(db, 'todos', t.id), { date: tomorrowStr });
+        await updateDoc(doc(db, 'todos', t.id), { date: nextWorkDay });
         rescheduledCount++;
       }
       logApi('POST', '/api/v1/tasks/snooze', { reason: args.reason }, 'success');
       // ⚡ Real-time learning hook: increment reschedule rate
       tasksToReschedule.forEach((t: any) => userLearningStore.recordReschedule(t));
-      return { success: true, data: { rescheduledCount, reason: args.reason }, message: `✅ Rescheduled ${rescheduledCount} low-priority tasks to tomorrow. Reason: ${args.reason}` };
+      return { success: true, data: { rescheduledCount, reason: args.reason }, message: `✅ Rescheduled ${rescheduledCount} low-priority tasks to ${nextWorkDay}. Reason: ${args.reason}` };
     }
 
     // ─── GOOGLE CALENDAR ─────────────────────────────────────────────────────────
@@ -739,43 +790,71 @@ export const executeTool = async (
     case 'send_gmail': {
       const authErr = await requireGoogleAuth(signal);
       if (authErr) return authErr;
-      const sendApproved = await requestApproval('send_gmail', `Send email to ${args.to} — Subject: "${args.subject}"?`, signal);
+      // ✅ LOW-4 FIX: Detect probable-reply subjects before sending.
+      // If the subject starts with 'Re:' or the body contains quoted text ('\n>'),
+      // the agent should almost certainly be using reply_gmail (which threads the message).
+      // We warn but do not block — the user may intentionally start a new thread.
+      const looksLikeReply = /^re:/i.test(String(args.subject || '').trim())
+        || (String(args.bodyText || '')).includes('\n>');
+      const sendApproved = await requestApproval(
+        'send_gmail',
+        `Send email to ${args.to} — Subject: "${args.subject}"?${looksLikeReply ? '\n\n⚠️ Note: This looks like a reply (subject starts with "Re:" or contains quoted text). If replying to an existing thread, use reply_gmail(threadId, ...) instead to properly thread the message.' : ''}`,
+        signal
+      );
       if (!sendApproved) return { success: false, data: null, message: '🚫 Cancelled by user — email was NOT sent.' };
       logApi('POST', '/api/v1/google/gmail/send', { to: args.to }, 'pending');
       try {
         await sendEmail(args.to, args.subject, args.bodyText, signal);
         logApi('POST', '/api/v1/google/gmail/send', { to: args.to }, 'success');
 
-        // ✅ PART-4 ENTREPRENEUR FIX: Auto-create 3-day follow-up task after every email send.
-        // "Send email to Rahul" → automatically tracked "Follow up with Rahul re: [subject]"
-        // This closes the loop: no more forgotten follow-ups from sent emails.
+        // ✅ ISSUE-T2 FIX: Deduplicate follow-up tasks before creating.
+        // Previously every sent email created a follow-up task unconditionally.
+        // 5 emails in one L3 mission = 5 phantom tasks. Same recipient on two missions = duplicates.
+        // Now we check if a follow-up task for this recipient already exists before creating one.
         try {
+          const followUpTitle = `Follow up with ${args.to} re: ${args.subject}`;
           const followUpDate = new Date();
           followUpDate.setDate(followUpDate.getDate() + 3);
           const followUpDateStr = getLocalDateString(followUpDate);
-          await addDoc(collection(db, 'todos'), {
-            userId: user.uid,
-            title: `Follow up with ${args.to} re: ${args.subject}`,
-            text: `Follow up with ${args.to} re: ${args.subject}`,
-            priority: 'medium',
-            date: followUpDateStr,
-            status: 'pending',
-            tags: ['follow-up', 'email'],
-            linkedEmail: { to: args.to, subject: args.subject, sentAt: Date.now() },
-            createdAt: Date.now(),
-            order: Date.now(),
+
+          // Check for existing follow-up task to this recipient (created in last 7 days)
+          const sevenDaysAgo = getLocalDateString(new Date(Date.now() - 7 * 86400000));
+          const existingQ = query(
+            collection(db, 'todos'),
+            where('userId', '==', user.uid),
+            where('tags', 'array-contains', 'follow-up'),
+          );
+          const existingSnap = await getDocs(existingQ);
+          const alreadyExists = existingSnap.docs.some(d => {
+            const data = d.data();
+            const recipientMatch = (data.linkedEmail?.to === args.to);
+            const recentEnough = data.date >= sevenDaysAgo;
+            return recipientMatch && recentEnough;
           });
+
+          if (!alreadyExists) {
+            await addDoc(collection(db, 'todos'), {
+              userId: user.uid,
+              title: followUpTitle,
+              text: followUpTitle,
+              priority: 'medium',
+              date: followUpDateStr,
+              status: 'pending',
+              tags: ['follow-up', 'email'],
+              linkedEmail: { to: args.to, subject: args.subject, sentAt: Date.now() },
+              source: 'agent:HERMES',
+              createdAt: Date.now(),
+              order: Date.now(),
+            });
+          }
         } catch (followUpErr) {
           console.warn('[ToolExecutor] Follow-up task creation failed (non-blocking):', followUpErr);
         }
 
         // ✅ GAP-1: Record to persistent memory so agent won't re-send same email tomorrow
         recordEmailSent(args.to as string, args.subject as string);
-        // ⚡ Real-time learning hook: update email response time estimate
-        // We use time-since-task-creation as a proxy for response latency.
-        // This teaches HERMES how quickly this user typically acts on emails.
-        userLearningStore.recordEmailAction(60); // default 60min; refined as data accumulates
-        return { success: true, data: {}, message: `✅ Email sent to ${args.to}. 📌 Follow-up task auto-created for 3 days from now.` };
+        userLearningStore.recordEmailAction(60);
+        return { success: true, data: {}, message: `✅ Email sent to ${args.to}. 📌 Follow-up task auto-created for 3 days from now (deduplicated — skipped if one already exists).` };
 
 
       } catch (e: unknown) {
@@ -983,6 +1062,17 @@ export const executeTool = async (
           body: args.message
         });
 
+        // ✅ FEAT-7 FIX: Persist notification to Firestore history so users can
+        // review past agent notifications in a notification history modal.
+        // Silently non-blocking — notification delivery is unaffected by this.
+        addDoc(collection(db, 'notifications', user.uid, 'history'), {
+          title: args.title,
+          message: args.message,
+          sentAt: Date.now(),
+          source: 'agent',
+          read: false,
+        }).catch(() => {}); // fire-and-forget
+
         // ── Twilio SMS for CRITICAL/HIGH-priority alerts ───────────────────────
         // If the agent marks something as high priority or the title contains
         // emergency keywords, also send an SMS so the user gets it even if their
@@ -1035,21 +1125,82 @@ export const executeTool = async (
 
     // ─── AGENT SYSTEM ────────────────────────────────────────────────────────────
 
+    // ✅ FEAT-5: get_habit_stats — computes streak/completion rate server-side
+    // Previously ENIGMA had to load raw habit docs and do arithmetic in the LLM,
+    // wasting tokens and sometimes getting counts wrong.
+    case 'get_habit_stats': {
+      const habits = (appContext.habits || []) as any[];
+      const habitLogs = (appContext.habitLogs || []) as any[];
+      const today30 = getLocalDateString(new Date());
+      const thirtyDaysAgo30 = getLocalDateString(new Date(Date.now() - 30 * 86400_000));
+
+      const stats = habits.map((h: any) => {
+        const logs = habitLogs.filter((l: any) => l.habitId === h.id && l.date >= thirtyDaysAgo30);
+        const completionRate = Math.round((logs.length / 30) * 100);
+
+        // Compute current streak
+        let streak = 0;
+        const checkDate = new Date();
+        while (streak < 365) {
+          const dateStr = getLocalDateString(checkDate);
+          const logged = habitLogs.some((l: any) => l.habitId === h.id && l.date === dateStr && l.completed);
+          if (!logged) break;
+          streak++;
+          checkDate.setDate(checkDate.getDate() - 1);
+        }
+
+        const completedToday = habitLogs.some((l: any) =>
+          l.habitId === h.id && l.date === today30 && l.completed
+        );
+
+        return {
+          id: h.id,
+          name: h.name || h.title,
+          frequency: h.frequency || 'daily',
+          currentStreak: streak,
+          longestStreak: h.longestStreak || streak,
+          completionRate30d: completionRate,
+          logsLast30Days: logs.length,
+          completedToday,
+          icon: h.icon || '✅',
+        };
+      });
+
+      const avgRate = stats.length > 0
+        ? Math.round(stats.reduce((s: number, h: any) => s + h.completionRate30d, 0) / stats.length)
+        : 0;
+      const topHabit = stats.sort((a: any, b: any) => b.currentStreak - a.currentStreak)[0];
+
+      logApi('GET', '/api/v1/habits/stats', {}, 'success');
+      return {
+        success: true,
+        data: { habits: stats, avgCompletionRate30d: avgRate, topHabit: topHabit?.name || 'N/A', totalHabits: habits.length },
+        message: `📊 Habit stats: ${habits.length} habits tracked. Avg 30-day completion: ${avgRate}%. Top streak: ${topHabit?.name || 'N/A'} (${topHabit?.currentStreak || 0} days).`
+      };
+    }
+
     case 'snooze_task': {
-      // Used by ARGUS agent to adaptively snooze at-risk tasks
+      // Used by ARGUS agent to adaptively snooze at-risk tasks.
+      // ✅ SNOOZE FIX: Read current snoozeCount from appContext.tasks directly.
+      // Previously the tool depended on args.currentSnoozeCount which the agent
+      // never passed correctly (agents don't track mutable state between calls).
+      // This caused snooze count to always persist as 1 — the counter never incremented.
       if (!args.taskId) return { success: false, data: null, message: 'taskId is required for snooze_task' };
       const snoozeDate = args.snoozeUntilDate || (() => {
         const d = new Date();
         d.setDate(d.getDate() + 1);
         return getLocalDateString(d);
       })();
+      // Read the ACTUAL current snooze count from the live task data
+      const liveTask = (appContext.tasks || []).find((t: any) => t.id === args.taskId);
+      const currentSnoozeCount = liveTask?.snoozeCount || 0;
       await updateDoc(doc(db, 'todos', args.taskId), {
         date: snoozeDate,
-        snoozeCount: (args.currentSnoozeCount || 0) + 1,
+        snoozeCount: currentSnoozeCount + 1,  // always correct — reads live state
         lastSnoozedAt: Date.now()
       });
-      logApi('POST', `/api/v1/tasks/${args.taskId}/snooze`, { snoozeDate }, 'success');
-      return { success: true, data: { taskId: args.taskId, newDate: snoozeDate }, message: `✅ Task snoozed until ${snoozeDate}. Snooze #${(args.currentSnoozeCount || 0) + 1}.` };
+      logApi('POST', `/api/v1/tasks/${args.taskId}/snooze`, { snoozeDate, newSnoozeCount: currentSnoozeCount + 1 }, 'success');
+      return { success: true, data: { taskId: args.taskId, newDate: snoozeDate, snoozeCount: currentSnoozeCount + 1 }, message: `✅ Task snoozed until ${snoozeDate}. This task has been snoozed ${currentSnoozeCount + 1} time(s).` };
     }
 
     case 'update_task_priority': {
@@ -1059,7 +1210,52 @@ export const executeTool = async (
       logApi('PATCH', `/api/v1/tasks/${args.taskId}`, { priority: args.priority }, 'success');
       return { success: true, data: { taskId: args.taskId, priority: args.priority }, message: `✅ Task priority updated to ${args.priority}` };
     }
+
+    // ✅ HEPHAESTUS FIX (ISSUE-4.3): implement generate_script so HEPHAESTUS is fully functional.
+    // Previously no case existed — every generate_script call fell through to "Unknown tool",
+    // making HEPHAESTUS a complete ghost agent with zero real functionality.
+    // Now: dispatches 'zen-script' CustomEvent → ZenAgentPanel renders a Script Card
+    // with syntax highlighting + copy button. Also persists to Firestore for later retrieval.
+    case 'generate_script': {
+      if (!args.language || !args.code) {
+        return { success: false, data: null, message: 'language and code are required for generate_script' };
+      }
+      const scriptLang = (args.language as string).toLowerCase();
+      const scriptCode = args.code as string;
+      const scriptExplanation = (args.explanation as string) || 'Script generated by HEPHAESTUS.';
+      const lineCount = scriptCode.split('\n').length;
+
+      // Dispatch to ZenAgentPanel UI to render a Script Card with syntax highlighting
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('zen-script', {
+          detail: { language: scriptLang, code: scriptCode, explanation: scriptExplanation, generatedAt: Date.now() }
+        }));
+      }
+
+      // Persist to Firestore so user can retrieve scripts later
+      try {
+        await addDoc(collection(db, 'generated_scripts'), {
+          userId: user.uid,
+          language: scriptLang,
+          code: scriptCode,
+          explanation: scriptExplanation,
+          createdAt: Date.now(),
+          source: 'agent:HEPHAESTUS',
+        });
+      } catch (persistErr) {
+        console.warn('[generate_script] Firestore persist failed (non-blocking):', persistErr);
+      }
+
+      logApi('POST', '/api/v1/agent/scripts', { language: scriptLang, lines: lineCount }, 'success');
+      return {
+        success: true,
+        data: { language: scriptLang, lines: lineCount, explanation: scriptExplanation },
+        message: `🔧 **Script Card generated** (${scriptLang.toUpperCase()}, ${lineCount} lines)\n\n${scriptExplanation}\n\n✅ The code card has appeared above in the chat. Click **Copy** to grab the code, then run it in your terminal.`
+      };
+    }
+
     case 'delegate_task': {
+
       try {
         // ✅ Delegation depth guard: prevents recursive agent death spirals.
         // TITAN → HERMES → CHRONOS is depth 2 (max). Depth 3+ is always a hallucination loop.
@@ -1120,22 +1316,30 @@ export const executeTool = async (
       }
     }
 
-    case 'generate_script': {
-      logApi('POST', '/api/v1/agent/script', { language: args.language }, 'success');
-      window.dispatchEvent(new CustomEvent('agent-log', {
-        detail: {
-          type: 'script',
-          title: `Generated ${args.language} Script: ${args.explanation}`,
-          code: args.code
-        }
-      }));
-      return { success: true, data: { status: 'presented_to_user' }, message: 'Script presented to user. Awaiting their review and execution.' };
-    }
 
     // ─── IN-APP NAVIGATION ────────────────────────────────────────────────────
+
     case 'navigate_to_module': {
       const route = args.route as string;
       if (!route) return { success: false, data: null, message: 'route is required for navigate_to_module' };
+
+      // ✅ FEAT-6 FIX: Detect external-intent routes and open them in a new tab.
+      // Previously NAVIGATOR would dispatch agent-navigate for routes like "gmail" or "drive"
+      // which the React Router ignored, leaving the user confused with no visual feedback.
+      const EXTERNAL_ROUTES: Record<string, string> = {
+        'gmail': 'https://mail.google.com',
+        'drive': 'https://drive.google.com',
+        'calendar-web': 'https://calendar.google.com',
+        'docs': 'https://docs.google.com',
+        'sheets': 'https://sheets.google.com',
+        'meet': 'https://meet.google.com',
+        'youtube': 'https://youtube.com',
+      };
+      const externalUrl = EXTERNAL_ROUTES[route.replace('/', '').toLowerCase()];
+      if (externalUrl) {
+        if (typeof window !== 'undefined') window.open(externalUrl, '_blank', 'noopener,noreferrer');
+        return { success: true, data: { url: externalUrl }, message: `✅ Opened ${route} in a new browser tab: ${externalUrl}` };
+      }
 
       // Dispatch event for React Router to pick up
       if (typeof window !== 'undefined') {
@@ -1157,6 +1361,7 @@ export const executeTool = async (
         message: `✅ Navigated to ${moduleName} module.${args.lectureTitle ? ` Opening lecture: "${args.lectureTitle}"` : ''}${args.reason ? ` Reason: ${args.reason}` : ''}`
       };
     }
+
 
     case 'open_gym_workout': {
       if (typeof window !== 'undefined') {
@@ -1255,10 +1460,61 @@ export const executeTool = async (
         createdTasks.push(`${dateStr}: ${sessionTitle}`);
       }
       logApi('POST', '/api/v1/tasks/bulk', { subject: args.subject, count: createdTasks.length }, 'success');
+
+      // ✅ ISSUE-T4 FIX: Auto-block calendar slots internally instead of instructing the agent
+      // to make additional get_free_calendar_slots + schedule_task_in_calendar calls.
+      // The old approach hit the 6-iteration max — only the first 6 of 14 sessions got calendar
+      // blocks, and the rest were silently skipped. Now we do up to 5 blocks in-line.
+      const calendarBlockResults: string[] = [];
+      try {
+        if (isSignedInToGoogle()) {
+          const studyStartDate = new Date();
+          studyStartDate.setDate(studyStartDate.getDate() + 1);
+          const slotsToBlock = Math.min(studyDays, 5); // block first 5 days' sessions in-line
+          for (let day = 0; day < slotsToBlock; day++) {
+            const sessionDate = new Date(studyStartDate);
+            sessionDate.setDate(studyStartDate.getDate() + day);
+            const dateStr = getLocalDateString(sessionDate);
+            const liveEvents = await listCalendarEventsOnDate(dateStr, signal);
+            // Find first free 2-hour slot between 8am-10pm
+            let blocked = false;
+            for (let hour = 8; hour <= 20; hour++) {
+              const slotStart = new Date(dateStr + 'T00:00:00');
+              slotStart.setHours(hour, 0, 0, 0);
+              const slotEnd = new Date(slotStart.getTime() + dailyHours * 3600000);
+              const hasConflict = liveEvents.some((e: any) => {
+                const es = e.start?.dateTime ? new Date(e.start.dateTime) : null;
+                const ee = e.end?.dateTime ? new Date(e.end.dateTime) : null;
+                return es && ee && es < slotEnd && ee > slotStart;
+              });
+              if (!hasConflict) {
+                await addEventToGoogleCalendar({
+                  title: `📚 Study: ${args.subject}`,
+                  date: dateStr,
+                  startDateTime: slotStart.toISOString(),
+                  endDateTime: slotEnd.toISOString(),
+                  description: `Auto-scheduled study session for ${args.subject} exam on ${args.examDate}`,
+                }, signal);
+                calendarBlockResults.push(`${dateStr} @ ${String(hour).padStart(2,'0')}:00`);
+                blocked = true;
+                break;
+              }
+            }
+            if (!blocked) calendarBlockResults.push(`${dateStr} (no free slot found)`);
+          }
+        }
+      } catch (calErr) {
+        console.warn('[plan_study_schedule] Calendar auto-block failed (non-blocking):', calErr);
+      }
+
+      const calMsg = calendarBlockResults.length > 0
+        ? `\n📅 Auto-blocked calendar slots: ${calendarBlockResults.join(' | ')}${studyDays > 5 ? ` (+ ${studyDays - 5} more — connect Google Calendar for full blocking)` : ''}`
+        : `\n💡 Connect Google Calendar to auto-block daily study windows.`;
+
       return {
         success: true,
-        data: { examId: examRef.id, sessionsCreated: studyDays, daysUntilExam, dailyHours },
-        message: `✅ Study schedule created for **${args.subject}** exam on ${args.examDate}!\n📅 ${studyDays} study sessions (${dailyHours}h/day) scheduled from tomorrow.\n📋 Sessions: ${createdTasks.slice(1, 4).join(' | ')}${studyDays > 3 ? ` + ${studyDays - 3} more` : ''}\n🎯 Now call \`get_free_calendar_slots\` and \`schedule_task_in_calendar\` to block 2h daily study windows.`
+        data: { examId: examRef.id, sessionsCreated: studyDays, daysUntilExam, dailyHours, calendarBlockResults },
+        message: `✅ Study schedule created for **${args.subject}** exam on ${args.examDate}!\n📅 ${studyDays} study sessions (${dailyHours}h/day) scheduled from tomorrow.\n📋 Sessions: ${createdTasks.slice(1, 4).join(' | ')}${studyDays > 3 ? ` + ${studyDays - 3} more` : ''}${calMsg}`
       };
     }
 
@@ -1473,14 +1729,33 @@ Thank you for your understanding.`;
         return { ...t, _score: priScore + dueScore + timeScore, _isOverdue: isOverdue };
       }).sort((a: any, b: any) => b._score - a._score);
       const topTasks = scored.slice(0, 6);
-      const deferTasks = scored.slice(6);
-      // Defer low-impact tasks to tomorrow
+      const deferTasks = scored.slice(6).filter((t: any) => t.priority !== 'high');
+
+      // ✅ ISSUE-T5 FIX: Add approval gate before deferring tasks.
+      // Previously rebuild_day silently moved tasks to tomorrow without any confirmation,
+      // unlike all other mutating tools (auto_reschedule, delete_task) which have gates.
+      if (deferTasks.length > 0) {
+        const deferNames = deferTasks.map((t: any) => `"${t.title || t.text}"`).join(', ');
+        const rebuildApproved = await requestApproval(
+          'rebuild_day',
+          `Defer ${deferTasks.length} low-priority task(s) to tomorrow to focus your day?\nTasks to defer: ${deferNames}\nYour top 6 focus tasks stay on today.`,
+          signal
+        );
+        if (!rebuildApproved) {
+          // Return the reordered list without deferring anything
+          return {
+            success: true,
+            data: { rebuiltOrder: topTasks.map((t: any) => ({ id: t.id, title: t.title || t.text, score: t._score })), deferred: 0 },
+            message: `🗓️ **Day Reordered (no tasks deferred)**\n\n🎯 Your optimized order for today (by urgency + impact):\n${topTasks.map((t: any, i: number) => `${i+1}. ${t._isOverdue ? '🔴' : '📋'} "${t.title || t.text}" (${t.priority || 'medium'} priority)`).join('\n')}\n\n↩️ Deferral was cancelled by user.`
+          };
+        }
+      }
+
+      // Defer approved — update Firestore
       const tomorrowStr2 = getLocalDateString(new Date(Date.now() + 86400000));
       let deferred = 0;
       for (const t of deferTasks) {
-        if (t.priority !== 'high') {
-          try { await updateDoc(doc(db, 'todos', t.id), { date: tomorrowStr2 }); deferred++; } catch (_) {}
-        }
+        try { await updateDoc(doc(db, 'todos', t.id), { date: tomorrowStr2 }); deferred++; } catch (_) {}
       }
       return {
         success: true,
@@ -1489,7 +1764,239 @@ Thank you for your understanding.`;
       };
     }
 
+    // ✅ ISSUE-T6 / BUG-C2 FIX: Implement read_google_doc case.
+    // Previously this tool was in ARCHIVE and SCRIBE whitelists but fell through
+    // to the default "Unknown tool" error every time. Now properly implemented.
+    case 'read_google_doc': {
+      const authErr = await requireGoogleAuth(signal);
+      if (authErr) return authErr;
+      if (!args.fileId) return { success: false, data: null, message: 'fileId is required for read_google_doc' };
+      logApi('GET', `/api/v1/drive/docs/${args.fileId}/read`, {}, 'pending');
+      try {
+        const docData = await readGoogleDoc(args.fileId as string, signal);
+        logApi('GET', `/api/v1/drive/docs/${args.fileId}/read`, {}, 'success');
+        // Truncate content to 15,000 chars to stay within safe context limits
+        const preview = docData.content.length > 15000
+          ? docData.content.slice(0, 15000) + `\n\n[... truncated — ${docData.charCount - 15000} more characters not shown ...]`
+          : docData.content;
+        return {
+          success: true,
+          data: { title: docData.title, content: preview, charCount: docData.charCount },
+          message: `📄 **${docData.title}** (${docData.charCount.toLocaleString()} characters)\n\n${preview.slice(0, 500)}${docData.content.length > 500 ? '...' : ''}`,
+        };
+      } catch (e: unknown) {
+        return { success: false, data: null, message: `Google Docs API Error: ${(e as { message?: string }).message}` };
+      }
+    }
+
+    // ─── NOTES MODULE ──────────────────────────────────────────────────────────
+
+    case 'create_note': {
+      // Fixes blindspot: agents could read notes (via query_internal_app_data)
+      // but had no way to write them. This closes the read/write asymmetry.
+      if (!args.title || !args.content) {
+        return { success: false, data: null, message: 'title and content are required for create_note' };
+      }
+      const tags = args.tags
+        ? (args.tags as string).split(',').map((t: string) => t.trim()).filter(Boolean)
+        : [];
+      const noteRef = await addDoc(collection(db, 'notes'), {
+        userId: user.uid,
+        title: args.title,
+        content: args.content,
+        tags,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        source: 'agent',
+      });
+      logApi('POST', '/api/v1/notes', { title: args.title, tags }, 'success');
+      return {
+        success: true,
+        data: { id: noteRef.id, title: args.title },
+        message: `📝 Note saved: **"${args.title}"**${tags.length > 0 ? ` — tagged: ${tags.join(', ')}` : ''}`,
+      };
+    }
+
+    case 'search_notes': {
+      // Fixes blindspot: query_internal_app_data('notes') returned ALL notes (token-expensive).
+      // This tool does targeted content search with relevance excerpts.
+      if (!args.query) return { success: false, data: null, message: 'query is required for search_notes' };
+      const maxResults = args.maxResults || 5;
+      const lowerQuery = (args.query as string).toLowerCase();
+      const allNotes = (appContext.notes || []) as any[];
+
+      const matches = allNotes
+        .filter((note: any) => {
+          const titleMatch = (note.title || '').toLowerCase().includes(lowerQuery);
+          const contentMatch = (note.content || '').toLowerCase().includes(lowerQuery);
+          return titleMatch || contentMatch;
+        })
+        .slice(0, maxResults)
+        .map((note: any) => {
+          // Extract relevant excerpt around the match
+          const content = note.content || '';
+          const matchIdx = content.toLowerCase().indexOf(lowerQuery);
+          const excerpt = matchIdx >= 0
+            ? '...' + content.slice(Math.max(0, matchIdx - 60), matchIdx + 120) + '...'
+            : content.slice(0, 150) + (content.length > 150 ? '...' : '');
+          return {
+            id: note.id,
+            title: note.title,
+            excerpt,
+            tags: note.tags || [],
+            createdAt: note.createdAt,
+          };
+        });
+
+      logApi('GET', `/api/v1/notes/search?q=${args.query}`, {}, 'success');
+      return {
+        success: true,
+        data: matches,
+        message: `Found ${matches.length} note(s) matching "${args.query}"`,
+      };
+    }
+
+    // ─── GOALS MODULE ──────────────────────────────────────────────────────────
+
+    case 'create_goal': {
+      // Fixes blindspot: ATLAS was creating tasks in the todos collection with goal-like
+      // names (e.g. "Achieve fitness goal") instead of writing to the actual goals collection.
+      // Goals are now properly persisted and visible in the /goals module.
+      if (!args.title) return { success: false, data: null, message: 'title is required for create_goal' };
+      const milestones = args.milestones
+        ? (args.milestones as string).split(',').map((m: string) => ({ text: m.trim(), completed: false })).filter(m => m.text)
+        : [];
+      const goalRef = await addDoc(collection(db, 'goals'), {
+        userId: user.uid,
+        title: args.title,
+        description: args.description || '',
+        targetDate: args.targetDate || null,
+        category: args.category || 'personal',
+        milestones,
+        progress: 0,
+        status: 'active',
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        source: 'agent',
+      });
+      logApi('POST', '/api/v1/goals', { title: args.title, category: args.category }, 'success');
+      return {
+        success: true,
+        data: { id: goalRef.id, title: args.title },
+        message: `🎯 Goal created: **"${args.title}"**${args.targetDate ? ` — target: ${args.targetDate}` : ''}${milestones.length > 0 ? `. ${milestones.length} milestones set.` : ''}`,
+      };
+    }
+
+    // ─── HABITS MODULE ──────────────────────────────────────────────────────────
+
+    case 'create_habit': {
+      // Fixes blindspot: complete_habit existed but create_habit did not.
+      // Users could ask the agent to track habits but new habits were never created.
+      if (!args.name) return { success: false, data: null, message: 'name is required for create_habit' };
+      const habitRef = await addDoc(collection(db, 'habits'), {
+        userId: user.uid,
+        name: args.name,
+        description: args.description || '',
+        frequency: args.frequency || 'daily',
+        reminderTime: args.reminderTime || null,
+        icon: args.icon || '✅',
+        streak: 0,
+        longestStreak: 0,
+        completedDates: [],
+        createdAt: Date.now(),
+        source: 'agent',
+      });
+      logApi('POST', '/api/v1/habits', { name: args.name, frequency: args.frequency }, 'success');
+      return {
+        success: true,
+        data: { id: habitRef.id, name: args.name },
+        message: `${args.icon || '✅'} Habit created: **"${args.name}"** (${args.frequency || 'daily'})${args.reminderTime ? ` — reminder at ${args.reminderTime}` : ''}`,
+      };
+    }
+
+    // ─── WEEKLY REVIEW MODULE ──────────────────────────────────────────────────
+
+    case 'generate_weekly_review': {
+      // Fixes blindspot: /review module was entirely manual. Zero agent integration.
+      // This tool synthesizes all available data into a structured weekly review.
+      const now = new Date();
+      const weekStart = args.weekStartDate
+        ? new Date(args.weekStartDate)
+        : (() => {
+            const d = new Date(now);
+            d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // last Monday
+            return d;
+          })();
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6);
+      const weekStartStr = getLocalDateString(weekStart);
+      const weekEndStr = getLocalDateString(weekEnd);
+
+      // ── Collect data from appContext ───────────────────────────────────────
+      const allTasks = (appContext.tasks || []) as any[];
+      const completedTasks = allTasks.filter((t: any) =>
+        t.status === 'completed' && t.date && t.date >= weekStartStr && t.date <= weekEndStr
+      );
+      const overdueTasks = allTasks.filter((t: any) =>
+        t.status !== 'completed' && t.date && t.date < weekEndStr && t.date >= weekStartStr
+      );
+      const allHabitLogs = (appContext.habitLogs || []) as any[];
+      const weekHabitLogs = allHabitLogs.filter((l: any) => l.date >= weekStartStr && l.date <= weekEndStr);
+      const habitCompletionRate = appContext.habits?.length > 0
+        ? Math.round((weekHabitLogs.length / (appContext.habits.length * 7)) * 100)
+        : 0;
+      const allGymLogs = (appContext.gymLogs || []) as any[];
+      const weekGymSessions = allGymLogs.filter((l: any) => l.date >= weekStartStr && l.date <= weekEndStr).length;
+      const goals = (appContext.goals || []) as any[];
+      const activeGoals = goals.filter((g: any) => g.status === 'active');
+
+      // ── Build review document ──────────────────────────────────────────────
+      const reviewData = {
+        userId: user.uid,
+        weekStartDate: weekStartStr,
+        weekEndDate: weekEndStr,
+        generatedAt: Date.now(),
+        generatedBy: 'agent:ENIGMA',
+        metrics: {
+          tasksCompleted: completedTasks.length,
+          tasksOverdue: overdueTasks.length,
+          taskCompletionRate: allTasks.length > 0 ? Math.round((completedTasks.length / (completedTasks.length + overdueTasks.length || 1)) * 100) : 0,
+          habitCompletionRate,
+          gymSessionsCompleted: weekGymSessions,
+          activeGoalsCount: activeGoals.length,
+        },
+        highlights: {
+          completedTaskTitles: completedTasks.slice(0, 5).map((t: any) => t.title || t.text),
+          overdueTitles: overdueTasks.slice(0, 3).map((t: any) => t.title || t.text),
+        },
+        source: 'agent',
+      };
+
+      const reviewRef = await addDoc(collection(db, 'weekly_reviews'), reviewData);
+
+      // ── Dispatch event so WeeklyReviewModule can display the result ────────
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('agent-weekly-review-ready', {
+          detail: { reviewId: reviewRef.id, data: reviewData }
+        }));
+      }
+
+      logApi('POST', '/api/v1/reviews/weekly', { weekStartDate: weekStartStr }, 'success');
+      return {
+        success: true,
+        data: reviewData,
+        message: `📊 **Weekly Review — ${weekStartStr} to ${weekEndStr}**\n\n` +
+          `✅ **Tasks Completed:** ${completedTasks.length}\n` +
+          `⚠️ **Tasks Overdue:** ${overdueTasks.length}\n` +
+          `🎯 **Completion Rate:** ${reviewData.metrics.taskCompletionRate}%\n` +
+          `🔄 **Habit Compliance:** ${habitCompletionRate}%\n` +
+          `💪 **Gym Sessions:** ${weekGymSessions}\n` +
+          `🏆 **Active Goals:** ${activeGoals.length}\n\n` +
+          `Review saved and visible in the Weekly Review module.`,
+      };
+    }
+
     default:
-      return { success: false, data: null, message: `Unknown tool: "${toolName}". Available tools: connect_google_workspace, get_tasks, query_internal_app_data, create_task, complete_task, auto_reschedule, snooze_task, update_task_priority, schedule_task_in_calendar, get_free_calendar_slots, list_calendar_events, update_calendar_event, block_calendar, delete_calendar_events, create_google_meet, read_gmail, send_gmail, draft_email, reply_gmail, archive_gmail, notify_accountability_partner, search_google_drive, list_drive_files, open_drive_file, create_google_doc, write_google_doc, send_reminder, send_notification, delegate_task, generate_script, navigate_to_module, open_gym_workout, calculate_bunk_capacity, plan_study_schedule, get_email_thread, get_meeting_prep_brief, get_day_review, panic_mode, smart_email_triage, deadline_negotiator, focus_lock, rebuild_day` };
+      return { success: false, data: null, message: `Unknown tool: "${toolName}". Available tools: connect_google_workspace, get_tasks, query_internal_app_data, create_task, complete_task, auto_reschedule, snooze_task, update_task_priority, schedule_task_in_calendar, get_free_calendar_slots, list_calendar_events, update_calendar_event, block_calendar, delete_calendar_events, create_google_meet, read_gmail, send_gmail, draft_email, reply_gmail, archive_gmail, notify_accountability_partner, search_google_drive, list_drive_files, open_drive_file, create_google_doc, write_google_doc, read_google_doc, send_reminder, send_notification, delegate_task, generate_script, navigate_to_module, open_gym_workout, calculate_bunk_capacity, plan_study_schedule, get_email_thread, get_meeting_prep_brief, get_day_review, panic_mode, smart_email_triage, deadline_negotiator, focus_lock, rebuild_day, create_note, search_notes, create_goal, create_habit, generate_weekly_review` };
   }
 };

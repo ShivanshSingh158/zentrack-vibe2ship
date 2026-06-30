@@ -175,14 +175,6 @@ export function MissionReport() {
             </div>
 
             <div className="mission-report-content markdown-body" data-lenis-prevent="true">
-              {missionComplete && (
-                <div style={{ background: 'rgba(16, 185, 129, 0.1)', border: '1px solid rgba(16, 185, 129, 0.3)', padding: '1.25rem', borderRadius: '12px', marginBottom: '1.5rem' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#10b981', fontWeight: 700, fontSize: '1.1rem', marginBottom: '0.5rem' }}>
-                    <Check size={20} /> MISSION COMPLETE
-                  </div>
-                </div>
-              )}
-
               <div style={{ color: '#e4e4e7', fontSize: '0.92rem', lineHeight: 1.7, marginBottom: '1.5rem' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
                   {agentResult.replace(/<b>/gi, '**').replace(/<\/b>/gi, '**')}

@@ -117,3 +117,22 @@
   75%  { transform: scale(1.1) rotate(10deg);  opacity: 1;   filter: drop-shadow(0 0 4px #fbbf24); }
   100% { transform: scale(0.5) rotate(0deg);   opacity: 0.3; }
 }
+
+/* ── 6. Futuristic HUD Animations ────────────────────────────────────────── */
+
+@keyframes radar-scan {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes data-stream {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 1000px; }
+}
+
+@keyframes terminal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}

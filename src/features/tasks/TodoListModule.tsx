@@ -13,8 +13,8 @@ import { getLocalDateString, formatDisplayDate, formatHoursDisplay } from '../..
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { EditTodoModal } from './EditTodoModal';
 import { getUrgencyLevel, getCountdownText } from '../../hooks/useDeadlineWatcher';
-import { RecoveryPlannerModal } from '../crisis/RecoveryPlannerModal';
-import { ExtensionDraftModal } from '../crisis/ExtensionDraftModal';
+// import { RecoveryPlannerModal } from '../crisis/RecoveryPlannerModal';
+// import { ExtensionDraftModal } from '../crisis/ExtensionDraftModal';
 import { TodoCard, CompletedTodoItem } from './TodoCard';
 
 export const TodoListModule = () => {
@@ -906,12 +906,12 @@ export const TodoListModule = () => {
         todo={editingTask} 
       />
       <AnimatePresence>
-        {recoveryTask && (
+        {/*recoveryTask && (
           <RecoveryPlannerModal task={recoveryTask} onClose={() => setRecoveryTask(null)} />
-        )}
-        {extensionTask && (
+        )*/}
+        {/*extensionTask && (
           <ExtensionDraftModal task={extensionTask} onClose={() => setExtensionTask(null)} />
-        )}
+        )*/}
       </AnimatePresence>
     </div>
   );

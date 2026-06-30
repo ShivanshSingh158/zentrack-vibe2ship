@@ -1,66 +1,67 @@
 :root {
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Outfit', system-ui, -apple-system, sans-serif;
+  --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   
-  /* ── Aurora Theme — Base Palette ── */
-  --bg-base: #09090b;
-  --bg-surface: rgba(255, 255, 255, 0.04);
-  --bg-surface-hover: rgba(255, 255, 255, 0.07);
-  --bg-surface-active: rgba(255, 255, 255, 0.10);
-  --bg-elevated: rgba(20, 20, 24, 0.95);
+  /* ── Cyber-AI Theme — Base Palette ── */
+  --bg-base: #05050A;
+  --bg-surface: rgba(0, 240, 255, 0.02);
+  --bg-surface-hover: rgba(0, 240, 255, 0.06);
+  --bg-surface-active: rgba(0, 240, 255, 0.10);
+  --bg-elevated: rgba(10, 10, 15, 0.90);
   
-  --text-primary: #f0f0f3;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
+  --text-primary: #ffffff;
+  --text-secondary: #90A0B0;
+  --text-muted: #506070;
   
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-hover: rgba(255, 255, 255, 0.16);
-  --border-glow: rgba(139, 92, 246, 0.25);
+  --border-subtle: rgba(0, 240, 255, 0.15);
+  --border-hover: rgba(0, 240, 255, 0.35);
+  --border-glow: rgba(0, 240, 255, 0.6);
   
   /* ── Gradient Accent System ── */
-  --accent-primary: #7c3aed;
-  --accent-primary-hover: #6d28d9;
-  --accent-secondary: #a855f7;
-  --accent-tertiary: #f97316;
-  --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 50%, #c084fc 100%);
-  --accent-gradient-warm: linear-gradient(135deg, #f97316 0%, #f59e0b 100%);
-  --accent-gradient-success: linear-gradient(135deg, #10b981 0%, #06d6a0 100%);
-  --accent-gradient-danger: linear-gradient(135deg, #ef4444 0%, #f97316 100%);
-  --accent-glow: rgba(124, 58, 237, 0.4);
-  --accent-glow-secondary: rgba(168, 85, 247, 0.3);
+  --accent-primary: #00F0FF;
+  --accent-primary-hover: #00D0E0;
+  --accent-secondary: #B534FF;
+  --accent-tertiary: #FF0055;
+  --accent-gradient: linear-gradient(135deg, #00F0FF 0%, #B534FF 50%, #FF0055 100%);
+  --accent-gradient-warm: linear-gradient(135deg, #FF0055 0%, #FF8A00 100%);
+  --accent-gradient-success: linear-gradient(135deg, #00F0FF 0%, #00FF88 100%);
+  --accent-gradient-danger: linear-gradient(135deg, #FF0055 0%, #FF2A2A 100%);
+  --accent-glow: rgba(0, 240, 255, 0.5);
+  --accent-glow-secondary: rgba(181, 52, 255, 0.4);
   
   /* ── Urgency System Tokens (default = calm) ── */
-  --urgency-primary: #7c3aed;
-  --urgency-secondary: #a855f7;
-  --urgency-glow: rgba(124, 58, 237, 0.2);
-  --urgency-bg-tint: rgba(124, 58, 237, 0.04);
-  --urgency-border: rgba(124, 58, 237, 0.25);
+  --urgency-primary: #00F0FF;
+  --urgency-secondary: #B534FF;
+  --urgency-glow: rgba(0, 240, 255, 0.25);
+  --urgency-bg-tint: rgba(0, 240, 255, 0.03);
+  --urgency-border: rgba(0, 240, 255, 0.3);
   
   /* ── Module-Specific Accents ── */
-  --module-todo: #6366f1;
-  --module-habits: #f59e0b;
-  --module-attendance: #10b981;
-  --module-assignments: #8b5cf6;
+  --module-todo: #00F0FF;
+  --module-habits: #FF8A00;
+  --module-attendance: #00FF88;
+  --module-assignments: #B534FF;
   --module-calendar: #3b82f6;
-  --module-goals: #ec4899;
-  --module-notes: #06b6d4;
-  --module-jobs: #f97316;
-  --module-learning: #14b8a6;
-  --module-analytics: #8b5cf6;
+  --module-goals: #FF0055;
+  --module-notes: #00D0E0;
+  --module-jobs: #FF8A00;
+  --module-learning: #00FF88;
+  --module-analytics: #B534FF;
   
   /* ── Shadows & Effects ── */
-  --shadow-glow: 0 0 20px -5px var(--accent-glow);
-  --shadow-card: 0 4px 16px -4px rgba(0, 0, 0, 0.3);
-  --shadow-card-hover: 0 20px 40px -12px rgba(0, 0, 0, 0.5), 0 0 20px -8px var(--accent-glow-secondary);
-  --shadow-elevated: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 25px -5px var(--accent-glow);
+  --shadow-card: 0 4px 16px -4px rgba(0, 0, 0, 0.5);
+  --shadow-card-hover: 0 20px 40px -12px rgba(0, 0, 0, 0.8), 0 0 20px -8px var(--accent-glow-secondary);
+  --shadow-elevated: 0 24px 48px -12px rgba(0, 0, 0, 0.9);
   
-  /* ── Radii ── */
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
-  --radius-2xl: 28px;
+  /* ── Radii — Sharper, more technical ── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+
   
   /* ── Animation Curves ── */
   --spring-soft: cubic-bezier(0.175, 0.885, 0.32, 1.05);
@@ -81,58 +82,64 @@
    Applied to :root by useUrgencyState hook in App.tsx
    ════════════════════════════════════════════════════════════ */
 
-/* CALM STATE — No urgent deadlines (Bioluminescent Cyan) */
+/* CALM STATE — No urgent deadlines (Cyber Cyan) */
 :root.state-calm {
-  --urgency-primary: #00BFA5;
-  --urgency-secondary: #00E5FF;
-  --urgency-glow: rgba(0, 229, 255, 0.15);
-  --urgency-bg-tint: rgba(0, 191, 165, 0.04);
-  --urgency-border: rgba(0, 191, 165, 0.2);
+  --urgency-primary: #00F0FF;
+  --urgency-secondary: #00D0E0;
+  --urgency-glow: rgba(0, 240, 255, 0.2);
+  --urgency-bg-tint: rgba(0, 240, 255, 0.05);
+  --urgency-border: rgba(0, 240, 255, 0.3);
 }
 
 :root.state-calm body {
   background-image:
-    radial-gradient(ellipse at 10% 20%, rgba(0, 191, 165, 0.07) 0%, transparent 40%),
-    radial-gradient(ellipse at 90% 80%, rgba(0, 229, 255, 0.05) 0%, transparent 35%),
-    radial-gradient(ellipse at 50% 50%, rgba(0, 191, 165, 0.03) 0%, transparent 50%);
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    radial-gradient(ellipse at 10% 20%, rgba(0, 240, 255, 0.08) 0%, transparent 40%),
+    radial-gradient(ellipse at 90% 80%, rgba(181, 52, 255, 0.05) 0%, transparent 35%);
+  background-size: 50px 50px, 50px 50px, 100% 100%, 100% 100%;
 }
 
-/* ACTIVE STATE — Tasks due today (Sunset Orange / Mango) */
+/* ACTIVE STATE — Tasks due today (Neon Orange/Purple) */
 :root.state-active {
-  --urgency-primary: #FF6D00;
-  --urgency-secondary: #FFC400;
-  --urgency-glow: rgba(255, 109, 0, 0.2);
-  --urgency-bg-tint: rgba(255, 109, 0, 0.05);
-  --urgency-border: rgba(255, 109, 0, 0.3);
+  --urgency-primary: #FF8A00;
+  --urgency-secondary: #B534FF;
+  --urgency-glow: rgba(255, 138, 0, 0.25);
+  --urgency-bg-tint: rgba(255, 138, 0, 0.05);
+  --urgency-border: rgba(255, 138, 0, 0.35);
 }
 
 :root.state-active body {
   background-image:
-    radial-gradient(ellipse at 10% 20%, rgba(255, 109, 0, 0.08) 0%, transparent 40%),
-    radial-gradient(ellipse at 90% 80%, rgba(255, 196, 0, 0.06) 0%, transparent 35%),
-    radial-gradient(ellipse at 50% 50%, rgba(255, 109, 0, 0.04) 0%, transparent 50%);
+    linear-gradient(rgba(255, 138, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 138, 0, 0.03) 1px, transparent 1px),
+    radial-gradient(ellipse at 10% 20%, rgba(255, 138, 0, 0.10) 0%, transparent 40%),
+    radial-gradient(ellipse at 90% 80%, rgba(181, 52, 255, 0.08) 0%, transparent 35%);
+  background-size: 50px 50px, 50px 50px, 100% 100%, 100% 100%;
 }
 
-/* CRITICAL STATE — Overdue tasks (Crimson / Electric Magenta) */
+/* CRITICAL STATE — Overdue tasks (Hot Pink / Magenta) */
 :root.state-critical {
-  --urgency-primary: #FF0051;
-  --urgency-secondary: #D500F9;
-  --urgency-glow: rgba(255, 0, 81, 0.25);
-  --urgency-bg-tint: rgba(255, 0, 81, 0.06);
-  --urgency-border: rgba(255, 0, 81, 0.35);
+  --urgency-primary: #FF0055;
+  --urgency-secondary: #B534FF;
+  --urgency-glow: rgba(255, 0, 85, 0.3);
+  --urgency-bg-tint: rgba(255, 0, 85, 0.08);
+  --urgency-border: rgba(255, 0, 85, 0.4);
 }
 
 :root.state-critical body {
   background-image:
-    radial-gradient(ellipse at 10% 20%, rgba(255, 0, 81, 0.10) 0%, transparent 40%),
-    radial-gradient(ellipse at 90% 80%, rgba(213, 0, 249, 0.07) 0%, transparent 35%),
-    radial-gradient(ellipse at 50% 50%, rgba(255, 0, 81, 0.05) 0%, transparent 50%);
-  animation: critical-ambient-pulse 4s ease-in-out infinite;
+    linear-gradient(rgba(255, 0, 85, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 0, 85, 0.05) 1px, transparent 1px),
+    radial-gradient(ellipse at 10% 20%, rgba(255, 0, 85, 0.12) 0%, transparent 40%),
+    radial-gradient(ellipse at 90% 80%, rgba(181, 52, 255, 0.10) 0%, transparent 35%);
+  background-size: 50px 50px, 50px 50px, 100% 100%, 100% 100%;
+  animation: critical-ambient-pulse 2s ease-in-out infinite;
 }
 
 @keyframes critical-ambient-pulse {
-  0%, 100% { background-size: 100% 100%; }
-  50% { background-size: 110% 110%; }
+  0%, 100% { background-position: 0 0, 0 0, 0 0, 0 0; }
+  50% { background-position: 10px 10px, 10px 10px, 0 0, 0 0; }
 }
 
 /* Urgency-aware component overrides */

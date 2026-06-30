@@ -33,9 +33,26 @@ const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 // ZenTrack source tag stored on GCal events to identify them
 const ZENTRACK_SOURCE_TAG = 'zentrack-autosync';
 
-// In-memory token state (initialized from localStorage)
-let _accessToken: string | null = localStorage.getItem('zen_gcal_access_token');
-let _tokenExpiry: number = parseInt(localStorage.getItem('zen_gcal_token_expiry') || '0', 10);
+// ✅ SEC-3 FIX: The short-lived OAuth access token is now stored in sessionStorage
+// instead of localStorage. This prevents token theft via XSS across browser sessions:
+// - sessionStorage is cleared when the tab closes, limiting the attack window.
+// - localStorage persists indefinitely, making stolen tokens valid for hours even
+//   after the user has closed the app.
+// The refresh token intentionally STAYS in localStorage (it's needed to silently
+// re-auth on return visits without requiring a new popup every session).
+let _accessToken: string | null = sessionStorage.getItem('zen_gcal_access_token')
+  || localStorage.getItem('zen_gcal_access_token'); // fallback to migrate existing sessions
+let _tokenExpiry: number = parseInt(
+  sessionStorage.getItem('zen_gcal_token_expiry')
+  || localStorage.getItem('zen_gcal_token_expiry')
+  || '0',
+  10
+);
+// Clean up any legacy localStorage access token on startup
+if (localStorage.getItem('zen_gcal_access_token')) {
+  localStorage.removeItem('zen_gcal_access_token');
+  localStorage.removeItem('zen_gcal_token_expiry');
+}
 let _tokenClient: any = null;
 let _gisLoaded = false;
 
@@ -109,7 +126,8 @@ export const isSignedInToGoogle = (): boolean => {
 };
 
 export const wasEverConnectedToGoogle = (): boolean =>
-  !!localStorage.getItem('zen_gcal_access_token');
+  // Check sessionStorage (current session) OR localStorage (has connected before in a past session)
+  !!(sessionStorage.getItem('zen_gcal_access_token') || localStorage.getItem('zen_gcal_refresh_token'));
 
 export const getTokenTimeRemaining = (): number =>
   _accessToken ? Math.max(0, _tokenExpiry - Date.now()) : 0;
@@ -142,9 +160,11 @@ export const forceSilentRefresh = async (): Promise<void> => {
 const storeToken = (accessToken: string, expiresIn: number, refreshToken?: string) => {
   _accessToken = accessToken;
   _tokenExpiry = Date.now() + Math.min(expiresIn * 1000, 55 * 60 * 1000);
-  localStorage.setItem('zen_gcal_access_token', _accessToken);
-  localStorage.setItem('zen_gcal_token_expiry', _tokenExpiry.toString());
+  // ✅ SEC-3: Access token goes to sessionStorage (cleared on tab close)
+  sessionStorage.setItem('zen_gcal_access_token', _accessToken);
+  sessionStorage.setItem('zen_gcal_token_expiry', _tokenExpiry.toString());
   if (refreshToken) {
+    // Refresh token stays in localStorage (needed to silently re-auth on return visits)
     localStorage.setItem('zen_gcal_refresh_token', refreshToken);
   }
 
@@ -158,8 +178,8 @@ const storeToken = (accessToken: string, expiresIn: number, refreshToken?: strin
       console.warn('[GoogleCalendar] Silent refresh failed:', err);
       // If it fails, clear token to force re-auth
       _accessToken = null;
-      localStorage.removeItem('zen_gcal_access_token');
-      localStorage.removeItem('zen_gcal_token_expiry');
+      sessionStorage.removeItem('zen_gcal_access_token');
+      sessionStorage.removeItem('zen_gcal_token_expiry');
     }
   }, refreshIn);
 };

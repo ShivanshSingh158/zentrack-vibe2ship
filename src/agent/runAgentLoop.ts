@@ -4,11 +4,17 @@ import { executeTool } from './toolExecutor';
 import { callWithFallback, callWithFallbackUnthrottled } from '../services/gemini/core';
 import type { Task, CalendarEvent } from '../types/domain';
 
-const AGENT_SYSTEM = `You are Zen Agent — an autonomous AI assistant with real tools.
-You can read tasks, create tasks, schedule calendar blocks, and send reminders.
+// Z5 FIX: The AGENT_SYSTEM default prompt was a 5-line minimal stub that fired in
+// unexpected bypass scenarios (no systemInstruction provided). The misleading stub
+// made debugging very difficult when it appeared in logs. Replaced with a clear,
+// self-identifying fallback that explicitly states it's the default/fallback mode.
+const AGENT_SYSTEM = `You are Zen Agent — the ZenTrack autonomous AI assistant running in DIRECT mode.
+You have access to real tools for tasks, calendar, email, notes, goals, and habits.
 When the user asks you to do something: ALWAYS use the available tools to actually do it.
 Never just describe what you would do — use the tools and DO IT.
-After you've taken all needed actions, respond naturally explaining what you did.`;
+You are operating WITHOUT a specialized role assignment (this is the generic fallback mode).
+After completing all actions, respond clearly explaining what you did and the results.`;
+
 
 export type AgentStep = 
   | { type: 'thinking'; title: string }
@@ -63,7 +69,10 @@ export async function runAgentLoop(
     ORACLE:   ['get_tasks', 'search_tasks', 'list_calendar_events', 'get_free_calendar_slots',
                'read_gmail', 'query_internal_app_data', 'connect_google_workspace',
                // ✅ PART 4: Oracle is the data intelligence agent — gets bunk calc, day review, meeting prep
-               'calculate_bunk_capacity', 'get_email_thread', 'get_day_review', 'get_meeting_prep_brief', 'plan_study_schedule'],
+               'calculate_bunk_capacity', 'get_email_thread', 'get_day_review', 'get_meeting_prep_brief', 'plan_study_schedule',
+               // ✅ New: ORACLE can search notes for intelligence gathering
+               'search_notes'],
+
     ARGUS:    ['get_tasks', 'search_tasks', 'get_free_calendar_slots', 'list_calendar_events',
                'send_notification', 'send_reminder', 'auto_reschedule', 'read_gmail', 'connect_google_workspace',
                // ✅ PART 6: ARGUS triggers panic mode in emergency recovery
@@ -73,15 +82,30 @@ export async function runAgentLoop(
                'create_google_meet', 'create_task', 'schedule_task_in_calendar', 'send_notification',
                'notify_accountability_partner', 'connect_google_workspace', 'delegate_task',
                // ✅ PART 6: TITAN executes panic mode, focus lock, day rebuild
-               'panic_mode', 'focus_lock', 'rebuild_day', 'deadline_negotiator'],
+               'panic_mode', 'focus_lock', 'rebuild_day', 'deadline_negotiator',
+               // ✅ New: TITAN is the executor — it can create habits and notes as part of multi-step plans
+               'create_habit', 'create_note'],
+
     ARCHIVE:  ['list_drive_files', 'search_drive_files', 'create_google_doc', 'read_google_doc', 'send_notification', 'connect_google_workspace', 'delegate_task'],
     MEET:     ['create_google_meet', 'list_calendar_events', 'update_calendar_event', 'delete_calendar_event', 'send_gmail', 'connect_google_workspace', 'delegate_task', 'get_meeting_prep_brief'],
-    SCRIBE:   ['create_google_doc', 'write_google_doc', 'read_google_doc', 'list_drive_files', 'send_notification', 'connect_google_workspace', 'delegate_task'],
-    ENIGMA:   ['get_tasks', 'query_internal_app_data', 'list_calendar_events', 'read_gmail', 'send_notification', 'connect_google_workspace'],
-    ATLAS:    ['get_tasks', 'create_task', 'update_task', 'schedule_task_in_calendar', 'send_notification', 'delegate_task', 'connect_google_workspace', 'plan_study_schedule', 'calculate_bunk_capacity'],
+    SCRIBE:   ['create_google_doc', 'write_google_doc', 'read_google_doc', 'list_drive_files', 'send_notification', 'connect_google_workspace', 'delegate_task',
+               // ✅ New: SCRIBE can create ZenTrack notes and search existing notes for context
+               'create_note', 'search_notes'],
+    ENIGMA:   ['get_tasks', 'query_internal_app_data', 'list_calendar_events', 'read_gmail', 'send_notification', 'connect_google_workspace',
+               // ✅ New: ENIGMA drives the Weekly Review and can search notes for analytics context
+               'generate_weekly_review', 'search_notes'],
+    ATLAS:    ['get_tasks', 'create_task', 'update_task', 'schedule_task_in_calendar', 'send_notification', 'delegate_task', 'connect_google_workspace', 'plan_study_schedule', 'calculate_bunk_capacity',
+               // ✅ New: ATLAS creates actual goals (not just tasks) — closes the Goals blindspot
+               'create_goal'],
     HEPHAESTUS: ['create_google_doc', 'write_google_doc', 'send_notification', 'delegate_task', 'connect_google_workspace'],
-    // AEGIS gets all tools — it's the synthesizer and may need to call anything for final QA
-    AEGIS:    TOOL_NAMES,
+
+    // ✅ ISSUE-R1 FIX: AEGIS is a SYNTHESIS agent — it should never write tasks or send emails.
+    // Previously AEGIS: TOOL_NAMES (~22KB of schema, 40+ tools) caused it to call create_task
+    // and send_gmail during final synthesis steps. Now restricted to read-only + notify only.
+    AEGIS: [
+      'get_tasks', 'query_internal_app_data', 'list_calendar_events',
+      'send_notification', 'get_day_review', 'get_meeting_prep_brief',
+    ],
   };
 
   // ✅ BUG-R6 FIX: Extended read-only tools cache set to include new read-only tools.
@@ -90,7 +114,10 @@ export async function runAgentLoop(
     'read_gmail', 'query_internal_app_data', 'list_drive_files', 'get_notes', 'read_google_doc',
     // ✅ New read-only analytical tools — safe to cache
     'calculate_bunk_capacity', 'get_email_thread', 'get_day_review', 'get_meeting_prep_brief', 'smart_email_triage',
+    // ✅ New: search_notes is read-only — safe to cache (notes content doesn't change mid-mission)
+    'search_notes',
   ]);
+
 
   // ✅ BUG-R2 FIX: Use sharedToolCache if provided (cross-agent cache), otherwise create local one
   const toolCache = sharedToolCache ?? new Map<string, ToolResult>();
@@ -103,7 +130,11 @@ export async function runAgentLoop(
     let response;
     let hasLoggedThinking = false;
     try {
-      const caller = isSubAgent ? callWithFallbackUnthrottled : callWithFallback;
+      // ✅ ISSUE-R3 FIX: Only use unthrottled caller for deeply nested sub-agents (depth >= 2).
+      // Previously ALL sub-agents bypassed the semaphore, meaning a TITAN->HERMES->CHRONOS
+      // delegation chain fired 3 API calls with zero throttling, bursting the quota limit.
+      // Depth 0-1 (direct orchestrator calls and first-level delegates) go through the semaphore.
+      const caller = (isSubAgent && depth >= 2) ? callWithFallbackUnthrottled : callWithFallback;
       response = await caller(async (genAI, modelName) => {
         const activeModel = modelOverride || modelName;
         if (!hasLoggedThinking) {
@@ -147,7 +178,12 @@ export async function runAgentLoop(
               // whitelist. The Gemini API rejects any function call not in this list,
               // eliminating wasted 2-4 second retry cycles from hallucinated tool names.
               toolConfig: {
-                functionCallingConfig: (forceToolCallFirstIteration && i === 0 && filteredNames.length > 0)
+                // ✅ ISSUE-R2 FIX: ORACLE should NOT be forced into ANY mode on iteration 0.
+                // ORACLE often needs one reasoning turn to decide which data sources to pull.
+                // Forcing ANY caused it to blindly call the wrong tool first then correct itself
+                // in a second iteration, wasting an API call. Now only non-ORACLE agents get
+                // the forceToolCallFirstIteration treatment (CHRONOS, TITAN, HERMES benefit from it).
+                functionCallingConfig: (forceToolCallFirstIteration && i === 0 && filteredNames.length > 0 && agentRole !== 'ORACLE')
                   ? { mode: 'ANY' as any, allowedFunctionNames: filteredNames }
                   : { mode: 'AUTO' as any },
               },

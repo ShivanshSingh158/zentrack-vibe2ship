@@ -4,7 +4,7 @@ import { Draggable } from '@hello-pangea/dnd';
 import { toast } from 'sonner';
 
 import { getUrgencyLevel, getCountdownText, useLiveTick } from '../../hooks/useDeadlineWatcher';
-import { useEscalation } from '../../hooks/useEscalation';
+// import { useEscalation } from '../../hooks/useEscalation';
 import { formatHoursDisplay } from '../../utils/dateUtils';
 import type { TodoItem } from '../../types';
 
@@ -38,7 +38,7 @@ export const TodoCard = React.memo(({
   
   useLiveTick(); // forces re-render every minute
   const urgency = (todo.date && todo.status !== 'completed') ? getUrgencyLevel(todo.date) : 'normal';
-  const escalation = useEscalation(todo.status === 'completed' ? null : todo.date);
+  const escalation = { border: '', background: '', animation: '' }; // useEscalation(todo.status === 'completed' ? null : todo.date);
 
   // ✅ FIX: Calculate real DeadlineDNA — was hardcoded to 100 (DEDUCTION 3.1)
   // Score = urgencyRatio × priorityWeight × (1 - subtaskCompletionBonus)

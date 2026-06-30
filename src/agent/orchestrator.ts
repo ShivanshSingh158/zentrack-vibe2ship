@@ -33,7 +33,9 @@ LEVEL_1 (Retrieval/Navigation — 1 agent): Simple data lookup OR navigation req
 
 LEVEL_2 (Single Action — 1-2 agents): One clear action to perform.
   Examples: "Schedule a 2-hour block tomorrow", "Create a task for X", "Send me a reminder", "Create a meeting for 3pm", "Find my project file in Drive"
-  Deploy: (CHRONOS or HERMES or MEET or ARCHIVE or ATLAS) → AEGIS
+  Analytics examples: "Am I on track?", "What's my risk level?", "Analyze my productivity", "What's my completion rate?"
+  Scripting examples: "Write me a Python script to export my tasks", "Generate code to process my emails", "Automate my calendar cleanup"
+  Deploy: (CHRONOS or HERMES or MEET or ARCHIVE or ATLAS) → AEGIS, or ENIGMA → AEGIS for analytics, or HEPHAESTUS alone for scripts
 
 LEVEL_3 (Multi-Step — 3-5 agents): Multiple coordinated actions needed.
   Examples: "I missed a deadline. Help me recover.", "Analyze my week and reschedule", "Read my emails and create tasks", "Create a team meeting and email everyone the link", "Plan a project to build an MVP"
@@ -46,6 +48,7 @@ LEVEL_4 (Emergency Orchestration — full fleet): Complex, cross-system synthesi
 LEVEL_5 (Proactive Discovery): Scan for hidden commitments.
   Examples: "Check my inbox for any deadlines I missed", "Find any ghost tasks in my emails"
   Deploy: SPECTRE → AEGIS
+
 
 ## STEP 2 — MAP THE DAG (PRECISION DELEGATION RULES)
 Dependency Rules:
@@ -77,14 +80,23 @@ When writing the "instruction" field for each agent task:
 - ARCHIVE: finding files in Google Drive, opening files, listing recent files
 - HERMES: all Gmail (read, send, reply, archive)
 - CHRONOS: all Google Calendar operations (view, block, delete, reschedule). DO NOT USE FOR IN-APP DATA.
-- ATLAS: decompose large goals into task lists, create project plans
+- ATLAS: decompose large goals into task lists, create project plans, CREATE GOALS (create_goal writes to /goals module)
 - ARGUS: assess task risk, send proactive alerts and reminders
 - SPECTRE: scan inbox and calendar for unlogged deadlines
-- TITAN: cross-system multi-action execution AND managing/deleting internal ZenTrack tasks, Google Calendar events, Gmail messages, and Google Drive files.
-- ENIGMA: analysis-only, never modifies data
-- ORACLE: read-only intelligence gathering across tasks, calendar, AND internal app data (gym, notes, habits, goals, etc.)
-- SCRIBE: create and write Google Docs and generate scripts
+- TITAN: cross-system multi-action execution AND managing/deleting internal ZenTrack tasks, calendar events, Gmail messages, Drive files. TITAN can also CREATE HABITS (create_habit) and CREATE NOTES (create_note).
+- ENIGMA: analytics and reporting — can GENERATE WEEKLY REVIEW (generate_weekly_review writes structured report to Firestore)
+- ORACLE: read-only intelligence gathering across tasks, calendar, AND internal app data (gym, notes, habits, goals, etc.). ORACLE can SEARCH NOTES (search_notes for targeted content lookup).
+- SCRIBE: create and write Google Docs, generate scripts, and CREATE ZENTRACK NOTES (create_note saves to /notes module)
+- NAVIGATOR: in-app navigation — use for "go to", "open", "show me the X page" requests
 - AEGIS: final synthesis and mission report
+
+## Module Routing (NEW — use these for module-specific agent requests):
+- "save/note this", "write a note about X" → SCRIBE (create_note)
+- "find my note about X", "search notes for Y" → ORACLE (search_notes)
+- "add a goal", "I want to achieve X" → ATLAS (create_goal)
+- "add a habit", "track X daily" → TITAN (create_habit)
+- "weekly review", "how was my week" → ENIGMA (generate_weekly_review)
+
 
 ## STEP 3 — OUTPUT VALID JSON ONLY (no markdown, no explanation)
 {
@@ -184,8 +196,66 @@ function fastRouter(instruction: string): DagTask[] | null {
     ];
   }
 
+  // ✅ ISSUE-4.5 FIX: ENIGMA fast-router entries.
+  // Previously ENIGMA was never routed by the fast router, so it only appeared in complex
+  // LLM-planned L3/L4 missions. Analytics queries bypassed it entirely (ORACLE was used instead).
+  // Now analytics requests route directly to ENIGMA→AEGIS, giving users proper risk scores.
+  if (/am i on track|what'?s? my risk|will i finish|my productivity|completion (rate|probability)|am i productive/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'ENIGMA', instruction, dependencies: [], status: 'pending' },
+      { id: 't2', assignedAgent: 'AEGIS', instruction: 'Synthesize ENIGMA risk analysis into a clear mission report', dependencies: ['t1'], status: 'pending' }
+    ];
+  }
+  if (/analyze my (week|day|tasks|habits|goals|productivity)|what should i (focus|work) on|bottleneck|workload/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'ENIGMA', instruction, dependencies: [], status: 'pending' },
+      { id: 't2', assignedAgent: 'AEGIS', instruction: 'Synthesize ENIGMA analytics findings', dependencies: ['t1'], status: 'pending' }
+    ];
+  }
+
+  // ✅ ISSUE-4.3 FIX: HEPHAESTUS fast-router entries.
+  // Previously the Supervisor prompt had no HEPHAESTUS example and the fast router had no
+  // HEPHAESTUS path, so it was effectively unreachable except via explicit delegate_task.
+  // Now "write me a script" / "generate code" routes directly to HEPHAESTUS.
+  if (/^(write (me )?(a )?script|generate (code|a script)|automate this|create (a )?python|create (a )?javascript)/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'HEPHAESTUS', instruction, dependencies: [], status: 'pending', isFinal: true },
+    ];
+  }
+  if (/export (my )?(tasks|calendar|data) to (csv|json)|write (a )?script to (process|export|bulk)/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'HEPHAESTUS', instruction, dependencies: [], status: 'pending', isFinal: true },
+    ];
+  }
+
+  // ✅ TRAIN-4 FIX: Fast-route simple write operations that previously fell through
+  // to the LLM Supervisor (adding 800ms+ of unnecessary latency).
+  // Notes, goals, and habits are single-agent deterministic writes — no synthesis needed.
+  if (/^(save (a )?note|write (a )?note|note (that|this|down)|remember this|jot (this|that) down)/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'TITAN', instruction, dependencies: [], status: 'pending', isFinal: true },
+    ];
+  }
+  if (/^(add (a )?goal|create (a )?goal|set (a )?goal|i want to achieve|track (my )?goal)/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'ATLAS', instruction, dependencies: [], status: 'pending', isFinal: true },
+    ];
+  }
+  if (/^(add (a )?habit|create (a )?habit|track (a )?habit|i want to track|help me build a habit|remind me to .+ every day)/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'TITAN', instruction, dependencies: [], status: 'pending', isFinal: true },
+    ];
+  }
+  // Navigation — pure UI action, no synthesis needed
+  if (/^(go to|open|show me|take me to|navigate to|open my) (tasks|habits|goals|gym|calendar|notes|analytics|jobs|learning|tools|integrations|review|attendance|assignments|grades|home|dashboard)/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'NAVIGATOR', instruction, dependencies: [], status: 'pending', isFinal: true },
+    ];
+  }
+
   return null;
 }
+
 
 export async function orchestrateAgent(
   instruction: string,
@@ -265,7 +335,13 @@ export async function orchestrateAgent(
           .filter((e: any) => (e.start?.dateTime || e.start?.date || '').startsWith(today2))
           .map((e: any) => `${e.summary} at ${e.start?.dateTime?.split('T')[1]?.slice(0, 5) || 'all-day'}`)
           .join(', ');
-        const snapshot = `[LIVE SNAPSHOT] ${overdue} overdue, ${dueToday} due today. Today's events: ${todayEvents || 'none'}. Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}.\n\n`;
+        // ✅ TRAIN-2 FIX: Inject real peak hours from the learning store so CHRONOS
+        // books calendar slots at the user's actual productive times, not hardcoded 14:00.
+        const peakHours = userLearningStore.getProfile().actualPeakHours;
+        const peakHoursStr = peakHours.length > 0
+          ? peakHours.slice(0, 4).map(h => `${h}:00`).join(', ')
+          : '9:00, 14:00';
+        const snapshot = `[LIVE SNAPSHOT] ${overdue} overdue, ${dueToday} due today. Today's events: ${todayEvents || 'none'}. Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}. USER PEAK PRODUCTIVE HOURS: ${peakHoursStr} — ALWAYS prefer scheduling within these windows.\n\n`;
         return behavioralDirective + snapshot;
       }
       case 'ARGUS': {
@@ -436,12 +512,40 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
   // The old global _agentRetryCount was shared across ALL tasks — if Agent A retried twice,
   // Agent B would have zero retries left, causing it to permanently fail on the first transient error.
 
+  // ✅ ISSUE-O1 FIX: Pre-build all personality contexts BEFORE the DAG execution loop.
+  // Previously buildPersonalityContext() was called inside executeTask() for every agent
+  // individually — causing 2 sequential async awaits (getAgentMemory + buildContextMemory)
+  // for ORACLE and AEGIS at agent startup, blocking the entire DAG pipeline.
+  // Now we do ONE pre-pass: load agent memory once, build all role contexts in parallel,
+  // and store them in a Map for O(1) synchronous lookup inside executeTask.
+  const _personalityContextCache = new Map<string, string>();
+  const agentRolesInMission = new Set(taskList ? taskList.map(t => t.assignedAgent) : []);
+  // Always pre-build ORACLE and AEGIS contexts (they appear in most missions)
+  agentRolesInMission.add('ORACLE');
+  agentRolesInMission.add('AEGIS');
+
+  try {
+    // Load agent memory ONCE and share across all role contexts
+    const sharedAgentMemory = await loadAgentMemoryContext();
+    _cachedAgentMemory = sharedAgentMemory; // seed the per-mission cache
+
+    await Promise.all(
+      [...agentRolesInMission].map(async role => {
+        const ctx = await buildPersonalityContext(role);
+        _personalityContextCache.set(role, ctx);
+      })
+    );
+  } catch (e) {
+    console.warn('[Orchestrator] Pre-building personality contexts failed — agents will build lazily:', e);
+  }
+
   while (!engine.isComplete()) {
     if (signal?.aborted) {
       throw new Error("Mission aborted by user.");
     }
     const runnable = engine.getRunnableTasks();
     if (runnable.length === 0 && !engine.isComplete()) {
+
       const failedSummary = [...engine.tasks.values()]
         .filter(t => t.status === 'failed')
         .map(t => `[${t.assignedAgent}] ${t.result || 'Unknown error'}`)
@@ -462,8 +566,10 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
         // ✅ INEFFICIENCY-4 FIX: Use cached context strings instead of rebuilding every call
         const { serialized, preloaded: preloadedSearchData } = getCachedContext();
 
-        // ✅ ARCH-4 + GAP-1: Pass the agent role to get domain-scoped context + long-term memory
-        const agentPersonalityContext = await buildPersonalityContext(task.assignedAgent);
+        // ✅ ISSUE-O1 FIX: Use pre-built personality context from cache (built before DAG loop).
+        // Falls back to lazy build for sub-agents added mid-mission via delegate_task.
+        const agentPersonalityContext = _personalityContextCache.get(task.assignedAgent)
+          ?? await buildPersonalityContext(task.assignedAgent);
 
         if (task.assignedAgent === 'AEGIS') {
           if (Date.now() - new Date(engine.state.contextBuiltAt).getTime() > engine.state.contextTTLMs) {
