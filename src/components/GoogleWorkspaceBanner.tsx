@@ -26,9 +26,11 @@ export const GoogleWorkspaceBanner: React.FC = () => {
 
   const handleConnect = () => {
     if (isConnecting) return;
-    setIsConnecting(true);
+    // We do NOT set isConnecting(true) here to ensure absolutely zero React state batching
+    // interferes with the synchronous execution frame required by the browser's popup blocker.
     connectGoogle()
       .then(() => {
+        setIsConnecting(true);
         setJustConnected(true);
         toast.success('✅ Google Workspace connected! Calendar, Gmail, Drive and Docs are now synced.');
         setTimeout(() => setJustConnected(false), 3000);
@@ -37,8 +39,8 @@ export const GoogleWorkspaceBanner: React.FC = () => {
         const msg = err?.message || 'Connection failed';
         if (msg.includes('popup-blocked') || msg.includes('popup_closed') || msg.includes('closed')) {
           toast.warning('Popup was closed. Click "Connect Google" again to try.', { duration: 5000 });
-        } else if (msg.includes('popup-blocked')) {
-          toast.error('Popup blocked by browser. Please allow popups for this site and try again.');
+        } else if (msg.includes('popup-blocked') || msg.includes('Failed to open popup window')) {
+          toast.error('Popup blocked by browser! Please check your URL bar (top right) to allow popups for this site.', { duration: 8000 });
         } else {
           toast.error(`Google connection failed: ${msg}`);
         }
