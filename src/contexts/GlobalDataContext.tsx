@@ -198,20 +198,21 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
    * MUST only be called from a user-gesture handler (button click).
    * Never call this from useEffect, setInterval, or agent code.
    */
-  const connectGoogle = async (): Promise<void> => {
-    await signInWithGoogle();
-    const connected = isSignedInToGoogle();
-    setIsGoogleConnected(connected);
-    setGoogleStatus(connected ? 'connected' : 'disconnected');
-    // ✅ FIX: After connecting, immediately poll calendar so agents see live events
-    if (connected) {
-      try {
-        const events = await pollGoogleCalendarChanges();
-        if (events && events.length > 0) setCalendarEvents(events);
-      } catch (err) {
-        console.warn('[GlobalData] Calendar poll after connect failed:', err);
+  const connectGoogle = (): Promise<void> => {
+    return signInWithGoogle().then(() => {
+      const connected = isSignedInToGoogle();
+      setIsGoogleConnected(connected);
+      setGoogleStatus(connected ? 'connected' : 'disconnected');
+      if (connected) {
+        pollGoogleCalendarChanges()
+          .then(events => {
+            if (events && events.length > 0) setCalendarEvents(events);
+          })
+          .catch(err => {
+            console.warn('[GlobalData] Calendar poll after connect failed:', err);
+          });
       }
-    }
+    });
   };
 
   // ── Calendar Poll (every 15 min while Google is connected) ─────────────────

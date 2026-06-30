@@ -188,7 +188,7 @@ const storeToken = (accessToken: string, expiresIn: number, refreshToken?: strin
 
 let _isAuthFailingLoop = false;
 
-export const signInWithGoogle = async (): Promise<void> => {
+export const signInWithGoogle = (): Promise<void> => {
   if (!CLIENT_ID) return Promise.reject(new Error('VITE_GOOGLE_CALENDAR_CLIENT_ID not set'));
   
   if (_isAuthFailingLoop) {

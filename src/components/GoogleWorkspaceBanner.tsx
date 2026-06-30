@@ -24,27 +24,28 @@ export const GoogleWorkspaceBanner: React.FC = () => {
   // Don't show when dismissed this session
   const shouldShow = !dismissed && !justConnected && googleStatus === 'disconnected';
 
-  const handleConnect = async () => {
+  const handleConnect = () => {
     if (isConnecting) return;
     setIsConnecting(true);
-    try {
-      await connectGoogle();
-      setJustConnected(true);
-      toast.success('✅ Google Workspace connected! Calendar, Gmail, Drive and Docs are now synced.');
-      // Auto-hide success state after 3 seconds
-      setTimeout(() => setJustConnected(false), 3000);
-    } catch (err: any) {
-      const msg = err?.message || 'Connection failed';
-      if (msg.includes('popup-blocked') || msg.includes('popup_closed') || msg.includes('closed')) {
-        toast.warning('Popup was closed. Click "Connect Google" again to try.', { duration: 5000 });
-      } else if (msg.includes('popup-blocked')) {
-        toast.error('Popup blocked by browser. Please allow popups for this site and try again.');
-      } else {
-        toast.error(`Google connection failed: ${msg}`);
-      }
-    } finally {
-      setIsConnecting(false);
-    }
+    connectGoogle()
+      .then(() => {
+        setJustConnected(true);
+        toast.success('✅ Google Workspace connected! Calendar, Gmail, Drive and Docs are now synced.');
+        setTimeout(() => setJustConnected(false), 3000);
+      })
+      .catch((err: any) => {
+        const msg = err?.message || 'Connection failed';
+        if (msg.includes('popup-blocked') || msg.includes('popup_closed') || msg.includes('closed')) {
+          toast.warning('Popup was closed. Click "Connect Google" again to try.', { duration: 5000 });
+        } else if (msg.includes('popup-blocked')) {
+          toast.error('Popup blocked by browser. Please allow popups for this site and try again.');
+        } else {
+          toast.error(`Google connection failed: ${msg}`);
+        }
+      })
+      .finally(() => {
+        setIsConnecting(false);
+      });
   };
 
   return (
