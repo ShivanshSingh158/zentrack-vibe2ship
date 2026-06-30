@@ -195,17 +195,6 @@ export const signInWithGoogle = async (): Promise<void> => {
     return Promise.reject(new Error('Auth is in a failing loop. Please restart the app.'));
   }
 
-  // Attempt silent refresh first if we have a refresh token
-  if (localStorage.getItem('zen_gcal_refresh_token')) {
-    try {
-      await forceSilentRefresh();
-      return; // Success! No popup needed.
-    } catch (err) {
-      console.warn('[GoogleCalendar] signInWithGoogle silent refresh fallback failed, prompting user...', err);
-      // Fall through to manual popup
-    }
-  }
-
   return new Promise((resolve, reject) => {
     // Add a 45-second timeout safeguard so the auth panel state does not hang indefinitely if the popup is blocked
     const timeoutId = setTimeout(() => {
@@ -283,12 +272,10 @@ export const signInWithGoogle = async (): Promise<void> => {
     if (_gisLoaded && (window as any).google?.accounts?.oauth2) {
       doRequest();
     } else {
-      loadGisScript()
-        .then(doRequest)
-        .catch((err) => {
-          clearTimeout(timeoutId);
-          reject(err);
-        });
+      clearTimeout(timeoutId);
+      // We cannot load the script asynchronously here because the browser will block the popup
+      // after the async gap. Tell the user to try again.
+      reject(new Error('Google Identity services are still loading or were blocked. Please try again in a few seconds.'));
     }
   });
 };
