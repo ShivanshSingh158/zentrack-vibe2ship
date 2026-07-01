@@ -322,6 +322,9 @@ const DataReadyGate: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 };
 
 function App() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [user, setUser]               = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showLogin, setShowLogin]     = useState(false);
@@ -475,7 +478,7 @@ function App() {
     // Show login overlay if explicitly requested OR if the URL path is /login
     // BUT: never show login page immediately after a redirect (user is still authenticating)
     const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
-    const isLogin = !isReturningFromRedirect && (showLogin || window.location.pathname === '/login');
+    const isLogin = !isReturningFromRedirect && (showLogin || location.pathname === '/login');
 
     return (
       <>
@@ -504,7 +507,7 @@ function App() {
         {/* The Landing page stays mounted in the background to prevent video reloads */}
         <Landing onTryNow={() => {
           setShowLogin(true);
-          window.history.pushState({}, '', '/login');
+          navigate('/login', { replace: true });
         }} />
 
         <AnimatePresence mode="wait">
@@ -512,7 +515,7 @@ function App() {
             <Login 
               onBack={() => {
                 setShowLogin(false);
-                window.history.replaceState({}, '', '/');
+                navigate('/', { replace: true });
               }} 
             />
           )}
