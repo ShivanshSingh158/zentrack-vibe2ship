@@ -12,6 +12,15 @@
     <meta name="theme-color" content="#000000">
     <link rel="apple-touch-icon" href="/icon-192.png">
     <title>ZenTrack</title>
+    <!-- BYPASS STALE PWA SERVICE WORKERS ON FIREBASE AUTH DOMAIN -->
+    <script>
+      if (window.location.pathname.startsWith('/__/')) {
+        navigator.serviceWorker && navigator.serviceWorker.getRegistrations().then(function(regs) {
+          for (var i = 0; i < regs.length; i++) regs[i].unregister();
+          window.location.reload();
+        });
+      }
+    </script>
   </head>
   <body>
 

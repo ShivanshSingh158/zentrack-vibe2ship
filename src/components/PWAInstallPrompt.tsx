@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, X, Share } from 'lucide-react';
+import { Download, X, Share, Zap, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const PWAInstallPrompt: React.FC = () => {
@@ -72,43 +72,45 @@ export const PWAInstallPrompt: React.FC = () => {
         transition={{ type: 'spring', stiffness: 400, damping: 30 }}
         style={{
           position: 'fixed',
-          bottom: 'calc(75px + env(safe-area-inset-bottom))', // Just above BottomNav if mobile
-          left: '1rem',
-          right: '1rem',
-          maxWidth: '400px',
-          margin: '0 auto',
-          background: 'rgba(20, 20, 26, 0.95)',
+          bottom: 'calc(40px + env(safe-area-inset-bottom))',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: '90%',
+          maxWidth: '420px',
+          background: 'rgba(15, 15, 20, 0.75)',
           backdropFilter: 'blur(24px)',
-          border: '1px solid rgba(167, 139, 250, 0.3)',
-          borderRadius: '16px',
-          padding: '1rem',
-          boxShadow: '0 10px 40px -10px rgba(0,0,0,0.5)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          borderRadius: '24px',
+          padding: '1.5rem',
+          boxShadow: '0 24px 48px -12px rgba(0,0,0,0.6), inset 0 0 20px rgba(255,255,255,0.03)',
           zIndex: 9999,
           display: 'flex',
           flexDirection: 'column',
-          gap: '0.75rem',
+          gap: '1.25rem',
         }}
       >
         <button 
           onClick={handleDismiss}
-          style={{ position: 'absolute', top: 12, right: 12, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer' }}
+          style={{ position: 'absolute', top: 16, right: 16, background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', transition: 'color 0.2s' }}
+          onMouseEnter={e => e.currentTarget.style.color = 'white'}
+          onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.4)'}
         >
           <X size={16} />
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{
-            width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #a78bfa 0%, #6366f1 100%)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <Download size={20} color="white" />
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem', textAlign: 'center', marginTop: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', justifyContent: 'center' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.1)' }}>
+              <img src="/pwa-192x192.png" alt="logo" style={{ width: '18px', height: '18px', borderRadius: '50%' }} />
+            </div>
+            <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: 'white', fontFamily: 'var(--font-display, inherit)', display: 'flex', alignItems: 'center', gap: '0.4rem', letterSpacing: '-0.02em' }}>
+              <Sparkles size={16} color="#fbbf24" fill="#fbbf24" /> New Zentrack
+            </h4>
           </div>
-          <div>
-            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 600, color: 'white' }}>Install ZenTrack</h4>
-            <p style={{ margin: 0, fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>
-              Install for faster access and a native app experience.
-            </p>
-          </div>
+          <p style={{ margin: 0, fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', letterSpacing: '0.01em', fontWeight: 400 }}>
+            A fresh update is ready. Install instantly — no data lost.
+          </p>
         </div>
 
         {isIOS ? (
@@ -116,26 +118,32 @@ export const PWAInstallPrompt: React.FC = () => {
             To install on iOS: tap <Share size={14} style={{ display: 'inline', verticalAlign: 'middle', margin: '0 2px' }} /> <strong>Share</strong> then <strong>Add to Home Screen</strong>.
           </div>
         ) : (
-          <button
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={handleInstallClick}
             style={{
-              background: '#a78bfa',
-              color: '#000',
+              background: 'linear-gradient(135deg, #a855f7, #ec4899)',
+              color: 'white',
               border: 'none',
-              borderRadius: 8,
-              padding: '0.6rem',
-              fontWeight: 600,
+              borderRadius: '999px',
+              padding: '0.85rem',
+              fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '0.5rem',
-              width: '100%'
+              gap: '0.4rem',
+              width: '100%',
+              fontSize: '0.95rem',
+              boxShadow: '0 8px 25px rgba(168, 85, 247, 0.35)',
+              marginTop: '0.25rem',
+              letterSpacing: '0.01em'
             }}
           >
-            <Download size={16} />
-            Install App
-          </button>
+            <Zap size={16} fill="white" />
+            Install Now
+          </motion.button>
         )}
       </motion.div>
     </AnimatePresence>
