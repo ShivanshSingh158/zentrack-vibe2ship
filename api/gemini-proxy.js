@@ -69,7 +69,7 @@ export default async function handler(req, res) {
   // ── 1. Verify Firebase ID Token ──────────────────────────────────────────────
   const authHeader = req.headers['authorization'] || '';
   if (!authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing Firebase ID token in Authorization header.' });
+    return res.status(401).json({ error: { message: 'Missing Firebase ID token in Authorization header.', code: 401, status: 'UNAUTHENTICATED' } });
   }
   const idToken = authHeader.replace('Bearer ', '').trim();
 
@@ -78,8 +78,7 @@ export default async function handler(req, res) {
     const decoded = await admin.auth().verifyIdToken(idToken);
     uid = decoded.uid;
   } catch (err) {
-    console.warn('[gemini-proxy] Invalid ID token:', err.code || err.message);
-    return res.status(401).json({ error: 'Invalid or expired Firebase ID token.' });
+    return res.status(401).json({ error: { message: 'Invalid or expired Firebase ID token.', code: 401, status: 'UNAUTHENTICATED' } });
   }
 
   // ── 2. Per-User Rate Limiting (100 req/min) ──────────────────────────────────
@@ -158,7 +157,7 @@ export default async function handler(req, res) {
       console.error(`[gemini-proxy] Gemini error ${geminiRes.status} for uid=${uid}:`, errMsg.slice(0, 200));
 
       // Return the same status code so the client can handle 429 / 503 etc.
-      return res.status(geminiRes.status).json({ error: errMsg });
+      return res.status(geminiRes.status).json({ error: { message: errMsg, code: geminiRes.status } });
     }
 
     return res.status(200).json(data);

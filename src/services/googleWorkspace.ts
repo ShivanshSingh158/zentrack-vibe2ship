@@ -199,132 +199,258 @@ export const createGoogleDoc = async (title: string, signal?: AbortSignal) => {
   };
 };
 
-/** Appends text content to an existing Google Doc with basic Markdown parsing */
+/** 
+ * Writes richly-formatted content to a Google Doc.
+ * 
+ * Strategy: Upload as HTML via the Drive multipart API.
+ * Google Docs automatically converts HTML tables, headings, bold,
+ * italic, and lists into native Docs formatting. This is the only
+ * reliable way to produce real tables — the Docs batchUpdate API
+ * requires complex index tracking that breaks with any edit.
+ * 
+ * Markdown syntax supported:
+ *   # H1  ## H2  ### H3
+ *   **bold**  *italic*  ~~strikethrough~~
+ *   - bullet  1. numbered
+ *   | col | col |  (pipe tables → real Google Docs tables)
+ *   ---  (horizontal rule)
+ *   > blockquote
+ *   `code`  ```code block```
+ */
 export const writeToGoogleDoc = async (docId: string, content: string, optionsOrSignal?: AbortSignal | { isHtml?: boolean; signal?: AbortSignal }) => {
-  // Normalize overloaded 3rd parameter (backward compat + new options object support)
   const signal = optionsOrSignal instanceof AbortSignal ? optionsOrSignal : (optionsOrSignal as any)?.signal;
-  // Note: isHtml is handled by pre-processing in toolExecutor — the actual Docs API always
-  // receives the Markdown-parsed content here (headings, bold, bullets are converted below).
+  const token = await ensureToken();
 
-  const requests: any[] = [];
-  let currentIndex = 1; // Google Docs text index is 1-based
-  let rawText = '';
-  
-  const lines = content.split('\n');
-  const bulletRanges: { start: number; end: number }[] = [];
-  
-  for (const line of lines) {
-    let processLine = line;
-    let headingType: string | null = null;
-    let isBullet = false;
-    
-    // Parse Headings
-    if (processLine.startsWith('# ')) {
-      headingType = 'HEADING_1';
-      processLine = processLine.substring(2);
-    } else if (processLine.startsWith('## ')) {
-      headingType = 'HEADING_2';
-      processLine = processLine.substring(3);
-    } else if (processLine.startsWith('### ')) {
-      headingType = 'HEADING_3';
-      processLine = processLine.substring(4);
-    }
-    // Parse Bullets (we only support top-level bullets for simplicity)
-    else if (processLine.startsWith('- ') || processLine.startsWith('* ')) {
-      isBullet = true;
-      processLine = processLine.substring(2);
-    }
-    
-    const boldRanges: { start: number; end: number }[] = [];
-    const italicRanges: { start: number; end: number }[] = [];
-    
-    // Parse Bold (**text**)
-    let boldMatch;
-    while ((boldMatch = /\*\*(.*?)\*\*/.exec(processLine)) !== null) {
-      const matchText = boldMatch[1];
-      const matchStart = boldMatch.index;
-      processLine = processLine.substring(0, matchStart) + matchText + processLine.substring(matchStart + matchText.length + 4);
-      boldRanges.push({ start: currentIndex + matchStart, end: currentIndex + matchStart + matchText.length });
-    }
-    
-    // Parse Italic (*text*)
-    let italicMatch;
-    while ((italicMatch = /\*(.*?)\*/.exec(processLine)) !== null) {
-      const matchText = italicMatch[1];
-      const matchStart = italicMatch.index;
-      processLine = processLine.substring(0, matchStart) + matchText + processLine.substring(matchStart + matchText.length + 2);
-      italicRanges.push({ start: currentIndex + matchStart, end: currentIndex + matchStart + matchText.length });
-    }
+  // ── Step 1: Convert Markdown → HTML ──────────────────────────────────────────
+  const htmlBody = markdownToHtml(content);
+  const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: 'Arial', sans-serif; font-size: 11pt; line-height: 1.6; color: #1a1a1a; margin: 72pt; }
+  h1 { font-size: 20pt; font-weight: 700; color: #1a1a2e; border-bottom: 2pt solid #4a90d9; padding-bottom: 4pt; margin-top: 24pt; }
+  h2 { font-size: 16pt; font-weight: 700; color: #1a1a2e; margin-top: 18pt; }
+  h3 { font-size: 13pt; font-weight: 700; color: #2c3e50; margin-top: 14pt; }
+  h4 { font-size: 11pt; font-weight: 700; color: #34495e; margin-top: 10pt; }
+  p  { margin: 6pt 0; }
+  strong { font-weight: 700; }
+  em { font-style: italic; }
+  del { text-decoration: line-through; color: #888; }
+  code { font-family: 'Courier New', monospace; font-size: 9.5pt; background: #f5f5f5; padding: 1pt 3pt; border-radius: 2pt; }
+  pre  { font-family: 'Courier New', monospace; font-size: 9.5pt; background: #f5f5f5; padding: 10pt; border-left: 3pt solid #4a90d9; margin: 8pt 0; white-space: pre-wrap; }
+  blockquote { border-left: 3pt solid #bdc3c7; margin: 8pt 0 8pt 20pt; padding-left: 10pt; color: #555; font-style: italic; }
+  ul { margin: 4pt 0; padding-left: 22pt; }
+  ol { margin: 4pt 0; padding-left: 22pt; }
+  li { margin: 3pt 0; }
+  hr { border: none; border-top: 1pt solid #bdc3c7; margin: 16pt 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12pt 0; }
+  th { background-color: #2c3e50; color: white; font-weight: 700; padding: 8pt 10pt; text-align: left; border: 1pt solid #2c3e50; font-size: 10pt; }
+  td { padding: 7pt 10pt; border: 1pt solid #bdc3c7; font-size: 10pt; vertical-align: top; }
+  tr:nth-child(even) td { background-color: #f8f9fa; }
+  tr:hover td { background-color: #eaf2ff; }
+  .highlight { background-color: #fff9c4; padding: 1pt 3pt; }
+</style>
+</head>
+<body>${htmlBody}</body>
+</html>`;
 
-    const lineStart = currentIndex;
-    rawText += processLine + '\n';
-    const lineEnd = currentIndex + processLine.length + 1; // +1 for the newline
-    
-    if (headingType) {
-      requests.push({
-        updateParagraphStyle: {
-          range: { startIndex: lineStart, endIndex: lineEnd },
-          paragraphStyle: { namedStyleType: headingType },
-          fields: 'namedStyleType'
-        }
-      });
-    }
-    
-    if (isBullet) {
-      bulletRanges.push({ start: lineStart, end: lineEnd });
-    }
-    
-    for (const r of boldRanges) {
-      requests.push({
-        updateTextStyle: {
-          range: { startIndex: r.start, endIndex: r.end },
-          textStyle: { bold: true },
-          fields: 'bold'
-        }
-      });
-    }
-    
-    for (const r of italicRanges) {
-      requests.push({
-        updateTextStyle: {
-          range: { startIndex: r.start, endIndex: r.end },
-          textStyle: { italic: true },
-          fields: 'italic'
-        }
-      });
-    }
-    
-    currentIndex = lineEnd;
-  }
-  
-  if (bulletRanges.length > 0) {
-    for (const br of bulletRanges) {
-      requests.push({
-        createParagraphBullets: {
-          range: { startIndex: br.start, endIndex: br.end },
-          bulletPreset: 'BULLET_DISC_CIRCLE_SQUARE'
-        }
-      });
-    }
-  }
-  
-  // The first request MUST be the text insertion. All subsequent styling requests 
-  // will apply perfectly since we tracked indices based on the rawText structure.
-  const finalRequests = [
+  // ── Step 2: Upload as HTML to Drive — Docs auto-converts it ──────────────────
+  const boundary = '-------314159265358979323846';
+  const metadata = JSON.stringify({
+    mimeType: 'application/vnd.google-apps.document',
+  });
+
+  const body = [
+    `--${boundary}`,
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    metadata,
+    `--${boundary}`,
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    fullHtml,
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  const res = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${docId}?uploadType=multipart&convert=true`,
     {
-      insertText: {
-        location: { index: 1 },
-        text: rawText
-      }
-    },
-    ...requests
-  ];
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': `multipart/related; boundary="${boundary}"`,
+      },
+      body,
+      signal,
+    }
+  );
 
-  await workspaceFetch<any>(`${DOCS_API}/${docId}:batchUpdate`, 'POST', {
-    requests: finalRequests
-  }, undefined, signal);
+  if (!res.ok) {
+    let errMsg = `Drive upload HTTP ${res.status}`;
+    try { const e = await res.json(); errMsg = e?.error?.message || errMsg; } catch {}
+    throw new Error(`Google Doc write failed: ${errMsg}`);
+  }
+
   return { docId, url: `https://docs.google.com/document/d/${docId}/edit` };
 };
+
+/**
+ * Converts Markdown text to HTML.
+ * Handles: headings, bold, italic, strikethrough, code, blockquotes,
+ *          horizontal rules, unordered + ordered lists, and pipe tables.
+ */
+function markdownToHtml(md: string): string {
+  const lines = md.split('\n');
+  const out: string[] = [];
+  let inCodeBlock = false;
+  let codeAccum: string[] = [];
+  let inTable = false;
+  let tableRows: string[][] = [];
+  let tableIsHeader = true;
+  let inUl = false;
+  let inOl = false;
+
+  const flushTable = () => {
+    if (!tableRows.length) return;
+    out.push('<table>');
+    tableRows.forEach((cells, ri) => {
+      if (ri === 0) {
+        out.push('<tr>' + cells.map(c => `<th>${inlineFormat(c)}</th>`).join('') + '</tr>');
+      } else {
+        out.push('<tr>' + cells.map(c => `<td>${inlineFormat(c)}</td>`).join('') + '</tr>');
+      }
+    });
+    out.push('</table>');
+    tableRows = [];
+    inTable = false;
+    tableIsHeader = true;
+  };
+
+  const flushList = () => {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const line = raw;
+
+    // ── Fenced code blocks ────────────────────────────────────────────────────
+    if (line.trimStart().startsWith('```')) {
+      if (!inCodeBlock) {
+        inCodeBlock = true;
+        codeAccum = [];
+      } else {
+        inCodeBlock = false;
+        flushList();
+        if (inTable) flushTable();
+        out.push(`<pre>${escHtml(codeAccum.join('\n'))}</pre>`);
+      }
+      continue;
+    }
+    if (inCodeBlock) { codeAccum.push(raw); continue; }
+
+    // ── Pipe tables ───────────────────────────────────────────────────────────
+    if (line.trimStart().startsWith('|') && line.trimEnd().endsWith('|')) {
+      // Skip separator rows (|---|---|)
+      if (/^\|[\s\-:|]+\|$/.test(line.trim())) { tableIsHeader = false; continue; }
+      flushList();
+      inTable = true;
+      const cells = line.split('|').slice(1, -1).map(c => c.trim());
+      tableRows.push(cells);
+      continue;
+    } else if (inTable) {
+      flushTable();
+    }
+
+    // ── Headings ──────────────────────────────────────────────────────────────
+    const h4Match = line.match(/^#### (.+)/);
+    const h3Match = line.match(/^### (.+)/);
+    const h2Match = line.match(/^## (.+)/);
+    const h1Match = line.match(/^# (.+)/);
+    if (h4Match) { flushList(); out.push(`<h4>${inlineFormat(h4Match[1])}</h4>`); continue; }
+    if (h3Match) { flushList(); out.push(`<h3>${inlineFormat(h3Match[1])}</h3>`); continue; }
+    if (h2Match) { flushList(); out.push(`<h2>${inlineFormat(h2Match[1])}</h2>`); continue; }
+    if (h1Match) { flushList(); out.push(`<h1>${inlineFormat(h1Match[1])}</h1>`); continue; }
+
+    // ── Horizontal rules ──────────────────────────────────────────────────────
+    if (/^---+$/.test(line.trim()) || /^\*\*\*+$/.test(line.trim())) {
+      flushList();
+      out.push('<hr>');
+      continue;
+    }
+
+    // ── Blockquote ────────────────────────────────────────────────────────────
+    const bqMatch = line.match(/^>\s?(.*)/);
+    if (bqMatch) { flushList(); out.push(`<blockquote>${inlineFormat(bqMatch[1])}</blockquote>`); continue; }
+
+    // ── Unordered list ────────────────────────────────────────────────────────
+    const ulMatch = line.match(/^(\s*)[*\-+]\s(.+)/);
+    if (ulMatch) {
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      if (!inUl) { out.push('<ul>'); inUl = true; }
+      out.push(`<li>${inlineFormat(ulMatch[2])}</li>`);
+      continue;
+    }
+
+    // ── Ordered list ──────────────────────────────────────────────────────────
+    const olMatch = line.match(/^\d+\.\s(.+)/);
+    if (olMatch) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (!inOl) { out.push('<ol>'); inOl = true; }
+      out.push(`<li>${inlineFormat(olMatch[1])}</li>`);
+      continue;
+    }
+
+    // ── Blank line / paragraph break ──────────────────────────────────────────
+    if (line.trim() === '') {
+      flushList();
+      // Only add <br> between paragraphs, not tables/headings
+      if (out.length > 0 && !out[out.length - 1].startsWith('<h') && !out[out.length - 1].startsWith('<table') && !out[out.length - 1].startsWith('<pre') && !out[out.length - 1] === '</ul>' as any) {
+        out.push('<br>');
+      }
+      continue;
+    }
+
+    // ── Normal paragraph ──────────────────────────────────────────────────────
+    flushList();
+    out.push(`<p>${inlineFormat(line)}</p>`);
+  }
+
+  // Flush any open blocks
+  if (inCodeBlock) out.push(`<pre>${escHtml(codeAccum.join('\n'))}</pre>`);
+  if (inTable) flushTable();
+  flushList();
+
+  return out.join('\n');
+}
+
+/** Apply inline formatting: bold, italic, strikethrough, code, links */
+function inlineFormat(text: string): string {
+  return text
+    // Code (must come first to avoid processing its contents)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    // Bold+italic
+    .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    // Bold
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/_(.+?)_/g, '<em>$1</em>')
+    // Strikethrough
+    .replace(/~~(.+?)~~/g, '<del>$1</del>')
+    // Links
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2">$1</a>')
+    // Escape remaining HTML
+    .replace(/&(?!(amp|lt|gt|quot|#\d+);)/g, '&amp;');
+}
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 
 // ─── ARCHIVE ──────────────────────────────────────────────────────────────────
 

@@ -305,7 +305,7 @@ export const HabitsModule = () => {
                   {/* Controls */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     {/* Heatmap Grid */}
-                    <div style={{ overflowX: 'auto', display: 'flex', alignItems: 'center' }}>
+                    <div className="habit-heatmap-container" style={{ overflowX: 'auto', display: 'flex', alignItems: 'center' }}>
                       <div style={{ display: 'flex', gap: '2px', minWidth: 'fit-content' }}>
                         {weeks.map((week, wi) => (
                           <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -338,6 +338,7 @@ export const HabitsModule = () => {
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <button
+                        className="habit-check-btn"
                         onClick={(e) => toggleHabitDay(habit.id!, today, e)}
                         style={{
                           width: '24px', height: '24px', borderRadius: '4px',
@@ -367,7 +368,7 @@ export const HabitsModule = () => {
       {/* Add Habit Modal */}
       {showAddModal && (
         <div className="notes-modal-overlay" onClick={() => setShowAddModal(false)}>
-          <div className="notes-modal-content" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
+          <div className="notes-modal-content bottom-sheet-mobile" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
             <div className="notes-modal-header">
               <h2 style={{ fontSize: '1.25rem', margin: 0 }}>New Habit</h2>
               <button className="btn-icon" onClick={() => setShowAddModal(false)}><X size={20} /></button>

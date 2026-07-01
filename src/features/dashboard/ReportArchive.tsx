@@ -16,6 +16,18 @@ export const ReportArchive: React.FC = () => {
     return () => window.removeEventListener('show-report-archive', handleShow);
   }, []);
 
+  // Prevent background scrolling while the modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -78,7 +90,7 @@ export const ReportArchive: React.FC = () => {
           </div>
         </div>
 
-        <div style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div data-lenis-prevent="true" style={{ padding: '24px', overflowY: 'auto', flex: 1, minHeight: 0, overscrollBehavior: 'contain', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {reports.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 20px', color: '#6b7280' }}>
               <Archive size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />

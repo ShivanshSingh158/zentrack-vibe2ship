@@ -309,7 +309,18 @@ const releaseSemaphore = () => {
 // All subsequent callWithFallback calls skip that key until it cools down.
 // This prevents the 1/8→2/8→8/8 waterfall exhaustion spiral.
 const KEY_COOLDOWN_MS = 62_000; // 62s — just over Gemini's typical 60s 429 window
-const keyCooldownUntil = new Map<string, number>(); // token (first 8 chars) → available-at timestamp
+const keyCooldownUntil = new Map<string, number>(); // token → available-at timestamp
+
+// ── Global fleet backpressure ─────────────────────────────────────────────────
+// When ALL keys are exhausted, subsequent agents wait here instead of each
+// agent hammering the API independently and producing 10 identical 429 storms.
+let _globalFleetCooldownUntil = 0;
+const setGlobalFleetCooldown = (ms: number) => {
+  _globalFleetCooldownUntil = Math.max(_globalFleetCooldownUntil, Date.now() + ms);
+};
+const getGlobalFleetCooldownWaitMs = (): number => {
+  return Math.max(0, _globalFleetCooldownUntil - Date.now());
+};
 
 const isKeyAvailable = (token: string): boolean => {
   const until = keyCooldownUntil.get(token);
@@ -343,7 +354,7 @@ const isAuthError = (err: any): boolean => {
 
 const isModelNotFound = (err: any): boolean => {
   const msg = (err?.message || '').toLowerCase();
-  return msg.includes('404') || msg.includes('not found');
+  return msg.includes('404') || msg.includes('not found') || msg.includes('400') || msg.includes('invalid argument');
 };
 
 const isOverload = (err: any): boolean => {
@@ -571,6 +582,18 @@ const _callWithFallbackInner = async (
     throw new Error('No Gemini API key found. Add your API key in Settings → AI Key.');
   }
 
+  // ── Global fleet backpressure — if all keys just got rate-limited by a previous
+  // parallel agent, wait here rather than immediately firing 10+ identical 429s.
+  const globalWait = getGlobalFleetCooldownWaitMs();
+  if (globalWait > 0) {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('agent-log', {
+        detail: { type: 'thinking', title: `⏳ Fleet cooling. Auto-resuming in ${Math.ceil(globalWait / 1000)}s...` }
+      }));
+    }
+    await sleep(globalWait + 200, signal);
+  }
+
   // ── Personal / Shared Routing Policy ─────────────────────────────────────────
   // When a personal OAuth token exists, apply the agent-count routing rule:
   //   ≤ PERSONAL_ONLY_THRESHOLD active top-level agents → personal key (better models, own quota)
@@ -646,15 +669,19 @@ const _callWithFallbackInner = async (
     }
 
     // ── Attempt 2-N: shared key pool (true round-robin, atomic slot claim) ────
-    // The semaphore ensures we only have 4 parallel requests at most,
-    // so we can safely allow a full rotation through all available keys
-    // before declaring a model exhausted.
-    if (allKeys.length === 0) {
+    // Always use liveKeys (from pickNextSharedKey) not the stale allKeys snapshot.
+    // This also correctly handles the proxy_dummy_key case.
+    const livePool = getActiveKeyPool();
+    if (livePool.length === 0) {
       // No shared keys configured and personal key also failed
       break;
     }
 
-    const MAX_KEY_ROTATIONS = allKeys.length;
+    // ✅ FIX: Limit rotations to min(livePool.length, 3) per model.
+    // Previously allKeys.length (e.g. 10) meant we'd try ALL 10 keys per model,
+    // then ALL 10 again on model 2, and model 3 — burning 30 requests in seconds.
+    // With 3 models × min(10,3) = 9 attempts max across the entire mission.
+    const MAX_KEY_ROTATIONS = Math.min(livePool.length, 3);
     let rotationsUsed = 0;
 
     while (rotationsUsed < MAX_KEY_ROTATIONS) {
@@ -695,7 +722,6 @@ const _callWithFallbackInner = async (
               }));
             }
             // Switch to the next key instantly. We only need a tiny jitter to prevent thundering herds.
-            // (If ALL keys are actually rate-limited, pickNextSharedKey will handle the true waiting).
             const jitter = 50 + Math.random() * 100;
             await sleep(jitter);
             continue;
@@ -706,8 +732,17 @@ const _callWithFallbackInner = async (
         if (isModelNotFound(err)) {
           break; // model not available → try next model
         }
-        if (isOverload(err))    break;    // server overloaded → try next model
-        if (isAuthError(err)) { rotationsUsed++; continue; } // invalid key → skip
+        if (isOverload(err)) break;    // server overloaded → try next model
+        if (isAuthError(err)) {
+          // Auth error on a shared key → mark it cooling so we don't retry it.
+          // Do NOT count proxy_dummy_key auth errors as API key failures.
+          if (keyObj.token !== 'proxy_dummy_key') {
+            markKeyCooling(keyObj.token, 'Auth error (403/401)', KEY_COOLDOWN_MS);
+          }
+          rotationsUsed++;
+          if (rotationsUsed >= MAX_KEY_ROTATIONS) break;
+          continue;
+        }
         throw err; // non-retryable error
       }
     }
@@ -719,31 +754,51 @@ const _callWithFallbackInner = async (
     }
   }
 
+  // ── All models and keys exhausted ────────────────────────────────────────
+  // ✅ FIX: Check hitQuota FIRST before the 401 check.
+  // Previously: if keys got 429d and then the lastError happened to be a 401
+  // (from proxy auth), it would throw the misleading "API key invalid" error
+  // instead of the correct "rate limited" message.
+  if (hitQuota) {
+    // Set global fleet cooldown so subsequent parallel agents don't immediately
+    // hammer the same exhausted keys.
+    setGlobalFleetCooldown(KEY_COOLDOWN_MS);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('agent-log', {
+        detail: { type: 'thinking', title: '⚠️ All keys rate-limited. Fleet auto-recovers in ~60s.' }
+      }));
+    }
+    const livePool = getActiveKeyPool();
+    const coolingCount = [...keyCooldownUntil.values()].filter(t => t > Date.now()).length;
+    throw new Error(
+      coolingCount > 0
+        ? `${coolingCount}/${livePool.length} key(s) rate-limited. Auto-recover in ~60s. ZenTrack will retry automatically.`
+        : 'AI quota reached. The system will auto-retry when keys cool down (~60s).'
+    );
+  }
+
   const finalMsg = String(lastError?.message || '').toLowerCase();
   if (finalMsg.includes('503') || finalMsg.includes('overload') || finalMsg.includes('high demand')) {
     throw new Error('AI is currently overloaded. Please try again in a moment.');
   }
-  if (finalMsg.includes('401') || finalMsg.includes('invalid authentication') || finalMsg.includes('authentication credentials')) {
+  if (finalMsg.includes('401') || finalMsg.includes('invalid authentication') || finalMsg.includes('authentication credentials') || finalMsg.includes('unauthenticated')) {
+    if (finalMsg.includes('firebase') || finalMsg.includes('id token')) {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('firebase-auth-expired'));
+      throw new Error('Your session has expired. Please refresh the page to continue.');
+    }
     if (personalKey) {
       setAuthExpired();
       throw new Error('Your Gemini OAuth session has expired. Please reconnect your Google account.');
     }
-    throw new Error('Gemini API key is invalid. Please reconnect your account or add a valid API key in Agent Settings.');
-  }
-
-  // ── All models and keys exhausted ────────────────────────────────────────
-  if (hitQuota) {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('agent-log', {
-        detail: { type: 'thinking', title: '⚠️ Rate limits hit. Please wait ~60s before retrying.' }
-      }));
+    // ✅ FIX: Only show "API key invalid" if we're NOT using the proxy (proxy_dummy_key).
+    // If using the proxy, the real error is the Firebase session above.
+    const livePool = getActiveKeyPool();
+    const usingProxy = livePool.length === 1 && livePool[0] === 'proxy_dummy_key';
+    if (usingProxy) {
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('firebase-auth-expired'));
+      throw new Error('Your session has expired. Please refresh the page to continue.');
     }
-    const coolingCount = [...keyCooldownUntil.values()].filter(t => t > Date.now()).length;
-    throw new Error(
-      coolingCount > 0
-        ? `${coolingCount}/${allKeys.length} API key(s) are rate-limited. They auto-recover in ~60s. Add more keys in Agent Settings for higher throughput.`
-        : 'AI quota reached. Add your own Gemini API key in Agent Settings for uninterrupted access.'
-    );
+    throw new Error('One or more Gemini API keys returned auth errors. Please check your keys in Agent Settings.');
   }
 
   throw new Error(lastError?.message || 'AI failed to respond. Please try again.');

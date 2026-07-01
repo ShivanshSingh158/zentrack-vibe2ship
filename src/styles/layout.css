@@ -37,10 +37,10 @@
   justify-content: space-between;
   padding: 0 2rem;
   height: 56px;
-  background: rgba(0, 30, 50, 0.7);
+  background: rgba(3, 13, 26, 0.75);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
   margin: 0;
   max-width: 100%;
   border-radius: 0;
@@ -167,7 +167,7 @@
   }
   
   .top-nav {
-    padding: 0 1rem;
+    display: none !important;  /* Hidden on mobile — BottomNav replaces it */
   }
   .top-nav-center {
     display: none;
@@ -178,7 +178,12 @@
   .main-nav-links {
     gap: 1rem;
   }
+  .main-content {
+    /* Need space for the bottom nav bar */
+    padding: 0.75rem 0.75rem calc(72px + env(safe-area-inset-bottom)) !important;
+  }
 }
+
 
 .top-nav-center {
   flex: 1;
@@ -608,7 +613,7 @@
     flex-direction: column;
   }
   .main-content {
-    padding: 1rem;
+    padding: 0.75rem 0.75rem calc(72px + env(safe-area-inset-bottom)) !important;
     overflow-y: auto;
     overflow-x: hidden;
   }

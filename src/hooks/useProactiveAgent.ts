@@ -20,6 +20,23 @@ const GHOST_THROTTLE_MS     = 24 * 60 * 60 * 1000; // 24 hours between ghost sca
 const STORAGE_KEY    = 'zen_proactive_last_run';
 const GHOST_SCAN_KEY = 'zen_ghost_last_scan';
 
+/**
+ * Returns the correct time-of-day session label and emoji based on the user's
+ * REAL local clock hour, so notifications and prompts are always accurate.
+ *   00-04 → 🌙 Night
+ *   05-11 → 🌅 Morning
+ *   12-17 → ☀️ Afternoon
+ *   18-20 → 🌆 Evening
+ *   21-23 → 🌙 Night
+ */
+function getTimeOfDay(): { label: string; emoji: string; period: 'morning' | 'afternoon' | 'evening' | 'night' } {
+  const hour = new Date().getHours();
+  if (hour >= 5  && hour < 12) return { label: 'Morning',   emoji: '🌅', period: 'morning'   };
+  if (hour >= 12 && hour < 18) return { label: 'Afternoon', emoji: '☀️',  period: 'afternoon' };
+  if (hour >= 18 && hour < 21) return { label: 'Evening',   emoji: '🌆', period: 'evening'   };
+  return                               { label: 'Night',     emoji: '🌙', period: 'night'     };
+}
+
 // ✅ U7 FIX: _isProactiveRunning is KEPT as a guard between proactive loops themselves
 // (e.g., prevent ghost scan starting while morning briefing runs).
 // The shared orchestrationLock handles competition with USER commands.
@@ -156,20 +173,22 @@ export const useProactiveAgent = (
       let actionPrompt: string;
 
       if (overdueTasks.length === 0) {
-        // Today tasks only — morning protocol (unchanged)
+        // Today tasks only — time-aware protocol
+        const tod = getTimeOfDay();
         actionPrompt = `${temporalCtx}
 
-AUTONOMOUS_MORNING_PROTOCOL — LEVEL_2 PRIORITY SETUP
+AUTONOMOUS_${tod.label.toUpperCase()}_PROTOCOL — LEVEL_2 PRIORITY SETUP
+Current session: ${tod.emoji} ${tod.label} (local time: ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })})
 
 The user has ${todayTasks.length} task(s) due today: ${todayList}.
 
 TAKE THESE ACTIONS WITHOUT ASKING PERMISSION:
 
-1. [ARGUS] Score each today task by risk (hours remaining vs task complexity). Call send_notification with today's exact priority order: "📋 Today's Priority Order: 1. [task] 2. [task] ..."
+1. [ARGUS] Score each today task by risk (hours remaining vs task complexity). Call send_notification with today's exact priority order: "📋 ${tod.emoji} ${tod.label} Priority Order: 1. [task] 2. [task] ..."
 
-2. [CHRONOS] Call get_free_calendar_slots. Block focused work windows for the top 2 priority tasks using schedule_task_in_calendar. Schedule the highest-risk task in the earliest available slot.
+2. [CHRONOS] Call get_free_calendar_slots. Block focused work windows for the top 2 priority tasks using schedule_task_in_calendar. Schedule the highest-risk task in the earliest available slot. Respect that it is currently ${tod.period} — don't schedule work in past time slots.
 
-3. [AEGIS] Report exactly which calendar blocks were created, what time each task is scheduled, and confirm notifications were sent. Format: "Action Report: ✅ [action] | ✅ [action]"
+3. [AEGIS] Report exactly which calendar blocks were created, what time each task is scheduled, and confirm notifications were sent. Format: "${tod.emoji} ${tod.label} Action Report: ✅ [action] | ✅ [action]"
 
 Execute everything now.`;
 
@@ -252,7 +271,8 @@ This is zero-click autonomous recovery. Execute all steps. No suggestions — on
             action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report', { detail: { report: result } })) }
           });
         } else {
-          toast.info('🤖 Morning Autonomy Complete', {
+          const tod = getTimeOfDay();
+          toast.info(`🤖 ${tod.emoji} ${tod.label} Autonomy Complete`, {
             description: `Zen AI scheduled ${todayTasks.length} task${todayTasks.length > 1 ? 's' : ''} into focus blocks. Check your calendar.`,
             duration: 7000,
             action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-proactive-report', { detail: { report: result } })) }

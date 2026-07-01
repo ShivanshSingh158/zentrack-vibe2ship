@@ -1,0 +1,15 @@
+{
+  "short_name": "ZenTrack",
+  "name": "ZenTrack OS",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#05050a",
+  "background_color": "#05050a"
+}

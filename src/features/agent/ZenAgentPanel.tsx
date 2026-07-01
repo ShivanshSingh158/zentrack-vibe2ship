@@ -278,6 +278,24 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // ── Keyboard Avoidance (iOS Safari) ──
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+  useEffect(() => {
+    if (!window.visualViewport) return;
+    const updateOffset = () => {
+      // Calculate how much the viewport shrank from the bottom
+      const offset = window.innerHeight - window.visualViewport!.height - window.visualViewport!.offsetTop;
+      setKeyboardOffset(Math.max(0, offset));
+    };
+    
+    window.visualViewport.addEventListener('resize', updateOffset);
+    window.visualViewport.addEventListener('scroll', updateOffset);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateOffset);
+      window.visualViewport?.removeEventListener('scroll', updateOffset);
+    };
+  }, []);
+
   const stopSpeaking = useCallback(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       window.speechSynthesis.cancel();
@@ -589,7 +607,7 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
           </div>
         )}
 
-        {/* ── Human-in-the-Loop Approval Card ── */}
+        {/* ── Human-in the-Loop Approval Card ── */}
         <AnimatePresence>
           {approvalRequest && (
             <motion.div
@@ -651,7 +669,9 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
 
       {/* ── Input area ── */}
       <div style={{
-        padding: '0.85rem 1rem', borderTop: '1px solid rgba(255,255,255,0.05)',
+        padding: '0.85rem 1rem', 
+        paddingBottom: keyboardOffset ? `calc(0.85rem + ${keyboardOffset}px)` : '0.85rem',
+        borderTop: '1px solid rgba(255,255,255,0.05)',
         background: 'rgba(0,0,0,0.3)',
       }}>
         {/* Abort button when running */}

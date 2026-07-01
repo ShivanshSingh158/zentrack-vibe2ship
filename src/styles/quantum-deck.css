@@ -1,55 +1,67 @@
 /**
- * quantum-deck.css — Styles for the Quantum Deck agent visualization panel.
+ * quantum-deck.css — Highly Creative Cinematic Redesign
  *
- * Contains:
- *  - Idle reactor animation (orbit rings, orb breathing)
- *  - Active capsule chamber (avatar viewport, scanning reticle, force field overlay)
- *  - HUD terminal console, waveform bars, pipeline step indicators
- *  - Agent dock items with tooltips
- *  - Responsive tweaks
- *
- * Used by: AgentShutter.tsx and HomeDashboard.tsx
+ * Reimagined as a floating, holographic projection instead of a rigid box.
+ * Features fiery glowing effects, 3D orbiting particles, and floating avatars.
  */
 
 .quantum-deck-container {
   width: 100%;
-  min-height: 380px;
+  min-height: 440px;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
-  background: rgba(10, 10, 16, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 20px;
+  background: radial-gradient(circle at center, rgba(3, 10, 20, 0.4) 0%, rgba(0, 0, 0, 0.6) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.1);
+  border-radius: 24px;
   padding: 1.5rem;
   position: relative;
   overflow: hidden;
-  box-shadow: inset 0 0 30px rgba(124, 58, 237, 0.03), 0 10px 40px rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  box-shadow: inset 0 0 40px rgba(0,0,0,0.8), 0 20px 50px rgba(0,0,0,0.5);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   margin: 1.5rem 0;
+  transition: all 0.6s ease;
 }
 
-/* Scanning line sweep effect */
-.quantum-deck-container::after {
+.quantum-deck-container.active-mode {
+  border-color: rgba(245, 184, 64, 0.3);
+  box-shadow: inset 0 0 60px rgba(245, 184, 64, 0.05), 0 20px 60px rgba(245, 184, 64, 0.1);
+}
+
+/* ── Dynamic Background Grid ── */
+.quantum-deck-container::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: linear-gradient(180deg, transparent, rgba(139, 92, 246, 0.06), transparent);
-  height: 100%;
-  width: 100%;
-  animation: scanline 6s infinite linear;
+  inset: -100%;
+  background-image: 
+    linear-gradient(rgba(56, 189, 248, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.03) 1px, transparent 1px);
+  background-size: 30px 30px;
+  transform: perspective(600px) rotateX(60deg) translateY(-100px) translateZ(-200px);
+  animation: grid-move 20s linear infinite;
   pointer-events: none;
-  z-index: 2;
+  z-index: 0;
+}
+.quantum-deck-container.active-mode::before {
+  background-image: 
+    linear-gradient(rgba(245, 184, 64, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 184, 64, 0.04) 1px, transparent 1px);
+  animation: grid-move-fast 10s linear infinite;
 }
 
-@keyframes scanline {
-  0%   { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
+@keyframes grid-move {
+  0% { transform: perspective(600px) rotateX(60deg) translateY(0) translateZ(-200px); }
+  100% { transform: perspective(600px) rotateX(60deg) translateY(300px) translateZ(-200px); }
+}
+@keyframes grid-move-fast {
+  0% { transform: perspective(600px) rotateX(60deg) translateY(0) translateZ(-200px); }
+  100% { transform: perspective(600px) rotateX(60deg) translateY(600px) translateZ(-200px); }
 }
 
-/* ── Idle State ──────────────────────────────────────────────────────────────── */
 
+/* ── Idle State (Floating Core) ── */
 .quantum-idle-chamber {
   display: flex;
   flex-direction: column;
@@ -58,511 +70,397 @@
   flex: 1;
   width: 100%;
   position: relative;
-  gap: 1.5rem;
+  gap: 2rem;
+  z-index: 5;
 }
 
 .quantum-core-reactor {
   position: relative;
-  width: 140px;
-  height: 140px;
+  width: 180px;
+  height: 180px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transform-style: preserve-3d;
+  animation: float-core 6s ease-in-out infinite;
+}
+
+@keyframes float-core {
+  0%, 100% { transform: translateY(0px) rotateX(10deg) rotateY(0deg); }
+  50% { transform: translateY(-15px) rotateX(-5deg) rotateY(15deg); }
 }
 
 .quantum-reactor-ring {
   position: absolute;
   border-radius: 50%;
-  border: 1px dashed rgba(167, 139, 250, 0.35);
-  animation: reactor-rotate 15s linear infinite;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  animation: spin-3d 12s linear infinite;
+  transform-style: preserve-3d;
 }
+.ring-1 { width: 180px; height: 180px; border-style: dashed; animation-duration: 20s; }
+.ring-2 { width: 140px; height: 140px; border-color: rgba(192, 132, 252, 0.4); border-width: 2px; animation-direction: reverse; animation-duration: 15s; }
+.ring-3 { width: 100px; height: 100px; border-style: dotted; animation-duration: 10s; }
 
-.quantum-reactor-ring.ring-1 { width: 140px; height: 140px; border-style: dotted; animation-duration: 25s; }
-.quantum-reactor-ring.ring-2 { width: 110px; height: 110px; border-color: rgba(6, 182, 212, 0.4); animation-direction: reverse; animation-duration: 18s; }
-.quantum-reactor-ring.ring-3 { width: 80px;  height: 80px;  border-style: double; border-width: 2px; border-color: rgba(167, 139, 250, 0.6); animation-duration: 10s; }
+@keyframes spin-3d {
+  0% { transform: rotateX(70deg) rotateZ(0deg); }
+  100% { transform: rotateX(70deg) rotateZ(360deg); }
+}
 
 .quantum-reactor-orb {
-  width: 50px;
-  height: 50px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(167, 139, 250, 0.9) 0%, rgba(124, 58, 237, 0.4) 60%, rgba(99, 102, 241, 0) 100%);
-  box-shadow: 0 0 35px rgba(167, 139, 250, 0.8), inset 0 0 10px rgba(255, 255, 255, 0.5);
-  animation: reactor-breath 3s ease-in-out infinite;
+  background: radial-gradient(circle, #38bdf8 0%, #c084fc 80%);
+  box-shadow: 0 0 40px rgba(56, 189, 248, 0.6), inset 0 0 20px #fff;
+  animation: orb-pulse 4s ease-in-out infinite alternate;
+}
+@keyframes orb-pulse {
+  0% { transform: scale(0.9); box-shadow: 0 0 30px rgba(56, 189, 248, 0.5); filter: brightness(0.9); }
+  100% { transform: scale(1.1); box-shadow: 0 0 60px rgba(192, 132, 252, 0.8); filter: brightness(1.2); }
+}
+
+.quantum-idle-text { text-align: center; }
+.quantum-idle-title { font-family: 'JetBrains Mono', monospace; font-size: 1rem; font-weight: 700; color: #fff; letter-spacing: 0.1em; text-shadow: 0 0 10px #38bdf8; }
+.quantum-idle-subtitle { font-size: 0.7rem; color: #9ca3af; margin-top: 0.5rem; letter-spacing: 0.05em; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; }
+
+
+/* ── Active Agent Projection (Floating & Fiery) ── */
+.quantum-active-projection {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  z-index: 5;
-}
-
-@keyframes reactor-rotate {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
-
-@keyframes reactor-breath {
-  0%, 100% { transform: scale(1);   filter: brightness(1)   drop-shadow(0 0 15px rgba(167, 139, 250, 0.6)); }
-  50%       { transform: scale(1.1); filter: brightness(1.2) drop-shadow(0 0 30px rgba(167, 139, 250, 0.9)); }
-}
-
-.quantum-idle-text    { text-align: center; z-index: 5; }
-.quantum-idle-title   { font-family: var(--font-display, 'Outfit', sans-serif); font-size: 0.85rem; font-weight: 800; letter-spacing: 0.15em; color: #e4e4e7; text-transform: uppercase; text-shadow: 0 0 10px rgba(255, 255, 255, 0.1); }
-.quantum-idle-subtitle { font-size: 0.68rem; color: #71717a; margin-top: 0.25rem; letter-spacing: 0.05em; }
-
-/* ── Agent Dock ──────────────────────────────────────────────────────────────── */
-
-.quantum-console-dock {
-  display: flex;
-  justify-content: center;
-  gap: 0.6rem;
+  flex: 1;
   width: 100%;
-  padding-top: 1rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-  z-index: 5;
-}
-
-.quantum-dock-item {
   position: relative;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: rgba(20, 20, 30, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 10;
+  animation: materialize 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes materialize {
+  0% { opacity: 0; transform: scale(0.8) translateY(20px); filter: blur(10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+}
+
+.projection-hologram {
+  position: relative;
+  width: 220px;
+  height: 220px;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  animation: float-active 4s ease-in-out infinite;
 }
 
-.quantum-dock-img {
-  width: 100%;
-  height: 100%;
+@keyframes float-active {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-12px); }
+}
+
+/* Fiery Aura Rings */
+.projection-aura {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  transform-style: preserve-3d;
+}
+.aura-1 {
+  width: 240px; height: 240px;
+  border-top-color: #f5b840; border-bottom-color: #ff6b00;
+  animation: spin-aura 3s linear infinite;
+  box-shadow: 0 0 20px rgba(245, 184, 64, 0.2);
+}
+.aura-2 {
+  width: 200px; height: 200px;
+  border-left-color: #ff6b00; border-right-color: #f5b840;
+  animation: spin-aura 2s linear infinite reverse;
+}
+
+@keyframes spin-aura {
+  0% { transform: rotateX(60deg) rotateY(20deg) rotateZ(0deg); }
+  100% { transform: rotateX(60deg) rotateY(20deg) rotateZ(360deg); }
+}
+
+/* Floating Particles (Fire sparks) */
+.projection-spark {
+  position: absolute;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: #f5b840;
+  box-shadow: 0 0 10px #f5b840, 0 0 20px #ff6b00;
+  animation: spark-fly 2s linear infinite;
+}
+.spark-1 { top: 20%; left: 10%; animation-delay: 0.1s; }
+.spark-2 { top: 80%; left: 80%; animation-delay: 0.5s; }
+.spark-3 { top: 10%; left: 70%; animation-delay: 0.8s; }
+.spark-4 { top: 70%; left: 20%; animation-delay: 1.2s; }
+.spark-5 { top: 40%; left: 90%; animation-delay: 1.5s; }
+
+@keyframes spark-fly {
+  0% { transform: translateY(0) scale(1) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(-80px) scale(0) rotate(180deg); opacity: 0; }
+}
+
+.projection-avatar {
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
   object-fit: cover;
-  filter: grayscale(1) opacity(0.4);
-  transition: all 0.3s ease;
+  border: 3px solid #f5b840;
+  box-shadow: 0 0 30px rgba(245, 184, 64, 0.6), inset 0 0 20px rgba(245, 184, 64, 0.4);
+  position: relative;
+  z-index: 5;
+  animation: avatar-glow 2s infinite alternate;
+}
+@keyframes avatar-glow {
+  0% { box-shadow: 0 0 20px rgba(245, 184, 64, 0.5); }
+  100% { box-shadow: 0 0 50px rgba(255, 107, 0, 0.8), 0 0 80px rgba(245, 184, 64, 0.4); }
 }
 
-.quantum-dock-item:hover {
-  transform: scale(1.25) translateY(-3px);
-  border-color: var(--hover-color, #c084fc);
-  box-shadow: 0 0 15px var(--hover-shadow, rgba(192, 132, 252, 0.4));
+/* Agent Metadata overlaying the hologram */
+.projection-info {
+  margin-top: 1.5rem;
+  text-align: center;
+}
+.projection-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 15px #f5b840;
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+}
+.projection-desc {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.8);
+  margin-top: 0.5rem;
+  background: rgba(245, 184, 64, 0.1);
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  border: 1px solid rgba(245, 184, 64, 0.2);
+  display: inline-block;
 }
 
-.quantum-dock-item:hover .quantum-dock-img {
+/* ── Status Terminal & Pipeline ── */
+.quantum-status-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  z-index: 10;
+  margin-top: auto;
+}
+
+.terminal-glass {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  overflow: hidden;
+}
+.terminal-glass.active-mode {
+  border-color: rgba(245, 184, 64, 0.3);
+  box-shadow: 0 8px 30px rgba(245, 184, 64, 0.05);
+}
+
+.terminal-header {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.4);
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.terminal-header-dots {
+  display: flex; gap: 4px;
+}
+.terminal-header-dots span {
+  width: 8px; height: 8px; border-radius: 50%; display: block;
+}
+
+.terminal-body {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  color: #38bdf8;
+  line-height: 1.5;
+}
+.terminal-glass.active-mode .terminal-body {
+  color: #f5b840;
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 8px; height: 14px;
+  background: #38bdf8;
+  margin-left: 6px;
+  vertical-align: middle;
+  animation: blink 1s step-end infinite;
+}
+.terminal-glass.active-mode .terminal-cursor { background: #f5b840; }
+
+@keyframes blink { 50% { opacity: 0; } }
+
+/* Pipeline */
+.pipeline-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.8rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.pipeline-node {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  transition: all 0.3s;
+}
+
+.pipeline-node-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #374151;
+  transition: all 0.3s;
+}
+
+.pipeline-node.completed { color: #34d399; }
+.pipeline-node.completed .pipeline-node-dot { background: #34d399; box-shadow: 0 0 10px #34d399; }
+
+.pipeline-node.active { color: #f5b840; text-shadow: 0 0 8px rgba(245, 184, 64, 0.4); }
+.pipeline-node.active .pipeline-node-dot { background: #f5b840; box-shadow: 0 0 15px #f5b840; animation: pulse-dot 1.5s infinite; }
+
+@keyframes pulse-dot {
+  0% { transform: scale(1); box-shadow: 0 0 10px #f5b840; }
+  50% { transform: scale(1.3); box-shadow: 0 0 20px #ff6b00; }
+  100% { transform: scale(1); box-shadow: 0 0 10px #f5b840; }
+}
+
+/* ── Orbital Agent Dock (Bottom Row) ── */
+.orbital-dock-container {
+  position: relative;
+  width: 100%;
+  height: 120px; /* Space for the 3D orbit */
+  perspective: 1000px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1rem;
+  z-index: 10;
+}
+
+.orbital-track {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.orbital-node {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 48px;
+  height: 48px;
+  margin-top: -24px;
+  margin-left: -24px;
+  border-radius: 50%;
+  background: rgba(10, 15, 25, 0.8);
+  border: 2px solid rgba(56, 189, 248, 0.2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.1);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.orbital-node img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: grayscale(0.8) opacity(0.6);
+  transition: all 0.3s;
+}
+
+.orbital-node:hover {
+  border-color: #f5b840;
+  box-shadow: 0 0 25px rgba(245, 184, 64, 0.5), inset 0 0 10px rgba(245, 184, 64, 0.3);
+  z-index: 50 !important;
+}
+
+.orbital-node:hover img {
   filter: grayscale(0) opacity(1);
 }
 
-/* ── Active Capsule Chamber ──────────────────────────────────────────────────── */
-
-.quantum-capsule {
-  position: relative;
-  width: 100%;
-  height: 200px;
-  background: rgba(5, 5, 10, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.9);
-  display: flex;
-  margin-bottom: 0.5rem;
+.orbital-node.active {
+  border-color: #f5b840;
+  box-shadow: 0 0 30px rgba(245, 184, 64, 0.6);
+  transform: scale(1.1) !important;
+  z-index: 40;
 }
 
-.capsule-chamber { width: 100%; height: 100%; display: flex; position: relative; z-index: 1; }
-
-.chamber-content { display: flex; width: 100%; height: 100%; padding: 1.2rem; gap: 1.5rem; align-items: center; }
-
-.chamber-left { flex: 0 0 110px; height: 110px; }
-
-.chamber-viewport {
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 2px solid var(--agent-color, #c084fc);
-  box-shadow: 0 0 20px var(--agent-shadow, rgba(192, 132, 252, 0.2));
-  overflow: hidden;
-  position: relative;
+.orbital-node.active img {
+  filter: grayscale(0) opacity(1);
 }
 
-.chamber-avatar {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  animation: avatar-breath 4s ease-in-out infinite;
-  z-index: 1;
-  position: relative;
-}
-
-@keyframes avatar-breath {
-  0%, 100% { transform: scale(1);    filter: brightness(1); }
-  50%       { transform: scale(1.04); filter: brightness(1.1); }
-}
-
-.hud-reticle-circle {
+/* Tooltip */
+.orbital-tooltip {
   position: absolute;
-  top: 5%; left: 5%; right: 5%; bottom: 5%;
-  border: 1px dashed var(--agent-color, #c084fc);
-  border-radius: 50%;
-  opacity: 0.25;
+  bottom: calc(100% + 15px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(245, 184, 64, 0.3);
+  padding: 0.6rem 1rem;
+  border-radius: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: #fff;
+  opacity: 0;
   pointer-events: none;
-  z-index: 2;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+  z-index: 100;
 }
-.hud-reticle-circle.ring-slow { animation: reactor-rotate 25s linear infinite; }
-.hud-reticle-circle.ring-fast {
-  top: 15%; left: 15%; right: 15%; bottom: 15%;
-  border-style: dotted;
-  border-color: var(--agent-color, #c084fc);
-  animation: reactor-rotate 12s linear infinite reverse;
-  opacity: 0.45;
-}
-
-.hud-reticle-corners { display: none; }
-.hud-reticle-corners::before,
-.hud-reticle-corners::after {
+.orbital-tooltip::after {
   content: '';
   position: absolute;
-  width: 8px; height: 8px;
-  border-color: var(--agent-color, #c084fc);
+  top: 100%;
+  left: 50%;
+  margin-left: -6px;
+  border-width: 6px;
   border-style: solid;
-  opacity: 0.7;
-}
-.hud-reticle-corners::before { top: 0; left: 0; border-width: 1.5px 0 0 1.5px; }
-.hud-reticle-corners::after  { bottom: 0; right: 0; border-width: 0 1.5px 1.5px 0; }
-
-.hud-overlay-scanner {
-  position: absolute; inset: 0;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  pointer-events: none; z-index: 3;
-}
-.hud-overlay-scanner::before {
-  content: '';
-  position: absolute;
-  top: 5%; left: 5%; right: 5%; bottom: 5%;
-  border: 1px solid rgba(255, 255, 255, 0.03);
-  border-radius: 50%;
-  animation: reactor-rotate 20s linear infinite;
-}
-.hud-overlay-scanner::after {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0; height: 2px;
-  background: var(--agent-color, #c084fc);
-  box-shadow: 0 0 8px var(--agent-color, #c084fc);
-  animation: scanner-sweep 2.2s linear infinite;
+  border-color: rgba(245, 184, 64, 0.3) transparent transparent transparent;
 }
 
-@keyframes scanner-sweep {
-  0%   { top: 0%;   opacity: 0; }
-  10%  { opacity: 1; }
-  90%  { opacity: 1; }
-  100% { top: 100%; opacity: 0; }
+.orbital-node:hover .orbital-tooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-5px);
 }
-
-.chamber-right {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 0.35rem;
-  min-width: 0;
-}
-
-.chamber-metrics-header { display: flex; flex-direction: column; gap: 0.1rem; }
-
-.chamber-agent-title {
-  font-family: var(--font-display, 'Outfit', sans-serif);
-  font-size: 0.95rem; font-weight: 800; color: #fff;
-  display: flex; align-items: center; gap: 0.4rem;
-  text-transform: uppercase; letter-spacing: 0.05em;
-}
-
-.chamber-agent-tagline {
-  font-size: 0.65rem; color: var(--agent-color, #c084fc);
-  font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-
-.chamber-description {
-  font-size: 0.72rem; color: #a1a1aa; line-height: 1.4;
-  background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.04);
-  padding: 0.45rem 0.7rem; border-radius: 8px;
-}
-
-.chamber-depicts-container { display: flex; flex-direction: column; gap: 0.25rem; margin-top: 0.1rem; }
-
-.depicts-title {
-  font-family: var(--font-mono, monospace);
-  font-size: 0.55rem; font-weight: 700; color: #52525b;
-  text-transform: uppercase; letter-spacing: 0.06em;
-}
-
-.depicts-grid { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-
-.depicts-badge {
-  display: inline-flex; align-items: center; gap: 0.25rem;
-  padding: 0.15rem 0.4rem;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 4px;
-  font-size: 0.58rem;
-  font-family: var(--font-display, 'Outfit', sans-serif);
-  font-weight: 600; color: #d4d4d8;
-  transition: all 0.3s;
-}
-.depicts-badge:hover {
-  border-color: var(--agent-color, #c084fc);
-  background: rgba(167, 139, 250, 0.04);
-  transform: translateY(-1px);
-}
-.depicts-badge-dot {
-  width: 4px; height: 4px; border-radius: 50%;
-  background: var(--agent-color, #c084fc);
-  box-shadow: 0 0 6px var(--agent-color, #c084fc);
-}
-
-/* ── Force Field Overlay (shown when idle / switching agent) ─────────────────── */
-
-.stasis-force-field {
-  position: absolute; inset: 0;
-  background: radial-gradient(circle at center, rgba(12, 10, 24, 0.98) 0%, rgba(5, 5, 8, 0.99) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  z-index: 10;
-  display: flex; align-items: center; justify-content: center;
-  overflow: hidden;
-  transition: all 0.5s cubic-bezier(0.25, 1, 0.5, 1);
-  pointer-events: none;
-}
-.stasis-force-field.active       { opacity: 1; transform: scale(1); filter: blur(0px); pointer-events: auto; }
-.stasis-force-field.dissolved    { opacity: 0; transform: scale(1.08); filter: blur(12px) contrast(1.5); clip-path: circle(0% at 50% 50%); transition: opacity 0.4s ease-out, transform 0.45s cubic-bezier(0.25, 1, 0.5, 1), filter 0.4s ease-out, clip-path 0.5s cubic-bezier(0.76, 0, 0.24, 1); }
-.stasis-force-field.shield-shockwave { animation: shield-snap 0.4s ease-out; }
-
-@keyframes shield-snap {
-  0%   { box-shadow: 0 0 0px transparent, inset 0 0 0px transparent; filter: brightness(2); }
-  10%  { box-shadow: 0 0 50px var(--agent-color, #c084fc), inset 0 0 30px var(--agent-color, #c084fc); }
-  100% { box-shadow: 0 0 0px transparent, inset 0 0 0px transparent; filter: brightness(1); }
-}
-
-.shield-grid {
-  position: absolute; inset: 0;
-  background-image: radial-gradient(var(--agent-color, #c084fc) 1px, transparent 1px);
-  background-size: 15px 15px; opacity: 0.15; z-index: 1;
-}
-
-.shield-scanner {
-  position: absolute; inset: 0;
-  background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.05) 45%, var(--agent-color, #c084fc) 50%, rgba(255, 255, 255, 0.05) 55%, transparent 100%);
-  height: 10%; opacity: 0.35;
-  animation: scanner-sweep 5s linear infinite;
-  z-index: 2; pointer-events: none;
-}
-
-.shield-energy-ripples {
-  position: absolute; inset: 0;
-  background:
-    radial-gradient(circle at 30% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 40%),
-    radial-gradient(circle at 70% 80%, rgba(236, 72, 153, 0.08) 0%, transparent 40%),
-    radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.03) 0%, transparent 60%);
-  animation: energy-pulse 6s ease-in-out infinite alternate; z-index: 1;
-}
-
-@keyframes energy-pulse {
-  0%   { opacity: 0.7; transform: scale(1); }
-  100% { opacity: 1;   transform: scale(1.05); }
-}
-
-.shield-center-core {
-  position: relative; width: 140px; height: 140px;
-  display: flex; align-items: center; justify-content: center; z-index: 5;
-}
-
-.core-orbit { position: absolute; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.08); }
-.core-orbit.ring-1 { width: 130px; height: 130px; border-color: rgba(255, 255, 255, 0.05); border-top: 1.5px dashed var(--agent-color, #c084fc); animation: spin-slow 12s linear infinite; }
-.core-orbit.ring-2 { width: 100px; height: 100px; border-color: rgba(255, 255, 255, 0.05); border-bottom: 2px solid var(--agent-color, #c084fc); animation: spin-reverse 8s linear infinite; }
-.core-orbit.ring-3 { width: 70px;  height: 70px;  border-color: rgba(255, 255, 255, 0.05); border-left: 1.5px dashed rgba(255, 255, 255, 0.2); animation: spin-slow 6s linear infinite; }
-
-.core-power-node {
-  position: relative; width: 40px; height: 40px; border-radius: 50%;
-  background: radial-gradient(circle, var(--agent-color, #c084fc) 20%, #0c0c16 80%);
-  border: 1.5px solid var(--agent-color, #c084fc);
-  box-shadow: 0 0 20px var(--agent-shadow, rgba(192, 132, 252, 0.45)), inset 0 0 10px var(--agent-color, #c084fc);
-  animation: core-glow 2s infinite alternate ease-in-out;
-}
-
-@keyframes core-glow {
-  0%   { transform: scale(0.9); opacity: 0.7; box-shadow: 0 0 10px var(--agent-shadow, rgba(192, 132, 252, 0.25)), inset 0 0 5px var(--agent-color, #c084fc); }
-  100% { transform: scale(1.05); opacity: 1;  box-shadow: 0 0 25px var(--agent-shadow, rgba(192, 132, 252, 0.55)), inset 0 0 12px var(--agent-color, #c084fc); }
-}
-
-.core-lock-status {
-  position: absolute; bottom: -25px;
-  font-family: var(--font-mono, monospace); font-size: 0.52rem; font-weight: 700;
-  color: #e4e4e7; letter-spacing: 0.1em;
-  background: rgba(0, 0, 0, 0.6); padding: 2px 8px; border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.05); white-space: nowrap;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.5);
-}
-
-/* ── HUD Side Panels ─────────────────────────────────────────────────────────── */
-
-.shield-hud-panel {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  background: rgba(5, 5, 8, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  padding: 10px 14px; border-radius: 8px;
-  font-family: var(--font-mono, monospace);
-  width: 140px;
-  display: flex; flex-direction: column; gap: 4px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); z-index: 4;
-}
-.shield-hud-panel.panel-left  { left: 20px; }
-.shield-hud-panel.panel-right { right: 20px; }
-
-.hud-header { font-size: 0.54rem; color: var(--agent-color, #c084fc); font-weight: 700; letter-spacing: 0.05em; margin-bottom: 2px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 2px; }
-.hud-metric-row { display: flex; justify-content: space-between; font-size: 0.48rem; letter-spacing: 0.02em; }
-.metric-label  { color: #71717a; }
-.metric-val    { color: #a1a1aa; font-weight: 700; }
-
-/* HUD Bracket corners */
-.shield-corner { position: absolute; width: 12px; height: 12px; border: 1.5px solid rgba(255, 255, 255, 0.15); z-index: 3; pointer-events: none; }
-.shield-corner.top-left     { top: 12px;    left: 12px;  border-right: none; border-bottom: none; }
-.shield-corner.top-right    { top: 12px;    right: 12px; border-left:  none; border-bottom: none; }
-.shield-corner.bottom-left  { bottom: 12px; left: 12px;  border-right: none; border-top: none; }
-.shield-corner.bottom-right { bottom: 12px; right: 12px; border-left:  none; border-top: none; }
-
-/* ── Warning Beacon (shown when fleet is active) ─────────────────────────────── */
-
-.quantum-capsule.capsule-active {
-  border-color: var(--agent-color, #c084fc);
-  box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.9), 0 0 15px var(--agent-shadow, rgba(192, 132, 252, 0.25));
-  animation: capsule-alert 1.5s infinite alternate ease-in-out;
-}
-
-@keyframes capsule-alert {
-  0%   { border-color: rgba(255, 255, 255, 0.05); }
-  100% { border-color: var(--agent-color, #c084fc); }
-}
-
-.capsule-warning-beacon {
-  position: absolute; top: 8px; right: 12px;
-  display: flex; align-items: center; gap: 5px;
-  font-family: var(--font-mono, monospace); font-size: 0.52rem; font-weight: 700;
-  color: #f59e0b; z-index: 15;
-  background: rgba(0,0,0,0.7); padding: 2px 6px; border-radius: 4px;
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  opacity: 0; transition: opacity 0.3s;
-}
-.quantum-capsule.capsule-active .capsule-warning-beacon { opacity: 1; }
-
-.beacon-dot { width: 6px; height: 6px; border-radius: 50%; background: #f59e0b; box-shadow: 0 0 8px #f59e0b; animation: beacon-blink 0.5s infinite alternate steps(2); }
-
-@keyframes beacon-blink {
-  0%   { opacity: 0.2; }
-  100% { opacity: 1; }
-}
-
-.capsule-shudder { animation: slam-shake 0.35s cubic-bezier(.36,.07,.19,.97) both; transform: translate3d(0, 0, 0); }
-
-@keyframes slam-shake {
-  10%, 90% { transform: translate3d(-1.5px, 0, 0); }
-  20%, 80% { transform: translate3d(3px, 0, 0); }
-  30%, 50%, 70% { transform: translate3d(-4.5px, 0, 0); }
-  40%, 60% { transform: translate3d(4.5px, 0, 0); }
-}
-
-/* ── HUD Terminal Console ─────────────────────────────────────────────────────── */
-
-.hud-terminal-console {
-  flex: 1;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  padding: 0.5rem 0.75rem;
-  margin: 0.4rem 0;
-  font-family: var(--font-mono, 'JetBrains Mono', monospace);
-  font-size: 0.68rem; color: #22c55e;
-  overflow-y: auto; line-height: 1.4;
-  text-shadow: 0 0 4px rgba(34, 197, 94, 0.2); position: relative;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.hud-console-cursor { display: inline-block; width: 6px; height: 10px; background: #22c55e; margin-left: 2px; animation: cursor-blink 0.8s steps(2) infinite; }
-
-@keyframes cursor-blink {
-  0%, 100% { opacity: 0; }
-  50%       { opacity: 1; }
-}
-
-.hud-footer-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-
-/* ── Waveform Visualizer ──────────────────────────────────────────────────────── */
-
-.quantum-waves    { display: flex; align-items: flex-end; gap: 2px; height: 16px; }
-.quantum-wave-bar { width: 2px; height: 100%; background: var(--agent-color, #c084fc); border-radius: 1px; animation: wave-bounce 0.8s ease-in-out infinite alternate; }
-.quantum-wave-bar:nth-child(2) { animation-delay: 0.15s; animation-duration: 0.6s; }
-.quantum-wave-bar:nth-child(3) { animation-delay: 0.30s; animation-duration: 1.0s; }
-.quantum-wave-bar:nth-child(4) { animation-delay: 0.05s; animation-duration: 0.7s; }
-.quantum-wave-bar:nth-child(5) { animation-delay: 0.25s; animation-duration: 0.9s; }
-.quantum-wave-bar:nth-child(6) { animation-delay: 0.10s; animation-duration: 0.5s; }
-.quantum-wave-bar:nth-child(7) { animation-delay: 0.40s; animation-duration: 0.8s; }
-
-@keyframes wave-bounce {
-  0%   { height: 2px; }
-  100% { height: 16px; }
-}
-
-/* ── Pipeline Step Indicators ─────────────────────────────────────────────────── */
-
-.quantum-pipeline { display: flex; gap: 0.5rem; }
-
-.pipeline-step {
-  display: flex; align-items: center; gap: 0.25rem;
-  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.05em;
-  color: rgba(255,255,255,0.4); text-transform: uppercase;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-
-.pipeline-indicator {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #27272a; border: 1px solid rgba(255, 255, 255, 0.04); transition: all 0.3s;
-}
-
-.pipeline-step.completed { color: #10b981; }
-.pipeline-step.completed .pipeline-indicator { background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.6); }
-
-.pipeline-step.active { color: #34d399; border: 1px solid rgba(52,211,153,0.3); background: rgba(52,211,153,0.08); }
-.pipeline-step.active .pipeline-indicator { background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,0.6); animation: cyber-pulse-purple 1.5s infinite ease-in-out; }
-
-/* ── Dock Tooltip ─────────────────────────────────────────────────────────────── */
-
-.dock-tooltip {
-  position: absolute; bottom: 45px; left: 50%;
-  transform: translateX(-50%) translateY(10px);
-  background: rgba(10, 10, 15, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6), 0 0 15px rgba(167, 139, 250, 0.1);
-  border-radius: 10px; padding: 0.5rem 0.75rem; width: 170px;
-  text-align: center; pointer-events: none; opacity: 0;
-  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2);
-  z-index: 20; backdrop-filter: blur(8px);
-}
-
-.quantum-dock-item:hover .dock-tooltip { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-.tooltip-title { font-family: var(--font-display, 'Outfit', sans-serif); font-size: 0.68rem; font-weight: 800; color: #ffffff; text-transform: uppercase; margin-bottom: 0.15rem; }
-.tooltip-desc  { font-size: 0.58rem; color: #a1a1aa; line-height: 1.3; }
-
-/* ── Responsive ───────────────────────────────────────────────────────────────── */
 
 @media (max-width: 640px) {
-  .quantum-deck-container { min-height: 320px; padding: 1rem; }
-  .quantum-active-hud     { flex-direction: column; gap: 1rem; height: auto; }
-  .hud-viewport-panel     { flex: 0 0 90px; width: 90px; height: 90px; }
-  .hud-metrics-panel      { height: auto; width: 100%; gap: 0.5rem; }
-  .hud-terminal-console   { min-height: 50px; }
-  .quantum-console-dock   { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 0.5rem; }
+  .quantum-deck-container { padding: 1rem; }
+  .projection-hologram { width: 160px; height: 160px; }
+  .aura-1 { width: 180px; height: 180px; }
+  .aura-2 { width: 150px; height: 150px; }
+  .projection-avatar { width: 80px; height: 80px; }
+  .dock-item { width: 36px; height: 36px; }
 }

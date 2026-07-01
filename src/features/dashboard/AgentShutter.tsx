@@ -1,20 +1,5 @@
-/**
- * AgentShutter — The Quantum Capsule active-agent visualization.
- *
- * Shows which agent is currently running inside an animated "capsule chamber".
- * When idle, displays the quantum reactor orb with pulsing rings.
- * When an agent is dispatched, the force-field dissolves and the agent avatar
- * slides in with scanning reticles and capability badge strips.
- *
- * Props:
- *  - activeAgent      — key of the currently running agent (e.g. 'ORACLE')
- *  - isExecuting      — whether any orchestration is in progress
- *  - agentStatus      — current status string shown in the HUD terminal
- *  - isExecuting      — controls waveform animation
- *  - pipelineSteps    — current step indicators (Routing → Reasoning → Execution → Verification)
- *  - onAgentDockClick — callback when user clicks an idle agent icon
- */
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { AGENT_DETAILS } from '../../agent/fleet/agentDetails';
 import '../../styles/quantum-deck.css';
 
@@ -39,236 +24,200 @@ export function AgentShutter({
   pipelineSteps,
   onAgentDockClick,
 }: AgentShutterProps) {
-  // ── Capsule door state machine ──────────────────────────────────────────────
-  // Doors close → wait 400ms → swap displayed agent → open doors.
-  // This prevents the avatar from swapping mid-animation.
-  const [displayAgent, setDisplayAgent] = useState<string | null>(null);
-  const [doorsOpen, setDoorsOpen] = useState(false);
-  const [isShaking, setIsShaking] = useState(false);
+  // We use a displayAgent to delay the swap slightly for a smoother visual transition
+  const [displayAgent, setDisplayAgent] = useState<string | null>(activeAgent);
 
-  // Mechanical "slam" shake when doors finish closing
   useEffect(() => {
-    if (doorsOpen) return;
-    const shakeTimer = setTimeout(() => {
-      setIsShaking(true);
-      const clearTimer = setTimeout(() => setIsShaking(false), 400);
-      return () => clearTimeout(clearTimer);
-    }, 400);
-    return () => clearTimeout(shakeTimer);
-  }, [doorsOpen]);
-
-  // Swap agent avatar only after doors have closed
-  useEffect(() => {
-    if (isExecuting && activeAgent) {
-      if (activeAgent !== displayAgent) {
-        setDoorsOpen(false);
-        const swapTimer = setTimeout(() => {
-          setDisplayAgent(activeAgent);
-          setDoorsOpen(true);
-        }, 400);
-        return () => clearTimeout(swapTimer);
-      } else {
-        setDoorsOpen(true);
-      }
+    if (activeAgent) {
+      setDisplayAgent(activeAgent);
     } else {
-      setDoorsOpen(false);
-      const clearTimer = setTimeout(() => setDisplayAgent(null), 400);
-      return () => clearTimeout(clearTimer);
+      const timer = setTimeout(() => setDisplayAgent(null), 500);
+      return () => clearTimeout(timer);
     }
-  }, [activeAgent, isExecuting, displayAgent]);
+  }, [activeAgent]);
 
-  const activeDetails  = activeAgent ? AGENT_DETAILS[activeAgent] : AGENT_DETAILS.ATHENA;
-  const displayDetails = displayAgent ? AGENT_DETAILS[displayAgent] : null;
+  // Orbit Animation State
+  const [rotationOffset, setRotationOffset] = useState(0);
+  const [isHoveringDock, setIsHoveringDock] = useState(false);
+
+  useEffect(() => {
+    if (isHoveringDock) return; // Pause rotation on hover
+    let animationFrameId: number;
+    const animate = () => {
+      setRotationOffset(prev => prev + 0.003); // Speed of rotation
+      animationFrameId = requestAnimationFrame(animate);
+    };
+    animationFrameId = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isHoveringDock]);
+
+  const activeDetails = displayAgent ? AGENT_DETAILS[displayAgent] : null;
 
   return (
-    <div className="quantum-deck-container">
-      {/* ── Capsule chamber ───────────────────────────────────────────────────── */}
-      <div
-        className={`quantum-capsule ${isShaking ? 'capsule-shudder' : ''} ${isExecuting ? 'capsule-active' : ''}`}
-        style={{
-          '--agent-color':  displayDetails?.color  ?? 'rgba(167, 139, 250, 0.5)',
-          '--agent-shadow': (displayDetails?.secondaryColor ?? '#a855f7') + '40',
-        } as React.CSSProperties}
-      >
-        {/* Flashing "FLEET_ACTIVE" beacon */}
-        <div className="capsule-warning-beacon">
-          <span className="beacon-dot" />
-          <span>FLEET_ACTIVE</span>
-        </div>
-
-        <div className="capsule-chamber">
-          {displayDetails ? (
-            /* Active: agent avatar + metadata */
-            <div className="chamber-content">
-              <div className="chamber-left">
-                <div className="chamber-viewport">
-                  <div className="hud-reticle-circle ring-slow" />
-                  <div className="hud-reticle-circle ring-fast" />
-                  <div className="hud-reticle-corners" />
-                  <img src={displayDetails.image} alt={displayDetails.title} className="chamber-avatar hologram-glow" />
-                  <div className="hud-overlay-scanner" />
-                </div>
-              </div>
-
-              <div className="chamber-right">
-                <div className="chamber-metrics-header">
-                  <div className="chamber-agent-title">
-                    <span>{displayDetails.icon}</span>
-                    <span>{displayDetails.title}</span>
-                  </div>
-                  <div className="chamber-agent-tagline">{displayDetails.tagline}</div>
-                </div>
-
-                <div className="chamber-description">{displayDetails.description}</div>
-
-                <div className="chamber-depicts-container">
-                  <div className="depicts-title">Depicted Capabilities //</div>
-                  <div className="depicts-grid">
-                    {displayDetails.depicts.map((dep, idx) => (
-                      <div key={idx} className="depicts-badge">
-                        <span className="depicts-badge-dot" />
-                        <span>{dep}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* Idle: pulsing reactor orb */
-            <div className="quantum-idle-chamber">
-              <div className="quantum-core-reactor">
-                <div className="quantum-reactor-ring ring-1" />
-                <div className="quantum-reactor-ring ring-2" />
-                <div className="quantum-reactor-ring ring-3" />
-                <div className="quantum-reactor-orb" />
-              </div>
-              <div className="quantum-idle-text">
-                <div className="quantum-idle-title">ZenithOS Operational</div>
-                <div className="quantum-idle-subtitle">Chamber locked · Awaiting dispatch command</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Quantum Stasis Force Field overlay — dissolves when agent is dispatched */}
-        <div
-          className={`stasis-force-field ${doorsOpen ? 'dissolved' : 'active'} ${isShaking ? 'shield-shockwave' : ''}`}
-          style={{
-            '--agent-color':  activeDetails.color,
-            '--agent-shadow': activeDetails.secondaryColor + '40',
-          } as React.CSSProperties}
-        >
-          <div className="shield-grid" />
-          <div className="shield-scanner" />
-          <div className="shield-energy-ripples" />
-          <div className="shield-corner top-left" />
-          <div className="shield-corner top-right" />
-          <div className="shield-corner bottom-left" />
-          <div className="shield-corner bottom-right" />
-
-          <div className="shield-center-core">
-            <div className="core-orbit ring-1" />
-            <div className="core-orbit ring-2" />
-            <div className="core-orbit ring-3" />
-            <div className="core-power-node" />
-            <div className="core-lock-status">STASIS // SECURED</div>
-          </div>
-
-          <div className="shield-hud-panel panel-left">
-            <div className="hud-header">SYS_CONTAINMENT //</div>
-            <div className="hud-metric-row"><span className="metric-label">TEMP:</span><span className="metric-val">0.04 K</span></div>
-            <div className="hud-metric-row"><span className="metric-label">SHLD:</span><span className="metric-val">100%</span></div>
-            <div className="hud-metric-row"><span className="metric-label">PRSS:</span><span className="metric-val">0.00 kPa</span></div>
-          </div>
-
-          <div className="shield-hud-panel panel-right">
-            <div className="hud-header">QUANTUM_DECK //</div>
-            <div className="hud-metric-row"><span className="metric-label">VOLT:</span><span className="metric-val">NOMINAL</span></div>
-            <div className="hud-metric-row"><span className="metric-label">SYNC:</span><span className="metric-val">STABLE</span></div>
-            <div className="hud-metric-row"><span className="metric-label">GRID:</span><span className="metric-val">SECURE</span></div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── HUD terminal + pipeline ────────────────────────────────────────────── */}
-      <div
-        className="quantum-monitor-row"
-        style={{
-          width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem',
-          margin: '1rem 0 0.5rem 0',
-          '--agent-color':  activeDetails.color,
-          '--agent-shadow': activeDetails.secondaryColor + '40',
-        } as React.CSSProperties}
-      >
-        <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '1rem', overflow: 'hidden', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(20px)' }}>
-          <div style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-             <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#ef4444', opacity: 0.6 }} />
-             <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#f59e0b', opacity: 0.6 }} />
-             <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#22c55e', opacity: 0.6 }} />
-             <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em' }}>SYS_CONTAINMENT</span>
-          </div>
-          <div className="hud-terminal-console" style={{ width: '100%', minHeight: '60px', margin: 0, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.7, background: 'transparent', padding: '1rem' }}>
-            <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;_ [SYS_PROMPT]:</span> <span style={{ color: '#34d399' }}>{agentStatus}</span>
-            <span className="hud-console-cursor" />
-          </div>
-        </div>
-
-        <div className="hud-footer-row" style={{ width: '100%', marginTop: '0.2rem' }}>
-          {/* Waveform — pauses when idle */}
-          <div className="quantum-waves">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div
-                key={i}
-                className="quantum-wave-bar"
-                style={{ animationPlayState: isExecuting ? 'running' : 'paused' }}
+    <div className={`quantum-deck-container ${isExecuting ? 'active-mode' : ''}`}>
+      {/* ── Visual Area ── */}
+      <AnimatePresence mode="wait">
+        {isExecuting && activeDetails ? (
+          <motion.div 
+            key="active-mode"
+            className="quantum-active-projection"
+            initial={{ opacity: 0, scale: 0.8, filter: 'blur(10px)' }}
+            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)', transition: { duration: 0.3 } }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+          >
+            <div className="projection-hologram">
+              <div className="projection-aura aura-1" />
+              <div className="projection-aura aura-2" />
+              
+              <div className="projection-spark spark-1" />
+              <div className="projection-spark spark-2" />
+              <div className="projection-spark spark-3" />
+              <div className="projection-spark spark-4" />
+              <div className="projection-spark spark-5" />
+              
+              <motion.img 
+                src={activeDetails.image} 
+                alt={activeDetails.title} 
+                className="projection-avatar"
+                initial={{ rotate: -90, scale: 0 }}
+                animate={{ rotate: 0, scale: 1 }}
+                transition={{ type: 'spring', damping: 20, stiffness: 100, delay: 0.2 }}
               />
-            ))}
-          </div>
-
-          {/* Pipeline steps */}
-          <div className="quantum-pipeline">
-            {pipelineSteps.map(step => (
-              <div key={step.id} className={`pipeline-step ${step.status}`}>
-                <div className="pipeline-indicator" />
-                <span>{step.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Agent dock ────────────────────────────────────────────────────────── */}
-      <div className="quantum-console-dock">
-        {Object.entries(AGENT_DETAILS).map(([key, value]) => {
-          const isActive = activeAgent === key;
-          return (
-            <button
-              key={key}
-              onClick={() => onAgentDockClick(key)}
-              className="quantum-dock-item"
-              style={{
-                '--hover-color':  value.color,
-                '--hover-shadow': value.secondaryColor + '60',
-                border:     isActive ? `2px solid ${value.color}` : undefined,
-                transform:  isActive ? 'scale(1.2) translateY(-2px)' : undefined,
-                boxShadow:  isActive ? `0 0 15px ${value.color}` : undefined,
-                zIndex:     isActive ? 10 : undefined,
-              } as React.CSSProperties}
+            </div>
+            
+            <motion.div 
+              className="projection-info"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
             >
-              <img
-                src={value.image}
-                alt={value.title}
-                className="quantum-dock-img"
-                style={{ filter: isActive || !isExecuting ? 'grayscale(0) opacity(1)' : undefined }}
-              />
-              <div className="dock-tooltip">
-                <div className="tooltip-title" style={{ color: value.color }}>{key}</div>
-                <div className="tooltip-desc">{value.description}</div>
+              <div className="projection-title">
+                {activeDetails.icon} {activeDetails.title}
               </div>
-            </button>
-          );
-        })}
+              <div className="projection-desc">
+                {activeDetails.tagline}
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : (
+          <motion.div 
+            key="idle-mode"
+            className="quantum-idle-chamber"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+          >
+            <div className="quantum-core-reactor">
+              <div className="quantum-reactor-ring ring-1" />
+              <div className="quantum-reactor-ring ring-2" />
+              <div className="quantum-reactor-ring ring-3" />
+              <div className="quantum-reactor-orb" />
+            </div>
+            <div className="quantum-idle-text">
+              <div className="quantum-idle-title">ZENITH FLEET OPERATIONAL</div>
+              <div className="quantum-idle-subtitle">Awaiting Dispatch Command</div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Status Terminal & Pipeline ── */}
+      <motion.div 
+        className="quantum-status-row"
+        initial={{ opacity: 0, y: 30 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2, staggerChildren: 0.1 }}
+      >
+        <motion.div 
+          className={`terminal-glass ${isExecuting ? 'active-mode' : ''}`}
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          <div className="terminal-header">
+            <div className="terminal-header-dots">
+              <span style={{ background: '#ef4444' }} />
+              <span style={{ background: '#f59e0b' }} />
+              <span style={{ background: '#22c55e' }} />
+            </div>
+            SYS_TERMINAL
+          </div>
+          <div className="terminal-body">
+            <span style={{ color: 'rgba(255,255,255,0.4)' }}>&gt;_ </span>
+            {agentStatus}
+            <span className="terminal-cursor" />
+          </div>
+        </motion.div>
+
+        <motion.div 
+          className="pipeline-bar"
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+        >
+          {pipelineSteps.map(step => (
+            <motion.div 
+              key={step.id} 
+              className={`pipeline-node ${step.status}`}
+              layout
+            >
+              <div className="pipeline-node-dot" />
+              {step.name}
+            </motion.div>
+          ))}
+        </motion.div>
+      </motion.div>
+
+      {/* ── Orbital Agent Dock (Bottom Row) ── */}
+      <div 
+        className="orbital-dock-container"
+        onMouseEnter={() => setIsHoveringDock(true)}
+        onMouseLeave={() => setIsHoveringDock(false)}
+      >
+        <AnimatePresence>
+          {Object.entries(AGENT_DETAILS).map(([key, value], index) => {
+            const isActive = activeAgent === key;
+            const total = Object.keys(AGENT_DETAILS).length;
+            // Spread agents evenly around a circle + rotation offset over time
+            const angle = (index / total) * (Math.PI * 2) + rotationOffset;
+            
+            // Ellipse dimensions
+            const rx = window.innerWidth < 640 ? 140 : 380; // horizontal radius
+            const ry = window.innerWidth < 640 ? 20 : 35;   // vertical radius for 3D tilt
+            
+            // Elements with sin > 0 are "in front", sin < 0 are "in back"
+            const sinVal = Math.sin(angle);
+            const cosVal = Math.cos(angle);
+            
+            // Map zIndex based on depth (front is higher)
+            const zBase = Math.round((sinVal + 1) * 15);
+            const currentZ = isActive ? 60 : zBase;
+
+            // Scale elements in the back to be smaller for 3D perspective
+            const scale = 0.75 + ((sinVal + 1) / 2) * 0.45; // 0.75 in back, 1.2 in front
+            
+            return (
+              <motion.div
+                key={key}
+                onClick={() => onAgentDockClick(key)}
+                className={`orbital-node ${isActive ? 'active' : ''}`}
+                animate={{
+                  x: cosVal * rx,
+                  y: sinVal * ry,
+                  scale: isActive ? 1.5 : scale,
+                  zIndex: currentZ,
+                  opacity: (sinVal + 1.5) / 2.5 // Slightly fade out agents in the back
+                }}
+                transition={{ type: "tween", ease: "linear", duration: 0 }}
+                whileHover={{ scale: 1.6, zIndex: 50, transition: { duration: 0.2 } }}
+              >
+                <img src={value.image} alt={value.title} />
+                <div className="orbital-tooltip">
+                  {key} — {value.tagline}
+                </div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
     </div>
   );

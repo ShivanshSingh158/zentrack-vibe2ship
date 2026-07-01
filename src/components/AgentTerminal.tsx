@@ -103,6 +103,7 @@ export const AgentTerminal: React.FC = () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
         setLogs([]);
+        setIsOpen(false);
       }, 120000); // 2 minutes auto-clear
     };
 

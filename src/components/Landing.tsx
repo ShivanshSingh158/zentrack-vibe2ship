@@ -106,12 +106,10 @@ function FadeUp({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 
 export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   const { scrollYProgress } = useScroll({ target: containerRef, offset: ['start start', 'end start'] });
   const smooth = useSpring(scrollYProgress, { stiffness: 80, damping: 30 });
-  const videoScale   = useTransform(smooth, [0, 1],    [1, 1.14]);
-  const videoOpacity = useTransform(smooth, [0, 0.45], [1, 0]);
-  const heroY        = useTransform(smooth, [0, 0.22], [0, -70]);
+  const videoScale = useTransform(smooth, [0, 1], [1, 1.14]);
+  const heroY      = useTransform(smooth, [0, 0.22], [0, -70]);
 
   const scrollTo = (id: string) => {
     if (id === 'Home') { window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
@@ -122,25 +120,17 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
   return (
     <div className="landing-page" ref={containerRef}>
 
-      {/* ── Animated CSS starfield background (always visible) ─── */}
-      <div className="landing-bg-canvas">
-        <div className="landing-bg-orb landing-bg-orb-1" />
-        <div className="landing-bg-orb landing-bg-orb-2" />
-        <div className="landing-bg-orb landing-bg-orb-3" />
-      </div>
-
-      {/* ── Video background (self-hosted, always visible) ─── */}
+      {/* ── Video background — self-hosted, always playing ─── */}
       <motion.video
-        ref={videoRef}
         autoPlay loop muted playsInline
         src={BG_VIDEO}
-        className="landing-video loaded"
+        className="landing-video"
         style={{ scale: videoScale }}
-        onError={() => { if (videoRef.current) videoRef.current.style.display = 'none'; }}
+        onError={(e) => { (e.target as HTMLVideoElement).classList.add('error'); }}
       />
 
-      {/* ── Dark gradient overlay ─────────────────────── */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 2, pointerEvents: 'none', background: 'linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.04) 35%, rgba(0,0,0,0.6) 100%)' }} />
+      {/* ── Cinematic gradient overlay ─────────────────────── */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 2, pointerEvents: 'none', background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 30%, rgba(0,0,0,0.55) 100%)' }} />
 
       {/* ══════════════════════════════════════════════════
           NAV

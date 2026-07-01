@@ -371,11 +371,17 @@ export const NotesModule = () => {
       if (!aiQuestion.trim()) { toast.error('Please enter a question.'); return; }
       sendChatMessage(aiQuestion);
     } else if (action === 'summarize') {
-      sendChatMessage('Summarize this document into a concise paragraph followed by 3 key bullet points.');
+      sendChatMessage(
+        'Analyze this document and produce a precise, grounded summary. Include: (1) A 2-3 paragraph Executive Summary using ONLY the document content, (2) The Central Thesis or Main Argument of the document, (3) 5-8 Key Points with direct quotes or close paraphrases, (4) Any limitations or caveats the document itself mentions, (5) End with "Document Coverage: [X] pages analyzed". Cite page numbers wherever possible.'
+      );
     } else if (action === 'concepts') {
-      sendChatMessage('Extract the core concepts, definitions, and important formulas/facts from this document and present them as a clean Markdown list.');
+      sendChatMessage(
+        'Extract ALL key concepts, terms, definitions, formulas, and important facts from this document. For each concept: give the EXACT definition as stated in the document (not your own definition). Group them by theme/section. Include any equations or mathematical notation exactly as they appear. Add page/section references for each concept. Be exhaustive — do not skip minor but important terms.'
+      );
     } else if (action === 'flashcards') {
-      sendChatMessage('Generate 5-7 high-yield flashcards (Question & Answer format) based on this document. Format them as bold Q: and A: pairs.');
+      sendChatMessage(
+        'Generate 10-12 high-yield flashcards based ONLY on this document\'s content. Format: **Q:** [question] → **A:** [precise answer from document] → *Source: "[exact quote from doc]"*. Include a mix of: definition cards, comparison cards, cause-effect cards, and application/calculation cards. Ensure every answer is directly traceable to the document text.'
+      );
     }
   };
 
@@ -383,25 +389,114 @@ export const NotesModule = () => {
     if (!viewingFile || !viewingFile.url) return;
     setShowAiPanel(true);
     if (documentText) return; // Already extracted
-    
+
     setIsExtracting(true);
     setChatHistory([]);
     try {
       let text = '';
+
       if (viewingFile.fileType === 'pdf') {
-        // text = await extractTextFromPdf(viewingFile.url);
-        text = "PDF extraction unavailable.";
+        // ── Real PDF text extraction using pdf.js ──────────────────────────────
+        // Dynamically import pdfjs-dist to avoid SSR issues
+        const pdfjsLib = await import('pdfjs-dist');
+        
+        // Set the worker — use the bundled fake worker for Vite compatibility
+        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+          'pdfjs-dist/build/pdf.worker.min.js',
+          import.meta.url
+        ).toString();
+
+        // Fetch the PDF as ArrayBuffer (supports cross-origin via CORS)
+        let pdfData: ArrayBuffer;
+        try {
+          const resp = await fetch(viewingFile.url, { mode: 'cors' });
+          if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
+          pdfData = await resp.arrayBuffer();
+        } catch (fetchErr) {
+          // Some storage URLs don't support CORS — try loading directly by URL
+          const loadTask = pdfjsLib.getDocument({ url: viewingFile.url, withCredentials: false });
+          const pdfDoc = await loadTask.promise;
+          const pages: string[] = [];
+          for (let i = 1; i <= pdfDoc.numPages; i++) {
+            const page = await pdfDoc.getPage(i);
+            const content = await page.getTextContent();
+            const pageText = content.items
+              .map((item: any) => ('str' in item ? item.str : ''))
+              .join(' ')
+              .trim();
+            if (pageText) pages.push(`--- Page ${i} ---\n${pageText}`);
+          }
+          text = pages.join('\n\n');
+          if (!text.trim()) throw new Error('No readable text found in PDF. It may be a scanned image PDF.');
+          setDocumentText(text);
+          toast.success(`Extracted ${pdfDoc.numPages} pages. Ready for AI analysis!`);
+          return;
+        }
+
+        // Load from ArrayBuffer
+        const loadTask = pdfjsLib.getDocument({ data: pdfData });
+        const pdfDoc = await loadTask.promise;
+        const pages: string[] = [];
+
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          const page = await pdfDoc.getPage(i);
+          const content = await page.getTextContent();
+          // Reconstruct natural reading order: join items, detect line breaks by y-position
+          let lastY: number | null = null;
+          let lineBuffer: string[] = [];
+          const pageLines: string[] = [];
+
+          for (const item of content.items) {
+            if (!('str' in item)) continue;
+            const str = (item as any).str;
+            const y = (item as any).transform?.[5] ?? 0;
+
+            if (lastY !== null && Math.abs(y - lastY) > 5) {
+              // New line detected
+              if (lineBuffer.join('').trim()) pageLines.push(lineBuffer.join(''));
+              lineBuffer = [];
+            }
+            lineBuffer.push(str);
+            lastY = y;
+          }
+          if (lineBuffer.join('').trim()) pageLines.push(lineBuffer.join(''));
+
+          const pageText = pageLines.join('\n').trim();
+          if (pageText) pages.push(`--- Page ${i} of ${pdfDoc.numPages} ---\n${pageText}`);
+        }
+
+        text = pages.join('\n\n');
+        if (!text.trim()) {
+          throw new Error('No readable text found in PDF. It may be a scanned image-only PDF without embedded text.');
+        }
+        toast.success(`✅ Extracted ${pdfDoc.numPages} pages from PDF. AI is ready!`);
+
       } else if (viewingFile.fileType === 'docx') {
-        // text = await extractTextFromDocx(viewingFile.url);
-        text = "DOCX extraction unavailable.";
+        // ── DOCX extraction via mammoth (if available) or raw XML parsing ─────
+        try {
+          const mammoth = await import('mammoth');
+          const resp = await fetch(viewingFile.url, { mode: 'cors' });
+          const arrayBuffer = await resp.arrayBuffer();
+          const result = await mammoth.extractRawText({ arrayBuffer });
+          text = result.value;
+        } catch (_) {
+          // Fallback: fetch the raw docx and extract what we can from XML
+          const resp = await fetch(viewingFile.url, { mode: 'cors' });
+          const buffer = await resp.arrayBuffer();
+          // Try to decode as text — may get XML with w:t tags
+          const rawText = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
+          const matches = rawText.match(/<w:t[^>]*>([^<]+)<\/w:t>/g) || [];
+          text = matches.map(m => m.replace(/<[^>]+>/g, '')).join(' ');
+        }
+        if (!text.trim()) throw new Error('No readable text found in DOCX file.');
+        toast.success('✅ DOCX extracted. AI is ready!');
       }
-      
-      if (!text) throw new Error('No text found in document');
+
+      if (!text.trim()) throw new Error('No text could be extracted from this document.');
       setDocumentText(text);
-      toast.success('Document extracted. Ready for AI analysis!');
     } catch (err: any) {
-      console.error(err);
-      toast.error('Failed to extract text from document');
+      console.error('[DocumentAI] Extraction failed:', err);
+      toast.error(`Extraction failed: ${err.message || 'Unknown error'}`);
       setShowAiPanel(false);
     } finally {
       setIsExtracting(false);
@@ -1308,7 +1403,7 @@ export const NotesModule = () => {
       {/* Rename Modal */}
       {renameModal.isOpen && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setRenameModal({ isOpen: false, node: null, newName: '' }); }}>
-          <div style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+          <div className="bottom-sheet-mobile" style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
             <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Rename Item</h2>
               <button className="btn-icon" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}><X size={20} /></button>
@@ -1334,7 +1429,7 @@ export const NotesModule = () => {
       {/* Move Modal */}
       {moveModal.isOpen && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setMoveModal({ isOpen: false, node: null }); }}>
-          <div style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
+          <div className="bottom-sheet-mobile" style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
             <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Move Item To...</h2>
               <button className="btn-icon" onClick={() => setMoveModal({ isOpen: false, node: null })}><X size={20} /></button>
@@ -1359,7 +1454,7 @@ export const NotesModule = () => {
       {/* New Folder Modal */}
       {newFolderModal && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setNewFolderModal(false); }}>
-          <div style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+          <div className="bottom-sheet-mobile" style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
             <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Create New Folder</h2>
               <button className="btn-icon" onClick={() => setNewFolderModal(false)}><X size={20} /></button>

@@ -24,10 +24,9 @@ const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
 // Models to try in order
 const MODEL_FALLBACKS = [
-  'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
-  'gemini-3.1-pro',
+  'gemini-2.0-flash',
 ];
 
 // Global Learning Context — cross-video memory stored in localStorage

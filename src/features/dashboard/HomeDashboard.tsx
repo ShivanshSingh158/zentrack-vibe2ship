@@ -390,6 +390,7 @@ export function HomeDashboard() {
 
           {/* Compact Stat Cards */}
           <motion.div
+            className="dashboard-stats-strip"
             initial="hidden"
             animate="visible"
             variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08, delayChildren: 0.2 } } }}
@@ -446,7 +447,7 @@ export function HomeDashboard() {
           
           {/* Left Column: Agent Console (70%) */}
           <motion.div
-            className="card"
+            className="card agent-shutter-container"
             whileHover={{ boxShadow: '0 8px 40px rgba(167,139,250,0.12)' }}
             style={{ flex: '7 1 700px', padding: 0, overflow: 'hidden' }}
           >

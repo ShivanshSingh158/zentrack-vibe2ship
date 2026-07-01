@@ -361,7 +361,7 @@ export const GoalsModule = () => {
       {/* Edit Modal */}
       {isModalOpen && editingGoal && (
         <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setIsModalOpen(false); }}>
-          <div style={{ width: '100%', maxWidth: '600px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+          <div className="bottom-sheet-mobile" style={{ width: '100%', maxWidth: '600px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
             <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: '1.2rem', fontWeight: 600 }}>{editingGoal.id ? 'Edit Goal' : 'New Goal'}</h2>
               <button className="btn-icon" onClick={() => setIsModalOpen(false)}><X size={20} /></button>

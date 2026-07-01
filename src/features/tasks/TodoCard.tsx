@@ -89,7 +89,7 @@ export const TodoCard = React.memo(({
           }}
         >
           <div
-            className={`todo-item priority-${todo.priority} ${isSelected ? 'selected-item' : ''}`}
+            className={`todo-item task-item priority-${todo.priority} ${isSelected ? 'selected-item' : ''}`}
             style={containerStyle}
           >
             {/* Escalation Overlay Suggestion */}

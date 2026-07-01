@@ -24,6 +24,18 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
     }
   },
   {
+    name: 'delete_internal_app_data',
+    description: 'Delete an item from an internal app module. Available modules: gymLogs, notes, habits, goals, learningTopics, jobs, dailyLogs, pomodoroSessions. Use this when the user asks to delete an item that is not a task.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        moduleName: { type: SchemaType.STRING, description: 'The internal module to delete from (e.g. "habits", "notes")' },
+        itemId: { type: SchemaType.STRING, description: 'The ID of the item to delete' }
+      },
+      required: ['moduleName', 'itemId']
+    }
+  },
+  {
     name: 'get_tasks',
     description: 'Get the user\'s tasks and deadlines from ZenTrack. Returns id, title, priority, date, and status for each task.',
     parameters: {

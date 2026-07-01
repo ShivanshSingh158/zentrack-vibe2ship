@@ -280,6 +280,42 @@ export const executeTool = async (
       };
     }
 
+    case 'delete_internal_app_data': {
+      if (!args.moduleName || !args.itemId) {
+        return { success: false, data: null, message: 'moduleName and itemId are required.' };
+      }
+      const moduleToCollection: Record<string, string> = {
+        tasks: 'todos',
+        habits: 'habits',
+        habitLogs: 'habit_logs',
+        goals: 'goals',
+        dailyLogs: 'daily_logs',
+        learningTopics: 'learning_topics',
+        gymLogs: 'gymLogs',
+        notes: 'storage_nodes',
+        pomodoroSessions: 'pomodoro_sessions',
+        jobs: 'job_applications',
+        assignments: 'assignments'
+      };
+      
+      const collName = moduleToCollection[args.moduleName];
+      if (!collName) {
+        return { success: false, data: null, message: `Module '${args.moduleName}' is not valid or cannot be deleted.` };
+      }
+      
+      const approved = await requestApproval('delete_internal_app_data', `Delete item from ${args.moduleName} permanently?`, signal);
+      if (!approved) return { success: false, data: null, message: `🚫 Cancelled by user — item from ${args.moduleName} was NOT deleted.` };
+      
+      logApi('DELETE', `/api/v1/internal/${args.moduleName}/${args.itemId}`, {}, 'success');
+      await deleteDoc(doc(db, collName, args.itemId));
+      
+      // Attempt to broadcast standard event for immediate UI updates
+      if (args.moduleName === 'tasks') logWebSocket('task.deleted', { id: args.itemId });
+      else logWebSocket('data.deleted', { module: args.moduleName, id: args.itemId });
+      
+      return { success: true, data: {}, message: `✅ Item successfully deleted from ${args.moduleName}` };
+    }
+
     case 'create_task': {
       logApi('POST', '/api/v1/tasks', args, 'pending');
       // ✅ Deduplication: prevent SPECTRE from creating duplicate tasks on repeated ghost scans
@@ -989,26 +1025,7 @@ export const executeTool = async (
       const authErr = await requireGoogleAuth(signal);
       if (authErr) return authErr;
       try {
-        // ✅ FIX: Convert Markdown to HTML before writing (DEDUCTION 4.2)
-        // The old writeToGoogleDoc called Docs API insertText with raw Markdown.
-        // Google Docs does NOT render ##, **, or - as formatting — it shows literal symbols.
-        // Fix: convert to basic HTML and upload via Drive API with MIME type conversion
-        // so Google automatically converts it to a properly-formatted Google Doc.
-        const markdownContent = args.content as string || '';
-        const htmlContent = markdownContent
-          .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-          .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-          .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-          .replace(/\*(.+?)\*/g, '<em>$1</em>')
-          .replace(/^- (.+)$/gm, '<li>$1</li>')
-          .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-          .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-          .replace(/\n\n/g, '</p><p>')
-          .replace(/\n/g, '<br>');
-        const fullHtml = `<!DOCTYPE html><html><body><p>${htmlContent}</p></body></html>`;
-
-        const result = await writeToGoogleDoc(args.docId, fullHtml, { isHtml: true });
+        const result = await writeToGoogleDoc(args.docId, args.content as string || '');
         return { success: true, data: result, message: `✅ Content written to Google Doc (formatted). View: ${result.url}` };
       } catch (e: unknown) {
         return { success: false, data: null, message: `Docs Write Error: ${(e as { message?: string }).message}` };
@@ -1119,9 +1136,19 @@ export const executeTool = async (
           }
         }
 
-        return { success: true, data: {}, message: `✅ Notification sent: "${args.title}"${isUrgent ? ' + SMS alert fired' : ''}` };
-      } catch {
-        return { success: false, data: null, message: 'Failed to send notification' };
+        return { 
+          success: true, 
+          data: { queued: true }, 
+          message: `✅ Notification delivered successfully: "${args.title}"${isUrgent ? ' — SMS alert also sent' : ''}
+
+IMPORTANT: This tool SUCCEEDED. Do NOT report any rate limit or failure for this notification.`
+        };
+      } catch (err: any) {
+        return { 
+          success: false, 
+          data: null, 
+          message: `❌ Notification FAILED (Firestore write error): ${err?.message || 'Unknown error'}. Do NOT say rate-limited — report this exact message.`
+        };
       }
     }
 

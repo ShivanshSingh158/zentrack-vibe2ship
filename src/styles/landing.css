@@ -3,11 +3,11 @@
 .landing-page {
   --font-display: 'Instrument Serif', serif;
   --font-body: 'Inter', sans-serif;
-  --background: hsl(201, 100%, 13%);
   --foreground: hsl(0, 0%, 100%);
-  --muted-foreground: hsl(240, 4%, 66%);
+  --muted-foreground: rgba(255, 255, 255, 0.55);
   
   font-family: var(--font-body);
+  /* Pure black fallback — video covers this instantly */
   background-color: #030d1a;
   color: var(--foreground);
   position: relative;
@@ -17,131 +17,12 @@
   overflow-y: auto;
 }
 
-/* ── Animated starfield background ───── */
-.landing-bg-canvas {
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 100% 60% at 50% -10%, rgba(10,60,120,0.85) 0%, transparent 70%),
-    radial-gradient(ellipse 80% 50% at 80% 10%,  rgba(5,40,90,0.6)  0%, transparent 60%),
-    radial-gradient(ellipse 60% 40% at 20% 80%,  rgba(20,80,50,0.3) 0%, transparent 60%),
-    radial-gradient(ellipse 120% 120% at 50% 50%, #030d1a 40%, #020810 100%);
-}
-
-/* Animated aurora sweep */
-.landing-bg-canvas::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 160% 80% at 30% -20%, rgba(15,80,170,0.5) 0%, transparent 55%),
-    radial-gradient(ellipse 140% 70% at 70% 110%, rgba(10,120,80,0.2) 0%, transparent 50%);
-  animation: aurora-shift 12s ease-in-out infinite alternate;
-}
-
-.landing-bg-canvas::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    /* dense tiny stars */
-    radial-gradient(1px 1px at 10% 15%, rgba(255,255,255,0.85) 0%, transparent 100%),
-    radial-gradient(1px 1px at 22% 8%,  rgba(255,255,255,0.7)  0%, transparent 100%),
-    radial-gradient(1px 1px at 35% 25%, rgba(255,255,255,0.6)  0%, transparent 100%),
-    radial-gradient(1px 1px at 48% 5%,  rgba(255,255,255,0.9)  0%, transparent 100%),
-    radial-gradient(1px 1px at 60% 18%, rgba(255,255,255,0.75) 0%, transparent 100%),
-    radial-gradient(1px 1px at 72% 10%, rgba(255,255,255,0.6)  0%, transparent 100%),
-    radial-gradient(1px 1px at 85% 22%, rgba(255,255,255,0.8)  0%, transparent 100%),
-    radial-gradient(1px 1px at 92% 7%,  rgba(255,255,255,0.7)  0%, transparent 100%),
-    radial-gradient(1px 1px at 5%  40%, rgba(255,255,255,0.5)  0%, transparent 100%),
-    radial-gradient(1px 1px at 15% 55%, rgba(255,255,255,0.65) 0%, transparent 100%),
-    radial-gradient(1px 1px at 28% 48%, rgba(255,255,255,0.8)  0%, transparent 100%),
-    radial-gradient(1px 1px at 40% 62%, rgba(255,255,255,0.55) 0%, transparent 100%),
-    radial-gradient(1px 1px at 55% 35%, rgba(255,255,255,0.7)  0%, transparent 100%),
-    radial-gradient(1px 1px at 68% 50%, rgba(255,255,255,0.6)  0%, transparent 100%),
-    radial-gradient(1px 1px at 78% 40%, rgba(255,255,255,0.75) 0%, transparent 100%),
-    radial-gradient(1px 1px at 88% 55%, rgba(255,255,255,0.5)  0%, transparent 100%),
-    radial-gradient(1px 1px at 95% 38%, rgba(255,255,255,0.8)  0%, transparent 100%),
-    radial-gradient(1px 1px at 3%  70%, rgba(255,255,255,0.6)  0%, transparent 100%),
-    radial-gradient(1px 1px at 18% 75%, rgba(255,255,255,0.7)  0%, transparent 100%),
-    radial-gradient(1px 1px at 32% 80%, rgba(255,255,255,0.5)  0%, transparent 100%),
-    radial-gradient(1px 1px at 45% 88%, rgba(255,255,255,0.65) 0%, transparent 100%),
-    radial-gradient(1px 1px at 58% 72%, rgba(255,255,255,0.55) 0%, transparent 100%),
-    radial-gradient(1px 1px at 73% 85%, rgba(255,255,255,0.7)  0%, transparent 100%),
-    radial-gradient(1px 1px at 83% 78%, rgba(255,255,255,0.6)  0%, transparent 100%),
-    radial-gradient(1px 1px at 97% 68%, rgba(255,255,255,0.8)  0%, transparent 100%),
-    /* slightly larger brighter stars */
-    radial-gradient(1.5px 1.5px at 14% 32%, rgba(255,255,255,0.95) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 38% 14%, rgba(255,255,255,0.9)  0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 62% 28%, rgba(255,255,255,0.85) 0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 80% 60%, rgba(255,255,255,0.9)  0%, transparent 100%),
-    radial-gradient(1.5px 1.5px at 25% 65%, rgba(255,255,255,0.95) 0%, transparent 100%),
-    radial-gradient(2px   2px   at 50% 45%, rgba(200,220,255,0.9)  0%, transparent 100%),
-    radial-gradient(2px   2px   at 75% 20%, rgba(200,220,255,0.85) 0%, transparent 100%),
-    radial-gradient(2px   2px   at 8%  90%, rgba(200,220,255,0.8)  0%, transparent 100%);
-  animation: stars-twinkle 6s ease-in-out infinite alternate;
-}
-
-@keyframes aurora-shift {
-  0%   { opacity: 1; transform: scale(1)   translateX(0);   }
-  50%  { opacity: 0.7; transform: scale(1.05) translateX(2%);  }
-  100% { opacity: 1; transform: scale(1.02) translateX(-2%); }
-}
-
-@keyframes stars-twinkle {
-  0%   { opacity: 0.7; }
-  33%  { opacity: 1;   }
-  66%  { opacity: 0.75; }
-  100% { opacity: 0.9; }
-}
-
-/* Floating orbs */
-@keyframes orb-float {
-  0%   { transform: translate(0, 0)    scale(1); }
-  33%  { transform: translate(3%, -5%) scale(1.06); }
-  66%  { transform: translate(-4%, 2%) scale(0.96); }
-  100% { transform: translate(0, 0)    scale(1); }
-}
-
-.landing-bg-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  pointer-events: none;
-  animation: orb-float 18s ease-in-out infinite;
-}
-.landing-bg-orb-1 {
-  width: 55vw; height: 55vw;
-  top: -15%; left: -10%;
-  background: radial-gradient(circle, rgba(15,80,180,0.4) 0%, rgba(5,40,100,0.15) 60%, transparent 80%);
-  animation-duration: 22s;
-}
-.landing-bg-orb-2 {
-  width: 40vw; height: 40vw;
-  top: 30%; right: -15%;
-  background: radial-gradient(circle, rgba(10,120,80,0.25) 0%, rgba(5,60,40,0.1) 60%, transparent 80%);
-  animation-duration: 16s;
-  animation-delay: -5s;
-}
-.landing-bg-orb-3 {
-  width: 30vw; height: 30vw;
-  bottom: 10%; left: 20%;
-  background: radial-gradient(circle, rgba(80,30,160,0.2) 0%, rgba(40,15,80,0.08) 60%, transparent 80%);
-  animation-duration: 28s;
-  animation-delay: -12s;
-}
-
-
 .landing-page * {
   font-family: inherit;
   box-sizing: border-box;
 }
 
-
+/* ── Video background — always visible ─── */
 .landing-video {
   position: fixed;
   inset: 0;
@@ -149,12 +30,14 @@
   height: 100%;
   object-fit: cover;
   z-index: 1;
-  opacity: 0;
-  transition: opacity 1.5s ease;
+  /* Start visible — video plays from frame 1 immediately */
+  opacity: 1;
+  transition: opacity 0.8s ease;
 }
 
-.landing-video.loaded {
-  opacity: 1;
+/* If video completely fails, fade it out */
+.landing-video.error {
+  opacity: 0;
 }
 
 

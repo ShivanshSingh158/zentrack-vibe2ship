@@ -85,6 +85,7 @@ export const EventPopover: React.FC<EventPopoverProps> = ({
 
   return (
     <motion.div
+      className="calendar-event-sheet"
       ref={popoverRef}
       drag
       dragMomentum={false}

@@ -570,17 +570,21 @@ const AnalyticsModuleInner = () => {
                 </h3>
                 <ErrorBoundary name="Gym Chart" fallback={<ChartFallback name="Gym Strength" />}>
                   {gymProgressionMetrics.some(d => d.bench !== undefined || d.squat !== undefined || d.deadlift !== undefined) ? (
-                    <ResponsiveContainer width="100%" height={260}>
-                      <LineChart data={gymProgressionMetrics.map(d => ({ ...d, bench: d.bench ?? 0, squat: d.squat ?? 0, deadlift: d.deadlift ?? 0 }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
-                        <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} allowDecimals={false} domain={[0, 'auto']} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} />
-                        <Legend wrapperStyle={{ fontSize: '12px' }} />
-                        <Line type="monotone" dataKey="bench" stroke="#3b82f6" strokeWidth={3} name="Bench Press" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
-                        <Line type="monotone" dataKey="squat" stroke="#ef4444" strokeWidth={3} name="Squat" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
-                        <Line type="monotone" dataKey="deadlift" stroke="#10b981" strokeWidth={3} name="Deadlift" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
-                      </LineChart>
-                    </ResponsiveContainer>
+                    <div className="analytics-chart-container">
+                      <div className="analytics-chart-inner">
+                        <ResponsiveContainer width="100%" height={260}>
+                          <LineChart data={gymProgressionMetrics.map(d => ({ ...d, bench: d.bench ?? 0, squat: d.squat ?? 0, deadlift: d.deadlift ?? 0 }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                            <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
+                            <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} allowDecimals={false} domain={[0, 'auto']} />
+                            <Tooltip contentStyle={TOOLTIP_STYLE} />
+                            <Legend wrapperStyle={{ fontSize: '12px' }} />
+                            <Line type="monotone" dataKey="bench" stroke="#3b82f6" strokeWidth={3} name="Bench Press" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
+                            <Line type="monotone" dataKey="squat" stroke="#ef4444" strokeWidth={3} name="Squat" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
+                            <Line type="monotone" dataKey="deadlift" stroke="#10b981" strokeWidth={3} name="Deadlift" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                   ) : (
                     <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                       No gym data recorded in the last 30 days.
@@ -595,14 +599,18 @@ const AnalyticsModuleInner = () => {
                   <Book size={18} /> Learning (Video Minutes)
                 </h3>
                 <ErrorBoundary name="Learning Chart" fallback={<ChartFallback name="Learning Progress" />}>
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={learningChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                      <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
-                      <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: '#3b82f6' }} />
-                        <Bar dataKey="watchMinutes" name="Minutes Watched" fill="url(#barGradient)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div className="analytics-chart-container">
+                    <div className="analytics-chart-inner">
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart data={learningChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                          <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
+                          <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                          <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: '#3b82f6' }} />
+                            <Bar dataKey="watchMinutes" name="Minutes Watched" fill="url(#barGradient)" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
                 </ErrorBoundary>
               </div>
 
@@ -613,27 +621,35 @@ const AnalyticsModuleInner = () => {
                 </h3>
                 {attendanceRadarData.length > 2 ? (
                   <ErrorBoundary name="Attendance Radar" fallback={<ChartFallback name="Attendance Radar" />}>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={attendanceRadarData}>
-                        <PolarGrid stroke="var(--border-subtle)" />
-                        <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
-                        <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-                          <Radar name="Attendance %" dataKey="attendance" stroke="url(#barGradient)" fill="url(#barGradient)" fillOpacity={0.5} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} />
-                      </RadarChart>
-                    </ResponsiveContainer>
+                    <div className="analytics-chart-container">
+                      <div className="analytics-chart-inner">
+                        <ResponsiveContainer width="100%" height={260}>
+                          <RadarChart cx="50%" cy="50%" outerRadius="70%" data={attendanceRadarData}>
+                            <PolarGrid stroke="var(--border-subtle)" />
+                            <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                              <Radar name="Attendance %" dataKey="attendance" stroke="url(#barGradient)" fill="url(#barGradient)" fillOpacity={0.5} />
+                            <Tooltip contentStyle={TOOLTIP_STYLE} />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                   </ErrorBoundary>
                 ) : attendanceRadarData.length > 0 ? (
                   // Bar chart fallback when <3 subjects (RadarChart needs ≥3 points)
                   <ErrorBoundary name="Attendance Bar" fallback={<ChartFallback name="Attendance" />}>
-                    <ResponsiveContainer width="100%" height={260}>
-                      <BarChart data={attendanceRadarData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                        <XAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-                        <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} domain={[0, 100]} />
-                        <Tooltip contentStyle={TOOLTIP_STYLE} />
-                          <Bar dataKey="attendance" fill="url(#barGradient)" radius={[4, 4, 0, 0]} name="Attendance %" />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    <div className="analytics-chart-container">
+                      <div className="analytics-chart-inner">
+                        <ResponsiveContainer width="100%" height={260}>
+                          <BarChart data={attendanceRadarData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                            <XAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
+                            <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} domain={[0, 100]} />
+                            <Tooltip contentStyle={TOOLTIP_STYLE} />
+                              <Bar dataKey="attendance" fill="url(#barGradient)" radius={[4, 4, 0, 0]} name="Attendance %" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                   </ErrorBoundary>
                 ) : (
                   <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>

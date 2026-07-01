@@ -74,7 +74,7 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({ isOpen, onClose, t
       padding: '1rem',
       animation: 'fadeIn 0.2s ease'
     }}>
-      <div style={{
+      <div className="bottom-sheet-mobile" style={{
         backgroundColor: 'var(--bg-panel)',
         borderRadius: 'var(--radius-lg)',
         border: '1px solid var(--border-subtle)',

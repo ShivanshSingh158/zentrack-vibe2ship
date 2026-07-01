@@ -1,0 +1,95 @@
+/* ==========================================================================
+   Bottom Navigation (Mobile Only)
+   ========================================================================== */
+
+.bottom-nav-container {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(3, 13, 26, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  z-index: 100;
+  height: calc(65px + env(safe-area-inset-bottom, 0px));
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.5);
+  text-decoration: none;
+  font-size: 0.65rem;
+  font-weight: 500;
+  transition: color 0.2s ease;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+}
+
+.bottom-nav-item:hover,
+.bottom-nav-item.active {
+  color: #fff;
+}
+
+.bottom-nav-icon {
+  margin-bottom: 4px;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.bottom-nav-item.active .bottom-nav-icon {
+  transform: translateY(-2px) scale(1.1);
+  color: #a78bfa;
+}
+
+.bottom-nav-indicator {
+  position: absolute;
+  top: 0;
+  width: 32px;
+  height: 3px;
+  background: #a78bfa;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 8px rgba(167, 139, 250, 0.4);
+}
+
+.ai-fab-tab .bottom-nav-icon {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  margin-bottom: 0;
+  transform: translateY(-8px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+  border: 2px solid rgba(255,255,255,0.1);
+}
+
+.ai-fab-tab.active .bottom-nav-icon {
+  transform: translateY(-10px) scale(1.05);
+  box-shadow: 0 6px 16px rgba(168, 85, 247, 0.5);
+}
+
+.ai-fab-tab span {
+  transform: translateY(-4px);
+}
+
+/* Hide on desktop */
+@media (min-width: 769px) {
+  .bottom-nav-container {
+    display: none !important;
+  }
+}

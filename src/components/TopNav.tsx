@@ -66,20 +66,40 @@ export function TopNav() {
     return () => unsubscribe();
   }, []);
 
-  // Close drawer and profile menu when clicking outside
+  // Close on Escape or click outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (drawerRef.current && !drawerRef.current.contains(event.target as Node)) {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
         setIsDrawerOpen(false);
+        setIsEditingDrawer(false);
       }
-      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
+        setIsDrawerOpen(false);
+        setIsEditingDrawer(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setIsProfileOpen(false);
       }
     };
+
+    const handleOpenDrawerEvent = () => {
+      setIsDrawerOpen(true);
+    };
+
     if (isDrawerOpen || isProfileOpen) {
+      document.addEventListener('keydown', handleEscape);
       document.addEventListener('mousedown', handleClickOutside);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    
+    window.addEventListener('open-app-drawer', handleOpenDrawerEvent);
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('open-app-drawer', handleOpenDrawerEvent);
+    };
   }, [isDrawerOpen, isProfileOpen]);
 
   const handleLogout = async () => {
@@ -141,9 +161,11 @@ export function TopNav() {
       </div>
 
       <div className="top-nav-right">
-        <CommandPalette />
+        <div className="hide-on-mobile">
+          <CommandPalette />
+        </div>
         
-        <div className="app-drawer-container" ref={drawerRef}>
+        <div className="app-drawer-container hide-on-mobile" ref={drawerRef}>
           <button 
             className={`icon-button ${isDrawerOpen ? 'active' : ''}`} 
             onClick={() => setIsDrawerOpen(!isDrawerOpen)}

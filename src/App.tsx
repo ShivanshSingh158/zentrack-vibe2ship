@@ -14,6 +14,7 @@ import { Login } from './components/Login';
 import { Landing } from './components/Landing';
 import { TopNav } from './components/TopNav';
 import { BackgroundEffects } from './components/BackgroundEffects';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { DeveloperMatrix } from './components/overlays/DeveloperMatrix';
 import { SecuritySettingsModal } from './components/overlays/SecuritySettingsModal';
@@ -35,6 +36,7 @@ import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, 
 import { AgentTerminal } from './components/AgentTerminal';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
 import { GoogleWorkspaceBanner } from './components/GoogleWorkspaceBanner';
+import { BottomNav } from './components/BottomNav';
 
 
 import { useContextReminders } from './hooks/useContextReminders';
@@ -337,6 +339,18 @@ function App() {
   // Use a ref to track previous user so we never add it to the effect dep array
   // (adding it caused multiple auth subscriptions on each login/logout cycle).
   const prevUserRef = useRef<User | null>(null);
+
+  useEffect(() => {
+    const handleToggleAgent = () => {
+      setShowAgent(prev => !prev);
+      if (!showAgent) {
+        setShowFab(false); // Hide FAB when opening agent
+      }
+    };
+    
+    window.addEventListener('toggle-zen-agent', handleToggleAgent);
+    return () => window.removeEventListener('toggle-zen-agent', handleToggleAgent);
+  }, [showAgent]);
 
   useEffect(() => {
     // Skip Lenis on touch/mobile — native iOS scroll is already buttery smooth
@@ -728,7 +742,7 @@ function App() {
       <BackgroundEffects />
       <div className="app-container flex-col">
         <TopNav />
-        <GoogleWorkspaceBanner />
+        <div className="hide-on-mobile"><GoogleWorkspaceBanner /></div>
         <div className="main-content full-width">
           {/* Suspense wraps ALL lazy routes — PageLoader shown during chunk download */}
           <Suspense fallback={<PageLoader />}>
@@ -736,6 +750,8 @@ function App() {
           </Suspense>
         </div>
       </div>
+      <BottomNav />
+      <PWAInstallPrompt />
       </DataReadyGate>
     </PomodoroProvider>
     </GlobalDataProvider>

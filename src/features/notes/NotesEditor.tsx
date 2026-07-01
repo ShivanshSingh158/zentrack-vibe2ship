@@ -34,7 +34,7 @@ export const NotesEditor: React.FC<NotesEditorProps> = ({
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Toolbar */}
-      <div style={{ padding: '0.75rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: '1rem', alignItems: 'center', background: 'var(--bg-surface)' }}>
+      <div className="notes-toolbar" style={{ padding: '0.75rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', gap: '1rem', alignItems: 'center', background: 'var(--bg-surface)' }}>
         <button className="btn-icon" onClick={onClose}><ArrowLeft size={18} /></button>
         <input 
           type="text" 

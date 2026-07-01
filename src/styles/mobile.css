@@ -872,3 +872,158 @@ html, body {
   }
 }
 
+/* ==========================================================================
+   Phase 2 & 6 Mobile Overrides
+   ========================================================================== */
+
+@media (max-width: 768px) {
+  /* HomeDashboard Mobile */
+  .agent-shutter-container {
+    max-height: 50vh !important;
+  }
+  
+  .dashboard-stats-strip {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    /* Hide scrollbar for cleaner look */
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .dashboard-stats-strip::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .dashboard-stats-strip > div {
+    scroll-snap-align: start;
+    min-width: 140px !important;
+    flex: 0 0 auto;
+  }
+  
+  /* Global Typography & Input Scaling */
+  h1 { font-size: clamp(1.2rem, 5vw, 1.5rem) !important; }
+  h2 { font-size: clamp(1rem, 4vw, 1.25rem) !important; }
+  
+  p, li { 
+    font-size: 0.875rem; 
+    line-height: 1.6; 
+  }
+  
+  /* Critical: Prevents iOS Safari from auto-zooming when focusing inputs */
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+
+  /* ==========================================================================
+     Phase 4: Module-by-Module Overrides
+     ========================================================================== */
+
+  /* ── Tasks Module ── */
+  .task-item {
+    min-height: 52px !important;
+    padding: 0.75rem !important;
+  }
+  
+  .filter-chips-container {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 4px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .filter-chips-container::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .add-task-fab {
+    position: fixed !important;
+    bottom: calc(85px + env(safe-area-inset-bottom)) !important;
+    right: 1.5rem !important;
+    z-index: 90 !important;
+  }
+
+  /* ── Calendar Module ── */
+  .calendar-day-cell {
+    min-height: 36px !important;
+    padding: 0.2rem !important;
+  }
+  
+  .calendar-event-sheet {
+    position: fixed !important;
+    bottom: 0 !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-height: 85vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    transform: none !important;
+    margin: 0 !important;
+  }
+
+  /* ── Analytics Module ── */
+  .analytics-chart-container {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  
+  .analytics-chart-inner {
+    min-width: 500px; /* Ensure chart doesn't squish too much */
+  }
+
+  .analytics-stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  /* ── Habits Module ── */
+  .habit-check-btn {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  
+  .habit-heatmap-container {
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+
+  /* ── Goals Module ── */
+  .goal-card-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .goal-progress-ring {
+    width: 80px !important;
+    height: 80px !important;
+  }
+
+  /* ── Notes Module ── */
+  .notes-toolbar {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 4px;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .notes-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* ==========================================================================
+     Phase 5: Overlays & Modals (Bottom Sheets)
+     ========================================================================== */
+  .bottom-sheet-mobile {
+    position: fixed !important;
+    bottom: 0 !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 90vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    transform: none !important;
+    margin: 0 !important;
+  }
+}

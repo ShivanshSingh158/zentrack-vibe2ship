@@ -58,27 +58,17 @@ export const Login: React.FC = () => {
 
   return (
     <div className="landing-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', overflow: 'hidden' }}>
-      
-      {/* Animated CSS starfield background (always visible fallback) */}
-      <div className="landing-bg-canvas">
-        <div className="landing-bg-orb landing-bg-orb-1" />
-        <div className="landing-bg-orb landing-bg-orb-2" />
-        <div className="landing-bg-orb landing-bg-orb-3" />
-      </div>
 
-      {/* Cinematic Video Background */}
+      {/* Video background — self-hosted */}
       <video
-        autoPlay
-        loop
-        muted
-        playsInline
+        autoPlay loop muted playsInline
         src={BG_VIDEO}
-        className="landing-video loaded"
-        onError={(e) => { (e.target as HTMLVideoElement).style.display = 'none'; }}
+        className="landing-video"
+        onError={(e) => { (e.target as HTMLVideoElement).classList.add('error'); }}
       />
 
-      {/* Dark overlay */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 2, pointerEvents: 'none', background: 'linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.04) 35%, rgba(0,0,0,0.6) 100%)' }} />
+      {/* Cinematic dark overlay */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 2, pointerEvents: 'none', background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.6) 100%)' }} />
 
       {/* Floating Glass Login Card */}
       <motion.div 

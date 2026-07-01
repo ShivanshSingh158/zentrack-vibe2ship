@@ -5,78 +5,78 @@
   --font-display: 'Instrument Serif', serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   
-  /* ── New Base Palette (Aurora Dark) ── */
-  --color-bg:        hsl(201, 100%, 10%);   /* Deep navy — matches landing page */
-  --color-surface:   rgba(255,255,255,0.03); /* Liquid glass card surface */
-  --color-surface-2: rgba(255,255,255,0.06); /* Nested glass */
-  --color-border:    rgba(255,255,255,0.10);
-  --color-border-hover: rgba(255,255,255,0.20);
-  
-  /* Compatibility for old tokens to prevent breakage */
+  /* ── Base Palette — Video Cinematic Night ── */
+  /* Deep midnight navy — matching the video sky */
+  --color-bg:        #030d1a;
+  --color-surface:   rgba(255,255,255,0.04);
+  --color-surface-2: rgba(255,255,255,0.07);
+  --color-border:    rgba(255,255,255,0.09);
+  --color-border-hover: rgba(255,255,255,0.18);
+
+  /* Compatibility tokens */
   --bg-base: var(--color-bg);
   --bg-surface: var(--color-surface);
   --bg-surface-hover: var(--color-surface-2);
-  --bg-surface-active: #1a1a24;
-  --bg-elevated: rgba(13, 13, 20, 0.95);
+  --bg-surface-active: rgba(255,255,255,0.10);
+  --bg-elevated: rgba(3, 13, 26, 0.95);
   --border-subtle: var(--color-border);
   --border-hover: var(--color-border-hover);
-  --border-glow: rgba(0, 212, 255, 0.4);
-  
+  --border-glow: rgba(245, 180, 80, 0.35);
+
   /* ── Text ── */
-  --color-text-1: #FFFFFF;
-  --color-text-2: hsl(240, 4%, 66%);  /* #a8a8b3 */
-  --color-text-3: rgba(255,255,255,0.30);
+  --color-text-1: rgba(255, 255, 255, 0.95);
+  --color-text-2: rgba(255, 255, 255, 0.55);
+  --color-text-3: rgba(255, 255, 255, 0.28);
   --text-primary:    var(--color-text-1);
   --text-secondary:  var(--color-text-2);
   --text-muted:      var(--color-text-3);
-  
+
   /* ── Typography Scale ── */
-  --text-xs:   0.75rem;   /* 12px */
-  --text-sm:   0.875rem;  /* 14px */
-  --text-base: 1rem;      /* 16px */
-  --text-lg:   1.125rem;  /* 18px */
-  --text-xl:   1.25rem;   /* 20px */
-  --text-2xl:  1.5rem;    /* 24px */
-  --text-3xl:  1.875rem;  /* 30px */
-  --text-4xl:  2.25rem;   /* 36px */
-  --text-5xl:  3rem;      /* 48px */
-  
-  /* ── Accent System (Calmer) ── */
-  --color-cyan:   #60a5fa;   /* Now matches landing's blue accent */
-  --color-violet: #a78bfa;   /* Landing's purple accent */
-  --color-amber:  #f59e0b;
+  --text-xs:   0.75rem;
+  --text-sm:   0.875rem;
+  --text-base: 1rem;
+  --text-lg:   1.125rem;
+  --text-xl:   1.25rem;
+  --text-2xl:  1.5rem;
+  --text-3xl:  1.875rem;
+  --text-4xl:  2.25rem;
+  --text-5xl:  3rem;
+
+  /* ── Accent System — Warm Amber + Teal (from video warm laptop glow + night sky) ── */
+  --color-amber:  #f5b840;   /* Warm golden glow from the video's laptop lights */
+  --color-teal:   #38bdf8;   /* Clear night sky blue */
+  --color-violet: #c084fc;   /* Soft purple twilight */
   --color-green:  #34d399;
-  --color-red:    #ef4444;
-  
-  /* Old tokens mapped to new */
-  --accent-primary: var(--color-violet);
-  --accent-primary-hover: #9061f9;
-  --accent-secondary: var(--color-cyan);
+  --color-red:    #f87171;
+
+  --accent-primary: var(--color-amber);
+  --accent-primary-hover: #f0a820;
+  --accent-secondary: var(--color-teal);
   --accent-tertiary: var(--color-red);
-  --accent-gradient: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
-  --accent-glow: rgba(167,139,250,0.35);
-  --accent-glow-secondary: rgba(96,165,250,0.25);
-  
-  /* ── Urgency System Tokens (default = calm) ── */
-  --urgency-primary: var(--color-cyan);
+  --accent-gradient: linear-gradient(135deg, #f5b840 0%, #38bdf8 100%);
+  --accent-glow: rgba(245, 184, 64, 0.3);
+  --accent-glow-secondary: rgba(56, 189, 248, 0.2);
+
+  /* ── Urgency System Tokens ── */
+  --urgency-primary: var(--color-teal);
   --urgency-secondary: var(--color-violet);
-  --urgency-glow: rgba(0, 212, 255, 0.2);
-  --urgency-bg-tint: rgba(0, 212, 255, 0.03);
-  --urgency-border: rgba(0, 212, 255, 0.2);
-  
+  --urgency-glow: rgba(56, 189, 248, 0.2);
+  --urgency-bg-tint: rgba(56, 189, 248, 0.03);
+  --urgency-border: rgba(56, 189, 248, 0.2);
+
   /* ── Shadows & Effects ── */
   --shadow-glow: 0 0 25px -5px var(--accent-glow);
-  --shadow-card: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
-  --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+  --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.10);
   --shadow-elevated: 0 24px 48px -12px rgba(0, 0, 0, 0.9);
-  
+
   /* ── Radii ── */
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-2xl: 20px;
-  
+
   /* ── Animation Curves ── */
   --spring-soft: cubic-bezier(0.175, 0.885, 0.32, 1.05);
   --spring-bouncy: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -84,7 +84,7 @@
 
   --sidebar-width: 250px;
   --sidebar-width-mobile: 100%;
-  --primary-light: #c4b5fd;
+  --primary-light: #fcd34d;
 
   /* ── Mobile Performance Tokens ── */
   --mobile-transition: 150ms;

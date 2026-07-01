@@ -23,34 +23,19 @@ svg.lucide {
 
 body {
   font-family: var(--font-sans);
-  background-color: hsl(201, 100%, 10%);
+  background-color: #030d1a;
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Aurora orb layer — rendered via a fixed ::before pseudo on body */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 70% 55% at 20% 80%, rgba(167,139,250,0.12) 0%, transparent 70%),
-    radial-gradient(ellipse 55% 50% at 80% 10%, rgba(96,165,250,0.10) 0%, transparent 65%),
-    radial-gradient(ellipse 45% 60% at 50% 50%, rgba(52,211,153,0.04) 0%, transparent 70%);
-  animation: aurora-drift 25s ease-in-out infinite alternate;
-  filter: blur(60px);
-}
-
 ::-webkit-scrollbar        { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  {
-  background: rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.08);
   border-radius: 999px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 
 
 
@@ -64,25 +49,17 @@ body::before {
   align-items: center;
   gap: 0.5rem;
   padding: 0.65rem 1.4rem;
-  border-radius: 12px;              /* Rounded, not pill, not square */
-  font-family: var(--font-display);
-  font-size: 0.9rem;
-  font-weight: 600;
-  background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
-  border: 1px solid rgba(255,255,255,0.15);
   border-radius: 0.75rem;
-  color: white;
   font-family: 'Inter', sans-serif;
   font-size: 0.875rem;
   font-weight: 500;
-  padding: 0.65rem 1.4rem;
+  background: linear-gradient(135deg, #f5b840 0%, #38bdf8 100%);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #030d1a;
   cursor: pointer;
-  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -6px rgba(167,139,250,0.35);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -6px rgba(245,184,64,0.35);
   transition: transform 0.2s, opacity 0.2s;
-  display: inline-flex;
-  align-items: center;
   justify-content: center;
-  gap: 0.5rem;
 }
 .modal-content .btn-primary {
   width: 100%;
