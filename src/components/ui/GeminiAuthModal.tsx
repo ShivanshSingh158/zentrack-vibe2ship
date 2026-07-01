@@ -284,6 +284,7 @@ export const GeminiAuthModal: React.FC<{
                     }
                   `}</style>
                 </div>
+              ) : (
             <button
               onClick={() => {
                 const key = prompt('Enter your Gemini API Key:');
@@ -307,6 +308,8 @@ export const GeminiAuthModal: React.FC<{
           <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginTop: '1rem', letterSpacing: '0.02em' }}>
             Runs on your private quota. Sync Workspace to enable instant authentication.
           </div>
+          </>
+          )}
         </div>
       </motion.div>
     </motion.div>,
