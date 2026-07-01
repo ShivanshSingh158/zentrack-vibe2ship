@@ -7,7 +7,8 @@ import { seedDemoData } from '../utils/seedDemoData';
 import { motion } from 'framer-motion';
 import '../styles/landing.css';
 
-const BG_VIDEO = 'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260314_131748_f2ca2a28-fed7-44c8-b9a9-bd9acdd5ec31.mp4';
+const BG_VIDEO = '/bg-video.mp4';
+
 
 export const Login: React.FC = () => {
   const googleProvider = new GoogleAuthProvider();
@@ -58,6 +59,13 @@ export const Login: React.FC = () => {
   return (
     <div className="landing-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', overflow: 'hidden' }}>
       
+      {/* Animated CSS starfield background (always visible fallback) */}
+      <div className="landing-bg-canvas">
+        <div className="landing-bg-orb landing-bg-orb-1" />
+        <div className="landing-bg-orb landing-bg-orb-2" />
+        <div className="landing-bg-orb landing-bg-orb-3" />
+      </div>
+
       {/* Cinematic Video Background */}
       <video
         autoPlay
@@ -65,8 +73,12 @@ export const Login: React.FC = () => {
         muted
         playsInline
         src={BG_VIDEO}
-        className="landing-video"
+        className="landing-video loaded"
+        onError={(e) => { (e.target as HTMLVideoElement).style.display = 'none'; }}
       />
+
+      {/* Dark overlay */}
+      <div style={{ position: 'fixed', inset: 0, zIndex: 2, pointerEvents: 'none', background: 'linear-gradient(to bottom, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.04) 35%, rgba(0,0,0,0.6) 100%)' }} />
 
       {/* Floating Glass Login Card */}
       <motion.div 

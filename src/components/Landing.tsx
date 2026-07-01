@@ -10,7 +10,8 @@ import {
 } from './LandingAnimations';
 import '../styles/landing.css';
 
-const BG_VIDEO = 'https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260314_131748_f2ca2a28-fed7-44c8-b9a9-bd9acdd5ec31.mp4';
+const BG_VIDEO = '/bg-video.mp4';
+
 
 /* ── FEATURE DATA ─────────────────────────────────────────────────────────── */
 
@@ -128,14 +129,13 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
         <div className="landing-bg-orb landing-bg-orb-3" />
       </div>
 
-      {/* ── Video background (loads on top when available) ─────── */}
+      {/* ── Video background (self-hosted, always visible) ─── */}
       <motion.video
         ref={videoRef}
         autoPlay loop muted playsInline
         src={BG_VIDEO}
-        className="landing-video"
-        style={{ scale: videoScale, opacity: videoOpacity }}
-        onCanPlay={() => { if (videoRef.current) videoRef.current.classList.add('loaded'); }}
+        className="landing-video loaded"
+        style={{ scale: videoScale }}
         onError={() => { if (videoRef.current) videoRef.current.style.display = 'none'; }}
       />
 
