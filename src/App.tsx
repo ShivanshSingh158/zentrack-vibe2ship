@@ -498,7 +498,10 @@ function App() {
   }
 
   if (!user) {
-    const isLogin = showLogin || window.location.pathname === '/login';
+    // Show login overlay if explicitly requested OR if the URL path is /login
+    // BUT: never show login page immediately after a redirect (user is still authenticating)
+    const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
+    const isLogin = !isReturningFromRedirect && (showLogin || window.location.pathname === '/login');
 
     return (
       <>
@@ -535,7 +538,7 @@ function App() {
             <Login 
               onBack={() => {
                 setShowLogin(false);
-                window.history.pushState({}, '', '/');
+                window.history.replaceState({}, '', '/');
               }} 
             />
           )}

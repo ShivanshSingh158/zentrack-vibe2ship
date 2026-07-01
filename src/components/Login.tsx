@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithRedirect, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { LogIn, Loader2, Play, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,40 +20,20 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
   googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
   googleProvider.addScope('https://www.googleapis.com/auth/documents');
   
-  const [isLoading, setIsLoading] = useState(false);
-
+  // If we're returning from a Google redirect, show spinner until App.tsx processes it
+  const [isLoading, setIsLoading] = useState(
+    () => localStorage.getItem('zen_is_redirecting') === '1'
+  );
 
   useEffect(() => {
-    // Check if we are returning from a Google redirect
-    const wasRedirecting = localStorage.getItem('zen_is_redirecting') === '1';
-    if (!wasRedirecting) return;
-
-    setIsLoading(true);
-    localStorage.removeItem('zen_is_redirecting');
-
-    // Failsafe: never get stuck - reset after 12s if Firebase hangs
-    const timeout = setTimeout(() => setIsLoading(false), 12000);
-
-    getRedirectResult(auth)
-      .then(result => {
-        clearTimeout(timeout);
-        if (!result) {
-          // No result means the redirect was abandoned (user closed browser etc.)
-          setIsLoading(false);
-        }
-        // If result exists, App.tsx onAuthStateChanged will fire and unmount this
-      })
-      .catch(err => {
-        clearTimeout(timeout);
-        setIsLoading(false);
-        console.error('Google redirect result error:', err);
-        if (err.code === 'auth/unauthorized-domain') {
-          toast.error('Domain not authorized. Please contact support.', { duration: 10000 });
-        } else {
-          toast.error('Sign-in failed: ' + (err.message || err.code), { duration: 8000 });
-        }
-      });
-  }, []);
+    // Failsafe: if App.tsx's getRedirectResult hangs for some reason, un-stick after 15s
+    if (!isLoading) return;
+    const timeout = setTimeout(() => {
+      localStorage.removeItem('zen_is_redirecting');
+      setIsLoading(false);
+    }, 15000);
+    return () => clearTimeout(timeout);
+  }, [isLoading]);
 
   const handleLogin = () => {
     // Use redirect - works universally, never gets popup-blocked
