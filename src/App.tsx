@@ -442,7 +442,7 @@ function App() {
 
   if (authLoading) {
     const isProbablyLoggedIn = localStorage.getItem('zen_is_logged_in') === '1';
-    const isProtectedRoute = window.location.pathname !== '/' && window.location.pathname !== '/landing';
+    const isProtectedRoute = !['/', '/landing', '/login'].includes(window.location.pathname);
 
     if (isProbablyLoggedIn || isProtectedRoute) {
       return (
@@ -464,8 +464,11 @@ function App() {
   }
 
   if (!user) {
-    if (!showLogin) {
-      return <Landing onTryNow={() => setShowLogin(true)} />;
+    if (!showLogin && window.location.pathname !== '/login') {
+      return <Landing onTryNow={() => {
+        setShowLogin(true);
+        window.history.pushState({}, '', '/login');
+      }} />;
     }
     
     return (
