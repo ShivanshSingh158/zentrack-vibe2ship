@@ -42,18 +42,39 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // ── Internal secret auth — REQUIRED, not optional —————————————————
-  // If ZENTRACK_INTERNAL_SECRET is not set in Vercel, the endpoint is broken by design.
-  // Never allow an unauthenticated caller to send push notifications.
-  const internalSecret = process.env.ZENTRACK_INTERNAL_SECRET;
-  if (!internalSecret) {
-    console.error('[send-notification] ZENTRACK_INTERNAL_SECRET is not configured. Refusing all requests.');
-    return res.status(500).json({ error: 'Server misconfiguration: notification secret not set.' });
+  // ── Auth: dual-mode ──────────────────────────────────────────────────────────
+  // 1. Browser callers (FCM.sendPushNotification): Firebase ID Token in Authorization header.
+  //    This replaces the old VITE_INTERNAL_SECRET which was exposed in the JS bundle.
+  // 2. Cron jobs (cron-watchdog, cron-classes): Bearer CRON_SECRET in Authorization header.
+  //    Cron jobs run server-side and never expose this secret to the browser.
+  const authHeader = req.headers['authorization'] || '';
+  const cronSecret = process.env.CRON_SECRET;
+  const internalSecret = process.env.ZENTRACK_INTERNAL_SECRET; // legacy — keep for old callers
+
+  let isAuthorized = false;
+
+  // Path A: Cron secret (server-to-server only)
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    isAuthorized = true;
   }
-  const provided = req.headers['x-internal-secret'] || '';
-  if (provided !== internalSecret) {
+  // Path B: Legacy internal secret (transitional — will be removed once all callers migrated)
+  else if (internalSecret && (req.headers['x-internal-secret'] === internalSecret)) {
+    isAuthorized = true;
+  }
+  // Path C: Firebase ID Token from browser caller
+  else if (authHeader.startsWith('Bearer ') && authHeader !== `Bearer ${cronSecret}`) {
+    try {
+      await admin.auth().verifyIdToken(authHeader.replace('Bearer ', ''));
+      isAuthorized = true;
+    } catch {
+      // token invalid — fall through to 401
+    }
+  }
+
+  if (!isAuthorized) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
+
 
   const contentType = req.headers['content-type'] || '';
   if (!contentType.includes('application/json')) {

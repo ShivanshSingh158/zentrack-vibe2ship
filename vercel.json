@@ -1,9 +1,61 @@
 {
   "functions": {
+    "api/gemini-proxy.js": {
+      "maxDuration": 30
+    },
     "api/youtube.js": {
       "maxDuration": 60
+    },
+    "api/cron-watchdog.js": {
+      "maxDuration": 60
+    },
+    "api/cron-queue-processor.js": {
+      "maxDuration": 30
+    },
+    "api/cron-classes.js": {
+      "maxDuration": 30
     }
   },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://accounts.google.com https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://firestore.googleapis.com wss://*.firebaseio.com https://generativelanguage.googleapis.com https://accounts.spotify.com https://api.spotify.com https://www.youtube.com; img-src 'self' data: https: blob:; media-src 'self' blob:; frame-src https://accounts.google.com https://job-tracker-6b672.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/__/auth/:path*",
@@ -15,3 +67,4 @@
     }
   ]
 }
+

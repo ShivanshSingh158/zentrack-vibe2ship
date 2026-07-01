@@ -1,19 +1,50 @@
-// Vercel Serverless — YouTube playlist fetcher via InnerTube API
-// Uses the `/next` endpoint with `playlistIndex` overlapping pagination.
-// Bypasses the broken `continuation` token structure completely.
-// Returns ALL videos in a playlist regardless of size, even with the new layout.
+/**
+ * api/youtube.js
+ *
+ * ZenTrack — Vercel Serverless: YouTube playlist fetcher via InnerTube API.
+ * Uses the `/next` endpoint with `playlistIndex` overlapping pagination.
+ * Bypasses the broken `continuation` token structure completely.
+ * Returns ALL videos in a playlist regardless of size.
+ *
+ * REQUIRED ENV VAR (Vercel Dashboard — server-only, NO VITE_ prefix):
+ *   INNERTUBE_KEY  — YouTube InnerTube API key
+ *                   (previously was VITE_INNERTUBE_KEY — rename it!)
+ */
 
-const INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+// ── CORS Helper ───────────────────────────────────────────────────────────────
+const setCors = (req, res) => {
+  const origin = req.headers['origin'] || '';
+  const allowed = (process.env.ALLOWED_ORIGINS || 'https://myzentrack.vercel.app,http://localhost:5173,http://localhost:5174')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  res.setHeader('Access-Control-Allow-Origin', allowed.includes(origin) ? origin : allowed[0]);
+  res.setHeader('Vary', 'Origin');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+};
+
+// ── Firebase Admin Init (singleton) ──────────────────────────────────────────
+import admin from 'firebase-admin';
+if (!admin.apps.length) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  } catch (err) {
+    console.error('[youtube] Failed to initialize Firebase Admin:', err.message);
+  }
+}
+
+// ── Key from server env var (NEVER from VITE_ prefix) ────────────────────────
+// In Vercel: Settings → Environment Variables → Name: INNERTUBE_KEY, Value: AIzaSy...
 const INNERTUBE_CLIENT = { clientName: 'WEB', clientVersion: '2.20231219.01.00' };
 
-async function fetchNext(playlistId, playlistIndex) {
-  const body = { 
+async function fetchNext(playlistId, playlistIndex, apiKey) {
+  const body = {
     context: { client: INNERTUBE_CLIENT },
     playlistId,
-    playlistIndex
+    playlistIndex,
   };
   const res = await fetch(
-    `https://www.youtube.com/youtubei/v1/next?key=${INNERTUBE_KEY}`,
+    `https://www.youtube.com/youtubei/v1/next?key=${apiKey}`,
     { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
   );
   if (!res.ok) throw new Error(`InnerTube HTTP ${res.status}`);
@@ -21,6 +52,28 @@ async function fetchNext(playlistId, playlistIndex) {
 }
 
 export default async function handler(req, res) {
+  setCors(req, res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  // ── Auth: Firebase ID Token ─────────────────────────────────────────────
+  // Prevents unauthenticated actors from draining the InnerTube key's quota.
+  const authHeader = req.headers['authorization'] || '';
+  if (!authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Firebase ID token required' });
+  }
+  try {
+    await admin.auth().verifyIdToken(authHeader.replace('Bearer ', ''));
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired Firebase token' });
+  }
+
+  // Read key from server-side env (never VITE_ prefix)
+  const INNERTUBE_KEY = process.env.INNERTUBE_KEY;
+  if (!INNERTUBE_KEY) {
+    console.error('[youtube] INNERTUBE_KEY env var is not set in Vercel.');
+    return res.status(500).json({ error: 'YouTube API not configured on server.' });
+  }
+
   const { playlistId } = req.query;
   if (!playlistId) return res.status(400).json({ error: 'Missing playlistId' });
 
@@ -32,7 +85,7 @@ export default async function handler(req, res) {
     // Safety limit of 50 pages (approx 50 * 190 = 9500 videos)
     // Most YouTube playlists max out at 5000 items anyway.
     for (let page = 0; page < 50; page++) {
-      const data = await fetchNext(playlistId, currentIndex);
+      const data = await fetchNext(playlistId, currentIndex, INNERTUBE_KEY);
       
       // On the first fetch, extract title or errors
       if (page === 0) {

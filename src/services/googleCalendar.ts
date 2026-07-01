@@ -33,25 +33,27 @@ const CALENDAR_API = 'https://www.googleapis.com/calendar/v3';
 // ZenTrack source tag stored on GCal events to identify them
 const ZENTRACK_SOURCE_TAG = 'zentrack-autosync';
 
-// ✅ SEC-3 FIX: The short-lived OAuth access token is now stored in sessionStorage
-// instead of localStorage. This prevents token theft via XSS across browser sessions:
-// - sessionStorage is cleared when the tab closes, limiting the attack window.
-// - localStorage persists indefinitely, making stolen tokens valid for hours even
-//   after the user has closed the app.
-// The refresh token intentionally STAYS in localStorage (it's needed to silently
-// re-auth on return visits without requiring a new popup every session).
-let _accessToken: string | null = sessionStorage.getItem('zen_gcal_access_token')
-  || localStorage.getItem('zen_gcal_access_token'); // fallback to migrate existing sessions
-let _tokenExpiry: number = parseInt(
-  sessionStorage.getItem('zen_gcal_token_expiry')
-  || localStorage.getItem('zen_gcal_token_expiry')
-  || '0',
-  10
-);
-// Clean up any legacy localStorage access token on startup
-if (localStorage.getItem('zen_gcal_access_token')) {
-  localStorage.removeItem('zen_gcal_access_token');
-  localStorage.removeItem('zen_gcal_token_expiry');
+// ── SEC-FIX: Access token stored IN MEMORY ONLY (not sessionStorage, not localStorage).
+// Memory storage means:
+//   • It is never readable from other browser contexts or extensions
+//   • It is wiped on tab close / page refresh (user re-auths silently via Firestore refresh token)
+//   • XSS cannot extract it via document.cookie / localStorage.getItem / sessionStorage.getItem
+// The REFRESH TOKEN lives only in Firestore (server-side) — never in the browser at all.
+// On page load, a silent refresh call is made to /api/auth/refresh which reads the token
+// from Firestore using the Firebase ID token as proof of identity.
+let _accessToken: string | null = null; // IN MEMORY ONLY — intentionally not persisted
+let _tokenExpiry: number = 0;
+
+// Clean up any legacy tokens left by older versions
+if (typeof window !== 'undefined') {
+  try {
+    sessionStorage.removeItem('zen_gcal_access_token');
+    sessionStorage.removeItem('zen_gcal_token_expiry');
+    localStorage.removeItem('zen_gcal_access_token');
+    localStorage.removeItem('zen_gcal_token_expiry');
+    // DO NOT remove zen_gcal_refresh_token from localStorage here — it's used by
+    // the legacy signInWithGoogle fallback path that runs until all tokens are Firestore-migrated.
+  } catch { /* ignore */ }
 }
 let _tokenClient: any = null;
 let _gisLoaded = false;
@@ -125,9 +127,13 @@ export const isSignedInToGoogle = (): boolean => {
   return Date.now() < (_tokenExpiry - BUFFER_MS);
 };
 
-export const wasEverConnectedToGoogle = (): boolean =>
-  // Check sessionStorage (current session) OR localStorage (has connected before in a past session)
-  !!(sessionStorage.getItem('zen_gcal_access_token') || localStorage.getItem('zen_gcal_refresh_token'));
+export const wasEverConnectedToGoogle = (): boolean => {
+  // If we have an access token in memory, definitely connected this session.
+  // If no memory token, check if the backend would have a refresh token for us
+  // (indicated by the user having previously gone through the OAuth flow).
+  // We detect this via a lightweight localStorage flag set during signIn.
+  return !!(_accessToken || localStorage.getItem('zen_gcal_has_refresh_token'));
+};
 
 export const getTokenTimeRemaining = (): number =>
   _accessToken ? Math.max(0, _tokenExpiry - Date.now()) : 0;
@@ -136,37 +142,37 @@ let _refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const forceSilentRefresh = async (): Promise<void> => {
   console.log('[GoogleCalendar] 🔄 Proactive token refresh triggered...');
-  const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
-  if (!refreshToken) throw new Error('No refresh token available for silent refresh');
-  
+
+  // Use Firebase ID token to authenticate the refresh request.
+  // The backend reads the Firestore-stored refresh_token using the uid from the ID token.
+  // This means the refresh_token NEVER travels through the browser.
+  const user = auth.currentUser;
+  if (!user) throw new Error('Not authenticated — cannot refresh Google token');
+  const idToken = await user.getIdToken();
+
   const res = await fetch('/api/auth/refresh', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: refreshToken })
+    body: JSON.stringify({ idToken }),
   });
-  
-  if (!res.ok) throw new Error('Failed to refresh token from server');
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.error || 'Failed to refresh Google token from server');
+  }
   const data = await res.json();
-  // Don't call storeToken here if it creates a loop, wait, storeToken is what sets the timer.
-  // Actually, we can just call storeToken from here!
-  storeToken(data.access_token, data.expires_in, data.refresh_token);
+  storeToken(data.access_token, data.expires_in ?? 3600);
   console.log('[GoogleCalendar] ✅ Token silently refreshed.');
-  
+
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('google-token-refreshed'));
   }
 };
 
-const storeToken = (accessToken: string, expiresIn: number, refreshToken?: string) => {
+const storeToken = (accessToken: string, expiresIn: number) => {
+  // Access token: memory ONLY — never written to any browser storage
   _accessToken = accessToken;
   _tokenExpiry = Date.now() + Math.min(expiresIn * 1000, 55 * 60 * 1000);
-  // ✅ SEC-3: Access token goes to sessionStorage (cleared on tab close)
-  sessionStorage.setItem('zen_gcal_access_token', _accessToken);
-  sessionStorage.setItem('zen_gcal_token_expiry', _tokenExpiry.toString());
-  if (refreshToken) {
-    // Refresh token stays in localStorage (needed to silently re-auth on return visits)
-    localStorage.setItem('zen_gcal_refresh_token', refreshToken);
-  }
 
   // Schedule a proactive silent refresh 5 minutes before expiry
   if (_refreshTimer) clearTimeout(_refreshTimer);
@@ -176,10 +182,8 @@ const storeToken = (accessToken: string, expiresIn: number, refreshToken?: strin
       await forceSilentRefresh();
     } catch (err) {
       console.warn('[GoogleCalendar] Silent refresh failed:', err);
-      // If it fails, clear token to force re-auth
       _accessToken = null;
-      sessionStorage.removeItem('zen_gcal_access_token');
-      sessionStorage.removeItem('zen_gcal_token_expiry');
+      _tokenExpiry = 0;
     }
   }, refreshIn);
 };
@@ -239,7 +243,9 @@ export const signInWithGoogle = (): Promise<void> => {
               }
               
               const data = await res.json();
-              storeToken(data.access_token, data.expires_in ?? 3600, data.refresh_token);
+              storeToken(data.access_token, data.expires_in ?? 3600);
+              // Mark that this user has ever connected — used by wasEverConnectedToGoogle()
+              localStorage.setItem('zen_gcal_has_refresh_token', '1');
               console.log('[GoogleCalendar] ✅ Token obtained via backend');
               _isAuthFailingLoop = false;
               resolve();
@@ -282,16 +288,21 @@ export const signInWithGoogle = (): Promise<void> => {
 
 export const signOutGoogle = (): void => {
   if (_accessToken && (window as any).google?.accounts?.oauth2) {
-    try { (window as any).google.accounts.oauth2.revoke(_accessToken, () => { /* best-effort revoke */ }); } catch { /* ignore — token revoke is best-effort */ }
+    try { (window as any).google.accounts.oauth2.revoke(_accessToken, () => { /* best-effort revoke */ }); } catch { /* ignore */ }
   }
   _accessToken = null;
   _tokenExpiry = 0;
   _tokenClient = null;
   _syncToken = null;
   _lastSyncTime = 0;
+  // Clean up all storage entries related to Google OAuth
+  localStorage.removeItem('zen_gcal_refresh_token');
+  localStorage.removeItem('zen_gcal_has_refresh_token');
+  // Remove legacy storage entries (defensive cleanup)
+  sessionStorage.removeItem('zen_gcal_access_token');
+  sessionStorage.removeItem('zen_gcal_token_expiry');
   localStorage.removeItem('zen_gcal_access_token');
   localStorage.removeItem('zen_gcal_token_expiry');
-  localStorage.removeItem('zen_gcal_refresh_token'); // ✅ BUG FIX: was missing — caused silent re-auth on next page load
 };
 
 // ─── Token Refresh ────────────────────────────────────────────────────────────

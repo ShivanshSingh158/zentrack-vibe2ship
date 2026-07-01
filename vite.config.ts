@@ -1,251 +1,25 @@
-import { defineConfig, type Plugin, loadEnv } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// ── Dev-only: serve /api/youtube locally (same logic as Vercel serverless fn) ──
-const localApiPlugin = (): Plugin => ({
-  name: 'local-api',
-  configureServer(server) {
-    server.middlewares.use('/api/youtube', async (req: any, res: any) => {
-      // ✅ SEC-1 FIX: API key moved from hardcoded string to environment variable.
-      // Previously: const INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
-      // Now reads from VITE_INNERTUBE_KEY env var. Add it to your .env file:
-      //   VITE_INNERTUBE_KEY=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8
-      const env = loadEnv('development', process.cwd(), '');
-      const INNERTUBE_KEY = env.VITE_INNERTUBE_KEY || process.env.VITE_INNERTUBE_KEY || '';
-      if (!INNERTUBE_KEY) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'VITE_INNERTUBE_KEY environment variable is not set. Add it to your .env file.' }));
-        return;
-      }
-      const CLIENT = { clientName: 'WEB', clientVersion: '2.20231219.01.00' };
+/**
+ * DEV API NOTE:
+ * All /api/* routes are served by Vercel's local dev server.
+ * To develop locally with real API routes (including Gemini proxy,
+ * YouTube, transcripts, auth, notifications), run:
+ *
+ *   npx vercel dev
+ *
+ * instead of `npm run dev`. Vercel dev starts Vite AND the Node.js
+ * serverless functions together on the same port, so fetch('/api/...')
+ * works identically in development and production.
+ *
+ * If you MUST use plain `npm run dev` (Vite only), API calls will 404.
+ * That is intentional — API keys must not be duplicated into Vite config.
+ */
 
-      const url = new URL(req.url, 'http://localhost');
-      const playlistId = url.searchParams.get('playlistId');
-      if (!playlistId) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing playlistId' })); return; }
 
-      async function fetchNext(pId: string, pIndex: number) {
-        const body = { context: { client: CLIENT }, playlistId: pId, playlistIndex: pIndex };
-        const r = await fetch(`https://www.youtube.com/youtubei/v1/next?key=${INNERTUBE_KEY}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-        });
-        if (!r.ok) throw new Error(`InnerTube HTTP ${r.status}`);
-        return await r.json() as any;
-      }
 
-      try {
-        const allVideos = new Map<string, {videoId: string; title: string; isDeleted?: boolean}>();
-        let playlistTitle: string | null = null;
-        let currentIndex = 0;
-
-        for (let page = 0; page < 50; page++) {
-          const data = await fetchNext(playlistId, currentIndex);
-          
-          if (page === 0) {
-              const alert = data.alerts?.find((a: any) => a.alertRenderer?.type === 'ERROR');
-              if (alert) {
-                const msg = alert.alertRenderer?.text?.runs?.[0]?.text || alert.alertRenderer?.text?.simpleText || 'Playlist not found';
-                res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: msg }));
-                return;
-              }
-              if (!playlistTitle) {
-                  function findTitle(obj: any): string | null {
-                      if (!obj || typeof obj !== 'object') return null;
-                      if (obj.playlist && typeof obj.playlist.title === 'string') return obj.playlist.title;
-                      if (Array.isArray(obj)) {
-                          for (const v of obj) { const t = findTitle(v); if (t) return t; }
-                      } else {
-                          for (const v of Object.values(obj)) { const t = findTitle(v); if (t) return t; }
-                      }
-                      return null;
-                  }
-                  playlistTitle = findTitle(data);
-              }
-          }
-
-          let added = 0;
-          function check(obj: any) {
-              if (!obj || typeof obj !== 'object') return;
-              if (obj.playlistPanelVideoRenderer) {
-                  const v = obj.playlistPanelVideoRenderer;
-                  if (v.videoId && !allVideos.has(v.videoId)) {
-                      const t = v.title?.runs?.[0]?.text || v.title?.simpleText || '';
-                      if (t !== '[Private video]' && t !== '[Deleted video]') {
-                          allVideos.set(v.videoId, { videoId: v.videoId, title: t });
-                          added++;
-                      } else {
-                          allVideos.set(v.videoId, { videoId: v.videoId, title: t, isDeleted: true });
-                          added++;
-                      }
-                  }
-              }
-              if (Array.isArray(obj)) { obj.forEach(check); return; }
-              Object.values(obj).forEach(check);
-          }
-          check(data);
-
-          if (added === 0) break;
-          currentIndex += 190;
-        }
-
-        const validVideos = Array.from(allVideos.values()).filter(v => !v.isDeleted);
-
-        if (validVideos.length === 0) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'No videos found. The playlist may be empty, private, or the URL is incorrect.' }));
-          return;
-        }
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ title: playlistTitle || `Playlist (${validVideos.length} videos)`, videos: validVideos }));
-      } catch (e: any) {
-        console.error('API Error:', e);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message || 'Unknown error' }));
-      }
-    });
-
-    server.middlewares.use('/api/auth/google', async (req: any, res: any) => {
-      if (req.method === 'OPTIONS') {
-        res.writeHead(200, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' });
-        res.end();
-        return;
-      }
-      if (req.method !== 'POST') {
-        res.writeHead(405); res.end('Method not allowed'); return;
-      }
-
-      let body = '';
-      req.on('data', (chunk: any) => { body += chunk.toString(); });
-      req.on('end', async () => {
-        try {
-          const { code } = JSON.parse(body);
-          if (!code) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing code' })); return; }
-
-          const env = loadEnv('development', process.cwd(), '');
-          const client_id = env.VITE_GOOGLE_CALENDAR_CLIENT_ID || process.env.VITE_GOOGLE_CALENDAR_CLIENT_ID;
-          const client_secret = env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
-
-          if (!client_id || !client_secret) {
-            console.error('Missing Google OAuth environment variables in Vite');
-            res.writeHead(500); res.end(JSON.stringify({ error: 'Server misconfiguration' })); return;
-          }
-
-          const response = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              code,
-              client_id,
-              client_secret,
-              redirect_uri: 'postmessage',
-              grant_type: 'authorization_code'
-            })
-          });
-
-          const data = await response.json();
-          if (data.error) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: data.error, details: data.error_description }));
-            return;
-          }
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            access_token: data.access_token,
-            expires_in: data.expires_in,
-            refresh_token: data.refresh_token
-          }));
-        } catch (e: any) {
-          console.error('Vite /api/auth/google error:', e);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Internal server error' }));
-        }
-      });
-    });
-
-    server.middlewares.use('/api/auth/refresh', async (req: any, res: any) => {
-      if (req.method === 'OPTIONS') {
-        res.writeHead(200, { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' });
-        res.end();
-        return;
-      }
-      if (req.method !== 'POST') {
-        res.writeHead(405); res.end('Method not allowed'); return;
-      }
-
-      let body = '';
-      req.on('data', (chunk: any) => { body += chunk.toString(); });
-      req.on('end', async () => {
-        try {
-          const { refresh_token } = JSON.parse(body);
-          if (!refresh_token) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing refresh token' })); return; }
-
-          const env = loadEnv('development', process.cwd(), '');
-          const client_id = env.VITE_GOOGLE_CALENDAR_CLIENT_ID || process.env.VITE_GOOGLE_CALENDAR_CLIENT_ID;
-          const client_secret = env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET;
-
-          if (!client_id || !client_secret) {
-            res.writeHead(500); res.end(JSON.stringify({ error: 'Server misconfiguration' })); return;
-          }
-
-          const response = await fetch('https://oauth2.googleapis.com/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({
-              refresh_token,
-              client_id,
-              client_secret,
-              grant_type: 'refresh_token'
-            })
-          });
-
-          const data = await response.json();
-          if (data.error) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: data.error, details: data.error_description }));
-            return;
-          }
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            access_token: data.access_token,
-            expires_in: data.expires_in
-          }));
-        } catch (e: any) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Internal server error' }));
-        }
-      });
-    });
-
-    server.middlewares.use('/api/transcript', async (req: any, res: any) => {
-      const url = new URL(req.url, 'http://localhost');
-      const videoId = url.searchParams.get('videoId');
-      if (!videoId) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing videoId' })); return; }
-
-      try {
-        const { YoutubeTranscript } = await import('youtube-transcript');
-        const transcript = await YoutubeTranscript.fetchTranscript(videoId);
-        const text = transcript
-          .map((item: any) => {
-            const startSec = Math.floor(item.offset / 1000);
-            const mm = Math.floor(startSec / 60);
-            const ss = String(startSec % 60).padStart(2, '0');
-            return `[${mm}:${ss}] ${item.text.replace(/\n/g, ' ')}`;
-          })
-          .join('\n');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ transcript: text }));
-      } catch (e: any) {
-        console.error('Transcript API Error:', e);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: e.message || 'Transcript not found' }));
-      }
-    });
-  },
-});
 
 // ── Emits /version.json on every build with the current timestamp ─────────────
 // The UpdatePrompt component fetches this (cache: 'no-store') and compares
@@ -295,8 +69,8 @@ export default defineConfig({
   },
   plugins: [
     react(),
-    localApiPlugin(),
     versionJsonPlugin(),
+
     VitePWA({
       // autoUpdate so SW takes over silently — version.json handles the UI notification
       registerType: 'autoUpdate',

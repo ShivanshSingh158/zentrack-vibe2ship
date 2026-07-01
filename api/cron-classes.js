@@ -24,6 +24,23 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 const messaging = admin.messaging();
 
+// ── Throttle helpers (same pattern as cron-watchdog.js) ────────────────────────
+const THROTTLE_COL = 'notification_throttle';
+const PUSH_THROTTLE_MS = 2 * 60 * 60 * 1000; // 2h between pushes for the same class slot
+
+const isThrottled = async (userId, itemId, windowMs) => {
+  const ref = db.collection(THROTTLE_COL).doc(`${userId}_${itemId}`);
+  const doc = await ref.get();
+  if (!doc.exists) return false;
+  const lastSent = doc.data()?.lastSentAt?.toMillis() || 0;
+  return (Date.now() - lastSent) < windowMs;
+};
+
+const markThrottled = async (userId, itemId) => {
+  const ref = db.collection(THROTTLE_COL).doc(`${userId}_${itemId}`);
+  await ref.set({ lastSentAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
+};
+
 export default async function handler(req, res) {
   // 1. Security Check: Only allow requests with the correct CRON_SECRET
   const expectedSecret = process.env.CRON_SECRET;
@@ -72,7 +89,7 @@ export default async function handler(req, res) {
         const startInMinutes = hh * 60 + mm;
         const diff = startInMinutes - currentTimeInMinutes;
 
-        // Trigger if class starts in 6 to 10 minutes (since cron runs every 5 minutes, this guarantees 1 trigger)
+        // Trigger if class starts in 6 to 10 minutes (5-min cron guarantees 1 trigger)
         if (diff > 5 && diff <= 10) {
           if (!userNotifications[subject.userId]) {
             userNotifications[subject.userId] = [];
@@ -81,6 +98,8 @@ export default async function handler(req, res) {
             title: `Class starting soon: ${subject.name}`,
             body: `Starts at ${timeStr}. Get ready!`,
             tag: `class-${doc.id}-${timeStr}`,
+            classKey: `class_${doc.id}_${timeStr}_${new Date().toISOString().split('T')[0]}`,
+            userId: subject.userId,
           });
         }
       });
@@ -94,28 +113,31 @@ export default async function handler(req, res) {
       if (tokens.length === 0) continue;
 
       for (const notif of notifications) {
-        // DATA-ONLY Payload! Removing 'notification' from root forces Android
-        // to deliver this to our Service Worker in the background.
+        // ── Throttle: skip if already sent within 2h ─────────────────────────────
+        const throttled = await isThrottled(userId, notif.classKey || notif.tag, PUSH_THROTTLE_MS);
+        if (throttled) {
+          console.log(`[cron-classes] Throttled: ${notif.classKey || notif.tag}`);
+          continue;
+        }
+
+        // DATA-ONLY Payload — forces Android/SW to handle in background
         const payload = {
-          data: { 
-            title: notif.title, 
+          data: {
+            title: notif.title,
             body: notif.body,
             tag: notif.tag,
-            url: '/attendance'
+            url: '/attendance',
           },
-          android: {
-            priority: 'high',
-          },
-          webpush: {
-            headers: {
-              Urgency: 'high'
-            }
-          },
+          android: { priority: 'high' },
+          webpush: { headers: { Urgency: 'high' } },
           tokens,
         };
 
         const response = await messaging.sendEachForMulticast(payload);
         pushesSent += response.successCount;
+
+        // Mark throttled AFTER successful send
+        await markThrottled(userId, notif.classKey || notif.tag);
       }
     }
 

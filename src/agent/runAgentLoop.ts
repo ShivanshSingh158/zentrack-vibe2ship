@@ -32,7 +32,9 @@ const safeDispatch = (detail: object) => {
 export async function runAgentLoop(
   userMessage: string,
   appContext: any,
-  apiKey: string,
+  // ⚠️ DEPRECATED: apiKey is no longer used — all calls route through callWithFallback()
+  // which reads from the server proxy or the runtime key pool. Kept for API compatibility.
+  _apiKey: string = '',
   onStep: (step: AgentStep) => void,
   systemInstruction?: string,
   modelOverride?: string,

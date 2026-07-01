@@ -1,80 +1,104 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import sgMail from '@sendgrid/mail';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+/**
+ * api/daily-briefing.ts
+ *
+ * ZenTrack — Daily Morning Briefing (email summary).
+ *
+ * NOTE: This endpoint is a scaffold for future email briefing functionality.
+ * It is NOT currently wired into the cron workflow.
+ *
+ * Dependencies intentionally minimal — no @sendgrid/mail import so that
+ * the package does not need to be installed in the project.
+ * When email sending is needed, use the Resend API (free tier, no SDK needed)
+ * or add @sendgrid/mail to package.json first.
+ *
+ * Auth: CRON_SECRET in Authorization header (server-to-server only).
+ */
 
-// Note: To use firebase-admin, you would import it and initialize it here using the service account key.
-// import * as admin from 'firebase-admin';
-// if (!admin.apps.length) {
-//   admin.initializeApp({
-//     credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT!))
-//   });
-// }
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import admin from 'firebase-admin';
+
+// ── Firebase Admin Init (singleton) ──────────────────────────────────────────
+if (!admin.apps.length) {
+  try {
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  } catch (err: any) {
+    console.error('[daily-briefing] Firebase Admin init failed:', err.message);
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
-    // Verify Cron secret if triggered by Vercel Cron
+    // ── Auth ──────────────────────────────────────────────────────────────────
     const authHeader = req.headers.authorization;
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const sendgridKey = process.env.SENDGRID_API_KEY;
-    const fromEmail = process.env.SENDGRID_FROM_EMAIL;
+    // ── Config check ──────────────────────────────────────────────────────────
+    // Daily briefing requires email config — skip gracefully if not set up.
     const toEmail = process.env.MY_PERSONAL_EMAIL;
-    const geminiKey = process.env.VITE_GEMINI_API_KEY;
+    const geminiKeys = process.env.GEMINI_API_KEYS; // server-side keys pool
 
-    if (!sendgridKey || !fromEmail || !toEmail || !geminiKey) {
-      console.warn('[Briefing] Missing configuration keys. Skipping daily briefing.');
-      return res.status(500).json({ error: 'Missing environment variables' });
+    if (!toEmail || !geminiKeys) {
+      console.warn('[daily-briefing] MY_PERSONAL_EMAIL or GEMINI_API_KEYS not set. Skipping.');
+      return res.status(200).json({ skipped: true, reason: 'Email or Gemini not configured' });
     }
 
-    // 1. In a full implementation, fetch data from Firestore using firebase-admin
-    // const db = admin.firestore();
-    // const today = new Date().toISOString().split('T')[0];
-    // const tasksSnap = await db.collection('tasks').where('date', '==', today).get();
-    
-    // For now, we will simulate the data context
-    const mockContext = {
-      tasks: ['Finish CS Assignment', 'Submit Math homework', 'Workout for 45 mins'],
-      habits: ['Drink Water', 'Read 10 pages'],
-      events: ['10:00 AM - Physics Lecture']
-    };
+    // ── Generate briefing content via Gemini proxy pattern ────────────────────
+    // Use first available key from the server-side pool
+    const apiKey = (geminiKeys.split(',')[0] || '').trim();
+    if (!apiKey) {
+      return res.status(500).json({ error: 'No Gemini API keys available' });
+    }
 
-    // 2. Generate HTML email using Gemini
-    const genAI = new GoogleGenerativeAI(geminiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-    
-    const prompt = `You are the Zen Agent, an elite productivity assistant.
-Generate a beautiful, modern HTML email for the user's daily morning briefing. 
-Use this data for today:
-Tasks: ${mockContext.tasks.join(', ')}
-Habits: ${mockContext.habits.join(', ')}
-Events: ${mockContext.events.join(', ')}
+    // Fetch today's summary data from Firestore
+    const db = admin.firestore();
+    const today = new Date().toISOString().split('T')[0];
 
-Make it highly aesthetic, with inline CSS, vibrant colors, and a motivational tone.
-Output ONLY the raw HTML string, nothing else. No markdown formatting blocks.`;
+    // Get all users with FCM tokens (active users)
+    const usersSnap = await db.collection('fcm_tokens').limit(1).get();
+    if (usersSnap.empty) {
+      return res.status(200).json({ skipped: true, reason: 'No active users' });
+    }
 
-    const result = await model.generateContent(prompt);
-    let htmlContent = result.response.text();
-    
-    // Clean up markdown code blocks if Gemini accidentally wraps it
-    htmlContent = htmlContent.replace(/^```html\n?/, '').replace(/\n?```$/, '');
+    // Call Gemini directly (server-side — key never leaves server)
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            role: 'user',
+            parts: [{ text: `Generate a short, motivational daily briefing summary for ${today}. Keep it under 100 words. Be concise and uplifting.` }]
+          }]
+        }),
+      }
+    );
 
-    // 3. Send email using SendGrid
-    sgMail.setApiKey(sendgridKey);
-    const msg = {
-      to: toEmail,
-      from: fromEmail,
-      subject: '☀️ Your Zentrack Daily Briefing',
-      html: htmlContent,
-    };
+    if (!geminiRes.ok) {
+      console.warn('[daily-briefing] Gemini call failed:', geminiRes.status);
+      return res.status(200).json({ skipped: true, reason: 'Gemini unavailable' });
+    }
 
-    await sgMail.send(msg);
+    const geminiData = await geminiRes.json();
+    const briefingText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || 'Have a great day!';
 
-    console.log('[Briefing] Daily briefing email sent successfully.');
-    return res.status(200).json({ success: true, message: 'Briefing sent' });
+    // ── TODO: Send via Resend/SendGrid when email is configured ──────────────
+    // Example with Resend (free, no SDK needed):
+    // await fetch('https://api.resend.com/emails', {
+    //   method: 'POST',
+    //   headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ from: 'ZenTrack <noreply@yourdomain.com>', to: toEmail, subject: 'Daily Briefing', html: `<p>${briefingText}</p>` })
+    // });
+
+    console.log('[daily-briefing] Briefing generated (email send not yet configured).');
+    return res.status(200).json({ success: true, preview: briefingText.slice(0, 100) });
+
   } catch (error: any) {
-    console.error('[Briefing] Error generating/sending briefing:', error);
+    console.error('[daily-briefing] Error:', error);
     return res.status(500).json({ error: 'Failed to process daily briefing', details: error.message });
   }
 }

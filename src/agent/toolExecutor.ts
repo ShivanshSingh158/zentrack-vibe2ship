@@ -1099,11 +1099,14 @@ export const executeTool = async (
                 `ZenTrack: myzentrack.vercel.app`,
               ].join('\n');
 
+              // SEC-FIX (CRIT-5): Use Firebase ID token — not VITE_INTERNAL_SECRET which
+              // is baked into the JS bundle and visible to anyone in DevTools.
+              const idToken = await user.getIdToken();
               await fetch(`${VERCEL_BASE}/api/send-sms`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  'X-Internal-Secret': import.meta.env.VITE_INTERNAL_SECRET || '',
+                  'Authorization': `Bearer ${idToken}`,
                 },
                 body: JSON.stringify({ message: smsBody }),
               }).then(r => {
@@ -1275,7 +1278,7 @@ export const executeTool = async (
         if (!subAgentSystem) {
           return { success: false, data: null, message: `Unknown agent role: "${args.agentRole}". Valid roles: ORACLE, ENIGMA, HERMES, CHRONOS, MEET, ARCHIVE, SCRIBE, HEPHAESTUS, ATLAS, ARGUS, SPECTRE, TITAN, AEGIS` };
         }
-        const apiKey = (import.meta as { env?: { VITE_GEMINI_API_KEY?: string } }).env?.VITE_GEMINI_API_KEY || '';
+        // apiKey deprecated \u2014 keys moved server-side. runAgentLoop ignores this parameter.
         logApi('POST', `/api/v1/agent/delegate/${args.agentRole}`, { instruction: args.instruction, depth: currentDepth + 1 }, 'pending');
         // ✅ FIX: Inject accumulated fleet context so sub-agents don't re-do prior agents' work (PROBLEM 4)
         const fleetCtx = (appContext as any)?._completedAgentResults
@@ -1285,8 +1288,9 @@ export const executeTool = async (
         const result = await runAgentLoop(
           instructionWithDepth,
           appContext,
-          apiKey,
+          '', // apiKey deprecated — keys are server-side
           () => {}, // silent onStep — sub-agent runs in background
+
           subAgentSystem,
           undefined,
           undefined,

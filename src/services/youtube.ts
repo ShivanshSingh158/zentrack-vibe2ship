@@ -1,7 +1,10 @@
+import { auth } from './firebase';
+
 export const extractPlaylistId = (url: string): string | null => {
   const match = url.match(/[?&]list=([a-zA-Z0-9_-]+)/);
   return match ? match[1] : null;
 };
+
 
 // ─── Main Export ───────────────────────────────────────────────────────────────
 // All fetching is done server-side via /api/youtube (Vercel Serverless Function)
@@ -17,8 +20,11 @@ export const fetchYouTubePlaylist = async (playlistId: string) => {
   try {
     console.log(`[YouTube] Fetching playlist via server API: ${playlistId}`);
 
+    // Auth: send Firebase ID token so the server can verify this is a ZenTrack user
+    const idToken = await auth.currentUser?.getIdToken() ?? '';
     const res = await fetch(`/api/youtube?playlistId=${encodeURIComponent(playlistId)}`, {
       signal: controller.signal,
+      headers: idToken ? { 'Authorization': `Bearer ${idToken}` } : {},
     });
 
     const data = await res.json();

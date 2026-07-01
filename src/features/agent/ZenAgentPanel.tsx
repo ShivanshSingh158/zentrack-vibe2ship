@@ -278,7 +278,7 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+  const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });

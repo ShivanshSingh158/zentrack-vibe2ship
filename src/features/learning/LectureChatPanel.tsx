@@ -123,7 +123,12 @@ const saveHistoryToFirestore = async (userId: string, videoId: string, msgs: Cha
 
 const fetchYouTubeTranscript = async (videoId: string): Promise<string> => {
   try {
-    const res = await fetch(`/api/transcript?videoId=${videoId}`);
+    // Auth: send Firebase ID token — /api/transcript now requires it
+    const { auth } = await import('../../services/firebase');
+    const idToken = await auth.currentUser?.getIdToken() ?? '';
+    const res = await fetch(`/api/transcript?videoId=${videoId}`, {
+      headers: idToken ? { 'Authorization': `Bearer ${idToken}` } : {},
+    });
     if (res.ok) {
       const data = await res.json();
       if (data.transcript && data.transcript.length > 50) {
@@ -134,6 +139,7 @@ const fetchYouTubeTranscript = async (videoId: string): Promise<string> => {
 
   return ''; // No transcript found
 };
+
 
 
 // ── Doubt detection ───────────────────────────────────────────────────────────

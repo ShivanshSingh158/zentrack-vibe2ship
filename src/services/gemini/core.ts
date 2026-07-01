@@ -192,18 +192,30 @@ export const getActiveKeyPool = (): string[] => {
   return all;
 };
 
-const rawApiKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GEMINI_API_KEY) || (typeof process !== 'undefined' && process.env?.VITE_GEMINI_API_KEY) || '';
+// ── Key Pool ──────────────────────────────────────────────────────────────────
+// ARCHITECTURE NOTE (2026-07):
+//   Gemini API keys have been moved server-side to api/gemini-proxy.js.
+//   VITE_GEMINI_API_KEY no longer exists — it was exposing all 10 keys in the
+//   browser bundle. The proxy at /api/gemini-proxy authenticates callers via
+//   Firebase ID token and rotates through keys server-side.
+//
+//   `rawApiKey` is now empty. The `getActiveKeyPool()` function returns only
+//   keys that the user manually adds at runtime via addRuntimeApiKey() (the
+//   agent settings panel). These are stored in localStorage.
+//
+//   callWithFallback() → uses shared pool (runtime keys only, may be empty)
+//   The main agent callers in core.ts now route through the proxy client.
+const rawApiKey = ''; // No VITE_ keys in browser — proxy handles key rotation
 
-// ── Live key pool — always reflects current .env + runtime additions ──────────
-// DO NOT read `allKeys` directly in other files — use `getActiveKeyPool()` instead.
-// `allKeys` is kept for backward compatibility with code written before dynamic keys.
+// ── Live key pool — reflects only manually added runtime keys ─────────────────
 export const allKeys = getActiveKeyPool();
 
 if (allKeys.length === 0) {
-  console.error('[ZenAI] ❌ No API keys found. Add a key in the Agent Settings panel.');
+  console.info('[ZenAI] ℹ️ No local API keys. All Gemini calls route through /api/gemini-proxy.');
 } else {
-  console.log(`[ZenAI] ✅ ${allKeys.length} Gemini API key(s) loaded.`);
+  console.log(`[ZenAI] ✅ ${allKeys.length} local runtime Gemini key(s) loaded.`);
 }
+
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -690,7 +702,7 @@ const _callWithFallbackInner = async (
       setAuthExpired();
       throw new Error('Your Gemini OAuth session has expired. Please reconnect your Google account.');
     }
-    throw new Error('Gemini API key is invalid. Please update VITE_GEMINI_API_KEY in your environment settings.');
+    throw new Error('Gemini API key is invalid. Please reconnect your account or add a valid API key in Agent Settings.');
   }
 
   // ── All models and keys exhausted ────────────────────────────────────────
@@ -703,8 +715,8 @@ const _callWithFallbackInner = async (
     const coolingCount = [...keyCooldownUntil.values()].filter(t => t > Date.now()).length;
     throw new Error(
       coolingCount > 0
-        ? `${coolingCount}/${allKeys.length} API key(s) are rate-limited. They auto-recover in ~60s. Add more keys in .env → VITE_GEMINI_API_KEY for higher throughput.`
-        : 'AI quota reached. Add your own Gemini API key in Settings for uninterrupted access.'
+        ? `${coolingCount}/${allKeys.length} API key(s) are rate-limited. They auto-recover in ~60s. Add more keys in Agent Settings for higher throughput.`
+        : 'AI quota reached. Add your own Gemini API key in Agent Settings for uninterrupted access.'
     );
   }
 

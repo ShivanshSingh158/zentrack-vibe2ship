@@ -6,14 +6,30 @@ import {
   persistentMultipleTabManager,
 } from 'firebase/firestore';
 
+/**
+ * Firebase client config — uses VITE_ env vars so values can differ between
+ * environments without changing source code.
+ *
+ * NOTE: Firebase `apiKey` is a PUBLIC identifier (it identifies your GCP project),
+ * NOT a secret. It is safe to expose via VITE_ prefix. Actual security comes
+ * from Firebase Security Rules + Firebase Auth, not from hiding the apiKey.
+ *
+ * Required .env entries:
+ *   VITE_FIREBASE_API_KEY
+ *   VITE_FIREBASE_AUTH_DOMAIN
+ *   VITE_FIREBASE_PROJECT_ID
+ *   VITE_FIREBASE_STORAGE_BUCKET
+ *   VITE_FIREBASE_MESSAGING_SENDER_ID
+ *   VITE_FIREBASE_APP_ID
+ */
 const firebaseConfig = {
-  apiKey: "AIzaSyCWZ_tUzZynf60lxC3-RweGfZRGlcHBz_s",
-  authDomain: (typeof window !== 'undefined' && window.location.hostname !== 'localhost') ? window.location.host : "job-tracker-6b672.firebaseapp.com",
-  projectId: "job-tracker-6b672",
-  storageBucket: "job-tracker-6b672.firebasestorage.app",
-  messagingSenderId: "336719988763",
-  appId: "1:336719988763:web:7da94195ccd2272d6990be",
-  measurementId: "G-FF0W5YR1CM"
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            as string,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN        as string,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID         as string,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET     as string,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID             as string,
+  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID     as string | undefined,
 };
 
 const app = initializeApp(firebaseConfig);

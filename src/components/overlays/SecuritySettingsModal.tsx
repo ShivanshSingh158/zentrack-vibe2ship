@@ -57,17 +57,26 @@ export const SecuritySettingsModal: React.FC<{ onClose: () => void }> = ({ onClo
   const handleTestSms = async () => {
     setTestSmsSent(false);
     setTestSmsError('');
+    const user = auth.currentUser;
+    if (!user) {
+      setTestSmsError('Not logged in');
+      return;
+    }
     try {
+      // SEC-FIX (CRIT-5): Use Firebase ID token — not VITE_INTERNAL_SECRET.
+      // SEC-FIX (HIGH-4): Do NOT pass toPhone from the browser. The server reads
+      // the phone number from Firestore using the verified UID from the ID token.
+      const idToken = await user.getIdToken();
       const VERCEL_BASE = import.meta.env.VITE_APP_URL || 'https://myzentrack.vercel.app';
       const resp = await fetch(`${VERCEL_BASE}/api/send-sms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Internal-Secret': import.meta.env.VITE_INTERNAL_SECRET || '',
+          'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({
-          message: `✅ ZenTrack test SMS\n\nThis confirms your phone number is correctly linked.\nHigh-priority task alerts will arrive here.\n\nmyzentrack.vercel.app`,
-          toPhone: phoneNumber,
+          message: `ZenTrack test SMS\n\nThis confirms your phone number is correctly linked.\nHigh-priority task alerts will arrive here.\n\nmyzentrack.vercel.app`,
+          // toPhone intentionally omitted — server reads it from user_profiles
         }),
       });
       if (resp.ok) {

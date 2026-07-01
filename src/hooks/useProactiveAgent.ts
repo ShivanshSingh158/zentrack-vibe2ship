@@ -226,7 +226,7 @@ This is zero-click autonomous recovery. Execute all steps. No suggestions — on
       window.addEventListener('agent-stop', onStop);
 
       try {
-        const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+        const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
         agentMemoryStore.appendMessage({ role: 'user', title: actionPrompt });
         const proactiveOnStep = (step: any) => {
           window.dispatchEvent(new CustomEvent('agent-log', {
@@ -304,7 +304,7 @@ Be thorough. Be silent unless you find something.`;
       window.addEventListener('agent-stop', onStop);
 
       try {
-        const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+      const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
       // ✅ FIX: Inject already-scanned email IDs into the ghost prompt so SPECTRE skips them
       // Without this, the same unread email gets processed every 24h → duplicate tasks after 7 days
       // ✅ MED-3 FIX: Purge scanned IDs older than 30 days to keep the list lean.
@@ -450,7 +450,7 @@ _"${parsed.quote || ''}_"`;
       _isProactiveRunning = true;
       localStorage.setItem(MORNING_BRIEF_KEY, Date.now().toString());
       try {
-        const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+        const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
         const briefPrompt = `MORNING_BRIEFING_PROTOCOL — Generate today's personalized morning briefing.
 Call get_tasks('dashboard') to get today's tasks and overdue items.
 Call get_day_review to get yesterday's completion score.
@@ -485,7 +485,7 @@ Keep it under 200 words. Be direct.`;
       localStorage.setItem(EOD_KEY, Date.now().toString());
       _isProactiveRunning = true;
       try {
-        const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+        const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
         const eodPrompt = `END_OF_DAY_REVIEW_PROTOCOL — Generate today's end-of-day review.
 Call get_day_review to get Day Score and completion stats.
 Call get_tasks('dashboard') to find tomorrow's priority tasks.
@@ -539,7 +539,7 @@ Keep it under 150 words. Be honest.`;
       localStorage.setItem(MEETING_PREP_KEY, JSON.stringify(updatedFired));
       _isProactiveRunning = true;
       try {
-        const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+        const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
         const prepPrompt = `MEETING_PREP_PROTOCOL — Meeting "${nextEvent.summary || 'Upcoming Meeting'}" starts in 30 minutes.
 Call get_meeting_prep_brief with eventTitle="${nextEvent.summary}" to surface attendees and open items.
 Call get_email_thread for the primary attendee if known (use query="from:[attendee email]").

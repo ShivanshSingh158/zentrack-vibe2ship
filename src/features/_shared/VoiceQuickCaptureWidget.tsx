@@ -191,7 +191,7 @@ export const VoiceQuickCaptureWidget = () => {
 
     setIsProcessing(true);
     const processToastId = toast.loading('Agent routing...');
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
 
     try {
       // 1. Open agent terminal so user can see live steps

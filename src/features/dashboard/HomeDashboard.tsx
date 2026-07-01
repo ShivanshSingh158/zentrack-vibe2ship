@@ -250,7 +250,7 @@ export function HomeDashboard() {
     // Automatically pop open the developer terminal so the user can see the logs
     window.dispatchEvent(new Event('agent-terminal-open'));
     
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
     
     try {
       setAgentResult(null);

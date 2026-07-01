@@ -2,42 +2,73 @@ name: ZenTrack Background Watchdog
 
 on:
   schedule:
-    # Every 5 minutes — checks overdue tasks, approaching deadlines, class alerts
+    # Every 5 minutes — tasks, deadlines, class alerts, push queue
     - cron: '*/5 * * * *'
   workflow_dispatch: # Manual trigger from GitHub Actions tab
 
 jobs:
   watchdog:
-    name: Background Watchdog (Twilio SMS + Push)
+    name: Background Intelligence
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
 
     steps:
+      # ── Channel 1: Main Watchdog (overdue tasks, SMS, push) ──────────────────
       - name: Ping ZenTrack Watchdog
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+          STATUS=$(curl -s -o /tmp/watchdog_response.json -w "%{http_code}" \
+            --max-time 90 \
+            --retry 1 \
+            --retry-delay 5 \
             -X POST "https://myzentrack.vercel.app/api/cron-watchdog" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "Content-Type: application/json")
 
-          echo "HTTP Status: $STATUS"
-          echo "Response: $(cat /tmp/response.json)"
+          echo "Watchdog HTTP Status: $STATUS"
+
+          # Log only non-sensitive stats (not full response body)
+          PUSH=$(grep -o '"pushSent":[0-9]*' /tmp/watchdog_response.json 2>/dev/null || echo '"pushSent":?')
+          SMS=$(grep -o '"smsSent":[0-9]*' /tmp/watchdog_response.json 2>/dev/null || echo '"smsSent":?')
+          USERS=$(grep -o '"usersProcessed":[0-9]*' /tmp/watchdog_response.json 2>/dev/null || echo '"usersProcessed":?')
+          echo "Stats: $PUSH | $SMS | $USERS"
 
           if [ "$STATUS" != "200" ]; then
-            echo "Watchdog call failed with status $STATUS"
-            cat /tmp/response.json
+            echo "ERROR: Watchdog returned status $STATUS"
             exit 1
           fi
 
-          echo "Watchdog ran successfully"
-
-      - name: Ping Class Notifications (student alerts)
+      # ── Channel 2: Push Notification Queue Processor ─────────────────────────
+      - name: Process Push Notification Queue
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          STATUS=$(curl -s -o /tmp/class_response.json -w "%{http_code}" \
-            -X POST "https://myzentrack.vercel.app/api/cron-classes" \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+          STATUS=$(curl -s -o /tmp/queue_response.json -w "%{http_code}" \
+            --max-time 30 \
+            -X POST "https://myzentrack.vercel.app/api/cron-queue-processor" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
             -H "Content-Type: application/json")
 
-          echo "Class cron status: $STATUS"
-          # Don't fail the workflow if class cron fails — it's non-critical
-          echo "Response: $(cat /tmp/class_response.json)" || true
+          echo "Queue Processor HTTP Status: $STATUS"
+          SENT=$(grep -o '"sent":[0-9]*' /tmp/queue_response.json 2>/dev/null || echo '"sent":?')
+          echo "Stats: $SENT"
+          # Non-critical — don't fail the workflow if queue processor fails
+          true
+
+      # ── Channel 3: Class Start Alerts (student persona only) ─────────────────
+      - name: Class Start Alerts
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          STATUS=$(curl -s -o /tmp/class_response.json -w "%{http_code}" \
+            --max-time 30 \
+            -X POST "https://myzentrack.vercel.app/api/cron-classes" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Content-Type: application/json")
+
+          echo "Class Alerts HTTP Status: $STATUS"
+          PUSHES=$(grep -o '"pushesSent":[0-9]*' /tmp/class_response.json 2>/dev/null || echo '"pushesSent":?')
+          echo "Stats: $PUSHES"
+          # Non-critical — don't fail the workflow if class alerts fail
+          true
