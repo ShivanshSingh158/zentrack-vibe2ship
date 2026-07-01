@@ -23,17 +23,34 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    setIsLoading(true);
-    getRedirectResult(auth).then((result) => {
-      if (!result) {
-        setIsLoading(false); // Only stop loading if there was no redirect
-      }
-      // If there IS a result, keep loading true because App.tsx will unmount this component shortly
-    }).catch(err => {
-      setIsLoading(false);
-      console.error('Redirect sign-in error:', err);
-      toast.error('Redirect login failed: ' + (err.message || 'Unknown error'));
-    });
+    const isRedirecting = localStorage.getItem('zen_is_redirecting') === '1';
+    
+    if (isRedirecting) {
+      setIsLoading(true);
+      
+      // Failsafe: if Firebase SDK hangs (e.g. 3rd party iframes blocked), un-stick the UI after 8s
+      const fallbackTimeout = setTimeout(() => {
+        setIsLoading(false);
+        localStorage.removeItem('zen_is_redirecting');
+      }, 8000);
+
+      getRedirectResult(auth).then((result) => {
+        clearTimeout(fallbackTimeout);
+        localStorage.removeItem('zen_is_redirecting');
+        if (!result) {
+          setIsLoading(false);
+        }
+      }).catch(err => {
+        clearTimeout(fallbackTimeout);
+        localStorage.removeItem('zen_is_redirecting');
+        setIsLoading(false);
+        console.error('Redirect sign-in error:', err);
+        toast.error('Redirect login failed: ' + (err.message || 'Unknown error'));
+      });
+    } else {
+      // Just in case, try to clear any stuck redirect state silently
+      getRedirectResult(auth).catch(() => {});
+    }
   }, []);
 
   const handleLogin = async () => {
