@@ -373,6 +373,33 @@ function App() {
   }, []);
 
   useEffect(() => {
+    // If the user is returning from a Google redirect, we MUST wait for
+    // getRedirectResult() to complete before allowing the app to render.
+    // Otherwise onAuthStateChanged fires with null FIRST (before redirect is processed),
+    // causing the Login page to flash and the user to get stuck.
+    const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
+
+    if (isReturningFromRedirect) {
+      // Keep authLoading = true. Once getRedirectResult resolves, it will trigger
+      // onAuthStateChanged with the real user, which will then call setAuthLoading(false).
+      import('firebase/auth').then(({ getRedirectResult }) => {
+        getRedirectResult(auth)
+          .then((result) => {
+            localStorage.removeItem('zen_is_redirecting');
+            if (!result) {
+              // Redirect was abandoned (user navigated away etc.) - fall through to normal auth
+              setAuthLoading(false);
+            }
+            // If result exists, onAuthStateChanged will fire with the real user automatically
+          })
+          .catch((err) => {
+            console.error('Redirect result error in App.tsx:', err);
+            localStorage.removeItem('zen_is_redirecting');
+            setAuthLoading(false);
+          });
+      });
+    }
+
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       // Show greeting only on fresh login (null → logged-in transition)
       if (currentUser && !prevUserRef.current) {
@@ -420,7 +447,14 @@ function App() {
 
       prevUserRef.current = currentUser;
       setUser(currentUser);
-      setAuthLoading(false);
+
+      // Only set authLoading=false immediately if we are NOT mid-redirect
+      // (if we are mid-redirect, the getRedirectResult handler above will trigger
+      // this listener again with the real user, and THAT call will set authLoading=false)
+      const stillRedirecting = localStorage.getItem('zen_is_redirecting') === '1';
+      if (!stillRedirecting) {
+        setAuthLoading(false);
+      }
     });
 
     return () => unsubscribe();
