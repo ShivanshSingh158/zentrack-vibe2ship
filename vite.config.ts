@@ -127,8 +127,8 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Zentrack',
-        short_name: 'Zentrack',
+        name: 'ZenTrack',
+        short_name: 'ZenTrack',
         description: 'Calm productivity and progress tracking — all in one place.',
         theme_color: '#09090b',
         background_color: '#09090b',
