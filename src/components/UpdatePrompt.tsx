@@ -118,10 +118,10 @@ export const UpdatePrompt: React.FC = () => {
               background: 'rgba(8, 6, 16, 0.92)',
               backdropFilter: 'blur(24px)',
               WebkitBackdropFilter: 'blur(24px)',
-              border: '1px solid rgba(168, 85, 247, 0.5)',
+              border: '1px solid rgba(245,184,64,0.4)',
               boxShadow: isExpanded
-                ? '0 24px 48px rgba(0,0,0,0.8), 0 0 40px rgba(168,85,247,0.25)'
-                : '0 8px 24px rgba(0,0,0,0.6), 0 0 20px rgba(168,85,247,0.4)',
+                ? '0 24px 48px rgba(0,0,0,0.8), 0 0 40px rgba(245,184,64,0.2)'
+                : '0 8px 24px rgba(0,0,0,0.6), 0 0 20px rgba(245,184,64,0.35)',
               pointerEvents: 'auto',
               cursor: isExpanded ? 'default' : 'pointer',
               overflow: 'hidden',
@@ -138,7 +138,7 @@ export const UpdatePrompt: React.FC = () => {
               style={{
                 position: 'absolute',
                 inset: '-180px',
-                background: 'conic-gradient(from 0deg, transparent 60%, #a855f7 75%, #ec4899 85%, #f97316 92%, transparent)',
+                background: 'conic-gradient(from 0deg, transparent 60%, #f5b840 75%, #38bdf8 85%, #c084fc 92%, transparent)',
                 opacity: isExpanded ? 0.12 : 0.25,
                 zIndex: 0,
                 pointerEvents: 'none',
@@ -234,7 +234,7 @@ export const UpdatePrompt: React.FC = () => {
                       width: '100%',
                       padding: '9px 16px',
                       borderRadius: '18px',
-                      background: 'linear-gradient(135deg, #7c3aed, #a855f7, #ec4899)',
+                      background: 'linear-gradient(135deg, #f5b840, #e8a520 40%, #38bdf8)',
                       border: 'none',
                       color: '#fff',
                       fontSize: '0.9rem',
@@ -244,7 +244,7 @@ export const UpdatePrompt: React.FC = () => {
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: '7px',
-                      boxShadow: '0 6px 20px rgba(168,85,247,0.45)',
+                      boxShadow: '0 6px 20px rgba(245,184,64,0.4)',
                       transition: 'transform 0.1s, box-shadow 0.1s',
                       WebkitTapHighlightColor: 'transparent',
                     }}
