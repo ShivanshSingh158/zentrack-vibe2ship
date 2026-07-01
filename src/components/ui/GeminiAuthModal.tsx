@@ -104,13 +104,15 @@ export const GeminiAuthModal: React.FC<{
         transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
         onClick={e => e.stopPropagation()}
         style={{
-          background: 'linear-gradient(135deg, rgba(10, 10, 15, 0.98), rgba(5, 5, 8, 0.99))',
-          border: '1px solid rgba(251, 191, 36, 0.15)',
+          background: 'rgba(10, 20, 35, 0.65)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid rgba(255,255,255,0.12)',
           borderRadius: '24px',
           padding: '2.2rem',
           width: '460px',
           maxWidth: '95vw',
-          boxShadow: '0 32px 80px rgba(0, 0, 0, 0.9), 0 0 50px rgba(6, 182, 212, 0.15)',
+          boxShadow: '0 32px 80px rgba(0, 0, 0, 0.6), inset 0 0 20px rgba(255,255,255,0.05)',
           display: 'flex',
           flexDirection: 'column',
           gap: '1.5rem',
@@ -126,17 +128,17 @@ export const GeminiAuthModal: React.FC<{
 
         {/* Header */}
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fbbf24', marginBottom: '0.35rem', letterSpacing: '0.08em', textTransform: 'uppercase', textShadow: '0 0 12px rgba(251, 191, 36, 0.3)' }}>Connection Center</div>
-          <div style={{ fontSize: '0.78rem', color: '#a1a1aa', letterSpacing: '0.02em' }}>Manage Google Workspace & AI quota connections</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: 600, color: 'white', marginBottom: '0.35rem', letterSpacing: '0.02em', fontFamily: 'var(--font-display, inherit)' }}>Connection Center</div>
+          <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)' }}>Manage Google Workspace & AI quota connections</div>
         </div>
 
         {/* ─── Google Workspace Section ─── */}
         <div style={{
-          background: workspaceConnected ? 'rgba(6,182,212,0.06)' : 'rgba(255,255,255,0.02)',
-          border: `1px solid ${workspaceConnected ? 'rgba(6,182,212,0.25)' : 'rgba(255,255,255,0.05)'}`,
+          background: workspaceConnected ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${workspaceConnected ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
           borderRadius: '16px',
           padding: '1.25rem',
-          boxShadow: workspaceConnected ? 'inset 0 0 15px rgba(6,182,212,0.03)' : 'none',
+          boxShadow: workspaceConnected ? 'inset 0 0 15px rgba(255,255,255,0.03)' : 'none',
           transition: 'all 0.3s ease',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.85rem' }}>
@@ -150,15 +152,15 @@ export const GeminiAuthModal: React.FC<{
               ))}
             </div>
             <div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: workspaceConnected ? '#06b6d4' : '#e4e4e7', letterSpacing: '0.01em' }}>
+              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: workspaceConnected ? 'white' : 'rgba(255,255,255,0.8)', letterSpacing: '0.01em' }}>
                 Google Workspace
               </div>
-              <div style={{ fontSize: '0.68rem', color: '#71717a', marginTop: '1px' }}>Gmail · Calendar · Drive · Docs · Meet</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>Gmail · Calendar · Drive · Docs · Meet</div>
             </div>
             <div style={{ marginLeft: 'auto' }}>
               {workspaceConnected
-                ? <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#06b6d4', background: 'rgba(6,182,212,0.12)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(6,182,212,0.25)', letterSpacing: '0.04em' }}>● LIVE</span>
-                : <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#71717a', background: 'rgba(255,255,255,0.04)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.08)', letterSpacing: '0.04em' }}>● OFFLINE</span>
+                ? <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'white', background: 'rgba(255,255,255,0.15)', padding: '4px 10px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>● LIVE</span>
+                : <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.04)', padding: '4px 10px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.1)', letterSpacing: '0.04em' }}>● OFFLINE</span>
               }
             </div>
           </div>
@@ -187,16 +189,16 @@ export const GeminiAuthModal: React.FC<{
               disabled={signingInWS}
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                padding: '0.7rem 1.25rem', borderRadius: '10px', width: '100%',
-                border: '1px solid rgba(6,182,212,0.3)',
+                padding: '0.8rem 1.25rem', borderRadius: '12px', width: '100%',
+                border: '1px solid rgba(255,255,255,0.2)',
                 background: signingInWS 
-                  ? 'rgba(6,182,212,0.04)' 
-                  : 'linear-gradient(135deg, rgba(6,182,212,0.15), rgba(6,182,212,0.08))',
-                color: '#06b6d4', cursor: signingInWS ? 'default' : 'pointer', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase', transition: 'all 0.2s',
-                boxShadow: signingInWS ? 'none' : '0 4px 12px rgba(6,182,212,0.05)',
+                  ? 'rgba(255,255,255,0.04)' 
+                  : 'rgba(255,255,255,0.08)',
+                color: 'white', cursor: signingInWS ? 'default' : 'pointer', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.02em', transition: 'all 0.2s',
+                boxShadow: signingInWS ? 'none' : '0 4px 12px rgba(0,0,0,0.1)',
               }}
-              onMouseEnter={e => { if(!signingInWS) { e.currentTarget.style.background = 'rgba(6,182,212,0.22)'; e.currentTarget.style.borderColor = 'rgba(6,182,212,0.45)'; } }}
-              onMouseLeave={e => { if(!signingInWS) { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(6,182,212,0.15), rgba(6,182,212,0.08))'; e.currentTarget.style.borderColor = 'rgba(6,182,212,0.3)'; } }}
+              onMouseEnter={e => { if(!signingInWS) { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; } }}
+              onMouseLeave={e => { if(!signingInWS) { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; } }}
             >
               {signingInWS ? <Loader2 size={14} className="spin" /> : <ShieldCheck size={14} />}
               {signingInWS ? 'Establishing Workspace Link...' : 'Link Google Workspace'}
@@ -206,25 +208,25 @@ export const GeminiAuthModal: React.FC<{
 
         {/* ─── Personal AI Quota Section ─── */}
         <div style={{
-          background: geminiStatus.hasPersonalKey ? 'rgba(251,191,36,0.06)' : 'rgba(255,255,255,0.02)',
-          border: `1px solid ${geminiStatus.hasPersonalKey ? 'rgba(251,191,36,0.25)' : 'rgba(255,255,255,0.05)'}`,
+          background: geminiStatus.hasPersonalKey ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
+          border: `1px solid ${geminiStatus.hasPersonalKey ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)'}`,
           borderRadius: '16px',
           padding: '1.25rem',
-          boxShadow: geminiStatus.hasPersonalKey ? 'inset 0 0 15px rgba(251,191,36,0.03)' : 'none',
+          boxShadow: geminiStatus.hasPersonalKey ? 'inset 0 0 15px rgba(255,255,255,0.03)' : 'none',
           transition: 'all 0.3s ease',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.85rem' }}>
-            <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: 'linear-gradient(135deg, rgba(251,191,36,0.15), rgba(251,191,36,0.08))', border: '1px solid rgba(251,191,36,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Bot size={18} style={{ color: '#fbbf24' }} />
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Bot size={20} style={{ color: 'white' }} />
             </div>
             <div>
-              <div style={{ fontSize: '0.92rem', fontWeight: 700, color: geminiStatus.hasPersonalKey ? '#fbbf24' : '#e4e4e7', letterSpacing: '0.01em' }}>Personal AI Quota</div>
-              <div style={{ fontSize: '0.68rem', color: '#71717a', marginTop: '1px' }}>Your private Gemini compute budget</div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: geminiStatus.hasPersonalKey ? 'white' : 'rgba(255,255,255,0.8)', letterSpacing: '0.01em' }}>Personal AI Quota</div>
+              <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '2px' }}>Your private Gemini compute budget</div>
             </div>
             <div style={{ marginLeft: 'auto' }}>
               {geminiStatus.hasPersonalKey
-                ? <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fbbf24', background: 'rgba(251,191,36,0.12)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(251,191,36,0.25)', letterSpacing: '0.04em' }}>● CONNECTED</span>
-                : <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#71717a', background: 'rgba(255,255,255,0.04)', padding: '3px 8px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.08)', letterSpacing: '0.04em' }}>● SHARED</span>
+                ? <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'white', background: 'rgba(255,255,255,0.15)', padding: '4px 10px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.3)', letterSpacing: '0.04em' }}>● CONNECTED</span>
+                : <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', background: 'rgba(255,255,255,0.04)', padding: '4px 10px', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.1)', letterSpacing: '0.04em' }}>● SHARED</span>
               }
             </div>
           </div>
@@ -282,30 +284,29 @@ export const GeminiAuthModal: React.FC<{
                     }
                   `}</style>
                 </div>
-              ) : (
-                <button
-                  onClick={handleConnectAI}
-                  disabled={signingInAI}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                    padding: '0.7rem 1.25rem', borderRadius: '10px', width: '100%',
-                    border: '1px solid rgba(251, 191, 36, 0.3)',
-                    background: 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.08))',
-                    color: '#fbbf24', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.02em', textTransform: 'uppercase', transition: 'all 0.2s',
-                    boxShadow: '0 4px 12px rgba(251, 191, 36, 0.05)',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'rgba(251, 191, 36, 0.22)'; e.currentTarget.style.borderColor = 'rgba(251, 191, 36, 0.45)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.08))'; e.currentTarget.style.borderColor = 'rgba(251, 191, 36, 0.3)'; }}
-                >
-                  <Bot size={14} />
-                  Connect Personal AI Quota
-                </button>
-              )}
-              <div style={{ fontSize: '0.62rem', color: '#71717a', lineHeight: 1.45, marginTop: '0.6rem', textAlign: 'center', fontFamily: 'var(--font-sans, sans-serif)' }}>
-                Runs on your private quota. Sync Workspace to enable instant authentication.
-              </div>
-            </>
+            <button
+              onClick={() => {
+                const key = prompt('Enter your Gemini API Key:');
+                if (key) handleConnectAI(key);
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+                padding: '0.8rem 1.25rem', borderRadius: '12px', width: '100%',
+                border: '1px solid rgba(255,255,255,0.2)',
+                background: 'rgba(255,255,255,0.08)',
+                color: 'white', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, letterSpacing: '0.02em', transition: 'all 0.2s',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            >
+              <Bot size={16} /> CONNECT PERSONAL AI QUOTA
+            </button>
           )}
+          
+          <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', textAlign: 'center', marginTop: '1rem', letterSpacing: '0.02em' }}>
+            Runs on your private quota. Sync Workspace to enable instant authentication.
+          </div>
         </div>
       </motion.div>
     </motion.div>,
