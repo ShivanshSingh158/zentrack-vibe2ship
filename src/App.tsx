@@ -412,6 +412,12 @@ function App() {
         });
       }
 
+      if (currentUser) {
+        localStorage.setItem('zen_is_logged_in', '1');
+      } else {
+        localStorage.removeItem('zen_is_logged_in');
+      }
+
       prevUserRef.current = currentUser;
       setUser(currentUser);
       setAuthLoading(false);
@@ -435,7 +441,11 @@ function App() {
   }, []);
 
   if (authLoading) {
-    return (
+    const isProbablyLoggedIn = localStorage.getItem('zen_is_logged_in') === '1';
+    const isProtectedRoute = window.location.pathname !== '/' && window.location.pathname !== '/landing';
+
+    if (isProbablyLoggedIn || isProtectedRoute) {
+      return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
           <div style={{ position: 'relative', width: 56, height: 56 }}>
@@ -448,8 +458,10 @@ function App() {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: 0 }}>Authenticating...</p>
           </div>
         </div>
+        </div>
       </div>
     );
+    }
   }
 
   if (!user) {
