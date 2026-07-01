@@ -458,7 +458,6 @@ function App() {
             <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: 0 }}>Authenticating...</p>
           </div>
         </div>
-        </div>
       </div>
     );
     }

@@ -7,8 +7,8 @@
   --muted-foreground: rgba(255, 255, 255, 0.55);
   
   font-family: var(--font-body);
-  /* Pure black fallback — video covers this instantly */
-  background-color: #030d1a;
+  /* Warm golden gradient fallback that matches the video's atmosphere */
+  background: linear-gradient(to bottom, #030d1a 0%, #051429 50%, #2b1d0f 75%, #593108 100%);
   color: var(--foreground);
   position: relative;
   width: 100%;
