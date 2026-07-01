@@ -296,14 +296,12 @@ export const HabitsModule = () => {
                         <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <Flame size={12} /> {current}
                         </span>
+                        <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
+                          {completedLast30}/30 days
+                        </span>
                       </div>
                     </div>
                   </div>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            {completedLast30}/30 days
-                          </span>
-                        </div>
-                      </div>
                   {/* Controls */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     {/* Heatmap Grid */}
