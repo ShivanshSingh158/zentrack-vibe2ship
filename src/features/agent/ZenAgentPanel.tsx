@@ -278,6 +278,12 @@ export const ZenAgentPanel = ({ onClose }: { onClose: () => void }) => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const stopSpeaking = useCallback(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+  }, []);
+
   const apiKey = ''; // Keys moved server-side — see api/gemini-proxy.js
 
   useEffect(() => {

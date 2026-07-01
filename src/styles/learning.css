@@ -35,9 +35,10 @@
 }
 
 .topic-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 1rem;
   overflow: hidden;
   transition: transform 0.3s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo), background-color 0.3s var(--ease-out-expo), border-color 0.3s var(--ease-out-expo), box-shadow 0.3s var(--ease-out-expo), color 0.3s var(--ease-out-expo);
   box-shadow: var(--shadow-card);
@@ -56,6 +57,7 @@
   background: linear-gradient(90deg, #14b8a6, #06d6a0);
   border-radius: 0 0 2px 2px;
   opacity: 0.5;
+  display: none; /* Hide for glass aesthetic */
 }
 
 .topic-card:hover {
@@ -64,7 +66,7 @@
 }
 
 .topic-card-header {
-  padding: 1.25rem 1.5rem;
+  padding: 1.25rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -74,7 +76,7 @@
 }
 
 .topic-card-header:hover {
-  background: rgba(20, 184, 166, 0.04);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .topic-title-section {
@@ -149,9 +151,9 @@
 }
 
 .topic-card-body {
-  padding: 0 1.5rem 1.5rem 1.5rem;
-  border-top: 1px solid var(--border-subtle);
-  background: rgba(0, 0, 0, 0.15);
+  padding: 0 1.25rem 1.25rem 1.25rem;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  background: transparent;
 }
 
 .subtasks-list {

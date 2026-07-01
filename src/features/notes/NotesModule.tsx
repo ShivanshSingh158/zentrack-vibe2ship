@@ -15,7 +15,7 @@ import html2pdf from 'html2pdf.js';
 import { startNoteAIChat } from '../../services/gemini';
 // import { extractTextFromPdf, extractTextFromDocx } from '../../services/documentParser';
 import { NotesEditor } from './NotesEditor';
-import { NotesAIPanel } from './NotesAIPanel';
+import { NotesAIPanel, extractMarkdownBlocks, TypingDots, type ChatMessage } from './NotesAIPanel';
 
 export const NotesModule = () => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
@@ -308,7 +308,8 @@ export const NotesModule = () => {
       return;
     }
 
-    const content = format === 'md' ? activeNote.content : activeNote.content.replace(/[#_*~`]/g, '');
+    const safeContent = activeNote.content || '';
+    const content = format === 'md' ? safeContent : safeContent.replace(/[#_*~`]/g, '');
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -670,6 +671,48 @@ export const NotesModule = () => {
       </div>
     );
   }
+
+  const renderChatMessage = (msg: ChatMessage, idx: number) => {
+    const isModel = msg.role === 'model';
+    const blocks = isModel ? extractMarkdownBlocks(msg.text) : [];
+    
+    // Strip markdown code block wrappers so it renders normally
+    let displayText = msg.text || '';
+    if (isModel) {
+      displayText = displayText.replace(/```(?:markdown)?\n/g, '\n').replace(/```/g, '\n');
+    }
+
+    return (
+      <div key={idx} style={{ marginBottom: '1rem', background: !isModel ? 'var(--bg-surface-hover)' : 'transparent', padding: '0.75rem', borderRadius: '8px' }}>
+        <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: !isModel ? 'var(--text-primary)' : 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {isModel ? <Sparkles size={14} /> : <User size={14} />}
+          {!isModel ? 'You' : 'Zen AI'}
+        </div>
+        <div className="markdown-body" style={{ fontSize: '0.9rem' }}>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{displayText}</ReactMarkdown>
+        </div>
+        {isModel && msg.model && (
+          <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right', fontStyle: 'italic', opacity: 0.8 }}>
+            Powered by {msg.model.includes('flash') ? '⚡' : '🧠'} {msg.model.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+          </div>
+        )}
+        {blocks.length > 0 && activeNote && (
+          <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Generated Note Actions</div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn-primary" style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', gap: '0.4rem' }} onClick={() => handleApplyMarkdown(blocks.join('\n\n'), 'replace')}>
+                <Edit2 size={14} /> Replace Note
+              </button>
+              <button className="btn-secondary" style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', gap: '0.4rem' }} onClick={() => handleApplyMarkdown(blocks.join('\n\n'), 'append')}>
+                <AlignLeft size={14} /> Append
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
 
   // Render File Viewer Modal
   if (viewingFile) {
@@ -1077,7 +1120,7 @@ export const NotesModule = () => {
                 {files.map(file => (
                   <div 
                     key={file.id} 
-                    className="storage-node file-card"
+                    className={`storage-node file-card ${activeNote?.id === file.id ? 'active' : ''}`}
                     onClick={() => {
                       if (isSelectMode) {
                         if (selectedIds.includes(file.id!)) setSelectedIds(selectedIds.filter(id => id !== file.id));
@@ -1086,7 +1129,7 @@ export const NotesModule = () => {
                         file.type === 'note' ? setActiveNote(file) : setViewingFile(file);
                       }
                     }}
-                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', cursor: 'pointer', overflow: 'visible', position: 'relative' }}
+                    style={{ cursor: 'pointer', overflow: 'visible', position: 'relative' }}
                   >
                     {isSelectMode && (
                       <input 
@@ -1101,14 +1144,19 @@ export const NotesModule = () => {
                         style={{ position: 'absolute', left: '0.5rem', top: '0.5rem', zIndex: 10 }}
                       />
                     )}
-                    <div style={{ height: '120px', background: 'var(--bg-base)', display: 'flex', justifyContent: 'center', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', borderTopLeftRadius: 'var(--radius-md)', borderTopRightRadius: 'var(--radius-md)' }}>
-                      {getFileIcon(file)}
-                    </div>
-                    <div style={{ padding: '0.75rem' }}>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '0.25rem' }}>{file.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {searchQuery ? getParentPath(file.parentId) : file.type === 'note' ? 'Markdown Note' : formatSize(file.size)}
-                      </div>
+                    {file.type !== 'note' && (
+                        <div style={{ height: '120px', background: 'rgba(0,0,0,0.2)', display: 'flex', justifyContent: 'center', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', borderTopLeftRadius: '0.75rem', borderTopRightRadius: '0.75rem' }}>
+                          {getFileIcon(file)}
+                        </div>
+                    )}
+                    <div style={{ padding: '0.875rem' }}>
+                        <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.2rem', color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '0.25rem' }}>{file.name || 'Untitled Note'}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {file.type === 'note' ? (file.content ? file.content.substring(0, 60) + '...' : 'Empty note...') : formatSize(file.size)}
+                        </div>
+                        <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', marginTop: '0.4rem' }}>
+                          {new Date(file.updatedAt).toLocaleDateString()}
+                        </div>
                     </div>
                     <button 
                       className="more-btn btn-icon" 
@@ -1209,6 +1257,37 @@ export const NotesModule = () => {
             border-color: rgba(255, 255, 255, 0.2) !important;
             outline: none;
           }
+        }
+        .notes-toolbar-btn {
+          background: rgba(255, 255, 255, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 0.5rem;
+          color: rgba(255, 255, 255, 0.55);
+          padding: 0.4rem 0.6rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 0.3rem;
+        }
+        .notes-toolbar-btn:hover, .notes-toolbar-btn.active {
+          background: rgba(255, 255, 255, 0.1);
+          color: white;
+        }
+        .file-card {
+          background: rgba(255, 255, 255, 0.03) !important;
+          border: 1px solid rgba(255, 255, 255, 0.07) !important;
+          border-radius: 0.75rem !important;
+          margin-bottom: 0.4rem;
+          transition: all 0.2s ease !important;
+        }
+        .file-card:hover {
+          border-color: rgba(255, 255, 255, 0.14) !important;
+          background: rgba(255, 255, 255, 0.05) !important;
+        }
+        .file-card.active {
+          border-color: rgba(167, 139, 250, 0.3) !important;
+          background: rgba(167, 139, 250, 0.06) !important;
         }
       `}</style>
 

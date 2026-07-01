@@ -29,12 +29,30 @@ if (typeof window !== 'undefined') {
             headers.set('Authorization', `Bearer ${token}`);
             return originalFetch(url.toString(), { ...init, headers });
           } else {
-            // ❌ CRITICAL FIX: The personal key was requested but is expired or missing.
-            // Instead of sending a request with NO auth header (which causes a confusing
-            // generic fetch error), throw a clear, typed error that callWithFallback
-            // can detect and use to immediately rotate to the shared key pool.
             throw new Error('PERSONAL_TOKEN_UNAVAILABLE: OAuth token expired or not present. Rotating to shared key.');
           }
+        } else if (headers.get('x-goog-api-key') === 'proxy_dummy_key') {
+          // 🔄 Proxy routing: Send to /api/gemini-proxy with Firebase Auth Token
+          const { auth } = await import('../firebase');
+          const token = await auth.currentUser?.getIdToken();
+          if (!token) throw new Error('Not logged in to Firebase');
+
+          const url = new URL(urlString);
+          const modelMatch = url.pathname.match(/models\/([^:]+):/);
+          const model = modelMatch ? modelMatch[1] : 'gemini-2.5-flash';
+
+          headers.delete('x-goog-api-key');
+          headers.set('Authorization', `Bearer ${token}`);
+          
+          const bodyStr = typeof init?.body === 'string' ? init.body : '{}';
+          const bodyObj = JSON.parse(bodyStr);
+          bodyObj.model = model;
+
+          return originalFetch('/api/gemini-proxy', {
+            ...init,
+            headers,
+            body: JSON.stringify(bodyObj)
+          });
         }
       }
     } catch (e: any) {
@@ -66,24 +84,26 @@ if (typeof window !== 'undefined') {
 // TOP-LEVEL AGENTS (Supervisors): Require higher intelligence for master planning.
 // We prioritize the Pro/Standard models here.
 export const SHARED_TOP_LEVEL_PRIORITY = [
-  'gemini-2.5-flash',   // Best available working Standard model
-  'gemini-2.0-flash',   // ✅ Verified working fallback
-  // ✅ BUG FIX: Removed dead IDs: 'gemini-3.1-flash-lite', 'gemini-3.5-flash',
-  // 'gemini-2.0-flash-lite', 'gemini-2.5-flash-lite-preview-06-17' — all return 404
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
 ];
 
 export const PERSONAL_TOP_LEVEL_PRIORITY = [
+  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
 ];
 
 // SUB-AGENTS (Workers: Oracle, Enigma): Require high speed and low quota usage.
 export const SHARED_SUB_AGENT_PRIORITY = [
-  'gemini-2.5-flash',   // Best available — sub-agents need reliable fast model
-  'gemini-2.0-flash',   // ✅ Verified working fallback
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
 ];
 
 export const PERSONAL_SUB_AGENT_PRIORITY = [
+  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
 ];
@@ -177,7 +197,6 @@ export const getRuntimeKeysMasked = (): { prefix: string; masked: string }[] => 
   }));
 };
 
-/** Get the live, merged API key pool (.env + runtime localStorage keys). */
 export const getActiveKeyPool = (): string[] => {
   const envBase = rawApiKey
     .split(',')
@@ -189,6 +208,13 @@ export const getActiveKeyPool = (): string[] => {
   for (const k of runtimeKeys) {
     if (!all.includes(k)) all.push(k);
   }
+  
+  // 🔄 Proxy fallback: if no keys are found locally, return the dummy key
+  // so the window.fetch interceptor routes the request to /api/gemini-proxy
+  if (all.length === 0) {
+    return ['proxy_dummy_key'];
+  }
+  
   return all;
 };
 
@@ -205,7 +231,7 @@ export const getActiveKeyPool = (): string[] => {
 //
 //   callWithFallback() → uses shared pool (runtime keys only, may be empty)
 //   The main agent callers in core.ts now route through the proxy client.
-const rawApiKey = ''; // No VITE_ keys in browser — proxy handles key rotation
+const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY || ''; // Read local keys for Vite dev, otherwise proxy handles it
 
 // ── Live key pool — reflects only manually added runtime keys ─────────────────
 export const allKeys = getActiveKeyPool();

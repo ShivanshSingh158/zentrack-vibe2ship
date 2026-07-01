@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Grid, User as UserIcon, Edit2, X, LogOut } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { auth } from '../services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { CommandPalette } from './CommandPalette';
@@ -113,8 +113,8 @@ export function TopNav() {
     <header className="top-nav">
       <div className="top-nav-left">
         <div className="app-logo" onClick={() => navigate('/home')} style={{ cursor: 'pointer' }}>
-          <img src="/logo.png" alt="Zentrack" className="logo-circle" />
-          <span className="logo-text">Zentrack</span>
+          <img src="/logo_white.png" alt="ZenTrack" className="logo-circle" style={{ borderRadius: 0, objectFit: 'contain' }} />
+          <span className="logo-text" style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.75rem', transform: 'translateY(1px)' }}>ZenTrack</span>
         </div>
       </div>
       <div className="top-nav-center">
@@ -132,7 +132,7 @@ export function TopNav() {
                   exit={{ opacity: 0, scale: 0.8, x: 20 }}
                   transition={{ type: "spring", stiffness: 300, damping: 25 }}
                 >
-                  <Link to={app.route} className="nav-link">{app.name}</Link>
+                  <NavLink to={app.route} className="nav-link">{app.name}</NavLink>
                 </motion.div>
               );
             })}

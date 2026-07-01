@@ -67,6 +67,15 @@ export default defineConfig({
   define: {
     __APP_BUILD_TIME__: JSON.stringify(Date.now()),
   },
+  server: {
+    proxy: {
+      '/local-google-token': {
+        target: 'https://oauth2.googleapis.com/token',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/local-google-token/, '')
+      }
+    }
+  },
   plugins: [
     react(),
     versionJsonPlugin(),

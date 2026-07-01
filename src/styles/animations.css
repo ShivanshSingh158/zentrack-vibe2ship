@@ -1,14 +1,307 @@
 /* ==========================================================================
    animations.css — Single source of truth for all @keyframes
-   Imported by index.css before any component styles.
-
-   Groups:
-     1. Utility            — fadeIn, slideUp, spin, pulse
-     2. Page / Navigation  — pageEnter, slideInRight, slideUpSheet
-     3. Skeleton / Loading — shimmer
-     4. UI Feedback        — pulse-glow
-     5. Voice Capture      — micPulse, floatInOut, spinAndPause, swapMic, swapLogo, starTwinkle
    ========================================================================== */
+
+
+/* ── 1. Utility ──────────────────────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(24px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+
+@keyframes slideInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.88); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes popIn {
+  0%   { opacity: 0; transform: scale(0.7); }
+  70%  { transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+
+/* ── 2. Float & Levitation ──────────────────────────────────────────────── */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-6px); }
+}
+
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-8px) rotate(1deg); }
+  66%       { transform: translateY(-3px) rotate(-1deg); }
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes orbit-reverse {
+  from { transform: rotate(360deg); }
+  to   { transform: rotate(0deg); }
+}
+
+
+/* ── 3. Glow & Light Effects ────────────────────────────────────────────── */
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(167,139,250,0.3), 0 0 24px rgba(167,139,250,0.1); }
+  50%       { box-shadow: 0 0 24px rgba(167,139,250,0.6), 0 0 48px rgba(167,139,250,0.2); }
+}
+
+@keyframes glow-pulse-blue {
+  0%, 100% { box-shadow: 0 0 12px rgba(96,165,250,0.3), 0 0 24px rgba(96,165,250,0.1); }
+  50%       { box-shadow: 0 0 24px rgba(96,165,250,0.6), 0 0 48px rgba(96,165,250,0.25); }
+}
+
+@keyframes glow-pulse-green {
+  0%, 100% { box-shadow: 0 0 12px rgba(52,211,153,0.3); }
+  50%       { box-shadow: 0 0 24px rgba(52,211,153,0.7), 0 0 48px rgba(52,211,153,0.25); }
+}
+
+@keyframes border-glow-spin {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+
+/* ── 4. Shimmer & Surface Effects ───────────────────────────────────────── */
+
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes shimmer-flow {
+  0%   { transform: translateX(-100%) skewX(-15deg); opacity: 0; }
+  40%  { opacity: 0.6; }
+  100% { transform: translateX(200%) skewX(-15deg); opacity: 0; }
+}
+
+@keyframes gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+
+/* ── 5. Terminal & AI Effects ───────────────────────────────────────────── */
+
+@keyframes terminal-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes type-appear {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes data-stream {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 1000px; }
+}
+
+@keyframes scan-line {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 0.4; }
+  90%  { opacity: 0.4; }
+  100% { transform: translateY(300%); opacity: 0; }
+}
+
+@keyframes radar-scan {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes particle-drift {
+  0%   { transform: translateY(0px) translateX(0px) scale(1); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 0.6; }
+  100% { transform: translateY(-120px) translateX(30px) scale(0.5); opacity: 0; }
+}
+
+@keyframes particle-drift-2 {
+  0%   { transform: translateY(0px) translateX(0px) scale(1); opacity: 0; }
+  10%  { opacity: 0.8; }
+  90%  { opacity: 0.4; }
+  100% { transform: translateY(-80px) translateX(-40px) scale(0.3); opacity: 0; }
+}
+
+
+/* ── 6. Page / Navigation ──────────────────────────────────────────────── */
+
+.page-enter {
+  animation: page-enter 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(12px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes nav-enter {
+  from { opacity: 0; transform: translateY(-16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes aurora-drift {
+  0%   { opacity: 0.8; transform: scale(1) translateY(0); }
+  33%  { opacity: 1;   transform: scale(1.05) translateY(-20px); }
+  66%  { opacity: 0.9; transform: scale(0.98) translateY(10px); }
+  100% { opacity: 1;   transform: scale(1.03) translateY(-10px); }
+}
+
+@keyframes slideUpSheet {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0);    }
+}
+
+
+/* ── 7. UI Feedback ─────────────────────────────────────────────────────── */
+
+@keyframes pulse-glow {
+  0%   { transform: scale(0.95); opacity: 0.8; }
+  50%  { transform: scale(1.1);  opacity: 1;   box-shadow: 0 0 12px currentColor; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+
+@keyframes bounce-in {
+  0%   { transform: scale(0.3); opacity: 0; }
+  50%  { transform: scale(1.1); }
+  70%  { transform: scale(0.9); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes check-draw {
+  from { stroke-dashoffset: 20; }
+  to   { stroke-dashoffset: 0; }
+}
+
+@keyframes ripple {
+  0%   { transform: scale(0); opacity: 1; }
+  100% { transform: scale(4); opacity: 0; }
+}
+
+@keyframes slide-exit-right {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(100px); }
+}
+
+@keyframes counter-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+
+/* ── 8. Voice Capture Widget ─────────────────────────────────────────────── */
+
+@keyframes micPulse {
+  0%   { box-shadow: 0 0 0 0px  rgba(168, 85, 247, 0.7); }
+  70%  { box-shadow: 0 0 0 15px rgba(168, 85, 247, 0);   }
+  100% { box-shadow: 0 0 0 0px  rgba(168, 85, 247, 0);   }
+}
+
+@keyframes floatInOut {
+  0%   { transform: translateY(0);    }
+  50%  { transform: translateY(-4px); }
+  100% { transform: translateY(0);    }
+}
+
+@keyframes spinAndPause {
+  0%,  30% { transform: rotate(0deg);   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+  45%, 80% { transform: rotate(360deg); animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
+  95%, 100% { transform: rotate(720deg); }
+}
+
+@keyframes swapMic {
+  0%,   37.5%  { visibility: visible; }
+  37.51%, 87.5% { visibility: hidden;  }
+  87.51%, 100%  { visibility: visible; }
+}
+
+@keyframes swapLogo {
+  0%,   37.5%  { visibility: hidden;  }
+  37.51%, 87.5% { visibility: visible; }
+  87.51%, 100%  { visibility: hidden;  }
+}
+
+@keyframes starTwinkle {
+  0%   { transform: scale(0.5) rotate(0deg);   opacity: 0.3; }
+  25%  { transform: scale(1.3) rotate(20deg);  opacity: 1;   filter: drop-shadow(0 0 6px #fbbf24); }
+  50%  { transform: scale(0.8) rotate(-10deg); opacity: 0.7; }
+  75%  { transform: scale(1.1) rotate(10deg);  opacity: 1;   filter: drop-shadow(0 0 4px #fbbf24); }
+  100% { transform: scale(0.5) rotate(0deg);   opacity: 0.3; }
+}
+
+
+/* ── 9. Stagger Animation Utilities ─────────────────────────────────────── */
+
+.animate-in {
+  animation: slideInUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.10s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.20s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.30s; }
+.stagger-7 { animation-delay: 0.35s; }
+.stagger-8 { animation-delay: 0.40s; }
+
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-glow-pulse { animation: glow-pulse 2.5s ease-in-out infinite; }
+.animate-orbit { animation: orbit 8s linear infinite; }
+
+
+/* ── 10. Urgency (Futuristic HUD) ───────────────────────────────────────── */
+
+@keyframes critical-ambient-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.9; }
+}
+
+@keyframes banner-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
 
 
 /* ── 1. Utility ──────────────────────────────────────────────────────────── */
@@ -36,9 +329,25 @@
 /* ── 2. Page / Navigation ─────────────────────────────────────────────────── */
 
 /* Route transition — children of .main-content animate in on navigation */
-@keyframes pageEnter {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0);   }
+.page-enter {
+  animation: page-enter 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(12px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes nav-enter {
+  from { opacity: 0; transform: translateY(-16px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes aurora-drift {
+  0%   { opacity: 0.8; transform: scale(1) translateY(0); }
+  33%  { opacity: 1;   transform: scale(1.05) translateY(-20px); }
+  66%  { opacity: 0.9; transform: scale(0.98) translateY(10px); }
+  100% { opacity: 1;   transform: scale(1.03) translateY(-10px); }
 }
 
 /* Calendar side panel slides in from the right on desktop */

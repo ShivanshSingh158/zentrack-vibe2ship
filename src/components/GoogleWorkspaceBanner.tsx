@@ -63,18 +63,20 @@ export const GoogleWorkspaceBanner: React.FC = () => {
         >
           <div
             style={{
+              background: justConnected
+                ? 'linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 100%)'
+                : 'rgba(66,133,244,0.08)',
+              borderBottom: justConnected
+                ? '1px solid rgba(16,185,129,0.25)'
+                : '1px solid rgba(66,133,244,0.18)',
+              backdropFilter: 'blur(8px)',
+              padding: '0.5rem 1.5rem',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '1rem',
-              padding: '0.65rem 1.25rem',
-              background: justConnected
-                ? 'linear-gradient(90deg, rgba(16,185,129,0.12) 0%, rgba(16,185,129,0.06) 100%)'
-                : 'linear-gradient(90deg, rgba(239,68,68,0.10) 0%, rgba(251,146,60,0.06) 100%)',
-              borderBottom: justConnected
-                ? '1px solid rgba(16,185,129,0.25)'
-                : '1px solid rgba(239,68,68,0.2)',
-              backdropFilter: 'blur(8px)',
+              gap: '0.75rem',
+              fontSize: '0.78rem',
+              color: 'rgba(255,255,255,0.7)',
               flexWrap: 'wrap',
             }}
           >
@@ -83,11 +85,11 @@ export const GoogleWorkspaceBanner: React.FC = () => {
               {justConnected ? (
                 <CheckCircle2 size={16} style={{ color: '#10b981', flexShrink: 0 }} />
               ) : (
-                <WifiOff size={16} style={{ color: '#f97316', flexShrink: 0 }} />
+                <WifiOff size={16} style={{ color: '#4285F4', flexShrink: 0 }} />
               )}
               <span style={{
                 fontSize: '0.82rem',
-                color: justConnected ? 'rgba(52,211,153,0.95)' : 'rgba(253,186,116,0.95)',
+                color: justConnected ? 'rgba(52,211,153,0.95)' : '#4285F4',
                 fontWeight: 500,
                 lineHeight: 1.4,
               }}>
@@ -112,14 +114,14 @@ export const GoogleWorkspaceBanner: React.FC = () => {
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.4rem',
-                      padding: '0.35rem 0.85rem',
-                      borderRadius: '6px',
-                      border: '1px solid rgba(251,146,60,0.4)',
+                      padding: '0.3rem 1rem',
+                      borderRadius: '999px',
+                      border: '1px solid rgba(66,133,244,0.35)',
                       background: isConnecting
-                        ? 'rgba(251,146,60,0.05)'
-                        : 'rgba(251,146,60,0.12)',
-                      color: '#fb923c',
-                      fontSize: '0.8rem',
+                        ? 'rgba(66,133,244,0.05)'
+                        : 'rgba(66,133,244,0.15)',
+                      color: '#4285F4',
+                      fontSize: '0.75rem',
                       fontWeight: 600,
                       cursor: isConnecting ? 'not-allowed' : 'pointer',
                       transition: 'all 0.2s',

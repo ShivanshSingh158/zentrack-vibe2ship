@@ -11,6 +11,7 @@ import Lenis from 'lenis';
 
 // ─── Always-on components (tiny, needed immediately) ───────────────────────
 import { Login } from './components/Login';
+import { Landing } from './components/Landing';
 import { TopNav } from './components/TopNav';
 import { BackgroundEffects } from './components/BackgroundEffects';
 import { UpdatePrompt } from './components/UpdatePrompt';
@@ -250,6 +251,7 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => {
   const mobile = isMobileDevice();
   return (
     <motion.div
+      className="page-enter"
       initial={{ opacity: 0, scale: 0.97, filter: 'blur(4px)' }}
       animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
       exit={{ opacity: 0, scale: 1.02, filter: 'blur(4px)' }}
@@ -320,6 +322,7 @@ const DataReadyGate: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 function App() {
   const [user, setUser]               = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showLogin, setShowLogin]     = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
   const [showFab,   setShowFab]   = useState(false);
@@ -436,10 +439,33 @@ function App() {
   }
 
   if (!user) {
+    if (!showLogin) {
+      return <Landing onTryNow={() => setShowLogin(true)} />;
+    }
+    
     return (
       <>
         <UpdatePrompt />
-        <Toaster theme="dark" position="top-right" />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: {
+              background: 'rgba(10, 25, 40, 0.92)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              borderRadius: '0.875rem',
+              color: 'white',
+              fontFamily: "'Inter', sans-serif",
+              fontSize: '0.85rem',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            },
+            classNames: {
+              success: 'toast-success',
+              error: 'toast-error',
+              warning: 'toast-warning',
+            }
+          }}
+        />
         <Login />
       </>
     );
@@ -452,7 +478,26 @@ function App() {
       <DataReadyGate>
 
       <UpdatePrompt />
-      <Toaster theme="dark" position="top-right" />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: 'rgba(10, 25, 40, 0.92)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.10)',
+            borderRadius: '0.875rem',
+            color: 'white',
+            fontFamily: "'Inter', sans-serif",
+            fontSize: '0.85rem',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+          },
+          classNames: {
+            success: 'toast-success',
+            error: 'toast-error',
+            warning: 'toast-warning',
+          }
+        }}
+      />
       <OfflineIndicator />
       <ClassNotificationRunner />
       <ContextRemindersRunner />

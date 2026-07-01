@@ -5,6 +5,7 @@
 @import './styles/learning.css';
 @import './styles/mobile.css';
 @import './styles/agent-dashboard.css';
+@import './styles/overhaul.css';
 
 * {
   box-sizing: border-box;
@@ -22,22 +23,34 @@ svg.lucide {
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--bg-base);
-  background-image: 
-    linear-gradient(rgba(0, 240, 255, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 240, 255, 0.02) 1px, transparent 1px),
-    radial-gradient(ellipse at 10% 20%, rgba(0, 240, 255, 0.06) 0%, transparent 40%),
-    radial-gradient(ellipse at 90% 80%, rgba(181, 52, 255, 0.05) 0%, transparent 35%);
-  background-size: 40px 40px, 40px 40px, 100% 100%, 100% 100%;
+  background-color: hsl(201, 100%, 10%);
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(124, 58, 237, 0.25); border-radius: 99px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(124, 58, 237, 0.4); }
+/* Aurora orb layer — rendered via a fixed ::before pseudo on body */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 20% 80%, rgba(167,139,250,0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 55% 50% at 80% 10%, rgba(96,165,250,0.10) 0%, transparent 65%),
+    radial-gradient(ellipse 45% 60% at 50% 50%, rgba(52,211,153,0.04) 0%, transparent 70%);
+  animation: aurora-drift 25s ease-in-out infinite alternate;
+  filter: blur(60px);
+}
+
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  {
+  background: rgba(255,255,255,0.1);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
 
 
@@ -46,109 +59,97 @@ body {
    ========================================================================== */
 
 .btn-primary {
-  background: var(--accent-gradient);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  padding: 0.6rem 1.2rem;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-display);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.85rem;
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  padding: 0.65rem 1.4rem;
+  border-radius: 12px;              /* Rounded, not pill, not square */
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 0.75rem;
+  color: white;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.65rem 1.4rem;
   cursor: pointer;
-  transition: transform 0.3s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo), background-color 0.3s var(--ease-out-expo), border-color 0.3s var(--ease-out-expo), box-shadow 0.3s var(--ease-out-expo), color 0.3s var(--ease-out-expo);
-  box-shadow: 0 4px 16px -4px var(--accent-glow);
-  position: relative;
-  overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -6px rgba(167,139,250,0.35);
+  transition: transform 0.2s, opacity 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
-
-/* Shimmer highlight sweep on hover */
-.btn-primary::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
+.modal-content .btn-primary {
   width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
-  transition: left 0.5s ease;
 }
-
-.btn-primary:hover:not(:disabled)::after {
-  left: 100%;
+.btn-primary:hover {
+  transform: scale(1.02);
+  opacity: 0.92;
 }
-
-.btn-primary:hover:not(:disabled) {
-  transform: translateY(-2px) scale(1.02);
-  box-shadow: 0 8px 24px -6px var(--accent-glow), 0 0 30px -8px var(--accent-glow-secondary);
-  filter: brightness(1.1);
-}
-
-.btn-primary:active:not(:disabled) {
-  transform: translateY(0) scale(0.98);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  filter: saturate(0.5);
+.btn-primary:active {
+  transform: scale(0.98);
 }
 
 .btn-secondary {
-  background: rgba(0, 240, 255, 0.02);
-  color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-  padding: 0.6rem 1.2rem;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-display);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-size: 0.85rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 0.75rem;
+  color: rgba(255,255,255,0.7);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  padding: 0.65rem 1.4rem;
   cursor: pointer;
-  display: flex;
+  transition: all 0.2s;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  transition: transform 0.3s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo), background-color 0.3s var(--ease-out-expo), border-color 0.3s var(--ease-out-expo), box-shadow 0.3s var(--ease-out-expo), color 0.3s var(--ease-out-expo);
 }
-
 .btn-secondary:hover {
-  background: rgba(124, 58, 237, 0.08);
-  color: var(--text-primary);
-  border-color: rgba(124, 58, 237, 0.3);
+  border-color: rgba(255,255,255,0.2);
   transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  color: #fff;
 }
 .btn-secondary:active {
-  transform: translateY(0) scale(0.98);
+  transform: translateY(1px) scale(0.98);
 }
 
 .btn-icon {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0.4rem;
-  border-radius: var(--radius-sm);
-  display: flex;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.3s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo), background-color 0.3s var(--ease-out-expo), border-color 0.3s var(--ease-out-expo), box-shadow 0.3s var(--ease-out-expo), color 0.3s var(--ease-out-expo);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 150ms ease;
 }
 
 .btn-icon:hover {
-  background: rgba(124, 58, 237, 0.1);
-  color: var(--accent-secondary);
-  transform: scale(1.08);
+  background: rgba(0, 212, 255, 0.1);
+  border-color: rgba(0, 212, 255, 0.3);
+  color: #00D4FF;
+  transform: scale(1.1);
 }
 .btn-icon:active {
   transform: scale(0.92);
 }
 .btn-icon.danger:hover {
-  color: #ef4444;
+  color: #EF4444;
+  border-color: rgba(239, 68, 68, 0.3);
   background: rgba(239, 68, 68, 0.1);
 }
 
@@ -311,8 +312,8 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(6px);
+  background: rgba(0, 10, 20, 0.7);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -322,39 +323,36 @@ body {
 }
 
 .modal-content {
-  background: var(--bg-elevated);
-  backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(124, 58, 237, 0.15);
-  border-radius: var(--radius-xl);
-  padding: 2.5rem;
+  background: rgba(10, 25, 40, 0.95);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1.25rem;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.1);
+  padding: 1.5rem 2rem;
   width: 100%;
   max-width: 500px;
   max-height: 90vh;
   overflow-y: auto;
   will-change: transform, opacity;
-  box-shadow: var(--shadow-elevated), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   animation: slideUp 0.35s var(--ease-out-expo);
   position: relative;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.65;
 }
 
-/* Top gradient accent strip */
-.modal-content::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 20px;
-  right: 20px;
-  height: 2px;
-  background: var(--accent-gradient);
-  border-radius: 0 0 2px 2px;
+.modal-content p, .modal-content .modal-body {
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.65;
 }
 
 .modal-header {
-  font-family: var(--font-display);
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin-bottom: 1.5rem;
-  color: var(--text-primary);
+  font-family: 'Instrument Serif', serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+  color: white;
+  margin-bottom: 0.5rem;
 }
 
 .form-group {
@@ -378,29 +376,30 @@ label {
   color: var(--text-secondary);
 }
 
-input, select, textarea {
-  width: 100%;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  padding: 0.6rem 0.8rem;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-sans);
-  font-size: 0.9rem;
-  transition: transform 0.3s var(--ease-out-expo), opacity 0.3s var(--ease-out-expo), background-color 0.3s var(--ease-out-expo), border-color 0.3s var(--ease-out-expo), box-shadow 0.3s var(--ease-out-expo), color 0.3s var(--ease-out-expo);
+input[type="text"], input[type="email"], textarea, select {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 0.6rem;
+  color: white;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.875rem;
+  padding: 0.6rem 0.875rem;
   outline: none;
-  min-width: 0;
+  width: 100%;
+  transition: all 0.2s var(--ease-out-expo);
 }
-
 input:focus, select:focus, textarea:focus {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15), 0 0 20px -8px var(--accent-glow);
-  background: rgba(124, 58, 237, 0.04);
+  border-color: rgba(167,139,250,0.5);
+  box-shadow: 0 0 0 3px rgba(167,139,250,0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+::placeholder {
+  color: rgba(255,255,255,0.28);
 }
 
 select option {
-  background: #121214;
-  color: var(--text-primary);
+  background: rgba(10, 25, 40, 0.95);
+  color: white;
 }
 
 .modal-actions {

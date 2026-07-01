@@ -41,21 +41,21 @@ export const NotesEditor: React.FC<NotesEditorProps> = ({
           value={activeNote.name} 
           onChange={e => setActiveNote({ ...activeNote, name: e.target.value })}
           placeholder="Note Title..."
-          style={{ flex: 1, fontSize: '1.1rem', fontWeight: 600, background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none' }}
+          style={{ flex: 1, fontFamily: "'Instrument Serif', serif", fontSize: '1.8rem', fontWeight: 400, color: 'white', background: 'transparent', border: 'none', outline: 'none', width: '100%' }}
         />
         <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
           {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? 'Saved' : 'Error'}
         </div>
         
         {/* View Mode Toggles */}
-        <div style={{ display: 'flex', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0.15rem' }}>
-          <button onClick={() => setViewMode('edit')} style={{ padding: '0.4rem 0.6rem', border: 'none', background: viewMode === 'edit' ? 'var(--bg-surface-hover)' : 'transparent', color: viewMode === 'edit' ? 'var(--text-primary)' : 'var(--text-muted)', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="Edit"><AlignLeft size={16} /></button>
-          <button onClick={() => setViewMode('split')} style={{ padding: '0.4rem 0.6rem', border: 'none', background: viewMode === 'split' ? 'var(--bg-surface-hover)' : 'transparent', color: viewMode === 'split' ? 'var(--text-primary)' : 'var(--text-muted)', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="Split"><Columns size={16} /></button>
-          <button onClick={() => setViewMode('preview')} style={{ padding: '0.4rem 0.6rem', border: 'none', background: viewMode === 'preview' ? 'var(--bg-surface-hover)' : 'transparent', color: viewMode === 'preview' ? 'var(--text-primary)' : 'var(--text-muted)', borderRadius: '4px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="Preview"><Eye size={16} /></button>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button onClick={() => setViewMode('edit')} className="btn-icon" style={viewMode === 'edit' ? { background: 'rgba(167, 139, 250, 0.15)', borderColor: 'rgba(167, 139, 250, 0.4)', color: '#a78bfa' } : {}} title="Edit"><AlignLeft size={16} /></button>
+          <button onClick={() => setViewMode('split')} className="btn-icon" style={viewMode === 'split' ? { background: 'rgba(167, 139, 250, 0.15)', borderColor: 'rgba(167, 139, 250, 0.4)', color: '#a78bfa' } : {}} title="Split"><Columns size={16} /></button>
+          <button onClick={() => setViewMode('preview')} className="btn-icon" style={viewMode === 'preview' ? { background: 'rgba(167, 139, 250, 0.15)', borderColor: 'rgba(167, 139, 250, 0.4)', color: '#a78bfa' } : {}} title="Preview"><Eye size={16} /></button>
         </div>
 
         {/* Export */}
-        <button onClick={() => handleExport('pdf')} className="btn-secondary" style={{ padding: '0.5rem 0.75rem', display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+        <button onClick={() => handleExport('pdf')} className="btn-secondary" style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
           <Download size={16} /> Export PDF
         </button>
 
@@ -76,7 +76,7 @@ export const NotesEditor: React.FC<NotesEditorProps> = ({
             value={activeNote.content || ''}
             onChange={e => setActiveNote({ ...activeNote, content: e.target.value })}
             placeholder="Start typing your note (Markdown supported)..."
-            style={{ flex: 1, padding: '1.5rem', background: 'var(--bg-base)', border: 'none', borderRight: viewMode === 'split' ? '1px solid var(--border-subtle)' : 'none', color: 'var(--text-primary)', outline: 'none', resize: 'none', fontSize: '1rem', lineHeight: 1.6 }}
+            style={{ flex: 1, padding: '1.5rem', background: 'transparent', border: 'none', borderRight: viewMode === 'split' ? '1px solid rgba(255,255,255,0.08)' : 'none', color: 'rgba(255,255,255,0.75)', outline: 'none', resize: 'none', fontFamily: "'Inter', sans-serif", fontSize: '0.92rem', lineHeight: 1.75 }}
           />
         )}
 

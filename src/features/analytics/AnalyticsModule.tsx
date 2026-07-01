@@ -61,16 +61,19 @@ const StatCard = ({
   icon: React.ReactNode; label: string; value: string | number; sub?: string; color: string;
 }) => (
   <div style={{
-    background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)',
-    borderRadius: 'var(--radius-md)', padding: '0.85rem 1rem',
-    display: 'flex', alignItems: 'center', gap: '0.75rem', transition: 'all 0.2s',
+    background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(12px)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: '1rem', padding: '1rem 1.5rem',
+    display: 'flex', alignItems: 'center', gap: '1rem', transition: 'all 0.2s',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)'
   }}>
-    <div style={{ width: '36px', height: '36px', borderRadius: 'var(--radius-sm)', background: `${color}20`, display: 'flex', alignItems: 'center', justifyContent: 'center', color, flexShrink: 0 }}>
+    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: `${color}20`, 
+display: 'flex', alignItems: 'center', justifyContent: 'center', color, flexShrink: 0 }}>
       {icon}
     </div>
     <div style={{ overflow: 'hidden' }}>
-      <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+      <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2.5rem', fontWeight: 400, color: color, lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
       {sub && <div style={{ fontSize: '0.65rem', color, marginTop: '0.1rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
     </div>
   </div>
@@ -392,25 +395,66 @@ const AnalyticsModuleInner = () => {
     );
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  return (
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    // ─── Render ──────────────────────────────────────────────────────────────────────────────────
+    return (
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          <style>{`
+            .topic-card {
+              background: rgba(255,255,255,0.03) !important;
+              backdrop-filter: blur(12px) !important;
+              border: 1px solid rgba(255,255,255,0.08) !important;
+              border-radius: 1rem !important;
+              padding: 1.25rem !important;
+            }
+            .topic-card h3 {
+              font-family: 'Instrument Serif', serif !important;
+              font-size: 1rem !important;
+              font-weight: 400 !important;
+              color: white !important;
+              margin-bottom: 1rem !important;
+              display: flex !important;
+              align-items: center !important;
+              gap: 0.5rem !important;
+            }
+            .recharts-cartesian-axis-tick-value {
+              fill: rgba(255,255,255,0.35) !important;
+              font-size: 0.65rem !important;
+            }
+            .recharts-cartesian-grid-horizontal line, .recharts-cartesian-grid-vertical line {
+              stroke: rgba(255,255,255,0.05) !important;
+            }
+            .recharts-polar-grid-angle line, .recharts-polar-grid-concentric polygon {
+              stroke: rgba(255,255,255,0.05) !important;
+            }
+            .recharts-polar-angle-axis-tick-value, .recharts-polar-radius-axis-tick-value {
+              fill: rgba(255,255,255,0.35) !important;
+              font-size: 0.65rem !important;
+            }
+          `}</style>
+          <svg style={{ height: 0, width: 0, position: 'absolute' }}>
+            <defs>
+              <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#a78bfa" />
+                <stop offset="100%" stopColor="#60a5fa" />
+              </linearGradient>
+            </defs>
+          </svg>
         {/* Tab bar */}
         <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-surface)', flexShrink: 0, zIndex: 10 }}>
           {(['30day', 'weekly'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', fontSize: '0.9rem', fontWeight: 600, cursor: 'pointer',
-                background: activeTab === tab ? 'var(--accent-primary)' : 'transparent',
-                color: activeTab === tab ? '#fff' : 'var(--text-secondary)',
-                border: activeTab === tab ? '1px solid var(--accent-primary)' : '1px solid transparent',
-                transition: 'all 0.15s',
-              }}
-            >
-              {tab === '30day' ? '30-Day Overview' : 'Weekly Review'}
-            </button>
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                style={{
+                  padding: '0.3rem 0.875rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
+                  background: activeTab === tab ? 'rgba(167,139,250,0.12)' : 'rgba(255,255,255,0.05)',
+                  color: activeTab === tab ? '#a78bfa' : 'rgba(255,255,255,0.5)',
+                  border: activeTab === tab ? '1px solid rgba(167,139,250,0.25)' : '1px solid rgba(255,255,255,0.08)',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {tab === '30day' ? '30-Day Overview' : 'Weekly Review'}
+              </button>
           ))}
         </div>
 
@@ -430,10 +474,10 @@ const AnalyticsModuleInner = () => {
             {/* Header */}
             <div className="learning-header">
               <div style={{ flex: 1 }}>
-                <h1 style={{ fontSize: '1.5rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <BarChart3 size={24} className="logo-icon" /> Analytics &amp; Insights
+                <h1 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2rem', fontWeight: 400, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <BarChart3 size={28} style={{ color: '#a78bfa' }} /> Analytics &amp; Insights
                 </h1>
-                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
+                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
                   Live 30-day overview tailored to your core metrics.
                 </p>
               </div>
@@ -451,10 +495,10 @@ const AnalyticsModuleInner = () => {
 
             {/* Stat Cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem', maxWidth: '100%' }}>
-              <StatCard icon={<CheckCircle size={22} />} label="Tasks Completed" value={todoMetrics.completed} sub={`${todoMetrics.rate}% completion rate`} color="#7c3aed" />
-              <StatCard icon={<Flame size={22} />} label="Habit Check-ins" value={habitMetrics.totalChecked} sub={`${habitMetrics.daysWithActivity} active days`} color="#ef4444" />
-              <StatCard icon={<Dumbbell size={22} />} label="Gym Trend" value={`${safeGymData.filter((d: any) => d.date >= last30[0]).length} Sessions`} sub={`${weekOverWeekMetrics.gym.diff > 0 ? '+' : ''}${weekOverWeekMetrics.gym.diff} this week`} color="#f97316" />
-              <StatCard icon={<Book size={22} />} label="Attendance" value={`${safeAttendance.length} Subj`} sub="Tracking health" color="#14b8a6" />
+              <StatCard icon={<CheckCircle size={22} />} label="Tasks Completed" value={todoMetrics.completed} sub={`${todoMetrics.rate}% completion rate`} color="#34d399" />
+              <StatCard icon={<Flame size={22} />} label="Habit Check-ins" value={habitMetrics.totalChecked} sub={`${habitMetrics.daysWithActivity} active days`} color="#a78bfa" />
+              <StatCard icon={<Dumbbell size={22} />} label="Gym Trend" value={`${safeGymData.filter((d: any) => d.date >= last30[0]).length} Sessions`} sub={`${weekOverWeekMetrics.gym.diff > 0 ? '+' : ''}${weekOverWeekMetrics.gym.diff} this week`} color="#f59e0b" />
+              <StatCard icon={<Book size={22} />} label="Attendance" value={`${safeAttendance.length} Subj`} sub="Tracking health" color="#60a5fa" />
             </div>
 
             {/* Week-over-Week Comparison */}
@@ -556,7 +600,7 @@ const AnalyticsModuleInner = () => {
                       <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
                       <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                       <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: '#3b82f6' }} />
-                      <Bar dataKey="watchMinutes" name="Minutes Watched" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        <Bar dataKey="watchMinutes" name="Minutes Watched" fill="url(#barGradient)" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </ErrorBoundary>
@@ -574,7 +618,7 @@ const AnalyticsModuleInner = () => {
                         <PolarGrid stroke="var(--border-subtle)" />
                         <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                         <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-                        <Radar name="Attendance %" dataKey="attendance" stroke="#a855f7" fill="#a855f7" fillOpacity={0.5} />
+                          <Radar name="Attendance %" dataKey="attendance" stroke="url(#barGradient)" fill="url(#barGradient)" fillOpacity={0.5} />
                         <Tooltip contentStyle={TOOLTIP_STYLE} />
                       </RadarChart>
                     </ResponsiveContainer>
@@ -587,7 +631,7 @@ const AnalyticsModuleInner = () => {
                         <XAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
                         <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} domain={[0, 100]} />
                         <Tooltip contentStyle={TOOLTIP_STYLE} />
-                        <Bar dataKey="attendance" fill="#a855f7" radius={[4, 4, 0, 0]} name="Attendance %" />
+                          <Bar dataKey="attendance" fill="url(#barGradient)" radius={[4, 4, 0, 0]} name="Attendance %" />
                       </BarChart>
                     </ResponsiveContainer>
                   </ErrorBoundary>
@@ -609,8 +653,8 @@ const AnalyticsModuleInner = () => {
                       <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
                       <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} allowDecimals={false} domain={[0, 'auto']} />
                       <Tooltip contentStyle={TOOLTIP_STYLE} />
-                      <Bar dataKey="completed" fill="#7c3aed" radius={[4, 4, 0, 0]} name="Completed Tasks" />
-                      <Bar dataKey="total" fill="rgba(124,58,237,0.2)" radius={[4, 4, 0, 0]} name="Total Added" />
+                        <Bar dataKey="completed" fill="url(#barGradient)" radius={[4, 4, 0, 0]} name="Completed Tasks" />
+                        <Bar dataKey="total" fill="rgba(167,139,250,0.15)" radius={[4, 4, 0, 0]} name="Total Added" />
                     </BarChart>
                   </ResponsiveContainer>
                 </ErrorBoundary>
@@ -630,7 +674,7 @@ const AnalyticsModuleInner = () => {
                       <XAxis dataKey="hour" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={2} />
                       <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} allowDecimals={false} />
                       <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
-                      <Bar dataKey="minutes" fill="#ec4899" radius={[4, 4, 0, 0]} name="Focus Minutes" />
+                        <Bar dataKey="minutes" fill="url(#barGradient)" radius={[4, 4, 0, 0]} name="Focus Minutes" />
                     </BarChart>
                   </ResponsiveContainer>
                 </ErrorBoundary>

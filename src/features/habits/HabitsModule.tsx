@@ -243,13 +243,13 @@ export const HabitsModule = () => {
       {confettiEvent && <ParticleExplosion color={confettiEvent.color} x={confettiEvent.x} y={confettiEvent.y} />}
       <div className="page-header">
         <div className="page-header-info">
-          <h1>
-            <Flame size={24} className="logo-icon" /> Habit Tracker
+          <h1 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2rem', fontWeight: 400, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem', margin: 0 }}>
+            <Flame size={24} style={{ color: '#a78bfa' }} /> Habit Tracker
           </h1>
-          <p className="subtitle">Build consistency. Track streaks. One day at a time.</p>
+          <p className="subtitle" style={{ color: 'rgba(255,255,255,0.45)' }}>Build consistency. Track streaks. One day at a time.</p>
         </div>
         <div className="page-header-actions">
-          <button className="btn-primary" onClick={() => setShowAddModal(true)}>
+          <button onClick={() => setShowAddModal(true)} style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', color: '#a78bfa', borderRadius: '0.6rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', transition: 'all 0.2s' }}>
             <Plus size={16} /> New Habit
           </button>
         </div>
@@ -284,85 +284,78 @@ export const HabitsModule = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 key={habit.id} 
-                className="topic-card" 
-                style={{ overflow: 'visible' }}
+                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '0.875rem', overflow: 'visible', marginBottom: '0.45rem' }}
               >
-                <div style={{ padding: '1.25rem 1.5rem' }}>
+                <div style={{ padding: '0.875rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
                   {/* Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <span style={{ fontSize: '1.5rem' }}>{habit.emoji}</span>
-                      <div>
-                        <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>{habit.name}</h3>
-                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
-                          <span style={{ fontSize: '0.75rem', color: habit.color, fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <Flame size={12} /> {current} day streak
-                          </span>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <Trophy size={12} /> Best: {longest}
-                          </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '1.25rem' }}>{habit.emoji}</span>
+                    <div>
+                      <h3 style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.85)', margin: 0, fontWeight: 500 }}>{habit.name}</h3>
+                      <div style={{ display: 'flex', gap: '1rem', marginTop: '0.25rem' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#f59e0b', fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Flame size={12} /> {current}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                             {completedLast30}/30 days
                           </span>
                         </div>
                       </div>
+                  {/* Controls */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    {/* Heatmap Grid */}
+                    <div style={{ overflowX: 'auto', display: 'flex', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: '2px', minWidth: 'fit-content' }}>
+                        {weeks.map((week, wi) => (
+                          <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            {week.map(day => {
+                              const done = habitLogs.has(day);
+                              const isToday = day === today;
+                              const dayOfWeek = new Date(day).getDay();
+                              const isActive = habit.activeDays.includes(dayOfWeek);
+                              return (
+                                <div
+                                  key={day}
+                                  onClick={(e) => isActive && toggleHabitDay(habit.id!, day, e)}
+                                  title={`${day}${done ? ' ✓' : ''}`}
+                                  style={{
+                                    width: '18px', height: '18px',
+                                    borderRadius: '4px',
+                                    background: !isActive ? 'transparent' : done ? 'rgba(52,211,153,0.6)' : 'rgba(255,255,255,0.05)',
+                                    opacity: !isActive ? 0 : 1,
+                                    cursor: isActive ? 'pointer' : 'default',
+                                    border: done ? '1px solid rgba(52,211,153,0.5)' : '1px solid rgba(255,255,255,0.06)',
+                                    transition: 'all 0.15s',
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                       <button
                         onClick={(e) => toggleHabitDay(habit.id!, today, e)}
                         style={{
-                          width: '40px', height: '40px', borderRadius: '50%',
-                          background: todayDone ? habit.color : 'transparent',
-                          border: `2px solid ${todayDone ? habit.color : 'var(--border-subtle)'}`,
-                          color: todayDone ? '#fff' : 'var(--text-muted)',
+                          width: '24px', height: '24px', borderRadius: '4px',
+                          background: todayDone ? 'linear-gradient(135deg, #a78bfa, #60a5fa)' : 'rgba(255,255,255,0.03)',
+                          border: todayDone ? 'none' : '1.5px solid rgba(255,255,255,0.2)',
+                          color: todayDone ? '#fff' : 'transparent',
                           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                           transition: 'all 0.2s',
-                          boxShadow: todayDone ? `0 0 12px ${habit.color}40` : 'none',
                         }}
                         title={todayDone ? 'Uncheck today' : 'Check off today'}
                       >
-                        <Check size={20} strokeWidth={3} />
+                        <Check size={16} strokeWidth={3} />
                       </button>
-                      <button className="btn-icon" onClick={() => setDeleteConfirm({ isOpen: true, id: habit.id! })} style={{ color: 'var(--text-muted)' }}>
+                      <button className="btn-icon" onClick={() => setDeleteConfirm({ isOpen: true, id: habit.id! })} style={{ color: 'var(--text-muted)', padding: '0.3rem' }}>
                         <Trash2 size={16} />
                       </button>
-                    </div>
-                  </div>
-
-                  {/* Heatmap Grid */}
-                  <div style={{ overflowX: 'auto' }}>
-                    <div style={{ display: 'flex', gap: '2px', minWidth: 'fit-content' }}>
-                      {weeks.map((week, wi) => (
-                        <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                          {week.map(day => {
-                            const done = habitLogs.has(day);
-                            const isToday = day === today;
-                            const dayOfWeek = new Date(day).getDay();
-                            const isActive = habit.activeDays.includes(dayOfWeek);
-                            return (
-                              <div
-                                key={day}
-                                onClick={(e) => isActive && toggleHabitDay(habit.id!, day, e)}
-                                title={`${day}${done ? ' ✓' : ''}`}
-                                style={{
-                                  width: '16px', height: '16px',
-                                  borderRadius: '4px',
-                                  background: !isActive ? 'var(--bg-base)' : done ? habit.color : 'rgba(255,255,255,0.05)',
-                                  opacity: !isActive ? 0.3 : 1,
-                                  cursor: isActive ? 'pointer' : 'default',
-                                  border: isToday ? '2px solid var(--text-primary)' : '1px solid transparent',
-                                  boxShadow: done ? `0 0 8px ${habit.color}60` : 'none',
-                                  transition: 'all 0.15s',
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
-                      ))}
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.4rem', fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                      <span>90 days ago</span>
-                      <span>Today</span>
                     </div>
                   </div>
                 </div>

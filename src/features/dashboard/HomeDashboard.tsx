@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  AlertTriangle, Activity, Map, Search, BrainCircuit, Zap, Check, Trash2, CheckCircle, Key, Cloud, Server
+  AlertTriangle, Activity, Map, Search, BrainCircuit, Zap, Check, Trash2, CheckCircle, Key, Cloud, Server, Target
 } from 'lucide-react';
-import { db } from '../../services/firebase';
+import { db, auth } from '../../services/firebase';
 import { doc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 // Core Services & Context
@@ -347,7 +347,7 @@ export function HomeDashboard() {
   const hoursSaved = (totalPomodoroMinutes / 60).toFixed(1);
 
   return (
-    <div className="agent-dashboard">
+    <div className="main-content">
       {/* ART-6: Focus Lock persistent top banner */}
       <FocusLockOverlay />
 
@@ -361,220 +361,188 @@ export function HomeDashboard() {
 
       {/* GAP-5: Snooze Intervention Dialog — triggered by zen-snooze-intervention event */}
       <SnoozeInterventionDialog onAgentCommand={handleExecuteCommand} />
-      <div className="dashboard-header-bar">
-        <div className="header-left">
-          <h1 className="dashboard-main-title">OLYMPUS PROTOCOL</h1>
-          <p className="dashboard-main-subtitle">AI Productivity Fleet Core Terminal</p>
-        </div>
-        <div className="header-right">
-          <div className="system-time-display">
-            <span className="time-label">SYSTEM CLOCK</span>
-            <span className="time-val">{time || '00:00:00'}</span>
-          </div>
-        </div>
-      </div>
 
-      <div className="dashboard-grid">
+      {/* ── Aurora Dark Dashboard ── */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4 }}
+        style={{ padding: '2rem 0', display: 'flex', flexDirection: 'column', gap: '3rem' }}
+      >
         
-        {/* LEFT COLUMN - Olympus Protocol */}
-        <div className={`active-deployment-card ${isExecuting ? 'executing' : ''}`}>
-          <div className="card-header">
-            <div>
-              <h2 className="card-title">Olympus Protocol</h2>
-              <p className="card-subtitle">{highPriorityActive.length} Autonomous Agents engaged in "Current Sprint"</p>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <div className={`urgency-banner ${urgencyState.replace('state-', '')}`}>
-                {urgencyState === 'state-critical' && <><AlertTriangle size={12} /> CRITICAL</>}
-                {urgencyState === 'state-active' && <><Activity size={12} /> ACTIVE</>}
-                {urgencyState === 'state-calm' && <><Check size={12} /> FLOW STATE</>}
-              </div>
-            </div>
-          </div>
+        {/* 1. & 2. Header Row: Greeting + Stats */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '2rem' }}>
           
-          <AgentShutter
-            activeAgent={activeAgent}
-            isExecuting={isExecuting}
-            agentStatus={agentStatus}
-            pipelineSteps={pipelineSteps}
-            onAgentDockClick={(key) => {
-              if (!isExecuting) {
-                const promptMap: Record<string, string> = {
-                  ATHENA: 'Draft a project summary plan',
-                  ORACLE: 'Search the web for the latest tech trends in AI',
-                  TITAN: 'Send a status update email to my team, block 2h focus time and create a follow-up task',
-                };
-                setCommandInput(promptMap[key] || `Assign a task to ${key}...`);
-                toast.info(`Configured input for ${key} Agent`);
-              }
-            }}
-          />
+          {/* Greeting */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+            style={{ flex: '1 1 auto' }}
+          >
+            <h1 className="greeting-title" style={{ fontFamily: "'Instrument Serif', serif", fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 400, color: 'white', letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
+              Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {auth.currentUser?.displayName?.split(' ')[0] || 'User'}
+            </h1>
+            <p style={{ fontSize: '0.95rem', color: 'rgba(255,255,255,0.45)', fontFamily: "'Inter', sans-serif" }}>
+              You have {activeTasks.length} tasks due today and {globalData.habits?.filter((h: any) => !h.completedDates?.includes(todayStr)).length || 0} habits to complete
+            </p>
+          </motion.div>
 
-          
-          <div className="status-bar" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1.2rem', background: 'rgba(5, 5, 10, 0.6)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-               <div className="status-text" style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className={`status-dot ${isExecuting ? 'pulsing' : ''}`} style={{ background: isExecuting ? '#a855f7' : '#ef4444' }} />
-                {agentStatus}
+          {/* Compact Stat Cards */}
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08, delayChildren: 0.2 } } }}
+            style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}
+          >
+            {/* Stat: Tasks */}
+            <motion.div
+              variants={{ hidden: { opacity: 0, y: 20, scale: 0.95 }, visible: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 300, damping: 24 } } }}
+              whileHover={{ y: -4, scale: 1.02, boxShadow: '0 12px 40px rgba(167,139,250,0.2)', transition: { duration: 0.2 } }}
+              style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: '1rem', padding: '1rem 1.5rem', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '160px', cursor: 'default' }}
+            >
+              <Check size={20} color="#a78bfa" />
+              <div>
+                <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2.5rem', fontWeight: 400, color: 'white', lineHeight: 1 }}>{activeTasks.length}</div>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Tasks</div>
               </div>
-            </div>
+            </motion.div>
+            
+            {/* Stat: Habits */}
+            <motion.div
+              variants={{ hidden: { opacity: 0, y: 20, scale: 0.95 }, visible: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 300, damping: 24 } } }}
+              whileHover={{ y: -4, scale: 1.02, boxShadow: '0 12px 40px rgba(52,211,153,0.15)', transition: { duration: 0.2 } }}
+              style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: '1rem', padding: '1rem 1.5rem', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '160px', cursor: 'default' }}
+            >
+              <Activity size={20} color="#34d399" />
+              <div>
+                <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2.5rem', fontWeight: 400, color: 'white', lineHeight: 1 }}>{globalData.habits?.filter((h: any) => !h.completedDates?.includes(todayStr)).length || 0}</div>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Habits</div>
+              </div>
+            </motion.div>
 
-            <AgentCommandBar 
-              isExecuting={isExecuting}
-              isListening={isListening}
-              silencePercent={silencePercent}
-              interimTranscript={interimTranscript}
-              commandInput={commandInput}
-              setCommandInput={setCommandInput}
-              onExecute={() => handleExecuteCommand()}
-              onStop={handleStopAgent}
-              onClearMemory={handleClearMemory}
-              onToggleListen={toggleListening}
-              hasHistory={agentHistory.length > 0}
-            />
-          </div>
-          <div className="bottom-indicator"></div>
+            {/* Stat: Focus */}
+            <motion.div
+              variants={{ hidden: { opacity: 0, y: 20, scale: 0.95 }, visible: { opacity: 1, y: 0, scale: 1, transition: { type: 'spring', stiffness: 300, damping: 24 } } }}
+              whileHover={{ y: -4, scale: 1.02, boxShadow: '0 12px 40px rgba(96,165,250,0.15)', transition: { duration: 0.2 } }}
+              style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.10)', borderRadius: '1rem', padding: '1rem 1.5rem', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: '1rem', minWidth: '160px', cursor: 'default' }}
+            >
+              <Target size={20} color="#60a5fa" />
+              <div>
+                <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2.5rem', fontWeight: 400, color: 'white', lineHeight: 1 }}>{totalPomodoroMinutes}</div>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.4)', marginTop: '0.25rem' }}>Focus Min</div>
+              </div>
+            </motion.div>
+          </motion.div>
         </div>
 
-        {/* RIGHT COLUMN */}
-        <div className="right-column">
+        {/* 3. & 4. Split Layout (Agent Console & Schedule) */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
+          style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}
+        >
           
-          {/* GAP-6: Cross-Module Conflict Card — zero LLM cost, pure event-driven */}
-          <ConflictCard onAgentCommand={handleExecuteCommand} />
+          {/* Left Column: Agent Console (70%) */}
+          <motion.div
+            className="card"
+            whileHover={{ boxShadow: '0 8px 40px rgba(167,139,250,0.12)' }}
+            style={{ flex: '7 1 700px', padding: 0, overflow: 'hidden' }}
+          >
+            <AgentShutter
+              activeAgent={activeAgent}
+              isExecuting={isExecuting}
+              agentStatus={agentStatus}
+              pipelineSteps={pipelineSteps}
+              onAgentDockClick={setActiveAgent}
+            />
+            <div style={{ padding: '0 1.5rem 1.5rem 1.5rem' }}>
+              <AgentCommandBar
+                isExecuting={isExecuting}
+                isListening={isListening}
+                silencePercent={silencePercent}
+                interimTranscript={interimTranscript}
+                commandInput={commandInput}
+                setCommandInput={setCommandInput}
+                onExecute={() => handleExecuteCommand()}
+                onStop={handleStopAgent}
+                onClearMemory={handleClearMemory}
+                onToggleListen={toggleListening}
+                hasHistory={agentHistory.length > 0}
+              />
+              {agentResult && (
+                <div style={{ marginTop: '1rem', padding: '1.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--color-text-1)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <CheckCircle size={18} color="var(--color-cyan)" /> Mission Report
+                  </h3>
+                  <div style={{ color: 'var(--color-text-2)', fontSize: '0.95rem', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                    {typeof agentResult === 'string' ? agentResult : JSON.stringify(agentResult, null, 2)}
+                  </div>
+                  {missionComplete && (
+                    <button onClick={() => { setAgentResult(null); setMissionComplete(false); }} className="btn-secondary" style={{ marginTop: '1rem' }}>
+                      Dismiss
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </motion.div>
 
-          {/* PROPHECY GRID */}
-          <div className="urgency-matrix">
-            <h3 className="section-label">PROPHECY GRID</h3>
-            {matrixTasks.length === 0 ? (
-               <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No urgent tasks pending.</div>
-            ) : (
-              matrixTasks.map(task => {
+          {/* Right Column: Today's Schedule (30%) */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.5, delay: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            whileHover={{ boxShadow: '0 8px 32px rgba(96,165,250,0.08)' }}
+            style={{ flex: '3 1 300px', background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(16px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '1rem', padding: '1.25rem' }}
+          >
+            <h2 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.2rem', fontWeight: 400, color: 'white', marginBottom: '1.5rem' }}>Today's Schedule</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {sortedByUrgency.length > 0 ? sortedByUrgency.map(task => {
                 const uLevel = getUrgencyLevel(task.date);
-                const isImmediate = uLevel === 'overdue' || uLevel === 'critical' || task.priority === 'high';
+                const isHighPriority = uLevel === 'critical' || uLevel === 'overdue' || task.priority === 'high';
                 return (
-                  <div key={task.id} className={`urgency-card ${isImmediate ? 'immediate' : 'flow'}`} style={{ position: 'relative', overflow: 'hidden' }}>
-                    <div className="urgency-header">
-                      <span className={`urgency-type ${isImmediate ? 'immediate-text' : 'flow-text'}`}>{isImmediate ? 'IMMEDIATE' : 'FLOW'}</span>
-                      <span className="urgency-time">{getCountdownText(task.date) || 'Today'}</span>
+                  <div key={task.id} style={{ 
+                    display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem', 
+                    background: 'rgba(255,255,255,0.02)', borderRadius: '12px',
+                    borderLeft: `4px solid ${isHighPriority ? 'var(--color-red)' : 'var(--color-cyan)'}`,
+                    transition: 'background 0.2s', cursor: 'default'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: 'var(--color-text-1)', marginBottom: '0.2rem' }}>{task.title || task.text}</h3>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span className={`badge ${isHighPriority ? 'badge-red' : 'badge-cyan'}`}>
+                          {getCountdownText(task.date) || 'Due Today'}
+                        </span>
+                        {task.priority === 'high' && <span className="badge badge-amber">High Priority</span>}
+                      </div>
                     </div>
-                    <div className="urgency-title">{task.title || task.text}</div>
-                    
-                    {/* Quick Actions Hover Overlay */}
-                    <div style={{
-                      position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)',
-                      display: 'flex', gap: '0.5rem', background: 'rgba(0,0,0,0.6)', padding: '0.25rem', borderRadius: '8px', backdropFilter: 'blur(4px)'
-                    }}>
-                      <button onClick={(e) => handleCompleteTask(e, task.id)} style={{ background: 'transparent', border: 'none', color: '#10b981', cursor: 'pointer', padding: '4px' }} title="Complete Task">
-                        <CheckCircle size={16} />
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button onClick={(e) => handleCompleteTask(e, task.id)} className="btn-icon" title="Complete Task">
+                        <CheckCircle size={20} />
                       </button>
-                      <button onClick={(e) => handleDeleteTask(e, task.id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }} title="Delete Task">
-                        <Trash2 size={16} />
+                      <button onClick={(e) => handleDeleteTask(e, task.id)} className="btn-icon danger" title="Delete Task">
+                        <Trash2 size={20} />
                       </button>
                     </div>
                   </div>
                 );
-              })
-            )}
-            <div className="bandwidth-section">
-              <div className="bandwidth-bar-bg">
-                <div className="bandwidth-bar-fill" style={{ width: `${bandwidthPercent}%` }}></div>
-              </div>
-              <div className="bandwidth-text">Mortal Bandwidth Capacity: {bandwidthPercent}%</div>
-            </div>
-          </div>
-
-          {/* DIVINE TELEMETRY & CORE VITALITY */}
-          <div className="roi-card">
-            <div className="roi-ring-container" style={{ position: 'relative' }}>
-              <svg viewBox="0 0 36 36" className="circular-chart">
-                <path className="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
-                <path className="circle" stroke={apiQuotaColor} strokeDasharray={`${apiQuotaPercent}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" style={{ transition: 'stroke-dasharray 0.5s ease, stroke 0.5s ease' }} />
-              </svg>
-              <div className="ring-text" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: '-7px' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 800, color: apiQuotaColor, lineHeight: 1, transition: 'color 0.5s ease' }}>{apiQuotaPercent}%</div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.38rem', letterSpacing: '0.05em', marginTop: '2px', fontWeight: 600 }}>API QUOTA</div>
-              </div>
-            </div>
-            
-            <div className="roi-content">
-              <h3 className="section-label">DIVINE TELEMETRY & CORE VITALITY</h3>
-              <div className="roi-status" style={{color: urgencyState === 'state-critical' ? '#f59e0b' : urgencyState === 'state-active' ? '#f97316' : undefined}}>
-                Focus Priority: <span style={{color: urgencyState === 'state-critical' ? '#f59e0b' : urgencyState === 'state-active' ? '#f97316' : undefined}} className={urgencyState === 'state-calm' ? 'highlight-green' : ''}>
-                  {urgencyState === 'state-critical' ? 'HIGH' : urgencyState === 'state-active' ? 'ELEVATED' : 'OPTIMAL'}
-                </span>
-              </div>
-              
-              <div className="roi-stats" style={{ display: 'flex', gap: '0.75rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-                <span className="stat-pill" title="Number of fallback API keys loaded" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <Key size={13} style={{ color: '#00BFA5' }} />
-                  {apiQuotaStore.getKeyCount()} Fallback Keys
-                </span>
-                {globalData.isGoogleConnected ? (
-                  <span className="stat-pill" title="Google Workspace sync status" style={{ 
-                    display: 'flex', alignItems: 'center', gap: '0.4rem', 
-                    border: '1px solid rgba(16, 185, 129, 0.5)', 
-                    background: 'rgba(16, 185, 129, 0.1)',
-                    color: '#10b981',
-                    boxShadow: '0 0 10px rgba(16, 185, 129, 0.4)',
-                    animation: 'pulse-glow 2s infinite'
-                  }}>
-                    <Cloud size={13} style={{ color: '#10b981' }} />
-                    Workspace Connected
-                  </span>
-                ) : (
-                  <span className="stat-pill" title="Google Workspace sync status" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.05)', color: '#ef4444' }}>
-                    <Cloud size={13} style={{ color: '#ef4444' }} />
-                    Workspace Offline
-                  </span>
-                )}
-                <span className="stat-pill" title="AI Model in use" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.1)' }}>
-                  <Server size={13} style={{ color: '#a855f7' }} />
-                  Gemini Fleet Active
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* ACTIVE MISSION */}
-          <div className="workspace-card" style={{ padding: '1.2rem', transition: 'all 0.3s ease', border: '1px solid rgba(168,85,247,0.3)', background: 'rgba(168,85,247,0.03)' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'space-between', width: '100%' }}>
-                <h3 className="section-label" style={{ margin: 0, color: '#a855f7' }}>ACTIVE DIRECTIVE</h3>
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span className={`status-dot ${nextMission ? 'pulsing' : ''}`} style={{ background: nextMission ? '#a855f7' : '#71717a', width: 6, height: 6 }} />
-                  <span style={{ fontSize: '0.6rem', fontFamily: 'monospace', color: nextMission ? '#d8b4fe' : '#71717a' }}>{nextMission ? 'ENGAGED' : 'STANDBY'}</span>
+              }) : (
+                <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--color-text-2)', background: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
+                  <CheckCircle size={48} style={{ opacity: 0.5, margin: '0 auto 1rem' }} />
+                  <p style={{ fontSize: '1.1rem' }}>Your schedule is clear for today. Great job!</p>
                 </div>
-              </div>
-              <div className="workspace-content" style={{ margin: 0 }}>
-                {nextMission ? (
-                  <div className="workspace-status" style={{ color: '#fff', fontWeight: 500, fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <CheckCircle size={14} style={{ color: nextMission.priority === 'high' ? '#ef4444' : '#a855f7' }} />
-                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1 }}>{nextMission.title || nextMission.text}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', opacity: 0.8 }}>
-                      <button 
-                        onClick={(e) => handleCompleteTask(e, nextMission.id)}
-                        style={{ background: 'none', border: 'none', color: '#10b981', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        title="Mark Complete"
-                      >
-                        <Check size={16} />
-                      </button>
-                      <button 
-                        onClick={(e) => handleDeleteTask(e, nextMission.id)}
-                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        title="Delete Directive"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="workspace-status" style={{ fontSize: '0.85rem', color: '#a1a1aa' }}>All systems nominal. Awaiting next command.</div>
-                )}
-              </div>
+              )}
             </div>
-          </div>
-        </div>
-      </div>
+          </motion.div>
+
+        </motion.div>
+
+      </motion.div>
     </div>
   );
 }

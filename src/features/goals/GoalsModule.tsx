@@ -310,18 +310,18 @@ export const GoalsModule = () => {
     <div className="page-pad">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h1 style={{ fontSize: '1.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <Target size={28} style={{ color: 'var(--accent-primary)' }} />
+          <h1 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2rem', fontWeight: 400, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Target size={28} style={{ color: '#a78bfa' }} />
             Goals & OKRs
           </h1>
-          <p style={{ color: 'var(--text-muted)', marginTop: '0.25rem' }}>Connect your daily tasks to your long-term vision.</p>
+          <p style={{ color: 'rgba(255,255,255,0.45)', marginTop: '0.25rem' }}>Connect your daily tasks to your long-term vision.</p>
         </div>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
             <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
             Show Archived
           </label>
-          <button className="btn-primary" onClick={openNewGoal}>
+          <button onClick={openNewGoal} style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', color: '#a78bfa', borderRadius: '0.6rem', padding: '0.5rem 1rem', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer', transition: 'all 0.2s' }}>
             <Plus size={18} /> New Goal
           </button>
         </div>
@@ -334,7 +334,7 @@ export const GoalsModule = () => {
           <p style={{ color: 'var(--text-muted)', maxWidth: '400px', margin: '0.5rem auto 1.5rem auto' }}>
             You haven't set any {showArchived ? '' : 'active '}goals yet. Set a long-term goal and break it down into measurable Milestones.
           </p>
-          <button className="btn-primary" onClick={openNewGoal}>
+          <button onClick={openNewGoal} style={{ background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)', color: '#a78bfa', borderRadius: '0.6rem', padding: '0.5rem 1rem', display: 'inline-flex', cursor: 'pointer', transition: 'all 0.2s' }}>
             Create your first Goal
           </button>
         </div>

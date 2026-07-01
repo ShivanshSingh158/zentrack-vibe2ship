@@ -1,6 +1,7 @@
 import React from 'react';
 import { GripVertical, Check, ChevronDown, ChevronRight, Edit2, Timer, Trash2, Calendar as CalendarIcon, X } from 'lucide-react';
 import { Draggable } from '@hello-pangea/dnd';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
 import { getUrgencyLevel, getCountdownText, useLiveTick } from '../../hooks/useDeadlineWatcher';
@@ -73,7 +74,12 @@ export const TodoCard = React.memo(({
   return (
     <Draggable key={todo.id!} draggableId={todo.id!} index={index} isDragDisabled={isBulkEdit}>
       {(provided, snapshot) => (
-        <div
+        <motion.div
+          layout
+          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+          transition={{ type: "spring", stiffness: 400, damping: 25 }}
           ref={provided.innerRef}
           {...provided.draggableProps}
           style={{
@@ -131,21 +137,23 @@ export const TodoCard = React.memo(({
                 className="todo-text"
                 onDoubleClick={() => onEdit(todo)}
                 onClick={() => !isBulkEdit && setExpandedTaskId(isExpanded ? null : todo.id!)}
-                title={todo.title}
+                title={todo.title || todo.text}
                 style={{
                   flex: 1, minWidth: 0, display: 'block', whiteSpace: 'nowrap',
                   overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.9rem',
                   fontWeight: 600, lineHeight: 1.3, cursor: 'pointer',
                 }}
               >
-                {todo.title}
+                {todo.title || todo.text}
               </span>
             </div>
 
             {/* ── ROW 2: priority dot + meta (left) · action buttons (right) ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: isBulkEdit ? '1.5rem' : '2.1rem', gap: '0.5rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
-                <span className={`todo-priority ${todo.priority}`} title={todo.priority} style={{ flexShrink: 0 }} />
+                <span className={`todo-priority ${todo.priority}`} title={todo.priority} style={{ flexShrink: 0 }}>
+                  {todo.priority === 'high' ? 'P1 / High' : todo.priority === 'medium' ? 'P2 / Med' : 'P3 / Low'}
+                </span>
 
                 {todo.subject && (
                   <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.45rem', borderRadius: '9999px', background: 'rgba(139,92,246,0.13)', color: '#a78bfa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
@@ -282,7 +290,7 @@ export const TodoCard = React.memo(({
               </form>
             </div>
           )}
-        </div>
+        </motion.div>
       )}
     </Draggable>
   );

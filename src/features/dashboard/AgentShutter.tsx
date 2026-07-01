@@ -201,9 +201,17 @@ export function AgentShutter({
           '--agent-shadow': activeDetails.secondaryColor + '40',
         } as React.CSSProperties}
       >
-        <div className="hud-terminal-console" style={{ width: '100%', minHeight: '60px', margin: 0 }}>
-          <span style={{ color: '#71717a' }}>&gt;_ [SYS_PROMPT]:</span> {agentStatus}
-          <span className="hud-console-cursor" />
+        <div style={{ border: '1px solid rgba(255,255,255,0.08)', borderRadius: '1rem', overflow: 'hidden', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(20px)' }}>
+          <div style={{ background: 'rgba(0,0,0,0.3)', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '0.6rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+             <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#ef4444', opacity: 0.6 }} />
+             <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#f59e0b', opacity: 0.6 }} />
+             <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#22c55e', opacity: 0.6 }} />
+             <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em' }}>SYS_CONTAINMENT</span>
+          </div>
+          <div className="hud-terminal-console" style={{ width: '100%', minHeight: '60px', margin: 0, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.8rem', color: 'rgba(255,255,255,0.75)', lineHeight: 1.7, background: 'transparent', padding: '1rem' }}>
+            <span style={{ color: 'rgba(255,255,255,0.3)' }}>&gt;_ [SYS_PROMPT]:</span> <span style={{ color: '#34d399' }}>{agentStatus}</span>
+            <span className="hud-console-cursor" />
+          </div>
         </div>
 
         <div className="hud-footer-row" style={{ width: '100%', marginTop: '0.2rem' }}>

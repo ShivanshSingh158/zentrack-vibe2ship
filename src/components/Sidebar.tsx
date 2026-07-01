@@ -71,6 +71,66 @@ function savePinned(pinned: string[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(pinned));
 }
 
+const sidebarStyles = `
+  .sidebar {
+    background: rgba(0,15,30,0.8) !important;
+    backdrop-filter: blur(20px) !important;
+    border-right: 1px solid rgba(255,255,255,0.07) !important;
+    width: 240px !important;
+  }
+  .sidebar-header {
+    padding: 1.25rem 1rem !important;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: none !important;
+  }
+  .sidebar-header .app-logo {
+    font-family: 'Instrument Serif', serif !important;
+    font-size: 1.4rem !important;
+    font-weight: 400 !important;
+    color: white !important;
+  }
+  .sidebar-nav .nav-item {
+    display: flex !important;
+    align-items: center !important;
+    gap: 0.65rem !important;
+    padding: 0.55rem 0.875rem !important;
+    border-radius: 0.6rem !important;
+    margin: 0.1rem 0.5rem !important;
+    color: rgba(255,255,255,0.5) !important;
+    font-size: 0.85rem !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    border: none !important;
+    background: transparent;
+  }
+  .sidebar-nav .nav-item::before, .sidebar-nav .nav-item::after {
+    display: none !important;
+  }
+  .sidebar-nav .nav-item:hover {
+    background: rgba(255,255,255,0.05) !important;
+    color: rgba(255,255,255,0.85) !important;
+  }
+  .sidebar-nav .nav-item.active {
+    background: rgba(167,139,250,0.12) !important;
+    color: #a78bfa !important;
+    border: none !important;
+  }
+  .sidebar-nav .nav-item svg {
+    width: 16px !important;
+    height: 16px !important;
+    color: inherit;
+  }
+  .sidebar-nav .group-label {
+    font-size: 0.6rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.12em !important;
+    color: rgba(255,255,255,0.25) !important;
+    padding: 0.75rem 1.25rem 0.25rem !important;
+  }
+`;
+
 // ── Sidebar Component ─────────────────────────────────────────────────────
 export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
   const { state, pauseTimer, resumeTimer, formatTime, dismissTimer, toggleFocusMode, setDuration } = usePomodoroContext();
@@ -132,12 +192,13 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
 
   return (
     <>
+      <style>{sidebarStyles}</style>
       {/* ── Desktop Sidebar ── */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <Link to="/home" className="app-logo" style={{ textDecoration: 'none', color: 'inherit' }}>
-            <img src="/logo.png" alt="Zentrack" className="logo-icon" style={{ width: 24, height: 24, borderRadius: '6px' }} />
-            <span>Zentrack</span>
+          <Link to="/home" className="app-logo" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <img src="/logo_white.png" alt="ZenTrack" className="logo-icon" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+            <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.5rem', transform: 'translateY(1px)' }}>ZenTrack</span>
           </Link>
         </div>
 
@@ -170,12 +231,8 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
 
             {/* Divider between primary and secondary */}
             {moreModules.some(m => ALL_MODULES.findIndex(am => am.id === m.id) >= SECONDARY_START_INDEX) && (
-              <div style={{ padding: '0.5rem 0.75rem', margin: '0.25rem 0' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
-                  <span style={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>More</span>
-                  <div style={{ flex: 1, height: '1px', background: 'var(--border-subtle)' }} />
-                </div>
+              <div className="group-label">
+                More
               </div>
             )}
 
@@ -244,7 +301,7 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
             {/* Sheet header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <img src="/logo.png" alt="Zentrack" className="logo-icon" style={{ width: 18, height: 18, borderRadius: '4px' }} /> All Modules
+                <img src="/logo_white.png" alt="ZenTrack" className="logo-icon" style={{ width: 18, height: 18, objectFit: 'contain' }} /> All Modules
               </h3>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <button

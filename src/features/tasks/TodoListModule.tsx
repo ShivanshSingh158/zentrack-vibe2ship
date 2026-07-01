@@ -461,10 +461,9 @@ export const TodoListModule = () => {
                 <span className="date-day">{dayName}</span>
                 {hasTasks && (
                   <span style={{
-                    display: 'block', width: '5px', height: '5px', borderRadius: '50%',
+                    position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)',
+                    width: '5px', height: '5px', borderRadius: '50%',
                     background: hasOverdue ? '#ef4444' : isSelected ? '#fff' : '#a855f7',
-                    margin: '2px auto 0',
-                    flexShrink: 0,
                     boxShadow: hasOverdue ? '0 0 4px rgba(239,68,68,0.6)' : 'none',
                   }} />
                 )}
@@ -495,10 +494,10 @@ export const TodoListModule = () => {
       </div>
 
       <div className="todo-content liquid-panel" style={{ padding: '1rem 1.5rem', border: 'none' }}>
-        <div style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <div className="module-header" style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', '--module-accent': 'var(--accent-gradient)' } as React.CSSProperties}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'nowrap', gap: '0.5rem' }}>
-            <h1 style={{ margin: 0, fontSize: '1.5rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {selectedDate === todayStr ? "Today's Tasks" : `Tasks for ${formatDisplayDate(selectedDate)}`}
+            <h1 style={{ margin: 0, fontSize: '2rem', fontWeight: 400, fontFamily: "'Instrument Serif', serif", color: 'white', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {selectedDate === todayStr ? "Today's Tasks" : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </h1>
             
             <button 
@@ -525,6 +524,7 @@ export const TodoListModule = () => {
           >
             <Search size={16} color="var(--text-muted)" />
             <input 
+              className="input"
               type="text" 
               placeholder="Search tasks..." 
               value={searchTerm} 
@@ -587,19 +587,18 @@ export const TodoListModule = () => {
           {/* Row 1: text + add */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             <input 
+              className="input"
               type="text" 
               placeholder="What needs to get done…" 
               value={newTaskText} 
               onChange={e => setNewTaskText(e.target.value)} 
-              style={{ flex: 1, minWidth: '200px', padding: '0.65rem 0.9rem', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', color: '#fff', fontSize: '0.95rem', outline: 'none' }} 
-              onFocus={e => (e.currentTarget.style.borderColor = 'rgba(168,85,247,0.5)')} 
-              onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)')} 
+              style={{ flex: 1, minWidth: '200px' }} 
             />
             
             <button type="button" onClick={() => setShowTaskOptions(s => !s)} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: showTaskOptions ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showTaskOptions ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: showTaskOptions ? '#c084fc' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="More options">
               <ListChecks size={14} /> {showTaskOptions ? 'Less' : 'Options'}
             </button>
-            <button type="submit" disabled={!newTaskText.trim()} style={{ padding: '0.65rem 1.25rem', borderRadius: '10px', background: newTaskText.trim() ? 'linear-gradient(135deg, #a855f7, #ec4899)' : 'rgba(255,255,255,0.05)', border: 'none', color: newTaskText.trim() ? '#fff' : 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 700, cursor: newTaskText.trim() ? 'pointer' : 'not-allowed', boxShadow: newTaskText.trim() ? '0 4px 15px rgba(168,85,247,0.4)' : 'none', whiteSpace: 'nowrap' }}>
+            <button type="submit" disabled={!newTaskText.trim()} className="btn-add-task">
               Add Task
             </button>
           </div>

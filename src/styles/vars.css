@@ -1,67 +1,81 @@
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
 :root {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-display: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Instrument Serif', serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   
-  /* ── Cyber-AI Theme — Base Palette ── */
-  --bg-base: #05050A;
-  --bg-surface: rgba(0, 240, 255, 0.02);
-  --bg-surface-hover: rgba(0, 240, 255, 0.06);
-  --bg-surface-active: rgba(0, 240, 255, 0.10);
-  --bg-elevated: rgba(10, 10, 15, 0.90);
+  /* ── New Base Palette (Aurora Dark) ── */
+  --color-bg:        hsl(201, 100%, 10%);   /* Deep navy — matches landing page */
+  --color-surface:   rgba(255,255,255,0.03); /* Liquid glass card surface */
+  --color-surface-2: rgba(255,255,255,0.06); /* Nested glass */
+  --color-border:    rgba(255,255,255,0.10);
+  --color-border-hover: rgba(255,255,255,0.20);
   
-  --text-primary: #ffffff;
-  --text-secondary: #90A0B0;
-  --text-muted: #506070;
+  /* Compatibility for old tokens to prevent breakage */
+  --bg-base: var(--color-bg);
+  --bg-surface: var(--color-surface);
+  --bg-surface-hover: var(--color-surface-2);
+  --bg-surface-active: #1a1a24;
+  --bg-elevated: rgba(13, 13, 20, 0.95);
+  --border-subtle: var(--color-border);
+  --border-hover: var(--color-border-hover);
+  --border-glow: rgba(0, 212, 255, 0.4);
   
-  --border-subtle: rgba(0, 240, 255, 0.15);
-  --border-hover: rgba(0, 240, 255, 0.35);
-  --border-glow: rgba(0, 240, 255, 0.6);
+  /* ── Text ── */
+  --color-text-1: #FFFFFF;
+  --color-text-2: hsl(240, 4%, 66%);  /* #a8a8b3 */
+  --color-text-3: rgba(255,255,255,0.30);
+  --text-primary:    var(--color-text-1);
+  --text-secondary:  var(--color-text-2);
+  --text-muted:      var(--color-text-3);
   
-  /* ── Gradient Accent System ── */
-  --accent-primary: #00F0FF;
-  --accent-primary-hover: #00D0E0;
-  --accent-secondary: #B534FF;
-  --accent-tertiary: #FF0055;
-  --accent-gradient: linear-gradient(135deg, #00F0FF 0%, #B534FF 50%, #FF0055 100%);
-  --accent-gradient-warm: linear-gradient(135deg, #FF0055 0%, #FF8A00 100%);
-  --accent-gradient-success: linear-gradient(135deg, #00F0FF 0%, #00FF88 100%);
-  --accent-gradient-danger: linear-gradient(135deg, #FF0055 0%, #FF2A2A 100%);
-  --accent-glow: rgba(0, 240, 255, 0.5);
-  --accent-glow-secondary: rgba(181, 52, 255, 0.4);
+  /* ── Typography Scale ── */
+  --text-xs:   0.75rem;   /* 12px */
+  --text-sm:   0.875rem;  /* 14px */
+  --text-base: 1rem;      /* 16px */
+  --text-lg:   1.125rem;  /* 18px */
+  --text-xl:   1.25rem;   /* 20px */
+  --text-2xl:  1.5rem;    /* 24px */
+  --text-3xl:  1.875rem;  /* 30px */
+  --text-4xl:  2.25rem;   /* 36px */
+  --text-5xl:  3rem;      /* 48px */
+  
+  /* ── Accent System (Calmer) ── */
+  --color-cyan:   #60a5fa;   /* Now matches landing's blue accent */
+  --color-violet: #a78bfa;   /* Landing's purple accent */
+  --color-amber:  #f59e0b;
+  --color-green:  #34d399;
+  --color-red:    #ef4444;
+  
+  /* Old tokens mapped to new */
+  --accent-primary: var(--color-violet);
+  --accent-primary-hover: #9061f9;
+  --accent-secondary: var(--color-cyan);
+  --accent-tertiary: var(--color-red);
+  --accent-gradient: linear-gradient(135deg, #a78bfa 0%, #60a5fa 100%);
+  --accent-glow: rgba(167,139,250,0.35);
+  --accent-glow-secondary: rgba(96,165,250,0.25);
   
   /* ── Urgency System Tokens (default = calm) ── */
-  --urgency-primary: #00F0FF;
-  --urgency-secondary: #B534FF;
-  --urgency-glow: rgba(0, 240, 255, 0.25);
-  --urgency-bg-tint: rgba(0, 240, 255, 0.03);
-  --urgency-border: rgba(0, 240, 255, 0.3);
-  
-  /* ── Module-Specific Accents ── */
-  --module-todo: #00F0FF;
-  --module-habits: #FF8A00;
-  --module-attendance: #00FF88;
-  --module-assignments: #B534FF;
-  --module-calendar: #3b82f6;
-  --module-goals: #FF0055;
-  --module-notes: #00D0E0;
-  --module-jobs: #FF8A00;
-  --module-learning: #00FF88;
-  --module-analytics: #B534FF;
+  --urgency-primary: var(--color-cyan);
+  --urgency-secondary: var(--color-violet);
+  --urgency-glow: rgba(0, 212, 255, 0.2);
+  --urgency-bg-tint: rgba(0, 212, 255, 0.03);
+  --urgency-border: rgba(0, 212, 255, 0.2);
   
   /* ── Shadows & Effects ── */
   --shadow-glow: 0 0 25px -5px var(--accent-glow);
-  --shadow-card: 0 4px 16px -4px rgba(0, 0, 0, 0.5);
-  --shadow-card-hover: 0 20px 40px -12px rgba(0, 0, 0, 0.8), 0 0 20px -8px var(--accent-glow-secondary);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+  --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.12);
   --shadow-elevated: 0 24px 48px -12px rgba(0, 0, 0, 0.9);
   
-  /* ── Radii — Sharper, more technical ── */
+  /* ── Radii ── */
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-2xl: 20px;
-
   
   /* ── Animation Curves ── */
   --spring-soft: cubic-bezier(0.175, 0.885, 0.32, 1.05);
@@ -92,12 +106,7 @@
 }
 
 :root.state-calm body {
-  background-image:
-    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px),
-    radial-gradient(ellipse at 10% 20%, rgba(0, 240, 255, 0.08) 0%, transparent 40%),
-    radial-gradient(ellipse at 90% 80%, rgba(181, 52, 255, 0.05) 0%, transparent 35%);
-  background-size: 50px 50px, 50px 50px, 100% 100%, 100% 100%;
+  /* Kept for state mapping but grid lines removed */
 }
 
 /* ACTIVE STATE — Tasks due today (Neon Orange/Purple) */
@@ -110,12 +119,7 @@
 }
 
 :root.state-active body {
-  background-image:
-    linear-gradient(rgba(255, 138, 0, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 138, 0, 0.03) 1px, transparent 1px),
-    radial-gradient(ellipse at 10% 20%, rgba(255, 138, 0, 0.10) 0%, transparent 40%),
-    radial-gradient(ellipse at 90% 80%, rgba(181, 52, 255, 0.08) 0%, transparent 35%);
-  background-size: 50px 50px, 50px 50px, 100% 100%, 100% 100%;
+  /* Kept for state mapping but grid lines removed */
 }
 
 /* CRITICAL STATE — Overdue tasks (Hot Pink / Magenta) */
@@ -128,18 +132,12 @@
 }
 
 :root.state-critical body {
-  background-image:
-    linear-gradient(rgba(255, 0, 85, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 0, 85, 0.05) 1px, transparent 1px),
-    radial-gradient(ellipse at 10% 20%, rgba(255, 0, 85, 0.12) 0%, transparent 40%),
-    radial-gradient(ellipse at 90% 80%, rgba(181, 52, 255, 0.10) 0%, transparent 35%);
-  background-size: 50px 50px, 50px 50px, 100% 100%, 100% 100%;
-  animation: critical-ambient-pulse 2s ease-in-out infinite;
+  /* Use a subtle red tint for critical state without grid lines */
 }
 
 @keyframes critical-ambient-pulse {
-  0%, 100% { background-position: 0 0, 0 0, 0 0, 0 0; }
-  50% { background-position: 10px 10px, 10px 10px, 0 0, 0 0; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.9; }
 }
 
 /* Urgency-aware component overrides */

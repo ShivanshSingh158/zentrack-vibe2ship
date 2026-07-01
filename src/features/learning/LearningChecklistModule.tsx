@@ -1046,12 +1046,14 @@ export const LearningChecklistModule = () => {
               <div key={topic.id} className="topic-card">
                 <div className="topic-card-header" onClick={() => setAndPersistExpanded(isExpanded ? null : topic.id!)}>
                   <div className="topic-title-section">
-                    <button className="topic-expand-btn" onClick={e => { e.stopPropagation(); setAndPersistExpanded(isExpanded ? null : topic.id!); }} aria-expanded={isExpanded}>
-                      {isExpanded ? <ChevronDown size={17} /> : <ChevronRight size={17} />}
-                    </button>
+                    <div style={{ width: '44px', height: '44px', borderRadius: '0.75rem', background: 'rgba(167,139,250,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a78bfa' }}>
+                      <button className="topic-expand-btn" onClick={e => { e.stopPropagation(); setAndPersistExpanded(isExpanded ? null : topic.id!); }} aria-expanded={isExpanded} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>
+                        {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                      </button>
+                    </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        <div style={{ fontWeight: 600, fontSize: '1.05rem' }}>{topic.title}</div>
+                        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.9rem', fontWeight: 500, color: 'rgba(255,255,255,0.88)' }}>{topic.title}</div>
                         {needsReview && (
                           <span style={{ display: 'flex', alignItems: 'center', gap: '0.18rem', fontSize: '0.58rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(245,158,11,0.22)' }}>
                             <Bell size={8} /> Review
@@ -1061,11 +1063,11 @@ export const LearningChecklistModule = () => {
                           <span style={{ fontSize: '0.58rem', color: '#60a5fa', background: 'rgba(59,130,246,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(59,130,246,0.2)' }}>✏️ Editing</span>
                         )}
                       </div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem' }}>
                         {done}/{total} · {progress}%{topic.timeSpentMs && topic.timeSpentMs > 0 ? ` · ${formatDuration(topic.timeSpentMs)}` : ''}
                       </div>
-                      <div className="progress-bar" style={{ marginTop: '0.38rem' }}>
-                        <div className="progress-fill" style={{ width: `${progress}%`, background: progressColor(progress), transition: 'width 400ms ease, background 400ms ease' }} />
+                      <div style={{ marginTop: '0.38rem', height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                        <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg, #a78bfa, #60a5fa)', transition: 'width 0.8s cubic-bezier(0.16,1,0.3,1)' }} />
                       </div>
                     </div>
                   </div>
@@ -1074,8 +1076,8 @@ export const LearningChecklistModule = () => {
                       <button
                         onClick={e => { e.stopPropagation(); if (!isExpanded) setAndPersistExpanded(topic.id!); handleResumePlaylist(topic.id!); }}
                         title="Resume playlist"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#ef4444', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}>
-                        <Play size={10} fill="currentColor" /> Resume
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.875rem', borderRadius: '999px', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.25)', color: '#60a5fa', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                        <Play size={10} fill="currentColor" /> Continue
                       </button>
                     )}
                     <button

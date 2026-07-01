@@ -150,15 +150,32 @@ export const forceSilentRefresh = async (): Promise<void> => {
   if (!user) throw new Error('Not authenticated — cannot refresh Google token');
   const idToken = await user.getIdToken();
 
-  const res = await fetch('/api/auth/refresh', {
+  let res = await fetch('/api/auth/refresh', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ idToken }),
   });
 
+  if (res.status === 404 && import.meta.env.VITE_GOOGLE_CLIENT_SECRET) {
+    const localRefreshToken = localStorage.getItem('zen_gcal_refresh_token');
+    if (localRefreshToken) {
+      console.warn('[GoogleCalendar] Falling back to client-side token refresh via local proxy...');
+      res = await fetch('/local-google-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: CLIENT_ID!,
+          client_secret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET,
+          refresh_token: localRefreshToken,
+          grant_type: 'refresh_token'
+        })
+      });
+    }
+  }
+
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || 'Failed to refresh Google token from server');
+    throw new Error(errData.error || errData.error_description || 'Failed to refresh Google token from server');
   }
   const data = await res.json();
   storeToken(data.access_token, data.expires_in ?? 3600);
@@ -225,7 +242,7 @@ export const signInWithGoogle = (): Promise<void> => {
               const idToken = await user.getIdToken();
               
               // Exchange code via backend
-              const res = await fetch('/api/auth/google', {
+              let res = await fetch('/api/auth/google', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code: response.code, idToken })
@@ -237,16 +254,36 @@ export const signInWithGoogle = (): Promise<void> => {
                 throw new Error('Backend returned HTML (404). You must run the app with "npx vercel dev" instead of "npm run dev" to use API routes!');
               }
 
+              // Fallback for local Vite dev (404 with no body)
+              if (res.status === 404 && import.meta.env.VITE_GOOGLE_CLIENT_SECRET) {
+                console.warn('[GoogleCalendar] Falling back to client-side token exchange via local proxy...');
+                res = await fetch('/local-google-token', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                  body: new URLSearchParams({
+                    code: response.code,
+                    client_id: CLIENT_ID,
+                    client_secret: import.meta.env.VITE_GOOGLE_CLIENT_SECRET,
+                    redirect_uri: window.location.origin, // Default OAuth popup redirect
+                    grant_type: 'authorization_code'
+                  })
+                });
+              }
+
               if (!res.ok) {
                 const errData = await res.json().catch(() => ({}));
-                throw new Error(errData.error || 'Failed to exchange token');
+                throw new Error(errData.error || errData.error_description || 'Failed to exchange token');
               }
               
               const data = await res.json();
               storeToken(data.access_token, data.expires_in ?? 3600);
               // Mark that this user has ever connected — used by wasEverConnectedToGoogle()
               localStorage.setItem('zen_gcal_has_refresh_token', '1');
-              console.log('[GoogleCalendar] ✅ Token obtained via backend');
+              if (data.refresh_token) {
+                // Save locally only for local dev fallback; production uses Firestore via API
+                localStorage.setItem('zen_gcal_refresh_token', data.refresh_token);
+              }
+              console.log('[GoogleCalendar] ✅ Token obtained successfully');
               _isAuthFailingLoop = false;
               resolve();
             } catch (err: any) {

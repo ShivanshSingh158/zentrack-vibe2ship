@@ -177,7 +177,7 @@
 .chamber-viewport {
   width: 100%;
   height: 100%;
-  border-radius: 12px;
+  border-radius: 50%;
   border: 2px solid var(--agent-color, #c084fc);
   box-shadow: 0 0 20px var(--agent-shadow, rgba(192, 132, 252, 0.2));
   overflow: hidden;
@@ -216,7 +216,7 @@
   opacity: 0.45;
 }
 
-.hud-reticle-corners { position: absolute; inset: 8px; pointer-events: none; z-index: 2; }
+.hud-reticle-corners { display: none; }
 .hud-reticle-corners::before,
 .hud-reticle-corners::after {
   content: '';
@@ -518,8 +518,12 @@
 
 .pipeline-step {
   display: flex; align-items: center; gap: 0.25rem;
-  font-size: 0.55rem; font-weight: 700; letter-spacing: 0.05em;
-  color: #71717a; text-transform: uppercase;
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.4); text-transform: uppercase;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 999px;
+  padding: 2px 8px;
 }
 
 .pipeline-indicator {
@@ -530,8 +534,8 @@
 .pipeline-step.completed { color: #10b981; }
 .pipeline-step.completed .pipeline-indicator { background: #10b981; box-shadow: 0 0 6px rgba(16, 185, 129, 0.6); }
 
-.pipeline-step.active { color: var(--agent-color, #c084fc); }
-.pipeline-step.active .pipeline-indicator { background: var(--agent-color, #c084fc); box-shadow: 0 0 8px var(--agent-shadow, rgba(192, 132, 252, 0.6)); animation: cyber-pulse-purple 1.5s infinite ease-in-out; }
+.pipeline-step.active { color: #34d399; border: 1px solid rgba(52,211,153,0.3); background: rgba(52,211,153,0.08); }
+.pipeline-step.active .pipeline-indicator { background: #34d399; box-shadow: 0 0 8px rgba(52,211,153,0.6); animation: cyber-pulse-purple 1.5s infinite ease-in-out; }
 
 /* ── Dock Tooltip ─────────────────────────────────────────────────────────────── */
 

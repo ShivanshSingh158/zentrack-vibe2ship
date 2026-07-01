@@ -148,12 +148,14 @@ export const SubTaskItem = React.memo(({
         )}
 
         {videoId && (
-          <div style={{ flexShrink: 0, width: '40px', height: '27px', borderRadius: '4px', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
+          <div style={{ flexShrink: 0, width: '40px', height: '27px', borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
             onClick={() => onPlayVideo(videoId, subTask.id, topicId)}>
             <img src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`} alt="" loading="lazy"
               style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: subTask.status === 'completed' ? 0.35 : 0.85, transition: 'opacity 200ms' }} />
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
-              <Play size={8} fill="#fff" color="#fff" />
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ background: 'rgba(0,0,0,0.5)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px' }}>
+                <Play size={8} fill="white" color="white" />
+              </div>
             </div>
           </div>
         )}
@@ -252,11 +254,11 @@ export const AddVideoPanel = ({ topicId, onAdd }: any) => {
       <input type="url" placeholder="Paste YouTube video URL..." value={localUrl} onChange={e => handleUrlChange(e.target.value)}
         style={{ width: '100%', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.25)', color: '#fff', fontSize: '0.85rem', outline: 'none', boxSizing: 'border-box' }} />
       {previewId && (
-        <div style={{ borderRadius: '8px', overflow: 'hidden', aspectRatio: '16/9', maxHeight: '120px', position: 'relative' }}>
+        <div style={{ borderRadius: '0.75rem', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', aspectRatio: '16/9', maxHeight: '120px', position: 'relative' }}>
           <img src={`https://img.youtube.com/vi/${previewId}/mqdefault.jpg`} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} />
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: 'rgba(239,68,68,0.9)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Play size={14} fill="#fff" color="#fff" />
+            <div style={{ background: 'rgba(0,0,0,0.5)', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Play size={14} fill="white" color="white" />
             </div>
           </div>
         </div>

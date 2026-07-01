@@ -67,7 +67,7 @@ export const NotesAIPanel: React.FC<NotesAIPanelProps> = ({
     const blocks = isModel ? extractMarkdownBlocks(msg.text) : [];
     
     // Strip markdown code block wrappers so it renders normally
-    let displayText = msg.text;
+    let displayText = msg.text || '';
     if (isModel) {
       displayText = displayText.replace(/```(?:markdown)?\n/g, '\n').replace(/```/g, '\n');
     }

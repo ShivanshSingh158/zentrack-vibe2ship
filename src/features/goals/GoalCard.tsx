@@ -42,10 +42,10 @@ export const GoalCard: React.FC<GoalCardProps> = ({
   }
 
   return (
-    <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', opacity: goal.status === 'active' ? 1 : 0.6 }}>
+    <div style={{ background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: '1rem', padding: '1.25rem', opacity: goal.status === 'active' ? 1 : 0.6 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-primary)', textDecoration: goal.status === 'completed' ? 'line-through' : 'none' }}>{goal.title}</h2>
+          <h2 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.1rem', fontWeight: 400, color: 'white', textDecoration: goal.status === 'completed' ? 'line-through' : 'none' }}>{goal.title}</h2>
           <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: '0.25rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
             {goal.subject && (
               <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '9999px', background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', fontWeight: 600 }}>
@@ -54,7 +54,12 @@ export const GoalCard: React.FC<GoalCardProps> = ({
             )}
             <span>Deadline: <span style={{ color: 'var(--text-primary)' }}>{formatDisplayDate(goal.deadline)}</span></span>
             <span>•</span>
-            <span className={`tag ${goal.status}`}>{goal.status}</span>
+            <span style={{ 
+              fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', fontWeight: 500, textTransform: 'capitalize',
+              ...(goal.status === 'active' ? { background: 'rgba(52,211,153,0.1)', color: '#34d399', border: '1px solid rgba(52,211,153,0.2)' } :
+                  goal.status === 'completed' ? { background: 'rgba(96,165,250,0.1)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.2)' } :
+                  { background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' })
+            }}>{goal.status}</span>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -66,16 +71,16 @@ export const GoalCard: React.FC<GoalCardProps> = ({
         </div>
       </div>
       
-      <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.5rem' }}>{goal.description}</p>
+      <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.82rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>{goal.description}</p>
 
       {/* Overall Progress Bar */}
       <div style={{ marginBottom: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
           <span>Overall Progress</span>
-          <span>{totalProgress}%</span>
+          <span style={{ fontSize: '0.7rem', color: '#a78bfa', fontFamily: 'monospace' }}>{totalProgress}%</span>
         </div>
-        <div style={{ height: '8px', background: 'var(--bg-surface-active)', borderRadius: '4px', overflow: 'hidden' }}>
-          <div style={{ width: `${totalProgress}%`, height: '100%', background: 'var(--accent-primary)', transition: 'width 0.3s ease' }} />
+        <div style={{ height: '4px', background: 'rgba(255,255,255,0.07)', borderRadius: '999px', overflow: 'hidden' }}>
+          <div style={{ width: `${totalProgress}%`, height: '100%', background: 'linear-gradient(90deg, #a78bfa, #60a5fa)', borderRadius: '999px', transition: 'width 0.8s cubic-bezier(0.16,1,0.3,1)' }} />
         </div>
       </div>
 

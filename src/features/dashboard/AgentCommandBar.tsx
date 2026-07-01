@@ -49,7 +49,7 @@ export function AgentCommandBar({
   hasHistory,
 }: AgentCommandBarProps) {
   return (
-    <div className="command-bar-container" style={{ position: 'relative' }}>
+    <div className={`command-bar-container ${isExecuting ? 'executing-border' : ''}`} style={{ position: 'relative' }}>
       <AnimatePresence>
         {isListening && (
           <motion.div
@@ -197,7 +197,8 @@ export function AgentCommandBar({
           </button>
         </div>
 
-        <button
+        <motion.button
+          whileTap={{ scale: 0.9 }}
           className="execute-command-btn"
           onClick={isExecuting ? onStop : onExecute}
           disabled={!isExecuting && !commandInput.trim()}
@@ -205,7 +206,7 @@ export function AgentCommandBar({
           style={{ background: isExecuting ? 'rgba(239,68,68,0.1)' : undefined }}
         >
           {isExecuting ? <Square size={16} color="#ef4444" fill="#ef4444" /> : <Send size={16} />}
-        </button>
+        </motion.button>
       </div>
     </div>
   );
