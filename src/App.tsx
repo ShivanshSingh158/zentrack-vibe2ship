@@ -353,19 +353,6 @@ function App() {
   }, [showAgent]);
 
   useEffect(() => {
-    const handlePopState = () => {
-      // Sync showLogin state when user uses browser back/forward buttons
-      if (window.location.pathname === '/login') {
-        setShowLogin(true);
-      } else if (window.location.pathname === '/' || window.location.pathname === '/landing') {
-        setShowLogin(false);
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  useEffect(() => {
     // Skip Lenis on touch/mobile — native iOS scroll is already buttery smooth
     // and Lenis interferes with touch events, causing jank during tab switching
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -477,7 +464,7 @@ function App() {
   }
 
   if (!user) {
-    const isLoginVisible = showLogin || window.location.pathname === '/login';
+    const isLogin = showLogin || window.location.pathname === '/login';
 
     return (
       <>
@@ -503,21 +490,22 @@ function App() {
           }}
         />
 
+        {/* The Landing page stays mounted in the background to prevent video reloads */}
         <Landing onTryNow={() => {
           setShowLogin(true);
           window.history.pushState({}, '', '/login');
-          window.dispatchEvent(new Event('popstate'));
         }} />
 
-        {isLoginVisible && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.6) 100%)' }}>
-            <Login onBack={() => {
-              setShowLogin(false);
-              window.history.pushState({}, '', '/');
-              window.dispatchEvent(new Event('popstate'));
-            }} />
-          </div>
-        )}
+        <AnimatePresence mode="wait">
+          {isLogin && (
+            <Login 
+              onBack={() => {
+                setShowLogin(false);
+                window.history.pushState({}, '', '/');
+              }} 
+            />
+          )}
+        </AnimatePresence>
       </>
     );
   }

@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { LogIn, Loader2, Play, Infinity as InfinityIcon } from 'lucide-react';
+import { LogIn, Loader2, Play, Infinity as InfinityIcon, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { seedDemoData } from '../utils/seedDemoData';
 import { motion } from 'framer-motion';
 import '../styles/landing.css';
 
-const BG_VIDEO = '/bg-video.mp4';
+interface LoginProps {
+  onBack?: () => void;
+}
 
-
-export const Login: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
+export const Login: React.FC<LoginProps> = ({ onBack }) => {
   const googleProvider = new GoogleAuthProvider();
   googleProvider.addScope('https://www.googleapis.com/auth/calendar');
   googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
@@ -65,11 +66,60 @@ export const Login: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   };
 
   return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.8 }}
+      className="login-overlay" 
+      style={{ 
+        position: 'fixed', 
+        inset: 0, 
+        zIndex: 100, 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        background: 'rgba(5, 15, 30, 0.45)', 
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        overflow: 'hidden' 
+      }}
+    >
+
+      {/* Back Button */}
+      {onBack && (
+        <motion.button
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.6, delay: 0.3 }}
+          onClick={onBack}
+          style={{
+            position: 'absolute',
+            top: '2rem',
+            left: '2rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            background: 'none',
+            border: 'none',
+            color: 'rgba(255,255,255,0.7)',
+            fontSize: '0.9rem',
+            cursor: 'pointer',
+            padding: '0.5rem',
+            zIndex: 110,
+          }}
+          whileHover={{ color: '#fff', x: -3 }}
+        >
+          <ArrowLeft size={18} />
+          Back to Home
+        </motion.button>
+      )}
+
+      {/* Floating Glass Login Card */}
       <motion.div 
         initial={{ opacity: 0, y: 40, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 20, scale: 0.95 }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
         className="liquid-glass"
         style={{
           width: '100%',
@@ -83,19 +133,9 @@ export const Login: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
           position: 'relative',
           zIndex: 10,
           margin: '1rem',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255,255,255,0.05)',
-          background: 'rgba(10, 25, 40, 0.65)',
-          backdropFilter: 'blur(16px)'
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255,255,255,0.05)'
         }}
       >
-        {onBack && (
-          <button 
-            onClick={onBack}
-            style={{ position: 'absolute', top: '1.5rem', left: '1.5rem', background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
-          >
-            ← Back
-          </button>
-        )}
         {/* Animated Brand Logo/Text */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -200,5 +240,6 @@ export const Login: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
           <span style={{ fontSize: '0.65rem', opacity: 0.7, textTransform: 'none', display: 'block', marginTop: '0.25rem' }}>Requires Gmail, Docs, and Drive API Scopes</span>
         </motion.p>
       </motion.div>
+    </motion.div>
   );
 };
