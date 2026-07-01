@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithRedirect, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { LogIn, Loader2, Play, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,22 +11,22 @@ interface LoginProps {
   onBack?: () => void;
 }
 
+// Build provider ONCE outside the component so it is never recreated on re-render
+const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/calendar');
+googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/gmail.send');
+googleProvider.addScope('https://www.googleapis.com/auth/tasks');
+googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+googleProvider.addScope('https://www.googleapis.com/auth/documents');
+
 export const Login: React.FC<LoginProps> = ({ onBack }) => {
-  const googleProvider = new GoogleAuthProvider();
-  googleProvider.addScope('https://www.googleapis.com/auth/calendar');
-  googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
-  googleProvider.addScope('https://www.googleapis.com/auth/gmail.send');
-  googleProvider.addScope('https://www.googleapis.com/auth/tasks');
-  googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
-  googleProvider.addScope('https://www.googleapis.com/auth/documents');
-  
-  // If we're returning from a Google redirect, show spinner until App.tsx processes it
   const [isLoading, setIsLoading] = useState(
     () => localStorage.getItem('zen_is_redirecting') === '1'
   );
 
   useEffect(() => {
-    // Failsafe: if App.tsx's getRedirectResult hangs for some reason, un-stick after 15s
+    // Failsafe: if redirect result hangs, un-stick the UI after 15s
     if (!isLoading) return;
     const timeout = setTimeout(() => {
       localStorage.removeItem('zen_is_redirecting');
@@ -35,17 +35,41 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
     return () => clearTimeout(timeout);
   }, [isLoading]);
 
+  // ─── THE CORRECT POPUP PATTERN ────────────────────────────────────────────
+  // signInWithPopup MUST be called synchronously inside the click handler.
+  // Firebase opens the popup window as its very FIRST action — before any
+  // async work — so Chrome cannot flag it as "not from user gesture".
+  // Calling an async function (even without await) before signInWithPopup
+  // can break the synchronous user-gesture chain.
+  // ─────────────────────────────────────────────────────────────────────────
   const handleLogin = () => {
-    // Use redirect - works universally, never gets popup-blocked
-    localStorage.setItem('zen_is_redirecting', '1');
     setIsLoading(true);
-    signInWithRedirect(auth, googleProvider).catch(err => {
-      localStorage.removeItem('zen_is_redirecting');
-      setIsLoading(false);
-      console.error('Redirect error:', err);
-      toast.error('Sign-in failed: ' + (err.message || err.code));
-    });
+
+    // Call popup synchronously — no await, no async before this line
+    signInWithPopup(auth, googleProvider)
+      .then(() => {
+        // onAuthStateChanged in App.tsx handles navigation
+      })
+      .catch((err) => {
+        if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-cancelled-by-user') {
+          // Browser blocked the popup — fall back to redirect
+          localStorage.setItem('zen_is_redirecting', '1');
+          signInWithRedirect(auth, googleProvider).catch(redirectErr => {
+            localStorage.removeItem('zen_is_redirecting');
+            setIsLoading(false);
+            toast.error('Sign-in failed: ' + (redirectErr.message || redirectErr.code));
+          });
+        } else if (err.code === 'auth/unauthorized-domain') {
+          setIsLoading(false);
+          toast.error('Domain not authorized. Add this site in Firebase Console → Authentication → Settings.', { duration: 10000 });
+        } else {
+          setIsLoading(false);
+          console.error('Sign-in error:', err);
+          toast.error('Sign-in failed: ' + (err.message || err.code), { duration: 8000 });
+        }
+      });
   };
+
 
 
   return (
