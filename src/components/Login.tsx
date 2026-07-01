@@ -69,8 +69,11 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
         toast.info('Popup blocked — trying redirect sign-in instead...', { duration: 5000 });
         try {
           await signInWithRedirect(auth, googleProvider);
-        } catch {
-          toast.error('Sign-in failed. Please allow popups for this site.');
+        } catch (redirectErr: any) {
+          console.error("Redirect fallback error:", redirectErr);
+          toast.error(`Redirect failed: ${redirectErr.message || 'Unknown error'}`);
+          setIsLoading(false);
+          localStorage.removeItem('zen_is_redirecting');
         }
       } else if (err.code === 'auth/unauthorized-domain') {
         toast.error('This domain is not authorized for sign-in.', { duration: 12000 });
