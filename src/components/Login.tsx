@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import { LogIn, Loader2, Play, Infinity as InfinityIcon, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
@@ -197,7 +197,17 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
             onClick={async () => {
               try {
                 setIsLoading(true);
-                await signInWithEmailAndPassword(auth, 'demo@zentrack.com', 'demo123');
+                try {
+                  await signInWithEmailAndPassword(auth, 'demo@zentrack.com', 'demo123');
+                } catch (e: any) {
+                  // If the user doesn't exist (or invalid credential), try to create it
+                  if (e.code === 'auth/user-not-found' || e.code === 'auth/invalid-credential') {
+                    await createUserWithEmailAndPassword(auth, 'demo@zentrack.com', 'demo123');
+                  } else {
+                    throw e; // Rethrow if it's some other error
+                  }
+                }
+                // Only seed if we successfully logged in or created the account
                 await seedDemoData();
               } catch (e: unknown) {
                 toast.error('Demo login failed: ' + (e as { message?: string }).message);
