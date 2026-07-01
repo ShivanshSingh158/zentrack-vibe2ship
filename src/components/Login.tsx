@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { LogIn, Loader2, Play, Infinity as InfinityIcon, ArrowLeft } from 'lucide-react';
+import { LogIn, Loader2, Play, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { seedDemoData } from '../utils/seedDemoData';
 import { motion } from 'framer-motion';
@@ -22,68 +22,51 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
   
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    const isRedirecting = localStorage.getItem('zen_is_redirecting') === '1';
-    
-    if (isRedirecting) {
-      setIsLoading(true);
-      
-      // Failsafe: if Firebase SDK hangs (e.g. 3rd party iframes blocked), un-stick the UI after 8s
-      const fallbackTimeout = setTimeout(() => {
-        setIsLoading(false);
-        localStorage.removeItem('zen_is_redirecting');
-      }, 8000);
 
-      getRedirectResult(auth).then((result) => {
-        clearTimeout(fallbackTimeout);
-        localStorage.removeItem('zen_is_redirecting');
+  useEffect(() => {
+    // Check if we are returning from a Google redirect
+    const wasRedirecting = localStorage.getItem('zen_is_redirecting') === '1';
+    if (!wasRedirecting) return;
+
+    setIsLoading(true);
+    localStorage.removeItem('zen_is_redirecting');
+
+    // Failsafe: never get stuck - reset after 12s if Firebase hangs
+    const timeout = setTimeout(() => setIsLoading(false), 12000);
+
+    getRedirectResult(auth)
+      .then(result => {
+        clearTimeout(timeout);
         if (!result) {
+          // No result means the redirect was abandoned (user closed browser etc.)
           setIsLoading(false);
         }
-      }).catch(err => {
-        clearTimeout(fallbackTimeout);
-        localStorage.removeItem('zen_is_redirecting');
+        // If result exists, App.tsx onAuthStateChanged will fire and unmount this
+      })
+      .catch(err => {
+        clearTimeout(timeout);
         setIsLoading(false);
-        console.error('Redirect sign-in error:', err);
-        toast.error('Redirect login failed: ' + (err.message || 'Unknown error'));
+        console.error('Google redirect result error:', err);
+        if (err.code === 'auth/unauthorized-domain') {
+          toast.error('Domain not authorized. Please contact support.', { duration: 10000 });
+        } else {
+          toast.error('Sign-in failed: ' + (err.message || err.code), { duration: 8000 });
+        }
       });
-    } else {
-      // Just in case, try to clear any stuck redirect state silently
-      getRedirectResult(auth).catch(() => {});
-    }
   }, []);
 
-  const handleLogin = async () => {
-    // DO NOT call setIsLoading(true) here! It breaks synchronous user-interaction context
-    // and causes the browser to block the Google Auth popup.
-    const timeout = setTimeout(() => setIsLoading(false), 15000);
-    try {
-      await signInWithPopup(auth, googleProvider);
-      clearTimeout(timeout);
-    } catch (error: unknown) {
-      const err = error as { code?: string; message?: string };
-      clearTimeout(timeout);
-      console.error('Sign-in error:', error);
-      if (err.code === 'auth/popup-blocked') {
-        setIsLoading(true); // Now we can set it since we fallback to redirect
-        toast.info('Popup blocked — trying redirect sign-in instead...', { duration: 5000 });
-        try {
-          await signInWithRedirect(auth, googleProvider);
-        } catch (redirectErr: any) {
-          console.error("Redirect fallback error:", redirectErr);
-          toast.error(`Redirect failed: ${redirectErr.message || 'Unknown error'}`);
-          setIsLoading(false);
-          localStorage.removeItem('zen_is_redirecting');
-        }
-      } else if (err.code === 'auth/unauthorized-domain') {
-        toast.error('This domain is not authorized for sign-in.', { duration: 12000 });
-      } else {
-        toast.error(`Login failed: ${err.code} - ${err.message}`, { duration: 10000 });
-      }
-    } finally {
+  const handleLogin = () => {
+    // Use redirect - works universally, never gets popup-blocked
+    localStorage.setItem('zen_is_redirecting', '1');
+    setIsLoading(true);
+    signInWithRedirect(auth, googleProvider).catch(err => {
+      localStorage.removeItem('zen_is_redirecting');
       setIsLoading(false);
-    }
+      console.error('Redirect error:', err);
+      toast.error('Sign-in failed: ' + (err.message || err.code));
+    });
   };
+
 
   return (
     <motion.div 
