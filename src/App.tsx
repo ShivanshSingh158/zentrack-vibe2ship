@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'sonner';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut, getRedirectResult } from 'firebase/auth';
 import type { User } from 'firebase/auth';
 import { onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { auth, db } from './services/firebase';
@@ -357,110 +357,84 @@ function App() {
     // and Lenis interferes with touch events, causing jank during tab switching
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (isTouchDevice) return;
-
     const lenis = new Lenis();
-
-    function raf(time: number) {
-      lenis.raf(time);
-      requestAnimationFrame(raf);
-    }
-
+    function raf(time: number) { lenis.raf(time); requestAnimationFrame(raf); }
     requestAnimationFrame(raf);
-
-    return () => {
-      lenis.destroy();
-    };
+    return () => { lenis.destroy(); };
   }, []);
 
   useEffect(() => {
-    // If the user is returning from a Google redirect, we MUST wait for
-    // getRedirectResult() to complete before allowing the app to render.
-    // Otherwise onAuthStateChanged fires with null FIRST (before redirect is processed),
-    // causing the Login page to flash and the user to get stuck.
-    const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
+    let unsubscribeAuth: (() => void) | null = null;
 
-    if (isReturningFromRedirect) {
-      // Keep authLoading = true. Once getRedirectResult resolves, it will trigger
-      // onAuthStateChanged with the real user, which will then call setAuthLoading(false).
-      import('firebase/auth').then(({ getRedirectResult }) => {
-        getRedirectResult(auth)
-          .then((result) => {
-            localStorage.removeItem('zen_is_redirecting');
-            if (!result) {
-              // Redirect was abandoned (user navigated away etc.) - fall through to normal auth
-              setAuthLoading(false);
-            }
-            // If result exists, onAuthStateChanged will fire with the real user automatically
-          })
-          .catch((err) => {
-            console.error('Redirect result error in App.tsx:', err);
-            localStorage.removeItem('zen_is_redirecting');
-            setAuthLoading(false);
-          });
-      });
-    }
-
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      // Show greeting only on fresh login (null → logged-in transition)
-      if (currentUser && !prevUserRef.current) {
-
-        // ✅ Run startup model health check to exclude deprecated preview models
-        runModelHealthCheck().catch(err => console.error("Model health check failed:", err));
-
-        // Register for FCM push notifications (Option B — Firebase Cloud Messaging)
-        import('./services/fcm').then(({ registerFCMToken, onForegroundMessage }) => {
-          registerFCMToken();
-          // Handle messages when the tab IS open (FCM SW only fires when tab is closed)
-          onForegroundMessage(({ title, body }) => {
-            import('sonner').then(({ toast }) => toast(body, { description: title }));
-          });
-        });
-
-        // Show onboarding flashcards only on the VERY FIRST login for this user
-        const onboardingKey = `zen_onboarding_done_${currentUser.uid}`;
-        if (!localStorage.getItem(onboardingKey)) {
-          setShowOnboarding(true);
+    // ─── CORRECT AUTH PATTERN ─────────────────────────────────────────────────
+    // ALWAYS call getRedirectResult() first and wait for it to complete.
+    // ONLY THEN set up onAuthStateChanged inside .finally().
+    // This eliminates the race condition where onAuthStateChanged fires with null
+    // BEFORE the redirect tokens are processed by Firebase.
+    // ──────────────────────────────────────────────────────────────────────────
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          console.log('[Auth] Redirect sign-in successful:', result.user.email);
         }
+      })
+      .catch((err) => {
+        console.error('[Auth] getRedirectResult error:', err.code, err.message);
+        if (err.code === 'auth/unauthorized-domain') {
+          import('sonner').then(({ toast }) =>
+            toast.error('Domain not authorized in Firebase. Add this domain in Firebase Console → Authentication → Settings → Authorized Domains.', { duration: 15000 })
+          );
+        }
+      })
+      .finally(() => {
+        localStorage.removeItem('zen_is_redirecting');
 
-        // Ensure user document exists in Firestore so admin can find them by email/uid
-        import('firebase/firestore').then(({ doc, getDoc, setDoc }) => {
-          const userRef = doc(db, 'users', currentUser.uid);
-          getDoc(userRef).then((docSnap) => {
-            if (!docSnap.exists()) {
-              setDoc(userRef, {
-                userId: currentUser.uid,
-                email: currentUser.email,
-                displayName: currentUser.displayName,
-                photoURL: currentUser.photoURL,
-                createdAt: Date.now(),
-              }, { merge: true }).catch(err => console.error("Failed to create user doc:", err));
-            }
-          }).catch(err => console.error("Failed to fetch user doc:", err));
+        // Set up auth listener AFTER redirect is fully resolved
+        unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+          if (currentUser && !prevUserRef.current) {
+            runModelHealthCheck().catch(err => console.error('Model health check failed:', err));
+
+            import('./services/fcm').then(({ registerFCMToken, onForegroundMessage }) => {
+              registerFCMToken();
+              onForegroundMessage(({ title, body }) => {
+                import('sonner').then(({ toast }) => toast(body, { description: title }));
+              });
+            });
+
+            const onboardingKey = `zen_onboarding_done_${currentUser.uid}`;
+            if (!localStorage.getItem(onboardingKey)) setShowOnboarding(true);
+
+            import('firebase/firestore').then(({ doc, getDoc, setDoc }) => {
+              const userRef = doc(db, 'users', currentUser.uid);
+              getDoc(userRef).then((docSnap) => {
+                if (!docSnap.exists()) {
+                  setDoc(userRef, {
+                    userId: currentUser.uid,
+                    email: currentUser.email,
+                    displayName: currentUser.displayName,
+                    photoURL: currentUser.photoURL,
+                    createdAt: Date.now(),
+                  }, { merge: true }).catch(err => console.error('Failed to create user doc:', err));
+                }
+              }).catch(err => console.error('Failed to fetch user doc:', err));
+            });
+          }
+
+          if (currentUser) {
+            localStorage.setItem('zen_is_logged_in', '1');
+          } else {
+            localStorage.removeItem('zen_is_logged_in');
+          }
+
+          prevUserRef.current = currentUser;
+          setUser(currentUser);
+          setAuthLoading(false);
         });
-      }
+      });
 
-      if (currentUser) {
-        localStorage.setItem('zen_is_logged_in', '1');
-      } else {
-        localStorage.removeItem('zen_is_logged_in');
-      }
-
-      prevUserRef.current = currentUser;
-      setUser(currentUser);
-
-      // Only set authLoading=false immediately if we are NOT mid-redirect
-      // (if we are mid-redirect, the getRedirectResult handler above will trigger
-      // this listener again with the real user, and THAT call will set authLoading=false)
-      const stillRedirecting = localStorage.getItem('zen_is_redirecting') === '1';
-      if (!stillRedirecting) {
-        setAuthLoading(false);
-      }
-    });
-
-    return () => unsubscribe();
-    // Empty dep array — this effect runs once and the stable firebase listener
-    // handles all subsequent auth state changes via prevUserRef.
+    return () => { unsubscribeAuth?.(); };
   }, []);
+
 
   // Developer Matrix Shortcut
   useEffect(() => {
