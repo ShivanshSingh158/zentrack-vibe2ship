@@ -464,13 +464,8 @@ function App() {
   }
 
   if (!user) {
-    if (!showLogin && window.location.pathname !== '/login') {
-      return <Landing onTryNow={() => {
-        setShowLogin(true);
-        window.history.pushState({}, '', '/login');
-      }} />;
-    }
-    
+    const isLoginVisible = showLogin || window.location.pathname === '/login';
+
     return (
       <>
         <UpdatePrompt />
@@ -494,7 +489,20 @@ function App() {
             }
           }}
         />
-        <Login />
+
+        <Landing onTryNow={() => {
+          setShowLogin(true);
+          window.history.pushState({}, '', '/login');
+        }} />
+
+        {isLoginVisible && (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(12px)' }}>
+            <Login onBack={() => {
+              setShowLogin(false);
+              window.history.pushState({}, '', '/');
+            }} />
+          </div>
+        )}
       </>
     );
   }

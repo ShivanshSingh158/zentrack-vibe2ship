@@ -10,7 +10,7 @@ import '../styles/landing.css';
 const BG_VIDEO = '/bg-video.mp4';
 
 
-export const Login: React.FC = () => {
+export const Login: React.FC<{ onBack?: () => void }> = ({ onBack }) => {
   const googleProvider = new GoogleAuthProvider();
   googleProvider.addScope('https://www.googleapis.com/auth/calendar');
   googleProvider.addScope('https://www.googleapis.com/auth/gmail.readonly');
@@ -65,24 +65,11 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="landing-page" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', overflow: 'hidden' }}>
-
-      {/* Video background — self-hosted */}
-      <video
-        autoPlay loop muted playsInline
-        src={BG_VIDEO}
-        className="landing-video"
-        onError={(e) => { (e.target as HTMLVideoElement).classList.add('error'); }}
-      />
-
-      {/* Cinematic dark overlay */}
-      <div style={{ position: 'fixed', inset: 0, zIndex: 2, pointerEvents: 'none', background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.6) 100%)' }} />
-
-      {/* Floating Glass Login Card */}
       <motion.div 
         initial={{ opacity: 0, y: 40, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+        exit={{ opacity: 0, y: 20, scale: 0.95 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
         className="liquid-glass"
         style={{
           width: '100%',
@@ -96,9 +83,19 @@ export const Login: React.FC = () => {
           position: 'relative',
           zIndex: 10,
           margin: '1rem',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255,255,255,0.05)'
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255,255,255,0.05)',
+          background: 'rgba(10, 25, 40, 0.65)',
+          backdropFilter: 'blur(16px)'
         }}
       >
+        {onBack && (
+          <button 
+            onClick={onBack}
+            style={{ position: 'absolute', top: '1.5rem', left: '1.5rem', background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}
+          >
+            ← Back
+          </button>
+        )}
         {/* Animated Brand Logo/Text */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -203,6 +200,5 @@ export const Login: React.FC = () => {
           <span style={{ fontSize: '0.65rem', opacity: 0.7, textTransform: 'none', display: 'block', marginTop: '0.25rem' }}>Requires Gmail, Docs, and Drive API Scopes</span>
         </motion.p>
       </motion.div>
-    </div>
   );
 };
