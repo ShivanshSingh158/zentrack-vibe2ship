@@ -35,11 +35,15 @@ export const ProactiveAgentAnimation: React.FC = () => {
   const [count, setCount] = useState(0);
 
   useEffect(() => {
-    setCount(0);
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    TRIGGER_EVENTS.forEach((_, i) => timers.push(setTimeout(() => setCount(i + 1), i * 950 + 200)));
-    timers.push(setTimeout(() => setCount(0), TRIGGER_EVENTS.length * 950 + 2600));
-    return () => timers.forEach(clearTimeout);
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    let isMounted = true;
+    const runSequence = () => {
+      setCount(0);
+      TRIGGER_EVENTS.forEach((_, i) => timers.push(setTimeout(() => { if (isMounted) setCount(i + 1); }, i * 950 + 200)));
+      timers.push(setTimeout(() => { if (isMounted) { timers = []; runSequence(); } }, TRIGGER_EVENTS.length * 950 + 2600));
+    };
+    runSequence();
+    return () => { isMounted = false; timers.forEach(clearTimeout); };
   }, []);
 
   return (
@@ -323,9 +327,14 @@ export const FlowStateAnimation: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setLifeSaver(true), 4500);
-    const t2 = setTimeout(() => setLifeSaver(false), 9000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    let t1: ReturnType<typeof setTimeout>, t2: ReturnType<typeof setTimeout>;
+    let isMounted = true;
+    const runSequence = () => {
+      t1 = setTimeout(() => { if (isMounted) setLifeSaver(true); }, 4500);
+      t2 = setTimeout(() => { if (isMounted) { setLifeSaver(false); runSequence(); } }, 9000);
+    };
+    runSequence();
+    return () => { isMounted = false; clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
   const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
@@ -504,11 +513,15 @@ export const ConsoleAnalyticsAnimation: React.FC = () => {
   const [typedChars, setTypedChars] = useState(0);
 
   useEffect(() => {
-    setShownLines([]); setTypingIdx(0); setTypedChars(0);
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    CONSOLE_LINES.forEach((l, i) => timers.push(setTimeout(() => { setTypingIdx(i); setTypedChars(0); }, l.delay)));
-    timers.push(setTimeout(() => { setShownLines([]); setTypingIdx(0); setTypedChars(0); }, CONSOLE_LINES[CONSOLE_LINES.length - 1].delay + 3000));
-    return () => timers.forEach(clearTimeout);
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    let isMounted = true;
+    const runSequence = () => {
+      setShownLines([]); setTypingIdx(0); setTypedChars(0);
+      CONSOLE_LINES.forEach((l, i) => timers.push(setTimeout(() => { if (isMounted) { setTypingIdx(i); setTypedChars(0); } }, l.delay)));
+      timers.push(setTimeout(() => { if (isMounted) { timers = []; runSequence(); } }, CONSOLE_LINES[CONSOLE_LINES.length - 1].delay + 3000));
+    };
+    runSequence();
+    return () => { isMounted = false; timers.forEach(clearTimeout); };
   }, []);
 
   useEffect(() => {
