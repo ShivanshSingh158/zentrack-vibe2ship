@@ -22,7 +22,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://accounts.google.com https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://firestore.googleapis.com wss://*.firebaseio.com https://generativelanguage.googleapis.com https://accounts.spotify.com https://api.spotify.com https://www.youtube.com; img-src 'self' data: https: blob:; media-src 'self' blob:; frame-src 'self' https://accounts.google.com https://job-tracker-6b672.firebaseapp.com; object-src 'none'; base-uri 'self'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://accounts.google.com https://apis.google.com https://www.gstatic.com https://job-tracker-6b672.firebaseapp.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.firebaseio.com https://*.googleapis.com https://firestore.googleapis.com wss://*.firebaseio.com https://generativelanguage.googleapis.com https://accounts.spotify.com https://api.spotify.com https://www.youtube.com https://job-tracker-6b672.firebaseapp.com; img-src 'self' data: https: blob:; media-src 'self' blob:; frame-src 'self' https://accounts.google.com https://job-tracker-6b672.firebaseapp.com https://zentrack-vibe2ship.vercel.app; object-src 'none'; base-uri 'self'; form-action 'self'"
         },
         {
           "key": "X-Frame-Options",
@@ -58,7 +58,15 @@
   ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/__/auth/:path*",
+      "destination": "https://job-tracker-6b672.firebaseapp.com/__/auth/:path*"
+    },
+    {
+      "source": "/__/firebase/:path*",
+      "destination": "https://job-tracker-6b672.firebaseapp.com/__/firebase/:path*"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]

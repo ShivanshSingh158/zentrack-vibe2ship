@@ -22,9 +22,16 @@ import {
  *   VITE_FIREBASE_MESSAGING_SENDER_ID
  *   VITE_FIREBASE_APP_ID
  */
+// In production on Vercel, use our own domain as the authDomain so Firebase
+// stores OAuth tokens on the same origin (no cross-origin iframe needed).
+// On localhost, fall back to the standard firebaseapp.com domain.
+const prodAuthDomain = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? window.location.hostname
+  : (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string);
+
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            as string,
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN         as string,
+  authDomain:        prodAuthDomain,
   projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID         as string,
   storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET     as string,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
