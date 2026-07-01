@@ -22,15 +22,22 @@ export const Login: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    getRedirectResult(auth).then(() => {
-      // User signed in via redirect — onAuthStateChanged handles the rest
+    setIsLoading(true);
+    getRedirectResult(auth).then((result) => {
+      if (!result) {
+        setIsLoading(false); // Only stop loading if there was no redirect
+      }
+      // If there IS a result, keep loading true because App.tsx will unmount this component shortly
     }).catch(err => {
+      setIsLoading(false);
       console.error('Redirect sign-in error:', err);
+      toast.error('Redirect login failed: ' + (err.message || 'Unknown error'));
     });
   }, []);
 
   const handleLogin = async () => {
-    setIsLoading(true);
+    // DO NOT call setIsLoading(true) here! It breaks synchronous user-interaction context
+    // and causes the browser to block the Google Auth popup.
     const timeout = setTimeout(() => setIsLoading(false), 15000);
     try {
       await signInWithPopup(auth, googleProvider);
@@ -40,6 +47,7 @@ export const Login: React.FC = () => {
       clearTimeout(timeout);
       console.error('Sign-in error:', error);
       if (err.code === 'auth/popup-blocked') {
+        setIsLoading(true); // Now we can set it since we fallback to redirect
         toast.info('Popup blocked — trying redirect sign-in instead...', { duration: 5000 });
         try {
           await signInWithRedirect(auth, googleProvider);
