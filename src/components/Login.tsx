@@ -56,8 +56,8 @@ export const Login: React.FC = () => {
         }
       } else if (err.code === 'auth/unauthorized-domain') {
         toast.error('This domain is not authorized for sign-in.', { duration: 12000 });
-      } else if (err.code !== 'auth/cancelled-popup-request' && err.code !== 'auth/popup-closed-by-user') {
-        toast.error(err.message || 'Failed to log in');
+      } else {
+        toast.error(`Login failed: ${err.code} - ${err.message}`, { duration: 10000 });
       }
     } finally {
       setIsLoading(false);
