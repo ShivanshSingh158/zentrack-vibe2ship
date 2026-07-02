@@ -1,5 +1,102 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
+import { Volume2, VolumeX } from 'lucide-react';
+
+function useAmbientSound(enabled: boolean) {
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const isPlayingRef = useRef(false);
+
+  useEffect(() => {
+    if (!enabled) {
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+      isPlayingRef.current = false;
+      return;
+    }
+
+    let ctx: AudioContext;
+    const initAudio = () => {
+      if (isPlayingRef.current) return;
+      try {
+        ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioCtxRef.current = ctx;
+
+        const masterGain = ctx.createGain();
+        masterGain.gain.value = 0.04; // Very soft whistle/wind
+        masterGain.connect(ctx.destination);
+
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.value = 400; // Base frequency
+
+        const lfo = ctx.createOscillator();
+        lfo.type = 'sine';
+        lfo.frequency.value = 0.1; // Slow sweep
+
+        const lfoGain = ctx.createGain();
+        lfoGain.gain.value = 60; // Pitch variation
+
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+
+        const tremolo = ctx.createOscillator();
+        tremolo.type = 'sine';
+        tremolo.frequency.value = 0.05;
+
+        const tremoloGain = ctx.createGain();
+        tremoloGain.gain.value = 0.4;
+
+        const baseVolume = ctx.createGain();
+        baseVolume.gain.value = 0.6;
+
+        tremolo.connect(tremoloGain);
+        tremoloGain.connect(baseVolume.gain);
+
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 700; // Muffle to sound ambient
+
+        osc.connect(baseVolume);
+        baseVolume.connect(filter);
+        filter.connect(masterGain);
+
+        osc.start();
+        lfo.start();
+        tremolo.start();
+
+        isPlayingRef.current = true;
+      } catch (e) {
+        console.warn('Web Audio API not supported', e);
+      }
+    };
+
+    const handleInteraction = () => {
+      initAudio();
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+        audioCtxRef.current.resume();
+      }
+    };
+
+    // Browsers block autoplay until user interacts
+    document.addEventListener('click', handleInteraction, { once: true });
+    document.addEventListener('keydown', handleInteraction, { once: true });
+
+    // Try to init immediately just in case (e.g. they navigated here from within app)
+    initAudio();
+
+    return () => {
+      document.removeEventListener('click', handleInteraction);
+      document.removeEventListener('keydown', handleInteraction);
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => {});
+        audioCtxRef.current = null;
+      }
+      isPlayingRef.current = false;
+    };
+  }, [enabled]);
+}
 import {
   ProactiveAgentAnimation,
   WorkspaceIntegrationAnimation,
@@ -105,6 +202,9 @@ function FadeUp({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 /* ── MAIN COMPONENT ───────────────────────────────────────────────────────── */
 
 export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  useAmbientSound(soundEnabled);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: containerRef, offset: ['start start', 'end start'] });
   const smooth = useSpring(scrollYProgress, { stiffness: 80, damping: 30 });
@@ -311,6 +411,40 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
           © 2026 ZenTrack. Built with intention.
         </p>
       </footer>
+      {/* ── Sound Toggle ──────────────────────────────────────────────── */}
+      <button 
+        onClick={() => setSoundEnabled(!soundEnabled)}
+        style={{
+          position: 'fixed',
+          bottom: '2rem',
+          left: '2rem',
+          zIndex: 100,
+          background: 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          backdropFilter: 'blur(8px)',
+          borderRadius: '50%',
+          width: '40px',
+          height: '40px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'rgba(255,255,255,0.5)',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+        }}
+        onMouseOver={(e) => {
+          e.currentTarget.style.color = 'white';
+          e.currentTarget.style.background = 'rgba(255,255,255,0.1)';
+        }}
+        onMouseOut={(e) => {
+          e.currentTarget.style.color = 'rgba(255,255,255,0.5)';
+          e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
+        }}
+        title={soundEnabled ? "Mute Ambient Sound" : "Play Ambient Sound"}
+      >
+        {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+      </button>
+
     </div>
   );
 };
