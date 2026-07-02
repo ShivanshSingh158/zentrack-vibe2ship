@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronRight, ChevronLeft, Bot, Terminal, Cloud, Rocket, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { playPopSound } from '../../utils/sound';
+import '../../styles/landing.css';
 
 interface OnboardingCarouselProps {
   userId: string;
@@ -117,10 +118,11 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      transition={{ duration: 0.8 }}
       style={{
         position: 'fixed',
         inset: 0,
-        backgroundColor: 'rgba(5, 10, 20, 0.85)',
+        backgroundColor: 'rgba(5, 10, 20, 0.45)',
         backdropFilter: 'blur(16px)',
         WebkitBackdropFilter: 'blur(16px)',
         zIndex: 99999,
@@ -131,22 +133,22 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
       }}
     >
       <motion.div 
-        initial={{ y: 40, scale: 0.95, opacity: 0 }}
-        animate={{ y: 0, scale: 1, opacity: 1 }}
-        transition={{ type: 'spring', damping: 25, stiffness: 300, delay: 0.1 }}
+        initial={{ opacity: 0, y: 40, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+        className="liquid-glass"
         style={{
           width: '100%',
           maxWidth: '840px',
           height: '620px',
           maxHeight: '90vh',
-          background: 'linear-gradient(145deg, rgba(20,24,35,0.95) 0%, rgba(10,12,20,0.95) 100%)',
           borderRadius: '24px',
-          border: '1px solid rgba(255,255,255,0.08)',
-          boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255,255,255,0.05)',
+          boxShadow: '0 30px 60px -12px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(255,255,255,0.05)',
           position: 'relative',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          padding: '1rem'
         }}
       >
         {/* Skip Button */}
@@ -365,19 +367,19 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
                 key="finish"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.15)' }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleFinish}
+                className="liquid-glass"
                 style={{ 
-                  padding: '0.8rem 2rem', 
+                  padding: '1rem 2.5rem', 
                   borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #f5b840, #38bdf8)',
-                  color: '#000',
-                  border: 'none',
-                  fontWeight: 700, 
-                  fontSize: '1rem',
+                  color: '#fff',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  fontWeight: 600, 
+                  fontSize: '1.05rem',
                   cursor: 'pointer',
-                  boxShadow: '0 8px 24px rgba(245,184,64,0.3)'
+                  transition: 'background-color 0.3s ease'
                 }}
               >
                 Initialize Systems
@@ -387,22 +389,20 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
                 key="next"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                whileHover={{ scale: 1.02 }}
+                whileHover={{ scale: 1.02, backgroundColor: 'rgba(255,255,255,0.1)' }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleNext}
+                className="liquid-glass"
                 style={{ 
-                  padding: '0.8rem 2rem', 
+                  padding: '1rem 2.5rem', 
                   borderRadius: '12px',
-                  background: 'rgba(255,255,255,0.1)',
-                  color: '#fff',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  fontWeight: 600, 
+                  color: 'rgba(255,255,255,0.8)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  fontWeight: 500, 
                   fontSize: '1rem',
                   cursor: 'pointer',
-                  transition: 'background 0.2s'
+                  transition: 'background-color 0.3s ease'
                 }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.15)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
               >
                 Continue
               </motion.button>
