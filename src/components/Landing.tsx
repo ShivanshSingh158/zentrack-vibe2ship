@@ -12,7 +12,7 @@ function useAmbientSound(volumeLevel: SoundLevel) {
   // Dynamic volume adjustment without restarting context
   useEffect(() => {
     if (masterGainRef.current && audioCtxRef.current) {
-      const targetVolume = volumeLevel === 'high' ? 0.04 : 0.01;
+      const targetVolume = volumeLevel === 'high' ? 0.50 : 0.20;
       masterGainRef.current.gain.setTargetAtTime(targetVolume, audioCtxRef.current.currentTime, 0.5);
     }
   }, [volumeLevel]);
@@ -38,7 +38,7 @@ function useAmbientSound(volumeLevel: SoundLevel) {
         audioCtxRef.current = ctx;
 
         const masterGain = ctx.createGain();
-        masterGain.gain.value = volumeLevel === 'high' ? 0.04 : 0.01;
+        masterGain.gain.value = volumeLevel === 'high' ? 0.50 : 0.20;
         masterGain.connect(ctx.destination);
         masterGainRef.current = masterGain;
 
