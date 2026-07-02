@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronRight, ChevronLeft, Bot, Terminal, Cloud, Rocket, Zap } from 'lucide-react';
+import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { playPopSound } from '../../utils/sound';
+import {
+  ProactiveAgentAnimation,
+  WorkspaceIntegrationAnimation,
+  SmartTasksAnimation,
+  FlowStateAnimation,
+  LearningAnimation,
+  ConsoleAnalyticsAnimation,
+} from '../LandingAnimations';
 import '../../styles/landing.css';
 
 interface OnboardingCarouselProps {
@@ -12,43 +20,39 @@ interface OnboardingCarouselProps {
 const CARDS = [
   {
     id: 'intro',
-    title: 'Meet the Zenith Fleet',
-    desc: 'Your personal fleet of autonomous AI agents. They don\'t just give advice — they execute complex tasks in the background while you focus on what matters.',
-    icon: <Bot size={72} strokeWidth={1.5} />,
-    gradient: 'linear-gradient(135deg, #8b5cf6, #c084fc)',
-    shadow: 'rgba(139, 92, 246, 0.4)'
-  },
-  {
-    id: 'workflow',
-    title: 'True Agentic Workflow',
-    desc: 'Experience the Agent Terminal. Watch in real-time as Hermes clears your inbox, Chronos optimizes your calendar, and Argus guards your deadlines.',
-    icon: <Terminal size={72} strokeWidth={1.5} />,
-    gradient: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
-    shadow: 'rgba(6, 182, 212, 0.4)'
+    title: 'Fully Autonomous',
+    desc: 'Your AI companion never sleeps. The moment an email lands or a deadline shifts, agents auto-trigger. Zero manual setup.',
+    AnimationComp: ProactiveAgentAnimation
   },
   {
     id: 'sync',
-    title: 'Deep Workspace Sync',
-    desc: 'Seamlessly connected to your world. We securely sync with Google Calendar, Gmail, Drive, and Tasks to create a unified, proactive intelligence layer.',
-    icon: <Cloud size={72} strokeWidth={1.5} />,
-    gradient: 'linear-gradient(135deg, #10b981, #059669)',
-    shadow: 'rgba(16, 185, 129, 0.4)'
+    title: 'Deep Google Integration',
+    desc: 'Not just connected — deeply embedded. Speaks Gmail, Calendar, Drive, Docs, Tasks, and YouTube natively.',
+    AnimationComp: WorkspaceIntegrationAnimation
   },
   {
-    id: 'mastery',
-    title: 'Academic & Career Mastery',
-    desc: 'Built for ambition. From automated attendance tracking and GPA calculators to AI-powered LeetCode solving and Job application analysis.',
-    icon: <Rocket size={72} strokeWidth={1.5} />,
-    gradient: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-    shadow: 'rgba(245, 158, 11, 0.4)'
+    id: 'tasks',
+    title: 'Smart Tasks',
+    desc: 'Every task knows exactly where it belongs. AI reads your inbox, extracts items, assigns scores, and time-blocks.',
+    AnimationComp: SmartTasksAnimation
   },
   {
-    id: 'always-on',
-    title: 'Always Working For You',
-    desc: 'The orchestration engine never sleeps. It scans for risks, catches ghost commitments, and keeps your schedule flawless. Welcome to the future of productivity.',
-    icon: <Zap size={72} strokeWidth={1.5} />,
-    gradient: 'linear-gradient(135deg, #ef4444, #be123c)',
-    shadow: 'rgba(239, 68, 68, 0.4)'
+    id: 'flow',
+    title: 'Flow State Engine',
+    desc: 'Build the conditions for your deepest work. Intelligent focus sessions protect your time and habit streaks build momentum.',
+    AnimationComp: FlowStateAnimation
+  },
+  {
+    id: 'learning',
+    title: 'Growth on Autopilot',
+    desc: 'Curated daily learning modules, YouTube integration, and spaced-repetition AI coaching that adapts to your rhythm.',
+    AnimationComp: LearningAnimation
+  },
+  {
+    id: 'console',
+    title: 'Agent Console',
+    desc: 'Speak in plain language and watch your agents reason in real-time. Get live analytics on every dimension of your productivity.',
+    AnimationComp: ConsoleAnalyticsAnimation
   }
 ];
 
@@ -209,40 +213,18 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
               }}
             >
               <motion.div 
-                initial={{ scale: 0, rotate: -20 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: 'spring', damping: 15, stiffness: 200, delay: 0.1 }}
-                style={{ 
-                  width: 140, 
-                  height: 140, 
-                  borderRadius: '35%', 
-                  background: CARDS[currentIndex].gradient,
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                transition={{ type: 'spring', damping: 20, stiffness: 100, delay: 0.15 }}
+                style={{
+                  width: '100%',
+                  maxWidth: '560px',
+                  marginBottom: '2rem',
                   display: 'flex',
-                  alignItems: 'center',
                   justifyContent: 'center',
-                  color: '#fff',
-                  marginBottom: '2.5rem',
-                  boxShadow: `0 20px 40px -10px ${CARDS[currentIndex].shadow}, inset 0 2px 10px rgba(255,255,255,0.3)`,
-                  position: 'relative'
                 }}
               >
-                {/* Micro-animation floating ring */}
-                <motion.div 
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 10, ease: 'linear', repeat: Infinity }}
-                  style={{
-                    position: 'absolute',
-                    inset: -20,
-                    border: '1px dashed rgba(255,255,255,0.2)',
-                    borderRadius: '40%'
-                  }}
-                />
-                <motion.div
-                  animate={{ y: [0, -8, 0] }}
-                  transition={{ duration: 4, ease: 'easeInOut', repeat: Infinity }}
-                >
-                  {CARDS[currentIndex].icon}
-                </motion.div>
+                {React.createElement(CARDS[currentIndex].AnimationComp)}
               </motion.div>
 
               <motion.h2 
