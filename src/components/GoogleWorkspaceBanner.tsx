@@ -104,12 +104,10 @@ export const GoogleWorkspaceBanner: React.FC = () => {
               {!justConnected && (
                 <>
                   {/* Connect button — the ONLY place the popup is triggered */}
-                  <motion.button
+                  <button
                     id="google-workspace-connect-btn"
                     onClick={handleConnect}
                     disabled={isConnecting}
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.96 }}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -134,7 +132,7 @@ export const GoogleWorkspaceBanner: React.FC = () => {
                       <RefreshCw size={13} />
                     )}
                     {isConnecting ? 'Connecting…' : 'Connect Google'}
-                  </motion.button>
+                  </button>
 
                   {/* Dismiss for this session */}
                   <button
