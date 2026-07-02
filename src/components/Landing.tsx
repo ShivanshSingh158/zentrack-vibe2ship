@@ -24,47 +24,50 @@ function useAmbientSound(enabled: boolean) {
         audioCtxRef.current = ctx;
 
         const masterGain = ctx.createGain();
-        masterGain.gain.value = 0.04; // Very soft whistle/wind
+        masterGain.gain.value = 0.08; // Very soft and relaxing
         masterGain.connect(ctx.destination);
-
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = 400; // Base frequency
-
-        const lfo = ctx.createOscillator();
-        lfo.type = 'sine';
-        lfo.frequency.value = 0.1; // Slow sweep
-
-        const lfoGain = ctx.createGain();
-        lfoGain.gain.value = 60; // Pitch variation
-
-        lfo.connect(lfoGain);
-        lfoGain.connect(osc.frequency);
-
-        const tremolo = ctx.createOscillator();
-        tremolo.type = 'sine';
-        tremolo.frequency.value = 0.05;
-
-        const tremoloGain = ctx.createGain();
-        tremoloGain.gain.value = 0.4;
-
-        const baseVolume = ctx.createGain();
-        baseVolume.gain.value = 0.6;
-
-        tremolo.connect(tremoloGain);
-        tremoloGain.connect(baseVolume.gain);
 
         const filter = ctx.createBiquadFilter();
         filter.type = 'lowpass';
-        filter.frequency.value = 700; // Muffle to sound ambient
-
-        osc.connect(baseVolume);
-        baseVolume.connect(filter);
+        filter.frequency.value = 400; // Muffle the high frequencies to make it warm and soft
         filter.connect(masterGain);
 
-        osc.start();
-        lfo.start();
-        tremolo.start();
+        // A soothing meditation chord: C Major 9 (C3, G3, B3, D4, E4)
+        const frequencies = [130.81, 196.00, 246.94, 293.66, 329.63];
+        
+        frequencies.forEach((freq, index) => {
+          // Main oscillator
+          const osc = ctx.createOscillator();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          
+          // Slight detune for a lush, wide "pad" sound
+          const osc2 = ctx.createOscillator();
+          osc2.type = 'triangle';
+          osc2.frequency.value = freq;
+          osc2.detune.value = index % 2 === 0 ? 8 : -8;
+          
+          // Slow pulsing tremolo to make it feel alive and breathing
+          const tremolo = ctx.createOscillator();
+          tremolo.type = 'sine';
+          tremolo.frequency.value = 0.05 + (index * 0.01); // Each note pulses at a slightly different slow rate
+          
+          const tremoloGain = ctx.createGain();
+          tremoloGain.gain.value = 0.4;
+          tremolo.connect(tremoloGain);
+          
+          const noteGain = ctx.createGain();
+          noteGain.gain.value = 0.2; // Keep individual notes soft
+          tremoloGain.connect(noteGain.gain);
+
+          osc.connect(noteGain);
+          osc2.connect(noteGain);
+          noteGain.connect(filter);
+          
+          osc.start();
+          osc2.start();
+          tremolo.start();
+        });
 
         isPlayingRef.current = true;
       } catch (e) {
@@ -79,11 +82,9 @@ function useAmbientSound(enabled: boolean) {
       }
     };
 
-    // Browsers block autoplay until user interacts
     document.addEventListener('click', handleInteraction, { once: true });
     document.addEventListener('keydown', handleInteraction, { once: true });
 
-    // Try to init immediately just in case (e.g. they navigated here from within app)
     initAudio();
 
     return () => {
