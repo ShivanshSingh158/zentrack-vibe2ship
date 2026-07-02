@@ -21,17 +21,18 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 
 
+const BUILD_TIMESTAMP = Date.now();
+
 // ── Emits /version.json on every build with the current timestamp ─────────────
 // The UpdatePrompt component fetches this (cache: 'no-store') and compares
 // against the timestamp baked into the bundle at build time — 100% reliable.
 const versionJsonPlugin = (): Plugin => ({
   name: 'version-json',
   generateBundle() {
-    const buildTime = Date.now();
     this.emitFile({
       type: 'asset',
       fileName: 'version.json',
-      source: JSON.stringify({ v: buildTime, built: new Date(buildTime).toISOString() }),
+      source: JSON.stringify({ v: BUILD_TIMESTAMP, built: new Date(BUILD_TIMESTAMP).toISOString() }),
     });
   },
 });
@@ -65,7 +66,7 @@ export default defineConfig({
   },
   // Bake the build timestamp into the bundle — used by UpdatePrompt to detect staleness
   define: {
-    __APP_BUILD_TIME__: JSON.stringify(Date.now()),
+    __APP_BUILD_TIME__: JSON.stringify(BUILD_TIMESTAMP),
   },
   server: {
     proxy: {
