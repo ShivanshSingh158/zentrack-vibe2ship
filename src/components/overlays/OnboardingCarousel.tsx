@@ -213,18 +213,25 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
               }}
             >
               <motion.div 
-                initial={{ scale: 0.95, opacity: 0, y: 10 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ type: 'spring', damping: 20, stiffness: 100, delay: 0.15 }}
                 style={{
                   width: '100%',
-                  maxWidth: '560px',
-                  marginBottom: '2rem',
+                  height: '320px',
+                  marginBottom: '1.5rem',
                   display: 'flex',
+                  alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                {React.createElement(CARDS[currentIndex].AnimationComp)}
+                <div style={{ 
+                  width: '560px', 
+                  transform: 'scale(0.65)', 
+                  transformOrigin: 'center center' 
+                }}>
+                  {CARDS[currentIndex]?.AnimationComp && React.createElement(CARDS[currentIndex].AnimationComp)}
+                </div>
               </motion.div>
 
               <motion.h2 
