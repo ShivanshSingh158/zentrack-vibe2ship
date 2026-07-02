@@ -1,16 +1,28 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion, useScroll, useTransform, useSpring } from 'framer-motion';
-import { Volume2, VolumeX } from 'lucide-react';
+import { Volume2, Volume1, VolumeX } from 'lucide-react';
 
-function useAmbientSound(enabled: boolean) {
+export type SoundLevel = 'off' | 'low' | 'high';
+
+function useAmbientSound(volumeLevel: SoundLevel) {
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const masterGainRef = useRef<GainNode | null>(null);
   const isPlayingRef = useRef(false);
 
+  // Dynamic volume adjustment without restarting context
   useEffect(() => {
-    if (!enabled) {
+    if (masterGainRef.current && audioCtxRef.current) {
+      const targetVolume = volumeLevel === 'high' ? 0.04 : 0.01;
+      masterGainRef.current.gain.setTargetAtTime(targetVolume, audioCtxRef.current.currentTime, 0.5);
+    }
+  }, [volumeLevel]);
+
+  useEffect(() => {
+    if (volumeLevel === 'off') {
       if (audioCtxRef.current) {
         audioCtxRef.current.close().catch(() => {});
         audioCtxRef.current = null;
+        masterGainRef.current = null;
       }
       isPlayingRef.current = false;
       return;
@@ -24,8 +36,9 @@ function useAmbientSound(enabled: boolean) {
         audioCtxRef.current = ctx;
 
         const masterGain = ctx.createGain();
-        masterGain.gain.value = 0.02; // Made volume significantly slower (quieter) as requested
+        masterGain.gain.value = volumeLevel === 'high' ? 0.04 : 0.01;
         masterGain.connect(ctx.destination);
+        masterGainRef.current = masterGain;
 
         const filter = ctx.createBiquadFilter();
         filter.type = 'lowpass';
@@ -104,10 +117,11 @@ function useAmbientSound(enabled: boolean) {
       if (audioCtxRef.current) {
         audioCtxRef.current.close().catch(() => {});
         audioCtxRef.current = null;
+        masterGainRef.current = null;
       }
       isPlayingRef.current = false;
     };
-  }, [enabled]);
+  }, [volumeLevel === 'off']); // Only re-run the full setup/teardown if we toggle between on/off
 }
 import {
   ProactiveAgentAnimation,
@@ -214,8 +228,8 @@ function FadeUp({ children, delay = 0 }: { children: React.ReactNode; delay?: nu
 /* ── MAIN COMPONENT ───────────────────────────────────────────────────────── */
 
 export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  useAmbientSound(soundEnabled);
+  const [soundLevel, setSoundLevel] = useState<SoundLevel>('low');
+  useAmbientSound(soundLevel);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: containerRef, offset: ['start start', 'end start'] });
@@ -425,11 +439,17 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
       </footer>
       {/* ── Sound Toggle ──────────────────────────────────────────────── */}
       <button 
-        onClick={() => setSoundEnabled(!soundEnabled)}
+        onClick={() => {
+          setSoundLevel(prev => {
+            if (prev === 'low') return 'high';
+            if (prev === 'high') return 'off';
+            return 'low';
+          });
+        }}
         style={{
           position: 'fixed',
           bottom: '2rem',
-          left: '2rem',
+          right: '2rem',
           zIndex: 100,
           background: 'rgba(255,255,255,0.05)',
           border: '1px solid rgba(255,255,255,0.1)',
@@ -452,9 +472,9 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
           e.currentTarget.style.color = 'rgba(255,255,255,0.5)';
           e.currentTarget.style.background = 'rgba(255,255,255,0.05)';
         }}
-        title={soundEnabled ? "Mute Ambient Sound" : "Play Ambient Sound"}
+        title={soundLevel === 'high' ? "Volume: High" : soundLevel === 'low' ? "Volume: Low" : "Volume: Off"}
       >
-        {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+        {soundLevel === 'high' ? <Volume2 size={18} /> : soundLevel === 'low' ? <Volume1 size={18} /> : <VolumeX size={18} />}
       </button>
 
     </div>
