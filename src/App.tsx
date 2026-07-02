@@ -9,7 +9,7 @@ import { auth, db } from './services/firebase';
 import { runModelHealthCheck } from './services/gemini/core';
 import Lenis from 'lenis';
 
-// ─── Always-on components (tiny, needed immediately) ───────────────────────
+// â”€â”€â”€ Always-on components (tiny, needed immediately) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 import { Login } from './components/Login';
 import { Landing } from './components/Landing';
 import { TopNav } from './components/TopNav';
@@ -59,7 +59,7 @@ const DeadlineWatcherRunner = () => {
 };
 
 /**
- * AgentNavigator — listens for 'agent-navigate' events dispatched by toolExecutor
+ * AgentNavigator â€” listens for 'agent-navigate' events dispatched by toolExecutor
  * and uses React Router's useNavigate to change the route.
  * Also dispatches 'agent-open-lecture' for the Learning module to open a specific lecture.
  */
@@ -137,13 +137,13 @@ const SessionEnforcer = () => {
         const data = docSnap.data();
         const currentLocalKey = localStorage.getItem('global_session_key');
 
-        // ✅ U3 FIX: The old code signed out whenever currentLocalKey !== activeSessionKey.
+        // âœ… U3 FIX: The old code signed out whenever currentLocalKey !== activeSessionKey.
         // This force-logged-out ALL incognito users and new-device users because their
-        // localStorage is empty (null) and the remote key is 'v1' — null !== 'v1' is true.
+        // localStorage is empty (null) and the remote key is 'v1' â€” null !== 'v1' is true.
         //
         // NEW RULE:
-        //   null   → first visit on this browser/device → sync the key locally, stay logged in
-        //   stale  → admin-triggered remote wipe → force logout (the ONLY intended use case)
+        //   null   â†’ first visit on this browser/device â†’ sync the key locally, stay logged in
+        //   stale  â†’ admin-triggered remote wipe â†’ force logout (the ONLY intended use case)
         if (data.activeSessionKey) {
           if (currentLocalKey === null) {
             // First visit: absorb the remote key, don't sign out
@@ -178,15 +178,15 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
 
       if (isChunkError) {
         // Check if we ALREADY reloaded for this chunk in the last 8 seconds
-        // If yes, don't reload again — prevents infinite loop
+        // If yes, don't reload again â€” prevents infinite loop
         const reloadKey = `chunk_reload_${name}`;
         const lastReload = parseInt(localStorage.getItem(reloadKey) || '0', 10);
         if (Date.now() - lastReload < 8000) {
-          // We already tried reloading for this chunk — give up and show error
+          // We already tried reloading for this chunk â€” give up and show error
           throw new Error(`Module "${name}" failed to load after reload. Please close and reopen the app.`, { cause: error });
         }
 
-        console.warn(`[lazyWithRetry] Stale chunk for "${name}", reloading…`);
+        console.warn(`[lazyWithRetry] Stale chunk for "${name}", reloadingâ€¦`);
         localStorage.setItem(reloadKey, Date.now().toString());
 
         try {
@@ -206,7 +206,7 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
         return new Promise(() => {}); // suspend while reloading
       }
 
-      // Non-chunk error — 60-second cooldown before retrying
+      // Non-chunk error â€” 60-second cooldown before retrying
       const retryKey = 'retry-' + name;
       const retryTime = parseInt(localStorage.getItem(retryKey) || '0', 10);
       if (Date.now() - retryTime > 60000) {
@@ -219,7 +219,7 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
   });
 };
 
-// ─── Lazily-loaded page modules (~1.9 MB → ~300 KB initial bundle) ─────────
+// â”€â”€â”€ Lazily-loaded page modules (~1.9 MB â†’ ~300 KB initial bundle) â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const HomeDashboard = lazyWithRetry(() => import('./features/dashboard/HomeDashboard').then(m => ({ default: m.HomeDashboard })), 'HomeDashboard');
 const TodoListModule = lazyWithRetry(() => import('./features/tasks/TodoListModule').then(m => ({ default: m.TodoListModule })), 'TodoListModule');
 const CalendarModule = lazyWithRetry(() => import('./features/calendar').then(m => ({ default: m.CalendarModule })), 'CalendarModule');
@@ -237,7 +237,7 @@ const AttendanceModule = lazyWithRetry(() => import('./features/academic/Attenda
 const AssignmentModule = lazyWithRetry(() => import('./features/academic/AssignmentModule').then(m => ({ default: m.AssignmentModule })), 'AssignmentModule');
 const GradeCalculatorModule = lazyWithRetry(() => import('./features/academic/GradeCalculatorModule').then(m => ({ default: m.GradeCalculatorModule })), 'GradeCalculatorModule');
 
-// ─── Page loading skeleton (replaces spinner — feels like content is loading, not waiting) ──
+// â”€â”€â”€ Page loading skeleton (replaces spinner â€” feels like content is loading, not waiting) â”€â”€
 const PageLoader = () => (
   <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
     <SkeletonCard height="120px" />
@@ -246,7 +246,7 @@ const PageLoader = () => (
   </div>
 );
 
-// ─── Page Transition Wrapper ──────────────────────────────────────────────────
+// â”€â”€â”€ Page Transition Wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const isMobileDevice = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
 
 const PageTransition = ({ children }: { children: React.ReactNode }) => {
@@ -265,12 +265,12 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
-// ─── Animated Routes ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Animated Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const AnimatedRoutes = () => {
   const location = useLocation();
   return (
     // mode='sync' means incoming and outgoing pages animate simultaneously
-    // — this is what makes iOS feel instant (not waiting for old page to exit first)
+    // â€” this is what makes iOS feel instant (not waiting for old page to exit first)
     <AnimatePresence mode="sync">
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Navigate to="/home" replace />} />
@@ -296,10 +296,10 @@ const AnimatedRoutes = () => {
   );
 };
 
-// ✅ U1 FIX: DataReadyGate — shows a premium loading overlay while GlobalDataContext
+// âœ… U1 FIX: DataReadyGate â€” shows a premium loading overlay while GlobalDataContext
 // is hydrating from Firestore (0-3s after auth resolves). Prevents the "skeleton soup"
 // where every lazy-loaded module renders simultaneously with its own loading skeleton
-// while also making its own Firestore calls — creating a fragmented loading experience.
+// while also making its own Firestore calls â€” creating a fragmented loading experience.
 // This gate renders ONCE at the top level, so all routes get clean data on first paint.
 const DataReadyGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoading } = useGlobalData();
@@ -327,13 +327,41 @@ function App() {
 
   const [user, setUser]               = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  // â”€â”€ Auth Phase State Machine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // 'initializing'    â†’ App just loaded, Firebase is checking stored session
+  // 'unauthenticated' â†’ No user. Landing page is shown.
+  // 'authenticating'  â†’ Popup opened OR redirect in progress. Loading overlay shown.
+  // 'authenticated'   â†’ User logged in. App is fully shown.
+  //
+  // Using a single phase state instead of multiple booleans eliminates the 3-branch
+  // return() pattern which caused React to fully unmount/remount the tree on each
+  // auth state change â€” the root cause of the visible flash and screen collision.
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Listen for Login.tsx button click â†’ immediately switch to 'authenticating'
+  // phase so the loading overlay covers the landing page BEFORE the popup opens.
+  // This is what eliminates the 1-2 second flash of the landing page during popup auth.
+  // Also listen for cancellation/error â†’ revert to 'unauthenticated' gracefully.
+  useEffect(() => {
+    const handleAuthStarting  = () => setAuthPhase('authenticating');
+    const handleAuthCancelled = () => setAuthPhase('unauthenticated');
+    window.addEventListener('zen-auth-starting',  handleAuthStarting);
+    window.addEventListener('zen-auth-cancelled', handleAuthCancelled);
+    return () => {
+      window.removeEventListener('zen-auth-starting',  handleAuthStarting);
+      window.removeEventListener('zen-auth-cancelled', handleAuthCancelled);
+    };
+  }, []);
+
+  type AuthPhase = 'initializing' | 'unauthenticated' | 'authenticating' | 'authenticated';
+  const [authPhase, setAuthPhase] = useState<AuthPhase>(
+    // Start as 'authenticating' if mid-redirect so loading overlay shows immediately
+    localStorage.getItem('zen_is_redirecting') === '1' ? 'authenticating' : 'initializing'
+  );
   const [showLogin, setShowLogin]     = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showAgent, setShowAgent] = useState(false);
   const [showFab,   setShowFab]   = useState(false);
-  // ✅ U2 FIX: Track panel closing animation state.
-  // Without this, setShowFab(true) fires immediately when the panel close starts,
-  // causing petal buttons to re-appear UNDER the still-animating panel (~300ms overlap).
+  // âœ… U2 FIX: Track panel closing animation state.
   const [isPanelClosing, setIsPanelClosing] = useState(false);
   const [showDeveloperMatrix, setShowDeveloperMatrix] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
@@ -342,6 +370,15 @@ function App() {
   // Use a ref to track previous user so we never add it to the effect dep array
   // (adding it caused multiple auth subscriptions on each login/logout cycle).
   const prevUserRef = useRef<User | null>(null);
+
+  // Listen for Login.tsx button click â†’ immediately switch to 'authenticating'
+  // phase so the loading overlay covers the landing page BEFORE the popup opens.
+  // This is what eliminates the 1-2 second flash of the landing page during popup auth.
+  useEffect(() => {
+    const handleAuthStarting = () => setAuthPhase('authenticating');
+    window.addEventListener('zen-auth-starting', handleAuthStarting);
+    return () => window.removeEventListener('zen-auth-starting', handleAuthStarting);
+  }, []);
 
   useEffect(() => {
     const handleToggleAgent = () => {
@@ -356,7 +393,7 @@ function App() {
   }, [showAgent]);
 
   useEffect(() => {
-    // Skip Lenis on touch/mobile — native iOS scroll is already buttery smooth
+    // Skip Lenis on touch/mobile â€” native iOS scroll is already buttery smooth
     // and Lenis interferes with touch events, causing jank during tab switching
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (isTouchDevice) return;
@@ -369,23 +406,23 @@ function App() {
   useEffect(() => {
     let unsubscribeAuth: (() => void) | null = null;
 
-    // ─── SMART AUTH INITIALIZATION ─────────────────────────────────────────────
-    // POPUP auth  → set up onAuthStateChanged IMMEDIATELY. Firebase resolves the
-    //               auth state from local storage in <100ms — zero landing-page flash.
+    // â”€â”€â”€ SMART AUTH INITIALIZATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // POPUP auth  â†’ set up onAuthStateChanged IMMEDIATELY. Firebase resolves the
+    //               auth state from local storage in <100ms â€” zero landing-page flash.
     //
-    // REDIRECT auth → must call getRedirectResult() FIRST. Without it, Firebase fires
+    // REDIRECT auth â†’ must call getRedirectResult() FIRST. Without it, Firebase fires
     //                 onAuthStateChanged with null before it processes the redirect
     //                 tokens, causing the user to get stuck on the login page.
     //
     // We distinguish the two using the `zen_is_redirecting` localStorage flag that
     //  Login.tsx sets right before calling signInWithRedirect().
-    // ──────────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
 
     const setupAuthListener = () => {
       unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-        // ── Side effects on fresh login (null → user transition) ──────────────
+        // â”€â”€ Side effects on fresh login (null â†’ user transition) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (currentUser && !prevUserRef.current) {
           runModelHealthCheck().catch(err => console.error('Model health check failed:', err));
 
@@ -424,6 +461,10 @@ function App() {
         prevUserRef.current = currentUser;
         setUser(currentUser);
         setAuthLoading(false);
+        // â”€â”€ Update authPhase based on resolved auth state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Small timeout lets the loading overlay render one frame before switching,
+        // preventing a janky 1-frame flicker of the wrong state.
+        setAuthPhase(currentUser ? 'authenticated' : 'unauthenticated');
       });
     };
 
@@ -437,16 +478,16 @@ function App() {
           console.error('[Auth] getRedirectResult error:', err.code, err.message);
           if (err.code === 'auth/unauthorized-domain') {
             import('sonner').then(({ toast }) =>
-              toast.error('Domain not authorized. Add this domain in Firebase Console → Authentication → Settings.', { duration: 15000 })
+              toast.error('Domain not authorized. Add this domain in Firebase Console â†’ Authentication â†’ Settings.', { duration: 15000 })
             );
           }
         })
         .finally(() => {
           localStorage.removeItem('zen_is_redirecting');
-          setupAuthListener(); // ← only now is auth state settled
+          setupAuthListener(); // â† only now is auth state settled
         });
     } else {
-      // POPUP / EXISTING SESSION PATH: listener fires in <100ms — no flash
+      // POPUP / EXISTING SESSION PATH: listener fires in <100ms â€” no flash
       setupAuthListener();
     }
 
@@ -489,327 +530,315 @@ function App() {
     }
   }
 
-  if (!user) {
-    // Show login overlay if explicitly requested OR if the URL path is /login
-    // BUT: never show login page immediately after a redirect (user is still authenticating)
-    const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
-    const isLogin = !isReturningFromRedirect && (showLogin || location.pathname === '/login');
+  // â”€â”€ SINGLE UNIFIED RENDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // All auth phase transitions are controlled here by a single AnimatePresence.
+  // This guarantees: one phase exits fully BEFORE the next one enters.
+  // No more 3 disconnected return() branches = no flash, no collision.
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+  const toasterProps = {
+    position: 'top-right' as const,
+    toastOptions: {
+      style: {
+        background: 'rgba(10, 25, 40, 0.92)',
+        backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(255,255,255,0.10)',
+        borderRadius: '0.875rem',
+        color: 'white',
+        fontFamily: "'Inter', sans-serif",
+        fontSize: '0.85rem',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      },
+      classNames: { success: 'toast-success', error: 'toast-error', warning: 'toast-warning' },
+    },
+  };
+
+  // Shared smooth transition config
+  const phaseTransition = { duration: 0.45, ease: [0.25, 0.46, 0.45, 0.94] };
+
+  // Landing page is always mounted as the base layer.
+  // It only becomes visible when the overlay on top (app or loading) fades out.
+  const isLogin = authPhase === 'unauthenticated' && (showLogin || location.pathname === '/login');
+
+  if (authPhase === 'authenticated' && user) {
     return (
-      <>
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            style: {
-              background: 'rgba(10, 25, 40, 0.92)',
-              backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255,255,255,0.10)',
-              borderRadius: '0.875rem',
-              color: 'white',
-              fontFamily: "'Inter', sans-serif",
-              fontSize: '0.85rem',
-              boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+      <ErrorBoundary name="GlobalProviders">
+      <GlobalDataProvider>
+      <PomodoroProvider>
+        <DataReadyGate>
+
+        <Toaster {...toasterProps} />
+        <OfflineIndicator />
+        <ClassNotificationRunner />
+        <ContextRemindersRunner />
+        <DeadlineWatcherRunner />
+        <AgentNavigator />
+        <FocusModeOverlay />
+        <DailyBriefingOverlay />
+        <FloatingExtraWorks />
+        <VoiceQuickCaptureWidget />
+        <AgentTerminal />
+        <MissionReport />
+        <ReportArchive />
+        <SessionEnforcer />
+
+        {/* Developer Matrix Overlay */}
+        <AnimatePresence>
+          {showDeveloperMatrix && <DeveloperMatrix onClose={() => setShowDeveloperMatrix(false)} />}
+          {showSecurityModal && <SecuritySettingsModal onClose={() => setShowSecurityModal(false)} />}
+        </AnimatePresence>
+
+        {/* Onboarding Carousel */}
+        {showOnboarding && (
+          <ErrorBoundary name="Onboarding">
+            <OnboardingCarousel userId={user.uid} onComplete={() => setShowOnboarding(false)} />
+          </ErrorBoundary>
+        )}
+
+        {/* Zen Agent SpeedDial FAB */}
+        {(() => {
+          const petals = [
+            {
+              id: 'chat',
+              label: 'Chat',
+              icon: <MessageSquare size={16} />,
+              color: 'linear-gradient(135deg,#8b5cf6,#3b82f6)',
+              shadow: 'rgba(139,92,246,0.5)',
+              action: () => { setShowAgent(true); setShowFab(false); },
             },
-            classNames: {
-              success: 'toast-success',
-              error: 'toast-error',
-              warning: 'toast-warning',
-            }
-          }}
-        />
+            {
+              id: 'risk',
+              label: 'Risk Scan',
+              icon: <ShieldAlert size={16} />,
+              color: 'linear-gradient(135deg,#ef4444,#f97316)',
+              shadow: 'rgba(239,68,68,0.5)',
+              action: () => {
+                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "ARGUS_RISK_SCAN: Call get_tasks('all') then score all overdue and high-priority tasks by risk level (CRITICAL/HIGH/MEDIUM). Send a send_notification with the top 3 critical items listed clearly. Be concise." } }));
+                setShowFab(false);
+              },
+            },
+            {
+              id: 'ghost',
+              label: 'Ghost Scan',
+              icon: <Ghost size={16} />,
+              color: 'linear-gradient(135deg,#06b6d4,#0891b2)',
+              shadow: 'rgba(6,182,212,0.5)',
+              action: () => {
+                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "SPECTRE_GHOST_SCAN: Scan my Gmail inbox for hidden deadlines and commitments (phrases like 'by Friday', 'due date', 'ASAP', 'please submit', 'can you send'). Create a ZenTrack task for each untracked commitment you find. Report how many ghost tasks were created." } }));
+                setShowFab(false);
+              },
+            },
+            {
+              id: 'inbox',
+              label: 'Inbox Zero',
+              icon: <Mail size={16} />,
+              color: 'linear-gradient(135deg,#eab308,#ca8a04)',
+              shadow: 'rgba(234,179,8,0.5)',
+              action: () => {
+                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "HERMES_INBOX_ZERO: Read my 10 most recent unread emails. For each one: (1) summarize in one line, (2) flag if it needs a task created. Create tasks for any actionable emails. Then list the summaries. Keep total response under 300 words." } }));
+                setShowFab(false);
+              },
+            },
+            {
+              id: 'schedule',
+              label: 'Auto-Schedule',
+              icon: <Calendar size={16} />,
+              color: 'linear-gradient(135deg,#10b981,#059669)',
+              shadow: 'rgba(16,185,129,0.5)',
+              action: () => {
+                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "CHRONOS_SCHEDULE_OPTIMIZER: Call get_tasks('today') to get today's pending tasks and get_free_calendar_slots() to find available time blocks. Block calendar time for the top 3 priority tasks in the best available slots. Report what was scheduled." } }));
+                setShowFab(false);
+              },
+            },
+            {
+              id: 'focus',
+              label: 'Deep Focus',
+              icon: <Target size={16} />,
+              color: 'linear-gradient(135deg,#f43f5e,#e11d48)',
+              shadow: 'rgba(244,63,94,0.5)',
+              action: () => {
+                window.dispatchEvent(new CustomEvent('zen-tool-direct', { detail: { tool: 'focus_lock', args: { durationHours: 1 } } }));
+                setShowFab(false);
+              },
+            },
+            {
+              id: 'briefing',
+              label: 'Daily Briefing',
+              icon: <Sun size={16} />,
+              color: 'linear-gradient(135deg,#f59e0b,#d97706)',
+              shadow: 'rgba(245,158,11,0.5)',
+              action: () => {
+                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "ORACLE_DAILY_BRIEF: Call get_tasks('dashboard') for today's agenda. Output a clean morning brief: ðŸ“… TODAY (top 3 tasks by priority) | âš ï¸ OVERDUE (count) | ðŸ’¡ ONE THING to start with. Max 150 words. Be direct and energizing." } }));
+                setShowFab(false);
+              },
+            },
+          ];
 
-        {/* The Landing page stays mounted in the background to prevent video reloads */}
-        <Landing onTryNow={() => {
-          setShowLogin(true);
-          navigate('/login', { replace: true });
-        }} />
+          return (
+            <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 900 }}>
+              <AnimatePresence>
+                {showFab && petals.map((p, i) => (
+                  <motion.div
+                    key={p.id}
+                    initial={{ opacity: 0, scale: 0.6, y: 0 }}
+                    animate={{ opacity: 1, scale: 1, y: -(72 + i * 60) }}
+                    exit={{ opacity: 0, scale: 0.6, y: 0 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 28, delay: i * 0.05 }}
+                    style={{ position: 'absolute', bottom: 0, right: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}
+                  >
+                    <motion.span
+                      initial={{ opacity: 0, x: 8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 + 0.1 }}
+                      style={{ background: 'rgba(10,10,15,0.9)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600, color: '#e4e4e7', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+                    >
+                      {p.label}
+                    </motion.span>
+                    <button
+                      onClick={p.action}
+                      style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: p.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: `0 6px 20px ${p.shadow}` }}
+                    >
+                      {p.icon}
+                    </button>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
 
-        <AnimatePresence mode="wait">
-          {isLogin && (
-            <Login 
-              onBack={() => {
-                setShowLogin(false);
-                navigate('/', { replace: true });
-              }} 
+              <motion.button
+                onClick={() => setShowFab(f => !f)}
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.94 }}
+                animate={{ rotate: showFab ? 135 : 0, scale: (showAgent || isPanelClosing) ? 0 : 1 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                style={{ position: 'relative', zIndex: 1, background: showFab ? 'linear-gradient(135deg,#374151,#1f2937)' : 'linear-gradient(135deg,#8b5cf6,#3b82f6)', border: 'none', borderRadius: '50%', width: 56, height: 56, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: showFab ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(139,92,246,0.45)', cursor: 'pointer', transition: 'background 0.3s ease, box-shadow 0.3s ease' }}
+                aria-label={showFab ? 'Close agent menu' : 'Open Zen Agent'}
+              >
+                <Bot size={26} />
+              </motion.button>
+            </div>
+          );
+        })()}
+
+        <AnimatePresence onExitComplete={() => { setIsPanelClosing(false); }}>
+          {showAgent && (
+            <ZenAgentPanel
+              onClose={() => {
+                setIsPanelClosing(true);
+                setShowAgent(false);
+              }}
             />
           )}
         </AnimatePresence>
-      </>
+
+        {/* â”€â”€ Smooth auth entry animation â€” the whole app fades in from below â”€â”€ */}
+        <motion.div
+          key="app-shell"
+          initial={{ opacity: 0, scale: 0.99, filter: 'blur(4px)' }}
+          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+          exit={{ opacity: 0, scale: 0.99, filter: 'blur(4px)' }}
+          transition={phaseTransition}
+          style={{ position: 'contents' }}
+        />
+
+        <BackgroundEffects />
+        <div className="app-container flex-col">
+          <TopNav />
+          <div className="hide-on-mobile"><GoogleWorkspaceBanner /></div>
+          <div className="main-content full-width">
+            <Suspense fallback={<PageLoader />}>
+              <AnimatedRoutes />
+            </Suspense>
+          </div>
+        </div>
+        <BottomNav />
+        <PWAInstallPrompt />
+        </DataReadyGate>
+      </PomodoroProvider>
+      </GlobalDataProvider>
+      </ErrorBoundary>
     );
   }
 
+  // â”€â”€ UNAUTHENTICATED / INITIALIZING / AUTHENTICATING PHASES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // Landing page is always rendered. A full-screen overlay sits on top:
+  //   - 'initializing'    â†’ dark overlay (app is checking stored session)
+  //   - 'authenticating'  â†’ dark overlay with spinner (popup in progress)
+  //   - 'unauthenticated' â†’ overlay is gone; Landing is fully visible
   return (
-    <ErrorBoundary name="GlobalProviders">
-    <GlobalDataProvider>
-    <PomodoroProvider>
-      <DataReadyGate>
+    <>
+      <Toaster {...toasterProps} />
 
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          style: {
-            background: 'rgba(10, 25, 40, 0.92)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255,255,255,0.10)',
-            borderRadius: '0.875rem',
-            color: 'white',
-            fontFamily: "'Inter', sans-serif",
-            fontSize: '0.85rem',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-          },
-          classNames: {
-            success: 'toast-success',
-            error: 'toast-error',
-            warning: 'toast-warning',
-          }
-        }}
-      />
-      <OfflineIndicator />
-      <ClassNotificationRunner />
-      <ContextRemindersRunner />
-      <DeadlineWatcherRunner />
-      <AgentNavigator />
-      <FocusModeOverlay />
-      <DailyBriefingOverlay />
-      <FloatingExtraWorks />
-      <VoiceQuickCaptureWidget />
-      <AgentTerminal />
-      <MissionReport />
-      <ReportArchive />
-      <SessionEnforcer />
+      {/* Landing always mounted â€” prevents video/background from reloading */}
+      <Landing onTryNow={() => {
+        setShowLogin(true);
+        navigate('/login', { replace: true });
+      }} />
 
-      {/* Developer Matrix Overlay */}
-      <AnimatePresence>
-        {showDeveloperMatrix && <DeveloperMatrix onClose={() => setShowDeveloperMatrix(false)} />}
-        {showSecurityModal && <SecuritySettingsModal onClose={() => setShowSecurityModal(false)} />}
-      </AnimatePresence>
-
-      {/* Onboarding Carousel */}
-      {showOnboarding && (
-        <ErrorBoundary name="Onboarding">
-          <OnboardingCarousel userId={user.uid} onComplete={() => setShowOnboarding(false)} />
-        </ErrorBoundary>
-      )}
-
-      {/* ── Zen Agent SpeedDial FAB ─────────────────────────────────── */}
-      {/* 4 quick-action petals + main chat panel                         */}
-      {/* Petal actions dispatch 'agent-shortcut' event picked up by      */}
-      {/* HomeDashboard to fire handleExecuteCommand with a preset prompt */}
-      {(() => {
-        const petals = [
-          {
-            id: 'chat',
-            label: 'Chat',
-            icon: <MessageSquare size={16} />,
-            color: 'linear-gradient(135deg,#8b5cf6,#3b82f6)',
-            shadow: 'rgba(139,92,246,0.5)',
-            action: () => {
-              // ✅ U2 FIX: Set closing state first, then delay FAB hide until after animation
-              setShowAgent(true);
-              setShowFab(false);
-            },
-          },
-          {
-            id: 'risk',
-            label: 'Risk Scan',
-            icon: <ShieldAlert size={16} />,
-            color: 'linear-gradient(135deg,#ef4444,#f97316)',
-            shadow: 'rgba(239,68,68,0.5)',
-            action: () => {
-              // ✅ U4 FIX: Was LEVEL_4 5-agent fleet. Now LEVEL_2 single ARGUS call (1 LLM).
-              window.dispatchEvent(new CustomEvent('agent-shortcut', {
-                detail: { prompt: 'ARGUS_RISK_SCAN: Call get_tasks(\'all\') then score all overdue and high-priority tasks by risk level (CRITICAL/HIGH/MEDIUM). Send a send_notification with the top 3 critical items listed clearly. Be concise.' }
-              }));
-              setShowFab(false);
-            },
-          },
-          {
-            id: 'ghost',
-            label: 'Ghost Scan',
-            icon: <Ghost size={16} />,
-            color: 'linear-gradient(135deg,#06b6d4,#0891b2)',
-            shadow: 'rgba(6,182,212,0.5)',
-            action: () => {
-              // SPECTRE is already a single-agent LEVEL_5 — correct as-is
-              window.dispatchEvent(new CustomEvent('agent-shortcut', {
-                detail: { prompt: 'SPECTRE_GHOST_SCAN: Scan my Gmail inbox for hidden deadlines and commitments (phrases like "by Friday", "due date", "ASAP", "please submit", "can you send"). Create a ZenTrack task for each untracked commitment you find. Report how many ghost tasks were created.' }
-              }));
-              setShowFab(false);
-            },
-          },
-          {
-            id: 'inbox',
-            label: 'Inbox Zero',
-            icon: <Mail size={16} />,
-            color: 'linear-gradient(135deg,#eab308,#ca8a04)',
-            shadow: 'rgba(234,179,8,0.5)',
-            action: () => {
-              // ✅ U4 FIX: Was vague multi-agent prompt. Now HERMES-only LEVEL_2 (1 LLM).
-              window.dispatchEvent(new CustomEvent('agent-shortcut', {
-                detail: { prompt: 'HERMES_INBOX_ZERO: Read my 10 most recent unread emails. For each one: (1) summarize in one line, (2) flag if it needs a task created. Create tasks for any actionable emails. Then list the summaries. Keep total response under 300 words.' }
-              }));
-              setShowFab(false);
-            },
-          },
-          {
-            id: 'schedule',
-            label: 'Auto-Schedule',
-            icon: <Calendar size={16} />,
-            color: 'linear-gradient(135deg,#10b981,#059669)',
-            shadow: 'rgba(16,185,129,0.5)',
-            action: () => {
-              // ✅ U4 FIX: Was multi-agent. Now CHRONOS-only LEVEL_2 (1 LLM).
-              window.dispatchEvent(new CustomEvent('agent-shortcut', {
-                detail: { prompt: 'CHRONOS_SCHEDULE_OPTIMIZER: Call get_tasks(\'today\') to get today\'s pending tasks and get_free_calendar_slots() to find available time blocks. Block calendar time for the top 3 priority tasks in the best available slots. Report what was scheduled.' }
-              }));
-              setShowFab(false);
-            },
-          },
-          {
-            id: 'focus',
-            label: 'Deep Focus',
-            icon: <Target size={16} />,
-            color: 'linear-gradient(135deg,#f43f5e,#e11d48)',
-            shadow: 'rgba(244,63,94,0.5)',
-            action: () => {
-              // ✅ U4 FIX: Was a 5-agent L4 orchestration. Now a direct tool dispatch (0 LLM calls).
-              // focus_lock dispatches 'zen-focus-lock' which FocusModeOverlay catches directly.
-              // This is the correct pattern for deterministic single-tool actions.
-              window.dispatchEvent(new CustomEvent('zen-tool-direct', {
-                detail: { tool: 'focus_lock', args: { durationHours: 1 } }
-              }));
-              setShowFab(false);
-            },
-          },
-          {
-            id: 'briefing',
-            label: 'Daily Briefing',
-            icon: <Sun size={16} />,
-            color: 'linear-gradient(135deg,#f59e0b,#d97706)',
-            shadow: 'rgba(245,158,11,0.5)',
-            action: () => {
-              // ✅ U4 FIX: Was multi-agent. Now ORACLE LEVEL_1 (1 LLM) — read-only intelligence gathering.
-              window.dispatchEvent(new CustomEvent('agent-shortcut', {
-                detail: { prompt: 'ORACLE_DAILY_BRIEF: Call get_tasks(\'dashboard\') for today\'s agenda. Output a clean morning brief: 📅 TODAY (top 3 tasks by priority) | ⚠️ OVERDUE (count) | 💡 ONE THING to start with. Max 150 words. Be direct and energizing.' }
-              }));
-              setShowFab(false);
-            },
-          }
-        ];
-
-
-        return (
-          <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 900 }}>
-            {/* Petal buttons — fan out above the main button */}
-            <AnimatePresence>
-              {showFab && petals.map((p, i) => (
-                <motion.div
-                  key={p.id}
-                  initial={{ opacity: 0, scale: 0.6, y: 0 }}
-                  animate={{ opacity: 1, scale: 1, y: -(72 + i * 60) }}
-                  exit={{ opacity: 0, scale: 0.6, y: 0 }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 28, delay: i * 0.05 }}
-                  style={{ position: 'absolute', bottom: 0, right: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}
-                >
-                  {/* Label */}
-                  <motion.span
-                    initial={{ opacity: 0, x: 8 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.05 + 0.1 }}
-                    style={{
-                      background: 'rgba(10,10,15,0.9)', backdropFilter: 'blur(8px)',
-                      border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px',
-                      padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600,
-                      color: '#e4e4e7', whiteSpace: 'nowrap',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-                    }}
-                  >
-                    {p.label}
-                  </motion.span>
-                  {/* Button */}
-                  <button
-                    onClick={p.action}
-                    style={{
-                      width: 46, height: 46, borderRadius: '50%', border: 'none',
-                      background: p.color, color: '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', flexShrink: 0,
-                      boxShadow: `0 6px 20px ${p.shadow}`,
-                    }}
-                  >
-                    {p.icon}
-                  </button>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-
-            {/* Main FAB */}
-            <motion.button
-              onClick={() => setShowFab(f => !f)}
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.94 }}
-              animate={{ rotate: showFab ? 135 : 0, scale: (showAgent || isPanelClosing) ? 0 : 1 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-              style={{
-                position: 'relative', zIndex: 1,
-                background: showFab
-                  ? 'linear-gradient(135deg,#374151,#1f2937)'
-                  : 'linear-gradient(135deg,#8b5cf6,#3b82f6)',
-                border: 'none', borderRadius: '50%', width: 56, height: 56,
-                color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: showFab
-                  ? '0 8px 32px rgba(0,0,0,0.4)'
-                  : '0 8px 32px rgba(139,92,246,0.45)',
-                cursor: 'pointer', transition: 'background 0.3s ease, box-shadow 0.3s ease',
-              }}
-              aria-label={showFab ? 'Close agent menu' : 'Open Zen Agent'}
-            >
-              <Bot size={26} />
-            </motion.button>
-          </div>
-        );
-      })()}
-
-      {/* ✅ U2 FIX: ZenAgentPanel close handler.
-          When user closes panel, set isPanelClosing=true immediately.
-          Only show showFab after panel exit animation completes (~350ms).
-          This prevents petal buttons appearing under the still-animating panel. */}
-      <AnimatePresence onExitComplete={() => { setIsPanelClosing(false); }}>
-        {showAgent && (
-          <ZenAgentPanel
-            onClose={() => {
-              setIsPanelClosing(true);
-              setShowAgent(false);
-              // FAB is already hidden (showAgent=true hides it via animate scale:0).
-              // isPanelClosing prevents it re-appearing until onExitComplete fires.
+      {/* Login overlay â€” slides in over landing */}
+      <AnimatePresence mode="wait">
+        {isLogin && (
+          <Login
+            onBack={() => {
+              setShowLogin(false);
+              navigate('/', { replace: true });
             }}
           />
         )}
       </AnimatePresence>
 
+      {/* Phase overlay: covers landing during init and popup auth */}
+      <AnimatePresence>
+        {(authPhase === 'initializing' || authPhase === 'authenticating') && (
+          <motion.div
+            key="auth-loading-overlay"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.5, ease: 'easeInOut' } }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 200,
+              background: '#030d1a',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '1.5rem',
+            }}
+          >
+            {/* Logo */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
+            >
+              <img src="/logo_white.png" alt="ZenTrack" style={{ width: 40, height: 40, objectFit: 'contain' }} />
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: '2rem', fontWeight: 400, color: 'white', letterSpacing: '0.02em' }}>ZenTrack</span>
+            </motion.div>
 
+            {/* Spinner */}
+            <div style={{ position: 'relative', width: 48, height: 48 }}>
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(139,92,246,0.15)' }} />
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#8b5cf6', animation: 'spin 0.8s linear infinite' }} />
+              <div style={{ position: 'absolute', inset: 6, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#3b82f6', animation: 'spin 1.2s linear infinite reverse' }} />
+            </div>
 
-      {/* Greeting Toast removed per user request */}
-
-      <BackgroundEffects />
-      <div className="app-container flex-col">
-        <TopNav />
-        <div className="hide-on-mobile"><GoogleWorkspaceBanner /></div>
-        <div className="main-content full-width">
-          {/* Suspense wraps ALL lazy routes — PageLoader shown during chunk download */}
-          <Suspense fallback={<PageLoader />}>
-            <AnimatedRoutes />
-          </Suspense>
-        </div>
-      </div>
-      <BottomNav />
-      <PWAInstallPrompt />
-      </DataReadyGate>
-    </PomodoroProvider>
-    </GlobalDataProvider>
-    </ErrorBoundary>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem', fontFamily: 'var(--font-sans)' }}
+            >
+              {authPhase === 'authenticating' ? 'Signing you in...' : 'Loading ZenTrack...'}
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
 
 
 export default App;
+

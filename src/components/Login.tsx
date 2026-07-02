@@ -45,10 +45,16 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
   const handleLogin = () => {
     setIsLoading(true);
 
+    // ── Immediately signal App.tsx to show loading overlay ────────────────────
+    // This switches App to 'authenticating' phase BEFORE the popup opens,
+    // so the landing page is fully hidden by the time auth is in progress.
+    // The overlay persists until onAuthStateChanged fires with the user.
+    window.dispatchEvent(new Event('zen-auth-starting'));
+
     // Call popup synchronously — no await, no async before this line
     signInWithPopup(auth, googleProvider)
       .then(() => {
-        // onAuthStateChanged in App.tsx handles navigation
+        // onAuthStateChanged in App.tsx handles navigation + authPhase → 'authenticated'
       })
       .catch((err) => {
         if (err.code === 'auth/popup-blocked' || err.code === 'auth/popup-cancelled-by-user') {
@@ -60,12 +66,18 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
             toast.error('Sign-in failed: ' + (redirectErr.message || redirectErr.code));
           });
         } else if (err.code === 'auth/unauthorized-domain') {
+          // User cancelled the popup — revert to unauthenticated gracefully
+          window.dispatchEvent(new Event('zen-auth-cancelled'));
           setIsLoading(false);
           toast.error('Domain not authorized. Add this site in Firebase Console → Authentication → Settings.', { duration: 10000 });
         } else {
+          // Any other error — also revert
+          window.dispatchEvent(new Event('zen-auth-cancelled'));
           setIsLoading(false);
           console.error('Sign-in error:', err);
-          toast.error('Sign-in failed: ' + (err.message || err.code), { duration: 8000 });
+          if (err.code !== 'auth/cancelled-popup-request') {
+            toast.error('Sign-in failed: ' + (err.message || err.code), { duration: 8000 });
+          }
         }
       });
   };
