@@ -85,6 +85,13 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
   const handleFinish = async () => {
     localStorage.setItem(`zen_onboarding_done_${userId}`, 'true');
     onComplete();
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      const { db } = await import('../../services/firebase');
+      await updateDoc(doc(db, 'users', userId), { hasOnboarded: true });
+    } catch (err) {
+      console.error('Failed to save onboarding state:', err);
+    }
   };
 
   // Keyboard navigation

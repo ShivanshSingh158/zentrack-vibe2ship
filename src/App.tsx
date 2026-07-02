@@ -416,7 +416,7 @@ function App() {
     //
     // We distinguish the two using the `zen_is_redirecting` localStorage flag that
     //  Login.tsx sets right before calling signInWithRedirect().
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
 
@@ -433,9 +433,6 @@ function App() {
             });
           });
 
-          const onboardingKey = `zen_onboarding_done_${currentUser.uid}`;
-          if (!localStorage.getItem(onboardingKey)) setShowOnboarding(true);
-
           import('firebase/firestore').then(({ doc, getDoc, setDoc }) => {
             const userRef = doc(db, 'users', currentUser.uid);
             getDoc(userRef).then((docSnap) => {
@@ -446,7 +443,20 @@ function App() {
                   displayName: currentUser.displayName,
                   photoURL: currentUser.photoURL,
                   createdAt: Date.now(),
+                  hasOnboarded: false
                 }, { merge: true }).catch(err => console.error('Failed to create user doc:', err));
+                
+                if (!localStorage.getItem(`zen_onboarding_done_${currentUser.uid}`)) {
+                  setShowOnboarding(true);
+                }
+              } else {
+                const data = docSnap.data();
+                if (data.hasOnboarded) {
+                  localStorage.setItem(`zen_onboarding_done_${currentUser.uid}`, 'true');
+                  setShowOnboarding(false);
+                } else if (!localStorage.getItem(`zen_onboarding_done_${currentUser.uid}`)) {
+                  setShowOnboarding(true);
+                }
               }
             }).catch(err => console.error('Failed to fetch user doc:', err));
           });
