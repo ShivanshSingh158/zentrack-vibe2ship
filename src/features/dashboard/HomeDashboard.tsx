@@ -347,7 +347,7 @@ export function HomeDashboard() {
   const hoursSaved = (totalPomodoroMinutes / 60).toFixed(1);
 
   return (
-    <div className="main-content">
+    <div className="main-content" style={{ paddingTop: '0.2rem' }}>
       {/* ART-6: Focus Lock persistent top banner */}
       <FocusLockOverlay />
 
