@@ -218,8 +218,9 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
                 transition={{ type: 'spring', damping: 20, stiffness: 100, delay: 0.15 }}
                 style={{
                   width: '100%',
-                  height: '320px',
-                  marginBottom: '1.5rem',
+                  flex: 1,
+                  minHeight: 0,
+                  marginBottom: '1rem',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -227,7 +228,7 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
               >
                 <div style={{ 
                   width: '560px', 
-                  transform: 'scale(0.65)', 
+                  transform: 'scale(0.55)', 
                   transformOrigin: 'center center' 
                 }}>
                   {CARDS[currentIndex]?.AnimationComp && React.createElement(CARDS[currentIndex].AnimationComp)}
@@ -239,8 +240,8 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
                 style={{ 
-                  fontSize: '2.4rem', 
-                  marginBottom: '1rem', 
+                  fontSize: '2rem', 
+                  marginBottom: '0.75rem', 
                   fontFamily: 'var(--font-display)',
                   fontWeight: 700,
                   color: '#fff',
@@ -256,9 +257,9 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
                 style={{ 
-                  fontSize: '1.15rem', 
+                  fontSize: '1.05rem', 
                   color: 'rgba(255,255,255,0.6)', 
-                  lineHeight: 1.6, 
+                  lineHeight: 1.5, 
                   maxWidth: '520px',
                   margin: '0 auto',
                   fontWeight: 400
