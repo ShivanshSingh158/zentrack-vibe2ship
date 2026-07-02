@@ -14,7 +14,6 @@ import { Login } from './components/Login';
 import { Landing } from './components/Landing';
 import { TopNav } from './components/TopNav';
 import { BackgroundEffects } from './components/BackgroundEffects';
-import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { DeveloperMatrix } from './components/overlays/DeveloperMatrix';
 import { SecuritySettingsModal } from './components/overlays/SecuritySettingsModal';
@@ -761,7 +760,6 @@ function App() {
           </div>
         </div>
         <BottomNav />
-        <PWAInstallPrompt />
         </DataReadyGate>
       </PomodoroProvider>
       </GlobalDataProvider>
