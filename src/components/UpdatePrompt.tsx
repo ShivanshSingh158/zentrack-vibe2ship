@@ -21,14 +21,43 @@ async function fetchServerVersion(): Promise<number | null> {
   }
 }
 
+// ── Module-level singleton: only ONE UpdatePrompt ever runs at a time ────────
+// If React mounts a second instance (e.g. during auth phase transition), it
+// detects the flag and bails immediately, preventing the double-banner bug.
+let _updatePromptMounted = false;
+
 async function applyUpdate() {
   try {
-    // Clear all SW caches so stale chunks are evicted
-    const cacheNames = await caches.keys();
-    await Promise.all(cacheNames.map(c => caches.delete(c)));
-    // Unregister existing SWs so the fresh one installs cleanly
+    // Step 1: Tell the WAITING service worker to skip its wait and activate.
+    // Without this, window.location.reload() reloads the OLD SW-controlled page
+    // and the new SW never activates — causing the 10+ second stuck "Restarting...".
     const regs = await navigator.serviceWorker?.getRegistrations() ?? [];
-    await Promise.all(regs.map(r => r.unregister()));
+    const waitingReg = regs.find(r => r.waiting);
+    if (waitingReg) {
+      waitingReg.waiting!.postMessage({ type: 'SKIP_WAITING' });
+    }
+
+    // Step 2: Wait for controllerchange — fires when the new SW takes over (~300ms).
+    // Only then reload so the page is served by the fresh SW from the first request.
+    await new Promise<void>((resolve) => {
+      // Hard timeout: if controllerchange never fires (no waiting SW case),
+      // fall through after 3s so the user isn't stuck forever.
+      const timeout = setTimeout(resolve, 3000);
+      navigator.serviceWorker?.addEventListener('controllerchange', () => {
+        clearTimeout(timeout);
+        resolve();
+      }, { once: true });
+
+      // If there was no waiting SW, also resolve immediately so we just do a plain reload
+      if (!waitingReg) { clearTimeout(timeout); resolve(); }
+    });
+
+    // Step 3: Clear stale caches AFTER the new SW is active (it needs them during activation)
+    try {
+      const cacheNames = await caches.keys();
+      await Promise.all(cacheNames.map(c => caches.delete(c)));
+    } catch { /* non-fatal */ }
+
   } catch { /* ignore — reload will still work */ }
   window.location.reload();
 }
@@ -47,6 +76,9 @@ export const UpdatePrompt: React.FC = () => {
   const markSeen = (v: number) => localStorage.setItem(SEEN_KEY, String(v));
 
   useEffect(() => {
+    if (_updatePromptMounted) return;
+    _updatePromptMounted = true;
+
     const check = async () => {
       const serverV = await fetchServerVersion();
       if (
@@ -70,6 +102,7 @@ export const UpdatePrompt: React.FC = () => {
     intervalRef.current = setInterval(check, 30_000);
 
     return () => {
+      _updatePromptMounted = false;
       clearTimeout(initialTimer);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };

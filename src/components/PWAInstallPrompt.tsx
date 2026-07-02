@@ -163,7 +163,7 @@ export const PWAInstallPrompt: React.FC = () => {
               flexShrink: 0,
               boxShadow: '0 4px 16px rgba(245,184,64,0.12)',
             }}>
-              <img src="/pwa-192x192.png" alt="ZenTrack" style={{ width: 26, height: 26, borderRadius: 6, objectFit: 'contain' }} />
+              <img src="/icon-192.png" alt="ZenTrack" style={{ width: 26, height: 26, borderRadius: 6, objectFit: 'contain' }} />
             </div>
 
             {/* Text */}
@@ -177,8 +177,9 @@ export const PWAInstallPrompt: React.FC = () => {
                   letterSpacing: '0.08em',
                   textTransform: 'uppercase',
                   fontFamily: 'var(--font-sans)',
-                }}>
-                  New Update Ready
+                }}
+              >
+                  Install App
                 </span>
               </div>
               <h4 style={{
