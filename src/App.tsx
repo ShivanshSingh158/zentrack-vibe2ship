@@ -482,7 +482,6 @@ function App() {
 
     return (
       <>
-        <UpdatePrompt />
         <Toaster
           position="top-right"
           toastOptions={{
@@ -530,7 +529,6 @@ function App() {
     <PomodoroProvider>
       <DataReadyGate>
 
-      <UpdatePrompt />
       <Toaster
         position="top-right"
         toastOptions={{
