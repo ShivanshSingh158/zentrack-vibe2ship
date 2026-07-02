@@ -367,7 +367,7 @@ export function HomeDashboard() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4 }}
-        style={{ padding: '2rem 0', display: 'flex', flexDirection: 'column', gap: '3rem' }}
+        style={{ padding: '0.2rem 0', display: 'flex', flexDirection: 'column', gap: '3rem' }}
       >
         
         {/* 1. & 2. Header Row: Greeting + Stats */}
