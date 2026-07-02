@@ -24,7 +24,7 @@ function useAmbientSound(enabled: boolean) {
         audioCtxRef.current = ctx;
 
         const masterGain = ctx.createGain();
-        masterGain.gain.value = 0.08; // Very soft and relaxing
+        masterGain.gain.value = 0.02; // Made volume significantly slower (quieter) as requested
         masterGain.connect(ctx.destination);
 
         const filter = ctx.createBiquadFilter();
@@ -77,19 +77,30 @@ function useAmbientSound(enabled: boolean) {
 
     const handleInteraction = () => {
       initAudio();
-      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended' && !document.hidden) {
+        audioCtxRef.current.resume();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (!audioCtxRef.current) return;
+      if (document.hidden) {
+        audioCtxRef.current.suspend();
+      } else if (isPlayingRef.current) {
         audioCtxRef.current.resume();
       }
     };
 
     document.addEventListener('click', handleInteraction, { once: true });
     document.addEventListener('keydown', handleInteraction, { once: true });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     initAudio();
 
     return () => {
       document.removeEventListener('click', handleInteraction);
       document.removeEventListener('keydown', handleInteraction);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (audioCtxRef.current) {
         audioCtxRef.current.close().catch(() => {});
         audioCtxRef.current = null;
