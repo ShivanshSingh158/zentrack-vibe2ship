@@ -218,7 +218,7 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
                 transition={{ type: 'spring', damping: 20, stiffness: 100, delay: 0.15 }}
                 style={{
                   width: '100%',
-                  height: '280px',
+                  height: '340px',
                   marginBottom: '1rem',
                   display: 'flex',
                   alignItems: 'center',
