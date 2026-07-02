@@ -369,71 +369,86 @@ function App() {
   useEffect(() => {
     let unsubscribeAuth: (() => void) | null = null;
 
-    // ─── CORRECT AUTH PATTERN ─────────────────────────────────────────────────
-    // ALWAYS call getRedirectResult() first and wait for it to complete.
-    // ONLY THEN set up onAuthStateChanged inside .finally().
-    // This eliminates the race condition where onAuthStateChanged fires with null
-    // BEFORE the redirect tokens are processed by Firebase.
+    // ─── SMART AUTH INITIALIZATION ─────────────────────────────────────────────
+    // POPUP auth  → set up onAuthStateChanged IMMEDIATELY. Firebase resolves the
+    //               auth state from local storage in <100ms — zero landing-page flash.
+    //
+    // REDIRECT auth → must call getRedirectResult() FIRST. Without it, Firebase fires
+    //                 onAuthStateChanged with null before it processes the redirect
+    //                 tokens, causing the user to get stuck on the login page.
+    //
+    // We distinguish the two using the `zen_is_redirecting` localStorage flag that
+    //  Login.tsx sets right before calling signInWithRedirect().
     // ──────────────────────────────────────────────────────────────────────────
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result) {
-          console.log('[Auth] Redirect sign-in successful:', result.user.email);
-        }
-      })
-      .catch((err) => {
-        console.error('[Auth] getRedirectResult error:', err.code, err.message);
-        if (err.code === 'auth/unauthorized-domain') {
-          import('sonner').then(({ toast }) =>
-            toast.error('Domain not authorized in Firebase. Add this domain in Firebase Console → Authentication → Settings → Authorized Domains.', { duration: 15000 })
-          );
-        }
-      })
-      .finally(() => {
-        localStorage.removeItem('zen_is_redirecting');
 
-        // Set up auth listener AFTER redirect is fully resolved
-        unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-          if (currentUser && !prevUserRef.current) {
-            runModelHealthCheck().catch(err => console.error('Model health check failed:', err));
+    const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
 
-            import('./services/fcm').then(({ registerFCMToken, onForegroundMessage }) => {
-              registerFCMToken();
-              onForegroundMessage(({ title, body }) => {
-                import('sonner').then(({ toast }) => toast(body, { description: title }));
-              });
+    const setupAuthListener = () => {
+      unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+        // ── Side effects on fresh login (null → user transition) ──────────────
+        if (currentUser && !prevUserRef.current) {
+          runModelHealthCheck().catch(err => console.error('Model health check failed:', err));
+
+          import('./services/fcm').then(({ registerFCMToken, onForegroundMessage }) => {
+            registerFCMToken();
+            onForegroundMessage(({ title, body }) => {
+              import('sonner').then(({ toast }) => toast(body, { description: title }));
             });
+          });
 
-            const onboardingKey = `zen_onboarding_done_${currentUser.uid}`;
-            if (!localStorage.getItem(onboardingKey)) setShowOnboarding(true);
+          const onboardingKey = `zen_onboarding_done_${currentUser.uid}`;
+          if (!localStorage.getItem(onboardingKey)) setShowOnboarding(true);
 
-            import('firebase/firestore').then(({ doc, getDoc, setDoc }) => {
-              const userRef = doc(db, 'users', currentUser.uid);
-              getDoc(userRef).then((docSnap) => {
-                if (!docSnap.exists()) {
-                  setDoc(userRef, {
-                    userId: currentUser.uid,
-                    email: currentUser.email,
-                    displayName: currentUser.displayName,
-                    photoURL: currentUser.photoURL,
-                    createdAt: Date.now(),
-                  }, { merge: true }).catch(err => console.error('Failed to create user doc:', err));
-                }
-              }).catch(err => console.error('Failed to fetch user doc:', err));
-            });
-          }
+          import('firebase/firestore').then(({ doc, getDoc, setDoc }) => {
+            const userRef = doc(db, 'users', currentUser.uid);
+            getDoc(userRef).then((docSnap) => {
+              if (!docSnap.exists()) {
+                setDoc(userRef, {
+                  userId: currentUser.uid,
+                  email: currentUser.email,
+                  displayName: currentUser.displayName,
+                  photoURL: currentUser.photoURL,
+                  createdAt: Date.now(),
+                }, { merge: true }).catch(err => console.error('Failed to create user doc:', err));
+              }
+            }).catch(err => console.error('Failed to fetch user doc:', err));
+          });
+        }
 
-          if (currentUser) {
-            localStorage.setItem('zen_is_logged_in', '1');
-          } else {
-            localStorage.removeItem('zen_is_logged_in');
-          }
+        if (currentUser) {
+          localStorage.setItem('zen_is_logged_in', '1');
+        } else {
+          localStorage.removeItem('zen_is_logged_in');
+        }
 
-          prevUserRef.current = currentUser;
-          setUser(currentUser);
-          setAuthLoading(false);
-        });
+        prevUserRef.current = currentUser;
+        setUser(currentUser);
+        setAuthLoading(false);
       });
+    };
+
+    if (isReturningFromRedirect) {
+      // REDIRECT PATH: wait for redirect tokens to be processed first
+      getRedirectResult(auth)
+        .then((result) => {
+          if (result) console.log('[Auth] Redirect sign-in successful:', result.user.email);
+        })
+        .catch((err) => {
+          console.error('[Auth] getRedirectResult error:', err.code, err.message);
+          if (err.code === 'auth/unauthorized-domain') {
+            import('sonner').then(({ toast }) =>
+              toast.error('Domain not authorized. Add this domain in Firebase Console → Authentication → Settings.', { duration: 15000 })
+            );
+          }
+        })
+        .finally(() => {
+          localStorage.removeItem('zen_is_redirecting');
+          setupAuthListener(); // ← only now is auth state settled
+        });
+    } else {
+      // POPUP / EXISTING SESSION PATH: listener fires in <100ms — no flash
+      setupAuthListener();
+    }
 
     return () => { unsubscribeAuth?.(); };
   }, []);
