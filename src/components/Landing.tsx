@@ -5,172 +5,63 @@ import { Volume2, Volume1, VolumeX } from 'lucide-react';
 export type SoundLevel = 'off' | 'low' | 'high';
 
 function useAmbientSound(volumeLevel: SoundLevel) {
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const masterGainRef = useRef<GainNode | null>(null);
-  const isPlayingRef = useRef(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Dynamic volume adjustment without restarting context
   useEffect(() => {
-    if (masterGainRef.current && audioCtxRef.current) {
-      const targetVolume = volumeLevel === 'high' ? 0.50 : 0.20;
-      masterGainRef.current.gain.setTargetAtTime(targetVolume, audioCtxRef.current.currentTime, 0.5);
+    if (!audioRef.current) {
+      const audio = new Audio('/ambient.webm');
+      audio.loop = true;
+      audioRef.current = audio;
     }
-  }, [volumeLevel]);
 
-  useEffect(() => {
-    let timeoutId: number | null = null;
+    const audio = audioRef.current;
 
     if (volumeLevel === 'off') {
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
-        masterGainRef.current = null;
-      }
-      isPlayingRef.current = false;
+      audio.pause();
       return;
     }
 
-    let ctx: AudioContext;
-    const initAudio = () => {
-      if (isPlayingRef.current) return;
-      try {
-        ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        audioCtxRef.current = ctx;
+    // Set volume (scaled down slightly because webm might be loud)
+    audio.volume = volumeLevel === 'high' ? 0.40 : 0.15;
 
-        const masterGain = ctx.createGain();
-        masterGain.gain.value = volumeLevel === 'high' ? 0.50 : 0.20;
-        masterGain.connect(ctx.destination);
-        masterGainRef.current = masterGain;
-
-        // Reverb/Delay network for extreme "openness" and air
-        const delay = ctx.createDelay();
-        delay.delayTime.value = 0.8; // 800ms echo
-        
-        const feedback = ctx.createGain();
-        feedback.gain.value = 0.5; // long tail
-        
-        const delayFilter = ctx.createBiquadFilter();
-        delayFilter.type = 'lowpass';
-        delayFilter.frequency.value = 1500; // soften the echoes
-
-        delay.connect(feedback);
-        feedback.connect(delayFilter);
-        delayFilter.connect(delay);
-        
-        delay.connect(masterGain);
-        
-        // Pentatonic scale (C, D, E, G, A) - very meditative and open
-        const scale = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
-        
-        const playFluteNote = () => {
-          if (!isPlayingRef.current) return;
-          
-          if (document.hidden) {
-            // If tab is hidden, don't play a note, but keep the loop alive so it can resume later
-            timeoutId = window.setTimeout(playFluteNote, 2000);
-            return;
-          }
-          
-          const now = ctx.currentTime;
-          const freq = scale[Math.floor(Math.random() * scale.length)];
-          const duration = 3 + Math.random() * 2; // 3 to 5 seconds per note
-          
-          // Soft breath envelope (slow fade in and fade out)
-          const envelope = ctx.createGain();
-          envelope.gain.setValueAtTime(0, now);
-          envelope.gain.linearRampToValueAtTime(1, now + duration * 0.4);
-          envelope.gain.exponentialRampToValueAtTime(0.001, now + duration);
-          
-          // Main flute body (sine wave)
-          const osc1 = ctx.createOscillator();
-          osc1.type = 'sine';
-          osc1.frequency.value = freq;
-          
-          // Secondary harmonic (triangle wave)
-          const osc2 = ctx.createOscillator();
-          osc2.type = 'triangle';
-          osc2.frequency.value = freq;
-          
-          const bodyMix = ctx.createGain();
-          bodyMix.gain.value = 0.8;
-          osc1.connect(bodyMix);
-          
-          const triMix = ctx.createGain();
-          triMix.gain.value = 0.2; // Add a tiny bit of edge/hollowness
-          osc2.connect(triMix);
-          triMix.connect(bodyMix);
-          
-          // Vibrato for human-like breath
-          const vibrato = ctx.createOscillator();
-          vibrato.type = 'sine';
-          vibrato.frequency.value = 5.5; // 5.5 Hz vibrato
-          
-          const vibratoGain = ctx.createGain();
-          vibratoGain.gain.value = 3; // +/- 3Hz pitch bend
-          vibrato.connect(vibratoGain);
-          vibratoGain.connect(osc1.frequency);
-          vibratoGain.connect(osc2.frequency);
-          
-          bodyMix.connect(envelope);
-          envelope.connect(masterGain); // Dry signal
-          envelope.connect(delay); // Wet signal (reverb)
-          
-          osc1.start(now);
-          osc2.start(now);
-          vibrato.start(now);
-          
-          osc1.stop(now + duration);
-          osc2.stop(now + duration);
-          vibrato.stop(now + duration);
-          
-          // Schedule next note (gap between 2 and 5 seconds)
-          const nextTime = (duration + Math.random() * 3) * 1000;
-          timeoutId = window.setTimeout(playFluteNote, nextTime);
-        };
-
-        playFluteNote();
-
-        isPlayingRef.current = true;
-      } catch (e) {
-        console.warn('Web Audio API not supported', e);
+    const tryPlay = () => {
+      if (volumeLevel !== 'off' && !document.hidden) {
+        audio.play().catch(e => console.warn('Autoplay prevented:', e));
       }
     };
 
-    const handleInteraction = () => {
-      initAudio();
-      if (audioCtxRef.current && audioCtxRef.current.state === 'suspended' && !document.hidden) {
-        audioCtxRef.current.resume();
-      }
-    };
+    tryPlay();
 
     const handleVisibilityChange = () => {
-      if (!audioCtxRef.current) return;
       if (document.hidden) {
-        audioCtxRef.current.suspend();
-      } else if (isPlayingRef.current) {
-        audioCtxRef.current.resume();
+        audio.pause();
+      } else if (volumeLevel !== 'off') {
+        tryPlay();
       }
     };
 
-    document.addEventListener('click', handleInteraction, { once: true });
-    document.addEventListener('keydown', handleInteraction, { once: true });
+    // Need interaction to unlock audio on some browsers
+    document.addEventListener('click', tryPlay, { once: true });
+    document.addEventListener('keydown', tryPlay, { once: true });
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    initAudio();
-
     return () => {
-      document.removeEventListener('click', handleInteraction);
-      document.removeEventListener('keydown', handleInteraction);
+      document.removeEventListener('click', tryPlay);
+      document.removeEventListener('keydown', tryPlay);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      if (timeoutId) window.clearTimeout(timeoutId);
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close().catch(() => {});
-        audioCtxRef.current = null;
-        masterGainRef.current = null;
-      }
-      isPlayingRef.current = false;
     };
-  }, [volumeLevel === 'off']); // Only re-run the full setup/teardown if we toggle between on/off
+  }, [volumeLevel]);
+
+  // Clean up completely on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current = null;
+      }
+    };
+  }, []);
 }
 import {
   ProactiveAgentAnimation,
