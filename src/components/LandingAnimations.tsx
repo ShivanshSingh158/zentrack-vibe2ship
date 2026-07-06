@@ -578,3 +578,24 @@ export const ConsoleAnalyticsAnimation: React.FC = () => {
     </div>
   );
 };
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   DEFAULT EXPORT — Name-based dispatcher for React.lazy() usage in Landing.tsx
+   Allows: <LandingAnimationsModule name="agents" /> via React.lazy
+══════════════════════════════════════════════════════════════════════════════ */
+const ANIMATION_MAP: Record<string, React.FC> = {
+  agents:    ProactiveAgentAnimation,
+  workspace: WorkspaceIntegrationAnimation,
+  tasks:     SmartTasksAnimation,
+  flow:      FlowStateAnimation,
+  learning:  LearningAnimation,
+  console:   ConsoleAnalyticsAnimation,
+};
+
+const LandingAnimationsDispatcher: React.FC<{ name: string }> = ({ name }) => {
+  const Component = ANIMATION_MAP[name];
+  if (!Component) return null;
+  return <Component />;
+};
+
+export default LandingAnimationsDispatcher;

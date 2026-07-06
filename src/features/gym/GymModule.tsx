@@ -236,11 +236,11 @@ const GymModuleInner = () => {
                     transform: isSelected ? 'scale(1.02)' : 'scale(1)',
                   }}
                 >
-                  <span style={{ fontSize: '0.58rem', fontWeight: 600, color: isSelected ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)', textTransform: 'uppercase', lineHeight: 1 }}>{dayLabel}</span>
-                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: isSelected ? '#fff' : isToday ? '#a855f7' : 'rgba(255,255,255,0.65)', lineHeight: 1 }}>{dayNum}</span>
+                  <span style={{ fontSize: '0.58rem', fontWeight: 600, color: isSelected ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.35)', textTransform: 'uppercase', lineHeight: 1 }}>{dayLabel}</span>
+                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: isSelected ? '#1a1a1a' : isToday ? '#a855f7' : 'rgba(255,255,255,0.65)', lineHeight: 1 }}>{dayNum}</span>
                   {pDay?.isRest
-                    ? <Bed size={9} style={{ color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.2)', marginTop: '0.05rem' }} />
-                    : <span style={{ fontSize: '0.46rem', color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.25)', fontWeight: 700, textTransform: 'uppercase', lineHeight: 1, marginTop: '0.05rem' }}>
+                    ? <Bed size={9} style={{ color: isSelected ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.2)', marginTop: '0.05rem' }} />
+                    : <span style={{ fontSize: '0.46rem', color: isSelected ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.25)', fontWeight: 700, textTransform: 'uppercase', lineHeight: 1, marginTop: '0.05rem' }}>
                         {(pDay?.name || '').split(/[,&]/)[0].trim().slice(0, 5)}
                       </span>
                   }
@@ -259,7 +259,7 @@ const GymModuleInner = () => {
 
       {/* ── Profile Banner (Discoverability) ────────────────────────── */}
       {(!profile || !profile.bodyweightKg || !profile.heightCm) && (
-        <div style={{ margin: '0.85rem 1rem 0', padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setShowProfileModal(true)}>
+        <div className="gym-panel" style={{ margin: '0.85rem 1rem 0', padding: '0.85rem 1rem', borderRadius: '14px', background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => setShowProfileModal(true)}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(124,58,237,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <User size={18} style={{ color: '#a855f7' }} />
@@ -277,7 +277,7 @@ const GymModuleInner = () => {
       {isRestDay ? (
         <>
           {/* Rest Day Hero Card */}
-          <div style={{ margin: '0.85rem 1rem 0', padding: '1.5rem 1rem', borderRadius: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
+          <div className="gym-panel" style={{ margin: '0.85rem 1rem 0', padding: '1.5rem 1rem', borderRadius: '16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', textAlign: 'center' }}>
             <div style={{ fontSize: '2.8rem', marginBottom: '0.5rem' }}>🛌</div>
             <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', marginBottom: '0.3rem' }}>Rest Day — Recovery Mode</div>
             <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', lineHeight: 1.5 }}>No lifting today. Eat well, sleep deep, and come back stronger tomorrow. Your muscles grow during rest.</div>
@@ -291,7 +291,7 @@ const GymModuleInner = () => {
         <div style={{ opacity: syncing ? 0.75 : 1, transition: 'opacity 0.2s', pointerEvents: syncing ? 'none' : 'auto' }}>
 
           {/* Day card */}
-          <div className="liquid-panel" style={{ margin: '0.85rem 1rem 0', padding: '0.9rem 1rem', borderRadius: '16px' }}>
+          <div className="liquid-panel gym-panel" style={{ margin: '0.85rem 1rem 0', padding: '0.9rem 1rem', borderRadius: '16px' }}>
 
             {/* Global Stopwatch Banner — TODAY ONLY */}
             {selectedDate === todayStr() && !isRestDay && (
@@ -585,15 +585,9 @@ export const GymModule = () => {
 
   if (!isMobile) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)', padding: '2rem', textAlign: 'center' }}>
-        <div style={{ maxWidth: '380px' }}>
-          <div style={{ width: '64px', height: '64px', borderRadius: '16px', background: 'rgba(124,58,237,0.1)', border: '1px solid rgba(124,58,237,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
-            <Dumbbell size={32} style={{ color: '#a855f7' }} />
-          </div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.75rem', color: '#fff' }}>Mobile Only</h2>
-          <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-            The Gym Tracker is optimized exclusively for mobile. Open ZenTrack on your phone to log workouts.
-          </p>
+      <div style={{ display: 'flex', justifyContent: 'center', minHeight: '100vh', background: '#000' }}>
+        <div style={{ width: '100%', maxWidth: '480px', minHeight: '100vh', position: 'relative', background: 'var(--bg-base)', borderLeft: '1px solid rgba(255,255,255,0.08)', borderRight: '1px solid rgba(255,255,255,0.08)', contain: 'layout paint' }}>
+          <GymModuleInner />
         </div>
       </div>
     );

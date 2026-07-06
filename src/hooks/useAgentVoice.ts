@@ -13,6 +13,7 @@
  */
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
+import { SarvamAudioStreamer } from '../services/voice/sarvamStream';
 
 const SILENCE_THRESHOLD_MS = 1800;
 
@@ -26,6 +27,7 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
   const [isListening,       setIsListening]       = useState(false);
   const [silencePercent,    setSilencePercent]     = useState(0);
   const [interimTranscript, setInterimTranscript]  = useState('');
+  const [playbackVolume,    setPlaybackVolume]     = useState(0);
 
   // Keep a ref to commandInput so event handler closures see the latest value
   const commandInputRef  = useRef(commandInput);
@@ -35,15 +37,7 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
 
   useEffect(() => { commandInputRef.current = commandInput; }, [commandInput]);
 
-  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-  const recognition = useMemo(() => {
-    if (!SpeechRecognition) return null;
-    const r = new SpeechRecognition();
-    r.continuous     = true;  // Never stop on natural pauses
-    r.interimResults = true;  // Stream partial transcript live
-    r.lang = 'en-US';
-    return r;
-  }, [SpeechRecognition]);
+  const streamerRef = useRef<SarvamAudioStreamer | null>(null);
 
   const cancelSilenceCountdown = useCallback(() => {
     if (silenceTimerRef.current)  { clearTimeout(silenceTimerRef.current);  silenceTimerRef.current  = null; }
@@ -69,65 +63,30 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
   const submitAfterSilence = useCallback(() => {
     const captured = commandInputRef.current.trim();
     if (!captured) return;
-    recognition?.stop();
+    if (streamerRef.current) {
+      streamerRef.current.stopListening();
+      streamerRef.current = null;
+    }
     setIsListening(false);
     setInterimTranscript('');
     cancelSilenceCountdown();
     setTimeout(() => onCommand(captured), 80);
-  }, [recognition, cancelSilenceCountdown, onCommand]);
+  }, [cancelSilenceCountdown, onCommand]);
 
   useEffect(() => {
-    if (!recognition) return;
-
-    recognition.onresult = (event: any) => {
-      let interim = '';
-      let finalChunk = '';
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        if (event.results[i].isFinal) {
-          finalChunk += event.results[i][0].transcript;
-        } else {
-          interim += event.results[i][0].transcript;
-        }
-      }
-      setInterimTranscript(interim);
-      if (finalChunk) {
-        setCommandInput(prev => prev ? `${prev} ${finalChunk.trim()}` : finalChunk.trim());
-      }
-      // Every new word resets the silence timer
-      cancelSilenceCountdown();
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(submitAfterSilence, SILENCE_THRESHOLD_MS);
-      startSilenceCountdown();
-    };
-
-    recognition.onerror = (event: any) => {
-      if (event.error === 'no-speech') return; // Normal — keep waiting
-      console.error('[Voice] Recognition error:', event.error);
-      setIsListening(false);
-      setInterimTranscript('');
-      cancelSilenceCountdown();
-    };
-
-    recognition.onend = () => {
-      cancelSilenceCountdown();
-      setInterimTranscript('');
-      const captured = commandInputRef.current.trim();
-      if (captured && isListening) {
-        setIsListening(false);
-        setTimeout(() => onCommand(captured), 80);
-      } else {
-        setIsListening(false);
+    return () => {
+      if (streamerRef.current) {
+        streamerRef.current.stopListening();
       }
     };
-  }, [recognition, submitAfterSilence, isListening, cancelSilenceCountdown, startSilenceCountdown, setCommandInput, onCommand]);
+  }, []);
 
-  const toggleListening = useCallback(() => {
-    if (!recognition) {
-      toast.error('Voice input is not supported in this browser. Try Chrome.');
-      return;
-    }
+  const toggleListening = useCallback(async () => {
     if (isListening) {
-      recognition.stop();
+      if (streamerRef.current) {
+        streamerRef.current.stopListening();
+        streamerRef.current = null;
+      }
       cancelSilenceCountdown();
       setIsListening(false);
       const captured = commandInputRef.current.trim();
@@ -135,17 +94,42 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
     } else {
       setCommandInput('');
       try {
-        recognition.start();
+        streamerRef.current = new SarvamAudioStreamer();
+        
+        streamerRef.current.onTranscript = (text, isFinal) => {
+          if (isFinal) {
+            setCommandInput(prev => prev ? `${prev} ${text.trim()}` : text.trim());
+            setInterimTranscript('');
+          } else {
+            setInterimTranscript(text);
+          }
+          
+          cancelSilenceCountdown();
+          if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+          silenceTimerRef.current = setTimeout(submitAfterSilence, SILENCE_THRESHOLD_MS);
+          startSilenceCountdown();
+        };
+
+        streamerRef.current.onVolumeChange = (vol) => setPlaybackVolume(vol);
+
+        await streamerRef.current.startListening();
         setIsListening(true);
-        toast.info("🎙️ Listening... speak naturally. I'll send when you stop.", { duration: 3000 });
-      } catch {
-        try { recognition.stop(); } catch {}
-        setTimeout(() => {
-          try { recognition.start(); setIsListening(true); } catch {}
-        }, 300);
+        toast.info("🎙️ Listening securely via Sarvam Gateway...", { duration: 3000 });
+      } catch (err) {
+        toast.error('Could not connect to microphone or Gateway.');
+        setIsListening(false);
       }
     }
-  }, [recognition, isListening, cancelSilenceCountdown, onCommand, setCommandInput]);
+  }, [isListening, cancelSilenceCountdown, onCommand, setCommandInput, submitAfterSilence, startSilenceCountdown]);
 
-  return { isListening, silencePercent, interimTranscript, toggleListening };
+  // ── Auto-reopen mic for clarifications ──
+  useEffect(() => {
+    const handleReopen = () => {
+      if (!isListening) toggleListening();
+    };
+    window.addEventListener('agent-reopen-mic', handleReopen);
+    return () => window.removeEventListener('agent-reopen-mic', handleReopen);
+  }, [isListening, toggleListening]);
+
+  return { isListening, silencePercent, interimTranscript, playbackVolume, toggleListening };
 }

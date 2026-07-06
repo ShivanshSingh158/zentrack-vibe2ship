@@ -8,7 +8,7 @@ export interface AgentMessage {
 
 const INITIAL_MESSAGE: AgentMessage = {
   role: 'agent',
-  title: "Hey! I'm Zen Agent — powered by the full 13-agent fleet. I can read tasks, schedule calendar, send emails, find Drive files, create meetings, and more. Try: \"Scan my inbox for hidden deadlines\" or \"I missed a deadline, help me recover.\""
+  title: "Hello. I am Sara, your synthetic resource assistant. How can I assist you today?"
 };
 
 class AgentMemoryStore {

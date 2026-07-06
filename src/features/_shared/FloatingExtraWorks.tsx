@@ -90,6 +90,7 @@ export const FloatingExtraWorks: React.FC = () => {
   return (
     <>
       <motion.button
+        className="hide-on-mobile"
         drag
         dragMomentum={false}
         onDragStart={() => isDragging.current = true}

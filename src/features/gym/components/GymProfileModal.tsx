@@ -26,6 +26,26 @@ const EXPERIENCE_OPTIONS = [
   { value: 60, label: '4+ years' },
 ];
 
+const BODY_TYPES = [
+  { value: 'ectomorph', label: 'Ectomorph' },
+  { value: 'mesomorph', label: 'Mesomorph' },
+  { value: 'endomorph', label: 'Endomorph' },
+];
+
+const DIETARY_PREFERENCES = [
+  { value: 'none', label: 'Any' },
+  { value: 'vegetarian', label: 'Vegetarian' },
+  { value: 'non_veg', label: 'Non Veg' },
+  { value: 'eggetarian', label: 'Eggetarian' },
+];
+
+const ACTIVITY_LEVELS = [
+  { value: 'sedentary', label: 'Sedentary' },
+  { value: 'lightly_active', label: 'Lightly Active' },
+  { value: 'moderately_active', label: 'Moderately Active' },
+  { value: 'very_active', label: 'Very Active' },
+];
+
 export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfileModalProps) => {
   const [bodyweight, setBodyweight] = useState(String(initial?.bodyweightKg ?? ''));
   const [height, setHeight] = useState(String(initial?.heightCm ?? ''));
@@ -36,6 +56,10 @@ export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfile
   const [targetTimeline, setTargetTimeline] = useState(String(initial?.targetTimelineWeeks ?? ''));
   const [mesoWeek, setMesoWeek] = useState(String(initial?.currentMesocycleWeek ?? ''));
   const [mesoTotal, setMesoTotal] = useState(String(initial?.totalMesocycleWeeks ?? ''));
+  const [bodyType, setBodyType] = useState(initial?.bodyType ?? '');
+  const [dietaryPreference, setDietaryPreference] = useState(initial?.dietaryPreference ?? 'none');
+  const [foodAllergies, setFoodAllergies] = useState(initial?.foodAllergies ?? '');
+  const [activityLevel, setActivityLevel] = useState(initial?.activityLevel ?? 'sedentary');
 
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '0.7rem 0.85rem', borderRadius: '10px',
@@ -55,6 +79,10 @@ export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfile
       targetTimelineWeeks: targetTimeline ? Number(targetTimeline) : null,
       currentMesocycleWeek: mesoWeek ? Number(mesoWeek) : null,
       totalMesocycleWeeks: mesoTotal ? Number(mesoTotal) : null,
+      bodyType: bodyType || null,
+      dietaryPreference: dietaryPreference !== 'none' ? dietaryPreference : null,
+      foodAllergies: foodAllergies || null,
+      activityLevel: activityLevel || null,
     });
     onClose();
   };
@@ -102,6 +130,36 @@ export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfile
                 <input type="number" value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.placeholder} style={inputStyle} />
               </div>
             ))}
+          </div>
+
+          {/* New Personalization Fields */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
+            <div>
+              <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.38)', display: 'block', marginBottom: '0.3rem' }}>Body Type</label>
+              <select value={bodyType} onChange={e => setBodyType(e.target.value)} style={{ ...inputStyle, padding: '0.65rem 0.85rem' }}>
+                <option value="">Select...</option>
+                {BODY_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.38)', display: 'block', marginBottom: '0.3rem' }}>Activity Level</label>
+              <select value={activityLevel} onChange={e => setActivityLevel(e.target.value)} style={{ ...inputStyle, padding: '0.65rem 0.85rem' }}>
+                {ACTIVITY_LEVELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem' }}>
+            <div>
+              <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.38)', display: 'block', marginBottom: '0.3rem' }}>Dietary Preference</label>
+              <select value={dietaryPreference} onChange={e => setDietaryPreference(e.target.value)} style={{ ...inputStyle, padding: '0.65rem 0.85rem' }}>
+                {DIETARY_PREFERENCES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.38)', display: 'block', marginBottom: '0.3rem' }}>Food Allergies</label>
+              <input type="text" value={foodAllergies} onChange={e => setFoodAllergies(e.target.value)} placeholder="e.g. Nuts, Dairy" style={inputStyle} />
+            </div>
           </div>
 
           {/* Conditional Target inputs */}
@@ -153,7 +211,7 @@ export const GymProfileModal = ({ userId, initial, onSave, onClose }: GymProfile
             </div>
           </div>
 
-          <button onClick={save} style={{ padding: '0.85rem', borderRadius: '12px', border: 'none', background: 'var(--accent-gradient)', color: '#fff', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', minHeight: '50px', marginTop: '0.25rem' }}>
+          <button onClick={save} style={{ padding: '0.85rem', borderRadius: '12px', border: 'none', background: 'linear-gradient(135deg, #7c3aed, #a855f7)', color: '#fff', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', minHeight: '50px', marginTop: '0.25rem', boxShadow: '0 4px 12px rgba(124,58,237,0.3)' }}>
             Save Profile
           </button>
         </div>

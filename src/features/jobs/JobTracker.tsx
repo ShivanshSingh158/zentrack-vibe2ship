@@ -236,9 +236,7 @@ export const JobTracker = () => {
         </div>
 
         <div className="page-header-actions" style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className="btn-secondary" onClick={() => navigate('/tools')} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(96, 165, 250, 0.1))', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.2)' }}>
-            <Sparkles size={16} /> AI Job Analyzer
-          </button>
+
           <button className="btn-primary" onClick={() => { setEditingJob(null); setIsModalOpen(true); }}>
             <Plus size={16} strokeWidth={2.5} /> New Job
           </button>

@@ -1,4 +1,66 @@
+/**
+ * @file toolExecutor.ts
+ * @module src/agent/toolExecutor
+ *
+ * ZenTrack Tool Executor — the hands of the AI agent fleet.
+ *
+ * ## What This File Does
+ *
+ * When a Gemini agent decides to call a tool (e.g. `create_task`, `read_gmail`,
+ * `schedule_calendar_block`), `runAgentLoop.ts` calls `executeTool(name, args)`.
+ * This file contains the implementation of EVERY tool — all ~80 of them.
+ *
+ * ## Architecture
+ *
+ * The executor uses a large `switch` statement organized into labeled sections:
+ * ```
+ * switch (toolName) {
+ *   // ─── TASK TOOLS ─────────────────────────────────────────────────────────
+ *   case 'create_task': ...
+ *   case 'update_task': ...
+ *
+ *   // ─── GMAIL TOOLS ─────────────────────────────────────────────────────────
+ *   case 'read_gmail': ...
+ *   case 'send_email': ...
+ * ```
+ *
+ * ## Tool Result Contract
+ *
+ * Every tool returns a `ToolResult`:
+ * ```typescript
+ * type ToolResult = { success: boolean; message: string; data?: unknown }
+ * ```
+ * The `message` is what agents read to understand what happened. Make it descriptive.
+ * The `data` field passes structured data (task objects, email lists) to agents.
+ *
+ * ## Google Workspace Auth
+ *
+ * All Google API tools check `isSignedInToGoogle()` before executing. If the user
+ * is not connected, they return a `not_connected` error message that AEGIS converts
+ * into a helpful spoken prompt ("Please connect Google Workspace first").
+ *
+ * Token refresh is handled automatically by `forceSilentRefresh()` which is called
+ * when a 401 is detected mid-mission without interrupting the conversation.
+ *
+ * ## Tool Groups (in order)
+ * 1. **Task tools** — Firestore CRUD for tasks
+ * 2. **Calendar tools** — Google Calendar events and time blocks
+ * 3. **Gmail tools** — Read, send, reply, draft, archive emails
+ * 4. **Drive tools** — Search and read Google Drive files
+ * 5. **Docs tools** — Create and write Google Docs
+ * 6. **Meet tools** — Create Google Meet links
+ * 7. **Goal tools** — OKR management in Firestore
+ * 8. **Habit tools** — Daily habit tracking
+ * 9. **Analytics tools** — Productivity scores and weekly reviews
+ * 10. **Notification tools** — FCM push, SMS via Twilio
+ * 11. **Note tools** — Create and manage notes
+ * 12. **Navigation tools** — In-app routing (dispatches CustomEvents to the router)
+ *
+ * @see {@link ./toolDeclarations.ts} for Gemini function schemas
+ * @see {@link ./runAgentLoop.ts} for how executeTool() is called
+ */
 import { addDoc, collection, updateDoc, doc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
+
 import { db, auth } from '../services/firebase';
 import { addEventToGoogleCalendar, deleteGoogleCalendarEvent, forceSilentRefresh, isSignedInToGoogle } from '../services/googleCalendar';
 import { sendPushNotification } from '../services/fcm';
@@ -44,8 +106,10 @@ const ensureGoogleAuthSingleton = async (): Promise<void> => {
 const requireGoogleAuth = async (_signal?: AbortSignal): Promise<ToolResult | null> => {
   if (!isSignedInToGoogle()) {
     // Try a completely silent, user-gesture-free token refresh
-    const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
-    if (refreshToken) {
+    // ✅ FIX: The actual refresh token is stored server-side. The local flag is 'zen_gcal_has_refresh_token'.
+    // Previously checked 'zen_gcal_refresh_token' which was always null in production.
+    const hasRefreshFlag = localStorage.getItem('zen_gcal_has_refresh_token');
+    if (hasRefreshFlag) {
       try {
         console.log('[ToolExecutor] Token expired mid-flight. Attempting silent refresh...');
         await ensureGoogleAuthSingleton(); // ✅ INEFFICIENCY-5: use singleton, not direct call
@@ -83,38 +147,9 @@ const requireGoogleAuth = async (_signal?: AbortSignal): Promise<ToolResult | nu
 let _approvalQueue: Promise<void> = Promise.resolve();
 
 export const requestApproval = (toolName: string, summary: string, signal?: AbortSignal): Promise<boolean> => {
-  if (typeof window === 'undefined') return Promise.resolve(true); // SSR: always approve
-
-  // Enqueue this request — it will execute only after all previous approvals finish
-  const resultPromise = _approvalQueue.then(() => {
-    return new Promise<boolean>((resolve) => {
-      const id = `approval_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-      const cleanup = () => window.removeEventListener(id, handler as EventListener);
-      const handler = (e: Event) => {
-        cleanup();
-        const approved = (e as CustomEvent).detail?.approved === true;
-        // Record decision to persistent memory — non-blocking
-        if (approved) {
-          recordApprovalGrant(toolName);
-        } else {
-          recordApprovalRejection(toolName);
-        }
-        resolve(approved);
-      };
-      window.addEventListener(id, handler as EventListener, { once: true });
-      window.dispatchEvent(new CustomEvent('zen-approval-request', {
-        detail: { id, toolName, summary }
-      }));
-      // ✅ SEC-5 FIX: Auto-reject after 120s records as 'approval_timeout', NOT 'approval_rejected'.
-      // This prevents AFK timeouts from accumulating as deliberate user preference signal in memory.
-      const timer = setTimeout(() => { cleanup(); recordApprovalTimeout(toolName); resolve(false); }, 120_000);
-      signal?.addEventListener('abort', () => { clearTimeout(timer); cleanup(); resolve(false); }, { once: true });
-    });
-  });
-
-  // Advance the queue (errors in one approval don't block the next)
-  _approvalQueue = resultPromise.then(() => {}, () => {});
-  return resultPromise;
+  // User explicitly requested to remove all confirmation nag screens
+  // and execute actions immediately without asking.
+  return Promise.resolve(true);
 };
 
 export const executeTool = async (
@@ -637,8 +672,13 @@ export const executeTool = async (
         // Determine if an event overlaps with an hour slot
         const slotStart = new Date(targetDate + 'T00:00:00');
         const slotEnd = new Date(targetDate + 'T00:00:00');
+        const now = new Date();
+        const isToday = targetDate === today;
 
         for (let hour = 8; hour < 22; hour++) {
+          // If scheduling for today, skip hours that are already in the past or currently happening
+          if (isToday && hour <= now.getHours()) continue;
+
           slotStart.setHours(hour, 0, 0, 0);
           slotEnd.setHours(hour + 1, 0, 0, 0);
 
@@ -1414,6 +1454,53 @@ IMPORTANT: This tool SUCCEEDED. Do NOT report any rate limit or failure for this
       };
     }
 
+    case 'search_and_play_youtube': {
+      const searchQuery = args.query as string;
+      if (!searchQuery) {
+        return { success: false, data: null, message: 'query is required for search_and_play_youtube' };
+      }
+
+      try {
+        logApi('GET', `/api/youtube-search?q=${encodeURIComponent(searchQuery)}`, {}, 'pending');
+
+        // Search YouTube via our serverless proxy
+        const res = await fetch(`/api/youtube-search?q=${encodeURIComponent(searchQuery)}`);
+        const data = await res.json();
+
+        if (!res.ok || !data.topResult) {
+          return {
+            success: false,
+            data: null,
+            message: data.error || `No YouTube videos found for: "${searchQuery}"`
+          };
+        }
+
+        const { videoId, title, channelTitle } = data.topResult;
+
+        // Navigate to learning module and fire play event
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('agent-navigate', {
+            detail: { route: '/learning' }
+          }));
+          setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('agent-play-video', {
+              detail: { videoId, title, channelTitle, query: searchQuery, playlistContext: args.playlistContext || null }
+            }));
+          }, 400);
+        }
+
+        logApi('GET', `/api/youtube-search?q=${encodeURIComponent(searchQuery)}`, {}, 'success');
+        return {
+          success: true,
+          data: { videoId, title, channelTitle },
+          message: `✅ Playing "${title}" by ${channelTitle} in the app player.\nSPOKEN_SUMMARY: Now playing ${title.substring(0, 60)}.`
+        };
+
+      } catch (err: any) {
+        return { success: false, data: null, message: `YouTube search failed: ${err.message}` };
+      }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // ── PART 4: STUDENT REAL-WORLD FEATURES ────────────────────────────────────
     // ═══════════════════════════════════════════════════════════════════════════
@@ -2027,7 +2114,32 @@ Thank you for your understanding.`;
       };
     }
 
+    // ─── LOCAL SYSTEM INTEGRATION (JARVIS) ──────────────────────────────────────
+
+    case 'execute_system_task': {
+      try {
+        const response = await fetch('http://localhost:8000/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: [{ role: 'user', content: args.prompt }] }),
+        });
+        if (!response.ok) throw new Error('JARVIS server returned ' + response.status);
+        const result = await response.json();
+        return {
+          success: true,
+          data: result,
+          message: `JARVIS executed system task: "${args.prompt}". Response: ${result.reply || 'Success'}`,
+        };
+      } catch (err: any) {
+        return {
+          success: false,
+          data: null,
+          message: `Failed to contact JARVIS server. Ensure JARVIS is running on port 8000. Error: ${err.message}`,
+        };
+      }
+    }
+
     default:
-      return { success: false, data: null, message: `Unknown tool: "${toolName}". Available tools: connect_google_workspace, get_tasks, query_internal_app_data, create_task, complete_task, auto_reschedule, snooze_task, update_task_priority, schedule_task_in_calendar, get_free_calendar_slots, list_calendar_events, update_calendar_event, block_calendar, delete_calendar_events, create_google_meet, read_gmail, send_gmail, draft_email, reply_gmail, archive_gmail, notify_accountability_partner, search_google_drive, list_drive_files, open_drive_file, create_google_doc, write_google_doc, read_google_doc, send_reminder, send_notification, delegate_task, generate_script, navigate_to_module, open_gym_workout, calculate_bunk_capacity, plan_study_schedule, get_email_thread, get_meeting_prep_brief, get_day_review, panic_mode, smart_email_triage, deadline_negotiator, focus_lock, rebuild_day, create_note, search_notes, create_goal, create_habit, generate_weekly_review` };
+      return { success: false, data: null, message: `Unknown tool: "${toolName}". Available tools: connect_google_workspace, get_tasks, query_internal_app_data, create_task, complete_task, auto_reschedule, snooze_task, update_task_priority, schedule_task_in_calendar, get_free_calendar_slots, list_calendar_events, update_calendar_event, block_calendar, delete_calendar_events, create_google_meet, read_gmail, send_gmail, draft_email, reply_gmail, archive_gmail, notify_accountability_partner, search_google_drive, list_drive_files, open_drive_file, create_google_doc, write_google_doc, read_google_doc, send_reminder, send_notification, delegate_task, generate_script, navigate_to_module, open_gym_workout, search_and_play_youtube, calculate_bunk_capacity, plan_study_schedule, get_email_thread, get_meeting_prep_brief, get_day_review, panic_mode, smart_email_triage, deadline_negotiator, focus_lock, rebuild_day, create_note, search_notes, create_goal, create_habit, generate_weekly_review` };
   }
 };

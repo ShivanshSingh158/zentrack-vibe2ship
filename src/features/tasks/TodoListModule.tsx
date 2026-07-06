@@ -433,7 +433,7 @@ export const TodoListModule = () => {
   return (
     <div className="module-container" style={{ position: 'relative' }}>
       <div className="calendar-sidebar">
-        <div className="calendar-header">
+        <div className="calendar-header hide-on-mobile">
           <CalendarIcon size={18} />
           <h2>Calendar</h2>
         </div>
@@ -509,11 +509,16 @@ export const TodoListModule = () => {
             </button>
           </div>
           
-          <p className="subtitle" style={{ display: 'flex', gap: '1rem', margin: 0, fontSize: '0.85rem' }}>
-            <span>{completedCount}/{todos.length} done</span>
-            {totalEstimate > 0 && <span>• ~{formatHoursDisplay(totalEstimate / 60)} estimated</span>}
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
+            <p className="subtitle" style={{ display: 'flex', gap: '1rem', margin: 0, fontSize: '0.85rem' }}>
+              <span>{completedCount}/{todos.length} done</span>
+              {totalEstimate > 0 && <span>• ~{formatHoursDisplay(totalEstimate / 60)} estimated</span>}
+            </p>
+
+
+          </div>
         </div>
+
 
         {/* Desktop Search & Filters */}
         <div className="hide-on-mobile" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem', background: 'var(--bg-surface)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
@@ -539,21 +544,10 @@ export const TodoListModule = () => {
           </div>
         </div>
 
-        {/* Mobile Search & Filters */}
-        <div className="show-on-mobile-only" style={{ marginBottom: '1rem' }}>
-          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-            <button
-              onClick={() => setShowMobileSearch(s => !s)}
-              style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', background: showMobileSearch ? 'rgba(99,102,241,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showMobileSearch ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.1)'}`, color: showMobileSearch ? 'var(--accent-primary)' : 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.78rem' }}
-            >
-              <Search size={14} />
-            </button>
-            <button className={`btn-secondary ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>All</button>
-            <button className={`btn-secondary ${filter === 'high' ? 'active' : ''}`} onClick={() => setFilter(filter === 'high' ? 'all' : 'high')} style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}>🔴</button>
-            <button className={`btn-secondary ${filter === 'recurring' ? 'active' : ''}`} onClick={() => setFilter(filter === 'recurring' ? 'all' : 'recurring')} style={{ padding: '0.3rem 0.5rem', fontSize: '0.75rem' }}>↻</button>
-          </div>
+        {/* Mobile Search Input (shows conditionally) */}
+        <div className="show-on-mobile-only" style={{ marginBottom: showMobileSearch ? '1rem' : '0' }}>
           {showMobileSearch && (
-            <div style={{ marginTop: '0.4rem', display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0 0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0 0.75rem', marginBottom: '1rem' }}>
               <Search size={14} color="var(--text-muted)" />
               <input
                 autoFocus
@@ -567,6 +561,7 @@ export const TodoListModule = () => {
             </div>
           )}
         </div>
+
 
         {/* Quick Add Task — progressive disclosure */}
         <motion.form 
@@ -586,19 +581,21 @@ export const TodoListModule = () => {
 
           {/* Row 1: text + add */}
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <input 
-              className="input"
-              type="text" 
-              placeholder="What needs to get done…" 
-              value={newTaskText} 
-              onChange={e => setNewTaskText(e.target.value)} 
-              style={{ flex: 1, minWidth: '200px' }} 
-            />
+            <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 250px' }}>
+              <input 
+                className="input"
+                type="text" 
+                placeholder="What needs to get done…" 
+                value={newTaskText} 
+                onChange={e => setNewTaskText(e.target.value)} 
+                style={{ flex: 1, minWidth: 0 }} 
+              />
+              <button type="button" onClick={() => setShowTaskOptions(s => !s)} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: showTaskOptions ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showTaskOptions ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: showTaskOptions ? '#c084fc' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="More options">
+                <ListChecks size={14} /> {showTaskOptions ? 'Less' : 'Options'}
+              </button>
+            </div>
             
-            <button type="button" onClick={() => setShowTaskOptions(s => !s)} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: showTaskOptions ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showTaskOptions ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: showTaskOptions ? '#c084fc' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="More options">
-              <ListChecks size={14} /> {showTaskOptions ? 'Less' : 'Options'}
-            </button>
-            <button type="submit" disabled={!newTaskText.trim()} className="btn-add-task">
+            <button type="submit" disabled={!newTaskText.trim()} className="btn-add-task" style={{ whiteSpace: 'nowrap' }}>
               Add Task
             </button>
           </div>

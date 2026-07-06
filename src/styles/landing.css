@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500&display=swap');
+/* Fonts are loaded non-blocking from index.html — no @import needed here */
+
 
 .landing-page {
   --font-display: 'Instrument Serif', serif;
@@ -276,3 +277,179 @@
   height: auto;
   display: block;
 }
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   MOBILE ONLY — max-width: 767px
+   Everything below this line ONLY affects phones/small screens.
+   Desktop layout (≥768px) is completely untouched.
+   ══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+
+  /* ── NAV ─────────────────────────────────────────────────────────────── */
+  .landing-nav {
+    padding: 1rem 1.25rem;
+  }
+
+  .landing-logo {
+    font-size: 1.4rem;
+  }
+
+  /* ── HERO ────────────────────────────────────────────────────────────── */
+  .landing-hero {
+    padding: 3.5rem 1.25rem 4rem !important;
+    min-height: unset !important;
+  }
+
+  /*
+   * The hero title was breaking into 1 word per line on mobile because
+   * `font-size: 3rem` with a narrow viewport caused every word to wrap.
+   * Reducing to 2.1rem + tighter letter-spacing keeps it 2-3 words per line.
+   */
+  .hero-title {
+    font-size: 2.1rem !important;
+    line-height: 1.12 !important;
+    letter-spacing: -0.04em !important;
+  }
+
+  .hero-subtitle {
+    font-size: 0.92rem !important;
+    line-height: 1.6 !important;
+    margin-top: 1.25rem !important;
+  }
+
+  .hero-cta-btn {
+    margin-top: 2rem !important;
+    padding: 0.9rem 2rem !important;
+    font-size: 0.92rem !important;
+    width: 100%;
+    text-align: center;
+  }
+
+  /* ── STATS BAR ──────────────────────────────────────────────────────── */
+  /*
+   * 4-column grid is too cramped on a 375px phone.
+   * 2×2 grid gives each stat enough breathing room.
+   */
+  .landing-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Remove right border from the 2nd stat (was only correct for 4-col) */
+  .landing-stats-item:nth-child(2) {
+    border-right: none !important;
+  }
+
+  .landing-stats-item:nth-child(3) {
+    border-right: 1px solid rgba(255,255,255,0.07) !important;
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .landing-stats-item:nth-child(4) {
+    border-top: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .landing-stats-item {
+    padding: 1.2rem 0.75rem !important;
+  }
+
+  .landing-stats-bar {
+    padding: 0 1.25rem !important;
+    margin-bottom: 3rem !important;
+  }
+
+  /* ── FEATURE SECTIONS ───────────────────────────────────────────────── */
+  /*
+   * Desktop: side-by-side row (text left, animation right, or reversed)
+   * Mobile: stack vertically — animation card on top, text below.
+   * min-height: 100vh removed — sections were way too tall on phone.
+   */
+  .scroll-section {
+    padding: 3.5rem 1.25rem 4rem !important;
+    min-height: unset !important;
+    align-items: flex-start !important;
+  }
+
+  .feature-container {
+    flex-direction: column !important;
+    gap: 2rem !important;
+    align-items: stretch !important;
+  }
+
+  /* Always show animation ABOVE the text on mobile — more visual, less scroll */
+  .feature-container > *:nth-child(2) {
+    order: -1;
+  }
+
+  .feature-text {
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  /*
+   * Feature headings were using clamp(2rem, 3.5vw, 3.25rem).
+   * On a 400px phone, 3.5vw = 14px — way too small.
+   * Force a sensible mobile size.
+   */
+  .feature-text h2,
+  .feature-text [style*="clamp"] {
+    font-size: 1.85rem !important;
+    line-height: 1.1 !important;
+    margin-bottom: 0.85rem !important;
+  }
+
+  .feature-text p {
+    font-size: 0.9rem !important;
+    line-height: 1.65 !important;
+  }
+
+  /* Bullet list items */
+  .feature-text ul li {
+    font-size: 0.82rem !important;
+    line-height: 1.5 !important;
+  }
+
+  /* Feature label above heading (e.g. "01 — PROACTIVE AI") */
+  .landing-feature-label {
+    font-size: 0.62rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+
+  /* Animation widget: constrain height on mobile so it doesn't dominate */
+  .feature-container > div:last-child {
+    max-height: 280px;
+    overflow: hidden;
+  }
+
+  /* ── FINAL CTA SECTION ─────────────────────────────────────────────── */
+  .landing-final-cta {
+    padding: 4rem 1.25rem 5rem !important;
+  }
+
+  /* ── FOOTER ─────────────────────────────────────────────────────────── */
+  footer {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.5rem !important;
+    padding: 1.5rem 1.25rem !important;
+  }
+
+  /* ── SOUND TOGGLE: move above bottom nav if present ─────────────────── */
+  [style*="bottom: '2rem'"][style*="right: '2rem'"][style*="borderRadius: '50%'"] {
+    bottom: 5rem !important;
+  }
+}
+
+/* Tablet — 400–767px range: slightly more generous sizing */
+@media (min-width: 400px) and (max-width: 767px) {
+  .hero-title {
+    font-size: 2.5rem !important;
+    letter-spacing: -0.05em !important;
+  }
+
+  .feature-text h2,
+  .feature-text [style*="clamp"] {
+    font-size: 2rem !important;
+  }
+}
+

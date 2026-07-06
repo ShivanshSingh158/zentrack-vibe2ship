@@ -1,4 +1,44 @@
-import { callWithFallback } from '../services/gemini/core';
+/**
+ * @file orchestrator.ts
+ * @module src/agent/orchestrator
+ *
+ * ZenTrack Master Orchestrator — the brain of the multi-agent AI system.
+ *
+ * ## Responsibilities
+ *
+ * 1. **Intent Classification** — Every user command passes through a two-stage
+ *    classifier. First a regex-based Fast Heuristic Router handles common patterns
+ *    (< 5ms). Non-matching commands go to a Gemini Flash LLM classifier that returns
+ *    a structured JSON intent with hardness level (1-4) and delegation plan.
+ *
+ * 2. **DAG Execution** — Builds a Directed Acyclic Graph of agent tasks based on
+ *    the classified intent. Independent agents run in parallel; dependent agents wait
+ *    for their dependencies to complete. Shared state prevents redundant API calls.
+ *
+ * 3. **Agent Fleet Routing** — 12 specialized agents (ORACLE, HERMES, CHRONOS,
+ *    TITAN, AEGIS, ARGUS, ARCHIVE, SCRIBE, ENIGMA, ATLAS, NAVIGATOR, SPECTRE)
+ *    each have a custom system prompt and restricted tool whitelist defined in
+ *    `runAgentLoop.ts`.
+ *
+ * 4. **Compensation & Retry** — If an agent fails, the DAG engine attempts
+ *    compensation actions (e.g. rollback partial writes) and retries once before
+ *    marking the task as failed.
+ *
+ * ## Event Bus
+ * The orchestrator communicates with the UI via `window.dispatchEvent('agent-log')`.
+ * The `SaraInterface` component listens for these events to update the terminal feed
+ * and animate the agent fleet cards.
+ *
+ * ## Critical Constraint: No Direct Tool Calls
+ * The orchestrator itself NEVER calls tools. It only plans and delegates.
+ * All tool execution happens inside `runAgentLoop.ts` → `toolExecutor.ts`.
+ *
+ * @see {@link ./runAgentLoop.ts} for per-agent Gemini conversation loops
+ * @see {@link ./toolExecutor.ts} for all tool implementations
+ * @see {@link ./core/DagEngine.ts} for the DAG execution engine
+ */
+import { callWithFallback, SAFETY_SETTINGS } from '../services/gemini/core';
+
 import type { AgentStep } from './runAgentLoop';
 import { runAgentLoop } from './runAgentLoop';
 import { logApi, logWebSocket } from '../utils/networkLogger';
@@ -123,8 +163,15 @@ export function getAgentPromptByRole(role: string): string {
   return getAgentPrompt(role as AgentRole);
 }
 
+
 // ─── Safe window dispatch ─────────────────────────────────────────────────────
-const safeDispatch = (detail: object) => {
+// ✅ FIX: Now dispatches orchestrator-level status messages (thinking/progress only) to the UI.
+// IMPORTANT: Only dispatches 'thinking' events — NOT 'answer' events.
+// Answer events are already spoken via TTS by onStep; dispatching them again causes duplicate TTS.
+// This makes retries, rollbacks, fleet cooldowns, and compensation actions visible in the terminal.
+const safeDispatch = (detail: Record<string, any>) => {
+  // Only forward non-answer events to avoid duplicate TTS voice output
+  if (detail.type === 'answer') return;
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('agent-log', { detail }));
   }
@@ -252,6 +299,14 @@ function fastRouter(instruction: string): DagTask[] | null {
     ];
   }
 
+  // ✅ YouTube play fast-router — instant route for "play/watch" commands
+  // No LLM Supervisor needed — always NAVIGATOR + search_and_play_youtube
+  if (/^(play|watch|put on|stream|open video of|show me the video|show video)/i.test(text)) {
+    return [
+      { id: 't1', assignedAgent: 'NAVIGATOR', instruction, dependencies: [], status: 'pending', isFinal: true },
+    ];
+  }
+
   return null;
 }
 
@@ -264,6 +319,56 @@ export async function orchestrateAgent(
   history: Array<{role: 'user'|'model', text: string}> = [],
   signal?: AbortSignal
 ): Promise<string> {
+
+  const textLower = instruction.toLowerCase().trim();
+
+  const historyContext = history.length > 0 
+    // ✅ FIX: Truncate to last 10 turns to prevent token overflow on long conversations
+    ? `\n\n--- PREVIOUS CONVERSATION CONTEXT ---\n${history.slice(-10).map(m => `[${m.role.toUpperCase()}]: ${m.text}`).join('\n\n')}\n-----------------------------------\n\n`
+    : '';
+
+  // --- 1. NLP INTENT CLASSIFIER (Fast Path & Clarification) ---
+  onStep({ type: 'thinking', title: 'Jarvis is classifying intent...' });
+  safeDispatch({ type: 'thinking', title: 'Jarvis is classifying intent...' });
+
+  try {
+    const { callWithFallbackUnthrottled } = await import('../services/gemini/core');
+    const response = await callWithFallbackUnthrottled(async (genAI, modelName) => {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        safetySettings: SAFETY_SETTINGS,
+        systemInstruction: `You are Jarvis, the intent classifier for a highly intelligent Voice Assistant.
+Your job is to read the user's prompt (and the conversation history) and classify it into one of three buckets:
+1. CHITCHAT: Pure conversation, greetings, or simple questions that do NOT require taking actions or reading data. (e.g. "how are you", "who are you").
+2. CLARIFICATION_REQUIRED: An actionable request (e.g. "delete emails", "reschedule my meeting") that is MISSING critical details (which emails? which meeting? to what time?), OR an ambiguous request.
+3. ACTIONABLE: A fully specified command, OR a follow-up answer from the user that completes a previous clarification (e.g. user says "first 5" after you asked "which emails?").
+
+Output JSON only:
+{
+  "intent": "CHITCHAT" | "CLARIFICATION_REQUIRED" | "ACTIONABLE",
+  "response": "Your spoken response to the user. For CHITCHAT, give a natural 1-sentence reply. For CLARIFICATION_REQUIRED, ask the clarifying question. For ACTIONABLE, provide a short confirmation like 'Right away, sir.' or 'I am on it, sir.'"
+}`,
+        generationConfig: { responseMimeType: "application/json" }
+      });
+      return await model.generateContent(`${historyContext}CURRENT REQUEST: ${instruction}`);
+    });
+    
+    const text = response.response.text();
+    const parsed = JSON.parse(text);
+    
+    if (parsed.intent === 'CHITCHAT' || parsed.intent === 'CLARIFICATION_REQUIRED') {
+      onStep({ type: 'answer', title: parsed.response, isClarification: parsed.intent === 'CLARIFICATION_REQUIRED' });
+      safeDispatch({ type: 'answer', title: parsed.response, isClarification: parsed.intent === 'CLARIFICATION_REQUIRED' });
+      return parsed.response; // Short-circuit DAG, return immediately
+    } else {
+      // ACTIONABLE - We rely on HomeDashboard's instant client-side agent-speak for speed, so do not emit TTS here.
+      // But we can still log the thinking step to the terminal.
+      onStep({ type: 'thinking', title: `[Intent: ACTIONABLE] ${parsed.response}` });
+    }
+  } catch (e) {
+    console.warn("Intent classifier failed, falling back to actionable:", e);
+    // Do nothing for TTS, let the DAG continue. HomeDashboard already played the instant ack.
+  }
 
   let taskList: DagTask[] | null = null;
   const fastDag = fastRouter(instruction);
@@ -279,11 +384,6 @@ export async function orchestrateAgent(
     safeDispatch({ type: 'thinking', title: 'Supervisor mapping DAG...' });
     logApi('POST', '/api/v1/agent/supervisor', { userMessage: instruction }, 'pending');
   }
-  
-  const historyContext = history.length > 0 
-    // ✅ FIX: Truncate to last 10 turns to prevent token overflow on long conversations
-    ? `\n\n--- PREVIOUS CONVERSATION CONTEXT ---\n${history.slice(-10).map(m => `[${m.role.toUpperCase()}]: ${m.text}`).join('\n\n')}\n-----------------------------------\n\n`
-    : '';
 
   // ── Per-mission lazy loads ────────────────────────────────────────────────
   let _cachedAgentMemory: string | null = null;
@@ -383,6 +483,7 @@ export async function orchestrateAgent(
       const response = await callWithFallback(async (genAI, modelName) => {
         const model = genAI.getGenerativeModel({ 
           model: modelName, 
+          safetySettings: SAFETY_SETTINGS,
           systemInstruction: buildSupervisorPrompt(supervisorPersonaHint),
           generationConfig: {
             responseMimeType: "application/json",
@@ -598,8 +699,8 @@ ${trimCount > 0 ? '\n> [!NOTE]\n> Note: earlier research context was optimized f
           appContext,
           apiKey,
           (step) => {
-            onStep(step);
-            safeDispatch(step);
+            onStep({ ...step, agent: task.assignedAgent });
+            safeDispatch({ ...step, agent: task.assignedAgent });
           },
           getAgentPromptByRole(task.assignedAgent),
           undefined,

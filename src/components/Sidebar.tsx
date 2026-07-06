@@ -2,7 +2,7 @@ import { NavLink, Link } from 'react-router-dom';
 import {
   Briefcase, ListTodo, GraduationCap, LogOut, Play, Pause, Zap,
   Home, Calendar, Target, BookOpen, X, Flame, BarChart3, Menu,
-  ClipboardCheck, ClipboardList, Settings2, GripVertical, Check, Wrench, Dumbbell, ShieldAlert
+  ClipboardCheck, ClipboardList, Settings2, GripVertical, Check, Wrench, Dumbbell, ShieldAlert, Bug
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { usePomodoroContext } from '../contexts/PomodoroContext';
@@ -38,7 +38,7 @@ const ALL_MODULES: ModuleDef[] = [
   { id: 'notes',       label: 'Smart Storage', shortLabel: 'Notes',   path: '/notes',       icon: <BookOpen size={20} color="#fbbf24" /> },
   { id: 'habits',      label: 'Habits',        shortLabel: 'Habits',  path: '/habits',      icon: <Flame size={20} /> },
   { id: 'learning',    label: 'Learning',      shortLabel: 'Learn',   path: '/learning',    icon: <GraduationCap size={20} /> },
-  { id: 'tools',       label: 'Power Tools',   shortLabel: 'Tools',   path: '/tools',       icon: <Wrench size={20} /> },
+
   { id: 'jobs',        label: 'Job Tracker',   shortLabel: 'Jobs',    path: '/jobs',        icon: <Briefcase size={20} /> },
   { id: 'analytics',   label: 'Analytics',     shortLabel: 'Stats',   path: '/analytics',   icon: <BarChart3 size={20} /> },
   { id: 'attendance',  label: 'Attendance',    shortLabel: 'Attend.', path: '/attendance',  icon: <ClipboardCheck size={20} /> },
@@ -289,6 +289,7 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
               : <div className="user-avatar-fallback">{user.displayName?.charAt(0) || 'U'}</div>}
             <span className="user-name">{user.displayName}</span>
           </div>
+          <button className="btn-icon" onClick={() => { throw new Error('Frontend Sentry Test Error'); }} title="Test Sentry" style={{ color: '#ef4444' }}><Bug size={16} /></button>
           <button className="btn-logout" onClick={onLogout} title="Logout"><LogOut size={16} /></button>
         </div>
       </aside>

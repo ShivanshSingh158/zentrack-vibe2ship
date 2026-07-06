@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
+import YouTube from 'react-youtube';
 import {
   Plus, Check, ChevronDown, ChevronRight, BookOpen, Trash2,
   FileText, Search, X, Play, GripVertical,
@@ -44,6 +45,28 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   const [speed, setSpeed] = useState<number>(() => {
     try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
   });
+  const [player, setPlayer] = useState<any>(null);
+
+  useEffect(() => {
+    if (player) {
+      player.setPlaybackRate(speed);
+    }
+  }, [speed, player]);
+
+  // Sync timeline progress to localStorage
+  useEffect(() => {
+    if (!player) return;
+    const interval = setInterval(async () => {
+      try {
+        const time = await player.getCurrentTime();
+        if (time > 0) {
+          localStorage.setItem(`zt_vid_time_${playing.videoId}`, Math.floor(time).toString());
+        }
+      } catch (err) {}
+    }, 5000); // Check every 5 seconds
+    return () => clearInterval(interval);
+  }, [player, playing.videoId]);
+
   const [showNotes, setShowNotes] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [chatAutoTrigger, setChatAutoTrigger] = useState<string | null>(null);
@@ -144,37 +167,37 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
             <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.15rem' }}>{playing.title}</div>
           </div>
           {/* Speed controls */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: 'rgba(255,255,255,0.06)', borderRadius: '10px', padding: '0.3rem 0.5rem', border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0 }}>
-            <Gauge size={12} color="rgba(255,255,255,0.4)" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#212121', borderRadius: '16px', padding: '0.3rem 0.5rem', border: '1px solid #303030', flexShrink: 0 }}>
+            <Gauge size={12} color="#8e8e8e" />
             {SPEEDS.map(s => (
               <button key={s} onClick={() => handleSpeedChange(s)}
-                style={{ padding: '0.18rem 0.4rem', borderRadius: '6px', border: 'none', background: speed === s ? '#3b82f6' : 'transparent', color: speed === s ? '#fff' : 'rgba(255,255,255,0.45)', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 700, transition: 'all 150ms ease' }}>
+                style={{ padding: '0.18rem 0.4rem', borderRadius: '12px', border: 'none', background: speed === s ? '#ececec' : 'transparent', color: speed === s ? '#212121' : '#8e8e8e', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 600, transition: 'all 150ms ease' }}>
                 {s}×
               </button>
             ))}
           </div>
             <button onClick={() => setFocusMode(v => !v)}
               title="Focus Mode"
-              style={{ flexShrink: 0, background: focusMode ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${focusMode ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: focusMode ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              style={{ flexShrink: 0, background: focusMode ? '#2f2f2f' : 'transparent', border: `1px solid ${focusMode ? '#424242' : '#303030'}`, borderRadius: '8px', width: '36px', height: '36px', color: focusMode ? '#ececec' : '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
               <Eye size={15} />
             </button>
             {/* Notes toggle */}
             <button onClick={() => { setShowNotes(v => !v); setShowChat(false); }}
               title="Video notes"
-              style={{ flexShrink: 0, background: showNotes ? 'rgba(99,102,241,0.25)' : 'rgba(255,255,255,0.08)', border: `1px solid ${showNotes ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: showNotes ? '#818cf8' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              style={{ flexShrink: 0, background: showNotes ? '#2f2f2f' : 'transparent', border: `1px solid ${showNotes ? '#424242' : '#303030'}`, borderRadius: '8px', width: '36px', height: '36px', color: showNotes ? '#ececec' : '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
               <FileText size={15} />
             </button>
             {/* AI Chat toggle */}
             <button onClick={() => { setShowChat(v => !v); setShowNotes(false); }}
-              title="Ask Gemini AI about this lecture"
-              style={{ flexShrink: 0, background: showChat ? 'rgba(168,85,247,0.3)' : 'rgba(255,255,255,0.08)', border: `1px solid ${showChat ? 'rgba(168,85,247,0.7)' : 'rgba(255,255,255,0.15)'}`, borderRadius: '8px', width: '36px', height: '36px', color: showChat ? '#c4b5fd' : '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              title="Ask ZEN-GPT about this lecture"
+              style={{ flexShrink: 0, background: showChat ? '#2f2f2f' : 'transparent', border: `1px solid ${showChat ? '#424242' : '#303030'}`, borderRadius: '8px', width: '36px', height: '36px', color: showChat ? '#ececec' : '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', transition: 'all 0.15s' }}>
               <MessageSquare size={15} />
-              {showChat && <span style={{ position: 'absolute', top: '4px', right: '4px', width: '6px', height: '6px', borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 6px rgba(168,85,247,0.8)' }} />}
             </button>
-            <button onClick={onMinimize} title="Minimize to PiP" style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '8px', width: '36px', height: '36px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={onMinimize} title="Minimize to PiP" style={{ flexShrink: 0, background: 'transparent', border: '1px solid #303030', borderRadius: '8px', width: '36px', height: '36px', color: '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
               <Minimize2 size={16} />
             </button>
-            <button onClick={onClose} title="Close Player" style={{ flexShrink: 0, background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '50%', width: '36px', height: '36px', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button onClick={onClose} title="Close Player" style={{ flexShrink: 0, background: 'transparent', border: '1px solid #303030', borderRadius: '8px', width: '36px', height: '36px', color: '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
+              onMouseEnter={e => e.currentTarget.style.color = '#f87171'} onMouseLeave={e => e.currentTarget.style.color = '#8e8e8e'}>
               <X size={16} />
             </button>
           </div>
@@ -187,11 +210,22 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
               flex: 1, position: 'relative', aspectRatio: focusMode ? 'auto' : '16/9', height: focusMode ? '100%' : 'auto', 
               background: '#000', borderRadius: focusMode ? '0' : '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0, transition: 'all 0.3s' 
             }}>
-            <iframe
-              src={`https://www.youtube.com/embed/${playing.videoId}?autoplay=1&rel=0&modestbranding=1`}
+            <YouTube
+              videoId={playing.videoId}
               title={playing.title}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
+              opts={{
+                playerVars: { 
+                  autoplay: 1, 
+                  rel: 0, 
+                  modestbranding: 1,
+                  start: Number(localStorage.getItem(`zt_vid_time_${playing.videoId}`)) || undefined
+                },
+                width: '100%',
+                height: '100%'
+              }}
+              onReady={(e: any) => {
+                setPlayer(e.target);
+              }}
               style={{ width: '100%', height: '100%', border: 0 }}
             />
           </div>
@@ -250,15 +284,21 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <button onClick={() => onNavigate(-1)} disabled={!hasPrev}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasPrev ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasPrev ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasPrev ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '24px', border: '1px solid #424242', background: 'transparent', color: hasPrev ? '#ececec' : 'rgba(255,255,255,0.2)', cursor: hasPrev ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s' }}
+                onMouseEnter={e => { if (hasPrev) e.currentTarget.style.background = '#2f2f2f'; }}
+                onMouseLeave={e => { if (hasPrev) e.currentTarget.style.background = 'transparent'; }}>
                 <SkipBack size={14} /> Prev
               </button>
               <button onClick={() => { if(hasNext) { onMarkWatched(playing.topicId, playing.subtaskId); onNavigate(1); } else { handleTriggerQuiz(); } }}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg,#10b981,#059669)', color: '#fff', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 700, minHeight: '44px' }}>
+                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '24px', border: 'none', background: '#ececec', color: '#1a1a1a', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 700, minHeight: '44px', transition: 'all 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
+                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
                 <Check size={15} strokeWidth={2.5} /> Mark Watched{hasNext ? ' & Next' : ' & Quiz'}
               </button>
               <button onClick={() => onNavigate(1)} disabled={!hasNext}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.12)', background: hasNext ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.02)', color: hasNext ? '#fff' : 'rgba(255,255,255,0.2)', cursor: hasNext ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600 }}>
+                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '24px', border: '1px solid #424242', background: 'transparent', color: hasNext ? '#ececec' : 'rgba(255,255,255,0.2)', cursor: hasNext ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s' }}
+                onMouseEnter={e => { if (hasNext) e.currentTarget.style.background = '#2f2f2f'; }}
+                onMouseLeave={e => { if (hasNext) e.currentTarget.style.background = 'transparent'; }}>
                 Next <SkipForward size={14} />
               </button>
             </div>
@@ -369,8 +409,38 @@ export const LearningChecklistModule = () => {
     return () => unsub();
   }, [user]);
 
+  // ── Video Handlers ────────────────────────────────────────────────────────
+
+  const handlePlayVideo = useCallback((videoId: string, subtaskId: string, topicId: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    const videos = topic.subTasks
+      .map(st => {
+        const id = st.url ? extractYoutubeId(st.url) : st.resources?.map((r: any) => extractYoutubeId(r.url)).find(Boolean);
+        return id ? { videoId: id, subtaskId: st.id, topicId, title: st.text } : null;
+      })
+      .filter(Boolean) as Array<{ videoId: string; subtaskId: string; topicId: string; title: string }>;
+
+    const indexInPlaylist = Math.max(0, videos.findIndex(v => v.subtaskId === subtaskId));
+    const watchedCount = topic.subTasks.filter(st => st.status === 'completed').length;
+    const current = videos[indexInPlaylist] || { videoId, subtaskId, topicId, title: 'Lecture' };
+    const nextPlaying = {
+      ...current,
+      watchedCount,
+      totalCount: videos.length || 1,
+      indexInPlaylist
+    };
+
+    setPlaying(nextPlaying);
+    setIsPipMode(false);
+
+    const bookmark = { topicId, subtaskId, videoId, title: current.title, topicTitle: topic.title };
+    setContinueWatching(bookmark);
+    try { localStorage.setItem(CW_KEY, JSON.stringify(bookmark)); } catch {}
+  }, [topics]);
+
   // ── Agent-triggered lecture opening ───────────────────────────────────────
-  // Listens for 'agent-open-lecture' events dispatched by the AgentNavigator
   // in App.tsx when the user asks the AI to "open lecture X".
   useEffect(() => {
     const handler = (e: Event) => {
@@ -436,37 +506,37 @@ export const LearningChecklistModule = () => {
     return () => window.removeEventListener('agent-open-lecture', handler);
   }, [topics, handlePlayVideo]);
 
+  // ── Agent-triggered YouTube search & play (from search_and_play_youtube tool) ──
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        videoId: string;
+        title?: string;
+        channelTitle?: string;
+        query?: string;
+      };
+      if (!detail?.videoId) return;
 
-  // ── Video Handlers ────────────────────────────────────────────────────────
+      // Immediately open the player with the video — no playlist context needed
+      setPlaying({
+        videoId: detail.videoId,
+        subtaskId: '__agent_search__',
+        topicId: '__agent_search__',
+        title: detail.title || detail.query || 'Agent Search Result',
+        watchedCount: 0,
+        totalCount: 1,
+        indexInPlaylist: 0,
+      });
+      setIsPipMode(false);
 
-  const handlePlayVideo = useCallback((videoId: string, subtaskId: string, topicId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-
-    const videos = topic.subTasks
-      .map(st => {
-        const id = st.url ? extractYoutubeId(st.url) : st.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
-        return id ? { videoId: id, subtaskId: st.id, topicId, title: st.text } : null;
-      })
-      .filter(Boolean) as Array<{ videoId: string; subtaskId: string; topicId: string; title: string }>;
-
-    const indexInPlaylist = Math.max(0, videos.findIndex(v => v.subtaskId === subtaskId));
-    const watchedCount = topic.subTasks.filter(st => st.status === 'completed').length;
-    const current = videos[indexInPlaylist] || { videoId, subtaskId, topicId, title: 'Lecture' };
-    const nextPlaying = {
-      ...current,
-      watchedCount,
-      totalCount: videos.length || 1,
-      indexInPlaylist
+      toast.success(`🎬 Now playing: "${detail.title || detail.query}"`, { duration: 4000 });
     };
 
-    setPlaying(nextPlaying);
-    setIsPipMode(false);
+    window.addEventListener('agent-play-video', handler);
+    return () => window.removeEventListener('agent-play-video', handler);
+  }, []);
 
-    const bookmark = { topicId, subtaskId, videoId, title: current.title, topicTitle: topic.title };
-    setContinueWatching(bookmark);
-    try { localStorage.setItem(CW_KEY, JSON.stringify(bookmark)); } catch {}
-  }, [topics]);
+
 
   const handleResumePlaylist = useCallback((topicId: string) => {
     const topic = topics.find(t => t.id === topicId);

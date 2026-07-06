@@ -177,7 +177,7 @@ export function MissionReport() {
             <div className="mission-report-content markdown-body" data-lenis-prevent="true">
               <div style={{ color: '#e4e4e7', fontSize: '0.92rem', lineHeight: 1.7, marginBottom: '1.5rem' }}>
                 <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>
-                  {agentResult.replace(/<b>/gi, '**').replace(/<\/b>/gi, '**')}
+                  {agentResult.replace(/SPOKEN_SUMMARY:[\s\S]*$/i, '').replace(/<b>/gi, '**').replace(/<\/b>/gi, '**')}
                 </ReactMarkdown>
               </div>
 

@@ -122,7 +122,7 @@
 
 
 .execute-command-btn {
-  background: linear-gradient(135deg, #a78bfa, #60a5fa);
+  background: var(--accent-gradient);
   border: none;
   border-radius: 0.6rem;
   width: 36px;
@@ -149,10 +149,10 @@
   transform: translateX(-50%);
   width: 100px;
   height: 4px;
-  background: linear-gradient(90deg, #c084fc, #a855f7);
+  background: var(--accent-gradient);
   border-radius: 4px;
   opacity: 0.8;
-  box-shadow: 0 0 10px rgba(168, 85, 247, 0.6);
+  box-shadow: 0 0 10px var(--accent-glow);
 }
 
 /* Typography & Labels */

@@ -1,0 +1,550 @@
+/* ================================================================
+   VAULT OS — FABLE 5 EDITION
+   Full premium overhaul: Electric cyan, hexagonal grid, scanlines,
+   advanced HUD aesthetic, animated neon glow system
+   ================================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+/* ── CSS Custom Properties ──────────────────────────────────────── */
+:root {
+  --v-bg:          #000508;
+  --v-bg2:         #000d1a;
+  --v-primary:     #00d4ff;
+  --v-primary-dim: rgba(0, 212, 255, 0.15);
+  --v-glow:        rgba(0, 212, 255, 0.5);
+  --v-accent:      #0055ff;
+  --v-purple:      #7c3aed;
+  --v-green:       #00ff9f;
+  --v-text:        rgba(200, 235, 255, 0.9);
+  --v-text-dim:    rgba(0, 200, 255, 0.45);
+  --v-border:      rgba(0, 212, 255, 0.12);
+  --v-border-hot:  rgba(0, 212, 255, 0.5);
+  --v-mono:        'Share Tech Mono', 'Courier New', monospace;
+  --v-hud:         'Orbitron', 'Rajdhani', sans-serif;
+  --v-panel-bg:    rgba(0, 10, 25, 0.7);
+}
+
+/* ── Container ──────────────────────────────────────────────────── */
+.vault-os-container {
+  position: fixed;
+  top: 70px;
+  left: 0;
+  width: 100vw;
+  height: calc(100vh - 70px);
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(ellipse at 50% 35%, #000d1a 0%, #000508 55%, #000000 100%);
+  color: var(--v-text);
+  font-family: var(--v-mono);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  isolation: isolate;
+}
+
+/* ── Hexagonal grid overlay ─────────────────────────────────────── */
+.vault-os-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right,  rgba(0, 200, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(0, 200, 255, 0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  pointer-events: none;
+  z-index: 0;
+  mask-image: radial-gradient(ellipse at 50% 40%, black 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 40%, black 20%, transparent 75%);
+}
+
+/* ── CRT Scanlines ──────────────────────────────────────────────── */
+.vault-os-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 3px,
+      rgba(0, 200, 255, 0.012) 3px,
+      rgba(0, 200, 255, 0.012) 4px
+    );
+  pointer-events: none;
+  z-index: 11;
+  opacity: 1;
+}
+
+/* ── Scanline sweep animation ───────────────────────────────────── */
+@keyframes scanSweep {
+  0%   { top: -4px; }
+  100% { top: 100%; }
+}
+.vault-scan-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(0, 200, 255, 0.04) 20%,
+    rgba(0, 200, 255, 0.06) 50%,
+    rgba(0, 200, 255, 0.04) 80%,
+    transparent 100%
+  );
+  animation: scanSweep 6s linear infinite;
+  pointer-events: none;
+  z-index: 12;
+}
+
+/* ── Layout ─────────────────────────────────────────────────────── */
+.vault-layout {
+  display: flex;
+  flex: 1;
+  position: relative;
+  z-index: 2;
+  padding: 0.75rem 1.25rem 0.5rem;
+  gap: 1.25rem;
+  overflow: hidden;
+}
+
+/* ── Sidebars ────────────────────────────────────────────────────── */
+.vault-sidebar {
+  flex: 0 0 230px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  z-index: 3;
+  border: 1px solid var(--v-border);
+  background: var(--v-panel-bg);
+  backdrop-filter: blur(16px);
+  border-radius: 6px;
+  padding: 1rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,200,255,0.2) transparent;
+}
+
+.vault-sidebar.right {
+  align-items: flex-start;
+  text-align: left;
+  margin-top: 0;
+}
+
+/* ── Center ──────────────────────────────────────────────────────── */
+.vault-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 2;
+  min-height: 400px;
+  overflow: visible;
+}
+
+/* ── Panel blocks ────────────────────────────────────────────────── */
+.vault-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.25rem;
+  width: 100%;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--v-border);
+}
+.vault-panel:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.vault-panel-title {
+  font-family: var(--v-hud);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--v-primary);
+  text-transform: uppercase;
+  margin-bottom: 0.6rem;
+  text-shadow: 0 0 8px var(--v-glow);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.vault-panel-title::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--v-primary);
+  box-shadow: 0 0 6px var(--v-primary);
+  flex-shrink: 0;
+  animation: dotPulse 2s ease-in-out infinite;
+}
+@keyframes dotPulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.8); }
+  50%       { opacity: 1;   transform: scale(1.2); }
+}
+
+/* ── Header / Identity ───────────────────────────────────────────── */
+.vault-header {
+  font-family: var(--v-hud);
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 0.3em;
+  color: #fff;
+  text-shadow: 0 0 20px rgba(0,200,255,0.3);
+  margin-bottom: 0.15rem;
+  line-height: 1;
+}
+.vault-header span {
+  color: var(--v-primary);
+  text-shadow: 0 0 15px var(--v-primary);
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.vault-subtitle {
+  font-size: 0.55rem;
+  letter-spacing: 0.15em;
+  color: var(--v-text-dim);
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+}
+
+/* ── Stats ───────────────────────────────────────────────────────── */
+.vault-stat-block { margin-bottom: 0.75rem; }
+.vault-stat-value {
+  font-family: var(--v-hud);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: 0.05em;
+}
+.vault-stat-label {
+  font-size: 0.55rem;
+  color: var(--v-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin-bottom: 3px;
+}
+
+/* ── Progress Bars ───────────────────────────────────────────────── */
+.vault-progress-track {
+  width: 100%;
+  height: 3px;
+  background: rgba(0, 200, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.vault-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(0,200,255,0.5), var(--v-primary));
+  box-shadow: 0 0 8px var(--v-primary);
+  border-radius: 2px;
+  transition: width 0.6s ease;
+}
+
+/* ── Lists ───────────────────────────────────────────────────────── */
+.vault-list {
+  list-style: none;
+  padding: 0; margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.vault-list-item {
+  font-size: 0.75rem;
+  color: var(--v-text);
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  transition: all 0.2s;
+  cursor: pointer;
+  line-height: 1.4;
+  padding: 4px 0;
+}
+.vault-list-item:hover {
+  color: #fff;
+  text-shadow: 0 0 10px var(--v-primary);
+  transform: translateX(4px);
+}
+.vault-sidebar.right .vault-list-item:hover {
+  transform: translateX(-4px);
+}
+.vault-list-item::before {
+  content: '>';
+  color: var(--v-primary);
+  font-weight: bold;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* ── Top Right Clock ─────────────────────────────────────────────── */
+.vault-top-right {
+  position: absolute;
+  top: 0.75rem;
+  right: 1.5rem;
+  text-align: right;
+  z-index: 10;
+}
+.vault-clock {
+  font-family: var(--v-hud);
+  font-size: 2rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 15px rgba(255,255,255,0.2);
+}
+.vault-date {
+  font-size: 0.6rem;
+  color: var(--v-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 0.15rem;
+  font-family: var(--v-hud);
+}
+
+/* ── Status Overlay ─────────────────────────────────────────────── */
+.vault-primary-directive {
+  position: absolute;
+  bottom: 7rem;
+  text-align: center;
+  z-index: 5;
+  width: 100%;
+  pointer-events: none;
+}
+.vault-directive-label {
+  font-family: var(--v-hud);
+  font-size: 0.6rem;
+  color: var(--v-primary);
+  letter-spacing: 0.35em;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px var(--v-glow);
+}
+.vault-directive-value {
+  font-family: var(--v-hud);
+  font-size: 3.5rem;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+  letter-spacing: 0.15em;
+  text-shadow: 0 0 40px rgba(0, 212, 255, 0.35);
+}
+.vault-directive-sub {
+  font-size: 0.7rem;
+  color: var(--v-text-dim);
+  margin-top: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+/* ── Orb Container ───────────────────────────────────────────────── */
+.vault-orb-container {
+  width: 480px;
+  height: 480px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -58%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.vault-orb-glow {
+  position: absolute;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, rgba(0,200,255,0.3) 0%, transparent 70%);
+  border-radius: 50%;
+  filter: blur(60px);
+  opacity: 0.25;
+  z-index: 0;
+  transition: all 0.5s ease;
+}
+.vault-orb-glow.active {
+  opacity: 0.5;
+  filter: blur(80px);
+  animation: orbPulse 1.5s ease-in-out infinite alternate;
+}
+@keyframes orbPulse {
+  0%   { transform: scale(0.85); opacity: 0.35; }
+  100% { transform: scale(1.15); opacity: 0.6;  }
+}
+
+/* ── Command Bar Wrapper ─────────────────────────────────────────── */
+.vault-agent-bar-wrapper {
+  position: absolute;
+  bottom: 0.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 92%;
+  max-width: 900px;
+  z-index: 10;
+}
+
+/* ── Command Bar Overrides ───────────────────────────────────────── */
+.vault-os-container .command-bar-container {
+  background: rgba(0, 5, 15, 0.85) !important;
+  border: 1px solid var(--v-border-hot) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 30px rgba(0,200,255,0.08), inset 0 0 20px rgba(0,200,255,0.03) !important;
+  backdrop-filter: blur(20px) !important;
+  padding: 0.7rem 1rem !important;
+  transition: all 0.2s !important;
+}
+.vault-os-container .command-bar-container:focus-within {
+  border-color: var(--v-primary) !important;
+  box-shadow: 0 0 40px rgba(0,200,255,0.18), inset 0 0 20px rgba(0,200,255,0.06) !important;
+}
+
+.vault-os-container .agent-command-input {
+  background: transparent !important;
+  font-family: var(--v-mono) !important;
+  color: #e0f7ff !important;
+  font-size: 0.9rem !important;
+  letter-spacing: 0.04em !important;
+  border: none !important;
+  caret-color: var(--v-primary) !important;
+}
+.vault-os-container .agent-command-input::placeholder {
+  color: rgba(0, 200, 255, 0.28) !important;
+  text-transform: uppercase !important;
+  font-size: 0.8rem !important;
+}
+
+.vault-os-container .command-bar-actions .execute-command-btn {
+  background: rgba(0,200,255,0.06) !important;
+  border: 1px solid rgba(0,200,255,0.3) !important;
+  color: var(--v-primary) !important;
+  border-radius: 4px !important;
+  font-family: var(--v-hud) !important;
+  letter-spacing: 0.1em !important;
+  transition: all 0.2s !important;
+}
+.vault-os-container .command-bar-actions .execute-command-btn:hover {
+  background: rgba(0,200,255,0.15) !important;
+  box-shadow: 0 0 12px rgba(0,200,255,0.3) !important;
+}
+
+.vault-os-container .command-bar-actions .voice-command-btn {
+  color: rgba(0,200,255,0.45) !important;
+}
+.vault-os-container .command-bar-actions .voice-command-btn:hover {
+  color: var(--v-primary) !important;
+  background: rgba(0,200,255,0.1) !important;
+}
+
+/* ── Terminal text override ──────────────────────────────────────── */
+.vault-terminal-feed {
+  font-family: var(--v-mono);
+  font-size: 0.72rem;
+  color: rgba(0, 200, 255, 0.65);
+  line-height: 1.7;
+  text-shadow: 0 0 4px rgba(0,200,255,0.3);
+  overflow-y: auto;
+  max-height: 130px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,200,255,0.15) transparent;
+}
+
+/* ── Agent status badge ──────────────────────────────────────────── */
+.vault-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid rgba(0,200,255,0.2);
+  border-radius: 3px;
+  background: rgba(0,200,255,0.06);
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  color: var(--v-text-dim);
+  font-family: var(--v-hud);
+}
+.vault-status-badge.active {
+  border-color: rgba(0,255,160,0.4);
+  background: rgba(0,255,160,0.08);
+  color: #00ff9f;
+  box-shadow: 0 0 12px rgba(0,255,160,0.2);
+}
+
+/* ── Agent pill chips ────────────────────────────────────────────── */
+.vault-agent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid rgba(0,200,255,0.12);
+  border-radius: 3px;
+  background: transparent;
+  font-size: 0.5rem;
+  letter-spacing: 0.12em;
+  color: rgba(0,200,255,0.4);
+  font-family: var(--v-hud);
+  transition: all 0.3s;
+}
+.vault-agent-chip.active {
+  border-color: currentColor;
+  background: rgba(0,200,255,0.08);
+  box-shadow: 0 0 8px currentColor;
+  animation: chipPulse 1s ease-in-out infinite alternate;
+}
+@keyframes chipPulse {
+  from { opacity: 0.7; }
+  to   { opacity: 1;   }
+}
+
+/* ── Mobile ──────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .vault-os-container {
+    top: 0 !important;
+    height: calc(100dvh - 70px) !important;
+    padding: 0 !important;
+  }
+  .vault-layout {
+    flex-direction: column;
+    padding: 0.5rem;
+    gap: 0.5rem;
+  }
+  .vault-panel { display: none !important; }
+  .vault-sidebar {
+    width: 100%;
+    flex: none;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border: none;
+    background: transparent;
+    padding: 0.5rem;
+  }
+  .vault-sidebar.right { display: none; }
+  .vault-header { font-size: 1.4rem; }
+  .vault-subtitle { display: none; }
+  .vault-top-right { top: 0.5rem; right: 0.75rem; }
+  .vault-clock { font-size: 1.3rem; }
+  .vault-center {
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+  }
+  .vault-primary-directive { bottom: 6rem; }
+  .vault-directive-value { font-size: 2rem; }
+  .vault-agent-bar-wrapper {
+    bottom: 1rem;
+    width: 96%;
+  }
+}

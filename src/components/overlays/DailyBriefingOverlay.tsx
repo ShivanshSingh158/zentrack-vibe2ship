@@ -16,6 +16,8 @@ export const BRIEFING_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 
 export const DailyBriefingOverlay = () => {
+  // Disabled by user request
+  return null;
   const [isVisible, setIsVisible] = useState(false);
   const [type, setType] = useState<'morning' | 'evening' | null>(null);
   const [data, setData] = useState<{ greeting: string; message: string; quote: string } | null>(null);

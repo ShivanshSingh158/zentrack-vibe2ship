@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Grid, User as UserIcon, Edit2, X, LogOut } from 'lucide-react';
+import { Grid, User as UserIcon, Edit2, X, LogOut, Volume2, VolumeX, Mic } from 'lucide-react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { auth } from '../services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -9,8 +9,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { GeminiAuthBadge } from './ui/GeminiAuthBadge';
 import { getKeyStatus } from '../services/userGeminiAuth';
+import { useVoice } from '../contexts/VoiceContext';
 
 export function TopNav() {
+  const { isMuted, setIsMuted, isSpeaking } = useVoice();
   const [user, setUser] = useState<User | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -68,37 +70,49 @@ export function TopNav() {
 
   // Close on Escape or click outside
   useEffect(() => {
+    const handleToggleDrawerEvent = () => {
+      setIsDrawerOpen(prev => !prev);
+    };
+    
+    window.addEventListener('toggle-app-drawer', handleToggleDrawerEvent);
+    return () => {
+      window.removeEventListener('toggle-app-drawer', handleToggleDrawerEvent);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setIsDrawerOpen(false);
         setIsEditingDrawer(false);
       }
     };
+
     const handleClickOutside = (e: MouseEvent) => {
-      if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement;
+      
+      // Don't close if they clicked the mobile 'More' button (it handles toggling)
+      if (target.closest('#mobile-more-btn')) {
+        return;
+      }
+
+      if (drawerRef.current && !drawerRef.current.contains(target)) {
         setIsDrawerOpen(false);
         setIsEditingDrawer(false);
       }
-      if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
+      if (profileRef.current && !profileRef.current.contains(target)) {
         setIsProfileOpen(false);
       }
-    };
-
-    const handleOpenDrawerEvent = () => {
-      setIsDrawerOpen(true);
     };
 
     if (isDrawerOpen || isProfileOpen) {
       document.addEventListener('keydown', handleEscape);
       document.addEventListener('mousedown', handleClickOutside);
     }
-    
-    window.addEventListener('open-app-drawer', handleOpenDrawerEvent);
 
     return () => {
       document.removeEventListener('keydown', handleEscape);
       document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('open-app-drawer', handleOpenDrawerEvent);
     };
   }, [isDrawerOpen, isProfileOpen]);
 
@@ -122,12 +136,14 @@ export function TopNav() {
     { name: 'Gym', img: 'https://img.icons8.com/color/96/000000/dumbbell.png', route: '/gym' },
     { name: 'Jobs', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Briefcase/3D/briefcase_3d.png', route: '/jobs' },
     { name: 'Learning', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Brain/3D/brain_3d.png', route: '/learning' },
-    { name: 'Tools', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Hammer%20and%20wrench/3D/hammer_and_wrench_3d.png', route: '/tools' },
+
     { name: 'Integration', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Link/3D/link_3d.png', route: '/integrations' },
     { name: 'Review', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Crystal%20ball/3D/crystal_ball_3d.png', route: '/review' },
     { name: 'Attendance', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Graduation%20cap/3D/graduation_cap_3d.png', route: '/attendance' },
     { name: 'Grades', img: 'https://img.icons8.com/color/96/000000/exam.png', route: '/grades' },
   ];
+
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
   return (
     <header className="top-nav">
@@ -165,58 +181,102 @@ export function TopNav() {
           <CommandPalette />
         </div>
         
-        <div className="app-drawer-container hide-on-mobile" ref={drawerRef}>
+        {/* App drawer: container is always in DOM so mobile BottomNav 'open-app-drawer' event works.
+            The icon button is hidden on mobile (BottomNav has its own trigger).
+            On mobile the drawer renders as a bottom sheet via mobile.css. */}
+        <div className="app-drawer-container" ref={drawerRef}>
           <button 
-            className={`icon-button ${isDrawerOpen ? 'active' : ''}`} 
+            className={`icon-button hide-on-mobile ${isDrawerOpen ? 'active' : ''}`} 
             onClick={() => setIsDrawerOpen(!isDrawerOpen)}
             title="Google Apps"
           >
             <Grid size={20} />
           </button>
           
-          {isDrawerOpen && (
-            <div className="app-drawer google-style-drawer">
-              <div className="drawer-header">
-                <span className="drawer-title">Your favorites</span>
-                <button 
-                  className={`drawer-edit-btn ${isEditingDrawer ? 'editing' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsEditingDrawer(!isEditingDrawer);
-                  }}
-                >
-                  {isEditingDrawer ? <X size={16} /> : <Edit2 size={16} />}
-                </button>
-              </div>
-              <div className="drawer-scroll-area" data-lenis-prevent="true">
-                <div className="app-drawer-grid">
-                  {apps.map((app) => (
+          <AnimatePresence>
+            {isDrawerOpen && (
+              <motion.div
+                key="app-drawer"
+                className="app-drawer google-style-drawer mobile-bottom-sheet"
+                initial={{ opacity: 0, y: isMobile ? 400 : 20, scale: isMobile ? 1 : 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: isMobile ? 0.4 : 0.25, ease: [0.16, 1, 0.3, 1] } }}
+                exit={{ opacity: 0, y: isMobile ? 400 : 15, scale: isMobile ? 1 : 0.97, transition: { duration: 0.15, ease: 'easeIn' } }}
+              >
+                <div className="drawer-header">
+                  <span className="drawer-title">Your Apps</span>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <button 
-                      key={app.name} 
-                      className={`app-drawer-item ${isEditingDrawer ? 'editing-mode' : ''} ${pinnedApps.includes(app.name) ? 'pinned' : ''}`}
-                      onClick={() => {
-                        if (isEditingDrawer) {
-                          togglePin(app.name);
-                        } else {
-                          navigate(app.route);
-                          setIsDrawerOpen(false);
-                        }
+                      className={`drawer-edit-btn ${isEditingDrawer ? 'editing' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsEditingDrawer(!isEditingDrawer);
                       }}
                     >
-                      <div className="app-drawer-icon-wrap">
-                        <img src={app.img} alt={app.name} className={`real-app-icon ${isEditingDrawer && !pinnedApps.includes(app.name) ? 'dimmed' : ''}`} />
-                        {isEditingDrawer && (
-                          <div className={`pin-indicator ${pinnedApps.includes(app.name) ? 'active' : ''}`}></div>
-                        )}
-                      </div>
-                      <span className="app-drawer-label">{app.name}</span>
+                      {isEditingDrawer ? <X size={16} /> : <Edit2 size={16} />}
                     </button>
-                  ))}
+                    {/* Mobile close button */}
+                    <button
+                      className="show-on-mobile drawer-close-btn"
+                      onClick={() => { setIsDrawerOpen(false); setIsEditingDrawer(false); }}
+                      style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '4px' }}
+                    >
+                      <X size={20} />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
-          )}
+                <div className="drawer-scroll-area" data-lenis-prevent="true">
+                  <div className="app-drawer-grid">
+                    {apps.map((app) => (
+                      <button 
+                        key={app.name} 
+                        className={`app-drawer-item ${isEditingDrawer ? 'editing-mode' : ''} ${pinnedApps.includes(app.name) ? 'pinned' : ''}`}
+                        onClick={() => {
+                          if (isEditingDrawer) {
+                            togglePin(app.name);
+                          } else {
+                            navigate(app.route);
+                            setIsDrawerOpen(false);
+                          }
+                        }}
+                      >
+                        <div className="app-drawer-icon-wrap">
+                          <img src={app.img} alt={app.name} className={`real-app-icon ${isEditingDrawer && !pinnedApps.includes(app.name) ? 'dimmed' : ''}`} />
+                          {isEditingDrawer && (
+                            <div className={`pin-indicator ${pinnedApps.includes(app.name) ? 'active' : ''}`}></div>
+                          )}
+                        </div>
+                        <span className="app-drawer-label">{app.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
+        
+        {/* Voice System Toggle & Visualizer */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginRight: '0.5rem' }}>
+          {isSpeaking && !isMuted && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: [1, 1.2, 1] }}
+              transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(0, 240, 255, 0.2)', boxShadow: '0 0 10px rgba(0, 240, 255, 0.6)' }}
+            >
+              <Mic size={14} color="#00F0FF" />
+            </motion.div>
+          )}
+          <button 
+            onClick={() => setIsMuted(!isMuted)}
+            className="icon-button"
+            title={isMuted ? "Unmute Jarvis Voice" : "Mute Jarvis Voice"}
+            style={{ color: isMuted ? '#6b7280' : '#00F0FF', transition: 'color 0.2s ease' }}
+          >
+            {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+          </button>
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <GeminiAuthBadge />
           <div className="user-profile" ref={profileRef}>
@@ -244,11 +304,11 @@ export function TopNav() {
             <AnimatePresence>
               {isProfileOpen && (
                 <motion.div 
+                  key="profile-dropdown"
                   className="profile-dropdown"
                   initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.2, ease: [0.16, 1, 0.3, 1] } }}
+                  exit={{ opacity: 0, scale: 0.95, y: -10, transition: { duration: 0.12, ease: "easeIn" } }}
                 >
                   <button className="profile-dropdown-item" onClick={handleLogout}>
                     <LogOut size={16} />

@@ -106,7 +106,7 @@ export const FocusModeOverlay = () => {
         <iframe
           width="0"
           height="0"
-          src={`https://www.youtube.com/embed/${audioSources[state.ambientSound].split(':')[1]}?autoplay=1&loop=1&playlist=${audioSources[state.ambientSound].split(':')[1]}`}
+          src={`https://www.youtube-nocookie.com/embed/${audioSources[state.ambientSound].split(':')[1]}?autoplay=1&loop=1&playlist=${audioSources[state.ambientSound].split(':')[1]}`}
           frameBorder="0"
           allow="autoplay"
           style={{ display: 'none' }}

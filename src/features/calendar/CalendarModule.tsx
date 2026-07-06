@@ -61,6 +61,7 @@ export const CalendarModule = () => {
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('day');
   const [hideCompleted, setHideCompleted] = useState(false);
   const [selectedDayStr, setSelectedDayStr] = useState<string | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventType, setNewEventType] = useState<string>('exam');
   const [isAutoScheduling, setIsAutoScheduling] = useState(false);
@@ -833,7 +834,7 @@ export const CalendarModule = () => {
       {/* HEADER */}
       <header className="gc-header">
         <div className="gc-header-left">
-          <div className="gc-hamburger">
+          <div className="gc-hamburger" onClick={() => setIsSidebarOpen(true)} style={{ cursor: 'pointer' }}>
             <Menu size={20} />
           </div>
           <div className="gc-logo-area">
@@ -926,10 +927,15 @@ export const CalendarModule = () => {
       </header>
 
       <div className="gc-main">
+        {/* SIDEBAR OVERLAY */}
+        {isSidebarOpen && (
+          <div className="gc-sidebar-overlay" onClick={() => setIsSidebarOpen(false)} />
+        )}
+        
         {/* SIDEBAR */}
-        <div className="gc-sidebar" data-lenis-prevent>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-            <button className="gc-create-btn" style={{ flex: 1 }} onClick={(e) => {
+        <div className={`gc-sidebar ${isSidebarOpen ? 'open' : ''}`} data-lenis-prevent>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+            <button className="gc-create-btn" style={{ flex: 1, marginBottom: 0, justifyContent: 'center' }} onClick={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
               const dateStr = getLocalDateString(currentDate);
               const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
@@ -946,12 +952,12 @@ export const CalendarModule = () => {
               Create
             </button>
             <button 
-              className="gc-create-btn" 
-              style={{ flex: 1, padding: '0 12px', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', color: 'var(--text-primary)' }} 
+              className="gc-auto-btn" 
+              style={{ flex: 1 }} 
               onClick={handleAutoSchedule}
               disabled={isAutoScheduling}
             >
-              <Wand2 size={16} color="#8AB4F8" style={{ marginRight: '6px' }} />
+              <Wand2 size={16} color="#A78BFA" />
               {isAutoScheduling ? 'Scheduling...' : 'Auto'}
             </button>
           </div>

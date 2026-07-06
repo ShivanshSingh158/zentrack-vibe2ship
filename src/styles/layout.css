@@ -37,13 +37,16 @@
   justify-content: space-between;
   padding: 0 2rem;
   height: 56px;
-  background: rgba(3, 13, 26, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(3, 13, 26, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border-bottom: 1px solid rgba(255,255,255,0.06);
   margin: 0;
   max-width: 100%;
   border-radius: 0;
+  /* Force GPU compositing — prevents nav from being re-drawn on every scroll tick */
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .top-nav-left {
@@ -158,6 +161,11 @@
   display: none !important;
 }
 
+/* Shown ONLY on mobile (hidden on desktop) */
+.show-on-mobile {
+  display: none !important;
+}
+
 @media (max-width: 768px) {
   .hide-on-mobile {
     display: none !important;
@@ -165,22 +173,52 @@
   .show-on-mobile-only {
     display: block !important;
   }
+  .show-on-mobile {
+    display: flex !important;
+  }
   
   .top-nav {
-    display: none !important;  /* Hidden on mobile — BottomNav replaces it */
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    overflow: visible !important;
+    z-index: 9999 !important;
+    pointer-events: none !important;
+    animation: none !important;
+    transform: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    will-change: auto !important;
   }
-  .top-nav-center {
-    display: none;
+  .app-drawer-container {
+    overflow: visible !important;
+    pointer-events: auto !important;
   }
-  .top-nav-left .logo-text {
-    display: none;
+  .top-nav-center,
+  .top-nav-left {
+    display: none !important;
+  }
+  .top-nav-right {
+    overflow: visible !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: none !important;
+    border: none !important;
+  }
+  .top-nav-right > *:not(.app-drawer-container) {
+    display: none !important;
   }
   .main-nav-links {
     gap: 1rem;
   }
   .main-content {
-    /* Need space for the bottom nav bar */
-    padding: 0.75rem 0.75rem calc(72px + env(safe-area-inset-bottom)) !important;
+    /* Space for the bottom nav bar — padding-bottom overridden by mobile.css */
+    padding-top: 0 !important;
   }
 }
 

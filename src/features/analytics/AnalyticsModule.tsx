@@ -155,16 +155,18 @@ const AnalyticsModuleInner = () => {
   // ── 1. Task Metrics ────────────────────────────────────────────────────────
   const todoMetrics = useMemo(() => {
     try {
-      const total = safeTodos.length;
-      const completed = safeTodos.filter(t => t?.status === 'completed').length;
+      // strictly scope to the last 30 days
+      const recentTodos = safeTodos.filter(t => t?.date && t.date >= last30[0]);
+      const total = recentTodos.length;
+      const completed = recentTodos.filter(t => t?.status === 'completed').length;
       const rate = total > 0 ? clamp(Math.round((completed / total) * 100), 0, 100) : 0;
       const daily = last30.map(date => {
-        const dayTodos = safeTodos.filter(t => t?.date === date);
+        const dayTodos = recentTodos.filter(t => t?.date === date);
         const done = dayTodos.filter(t => t?.status === 'completed').length;
         return { date: getWeekLabel(date), total: dayTodos.length, completed: done };
       });
       return { total, completed, rate, daily };
-    } catch {
+    } catch (e) {
       console.error('[Analytics] todoMetrics error:', e);
       return { total: 0, completed: 0, rate: 0, daily: last30.map(d => ({ date: getWeekLabel(d), total: 0, completed: 0 })) };
     }
@@ -196,7 +198,7 @@ const AnalyticsModuleInner = () => {
       const gym = getRangeCount(safeGymData, 'date', () => true);
 
       return { tasks, habits, gym };
-    } catch {
+    } catch (e) {
       console.error('[Analytics] weekOverWeekMetrics error:', e);
       return { 
         tasks: { thisWeek: 0, lastWeek: 0, diff: 0 }, 
@@ -257,7 +259,7 @@ const AnalyticsModuleInner = () => {
       });
 
       return chartData;
-    } catch {
+    } catch (e) {
       console.error('[Analytics] gymProgressionMetrics error:', e);
       return last30.map(d => ({ date: getWeekLabel(d), bench: undefined, squat: undefined, deadlift: undefined, rawDate: d }));
     }
@@ -497,8 +499,8 @@ const AnalyticsModuleInner = () => {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem', maxWidth: '100%' }}>
               <StatCard icon={<CheckCircle size={22} />} label="Tasks Completed" value={todoMetrics.completed} sub={`${todoMetrics.rate}% completion rate`} color="#34d399" />
               <StatCard icon={<Flame size={22} />} label="Habit Check-ins" value={habitMetrics.totalChecked} sub={`${habitMetrics.daysWithActivity} active days`} color="#a78bfa" />
-              <StatCard icon={<Dumbbell size={22} />} label="Gym Trend" value={`${safeGymData.filter((d: any) => d.date >= last30[0]).length} Sessions`} sub={`${weekOverWeekMetrics.gym.diff > 0 ? '+' : ''}${weekOverWeekMetrics.gym.diff} this week`} color="#f59e0b" />
-              <StatCard icon={<Book size={22} />} label="Attendance" value={`${safeAttendance.length} Subj`} sub="Tracking health" color="#60a5fa" />
+              <StatCard icon={<Dumbbell size={22} />} label="Gym Sessions" value={safeGymData.filter((d: any) => d.date >= last30[0]).length} sub={`${weekOverWeekMetrics.gym.diff > 0 ? '+' : ''}${weekOverWeekMetrics.gym.diff} this week`} color="#f59e0b" />
+              <StatCard icon={<Book size={22} />} label="Subjects Tracked" value={safeAttendance.length} sub="Attendance health" color="#60a5fa" />
             </div>
 
             {/* Week-over-Week Comparison */}

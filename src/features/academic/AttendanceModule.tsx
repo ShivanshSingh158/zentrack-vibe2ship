@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { playPopSound } from '../../utils/sound';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { CustomDatePicker } from '../../components/ui/CustomDatePicker';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 // ── Schema Version (migration guard — prevents re-running migration on every load) ──
@@ -406,10 +407,11 @@ export const AttendanceModule = () => {
           <p className="subtitle att-desktop-only" style={{ display: 'flex' }}>Log classes · Track progress · Stay above target.</p>
         </div>
         <div className="page-header-actions att-header-actions">
-          <div className="date-picker-wrap">
-            <Calendar size={14} style={{ color: 'var(--text-muted)' }} />
-            <input type="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} />
-          </div>
+          <CustomDatePicker 
+            value={selectedDate} 
+            onChange={setSelectedDate}
+            style={{ width: '160px', zIndex: 10 }}
+          />
           <button
             className={`btn-secondary att-header-btn${isSelectedHoliday ? ' active' : ''}`}
             onClick={handleToggleHoliday}
@@ -764,13 +766,13 @@ export const AttendanceModule = () => {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem' }}>
           <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {/* Modal Header */}
-            <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
+            <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+              <div style={{ flex: '1 1 200px' }}>
                 <h2 style={{ fontSize: '1.15rem', fontWeight: 600 }}>Configure Timetable & Subjects</h2>
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Schedule changes auto-save with a short delay.</p>
               </div>
-              <div style={{ display: 'flex', gap: '0.6rem' }}>
-                <button className="btn-primary" onClick={handleAddSubject}><Plus size={14} /> Add Subject</button>
+              <div style={{ display: 'flex', gap: '0.6rem', flex: '1 1 auto', justifyContent: 'flex-end' }}>
+                <button className="btn-primary" style={{ flex: '1 1 auto', justifyContent: 'center' }} onClick={handleAddSubject}><Plus size={14} /> Add Subject</button>
                 <button className="btn-icon" onClick={() => setIsTimetableModalOpen(false)}><X size={19} /></button>
               </div>
             </div>
@@ -780,36 +782,37 @@ export const AttendanceModule = () => {
               {subjects.map(subject => (
                 <div key={subject.id} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.9rem' }}>
                   {/* Subject Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'wrap', gap: '0.6rem' }}>
+                  {/* Subject Header */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'nowrap', gap: '0.4rem', width: '100%', height: '28px' }}>
                     {editingId === subject.id ? (
                       <input autoFocus type="text" value={editName} onChange={e => setEditName(e.target.value)}
                         onBlur={() => saveSubjectName(subject.id!)} onKeyDown={e => e.key === 'Enter' && saveSubjectName(subject.id!)}
-                        className="todo-input" style={{ flex: 1, minWidth: '180px', padding: '0.28rem 0.5rem' }} />
+                        className="todo-input" style={{ flex: '1', minWidth: '80px', height: '26px', padding: '0 0.3rem', fontSize: '0.85rem', boxSizing: 'border-box' }} />
                     ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', fontWeight: 600, fontSize: '0.97rem', color: 'var(--accent-primary)', flex: 1 }}>
-                        {subject.name}
-                        <button onClick={() => { setEditingId(subject.id!); setEditName(subject.name); }} className="btn-icon" style={{ opacity: 0.5 }}><Edit2 size={13} /></button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600, fontSize: '0.9rem', color: 'var(--accent-primary)', flex: '1', minWidth: 0, height: '100%' }}>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject.name}</span>
+                        <button onClick={() => { setEditingId(subject.id!); setEditName(subject.name); }} className="btn-icon" style={{ opacity: 0.5, width: '24px', height: '24px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Edit2 size={12} /></button>
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
-                        <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Target %</label>
+                    <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'nowrap', flexShrink: 0, height: '100%' }}>
+                      <div style={{ display: 'flex', gap: '0.2rem', alignItems: 'center', height: '100%' }}>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Target%</label>
                         <input type="number" value={subject.targetPercentage}
                           onChange={async (e) => {
                             const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
                             await updateDoc(doc(db, 'attendance_subjects', subject.id!), { targetPercentage: val });
                           }}
-                          style={{ width: '55px', padding: '0.22rem', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', textAlign: 'center' }} />
+                          style={{ width: '40px', height: '26px', padding: '0', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', textAlign: 'center', fontSize: '0.8rem', boxSizing: 'border-box' }} />
                       </div>
-                      <button className="btn-secondary" style={{ fontSize: '0.75rem', color: '#818cf8', padding: '0.25rem 0.6rem' }}
+                      <button className="btn-secondary" style={{ fontSize: '0.7rem', color: '#818cf8', height: '26px', padding: '0 0.4rem', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.15rem', boxSizing: 'border-box' }}
                         onClick={() => {
                           if (overrideOpen === subject.id) { setOverrideOpen(null); return; }
                           setOverrideOpen(subject.id!);
                           setOverrideCounts({ classesAttended: subject.classesAttended || 0, classesTotal: subject.classesTotal || 0, labsAttended: subject.labsAttended || 0, labsTotal: subject.labsTotal || 0 });
                         }}>
-                        {overrideOpen === subject.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />} Fix Counts
+                        {overrideOpen === subject.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />} Fix
                       </button>
-                      <button className="btn-icon danger" onClick={() => setConfirmDeleteId(subject.id!)}><X size={15} /></button>
+                      <button className="btn-icon danger" style={{ width: '26px', height: '26px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} onClick={() => setConfirmDeleteId(subject.id!)}><X size={14} /></button>
                     </div>
                   </div>
 
@@ -822,38 +825,38 @@ export const AttendanceModule = () => {
                         { label: 'Labs Attended',    key: 'labsAttended'    as const },
                         { label: 'Labs Total',       key: 'labsTotal'       as const },
                       ].map(({ label, key }) => (
-                        <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                        <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: '1 1 45%' }}>
                           <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{label}</label>
                           <input type="number" value={overrideCounts[key]} min={0}
                             onChange={e => setOverrideCounts(p => ({ ...p, [key]: parseInt(e.target.value) || 0 }))}
-                            style={{ width: '76px', padding: '0.28rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', textAlign: 'center' }} />
+                            style={{ width: '100%', padding: '0.28rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', textAlign: 'center' }} />
                         </div>
                       ))}
-                      <button className="btn-primary" style={{ fontSize: '0.8rem', padding: '0.38rem 0.9rem' }} onClick={() => handleApplyOverride(subject.id!)}>Apply Override</button>
+                      <button className="btn-primary" style={{ fontSize: '0.8rem', padding: '0.38rem 0.9rem', width: '100%' }} onClick={() => handleApplyOverride(subject.id!)}>Apply Override</button>
                     </div>
                   )}
 
                   {/* Schedule Table (no Start Times row) */}
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', minWidth: '480px', borderCollapse: 'collapse', textAlign: 'center' }}>
+                  <div style={{ overflowX: 'auto', margin: '0 -0.4rem', padding: '0 0.4rem' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
                       <thead>
                         <tr>
-                          <th style={{ padding: '0.35rem 0.5rem', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 500, textAlign: 'left', fontSize: '0.82rem' }}>Type</th>
+                          <th style={{ padding: '0.25rem', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 500, textAlign: 'left', fontSize: '0.75rem', whiteSpace: 'nowrap', width: 'auto' }}>Type</th>
                           {DAY_NAMES.map(day => (
-                            <th key={day} style={{ padding: '0.35rem', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.78rem' }}>{day.substring(0, 3)}</th>
+                            <th key={day} style={{ padding: '0.25rem 0.1rem', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.7rem' }}>{day.substring(0, 3)}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {(['classCount', 'labCount'] as const).map(field => (
                           <tr key={field}>
-                            <td style={{ padding: '0.35rem 0.5rem', fontWeight: 600, textAlign: 'left', fontSize: '0.82rem' }}>{field === 'classCount' ? 'Classes' : 'Labs'}</td>
+                            <td style={{ padding: '0.25rem', fontWeight: 600, textAlign: 'left', fontSize: '0.75rem' }}>{field === 'classCount' ? 'Classes' : 'Labs'}</td>
                             {Object.keys(defaultSchedule).map(dayIdx => (
-                              <td key={dayIdx} style={{ padding: '0.35rem' }}>
+                              <td key={dayIdx} style={{ padding: '0.2rem 0.1rem' }}>
                                 <input type="number" min="0" max="10"
                                   defaultValue={subject.schedule?.[dayIdx]?.[field] || 0}
                                   onChange={e => handleUpdateSchedule(subject.id!, dayIdx, field, parseInt(e.target.value) || 0)}
-                                  style={{ width: '44px', padding: '0.22rem', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.82rem' }} />
+                                  style={{ width: '100%', minWidth: '0', padding: '0.25rem 0', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
                               </td>
                             ))}
                           </tr>
@@ -867,10 +870,10 @@ export const AttendanceModule = () => {
 
             {/* Modal Footer */}
             <div style={{ padding: '0.9rem 1.5rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', background: 'var(--bg-base)' }}>
-              <button className="btn-secondary" style={{ color: '#10b981', fontSize: '0.82rem' }} onClick={handleExportCSV}>
+              <button className="btn-secondary" style={{ color: '#10b981', fontSize: '0.82rem', flex: '1 1 auto', justifyContent: 'center' }} onClick={handleExportCSV}>
                 <Download size={14} /> Export CSV
               </button>
-              <button className="btn-secondary" style={{ color: '#ef4444', fontSize: '0.82rem' }} onClick={() => setConfirmResetSemester(true)}>
+              <button className="btn-secondary" style={{ color: '#ef4444', fontSize: '0.82rem', flex: '1 1 auto', justifyContent: 'center' }} onClick={() => setConfirmResetSemester(true)}>
                 <RefreshCw size={14} /> Reset Semester
               </button>
             </div>

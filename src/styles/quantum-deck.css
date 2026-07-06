@@ -456,11 +456,66 @@
   transform: translateX(-50%) translateY(-5px);
 }
 
-@media (max-width: 640px) {
-  .quantum-deck-container { padding: 1rem; }
-  .projection-hologram { width: 160px; height: 160px; }
-  .aura-1 { width: 180px; height: 180px; }
-  .aura-2 { width: 150px; height: 150px; }
-  .projection-avatar { width: 80px; height: 80px; }
-  .dock-item { width: 36px; height: 36px; }
+@media (max-width: 767px) {
+  /* Compact the whole container */
+  .quantum-deck-container { 
+    padding: 0.75rem;
+    min-height: 190px !important;
+    gap: 0.75rem;
+    margin: 0;
+  }
+
+  /* Idle orb: shrink to save vertical space */
+  .quantum-idle-chamber {
+    gap: 0.75rem !important;
+  }
+  .quantum-core-reactor { width: 90px; height: 90px; }
+  .ring-1 { width: 90px; height: 90px; }
+  .ring-2 { width: 68px; height: 68px; }
+  .ring-3 { width: 46px; height: 46px; }
+  .quantum-reactor-orb { width: 28px; height: 28px; }
+  
+  /* Idle text compact */
+  .quantum-idle-title { font-size: 0.75rem !important; letter-spacing: 0.06em !important; }
+  .quantum-idle-subtitle { font-size: 0.6rem !important; margin-top: 0.2rem !important; }
+
+  /* Active agent projection: smaller */
+  .projection-hologram { width: 110px; height: 110px; }
+  .aura-1 { width: 130px; height: 130px; }
+  .aura-2 { width: 105px; height: 105px; }
+  .projection-avatar { width: 60px; height: 60px; }
+  .projection-info { margin-top: 0.75rem !important; }
+  .projection-title { font-size: 1rem; }
+  
+  /* Terminal: compact */
+  .terminal-glass {
+    padding: 0.6rem 0.75rem !important;
+  }
+  .terminal-body { font-size: 0.75rem !important; }
+  .terminal-header { font-size: 0.6rem !important; }
+  .terminal-header-dots span { width: 6px; height: 6px; }
+
+  /* Hide the 3D orbital dock on mobile — too wide to render nicely */
+  .orbital-dock-container {
+    display: none !important;
+  }
+
+  /* Command bar: tight */
+  .agent-command-input {
+    font-size: 0.85rem !important;
+    padding: 0.5rem 0.5rem !important;
+  }
+  .command-bar-container {
+    padding: 0.4rem !important;
+    gap: 0.4rem !important;
+  }
+  .command-bar-actions {
+    gap: 0.2rem !important;
+  }
+  .voice-command-btn {
+    padding: 0.35rem !important;
+  }
+  .execute-command-btn {
+    padding: 0.4rem 0.6rem !important;
+  }
 }

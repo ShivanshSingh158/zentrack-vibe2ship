@@ -389,8 +389,44 @@ export default async function handler(req, res) {
       }
     }));
 
+    // ── PROCESS PUSH NOTIFICATION QUEUE (Merged from cron-queue-processor) ──
+    const pendingSnap = await db.collection('pushNotificationQueue')
+      .where('status', '==', 'pending')
+      .orderBy('createdAt')
+      .limit(20)
+      .get();
+    let queueSent = 0; let queueFailed = 0;
+    for (const queueDoc of pendingSnap.docs) {
+      const item = queueDoc.data();
+      await queueDoc.ref.update({ status: 'processing' });
+      try {
+        if (!item.userIds || !Array.isArray(item.userIds) || !item.title || !item.body) {
+          await queueDoc.ref.update({ status: 'failed', error: 'Missing required fields' });
+          queueFailed++; continue;
+        }
+        const tokenResults = await Promise.allSettled(item.userIds.map(uid => db.collection('fcm_tokens').doc(uid).get()));
+        const itemTokens = tokenResults.filter(r => r.status === 'fulfilled' && r.value.exists).map(r => r.value.data()?.token).filter(Boolean);
+        if (itemTokens.length === 0) {
+          await queueDoc.ref.update({ status: 'sent', sentAt: admin.firestore.FieldValue.serverTimestamp(), note: 'No tokens' });
+          continue;
+        }
+        const batchResp = await messaging.sendEachForMulticast({
+          data: { title: String(item.title).slice(0,200), body: String(item.body).slice(0,500), tag: String(item.tag || 'zentrack'), url: String(item.url || '/') },
+          android: { priority: 'high' },
+          webpush: { headers: { Urgency: 'high' } },
+          tokens: itemTokens,
+        });
+        await queueDoc.ref.update({ status: 'sent', sentAt: admin.firestore.FieldValue.serverTimestamp(), successCount: batchResp.successCount, failureCount: batchResp.failureCount });
+        queueSent++;
+      } catch (itemErr) {
+        await queueDoc.ref.update({ status: 'failed', error: itemErr.message.slice(0,200) });
+        queueFailed++;
+      }
+    }
+
     console.log(`[watchdog] Done. SMS: ${stats.smsSent}, Push: ${stats.pushSent}, Users: ${stats.usersProcessed}`);
-    return res.status(200).json({ success: true, ...stats });
+    console.log(`[watchdog] Queue: Processed ${pendingSnap.size}, Sent ${queueSent}, Failed ${queueFailed}`);
+    return res.status(200).json({ success: true, ...stats, queueProcessed: pendingSnap.size });
 
   } catch (err) {
     console.error('[watchdog] Fatal error:', err);

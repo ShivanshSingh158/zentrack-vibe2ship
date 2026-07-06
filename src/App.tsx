@@ -28,14 +28,15 @@ import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
 import { FloatingExtraWorks, VoiceQuickCaptureWidget } from './features/_shared';
-import { ZenAgentPanel } from './features/agent/ZenAgentPanel';
 import { MissionReport } from './features/dashboard/MissionReport';
 import { ReportArchive } from './features/dashboard/ReportArchive';
 import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap } from 'lucide-react';
-import { AgentTerminal } from './components/AgentTerminal';
+import { AgentDataStream } from './components/AgentDataStream';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
 import { GoogleWorkspaceBanner } from './components/GoogleWorkspaceBanner';
 import { BottomNav } from './components/BottomNav';
+import { SolarSystemLoader } from './components/SolarSystemLoader';
+import { SaraInterface } from './components/SaraInterface';
 
 
 import { useContextReminders } from './hooks/useContextReminders';
@@ -58,7 +59,7 @@ const DeadlineWatcherRunner = () => {
 };
 
 /**
- * AgentNavigator â€” listens for 'agent-navigate' events dispatched by toolExecutor
+ * AgentNavigator — listens for 'agent-navigate' events dispatched by toolExecutor
  * and uses React Router's useNavigate to change the route.
  * Also dispatches 'agent-open-lecture' for the Learning module to open a specific lecture.
  */
@@ -136,13 +137,13 @@ const SessionEnforcer = () => {
         const data = docSnap.data();
         const currentLocalKey = localStorage.getItem('global_session_key');
 
-        // âœ… U3 FIX: The old code signed out whenever currentLocalKey !== activeSessionKey.
+        // ✅ U3 FIX: The old code signed out whenever currentLocalKey !== activeSessionKey.
         // This force-logged-out ALL incognito users and new-device users because their
-        // localStorage is empty (null) and the remote key is 'v1' â€” null !== 'v1' is true.
+        // localStorage is empty (null) and the remote key is 'v1' — null !== 'v1' is true.
         //
         // NEW RULE:
-        //   null   â†’ first visit on this browser/device â†’ sync the key locally, stay logged in
-        //   stale  â†’ admin-triggered remote wipe â†’ force logout (the ONLY intended use case)
+        //   null   → first visit on this browser/device → sync the key locally, stay logged in
+        //   stale  → admin-triggered remote wipe → force logout (the ONLY intended use case)
         if (data.activeSessionKey) {
           if (currentLocalKey === null) {
             // First visit: absorb the remote key, don't sign out
@@ -177,15 +178,15 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
 
       if (isChunkError) {
         // Check if we ALREADY reloaded for this chunk in the last 8 seconds
-        // If yes, don't reload again â€” prevents infinite loop
+        // If yes, don't reload again — prevents infinite loop
         const reloadKey = `chunk_reload_${name}`;
         const lastReload = parseInt(localStorage.getItem(reloadKey) || '0', 10);
         if (Date.now() - lastReload < 8000) {
-          // We already tried reloading for this chunk â€” give up and show error
+          // We already tried reloading for this chunk — give up and show error
           throw new Error(`Module "${name}" failed to load after reload. Please close and reopen the app.`, { cause: error });
         }
 
-        console.warn(`[lazyWithRetry] Stale chunk for "${name}", reloadingâ€¦`);
+        console.warn(`[lazyWithRetry] Stale chunk for "${name}", reloading…`);
         localStorage.setItem(reloadKey, Date.now().toString());
 
         try {
@@ -205,7 +206,7 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
         return new Promise(() => {}); // suspend while reloading
       }
 
-      // Non-chunk error â€” 60-second cooldown before retrying
+      // Non-chunk error — 60-second cooldown before retrying
       const retryKey = 'retry-' + name;
       const retryTime = parseInt(localStorage.getItem(retryKey) || '0', 10);
       if (Date.now() - retryTime > 60000) {
@@ -218,7 +219,7 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
   });
 };
 
-// â”€â”€â”€ Lazily-loaded page modules (~1.9 MB â†’ ~300 KB initial bundle) â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ——— Lazily-loaded page modules (~1.9 MB → ~300 KB initial bundle) —————————————————
 const HomeDashboard = lazyWithRetry(() => import('./features/dashboard/HomeDashboard').then(m => ({ default: m.HomeDashboard })), 'HomeDashboard');
 const TodoListModule = lazyWithRetry(() => import('./features/tasks/TodoListModule').then(m => ({ default: m.TodoListModule })), 'TodoListModule');
 const CalendarModule = lazyWithRetry(() => import('./features/calendar').then(m => ({ default: m.CalendarModule })), 'CalendarModule');
@@ -229,48 +230,48 @@ const GymModule = lazyWithRetry(() => import('./features/gym').then(m => ({ defa
 const JobTracker = lazyWithRetry(() => import('./features/jobs/JobTracker').then(m => ({ default: m.JobTracker })), 'JobTracker');
 const HabitsModule = lazyWithRetry(() => import('./features/habits/HabitsModule').then(m => ({ default: m.HabitsModule })), 'HabitsModule');
 const LearningChecklistModule = lazyWithRetry(() => import('./features/learning/LearningChecklistModule').then(m => ({ default: m.LearningChecklistModule })), 'LearningChecklistModule');
-const ToolsHubModule = lazyWithRetry(() => import('./features/tools/ToolsHubModule').then(m => ({ default: m.ToolsHubModule })), 'ToolsHubModule');
+
 const IntegrationsModule = lazyWithRetry(() => import('./features/integrations/IntegrationsModule').then(m => ({ default: m.IntegrationsModule })), 'IntegrationsModule');
 const WeeklyReviewModule = lazyWithRetry(() => import('./features/review/WeeklyReviewModule').then(m => ({ default: m.WeeklyReviewModule })), 'WeeklyReviewModule');
 const AttendanceModule = lazyWithRetry(() => import('./features/academic/AttendanceModule').then(m => ({ default: m.AttendanceModule })), 'AttendanceModule');
 const AssignmentModule = lazyWithRetry(() => import('./features/academic/AssignmentModule').then(m => ({ default: m.AssignmentModule })), 'AssignmentModule');
 const GradeCalculatorModule = lazyWithRetry(() => import('./features/academic/GradeCalculatorModule').then(m => ({ default: m.GradeCalculatorModule })), 'GradeCalculatorModule');
 
-// â”€â”€â”€ Page loading skeleton (replaces spinner â€” feels like content is loading, not waiting) â”€â”€
+// ——— Page loading skeleton (replaces spinner — feels like content is loading, not waiting) —
+// Minimized to prevent a jarring "flash" of 3 giant rectangles when navigating between modules
 const PageLoader = () => (
-  <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-    <SkeletonCard height="120px" />
-    <SkeletonCard height="180px" />
-    <SkeletonCard height="80px" />
+  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vault-primary)' }}>
+    {/* Transparent during fast lazy-loads */}
   </div>
 );
 
-// â”€â”€â”€ Page Transition Wrapper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const isMobileDevice = () => 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+// Performance: blur() filter removed — it triggers a full GPU repaint on every
+// route change. Pure translateY is GPU-composited (no main-thread paint cost).
+// isMobileDevice is memoized at module level — no per-render cost.
+const _isMobile = typeof window !== 'undefined'
+  ? ('ontouchstart' in window || navigator.maxTouchPoints > 0)
+  : false;
 
-const PageTransition = ({ children }: { children: React.ReactNode }) => {
-  const mobile = isMobileDevice();
-  return (
-    <motion.div
-      className="page-enter"
-      initial={{ opacity: 0, scale: 0.97, filter: 'blur(4px)' }}
-      animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-      exit={{ opacity: 0, scale: 1.02, filter: 'blur(4px)' }}
-      transition={{ duration: mobile ? 0.25 : 0.4, ease: [0.22, 1, 0.36, 1] }}
-      style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
-    >
-      {children}
-    </motion.div>
-  );
-};
+const PageTransition = ({ children }: { children: React.ReactNode }) => (
+  <motion.div
+    className="page-enter"
+    initial={{ opacity: 0, y: 15 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, y: -10 }}
+    transition={{ duration: _isMobile ? 0.2 : 0.3, ease: [0.25, 0.8, 0.25, 1] }}
+    style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
+  >
+    {children}
+  </motion.div>
+);
 
-// â”€â”€â”€ Animated Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ——— Animated Routes ——————————————————————————————————————————————————————
 const AnimatedRoutes = () => {
   const location = useLocation();
   return (
-    // mode='sync' means incoming and outgoing pages animate simultaneously
-    // â€” this is what makes iOS feel instant (not waiting for old page to exit first)
-    <AnimatePresence mode="sync">
+    // mode='wait' ensures the old page fully exits before the new page enters.
+    // This completely eliminates the DOM layout stutter/jank caused by both pages existing simultaneously.
+    <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/home"        element={<PageTransition><ErrorBoundary name="Dashboard"><HomeDashboard /></ErrorBoundary></PageTransition>} />
@@ -283,7 +284,7 @@ const AnimatedRoutes = () => {
         <Route path="/jobs"        element={<PageTransition><ErrorBoundary name="Jobs"><Suspense fallback={<PageLoader />}><JobTracker /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/habits"      element={<PageTransition><ErrorBoundary name="Habits"><Suspense fallback={<PageLoader />}><HabitsModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/learning"    element={<PageTransition><ErrorBoundary name="Learning"><Suspense fallback={<PageLoader />}><LearningChecklistModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/tools"       element={<PageTransition><ErrorBoundary name="Tools"><Suspense fallback={<PageLoader />}><ToolsHubModule /></Suspense></ErrorBoundary></PageTransition>} />
+
         <Route path="/integrations" element={<PageTransition><ErrorBoundary name="Integrations"><Suspense fallback={<PageLoader />}><IntegrationsModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/review"      element={<PageTransition><ErrorBoundary name="Review"><Suspense fallback={<PageLoader />}><WeeklyReviewModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><Suspense fallback={<PageLoader />}><AttendanceModule /></Suspense></ErrorBoundary></PageTransition>} />
@@ -295,29 +296,15 @@ const AnimatedRoutes = () => {
   );
 };
 
-// âœ… U1 FIX: DataReadyGate â€” shows a premium loading overlay while GlobalDataContext
+// ✅ U1 FIX: DataReadyGate — shows a premium loading overlay while GlobalDataContext
 // is hydrating from Firestore (0-3s after auth resolves). Prevents the "skeleton soup"
 // where every lazy-loaded module renders simultaneously with its own loading skeleton
-// while also making its own Firestore calls â€” creating a fragmented loading experience.
+// while also making its own Firestore calls — creating a fragmented loading experience.
 // This gate renders ONCE at the top level, so all routes get clean data on first paint.
 const DataReadyGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoading } = useGlobalData();
   if (!isLoading) return <>{children}</>;
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-        <div style={{ position: 'relative', width: 56, height: 56 }}>
-          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(139,92,246,0.15)' }} />
-          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#8b5cf6', animation: 'spin 0.8s linear infinite' }} />
-          <div style={{ position: 'absolute', inset: 6, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#3b82f6', animation: 'spin 1.2s linear infinite reverse' }} />
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
-          <p style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 600, margin: 0 }}>Syncing your data...</p>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: 0 }}>Loading tasks, habits and calendar</p>
-        </div>
-      </div>
-    </div>
-  );
+  return <SolarSystemLoader title="Syncing your data..." subtitle="Loading tasks, habits and calendar" />;
 };
 
 function App() {
@@ -326,20 +313,20 @@ function App() {
 
   const [user, setUser]               = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  // â”€â”€ Auth Phase State Machine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // 'initializing'    â†’ App just loaded, Firebase is checking stored session
-  // 'unauthenticated' â†’ No user. Landing page is shown.
-  // 'authenticating'  â†’ Popup opened OR redirect in progress. Loading overlay shown.
-  // 'authenticated'   â†’ User logged in. App is fully shown.
+  // ——— Auth Phase State Machine ——————————————————————————————————————
+  // 'initializing'    → App just loaded, Firebase is checking stored session
+  // 'unauthenticated' → No user. Landing page is shown.
+  // 'authenticating'  → Popup opened OR redirect in progress. Loading overlay shown.
+  // 'authenticated'   → User logged in. App is fully shown.
   //
   // Using a single phase state instead of multiple booleans eliminates the 3-branch
   // return() pattern which caused React to fully unmount/remount the tree on each
-  // auth state change â€” the root cause of the visible flash and screen collision.
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Listen for Login.tsx button click â†’ immediately switch to 'authenticating'
+  // auth state change — the root cause of the visible flash and screen collision.
+  // ———————————————————————————————————————————————————————————————————————————————————
+  // Listen for Login.tsx button click → immediately switch to 'authenticating'
   // phase so the loading overlay covers the landing page BEFORE the popup opens.
   // This is what eliminates the 1-2 second flash of the landing page during popup auth.
-  // Also listen for cancellation/error â†’ revert to 'unauthenticated' gracefully.
+  // Also listen for cancellation/error → revert to 'unauthenticated' gracefully.
   useEffect(() => {
     const handleAuthStarting  = () => setAuthPhase('authenticating');
     const handleAuthCancelled = () => setAuthPhase('unauthenticated');
@@ -358,9 +345,9 @@ function App() {
   );
   const [showLogin, setShowLogin]     = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showAgent, setShowAgent] = useState(false);
+  const [showSara, setShowSara] = useState(false);
   const [showFab,   setShowFab]   = useState(false);
-  // âœ… U2 FIX: Track panel closing animation state.
+  // ✅ U2 FIX: Track panel closing animation state.
   const [isPanelClosing, setIsPanelClosing] = useState(false);
   const [showDeveloperMatrix, setShowDeveloperMatrix] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
@@ -370,7 +357,7 @@ function App() {
   // (adding it caused multiple auth subscriptions on each login/logout cycle).
   const prevUserRef = useRef<User | null>(null);
 
-  // Listen for Login.tsx button click â†’ immediately switch to 'authenticating'
+  // Listen for Login.tsx button click → immediately switch to 'authenticating'
   // phase so the loading overlay covers the landing page BEFORE the popup opens.
   // This is what eliminates the 1-2 second flash of the landing page during popup auth.
   useEffect(() => {
@@ -380,19 +367,25 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const handleToggleAgent = () => {
-      setShowAgent(prev => !prev);
-      if (!showAgent) {
-        setShowFab(false); // Hide FAB when opening agent
-      }
+    const handleToggleGlobalFab = () => {
+      setShowFab(prev => !prev);
     };
-    
-    window.addEventListener('toggle-zen-agent', handleToggleAgent);
-    return () => window.removeEventListener('toggle-zen-agent', handleToggleAgent);
-  }, [showAgent]);
+
+    const handleToggleSara = () => {
+      setShowSara(prev => !prev);
+      setShowFab(false);
+    };
+
+    window.addEventListener('toggle-global-fab', handleToggleGlobalFab);
+    window.addEventListener('toggle-sara', handleToggleSara);
+    return () => {
+      window.removeEventListener('toggle-global-fab', handleToggleGlobalFab);
+      window.removeEventListener('toggle-sara', handleToggleSara);
+    };
+  }, []);
 
   useEffect(() => {
-    // Skip Lenis on touch/mobile â€” native iOS scroll is already buttery smooth
+    // Skip Lenis on touch/mobile — native iOS scroll is already buttery smooth
     // and Lenis interferes with touch events, causing jank during tab switching
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     if (isTouchDevice) return;
@@ -405,23 +398,23 @@ function App() {
   useEffect(() => {
     let unsubscribeAuth: (() => void) | null = null;
 
-    // â”€â”€â”€ SMART AUTH INITIALIZATION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // POPUP auth  â†’ set up onAuthStateChanged IMMEDIATELY. Firebase resolves the
-    //               auth state from local storage in <100ms â€” zero landing-page flash.
+    // ——— SMART AUTH INITIALIZATION —————————————————————————————————————————————————
+    // POPUP auth  → set up onAuthStateChanged IMMEDIATELY. Firebase resolves the
+    //               auth state from local storage in <100ms — zero landing-page flash.
     //
-    // REDIRECT auth â†’ must call getRedirectResult() FIRST. Without it, Firebase fires
+    // REDIRECT auth → must call getRedirectResult() FIRST. Without it, Firebase fires
     //                 onAuthStateChanged with null before it processes the redirect
     //                 tokens, causing the user to get stuck on the login page.
     //
     // We distinguish the two using the `zen_is_redirecting` localStorage flag that
     //  Login.tsx sets right before calling signInWithRedirect().
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ———————————————————————————————————————————————————————————————————————————————————
 
     const isReturningFromRedirect = localStorage.getItem('zen_is_redirecting') === '1';
 
     const setupAuthListener = () => {
       unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-        // â”€â”€ Side effects on fresh login (null â†’ user transition) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ——— Side effects on fresh login (null → user transition) —————————————————
         if (currentUser && !prevUserRef.current) {
           runModelHealthCheck().catch(err => console.error('Model health check failed:', err));
 
@@ -470,7 +463,7 @@ function App() {
         prevUserRef.current = currentUser;
         setUser(currentUser);
         setAuthLoading(false);
-        // â”€â”€ Update authPhase based on resolved auth state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // ——— Update authPhase based on resolved auth state —————————————————
         // Small timeout lets the loading overlay render one frame before switching,
         // preventing a janky 1-frame flicker of the wrong state.
         setAuthPhase(currentUser ? 'authenticated' : 'unauthenticated');
@@ -487,16 +480,16 @@ function App() {
           console.error('[Auth] getRedirectResult error:', err.code, err.message);
           if (err.code === 'auth/unauthorized-domain') {
             import('sonner').then(({ toast }) =>
-              toast.error('Domain not authorized. Add this domain in Firebase Console â†’ Authentication â†’ Settings.', { duration: 15000 })
+              toast.error('Domain not authorized. Add this domain in Firebase Console → Authentication → Settings.', { duration: 15000 })
             );
           }
         })
         .finally(() => {
           localStorage.removeItem('zen_is_redirecting');
-          setupAuthListener(); // â† only now is auth state settled
+          setupAuthListener(); // ← only now is auth state settled
         });
     } else {
-      // POPUP / EXISTING SESSION PATH: listener fires in <100ms â€” no flash
+      // POPUP / EXISTING SESSION PATH: listener fires in <100ms — no flash
       setupAuthListener();
     }
 
@@ -522,48 +515,35 @@ function App() {
 
     if (isProbablyLoggedIn || isProtectedRoute) {
       return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-base)' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-          <div style={{ position: 'relative', width: 56, height: 56 }}>
-            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(139,92,246,0.15)' }} />
-            <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#8b5cf6', animation: 'spin 0.8s linear infinite' }} />
-            <div style={{ position: 'absolute', inset: 6, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#3b82f6', animation: 'spin 1.2s linear infinite reverse' }} />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem' }}>
-            <p style={{ color: 'var(--text-primary)', fontSize: '0.9rem', fontWeight: 600, margin: 0 }}>Loading Zentrack...</p>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: 0 }}>Authenticating...</p>
-          </div>
-        </div>
-      </div>
+      <SolarSystemLoader />
     );
     }
   }
 
-  // â”€â”€ SINGLE UNIFIED RENDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ——— SINGLE UNIFIED RENDER ——————————————————————————————————————————————————————
   // All auth phase transitions are controlled here by a single AnimatePresence.
   // This guarantees: one phase exits fully BEFORE the next one enters.
   // No more 3 disconnected return() branches = no flash, no collision.
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ———————————————————————————————————————————————————————————————————————————————————
 
   const toasterProps = {
     position: 'top-right' as const,
     toastOptions: {
       style: {
-        background: 'rgba(10, 25, 40, 0.92)',
-        backdropFilter: 'blur(16px)',
+        background: 'rgba(8, 20, 35, 0.97)', // Solid-ish — avoids backdrop-filter on mobile
         border: '1px solid rgba(255,255,255,0.10)',
         borderRadius: '0.875rem',
         color: 'white',
         fontFamily: "'Inter', sans-serif",
         fontSize: '0.85rem',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
       },
       classNames: { success: 'toast-success', error: 'toast-error', warning: 'toast-warning' },
     },
   };
 
-  // Shared smooth transition config
-  const phaseTransition = { duration: 0.45, ease: [0.25, 0.46, 0.45, 0.94] };
+  // Shared smooth transition config — pure opacity, no blur/scale (GPU composited only)
+  const phaseTransition = { duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as const };
 
   // Landing page is always mounted as the base layer.
   // It only becomes visible when the overlay on top (app or loading) fades out.
@@ -586,7 +566,8 @@ function App() {
         <DailyBriefingOverlay />
         <FloatingExtraWorks />
         <VoiceQuickCaptureWidget />
-        <AgentTerminal />
+        {/* ── Global Cinematic Agent HUD ── */}
+        <AgentDataStream />
         <MissionReport />
         <ReportArchive />
         <SessionEnforcer />
@@ -608,12 +589,12 @@ function App() {
         {(() => {
           const petals = [
             {
-              id: 'chat',
-              label: 'Chat',
-              icon: <MessageSquare size={16} />,
-              color: 'linear-gradient(135deg,#8b5cf6,#3b82f6)',
-              shadow: 'rgba(139,92,246,0.5)',
-              action: () => { setShowAgent(true); setShowFab(false); },
+              id: 'sara',
+              label: '⚡ Sara OS',
+              icon: <Zap size={16} />,
+              color: 'linear-gradient(135deg, #00d4ff, #0066ff)',
+              shadow: 'rgba(0,200,255,0.6)',
+              action: () => { setShowSara(true); setShowFab(false); },
             },
             {
               id: 'risk',
@@ -677,7 +658,7 @@ function App() {
               color: 'linear-gradient(135deg,#f59e0b,#d97706)',
               shadow: 'rgba(245,158,11,0.5)',
               action: () => {
-                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "ORACLE_DAILY_BRIEF: Call get_tasks('dashboard') for today's agenda. Output a clean morning brief: ðŸ“… TODAY (top 3 tasks by priority) | âš ï¸ OVERDUE (count) | ðŸ’¡ ONE THING to start with. Max 150 words. Be direct and energizing." } }));
+                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "ORACLE_DAILY_BRIEF: Call get_tasks('dashboard') for today's agenda. Output a clean morning brief: 📅 TODAY (top 3 tasks by priority) | ⚠️ OVERDUE (count) | 💡 ONE THING to start with. Max 150 words. Be direct and energizing." } }));
                 setShowFab(false);
               },
             },
@@ -689,36 +670,54 @@ function App() {
                 {showFab && petals.map((p, i) => (
                   <motion.div
                     key={p.id}
-                    initial={{ opacity: 0, scale: 0.6, y: 0 }}
-                    animate={{ opacity: 1, scale: 1, y: -(72 + i * 60) }}
-                    exit={{ opacity: 0, scale: 0.6, y: 0 }}
-                    transition={{ type: 'spring', stiffness: 400, damping: 28, delay: i * 0.05 }}
-                    style={{ position: 'absolute', bottom: 0, right: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end' }}
+                    initial={{ opacity: 0, scale: 0.5, y: 0 }}
+                    animate={{ 
+                      opacity: 1, 
+                      scale: 1, 
+                      y: -(72 + i * 62), 
+                    }}
+                    exit={{ 
+                      opacity: 0, 
+                      scale: 0.5, 
+                      y: 0, 
+                      transition: { duration: 0.2, ease: "easeIn" } 
+                    }}
+                    transition={{ 
+                      type: 'spring', 
+                      stiffness: 260, 
+                      damping: 25, 
+                      delay: i * 0.04 
+                    }}
+                    style={{ position: 'absolute', bottom: 0, right: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end', transformOrigin: 'bottom center' }}
                   >
                     <motion.span
-                      initial={{ opacity: 0, x: 8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 + 0.1 }}
-                      style={{ background: 'rgba(10,10,15,0.9)', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '8px', padding: '0.3rem 0.65rem', fontSize: '0.78rem', fontWeight: 600, color: '#e4e4e7', whiteSpace: 'nowrap', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+                      initial={{ opacity: 0, x: 15, filter: 'blur(4px)' }}
+                      animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
+                      exit={{ opacity: 0, x: 10, filter: 'blur(2px)', transition: { duration: 0.15 } }}
+                      transition={{ type: 'spring', stiffness: 300, damping: 25, delay: i * 0.04 + 0.1 }}
+                      style={{ background: 'rgba(15,15,20,0.85)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 600, color: '#f4f4f5', whiteSpace: 'nowrap', boxShadow: '0 8px 16px rgba(0,0,0,0.5)' }}
                     >
                       {p.label}
                     </motion.span>
-                    <button
+                    <motion.button
                       onClick={p.action}
-                      style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: p.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: `0 6px 20px ${p.shadow}` }}
+                      whileHover={{ scale: 1.12 }}
+                      whileTap={{ scale: 0.9 }}
+                      style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', background: p.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: `0 8px 24px ${p.shadow}, inset 0 2px 4px rgba(255,255,255,0.2)` }}
                     >
                       {p.icon}
-                    </button>
+                    </motion.button>
                   </motion.div>
                 ))}
               </AnimatePresence>
 
               <motion.button
                 onClick={() => setShowFab(f => !f)}
+                className="hide-on-mobile"
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.94 }}
-                animate={{ rotate: showFab ? 135 : 0, scale: (showAgent || isPanelClosing) ? 0 : 1 }}
-                transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+                animate={{ rotate: showFab ? 135 : 0, scale: isPanelClosing ? 0 : 1 }}
+                transition={{ type: 'spring', stiffness: 280, damping: 24 }}
                 style={{ position: 'relative', zIndex: 1, background: showFab ? 'linear-gradient(135deg,#374151,#1f2937)' : 'linear-gradient(135deg,#8b5cf6,#3b82f6)', border: 'none', borderRadius: '50%', width: 56, height: 56, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: showFab ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(139,92,246,0.45)', cursor: 'pointer', transition: 'background 0.3s ease, box-shadow 0.3s ease' }}
                 aria-label={showFab ? 'Close agent menu' : 'Open Zen Agent'}
               >
@@ -728,14 +727,16 @@ function App() {
           );
         })()}
 
-        <AnimatePresence onExitComplete={() => { setIsPanelClosing(false); }}>
-          {showAgent && (
-            <ZenAgentPanel
-              onClose={() => {
-                setIsPanelClosing(true);
-                setShowAgent(false);
-              }}
-            />
+        <AnimatePresence>
+          {showSara && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, filter: 'blur(8px)' }}
+              animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, scale: 0.98, filter: 'blur(8px)' }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <SaraInterface onClose={() => setShowSara(false)} />
+            </motion.div>
           )}
         </AnimatePresence>
 

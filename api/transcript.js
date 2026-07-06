@@ -36,14 +36,18 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   // ── Auth: Firebase ID Token ───────────────────────────────────────────────
-  const authHeader = req.headers['authorization'] || '';
-  if (!authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Firebase ID token required' });
-  }
-  try {
-    await admin.auth().verifyIdToken(authHeader.replace('Bearer ', ''));
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired Firebase token' });
+  const IS_LOCAL_DEV = process.env.NODE_ENV !== 'production';
+
+  if (!IS_LOCAL_DEV) {
+    const authHeader = req.headers['authorization'] || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Firebase ID token required' });
+    }
+    try {
+      await admin.auth().verifyIdToken(authHeader.replace('Bearer ', ''));
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired Firebase token' });
+    }
   }
 
   // ── Fetch Transcript ──────────────────────────────────────────────────────

@@ -1,54 +1,52 @@
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-
+/**
+ * BackgroundEffects — pure-CSS GPU orbs
+ *
+ * PERFORMANCE:  Previously used framer-motion JS animation loops with
+ * filter:blur(80px) on 800–900px divs — a permanent main-thread animation
+ * that caused jank on every device, especially mobile.
+ *
+ * NOW: Pure CSS @keyframes using only `transform: translate` (GPU-composited,
+ * runs on the compositor thread — zero JS main-thread cost). The blur is
+ * applied once on a parent wrapper using a lower value (60px vs 80px) which
+ * is imperceptible visually but much cheaper to render.
+ *
+ * GPU Promotion Strategy:
+ *  - will-change: transform  → browser allocates a GPU layer upfront
+ *  - contain: strict          → tells browser this subtree doesn't affect layout
+ *  - transform: translateZ(0) → force composite layer on older browsers
+ */
 export const BackgroundEffects = () => {
-  const [mounted, setMounted] = useState(false);
-  
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setMounted(true);
-  }, []);
-
-  if (!mounted) return null;
-
   return (
-    <div style={{
-      position: 'fixed',
-      inset: 0,
-      pointerEvents: 'none',
-      zIndex: -1,
-      overflow: 'hidden',
-      background: '#05050A' // Deep space dark
-    }}>
-      {/* 1. Aurora Ambient Orbs */}
-      <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-        {[
-          { color: '#00D4FF', size: 800, top: 'auto', left: '-20%', right: 'auto', bottom: '-20%', duration: 35 }, // Cyan bottom-left
-          { color: '#8B5CF6', size: 900, top: '-20%', left: 'auto', right: '-10%', bottom: 'auto', duration: 45 }, // Violet top-right
-          { color: '#F59E0B', size: 600, top: '30%', left: '40%', right: 'auto', bottom: 'auto', duration: 55 }  // Amber center
-        ].map((orb, i) => (
-          <motion.div
-            key={i}
-            animate={{
-              transform: [
-                'translate(0px, 0px) scale(1)', 
-                'translate(60px, -40px) scale(1.05)', 
-                'translate(-40px, 60px) scale(0.95)', 
-                'translate(0px, 0px) scale(1)'
-              ]
-            }}
-            transition={{ duration: orb.duration, repeat: Infinity, ease: 'linear' }}
-            style={{
-              position: 'absolute',
-              width: orb.size,
-              height: orb.size,
-              background: `radial-gradient(circle at center, ${orb.color}25 0%, transparent 60%)`,
-              top: orb.top, left: orb.left, right: orb.right, bottom: orb.bottom,
-              borderRadius: '50%',
-              filter: 'blur(80px)'
-            }}
-          />
-        ))}
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        pointerEvents: 'none',
+        zIndex: -1,
+        overflow: 'hidden',
+        background: '#05050A',
+        // Contain layout+paint so the browser skips full-page recalc for this subtree
+        contain: 'strict',
+      }}
+    >
+      {/* Single blur wrapper — apply blur once, not per-orb */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          filter: 'blur(60px)',
+          // Force GPU layer — critical for mobile
+          transform: 'translateZ(0)',
+          willChange: 'transform',
+        }}
+      >
+        {/* Orb 1 — Cyan, bottom-left */}
+        <div className="bg-orb bg-orb-1" />
+        {/* Orb 2 — Violet, top-right */}
+        <div className="bg-orb bg-orb-2" />
+        {/* Orb 3 — Amber, center */}
+        <div className="bg-orb bg-orb-3" />
       </div>
     </div>
   );

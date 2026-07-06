@@ -112,8 +112,8 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return true;
     }
 
-    const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
-    if (!refreshToken) {
+    const hasConnectedFlag = localStorage.getItem('zen_gcal_has_refresh_token');
+    if (!hasConnectedFlag) {
       setIsGoogleConnected(false);
       setGoogleStatus('disconnected');
       return false;
@@ -150,7 +150,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   useEffect(() => {
     const healthCheckFn = async () => {
       const timeLeft = getTokenTimeRemaining();
-      const hasRefreshToken = !!localStorage.getItem('zen_gcal_refresh_token');
+      const hasRefreshToken = !!localStorage.getItem('zen_gcal_has_refresh_token');
 
       if (!hasRefreshToken) return; // Never was connected — nothing to do
 

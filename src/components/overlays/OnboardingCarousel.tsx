@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { playPopSound } from '../../utils/sound';
-import {
-  ProactiveAgentAnimation,
-  WorkspaceIntegrationAnimation,
-  SmartTasksAnimation,
-  FlowStateAnimation,
-  LearningAnimation,
-  ConsoleAnalyticsAnimation,
-} from '../LandingAnimations';
 import '../../styles/landing.css';
+
+// Lazy-load animations — same pattern as Landing.tsx for consistent bundle splitting
+const LandingAnimationsModule = lazy(() => import('../LandingAnimations'));
+const LazyAnimation = ({ name }: { name: string }) => (
+  <Suspense fallback={<div style={{ width: '100%', height: '240px', borderRadius: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }} />}>
+    <LandingAnimationsModule name={name} />
+  </Suspense>
+);
+
 
 interface OnboardingCarouselProps {
   userId: string;
@@ -22,37 +23,37 @@ const CARDS = [
     id: 'intro',
     title: 'Fully Autonomous',
     desc: 'Your AI companion never sleeps. The moment an email lands or a deadline shifts, agents auto-trigger. Zero manual setup.',
-    AnimationComp: ProactiveAgentAnimation
+    animationName: 'agents'
   },
   {
     id: 'sync',
     title: 'Deep Google Integration',
     desc: 'Not just connected — deeply embedded. Speaks Gmail, Calendar, Drive, Docs, Tasks, and YouTube natively.',
-    AnimationComp: WorkspaceIntegrationAnimation
+    animationName: 'workspace'
   },
   {
     id: 'tasks',
     title: 'Smart Tasks',
     desc: 'Every task knows exactly where it belongs. AI reads your inbox, extracts items, assigns scores, and time-blocks.',
-    AnimationComp: SmartTasksAnimation
+    animationName: 'tasks'
   },
   {
     id: 'flow',
     title: 'Flow State Engine',
     desc: 'Build the conditions for your deepest work. Intelligent focus sessions protect your time and habit streaks build momentum.',
-    AnimationComp: FlowStateAnimation
+    animationName: 'flow'
   },
   {
     id: 'learning',
     title: 'Growth on Autopilot',
     desc: 'Curated daily learning modules, YouTube integration, and spaced-repetition AI coaching that adapts to your rhythm.',
-    AnimationComp: LearningAnimation
+    animationName: 'learning'
   },
   {
     id: 'console',
     title: 'Agent Console',
     desc: 'Speak in plain language and watch your agents reason in real-time. Get live analytics on every dimension of your productivity.',
-    AnimationComp: ConsoleAnalyticsAnimation
+    animationName: 'console'
   }
 ];
 
@@ -237,7 +238,7 @@ export const OnboardingCarousel: React.FC<OnboardingCarouselProps> = ({ userId, 
                   transform: 'scale(0.55)', 
                   transformOrigin: 'center center' 
                 }}>
-                  {CARDS[currentIndex]?.AnimationComp && React.createElement(CARDS[currentIndex].AnimationComp)}
+                  <LazyAnimation name={CARDS[currentIndex]?.animationName ?? ''} />
                 </div>
               </motion.div>
 

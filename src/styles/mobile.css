@@ -20,6 +20,23 @@ html, body {
   overscroll-behavior: none;
 }
 
+/*
+ * CSS Containment — tell the browser which elements are isolated subtrees.
+ * This prevents expensive "layout invalidation cascades" where one element
+ * changing forces the whole page layout to be recalculated.
+ * 
+ * contain: layout paint  — subtree doesn't affect outside layout or painting
+ * contain: content        — shorthand for layout + paint + style
+ */
+.job-card,
+.card,
+.task-item,
+.habit-card,
+.goal-card,
+.note-card {
+  contain: layout paint;
+}
+
 /* Momentum scrolling for all scroll containers */
 .page-pad,
 .main-content,
@@ -30,6 +47,7 @@ html, body {
 .gpa-container {
   -webkit-overflow-scrolling: touch;
 }
+
 
 /* ── BASE RESPONSIVE CLASSES ── */
 
@@ -108,6 +126,8 @@ html, body {
   justify-content: center;
   z-index: 200;
   padding: 1rem;
+  /* GPU layer — prevents full-page compositing revalidation when overlay opens */
+  transform: translateZ(0);
 }
 
 
@@ -117,6 +137,30 @@ html, body {
    MOBILE BREAKPOINT (≤768px)
    ========================================================================== */
 @media (max-width: 768px) {
+
+  /* ── PAGE TRANSITION: Disable animation on mobile ─────────────────────── */
+  /*
+   * Route change animations cost CPU on mobile even when fast.
+   * Pages appear instantly — users don't miss the animation on small screens.
+   * The translateY fallback in framer-motion still gives a micro-lift feel.
+   */
+  .page-enter {
+    animation: none !important;
+  }
+
+  /* ── BACKDROP FILTER: Reduce blur on mobile ────────────────────────────── */
+  /*
+   * backdrop-filter: blur(20px) is extremely expensive on mobile GPUs.
+   * Reducing to 6px is visually nearly identical but ~4x cheaper to render.
+   * This affects modals, nav, and any glass-morphism panels.
+   */
+  .top-nav,
+  .modal-content,
+  [style*="backdrop-filter"],
+  [style*="backdropFilter"] {
+    -webkit-backdrop-filter: blur(6px) !important;
+    backdrop-filter: blur(6px) !important;
+  }
 
   /* ── Modal: slide up from bottom on mobile (iOS sheet pattern) ─────────── */
   .modal-overlay {
@@ -132,6 +176,233 @@ html, body {
     animation: slideUpSheet 0.28s var(--ease-out-expo) !important;
     padding-bottom: env(safe-area-inset-bottom, 1rem) !important;
   }
+
+  /* ── Mobile Bottom Sheet (for non-modal drawers like TopNav More) ── */
+  .mobile-bottom-sheet {
+    position: fixed !important;
+    top: auto !important;
+    right: auto !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: auto !important;
+    max-height: 85vh !important;
+    border-radius: 20px 20px 0 0 !important;
+    background: rgba(10, 15, 25, 0.95) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    padding-bottom: env(safe-area-inset-bottom, 1rem) !important;
+    margin: 0 !important;
+    box-shadow: 0 -10px 40px rgba(0,0,0,0.8) !important;
+    z-index: 1000 !important;
+  }
+  
+  .app-drawer-container .mobile-bottom-sheet {
+    position: fixed !important;
+  }
+  
+  .drawer-close-btn {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.1) !important;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+  }
+
+  /* ────────────────────────────────────────────────────────────────────────
+     HOME DASHBOARD — Complete Mobile Redesign
+     Everything below is mobile-ONLY (max-width: 767px). Desktop untouched.
+     ──────────────────────────────────────────────────────────────────────── */
+
+  /* 1. Root: reduce the 3rem gap between sections → tight 0.85rem */
+  .home-dashboard-root {
+    gap: 0.85rem !important;
+    padding: 0.75rem 0.75rem 0 !important;
+  }
+
+  /* 2. Header row: stack greeting on top, stats below, tight */
+  .home-header-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.5rem !important;
+  }
+
+  /* 3. Greeting: single compact line */
+  .home-greeting {
+    flex: none !important;
+    width: 100% !important;
+  }
+  .greeting-title {
+    font-size: 1.45rem !important;
+    line-height: 1.2 !important;
+    margin-bottom: 0.1rem !important;
+    letter-spacing: -0.01em !important;
+  }
+  /* Subtitle under greeting */
+  .home-greeting > p,
+  .home-greeting p {
+    font-size: 0.75rem !important;
+    margin: 0 !important;
+  }
+
+  /* 4. Stats strip: ONE horizontal row, compact pill cards */
+  .dashboard-stats-strip {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 0.4rem !important;
+    width: 100% !important;
+    flex-wrap: nowrap !important;
+  }
+  /* Each stat card */
+  .dashboard-stats-strip > div {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    padding: 0.55rem 0.6rem !important;
+    border-radius: 0.75rem !important;
+    gap: 0.4rem !important;
+    align-items: center !important;
+  }
+  /* The big number */
+  .dashboard-stats-strip > div > div:first-child {
+    font-size: 1.5rem !important;
+    line-height: 1 !important;
+  }
+  /* Icon inside stat (first child of inner flex) */
+  .dashboard-stats-strip > div svg {
+    width: 14px !important;
+    height: 14px !important;
+    flex-shrink: 0 !important;
+  }
+  /* Label under number */
+  .dashboard-stats-strip > div > div > div:last-child {
+    font-size: 0.55rem !important;
+    margin-top: 0.1rem !important;
+    letter-spacing: 0.08em !important;
+  }
+
+  /* 5. Split row: stack agent full-width, hide schedule on mobile */
+  .home-split-row {
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+  }
+  .agent-shutter-container {
+    flex: none !important;
+    width: 100% !important;
+  }
+  /* Show Today's Schedule column on mobile below the Agent */
+  .home-schedule-col {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    flex: none !important;
+    margin-bottom: 2rem !important; /* Proper spacing above the nav bar */
+  }
+
+  /* 6. Agent command input padding wrapper: tighter on mobile */
+  .agent-cmd-pad {
+    padding: 0 0.75rem 0.75rem !important;
+  }
+
+  /* 7. Ensure main-content scrolls correctly and isn't clipped by bottom nav */
+  .main-content {
+    overflow-y: auto !important;
+    padding-bottom: 90px !important;
+  }
+
+  /* 8. Pipeline bar: horizontal scroll so labels never clip */
+  .pipeline-bar {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    justify-content: flex-start !important;
+    gap: 0.75rem !important;
+    padding: 0.5rem 0.75rem !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+  }
+  .pipeline-bar::-webkit-scrollbar { display: none; }
+  .pipeline-node {
+    font-size: 0.6rem !important;
+    white-space: nowrap !important;
+    gap: 0.25rem !important;
+    flex-shrink: 0 !important;
+  }
+  .pipeline-node-dot {
+    width: 7px !important;
+    height: 7px !important;
+  }
+
+  /* 9. Gym Mobile Optimizations */
+  .gym-panel {
+    margin: 0.5rem 0.5rem 0 !important;
+    padding: 0.75rem !important;
+  }
+  .gym-panel input {
+    font-size: 0.9rem !important;
+  }
+
+  /* 10. Agent Terminal Mobile Optimization */
+  .agent-terminal {
+    width: calc(100vw - 32px) !important;
+    left: 16px !important;
+    right: 16px !important;
+    bottom: calc(90px + env(safe-area-inset-bottom, 0px)) !important; /* Floating above nav */
+    height: auto !important;
+    max-height: 35vh !important; 
+    border-radius: 12px !important;
+  }
+  
+  .agent-terminal [data-lenis-prevent="true"] {
+    padding: 8px !important;
+  }
+  
+  .agent-terminal span {
+    font-size: 10px !important; /* Smaller text for mobile */
+    word-break: break-word !important;
+    white-space: pre-wrap !important;
+    line-height: 1.3 !important;
+  }
+
+  /* 10. Voice Mic FAB — dock it perfectly into the center gap of the BottomNav on mobile! */
+  .voice-widget-fab {
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    z-index: 1000 !important;
+  }
+
+  /* 11. Gym AI Chat FAB — dock it perfectly into the center gap on mobile in place of the mic */
+  .gym-ai-fab {
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px)) !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    z-index: 1000 !important;
+  }
+  
+  /* Make sure the main mic button is large enough (56px is default, keep it big) */
+  .voice-widget-fab button[aria-label="Voice Quick Capture"] {
+    width: 56px !important;
+    height: 56px !important;
+  }
+
+  /* Hide the wake-word ear toggle on mobile (keeps it uncluttered) */
+  .voice-widget-fab button[title="Wake Word: ON"],
+  .voice-widget-fab button[title="Wake Word: OFF"] {
+    display: none !important;
+  }
+
+
+
+
+
 
 
   /* ───────────────────────────────────────────────────────────────────────
@@ -881,26 +1152,7 @@ html, body {
   .agent-shutter-container {
     max-height: 50vh !important;
   }
-  
-  .dashboard-stats-strip {
-    flex-wrap: nowrap !important;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    /* Hide scrollbar for cleaner look */
-    -ms-overflow-style: none;
-    scrollbar-width: none;
-  }
-  
-  .dashboard-stats-strip::-webkit-scrollbar {
-    display: none;
-  }
-  
-  .dashboard-stats-strip > div {
-    scroll-snap-align: start;
-    min-width: 140px !important;
-    flex: 0 0 auto;
-  }
+
   
   /* Global Typography & Input Scaling */
   h1 { font-size: clamp(1.2rem, 5vw, 1.5rem) !important; }

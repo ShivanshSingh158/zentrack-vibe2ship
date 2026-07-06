@@ -99,14 +99,8 @@ export const initGoogleCalendar = async (): Promise<boolean> => {
   try {
     await loadGisScript();
 
-    // If we have a refresh token and the current access token is expired (or close to it)
-    if (localStorage.getItem('zen_gcal_refresh_token') && Date.now() > _tokenExpiry - 10 * 60 * 1000) {
-      try {
-        await forceSilentRefresh();
-      } catch (err) {
-        console.warn('[GoogleCalendar] Initial silent refresh failed:', err);
-      }
-    }
+    // We rely on GlobalDataContext to trigger attemptSilentRefresh() after Firebase Auth hydrates.
+    // This prevents race conditions where the backend fails because the ID token isn't ready.
 
     return true;
   } catch (err) {

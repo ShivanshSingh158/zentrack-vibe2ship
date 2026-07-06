@@ -1,6 +1,7 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 
 /**
  * DEV API NOTE:
@@ -39,6 +40,7 @@ const versionJsonPlugin = (): Plugin => ({
 
 export default defineConfig({
   build: {
+    sourcemap: 'hidden',
     minify: true,
     rollupOptions: {
       // ✅ CRITICAL-DEPS FIX: Exclude server-only packages from the browser bundle.
@@ -57,8 +59,52 @@ export default defineConfig({
       ],
       output: {
         manualChunks(id) {
-          if (id.includes('node_modules/recharts')) {
+          // ── Framer Motion ── large animation library, not needed until first route render
+          if (id.includes('node_modules/framer-motion')) {
+            return 'framer-motion';
+          }
+          // ── Recharts ── only loaded on /analytics
+          if (id.includes('node_modules/recharts') ||
+              id.includes('node_modules/d3') ||
+              id.includes('node_modules/victory')) {
             return 'recharts';
+          }
+          // ── Firebase ── large SDK, split into one chunk
+          if (id.includes('node_modules/firebase') ||
+              id.includes('node_modules/@firebase')) {
+            return 'firebase';
+          }
+          // ── Lottie ── heavy animation player, rarely used
+          if (id.includes('node_modules/lottie-react') ||
+              id.includes('node_modules/lottie-web')) {
+            return 'lottie';
+          }
+          // ── PDF / Document parsing ── only used in tools/learning
+          if (id.includes('node_modules/pdfjs-dist') ||
+              id.includes('node_modules/mammoth')) {
+            return 'doc-parsers';
+          }
+          // ── Markdown + Math rendering stack ── only used in agent/learning
+          if (id.includes('node_modules/react-markdown') ||
+              id.includes('node_modules/remark') ||
+              id.includes('node_modules/rehype') ||
+              id.includes('node_modules/remark-gfm') ||
+              id.includes('node_modules/remark-math') ||
+              id.includes('node_modules/rehype-katex') ||
+              id.includes('node_modules/katex') ||
+              id.includes('node_modules/unified') ||
+              id.includes('node_modules/micromark') ||
+              id.includes('node_modules/mdast') ||
+              id.includes('node_modules/hast')) {
+            return 'markdown';
+          }
+          // ── DnD library ── only on tasks/kanban
+          if (id.includes('node_modules/@hello-pangea/dnd')) {
+            return 'dnd';
+          }
+          // ── Google Generative AI SDK ── only used in agent interactions
+          if (id.includes('node_modules/@google/generative-ai')) {
+            return 'gemini-sdk';
           }
         }
       }
@@ -74,13 +120,21 @@ export default defineConfig({
         target: 'https://oauth2.googleapis.com/token',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/local-google-token/, '')
+      },
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true
       }
     }
   },
   plugins: [
     react(),
     versionJsonPlugin(),
-
+    sentryVitePlugin({
+      org: process.env.SENTRY_ORG || "zen-org",
+      project: process.env.SENTRY_PROJECT || "zentrack",
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+    }),
     VitePWA({
       // autoUpdate so SW takes over silently — version.json handles the UI notification
       registerType: 'autoUpdate',
@@ -141,13 +195,25 @@ export default defineConfig({
             src: '/icon-192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
+          },
+          {
+            src: '/icon-192-maskable.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
           },
           {
             src: '/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
+          },
+          {
+            src: '/icon-512-maskable.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
           },
         ],
       },

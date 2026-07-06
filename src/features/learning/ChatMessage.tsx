@@ -56,37 +56,37 @@ const CodeBlock = ({ codeLang, codeLines }: { codeLang: string; codeLines: strin
       height: expanded ? '85vh' : 'auto',
       maxHeight: expanded ? '85vh' : '400px',
       margin: expanded ? 'auto' : '0.6rem 0',
-      borderRadius: '10px',
+      borderRadius: '8px',
       overflow: 'hidden',
-      border: '1px solid rgba(130,170,255,0.15)',
-      boxShadow: expanded ? '0 24px 80px rgba(0,0,0,0.8)' : '0 4px 20px rgba(0,0,0,0.4)',
+      border: '1px solid #424242',
+      boxShadow: expanded ? '0 24px 80px rgba(0,0,0,0.8)' : '0 4px 12px rgba(0,0,0,0.2)',
       display: 'flex',
       flexDirection: 'column',
       pointerEvents: 'auto',
       transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
     }}>
-      <div style={{ background: 'rgba(20,22,35,0.95)', padding: '0.45rem 0.85rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+      <div style={{ background: '#2f2f2f', padding: '0.4rem 0.8rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #000000', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <div style={{ display: 'flex', gap: '0.35rem' }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff5f57', display: 'inline-block' }} />
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#febc2e', display: 'inline-block' }} />
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#28c840', display: 'inline-block' }} />
           </div>
-          <span style={{ fontSize: '0.65rem', color: '#546e7a', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{lang}</span>
+          <span style={{ fontSize: '0.65rem', color: '#b4b4b4', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{lang}</span>
         </div>
         <div style={{ display: 'flex', gap: '0.4rem' }}>
-          <button onClick={handleCopy} style={{ background: copied ? 'rgba(40,200,64,0.12)' : 'rgba(255,255,255,0.05)', border: `1px solid ${copied ? 'rgba(40,200,64,0.3)' : 'rgba(255,255,255,0.08)'}`, color: copied ? '#28c840' : 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '5px', transition: 'all 0.2s', fontWeight: 600 }}>
+          <button onClick={handleCopy} style={{ background: 'transparent', border: 'none', color: copied ? '#10a37f' : '#b4b4b4', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.65rem', padding: '0.2rem 0.5rem', borderRadius: '5px', transition: 'all 0.2s', fontWeight: 600 }}>
             {copied ? <Check size={11} /> : <Copy size={11} />}
             {copied ? 'Copied!' : 'Copy'}
           </button>
-          <button onClick={() => setIsExpanded(!expanded)} title={expanded ? "Minimize" : "Expand code"} style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.2rem 0.4rem', borderRadius: '5px', transition: 'all 0.2s' }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}>
+          <button onClick={() => setIsExpanded(!expanded)} title={expanded ? "Minimize" : "Expand code"} style={{ background: 'transparent', border: 'none', color: '#b4b4b4', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '0.2rem 0.4rem', borderRadius: '5px', transition: 'all 0.2s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#b4b4b4'; }}>
             {expanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
           </button>
         </div>
       </div>
-      <pre style={{ margin: 0, padding: '1rem 1.2rem', background: 'rgba(12,14,22,0.98)', overflow: 'auto', flex: 1, fontSize: expanded ? '0.85rem' : '0.76rem', lineHeight: 1.65, color: '#a6accd', fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code','Consolas',monospace", scrollbarWidth: 'thin', scrollbarColor: 'rgba(130,170,255,0.2) transparent' }}>
+      <pre style={{ margin: 0, padding: '1rem 1.2rem', background: '#000000', overflow: 'auto', flex: 1, fontSize: expanded ? '0.85rem' : '0.8rem', lineHeight: 1.65, color: '#ececec', fontFamily: "'JetBrains Mono','Fira Code','Cascadia Code','Consolas',monospace", scrollbarWidth: 'thin', scrollbarColor: '#424242 transparent' }}>
         <code>
           {codeLines.map((line, i) => (
             <span key={i} style={{ display: 'block' }}>{highlightCode(line)}</span>
@@ -138,11 +138,11 @@ const renderMarkdown = (text: string): React.ReactNode => {
       <span key={key}>
         {parts.map((part, i) => {
           if (part.startsWith('**') && part.endsWith('**'))
-            return <strong key={i} style={{ color: '#e8eaf0', fontWeight: 700 }}>{part.slice(2, -2)}</strong>;
+            return <strong key={i} style={{ color: '#ffffff', fontWeight: 700 }}>{part.slice(2, -2)}</strong>;
           if (part.startsWith('*') && part.endsWith('*') && !part.startsWith('**'))
-            return <em key={i} style={{ color: '#c792ea', fontStyle: 'italic' }}>{part.slice(1, -1)}</em>;
+            return <em key={i} style={{ color: '#d4d4d4', fontStyle: 'italic' }}>{part.slice(1, -1)}</em>;
           if (part.startsWith('`') && part.endsWith('`') && part.length > 2)
-            return <code key={i} style={{ background: 'rgba(130,170,255,0.12)', color: '#82aaff', padding: '0.12rem 0.38rem', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.8em', border: '1px solid rgba(130,170,255,0.15)' }}>{part.slice(1, -1)}</code>;
+            return <code key={i} style={{ background: '#303030', color: '#ececec', padding: '0.12rem 0.38rem', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.9em', border: '1px solid #424242' }}>{part.slice(1, -1)}</code>;
           return part;
         })}
       </span>
@@ -159,16 +159,16 @@ const renderMarkdown = (text: string): React.ReactNode => {
     if (inCode) { codeLines.push(line); return; }
     if (!trimmed) { result.push(<div key={li} style={{ height: '0.4rem' }} />); return; }
 
-    if (trimmed.startsWith('### ')) { result.push(<div key={li} style={{ fontSize: '0.83rem', fontWeight: 700, color: '#c792ea', margin: '0.6rem 0 0.15rem', letterSpacing: '-0.01em' }}>{renderInline(trimmed.slice(4), 'h')}</div>); return; }
-    if (trimmed.startsWith('## '))  { result.push(<div key={li} style={{ fontSize: '0.88rem', fontWeight: 700, color: '#82aaff', margin: '0.7rem 0 0.2rem', letterSpacing: '-0.01em' }}>{renderInline(trimmed.slice(3), 'h')}</div>); return; }
-    if (trimmed.startsWith('# '))   { result.push(<div key={li} style={{ fontSize: '0.95rem', fontWeight: 800, color: '#c3e88d', margin: '0.7rem 0 0.25rem', letterSpacing: '-0.02em' }}>{renderInline(trimmed.slice(2), 'h')}</div>); return; }
-    if (trimmed === '---') { result.push(<hr key={li} style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.07)', margin: '0.55rem 0' }} />); return; }
+    if (trimmed.startsWith('### ')) { result.push(<div key={li} style={{ fontSize: '1rem', fontWeight: 600, color: '#ffffff', margin: '1rem 0 0.5rem', letterSpacing: '-0.01em' }}>{renderInline(trimmed.slice(4), 'h')}</div>); return; }
+    if (trimmed.startsWith('## '))  { result.push(<div key={li} style={{ fontSize: '1.25rem', fontWeight: 600, color: '#ffffff', margin: '1.2rem 0 0.6rem', letterSpacing: '-0.01em' }}>{renderInline(trimmed.slice(3), 'h')}</div>); return; }
+    if (trimmed.startsWith('# '))   { result.push(<div key={li} style={{ fontSize: '1.5rem', fontWeight: 700, color: '#ffffff', margin: '1.5rem 0 0.8rem', letterSpacing: '-0.02em' }}>{renderInline(trimmed.slice(2), 'h')}</div>); return; }
+    if (trimmed === '---') { result.push(<hr key={li} style={{ border: 'none', borderTop: '1px solid #424242', margin: '1rem 0' }} />); return; }
 
     const bulletMatch = trimmed.match(/^[-*•]\s+(.*)/);
     if (bulletMatch) {
       result.push(
         <div key={li} style={{ display: 'flex', gap: '0.45rem', alignItems: 'flex-start', paddingLeft: '0.1rem', marginBottom: '0.1rem' }}>
-          <span style={{ color: '#82aaff', flexShrink: 0, marginTop: '0.25rem', fontSize: '0.55rem' }}>●</span>
+          <span style={{ color: '#a3a3a3', flexShrink: 0, marginTop: '0.25rem', fontSize: '0.55rem' }}>●</span>
           <span style={{ lineHeight: 1.6 }}>{renderInline(bulletMatch[1], li)}</span>
         </div>
       );
@@ -179,7 +179,7 @@ const renderMarkdown = (text: string): React.ReactNode => {
     if (numMatch) {
       result.push(
         <div key={li} style={{ display: 'flex', gap: '0.45rem', alignItems: 'flex-start', marginBottom: '0.1rem' }}>
-          <span style={{ color: '#82aaff', flexShrink: 0, fontWeight: 700, fontSize: '0.72rem', minWidth: '1.1rem', paddingTop: '0.1rem' }}>{numMatch[1]}.</span>
+          <span style={{ color: '#ececec', flexShrink: 0, fontWeight: 700, fontSize: '0.8rem', minWidth: '1.1rem', paddingTop: '0.1rem' }}>{numMatch[1]}.</span>
           <span style={{ lineHeight: 1.6 }}>{renderInline(numMatch[2], li)}</span>
         </div>
       );
@@ -211,38 +211,42 @@ export const TypingDots = () => (
 
 export const ChatMessageBubble = ({ msg, isLoading, onSendMessage }: { msg: ChatMessage, isLoading: boolean, onSendMessage: (msg: string) => void }) => {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-      <div style={{ display: 'flex', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', gap: '0.5rem', alignItems: 'flex-start' }}>
-        {/* Avatar */}
-        <div style={{
-          width: '26px', height: '26px', borderRadius: msg.role === 'user' ? '8px' : '10px', flexShrink: 0,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '0.05rem',
-          background: msg.role === 'user' ? 'linear-gradient(135deg, #4338ca, #7c3aed)' : msg.error ? 'rgba(239,68,68,0.15)' : 'linear-gradient(135deg, rgba(99,102,241,0.2), rgba(168,85,247,0.2))',
-          border: msg.role === 'user' ? 'none' : `1px solid ${msg.error ? 'rgba(239,68,68,0.3)' : 'rgba(130,170,255,0.2)'}`,
-          boxShadow: msg.role === 'user' ? '0 2px 8px rgba(79,70,229,0.4)' : 'none',
-        }}>
-          {msg.role === 'user'
-            ? (auth.currentUser?.photoURL
-              ? <img src={auth.currentUser.photoURL} alt="" style={{ width: '100%', height: '100%', borderRadius: 'inherit', objectFit: 'cover' }} />
-              : <User size={12} style={{ color: '#fff' }} />)
-            : msg.error ? <AlertCircle size={12} style={{ color: '#f87171' }} /> : <Bot size={12} style={{ color: '#82aaff' }} />}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.8rem' }}>
+      
+      {/* AI Header */}
+      {msg.role === 'model' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
+           <div style={{ width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+           </div>
+           <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#ececec' }}>ZEN-GPT</span>
         </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', gap: '0.5rem', alignItems: 'flex-start' }}>
+        {/* User Avatar */}
+        {msg.role === 'user' && (
+          <div style={{
+            width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '0.05rem',
+            background: '#454545', border: 'none'
+          }}>
+            {auth.currentUser?.photoURL
+              ? <img src={auth.currentUser.photoURL} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              : <User size={14} style={{ color: '#fff' }} />}
+          </div>
+        )}
 
         {/* Bubble */}
         <div style={{
-          maxWidth: '86%', padding: '0.6rem 0.75rem',
-          borderRadius: msg.role === 'user' ? '14px 4px 14px 14px' : '4px 14px 14px 14px',
-          background: msg.role === 'user'
-            ? 'linear-gradient(135deg, rgba(67,56,202,0.65) 0%, rgba(124,58,237,0.65) 100%)'
-            : msg.error ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.03)',
-          border: msg.role === 'user'
-            ? '1px solid rgba(99,102,241,0.35)'
-            : `1px solid ${msg.error ? 'rgba(239,68,68,0.15)' : 'rgba(255,255,255,0.06)'}`,
-          backdropFilter: msg.role === 'model' ? 'blur(6px)' : 'none',
-          fontSize: '0.8rem',
-          color: msg.error ? '#f87171' : msg.role === 'user' ? '#e8eaf0' : '#c8cdd8',
+          maxWidth: msg.role === 'user' ? '86%' : '100%', padding: msg.role === 'user' ? '0.6rem 0.9rem' : '0 0.2rem',
+          borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '0',
+          background: msg.role === 'user' ? '#2f2f2f' : 'transparent',
+          border: 'none',
+          fontSize: '0.88rem',
+          color: msg.error ? '#f87171' : '#ececec',
           lineHeight: 1.6, wordBreak: 'break-word',
-          boxShadow: msg.role === 'user' ? '0 4px 16px rgba(79,70,229,0.2)' : 'none',
+          flex: 1
         }}>
           {msg.role === 'model' && !msg.error
             ? (msg.text === ''
@@ -250,25 +254,19 @@ export const ChatMessageBubble = ({ msg, isLoading, onSendMessage }: { msg: Chat
               : renderMarkdown(msg.text))
             : msg.text}
 
-          {/* Model badge */}
-          {msg.role === 'model' && !msg.error && msg.model && msg.text.length > 0 && (
-            <div style={{ marginTop: '0.45rem', paddingTop: '0.3rem', borderTop: '1px solid rgba(255,255,255,0.04)', fontSize: '0.57rem', color: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#c3e88d', display: 'inline-block', flexShrink: 0, boxShadow: '0 0 4px rgba(195,232,141,0.4)' }} />
-              Model used — <code style={{ color: 'rgba(130,170,255,0.4)', fontSize: '0.57rem' }}>{msg.model}</code>
-            </div>
-          )}
+
         </div>
       </div>
 
       {/* Follow-up chips */}
       {msg.role === 'model' && !msg.error && msg.followUps && msg.followUps.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.28rem', paddingLeft: '2rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginTop: '0.2rem' }}>
           {msg.followUps.map((q, qi) => (
             <button key={qi} onClick={() => onSendMessage(q)} disabled={isLoading}
-              style={{ padding: '0.24rem 0.58rem', borderRadius: '6px', fontSize: '0.63rem', fontWeight: 500, background: 'rgba(130,170,255,0.05)', border: '1px solid rgba(130,170,255,0.12)', color: 'rgba(165,180,252,0.7)', cursor: isLoading ? 'not-allowed' : 'pointer', opacity: isLoading ? 0.4 : 1, transition: 'all 0.15s', textAlign: 'left', lineHeight: 1.4, letterSpacing: '-0.01em' }}
-              onMouseEnter={e => { if (!isLoading) { e.currentTarget.style.background = 'rgba(130,170,255,0.12)'; e.currentTarget.style.color = 'rgba(165,180,252,1)'; } }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(130,170,255,0.05)'; e.currentTarget.style.color = 'rgba(165,180,252,0.7)'; }}>
-              ↳ {q}
+              style={{ padding: '0.4rem 0.8rem', borderRadius: '16px', fontSize: '0.75rem', fontWeight: 500, background: 'transparent', border: '1px solid #424242', color: '#ececec', cursor: isLoading ? 'not-allowed' : 'pointer', opacity: isLoading ? 0.4 : 1, transition: 'all 0.15s', textAlign: 'left', lineHeight: 1.4, letterSpacing: '-0.01em' }}
+              onMouseEnter={e => { if (!isLoading) { e.currentTarget.style.background = '#2f2f2f'; } }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}>
+              {q}
             </button>
           ))}
         </div>

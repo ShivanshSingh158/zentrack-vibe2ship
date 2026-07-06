@@ -6,7 +6,7 @@ import { db, auth } from '../../services/firebase';
 import { Calculator, Plus, Trash2, Edit2, TrendingUp, Target, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Semester, SemesterSubject } from '../../types/index';
-import {  Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Line, ComposedChart } from 'recharts';
+import {  Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Line, ComposedChart, Area } from 'recharts';
 import { useSubjects } from '../../hooks/useSubjects';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 
@@ -363,17 +363,33 @@ export const GradeCalculatorModule = () => {
           <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <TrendingUp size={16} /> GPA Trend
           </h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <ComposedChart data={cgpaData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-              <XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
-              <YAxis domain={[0, 10]} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+          <ResponsiveContainer width="100%" height={220}>
+            <ComposedChart data={cgpaData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="sgpaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9} />
+                  <stop offset="100%" stopColor="#2563eb" stopOpacity={0.1} />
+                </linearGradient>
+                <linearGradient id="cgpaGlow" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+                <filter id="lineShadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#10b981" floodOpacity="0.4" />
+                </filter>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="name" tickFormatter={(val) => String(val).replace(/semester /i, 'Sem ')} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} dy={8} />
+              <YAxis domain={[0, 10]} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} dx={-5} />
               <Tooltip
-                contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px', fontSize: '0.85rem' }}
+                contentStyle={{ background: 'rgba(9, 7, 18, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', fontSize: '0.85rem', backdropFilter: 'blur(10px)' }}
+                itemStyle={{ fontWeight: 600 }}
                 formatter={(val: any, name: any) => [typeof val === 'number' ? val.toFixed(2) : '—', String(name ?? '').toUpperCase()]}
+                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
               />
-              <Bar dataKey="sgpa" fill="#3b82f6" radius={[4, 4, 0, 0]} name="SGPA" />
-              <Line type="monotone" dataKey="cgpa" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981', r: 4 }} name="CGPA" />
+              <Area type="monotone" dataKey="cgpa" fill="url(#cgpaGlow)" stroke="none" />
+              <Bar dataKey="sgpa" fill="url(#sgpaGradient)" radius={[4, 4, 0, 0]} maxBarSize={45} name="SGPA" />
+              <Line type="monotone" dataKey="cgpa" stroke="#10b981" strokeWidth={3} filter="url(#lineShadow)" dot={{ fill: '#10b981', r: 4, strokeWidth: 2, stroke: '#090712' }} activeDot={{ r: 6, fill: '#fff', stroke: '#10b981', strokeWidth: 2 }} name="CGPA" />
             </ComposedChart>
           </ResponsiveContainer>
           {/* Legend */}
@@ -399,55 +415,84 @@ export const GradeCalculatorModule = () => {
       </div>
 
       {/* ── Semester Tabs + Add Semester ── */}
-      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         {semesters.map(sem => {
           const sd = cgpaData.find(d => d.name === sem.name);
+          const isActive = activeSemId === sem.id;
           return (
-            <div key={sem.id} style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
+            <div key={sem.id} style={{ 
+              display: 'flex', alignItems: 'center', 
+              background: isActive ? 'var(--accent-primary)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${isActive ? 'var(--accent-primary)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: '8px', overflow: 'hidden',
+              boxShadow: isActive ? '0 4px 12px rgba(245, 158, 11, 0.2)' : 'none',
+              transition: 'all 0.2s'
+            }}>
               <button
                 onClick={() => { setActiveSemId(sem.id!); cancelInlineForm(); }}
                 style={{
-                  padding: '0.45rem 0.9rem', borderRadius: 'var(--radius-md)', fontSize: '0.82rem',
-                  fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
-                  background: activeSemId === sem.id ? 'var(--accent-primary)' : 'var(--bg-surface)',
-                  color: activeSemId === sem.id ? '#fff' : 'var(--text-secondary)',
-                  border: activeSemId === sem.id ? '1px solid var(--accent-primary)' : '1px solid var(--border-subtle)',
+                  padding: '0.5rem 0.75rem', fontSize: '0.82rem',
+                  fontWeight: isActive ? 700 : 600, cursor: 'pointer',
+                  background: 'transparent',
+                  color: isActive ? '#000' : 'var(--text-secondary)',
+                  border: 'none',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem'
                 }}
               >
                 {sem.name}
                 {sd?.sgpa != null && (
-                  <span style={{ marginLeft: '0.4rem', opacity: 0.8, fontSize: '0.72rem' }}>
+                  <span style={{ 
+                    opacity: 0.9, fontSize: '0.7rem', fontWeight: 800,
+                    background: isActive ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)', 
+                    padding: '0.1rem 0.35rem', borderRadius: '4px' 
+                  }}>
                     {sd.sgpa.toFixed(1)}
                   </span>
                 )}
               </button>
-              <button className="btn-icon danger" onClick={() => setConfirmDelete({type: 'semester', id: sem.id!})}
-                style={{ padding: '0.1rem', opacity: 0.5 }} title="Delete semester">
-                <Trash2 size={11} />
+              <div style={{ width: '1px', height: '60%', background: isActive ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.06)' }} />
+              <button 
+                onClick={() => setConfirmDelete({type: 'semester', id: sem.id!})}
+                style={{ 
+                  padding: '0.5rem 0.6rem', background: 'transparent', border: 'none', 
+                  color: isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.3)', 
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  transition: 'color 0.2s, background 0.2s'
+                }} 
+                title="Delete semester"
+                onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.3)'; e.currentTarget.style.background = 'transparent'; }}
+              >
+                <Trash2 size={13} />
               </button>
             </div>
           );
         })}
 
         {showAddSem ? (
-          <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--accent-primary)', borderRadius: '8px', overflow: 'hidden' }}>
             <input
               ref={semInputRef} autoFocus type="text" value={newSemName}
               onChange={e => setNewSemName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleAddSemester(); if (e.key === 'Escape') setShowAddSem(false); }}
               placeholder="e.g., Semester 3"
-              style={{ padding: '0.4rem 0.7rem', fontSize: '0.82rem', background: 'var(--bg-surface)', border: '1px solid var(--accent-primary)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', outline: 'none', width: '140px' }}
+              style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', width: '130px' }}
             />
-            <button className="btn-primary" onClick={handleAddSemester} disabled={isSaving}
-              style={{ padding: '0.4rem 0.75rem', fontSize: '0.82rem' }}>
+            <button onClick={handleAddSemester} disabled={isSaving}
+              style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', fontWeight: 600, background: 'var(--accent-primary)', color: '#000', border: 'none', cursor: 'pointer' }}>
               {isSaving ? '...' : 'Add'}
             </button>
-            <button className="btn-icon" onClick={() => setShowAddSem(false)}><X size={15} /></button>
+            <button onClick={() => setShowAddSem(false)} style={{ padding: '0.5rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+              <X size={15} />
+            </button>
           </div>
         ) : (
-          <button className="btn-secondary" onClick={() => { setShowAddSem(true); setTimeout(() => semInputRef.current?.focus(), 50); }}
-            style={{ fontSize: '0.82rem', padding: '0.4rem 0.75rem' }}>
-            <Plus size={13} /> Add Semester
+          <button onClick={() => { setShowAddSem(true); setTimeout(() => semInputRef.current?.focus(), 50); }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', fontWeight: 600, padding: '0.5rem 0.85rem', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px dashed rgba(255,255,255,0.15)', cursor: 'pointer', transition: 'all 0.2s' }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#fff'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+          >
+            <Plus size={14} /> Add Semester
           </button>
         )}
       </div>

@@ -75,17 +75,17 @@ export const GymChatUI: React.FC<GymChatUIProps> = ({
             <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: msg.role === 'user' ? 'flex-end' : 'flex-start', gap: '0.2rem' }}>
               {msg.role === 'model' && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.1rem', paddingLeft: '0.2rem' }}>
-                  <div style={{ width: '18px', height: '18px', borderRadius: '6px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <Dumbbell size={10} color="#fff" />
+                  <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#212121', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                    <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
-                  <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>Zen Coach</span>
+                  <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.3)', fontWeight: 600 }}>ZEN-GPT</span>
                 </div>
               )}
               <div style={{
-                maxWidth: '88%', padding: '0.6rem 0.85rem',
-                borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '4px 16px 16px 16px',
-                background: msg.role === 'user' ? 'linear-gradient(135deg,#7c3aed,#a855f7)' : 'rgba(255,255,255,0.05)',
-                border: msg.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+                maxWidth: '88%', padding: msg.role === 'user' ? '0.6rem 0.9rem' : '0 0.2rem',
+                borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '0',
+                background: msg.role === 'user' ? '#2f2f2f' : 'transparent',
+                border: 'none',
                 wordBreak: 'break-word',
               }}>
                 {msg.role === 'user'
@@ -140,9 +140,9 @@ export const GymChatUI: React.FC<GymChatUIProps> = ({
                 disabled={isLoading}
                 style={{
                   padding: '0.28rem 0.6rem', borderRadius: '99px', flexShrink: 0,
-                  border: '1px solid rgba(124,58,237,0.25)', background: 'rgba(124,58,237,0.08)',
-                  color: '#a855f7', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap',
-                  minHeight: '30px', opacity: isLoading ? 0.5 : 1,
+                  border: '1px solid #424242', background: 'transparent',
+                  color: '#ececec', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap',
+                  minHeight: '30px', opacity: isLoading ? 0.5 : 1, transition: 'all 0.15s'
                 }}
               >
                 {qp.label}
@@ -180,8 +180,8 @@ export const GymChatUI: React.FC<GymChatUIProps> = ({
             disabled={!input.trim() || isLoading}
             style={{
               width: '44px', height: '44px', borderRadius: '12px', border: 'none', flexShrink: 0,
-              background: !input.trim() || isLoading ? 'rgba(255,255,255,0.06)' : 'linear-gradient(135deg,#7c3aed,#a855f7)',
-              color: !input.trim() || isLoading ? 'rgba(255,255,255,0.2)' : '#fff',
+              background: !input.trim() || isLoading ? 'rgba(255,255,255,0.06)' : '#ececec',
+              color: !input.trim() || isLoading ? 'rgba(255,255,255,0.2)' : '#1a1a1a',
               cursor: !input.trim() || isLoading ? 'default' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s',
             }}

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Mic, Loader2, X, Sparkles, CheckSquare, Dumbbell, GraduationCap, Moon, Ear } from 'lucide-react';
+import { Mic, Loader2, X, Sparkles, CheckSquare, Dumbbell, GraduationCap, Moon, Ear, Bot } from 'lucide-react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { toast } from 'sonner';
 import { missionReportStore } from '../../stores/missionReportStore';
@@ -162,6 +162,17 @@ export const VoiceQuickCaptureWidget = () => {
     recognitionRef.current = recognition;
   }, []);
 
+
+
+  // Global toggle event listener
+  useEffect(() => {
+    const handleToggle = () => {
+      toggleListening();
+    };
+    window.addEventListener('toggle-voice-capture', handleToggle);
+    return () => window.removeEventListener('toggle-voice-capture', handleToggle);
+  }, []);
+
   useEffect(() => {
     if (!isListening && transcription.trim() && !isProcessing) {
       processTranscription(transcription);
@@ -203,6 +214,7 @@ export const VoiceQuickCaptureWidget = () => {
         globalData,
         apiKey,
         (step) => {
+          window.dispatchEvent(new CustomEvent('agent-log', { detail: { ...step, source: 'user' } }));
           if (step.type === 'thinking') {
              toast.loading(`Thinking: ${step.title}`, { id: processToastId });
           } else if (step.type === 'tool_call') {
@@ -212,61 +224,35 @@ export const VoiceQuickCaptureWidget = () => {
       );
       agentMemoryStore.appendMessage({ role: 'agent', title: answer });
       
-      toast.success('Mission complete', { 
+      const isChat = answer.length < 250 && !answer.includes('\n') && !answer.includes('##') && !answer.includes('✅') && !answer.includes('SPOKEN_SUMMARY');
+
+      toast.success(isChat ? 'Jarvis replied' : 'Mission complete', { 
         id: processToastId,
-        description: 'Agent result ready',
+        description: isChat ? 'Response ready' : 'Agent result ready',
         duration: 5000,
-        action: { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: answer } })) }
+        action: isChat ? undefined : { label: 'View Report', onClick: () => window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: answer } })) }
       });
 
       // Save to sessionStorage so dashboard can load it on route switch/mount
       sessionStorage.setItem('pending_proactive_briefing', answer);
-      missionReportStore.addReport(answer);
+      
+      if (!isChat) {
+        missionReportStore.addReport(answer);
+      }
 
       // Navigate to the home dashboard
       navigate('/home');
 
-      // ✅ Surface result visually in Mission Report panel automatically
-      window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: answer } }));
+      if (!isChat) {
+        // ✅ Surface result visually in Mission Report panel automatically
+        window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: answer } }));
+      }
       
       // Also speak the result via TTS for eyes-free UX
-      if (window.speechSynthesis) {
-        window.speechSynthesis.cancel(); // Clear any ongoing speech
-        
-        let spokenText = answer;
-        const summaryMatch = answer.match(/Mission Complete:\s*([^\n]+)/i);
-        if (summaryMatch && summaryMatch[1]) {
-          spokenText = summaryMatch[1];
-        } else {
-          spokenText = answer.split('\n\n').slice(0, 2).join(' '); // max 2 paragraphs
-        }
-        
-        // Strip markdown and emojis for clean speech
-        spokenText = spokenText.replace(/[*_#|`~]/g, '').replace(/https?:\/\/[^\s]+/g, 'a link');
-        spokenText = spokenText.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '').trim();
-
-        const utterance = new SpeechSynthesisUtterance(spokenText);
-        
-        // Find a premium, natural-sounding MALE voice
-        const voices = window.speechSynthesis.getVoices();
-        let bestVoice = voices.find(v => v.name.includes('Google') && v.name.includes('Male'))
-          || voices.find(v => v.name.includes('Natural') && v.lang.startsWith('en') && v.name.includes('Male'))
-          || voices.find(v => v.name.includes('Premium') && v.lang.startsWith('en') && v.name.includes('Male'))
-          || voices.find(v => v.name.includes('Daniel')) // Excellent Mac/iOS male voice
-          || voices.find(v => v.name.includes('Arthur')) // Good Windows male voice
-          || voices.find(v => v.name.includes('Guy'))    // Another good Windows natural male voice
-          || voices.find(v => v.lang.startsWith('en') && (v.name.includes('Male') || v.name.includes('David') || v.name.includes('Mark')))
-          || voices.find(v => v.lang === 'en-US');
-          
-        if (bestVoice) {
-          utterance.voice = bestVoice;
-        }
-        
-        // Reset rate to standard speed for a relaxed, natural cadence
-        utterance.rate = 1.0; 
-        utterance.pitch = 1.0;
-        window.speechSynthesis.speak(utterance);
-      }
+      // Dispatch an agent-log event of type 'answer' so the global VoiceContext handles it with Sarvam AI
+      window.dispatchEvent(new CustomEvent('agent-log', {
+        detail: { type: 'answer', text: answer }
+      }));
       
       setTranscription('');
     } catch (err: any) {
@@ -302,14 +288,10 @@ export const VoiceQuickCaptureWidget = () => {
     }
   };
 
-  const validPaths = ['/home', '/todo', '/gym', '/attendance', '/tools', '/learning', '/academic', '/dashboard', '/goals', '/analytics', '/habits', '/calendar'];
-  const showWidget = validPaths.includes(location.pathname) || location.pathname === '/';
-  if (!supported || !showWidget) return null;
+  if (!supported) return null;
 
-  // ZenGym AI usually sits at the bottom right. Move the voice widget higher specifically on the gym page.
-  const bottomPosition = location.pathname === '/gym' 
-    ? 'calc(155px + env(safe-area-inset-bottom, 0px))'
-    : 'calc(85px + env(safe-area-inset-bottom, 0px))';
+  const isGym = location.pathname.startsWith('/gym');
+  const bottomPosition = 'calc(85px + env(safe-area-inset-bottom, 0px))';
 
   return (
     <motion.div 
@@ -318,6 +300,7 @@ export const VoiceQuickCaptureWidget = () => {
       dragElastic={0.1}
       whileDrag={{ scale: 1.05 }}
       animate={controls}
+      className="voice-widget-fab"
       onDragStart={() => {
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
       }}
@@ -329,7 +312,7 @@ export const VoiceQuickCaptureWidget = () => {
         bottom: bottomPosition,
         right: '2rem',
         zIndex: 200,
-        display: 'flex',
+        display: isGym ? 'none' : 'flex',
         flexDirection: 'column',
         alignItems: 'flex-end',
         gap: '0.5rem',
@@ -424,18 +407,34 @@ export const VoiceQuickCaptureWidget = () => {
 
       {/* Main Mic Button */}
       <div style={{ position: 'relative', pointerEvents: 'auto' }}>
-        {/* Animated gradient ring wrapper */}
-        <div style={{
-          position: 'absolute',
-          inset: '-2px',
-          borderRadius: '50%',
-          background: `linear-gradient(135deg, ${gradientColors})`,
-          opacity: isListening ? 1 : (wakeWordEnabled ? 0.9 : 0.8),
-          animation: isListening ? 'spin 2s linear infinite' : (wakeWordEnabled ? 'pulse 2s infinite' : 'none'),
-          zIndex: 0,
-          filter: isListening ? 'blur(4px)' : (wakeWordEnabled ? 'blur(2px)' : 'none'),
-          transition: 'all 0.3s ease'
-        }} />
+        {/* Quick Toggle for Agent Menu (The "More Feature" Bot) */}
+        <button
+          className="show-on-mobile"
+          onClick={(e) => {
+            e.stopPropagation();
+            window.dispatchEvent(new CustomEvent('toggle-global-fab'));
+          }}
+          style={{
+            position: 'absolute',
+            top: '-15px',
+            left: '-10px',
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            background: 'rgba(20, 20, 25, 0.95)',
+            border: '1px solid #3b82f6',
+            color: '#60a5fa',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            zIndex: 10,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
+          }}
+          title="Open Agent Menu"
+        >
+          <Bot size={14} />
+        </button>
         
         {/* Quick Toggle for Wake Word */}
         <button
@@ -500,49 +499,25 @@ export const VoiceQuickCaptureWidget = () => {
             width: '56px',
             height: '56px',
             borderRadius: '50%',
-            background: isListening 
-              ? '#ef4444' // Solid red when recording
-              : 'rgba(14, 14, 18, 0.95)', // Dark surface normally
+            background: 'rgba(14, 14, 18, 0.95)', // Dark surface normally
             border: 'none',
-            color: isListening ? '#fff' : '#fff',
+            color: '#fff',
             cursor: isProcessing ? 'wait' : 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.1)',
-            transform: isListening ? 'scale(1.1)' : 'scale(1)',
+            transform: 'scale(1)',
             transition: 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
           }}
         >
           {isProcessing ? (
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}>
-              {/* Pulsing Ripple Effect */}
-              <motion.div
-                animate={{ 
-                  scale: [1, 1.8, 2.5], 
-                  opacity: [0.8, 0.3, 0],
-                }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeOut" }}
-                style={{
-                  position: 'absolute',
-                  width: '28px',
-                  height: '28px',
-                  borderRadius: '50%',
-                  background: glowColor,
-                  zIndex: 0
-                }}
-              />
-              {/* Inner Glowing Mic */}
-              <motion.div
-                animate={{ 
-                  scale: [1, 1.15, 1],
-                  filter: ['drop-shadow(0 0 2px rgba(255,255,255,0.4))', 'drop-shadow(0 0 8px rgba(255,255,255,0.9))', 'drop-shadow(0 0 2px rgba(255,255,255,0.4))'] 
-                }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+              <div
                 style={{ zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <Mic size={24} color="#fff" />
-              </motion.div>
+              </div>
             </div>
           ) : (
             <div style={{ 

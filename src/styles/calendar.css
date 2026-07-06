@@ -348,3 +348,131 @@
   cursor: pointer;
 }
 .gc-month-event.all-day { color: #fff; }
+
+/* MOBILE OPTIMIZATIONS (Google Calendar App Style) */
+@media (max-width: 768px) {
+  .gc-main {
+    flex-direction: column;
+  }
+  
+  /* Make the sidebar an off-canvas drawer */
+  .gc-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    max-width: 85vw;
+    background: #202124;
+    z-index: 10000;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 2px 0 12px rgba(0,0,0,0.5);
+    border-right: none;
+    padding-top: 1rem;
+    padding-bottom: 80px; /* Space for bottom nav */
+  }
+  
+  .gc-sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .gc-sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 9999;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  
+  .gc-header {
+    padding: 0 0.5rem;
+  }
+  
+  .gc-header-left {
+    flex: 1;
+    min-width: 0;
+    gap: 0.25rem !important;
+  }
+  
+  /* Completely hide logo on mobile to save space */
+  .gc-logo-area {
+    display: none !important;
+  }
+  
+  /* Shrink the date title on mobile so it doesn't overflow */
+  .gc-date-title {
+    font-size: 0.95rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+    margin-left: 4px;
+  }
+  
+  /* Hide the Today button text on mobile to save space */
+  .gc-today-btn {
+    padding: 4px 8px !important;
+    font-size: 0.75rem !important;
+  }
+  
+  .gc-nav-arrows {
+    gap: 0 !important;
+  }
+  .gc-nav-arrows button {
+    padding: 4px !important;
+  }
+  
+  .gc-view-select {
+    padding-right: 0.5rem !important;
+    padding-left: 0.5rem !important;
+    font-size: 0.8rem;
+  }
+  
+  /* The main calendar view container needs to take up full space without the sidebar */
+  .gc-day-view, .gc-week-view {
+    padding-bottom: 80px; /* Space for bottom nav */
+  }
+  
+  /* Ensure logo text is hidden to save space if needed */
+  .gc-logo-area span {
+    display: none;
+  }
+  
+  /* Make calendar fill the entire screen on mobile without the desktop gap */
+  .gc-app-container {
+    height: calc(100vh - 70px) !important; /* Constrain exact height to force inner scrolling */
+    border-radius: 0 !important;
+    border: none !important;
+  }
+}
+
+.gc-auto-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15) 0%, rgba(96, 165, 250, 0.15) 100%);
+  color: #fff;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  padding: 0.7rem 1.2rem;
+  border-radius: 24px;
+  font-weight: 500;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.gc-auto-btn:hover {
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.25) 0%, rgba(96, 165, 250, 0.25) 100%);
+  border-color: rgba(167, 139, 250, 0.5);
+  box-shadow: 0 0 12px rgba(167, 139, 250, 0.2);
+}
+.gc-auto-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

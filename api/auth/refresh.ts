@@ -11,9 +11,12 @@ if (!admin.apps.length) {
   }
 }
 
-const db = admin.firestore();
-
 export default async function handler(req: any, res: any) {
+  if (!admin.apps.length) {
+    console.error('[auth/refresh] Firebase Admin is not initialized. Check FIREBASE_SERVICE_ACCOUNT_JSON.');
+    return res.status(500).json({ error: 'Server misconfiguration: Missing Firebase Service Account' });
+  }
+  const db = admin.firestore();
   // CORS
   const origin = req.headers['origin'] || '';
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,https://myzentrack.vercel.app')

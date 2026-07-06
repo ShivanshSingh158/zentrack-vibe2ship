@@ -51,8 +51,12 @@ export interface GeminiProxyRequest {
 async function getIdToken(): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error('User not authenticated. Please sign in.');
-  // Firebase SDK automatically refreshes the token when needed.
-  return user.getIdToken();
+  // Force refresh ensures we always get a valid, non-expired token
+  try {
+    return await user.getIdToken(true); // forceRefresh = true
+  } catch {
+    return await user.getIdToken(false); // fallback to cached
+  }
 }
 
 // ── Core Proxy Call ────────────────────────────────────────────────────────────
@@ -116,8 +120,11 @@ export async function* callGeminiProxyStream(
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
+    const rawError = data?.error;
+    const errMsg = typeof rawError === 'string' ? rawError : (rawError?.message || `Streaming proxy error (HTTP ${res.status})`);
+    
     throw Object.assign(
-      new Error(data?.error || `Streaming proxy error (HTTP ${res.status})`),
+      new Error(errMsg),
       { status: res.status }
     );
   }

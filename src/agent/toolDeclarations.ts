@@ -1,5 +1,47 @@
+/**
+ * @file toolDeclarations.ts
+ * @module src/agent/toolDeclarations
+ *
+ * Gemini Function Calling schemas for all ZenTrack tools.
+ *
+ * ## What This File Is
+ *
+ * This file defines the "menu" of tools that agents can call. Each entry is a
+ * `FunctionDeclaration` that tells Gemini exactly what function exists, what
+ * parameters it accepts, and what it does. Gemini uses these definitions to decide
+ * when and how to call tools.
+ *
+ * ## Design Principles
+ *
+ * 1. **Descriptions drive quality** — Gemini chooses tools based on their description.
+ *    Be precise. Vague descriptions cause agents to call the wrong tool.
+ *
+ * 2. **Required vs optional parameters** — Always mark parameters as required or
+ *    optional explicitly. Gemini will hallucinate missing required parameters.
+ *
+ * 3. **One tool, one action** — Tools should do one thing. Avoid multi-action tools
+ *    that combine read + write. Separate them so agents can reason more clearly.
+ *
+ * 4. **TOOL_NAMES** — The exported `TOOL_NAMES` array is used by `runAgentLoop.ts`
+ *    to build per-agent whitelists. The whitelist filters which FunctionDeclarations
+ *    are sent to Gemini for each agent.
+ *
+ * ## Tool Groups
+ * - **Task tools**: create, update, delete, list tasks
+ * - **Calendar tools**: create events, time blocks, resolve conflicts
+ * - **Gmail tools**: read, send, reply, draft, archive emails
+ * - **Drive tools**: search, read, create documents
+ * - **Analytics tools**: productivity scores, weekly reviews
+ * - **Notification tools**: push notifications, SMS, reminders
+ * - **Navigation tools**: in-app routing to feature modules
+ * - **YouTube tools**: search lectures, fetch transcripts
+ *
+ * @see {@link ./runAgentLoop.ts} for how agent tool whitelists are applied
+ * @see {@link ./toolExecutor.ts} for the actual implementation of each tool
+ */
 import { SchemaType } from '@google/generative-ai';
 import type { FunctionDeclaration } from '@google/generative-ai';
+
 
 // Define every tool the AI can call — JSON Schema format
 export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
@@ -611,6 +653,19 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: [],
     },
   },
+  // ─── YOUTUBE SEARCH & PLAY ─────────────────────────────────────────────────────
+  {
+    name: 'search_and_play_youtube',
+    description: 'Search YouTube for a video by natural language query and play it inside the app\'s built-in video player. Use when the user says "play", "watch", "open video", "show me", "put on" followed by any video or lecture description. Examples: "play DSA lecture 23 Apna College", "play sorting algorithms", "watch linked list tutorial by Striver", "put on motivational music".',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        query: { type: SchemaType.STRING, description: 'Natural language search query for YouTube. Be specific — include course name, channel name, topic, and lecture number if mentioned. E.g. "Apna College DSA lecture 23 arrays", "Striver linked list tutorial".' },
+        playlistContext: { type: SchemaType.STRING, description: 'Optional: if user mentioned a specific course/playlist context (e.g. "Apna College DSA", "Abdul Bari Algorithms"), include it here for display.' },
+      },
+      required: ['query'],
+    },
+  },
   // ─── STUDENT FEATURES ───────────────────────────────────────────────────────
   {
     name: 'calculate_bunk_capacity',
@@ -731,6 +786,19 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
       type: SchemaType.OBJECT,
       properties: {},
       required: [],
+    },
+  },
+
+  // ─── LOCAL SYSTEM INTEGRATION (JARVIS) ──────────────────────────────────────
+  {
+    name: 'execute_system_task',
+    description: 'Execute a system-level command on the user\'s local Windows computer via the JARVIS server. Use this when the user asks to open an app (e.g. Spotify, Notepad), navigate the OS, or perform local system tasks.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        prompt: { type: SchemaType.STRING, description: 'The natural language prompt to send to the JARVIS server describing what to do (e.g., "open spotify and play music")' },
+      },
+      required: ['prompt'],
     },
   },
 

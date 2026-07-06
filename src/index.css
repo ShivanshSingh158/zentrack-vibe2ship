@@ -23,7 +23,7 @@ svg.lucide {
 
 body {
   font-family: var(--font-sans);
-  background-color: #030d1a;
+  background-color: var(--color-bg);
   color: var(--text-primary);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -53,11 +53,11 @@ body {
   font-family: 'Inter', sans-serif;
   font-size: 0.875rem;
   font-weight: 500;
-  background: linear-gradient(135deg, #f5b840 0%, #38bdf8 100%);
+  background: var(--accent-gradient);
   border: 1px solid rgba(255,255,255,0.15);
-  color: #030d1a;
+  color: #212121;
   cursor: pointer;
-  box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset, 0 8px 24px -6px rgba(245,184,64,0.35);
+  box-shadow: none;
   transition: transform 0.2s, opacity 0.2s;
   justify-content: center;
 }
@@ -222,13 +222,13 @@ body {
   box-shadow: var(--shadow-card);
 }
 
-/* Gradient border glow on hover */
+/* Gradient border glow on hover (disabled for ZEN-GPT) */
 .job-card::before {
   content: '';
   position: absolute;
   inset: -1px;
   border-radius: inherit;
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.6), transparent 40%, rgba(181, 52, 255, 0.5));
+  background: transparent;
   z-index: -1;
   opacity: 0;
   transition: opacity 0.4s var(--ease-out-expo);
@@ -300,7 +300,7 @@ body {
 }
 
 .modal-content {
-  background: rgba(10, 25, 40, 0.95);
+  background: #212121;
   backdrop-filter: blur(24px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 1.25rem;
@@ -375,7 +375,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 select option {
-  background: rgba(10, 25, 40, 0.95);
+  background: #212121;
   color: white;
 }
 

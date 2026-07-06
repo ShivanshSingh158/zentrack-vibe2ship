@@ -63,15 +63,24 @@ function useAmbientSound(volumeLevel: SoundLevel) {
     };
   }, []);
 }
-import {
-  ProactiveAgentAnimation,
-  WorkspaceIntegrationAnimation,
-  SmartTasksAnimation,
-  FlowStateAnimation,
-  LearningAnimation,
-  ConsoleAnalyticsAnimation,
-} from './LandingAnimations';
+
+/*
+ * PERFORMANCE: LandingAnimations is 37KB of heavy framer-motion animations.
+ * Lazy-loaded so it doesn't block the initial landing page paint.
+ * The animations only appear in the feature scroll section — far below the fold.
+ */
+import { lazy, Suspense } from 'react';
+const LandingAnimationsModule = lazy(() => import('./LandingAnimations'));
+
+// Proxy components that render lazily — animation appears when user scrolls to it
+const LazyAnimation = ({ name }: { name: string }) => (
+  <Suspense fallback={<div style={{ width: '100%', height: '320px', borderRadius: '1rem', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }} />}>
+    <LandingAnimationsModule name={name} />
+  </Suspense>
+);
+
 import '../styles/landing.css';
+
 
 const BG_VIDEO = '/bg-video.mp4';
 
@@ -86,7 +95,7 @@ const FEATURES = [
     titleEm: 'AI Orchestration',
     desc: 'Your AI companion never sleeps. The moment an email lands or a deadline shifts, ZenTrack\'s agents auto-trigger — routing tasks, blocking calendar time, and drafting docs. Zero manual setup. Zero missed moments.',
     bullets: ['Auto-triggered by Gmail, Calendar & Docs', 'Multi-step autonomous action chains', 'Proactive — acts before you even ask'],
-    animation: ProactiveAgentAnimation,
+    animationName: 'agents', // lazy-loaded via LazyAnimation
     reverse: false,
   },
   {
@@ -96,7 +105,7 @@ const FEATURES = [
     titleEm: 'Google Integration',
     desc: 'Not just connected — deeply embedded. ZenTrack speaks Gmail, Calendar, Drive, Docs, Tasks, and YouTube natively. Your entire digital life synced, analysed, and acted upon in real-time from one intelligent hub.',
     bullets: ['Gmail, Calendar, Drive, Docs, Tasks & YouTube', 'Real-time bidirectional sync', 'Email → task auto-conversion with AI priority'],
-    animation: WorkspaceIntegrationAnimation,
+    animationName: 'workspace',
     reverse: true,
   },
   {
@@ -106,7 +115,7 @@ const FEATURES = [
     titleEm: 'Task Management',
     desc: 'Every task knows exactly where it belongs. ZenTrack reads your inbox, extracts action items, assigns P1/P2/P3 scores, and intelligently time-blocks your calendar — so nothing ever slips through the cracks again.',
     bullets: ['AI priority scoring (P1 / P2 / P3)', 'Auto-created tasks from emails & meetings', 'Smart day-planning & conflict-free scheduling'],
-    animation: SmartTasksAnimation,
+    animationName: 'tasks',
     reverse: false,
   },
   {
@@ -116,7 +125,7 @@ const FEATURES = [
     titleEm: 'Flow State OS',
     desc: 'Build the conditions for your deepest work. Intelligent focus sessions protect your time, habit streaks build momentum, and a "Life Saver" mode auto-reschedules your entire day when deadlines loom — so you never panic again.',
     bullets: ['Intelligent focus sessions & Pomodoro timer', 'Habit streaks, rituals & daily check-ins', '"Life Saver" emergency mode for crunch days'],
-    animation: FlowStateAnimation,
+    animationName: 'flow',
     reverse: true,
   },
   {
@@ -126,7 +135,7 @@ const FEATURES = [
     titleEm: 'Autopilot',
     desc: 'Curated daily learning modules, YouTube playlist integration, and spaced-repetition AI coaching that adapts to your rhythm. Build a learning ritual and watch your knowledge compound — one session at a time.',
     bullets: ['Daily modules with spaced repetition', 'YouTube deep integration & playlist learning', 'AI-paced progress tracking & coach'],
-    animation: LearningAnimation,
+    animationName: 'learning',
     reverse: false,
   },
   {
@@ -136,7 +145,7 @@ const FEATURES = [
     titleEm: 'Agent Runtime',
     desc: 'Speak in plain language and watch your agents reason in real-time. Get live analytics on every dimension of your productivity, inspect AI decisions, and fine-tune your workflow from a sleek terminal interface.',
     bullets: ['Natural language agent commands', 'Real-time execution logs & AI reasoning', 'Full personal analytics dashboard'],
-    animation: ConsoleAnalyticsAnimation,
+    animationName: 'console',
     reverse: true,
   },
 ];
@@ -266,10 +275,10 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
           STATS BAR
       ══════════════════════════════════════════════════ */}
       <FadeUp>
-        <div style={{ position: 'relative', zIndex: 10, maxWidth: '72rem', margin: '0 auto 6rem', padding: '0 2rem' }}>
-          <div className="liquid-glass" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderRadius: '1.25rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ position: 'relative', zIndex: 10, maxWidth: '72rem', margin: '0 auto 6rem', padding: '0 2rem' }} className="landing-stats-bar">
+          <div className="liquid-glass landing-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderRadius: '1.25rem', border: '1px solid rgba(255,255,255,0.1)' }}>
             {STATS.map((s, i) => (
-              <div key={i} style={{ padding: '1.75rem 1rem', textAlign: 'center', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
+              <div key={i} className="landing-stats-item" style={{ padding: '1.75rem 1rem', textAlign: 'center', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: '2.6rem', fontWeight: 400, color: 'white', lineHeight: 1 }}>{s.value}</div>
                 <div style={{ fontSize: '0.73rem', color: 'rgba(255,255,255,0.38)', marginTop: '0.5rem', letterSpacing: '0.04em' }}>{s.label}</div>
               </div>
@@ -282,7 +291,6 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
           FEATURE SECTIONS  (6 sections)
       ══════════════════════════════════════════════════ */}
       {FEATURES.map((feat, idx) => {
-        const AnimComp = feat.animation;
         const isReverse = feat.reverse;
         return (
           <section key={feat.id} id={feat.id} className="scroll-section" style={{ padding: '5rem 2rem', minHeight: '100vh' }}>
@@ -291,7 +299,7 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
               {/* Text */}
               <div className="feature-text" style={{ maxWidth: '30rem' }}>
                 <FadeUp delay={0}>
-                  <span style={{ display: 'inline-block', fontSize: '0.68rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: '1.2rem' }}>
+                  <span className="landing-feature-label" style={{ display: 'inline-block', fontSize: '0.68rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: '1.2rem' }}>
                     {feat.label}
                   </span>
                 </FadeUp>
@@ -325,15 +333,15 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
                 )}
               </div>
 
-              {/* Animation */}
+              {/* Animation — lazy loaded to keep initial bundle small */}
               <motion.div
-                initial={{ opacity: 0, x: isReverse ? -50 : 50, scale: 0.97 }}
-                whileInView={{ opacity: 1, x: 0, scale: 1 }}
+                initial={{ opacity: 0, x: isReverse ? -40 : 40 }}
+                whileInView={{ opacity: 1, x: 0 }}
                 viewport={{ once: true, margin: '-60px' }}
-                transition={{ duration: 1.1, ease: [0.16, 1, 0.3, 1], delay: 0.12 }}
+                transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], delay: 0.12 }}
                 style={{ flex: 1, width: '100%', maxWidth: '50rem' }}
               >
-                <AnimComp />
+                <LazyAnimation name={feat.animationName} />
               </motion.div>
             </div>
           </section>
@@ -343,7 +351,7 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
       {/* ══════════════════════════════════════════════════
           FINAL CTA
       ══════════════════════════════════════════════════ */}
-      <section style={{ position: 'relative', zIndex: 10, padding: '8rem 2rem 10rem', textAlign: 'center' }}>
+      <section className="landing-final-cta" style={{ position: 'relative', zIndex: 10, padding: '8rem 2rem 10rem', textAlign: 'center' }}>
         <FadeUp>
           <div style={{ maxWidth: '52rem', margin: '0 auto' }}>
             <span style={{ display: 'inline-block', fontSize: '0.68rem', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)', marginBottom: '1.5rem' }}>

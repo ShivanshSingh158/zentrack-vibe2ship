@@ -85,6 +85,10 @@ export interface GymProfile {
   targetTimelineWeeks?: number | null;
   currentMesocycleWeek?: number | null;
   totalMesocycleWeeks?: number | null;
+  bodyType?: string | null;
+  dietaryPreference?: string | null;
+  foodAllergies?: string | null;
+  activityLevel?: string | null;
   updatedAt: number;
 }
 

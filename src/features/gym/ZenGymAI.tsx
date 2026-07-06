@@ -109,6 +109,10 @@ function buildContextString(stats: GymStats, profile: GymProfile | null): string
     if (profile.currentMesocycleWeek && profile.totalMesocycleWeeks) {
       lines.push(`Periodization Phase: Week ${profile.currentMesocycleWeek} of ${profile.totalMesocycleWeeks}`);
     }
+    if (profile.bodyType) lines.push(`Body Type: ${profile.bodyType}`);
+    if (profile.activityLevel) lines.push(`Activity Level (outside gym): ${profile.activityLevel.replace('_', ' ')}`);
+    if (profile.dietaryPreference) lines.push(`Dietary Preference: ${profile.dietaryPreference}`);
+    if (profile.foodAllergies) lines.push(`Food Allergies/Restrictions: ${profile.foodAllergies}`);
     lines.push('');
   }
 
@@ -509,14 +513,14 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
     setIsLoading(true);
     try {
       const aiMsgId = genId();
-      setMessages([{ id: aiMsgId, role: 'model', title: '', ts: Date.now() }]);
+      setMessages([{ id: aiMsgId, role: 'model', text: '', ts: Date.now() }]);
       let finalModel = '';
-      const res = await chatSessionRef.current.sendMessageStream(opening, (title: string) => {
-        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text } : m));
+      const res = await chatSessionRef.current.sendMessageStream(opening, (textChunk: string) => {
+        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: textChunk } : m));
       });
       finalModel = res.model || '';
       setMessages(prev => {
-        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, title: res.text || res.text, model: finalModel } : m);
+        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, text: (res as any).title || (res as any).text || '', model: finalModel } : m);
         if (userId) saveMessages(nextMsgs, userId);
         return nextMsgs;
       });
@@ -544,21 +548,21 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
       const formatReminder = `\n\n(Remember to use proper markdown formatting, bullet points, and newlines for readability. Do not put everything on one line.)`;
       const msgWithContext = todayContextString ? `[LIVE WORKOUT STATE:${todayContextString}]\n\nUser: ${text}${formatReminder}` : `${text}${formatReminder}`;
       const aiMsgId = genId();
-      setMessages(prev => [...prev, { id: aiMsgId, role: 'model', title: '', ts: Date.now() }]);
+      setMessages(prev => [...prev, { id: aiMsgId, role: 'model', text: '', ts: Date.now() }]);
       let finalModel = '';
       
       const res = await chatSessionRef.current.sendMessageStream(msgWithContext, (textChunk: string) => {
-        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, title: textChunk } : m));
+        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: textChunk } : m));
       });
       finalModel = res.model || '';
       
       setMessages(prev => {
-        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, title: res.text || res.text, model: finalModel } : m);
+        const nextMsgs = prev.map(m => m.id === aiMsgId ? { ...m, text: (res as any).title || (res as any).text || '', model: finalModel } : m);
         if (userId) saveMessages(nextMsgs, userId);
         return nextMsgs;
       });
     } catch (e: any) {
-      setMessages(prev => [...prev, { id: genId(), role: 'model', title: `Sorry, something went wrong. ${e?.message || 'Please try again.'}`, ts: Date.now() }]);
+      setMessages(prev => [...prev, { id: genId(), role: 'model', text: `Sorry, something went wrong. ${e?.message || 'Please try again.'}`, ts: Date.now() }]);
     } finally {
       setIsLoading(false);
     }
@@ -613,7 +617,7 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
   }
 
   const modeBadge = {
-    idle: { label: 'Planning Mode', color: '#a855f7', bg: 'rgba(124,58,237,0.12)' },
+    idle: { label: 'Planning Mode', color: '#ececec', bg: '#2f2f2f' },
     active: { label: 'Active Session', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)' },
     complete: { label: 'Workout Done', color: '#1db954', bg: 'rgba(29,185,84,0.12)' },
   }[sessionMode];
@@ -645,22 +649,23 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
       {/* Floating AI button */}
       <button
         id="zenGymAI-toggle"
+        className="gym-ai-fab"
         onClick={() => { if (!isOpen) openPanel(); else setIsOpen(false); }}
         style={{
           position: 'fixed',
           bottom: 'calc(4.8rem + env(safe-area-inset-bottom, 0px))',
           right: '1rem',
           width: '54px', height: '54px', borderRadius: '50%',
-          background: 'linear-gradient(135deg,#7c3aed,#a855f7)',
-          border: 'none', cursor: 'pointer',
+          background: '#212121',
+          border: '1px solid #303030', cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 24px rgba(124,58,237,0.55), 0 0 0 3px rgba(124,58,237,0.15)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
           zIndex: 9900, transition: 'all 0.2s',
           animation: isOpen ? 'none' : 'aiPulse 3s ease-in-out infinite',
           touchAction: 'manipulation',
         }}
       >
-        {isOpen ? <X size={22} color="#fff" /> : <MessageSquare size={22} color="#fff" />}
+        {isOpen ? <X size={22} color="#fff" /> : <img src="/logo_white.png" alt="AI" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />}
       </button>
 
       {/* Stall alert badge */}
@@ -708,11 +713,11 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
             zIndex: 9950,
             display: 'flex',
             flexDirection: 'column',
-            background: 'rgba(9,7,18,0.98)',
+            background: '#212121',
             backdropFilter: 'blur(20px)',
             WebkitBackdropFilter: 'blur(20px)',
             borderRadius: '20px 20px 0 0',
-            border: '1px solid rgba(124,58,237,0.2)',
+            border: '1px solid #303030',
             borderBottom: 'none',
             boxShadow: '0 -8px 40px rgba(0,0,0,0.6)',
             animation: 'panelSlideUp 0.28s cubic-bezier(0.34,1.2,0.64,1)',
@@ -727,28 +732,27 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
           {/* Header */}
           <div style={{ padding: '0.6rem 1rem 0', flexShrink: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem', marginBottom: '0.6rem' }}>
-              <div style={{ width: '34px', height: '34px', borderRadius: '10px', background: 'linear-gradient(135deg,#7c3aed,#a855f7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Dumbbell size={16} color="#fff" />
+              <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#212121', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+                <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  ZenGym AI
+                  ZEN-GPT
                   <span style={{ fontSize: '0.6rem', padding: '0.08rem 0.4rem', borderRadius: '99px', background: modeBadge.bg, color: modeBadge.color, fontWeight: 700 }}>
                     {modeBadge.label}
                   </span>
                 </div>
                 <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.38)', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.08rem', flexWrap: 'wrap' }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: headerStatus.dot, display: 'inline-block', flexShrink: 0, animation: headerStatus.pulse ? 'pulse 1s ease-in-out infinite' : 'none' }} />
                   {headerStatus.text}
-                  {isOpen && (
+                  {isOpen && usingOAuth && (
                     <span style={{
                       marginLeft: '0.2rem', fontSize: '0.55rem', padding: '0.05rem 0.35rem',
                       borderRadius: '99px', fontWeight: 700,
-                      background: usingOAuth ? 'rgba(16,185,129,0.15)' : 'rgba(99,102,241,0.12)',
-                      color: usingOAuth ? '#34d399' : '#818cf8',
-                      border: `1px solid ${usingOAuth ? 'rgba(16,185,129,0.3)' : 'rgba(99,102,241,0.25)'}`,
+                      background: 'rgba(16,185,129,0.15)',
+                      color: '#34d399',
+                      border: '1px solid rgba(16,185,129,0.3)',
                     }}>
-                      {usingOAuth ? '🔒 Your Account' : '🔑 Shared Key'}
+                      🔒 Your Account
                     </span>
                   )}
                 </div>
@@ -775,9 +779,9 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
                   onClick={() => setActiveTab(tab.id)}
                   style={{
                     padding: '0.35rem 0.75rem', borderRadius: '10px',
-                    border: `1px solid ${activeTab === tab.id ? 'rgba(124,58,237,0.4)' : 'rgba(255,255,255,0.08)'}`,
-                    background: activeTab === tab.id ? 'rgba(124,58,237,0.15)' : 'rgba(255,255,255,0.04)',
-                    color: activeTab === tab.id ? '#a855f7' : 'rgba(255,255,255,0.4)',
+                    border: `1px solid ${activeTab === tab.id ? '#424242' : 'rgba(255,255,255,0.08)'}`,
+                    background: activeTab === tab.id ? '#2f2f2f' : 'rgba(255,255,255,0.04)',
+                    color: activeTab === tab.id ? '#ececec' : 'rgba(255,255,255,0.4)',
                     cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
                     display: 'flex', alignItems: 'center', gap: '0.3rem', minHeight: '34px',
                   }}

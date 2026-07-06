@@ -1,19 +1,64 @@
+/**
+ * @file runAgentLoop.ts
+ * @module src/agent/runAgentLoop
+ *
+ * Per-agent Gemini conversation loop — the execution engine for a single agent.
+ *
+ * ## How It Works
+ *
+ * Each agent runs an iterative "think → tool call → observe → repeat" loop:
+ *
+ * ```
+ * System Prompt (agent identity)
+ *     +
+ * Context (shared state, user data)
+ *     |
+ *     v
+ * Gemini generates response
+ *     |
+ *     +──► Text only? → Done, return as answer
+ *     |
+ *     +──► Function call? → executeTool() → append result to history
+ *                                │
+ *                                └─► Loop back to Gemini (up to MAX_ITERATIONS)
+ * ```
+ *
+ * ## Agent Tool Whitelist
+ * Each agent has a strict whitelist of tools it may call (`AGENT_TOOL_WHITELIST`).
+ * Tools outside the whitelist are silently stripped from the declaration list before
+ * the Gemini request is made. This prevents agents from accidentally using tools
+ * outside their domain (e.g. NAVIGATOR calling create_task).
+ *
+ * ## Model Tiers
+ * Agents are split across two model tiers for cost/speed tradeoffs:
+ * - Research tier: `gemini-2.5-flash` (deep analysis, email reading, analytics)
+ * - Voice tier: `gemini-2.5-flash-lite-preview-06-17` (fast responses, navigation)
+ *
+ * ## Streaming vs Non-Streaming
+ * Agents use non-streaming Gemini calls with function calling. Streaming is used
+ * separately in the proxy for real-time token display in the terminal.
+ *
+ * @see {@link ./orchestrator.ts} for how agents are spawned and coordinated
+ * @see {@link ./toolExecutor.ts} for all tool implementations
+ * @see {@link ./toolDeclarations.ts} for Gemini function call schemas
+ */
 import { TOOL_DECLARATIONS, TOOL_NAMES } from './toolDeclarations';
+
 import type { ToolResult } from './toolExecutor';
 import { executeTool } from './toolExecutor';
-import { callWithFallback, callWithFallbackUnthrottled } from '../services/gemini/core';
+import { callWithFallback, callWithFallbackUnthrottled, callWithVoiceModel, callWithResearchModel, SAFETY_SETTINGS } from '../services/gemini/core';
 import type { Task, CalendarEvent } from '../types/domain';
 
 // Z5 FIX: The AGENT_SYSTEM default prompt was a 5-line minimal stub that fired in
 // unexpected bypass scenarios (no systemInstruction provided). The misleading stub
 // made debugging very difficult when it appeared in logs. Replaced with a clear,
 // self-identifying fallback that explicitly states it's the default/fallback mode.
-const AGENT_SYSTEM = `You are Zen Agent — the ZenTrack autonomous AI assistant running in DIRECT mode.
+const AGENT_SYSTEM = `You are Sara, a highly intelligent, conversational voice assistant (Synthetic Artificial Resource Assistant).
 You have access to real tools for tasks, calendar, email, notes, goals, and habits.
 When the user asks you to do something: ALWAYS use the available tools to actually do it.
-Never just describe what you would do — use the tools and DO IT.
-You are operating WITHOUT a specialized role assignment (this is the generic fallback mode).
-After completing all actions, respond clearly explaining what you did and the results.`;
+CRITICAL INSTRUCTION: Your final response MUST contain two parts:
+1. A detailed markdown report of the actions taken.
+2. A brief, natural, conversational spoken summary of what you did. This MUST be placed at the very end of your response, prefixed EXACTLY with "SPOKEN_SUMMARY: ". Do not use markdown in this section. If you are just answering a conversational question, simply put the answer after "SPOKEN_SUMMARY: ".`;
 
 
 export type AgentStep = 
@@ -28,6 +73,8 @@ const safeDispatch = (detail: object) => {
     window.dispatchEvent(new CustomEvent('agent-log', { detail }));
   }
 };
+
+import { auth } from '../services/firebase';
 
 export async function runAgentLoop(
   userMessage: string,
@@ -47,7 +94,12 @@ export async function runAgentLoop(
   // ✅ BUG-R2 FIX: sharedToolCache shared across all agents in a mission
   sharedToolCache?: Map<string, any>
 ): Promise<string> {
-  const effectiveSystem = systemInstruction || AGENT_SYSTEM;
+  const userName = typeof window !== 'undefined' ? (auth.currentUser?.displayName?.split(' ')[0] || 'User') : 'User';
+  
+  const effectiveSystem = (systemInstruction || AGENT_SYSTEM) + `\n\nVOICE UPDATE DIRECTIVE: If your task requires multiple steps, you MUST output a short, 1-sentence conversational update (e.g., "Calling the Calendar agent...", "Scanning your inbox...", "Accessing system...", "Executing Sara protocol...") alongside your tool calls so the user hears your progress. Keep all spoken updates UNDER 10 words.
+CRITICAL PERSONALIZATION RULE: You are speaking directly to ${userName}. You MUST deeply personalize your spoken conversation. Use their name naturally. Adapt your tone dynamically based on their current context, persona, and Behavioral Directive. If they are stressed or have many overdue tasks, be highly supportive. If they are an entrepreneur or highly productive today, be sharp and efficient. Make them feel like you know them intimately and learn from their habits.
+CRITICAL ZERO LATENCY RULE: Do not over-explain. Answer directly. Keep responses short and punchy.
+CRITICAL FINAL OUTPUT RULE: Whether you are answering a question or generating a full Markdown report, you MUST append a brief, natural, conversational spoken summary of what you did at the VERY END of your response, prefixed EXACTLY with "SPOKEN_SUMMARY: ". Do not use markdown in this section.`;
   const contents: Array<{ role: string; parts: Array<{ text?: string; functionResponse?: unknown }> }> = [{ role: 'user', parts: [{ text: userMessage }] }];
   let finalAnswer = '';
   const MAX_ITERATIONS = 6; // Reduced from 10 — agent looping 10+ times is likely stuck
@@ -58,13 +110,15 @@ export async function runAgentLoop(
   // NAVIGATOR needs 3 tools. HERMES needs 7. Sending all 35 causes cross-domain hallucinations.
   // Savings: 70-80% reduction in tool-schema token overhead.
   const AGENT_TOOL_WHITELIST: Record<string, string[]> = {
-    NAVIGATOR: ['navigate_to_module', 'open_gym_workout', 'query_internal_app_data'],
+    NAVIGATOR: ['navigate_to_module', 'open_gym_workout', 'query_internal_app_data', 'search_and_play_youtube', 'execute_system_task'],
     HERMES:   ['read_gmail', 'send_gmail', 'reply_gmail', 'archive_gmail', 'draft_email',
+               'trash_email',         // ✅ FIXED: HERMES can now delete emails as commanded
                'send_notification', 'connect_google_workspace', 'delegate_task',
                // ✅ PART 4/6: Thread summarization, triage, deadline negotiation
-               'get_email_thread', 'smart_email_triage', 'deadline_negotiator'],
+               'get_email_thread', 'smart_email_triage', 'deadline_negotiator', 'execute_system_task'],
     CHRONOS:  ['get_free_calendar_slots', 'list_calendar_events', 'schedule_task_in_calendar',
-               'block_calendar', 'delete_calendar_events', 'auto_reschedule', 'create_google_meet',
+               'block_calendar', 'delete_calendar_events', 'delete_calendar_event', // ✅ FIXED: singular + plural form
+               'auto_reschedule', 'create_google_meet',
                'update_calendar_event', 'connect_google_workspace', 'delegate_task',
                // ✅ PART 6: Chronos can also focus-lock and rebuild the day
                'focus_lock', 'rebuild_day'],
@@ -86,7 +140,7 @@ export async function runAgentLoop(
                // ✅ PART 6: TITAN executes panic mode, focus lock, day rebuild
                'panic_mode', 'focus_lock', 'rebuild_day', 'deadline_negotiator',
                // ✅ New: TITAN is the executor — it can create habits and notes as part of multi-step plans
-               'create_habit', 'create_note'],
+               'create_habit', 'create_note', 'delete_task', 'delete_calendar_event', 'delete_internal_app_data', 'execute_system_task'],
 
     ARCHIVE:  ['list_drive_files', 'search_drive_files', 'create_google_doc', 'read_google_doc', 'send_notification', 'connect_google_workspace', 'delegate_task'],
     MEET:     ['create_google_meet', 'list_calendar_events', 'update_calendar_event', 'delete_calendar_event', 'send_gmail', 'connect_google_workspace', 'delegate_task', 'get_meeting_prep_brief'],
@@ -132,11 +186,21 @@ export async function runAgentLoop(
     let response;
     let hasLoggedThinking = false;
     try {
-      // ✅ ISSUE-R3 FIX: Only use unthrottled caller for deeply nested sub-agents (depth >= 2).
-      // Previously ALL sub-agents bypassed the semaphore, meaning a TITAN->HERMES->CHRONOS
-      // delegation chain fired 3 API calls with zero throttling, bursting the quota limit.
-      // Depth 0-1 (direct orchestrator calls and first-level delegates) go through the semaphore.
-      const caller = (isSubAgent && depth >= 2) ? callWithFallbackUnthrottled : callWithFallback;
+      // ✅ MODEL TIER ROUTING: Research agents (ORACLE, ENIGMA, HERMES, CHRONOS) use 2.5 Flash
+      // for deep analysis with latest data. Voice/action agents (NAVIGATOR, AEGIS, TITAN) use
+      // Flash Lite for instant conversational responses. Other agents default to callWithFallback.
+      const RESEARCH_AGENTS = new Set(['ORACLE', 'ENIGMA', 'HERMES', 'CHRONOS', 'SPECTRE', 'ARCHIVE']);
+      const VOICE_AGENTS    = new Set(['NAVIGATOR', 'AEGIS', 'TITAN', 'ATLAS', 'ARGUS']);
+      let caller: typeof callWithFallback;
+      if (isSubAgent && depth >= 2) {
+        caller = callWithFallbackUnthrottled;
+      } else if (agentRole && RESEARCH_AGENTS.has(agentRole)) {
+        caller = callWithResearchModel as typeof callWithFallback;
+      } else if (agentRole && VOICE_AGENTS.has(agentRole)) {
+        caller = callWithVoiceModel as typeof callWithFallback;
+      } else {
+        caller = (isSubAgent && depth >= 2) ? callWithFallbackUnthrottled : callWithFallback;
+      }
       response = await caller(async (genAI, modelName) => {
         const activeModel = modelOverride || modelName;
         if (!hasLoggedThinking) {
@@ -157,6 +221,7 @@ export async function runAgentLoop(
           model: activeModel,
           systemInstruction: effectiveSystem,
           tools: [{ functionDeclarations: filteredDeclarations }],
+          safetySettings: SAFETY_SETTINGS,
         });
 
         // ✅ INEFFICIENCY-3 FIX: Per-role timeouts. Navigation and simple creates need 20s max,
@@ -204,11 +269,30 @@ export async function runAgentLoop(
     const candidate = response.response.candidates?.[0];
     if (!candidate) break;
 
+    // Fix for: "Cannot read properties of undefined (reading 'parts')"
+    // When finishReason is 'SAFETY' or other blocks, candidate.content might be undefined.
+    if (!candidate.content || !candidate.content.parts) {
+      console.warn(`[runAgentLoop] candidate.content is missing! Finish reason: ${candidate.finishReason}`);
+      const reasonMsg = candidate.finishReason ? ` (Blocked by API: ${candidate.finishReason})` : '';
+      onStep({ type: 'answer', title: `⚠️ Agent response was empty or blocked${reasonMsg}` });
+      break;
+    }
+
     const parts = candidate.content.parts;
     
     // Check if AI wants to call functions
     const functionCallParts = parts.filter((p: { functionCall?: unknown }) => !!p.functionCall);
+    const textParts = parts.filter((p: { text?: string }) => !!p.text);
+    
     if (functionCallParts.length > 0) {
+      // 🎙️ If there's text generated ALONGSIDE the function call, emit it as an intermediate voice update!
+      if (textParts.length > 0) {
+        const intermediateText = textParts.map((p: any) => p.text).join(' ').trim();
+        if (intermediateText) {
+          onStep({ type: 'answer', title: intermediateText });
+        }
+      }
+
       // Execute all tool calls concurrently
       const results = await Promise.all(functionCallParts.map(async (part: any) => {
         const name = part.functionCall.name;

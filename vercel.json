@@ -3,17 +3,14 @@
     "api/gemini-proxy.js": {
       "maxDuration": 30
     },
+    "api/gemini-proxy-stream.js": {
+      "maxDuration": 30
+    },
     "api/youtube.js": {
       "maxDuration": 60
     },
     "api/cron-watchdog.js": {
       "maxDuration": 60
-    },
-    "api/cron-queue-processor.js": {
-      "maxDuration": 30
-    },
-    "api/cron-classes.js": {
-      "maxDuration": 30
     }
   },
   "headers": [
@@ -64,10 +61,6 @@
     {
       "source": "/__/firebase/:path*",
       "destination": "https://job-tracker-6b672.firebaseapp.com/__/firebase/:path*"
-    },
-    {
-      "source": "/((?!api/).*)",
-      "destination": "/index.html"
     }
   ]
 }

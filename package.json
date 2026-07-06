@@ -1,10 +1,25 @@
 {
   "name": "zentrack",
+  "version": "1.0.0",
+  "description": "AI-powered life OS — a multi-agent productivity system with voice interface, autonomous email/calendar management, and real-time agent fleet.",
+  "author": "Shivansh Singh <shivansh@zentrack.app>",
+  "homepage": "https://zentrack-vibe2ship.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ShivanshSingh158/zentrack-vibe2ship.git"
+  },
+  "keywords": [
+    "ai", "productivity", "multi-agent", "gemini", "firebase",
+    "voice-assistant", "google-workspace", "react", "typescript", "pwa"
+  ],
   "private": true,
-  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "npx nodemon server/sarvamGateway.js",
+    "dev:relay": "cd ../../voice_agent_system/server && npx nodemon --ext py --exec python app.py",
+    "dev:agent": "cd ../../voice_agent_system/agent && npx nodemon --ext py --exec python local_agent.py",
+    "start:all": "concurrently \"npm run dev\" \"npm run dev:server\" \"npm run dev:relay\" \"npm run dev:agent\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -12,6 +27,12 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@hello-pangea/dnd": "^18.0.1",
+    "@sentry/node": "^10.63.0",
+    "@sentry/react": "^10.63.0",
+    "@sentry/vite-plugin": "^5.3.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "firebase": "^12.14.0",
     "focus-trap-react": "^12.0.2",
     "framer-motion": "^12.40.0",
@@ -31,7 +52,8 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "sonner": "^2.0.7"
+    "sonner": "^2.0.7",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -41,6 +63,7 @@
     "@types/react-dom": "^19.2.3",
     "@vercel/node": "^5.8.22",
     "@vitejs/plugin-react": "^6.0.1",
+    "concurrently": "^10.0.3",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",

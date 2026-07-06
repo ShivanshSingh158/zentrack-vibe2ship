@@ -1,42 +1,74 @@
 /**
- * api/gemini-proxy.js
+ * @file gemini-proxy.js
+ * @module api/gemini-proxy
  *
- * ZenTrack — Server-Side Gemini API Proxy
+ * ZenTrack — Secure Server-Side Gemini API Proxy (Vercel Serverless Function)
  *
- * WHY THIS EXISTS:
- *   Gemini API keys must NEVER be in the browser bundle. Any `VITE_` prefixed
- *   env var is baked into the compiled JS and visible to anyone in DevTools.
- *   This proxy holds the keys server-side and forwards authenticated requests.
+ * ## Why This Exists
  *
- * HOW IT WORKS:
- *   1. Browser sends Firebase ID Token (proves user is logged into ZenTrack)
- *   2. This function verifies the token via Firebase Admin SDK
- *   3. Per-user rate limiting: 100 req/min tracked in Firestore
- *   4. Round-robin key rotation across GEMINI_API_KEYS pool
- *   5. Returns raw Gemini API response — identical shape to calling Gemini directly
+ * Gemini API keys must NEVER appear in the browser bundle. Any `VITE_`-prefixed
+ * env var is compiled into the JavaScript bundle and visible to anyone via DevTools.
+ * This proxy holds the real keys server-side and forwards only authenticated requests.
  *
- * REQUIRED ENV VARS (Vercel Dashboard — server-only, NO VITE_ prefix):
- *   GEMINI_API_KEYS              — comma-separated API keys (all 10 of your keys)
- *   FIREBASE_SERVICE_ACCOUNT_JSON — Firebase service account JSON string
- *   ALLOWED_ORIGINS              — comma-separated allowed CORS origins
+ * ## Request Flow
+ * ```
+ * 1. Browser sends: POST /api/gemini-proxy
+ *    Headers: { Authorization: "Bearer <Firebase ID Token>" }
+ *    Body:    { model, contents, tools, toolConfig, systemInstruction, ... }
  *
- * REMOVE FROM .env:
- *   VITE_GEMINI_API_KEY — DELETE this entirely, keys live server-side now
+ * 2. Proxy verifies Firebase ID token via Admin SDK
+ * 3. Per-user rate limiting: 100 req/min tracked in Firestore
+ * 4. Round-robin key rotation across GEMINI_API_KEYS pool
+ * 5. Forward to Gemini API — returns identical response shape
+ * ```
+ *
+ * ## CRITICAL: tools and toolConfig Must Be Forwarded
+ *
+ * Without `tools` and `toolConfig` in the forwarded request, Gemini has no
+ * knowledge that any functions exist. Agents silently degrade to text-only
+ * mode and can never call create_task, read_gmail, or any other tool.
+ * This was the root cause of the "agents can't do anything on production" bug.
+ *
+ * ## Required Vercel Environment Variables
+ *
+ * | Variable | Description |
+ * |---|---|
+ * | `GEMINI_API_KEYS` | Comma-separated Gemini API keys (all 10 of your keys) |
+ * | `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase Admin service account JSON (stringified) |
+ * | `ALLOWED_ORIGINS` | Comma-separated CORS origins (e.g. `https://yourapp.vercel.app`) |
+ *
+ * @note Do NOT put `VITE_GEMINI_API_KEY` on Vercel — keys live server-side only.
  */
 
-import admin from 'firebase-admin';
 
+import admin from 'firebase-admin';
+import * as Sentry from '@sentry/node';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN || "https://examplePublicKey@o0.ingest.sentry.io/0",
+  tracesSampleRate: 1.0,
+});
 // ── Firebase Admin Init (singleton) ──────────────────────────────────────────
 if (!admin.apps.length) {
   try {
     const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
-    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    if (Object.keys(serviceAccount).length > 0) {
+      admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    }
   } catch (err) {
     console.error('[gemini-proxy] Firebase Admin init failed:', err.message);
   }
 }
 
-const db = admin.firestore();
+let db;
+try {
+  if (admin.apps.length > 0) db = admin.firestore();
+} catch (e) {
+  console.warn('[gemini-proxy] Firestore not available.');
+}
+
+const IS_LOCAL_DEV = process.env.NODE_ENV !== 'production';
+
 
 // ── Key Rotation (round-robin across the pool) ────────────────────────────────
 const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
@@ -66,19 +98,23 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  // ── 1. Verify Firebase ID Token ──────────────────────────────────────────────
+  // ── 1. Verify Firebase ID Token (skipped in local dev) ─────────────────────
   const authHeader = req.headers['authorization'] || '';
-  if (!authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: { message: 'Missing Firebase ID token in Authorization header.', code: 401, status: 'UNAUTHENTICATED' } });
-  }
-  const idToken = authHeader.replace('Bearer ', '').trim();
-
   let uid;
-  try {
-    const decoded = await admin.auth().verifyIdToken(idToken);
-    uid = decoded.uid;
-  } catch (err) {
-    return res.status(401).json({ error: { message: 'Invalid or expired Firebase ID token.', code: 401, status: 'UNAUTHENTICATED' } });
+
+  if (IS_LOCAL_DEV) {
+    uid = 'local-dev-user';
+  } else {
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: { message: 'Missing Firebase ID token.', code: 401, status: 'UNAUTHENTICATED' } });
+    }
+    const idToken = authHeader.replace('Bearer ', '').trim();
+    try {
+      const decoded = await admin.auth().verifyIdToken(idToken);
+      uid = decoded.uid;
+    } catch (err) {
+      return res.status(401).json({ error: { message: 'Invalid or expired Firebase ID token.', code: 401, status: 'UNAUTHENTICATED' } });
+    }
   }
 
   // ── 2. Per-User Rate Limiting (100 req/min) ──────────────────────────────────
@@ -123,6 +159,8 @@ export default async function handler(req, res) {
     generationConfig,
     systemInstruction,
     safetySettings,
+    tools,       // ✅ CRITICAL FIX: Forward function declarations to enable agent tool calling
+    toolConfig,  // ✅ CRITICAL FIX: Forward tool config (mode: ANY/AUTO + allowedFunctionNames)
   } = req.body || {};
 
   if (!contents || !Array.isArray(contents) || contents.length === 0) {
@@ -130,40 +168,61 @@ export default async function handler(req, res) {
   }
 
   // ── 4. Pick API Key & Forward to Gemini ──────────────────────────────────────
-  const apiKey = getNextKey();
-  if (!apiKey) {
+  if (GEMINI_KEYS.length === 0) {
     console.error('[gemini-proxy] No GEMINI_API_KEYS configured in environment.');
     return res.status(500).json({ error: 'AI service not configured. Contact admin.' });
   }
-
-  const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const requestBody = { contents };
   if (generationConfig) requestBody.generationConfig = generationConfig;
   if (systemInstruction) requestBody.systemInstruction = systemInstruction;
   if (safetySettings) requestBody.safetySettings = safetySettings;
+  // ✅ CRITICAL: Forward tools and toolConfig so agents can call functions in production
+  if (tools) requestBody.tools = tools;
+  if (toolConfig) requestBody.toolConfig = toolConfig;
 
-  try {
-    const geminiRes = await fetch(geminiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-    });
+  let lastStatus = 500;
+  let lastErrorMsg = 'Unknown error';
 
-    const data = await geminiRes.json();
+  for (let attempt = 0; attempt < GEMINI_KEYS.length; attempt++) {
+    const apiKey = getNextKey();
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-    if (!geminiRes.ok) {
-      const errMsg = data?.error?.message || `Gemini API error (HTTP ${geminiRes.status})`;
-      console.error(`[gemini-proxy] Gemini error ${geminiRes.status} for uid=${uid}:`, errMsg.slice(0, 200));
+    try {
+      const geminiRes = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      });
 
-      // Return the same status code so the client can handle 429 / 503 etc.
-      return res.status(geminiRes.status).json({ error: { message: errMsg, code: geminiRes.status } });
+      const data = await geminiRes.json();
+
+      if (!geminiRes.ok) {
+        lastStatus = geminiRes.status;
+        lastErrorMsg = data?.error?.message || `Gemini API error (HTTP ${geminiRes.status})`;
+        
+        console.warn(`[gemini-proxy] Key failed with ${lastStatus}. Trying next... (${attempt + 1}/${GEMINI_KEYS.length})`);
+        
+        // 400/404 usually means the prompt/model is invalid, not the key. Don't waste keys on it.
+        if (lastStatus === 400 || lastStatus === 404) {
+          return res.status(lastStatus).json({ error: { message: lastErrorMsg, code: lastStatus } });
+        }
+        
+        continue;
+      }
+
+      // Success!
+      return res.status(200).json(data);
+
+    } catch (fetchErr) {
+      console.error('[gemini-proxy] Fetch failed:', fetchErr.message);
+      lastStatus = 500;
+      lastErrorMsg = fetchErr.message;
+      continue;
     }
-
-    return res.status(200).json(data);
-
-  } catch (fetchErr) {
-    console.error('[gemini-proxy] Fetch failed:', fetchErr.message);
-    return res.status(500).json({ error: 'Failed to reach Gemini API. Please retry.' });
   }
+
+  console.error(`[gemini-proxy] All keys exhausted for uid=${uid}:`, lastErrorMsg);
+  Sentry.captureException(new Error(`All keys exhausted: ${lastErrorMsg}`), { tags: { uid } });
+  return res.status(lastStatus).json({ error: { message: `All API keys exhausted. Last error: ${lastErrorMsg}`, code: lastStatus } });
 }

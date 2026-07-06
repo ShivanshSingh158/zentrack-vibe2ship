@@ -1,4 +1,54 @@
+/**
+ * @file core.ts
+ * @module src/services/gemini/core
+ *
+ * Gemini API client — key management, proxy routing, rate limiting, and model tiers.
+ *
+ * ## Production Proxy Strategy
+ *
+ * On production (Vercel), Gemini API keys are stored as server-side environment
+ * variables and NEVER shipped in the browser bundle. All client-side Gemini calls
+ * are intercepted by a fetch monkey-patch and redirected to `/api/gemini-proxy`:
+ *
+ * ```
+ * Browser: GoogleGenerativeAI(key='proxy_dummy_key')
+ *               │
+ *               │ fetch intercepted
+ *               ▼
+ *          POST /api/gemini-proxy
+ *          { Authorization: Bearer <Firebase ID Token> }
+ *               │
+ *               │ server validates token + rotates through key pool
+ *               ▼
+ *          Gemini API (real key)
+ * ```
+ *
+ * On localhost, the `VITE_GEMINI_API_KEY` env var is used directly (no proxy needed).
+ *
+ * ## Multi-Key Rotation
+ *
+ * A pool of up to 10 Gemini API keys (`GEMINI_KEYS`) enables higher throughput
+ * and rate-limit resilience. Keys are rotated round-robin. On a 429 response,
+ * `callWithFallback` automatically retries with the next key.
+ *
+ * ## Concurrency Semaphore
+ *
+ * `MAX_CONCURRENT_API_CALLS = 8` limits how many simultaneous Gemini requests
+ * the agent fleet can make. This prevents thundering-herd rate-limit cascades when
+ * all 12 agents try to call Gemini at the same moment.
+ *
+ * ## Model Tiers
+ *
+ * | Function | Model | Use Case |
+ * |---|---|---|
+ * | `callWithResearchModel` | gemini-2.5-flash | Deep analysis (ORACLE, HERMES) |
+ * | `callWithVoiceModel` | gemini-2.5-flash-lite-preview-06-17 | Fast responses (AEGIS, NAVIGATOR) |
+ * | `callWithFallback` | (primary, with key rotation fallback) | General purpose |
+ *
+ * @see {@link ../../../api/gemini-proxy.js} for the server-side proxy implementation
+ */
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+
 import { getActiveGeminiKey, setAuthExpired } from '../userGeminiAuth';
 import { apiQuotaStore } from '../../stores/apiQuotaStore';
 
@@ -64,54 +114,40 @@ if (typeof window !== 'undefined') {
   };
 }
 
-// ── Model priority (verified real model IDs — 2026-06) ────────────────────────
+// ── Model priority (verified real model IDs — 2026-07) ────────────────────────
 // Only include models that ACTUALLY EXIST in the Gemini API.
-// Verified against: https://ai.google.dev/api/generate-content#v1beta.models
+// Real API model IDs verified against: https://ai.google.dev/api/generate-content#v1beta.models
 //
-// ── Model priority lists ──────────────────────────────────────────────────────
-// User-specified order (June 2026 GA model IDs):
+// ── TWO-TIER MODEL STRATEGY ───────────────────────────────────────────────────
+// VOICE TIER (Flash Lite) → For fast conversational talking, AEGIS synthesis,
+//   NAVIGATOR, TITAN single writes. Low latency, low quota cost.
+// RESEARCH TIER (2.5 Flash) → For deep analysis: ORACLE reading emails/tasks,
+//   ENIGMA analytics, HERMES email drafting, CHRONOS calendar planning.
+//   Latest data, best reasoning, used for any major work.
 //
-// SHARED POOL (cheapest/highest-quota first to preserve budget):
-//   1st: gemini-2.5-flash-lite-preview-06-17 → user's "gemini-3.1-flash-lite" tier
-//   2nd: gemini-2.5-flash                    → user's "gemini-3.5-flash" tier
-//   3rd: gemini-2.0-flash                    → fallback for stability
-//
-// PERSONAL (best capability first, user's own quota):
-//   1st: gemini-2.5-flash                    → user's "gemini-3.5-flash" tier
-//   2nd: gemini-2.5-flash-lite-preview-06-17 → user's "gemini-3.1-flash-lite" tier
-//   3rd: gemini-2.0-flash                    → fallback for stability
-// ── HYBRID ROUTING SYSTEM ──────────────────────────────────────────────────────
-// TOP-LEVEL AGENTS (Supervisors): Require higher intelligence for master planning.
-// We prioritize the Pro/Standard models here.
-export const SHARED_TOP_LEVEL_PRIORITY = [
-  'gemini-3.1-flash-lite',
+// Real Gemini API IDs (not marketing names):
+//   gemini-2.5-flash-lite-preview-06-17 = Flash Lite (fast/cheap — VOICE tier)
+//   gemini-2.5-flash                    = 2.5 Flash (smart/latest — RESEARCH tier)
+//   gemini-2.0-flash                    = 2.0 Flash (stable fallback)
+
+// VOICE TIER
+export const VOICE_MODEL_PRIORITY = [
   'gemini-2.5-flash',
-  'gemini-2.0-flash',
 ];
 
-export const PERSONAL_TOP_LEVEL_PRIORITY = [
-  'gemini-3.1-flash-lite',
+// RESEARCH TIER
+export const RESEARCH_MODEL_PRIORITY = [
   'gemini-2.5-flash',
-  'gemini-2.0-flash',
 ];
 
-// SUB-AGENTS (Workers: Oracle, Enigma): Require high speed and low quota usage.
-export const SHARED_SUB_AGENT_PRIORITY = [
-  'gemini-3.1-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-];
-
-export const PERSONAL_SUB_AGENT_PRIORITY = [
-  'gemini-3.1-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-];
+// ── Legacy priority exports (kept for backward compat) ────────────────────────
+export const SHARED_TOP_LEVEL_PRIORITY = VOICE_MODEL_PRIORITY;
+export const PERSONAL_TOP_LEVEL_PRIORITY = RESEARCH_MODEL_PRIORITY;
+export const SHARED_SUB_AGENT_PRIORITY = VOICE_MODEL_PRIORITY;
+export const PERSONAL_SUB_AGENT_PRIORITY = RESEARCH_MODEL_PRIORITY;
 
 // Unified alias so internal consumers can reference a single constant.
-// Unified alias so internal consumers can reference a single constant.
-// Defaults to SHARED_TOP_LEVEL_PRIORITY (used by RobustChatSession without personal key).
-export const MODEL_PRIORITY = SHARED_TOP_LEVEL_PRIORITY;
+export const MODEL_PRIORITY = VOICE_MODEL_PRIORITY;
 
 export const getPriorityModels = (isPersonal: boolean, isTopLevel: boolean = true) => {
   if (isTopLevel) {
@@ -231,7 +267,7 @@ export const getActiveKeyPool = (): string[] => {
 //
 //   callWithFallback() → uses shared pool (runtime keys only, may be empty)
 //   The main agent callers in core.ts now route through the proxy client.
-const rawApiKey = import.meta.env.VITE_GEMINI_API_KEY || ''; // Read local keys for Vite dev, otherwise proxy handles it
+const rawApiKey = import.meta.env.DEV ? (import.meta.env.VITE_GEMINI_API_KEY || '') : '';
 
 // ── Live key pool — reflects only manually added runtime keys ─────────────────
 export const allKeys = getActiveKeyPool();
@@ -311,6 +347,77 @@ const releaseSemaphore = () => {
 const KEY_COOLDOWN_MS = 62_000; // 62s — just over Gemini's typical 60s 429 window
 const keyCooldownUntil = new Map<string, number>(); // token → available-at timestamp
 
+// ── Proactive RPM (Requests-Per-Minute) Tracker ────────────────────────────────
+// Records timestamps of every successful request per key in a 60-second sliding
+// window. When a key's usage reaches RPM_SOFT_LIMIT (a conservative ceiling BELOW
+// Gemini's actual hard limit), the key is proactively rotated away BEFORE a 429
+// ever fires. This eliminates the "all keys rate-limited in seconds" cascade.
+//
+// Gemini free-tier hard limits (as of 2026-06):
+//   gemini-2.5-flash: 10 RPM
+//   gemini-2.5-flash-lite: 30 RPM
+//   gemini-2.0-flash: 15 RPM
+// We use a single conservative ceiling of 8 RPM per key so we have ample
+// headroom on all models and leave room for parallel agents.
+const RPM_SOFT_LIMIT = 8;       // Rotate away from a key at this many requests/60s
+const RPM_WINDOW_MS  = 60_000;  // Sliding window duration
+
+// Map<keyToken, Array<requestTimestampMs>>
+const _keyRequestTimestamps = new Map<string, number[]>();
+
+/**
+ * Record a request against a key's RPM sliding window.
+ * Call this BEFORE dispatching the API request.
+ */
+const recordKeyRequest = (token: string): void => {
+  const now = Date.now();
+  const ts = _keyRequestTimestamps.get(token) ?? [];
+  // Prune entries older than the window
+  const recent = ts.filter(t => now - t < RPM_WINDOW_MS);
+  recent.push(now);
+  _keyRequestTimestamps.set(token, recent);
+};
+
+/**
+ * Returns true if the key has reached (or exceeded) the soft RPM ceiling.
+ * When true, the caller should rotate to the next key immediately.
+ */
+const isKeyNearRpmLimit = (token: string): boolean => {
+  const now = Date.now();
+  const ts = _keyRequestTimestamps.get(token) ?? [];
+  const recentCount = ts.filter(t => now - t < RPM_WINDOW_MS).length;
+  return recentCount >= RPM_SOFT_LIMIT;
+};
+
+/** Get current RPM count for a token (for diagnostics / UI). */
+export const getKeyRpm = (token: string): number => {
+  const now = Date.now();
+  const ts = _keyRequestTimestamps.get(token) ?? [];
+  return ts.filter(t => now - t < RPM_WINDOW_MS).length;
+};
+
+/** Get a snapshot of all key health states (for the settings UI or status endpoint). */
+export const getKeyPoolHealth = (): Array<{
+  masked: string;
+  rpm: number;
+  rpmLimit: number;
+  cooling: boolean;
+  cooldownRemainsMs: number;
+}> => {
+  const livePool = getActiveKeyPool();
+  const now = Date.now();
+  return livePool.map(token => {
+    const cooldownUntil = keyCooldownUntil.get(token) ?? 0;
+    return {
+      masked: token.substring(0, 6) + '••••••' + token.slice(-4),
+      rpm: getKeyRpm(token),
+      rpmLimit: RPM_SOFT_LIMIT,
+      cooling: now < cooldownUntil,
+      cooldownRemainsMs: Math.max(0, cooldownUntil - now),
+    };
+  });
+};
+
 // ── Global fleet backpressure ─────────────────────────────────────────────────
 // When ALL keys are exhausted, subsequent agents wait here instead of each
 // agent hammering the API independently and producing 10 identical 429 storms.
@@ -323,13 +430,18 @@ const getGlobalFleetCooldownWaitMs = (): number => {
 };
 
 const isKeyAvailable = (token: string): boolean => {
+  // Hard block: key is in the 429 cooldown window
   const until = keyCooldownUntil.get(token);
-  if (!until) return true;
-  if (Date.now() >= until) {
-    keyCooldownUntil.delete(token);
-    return true;
+  if (until) {
+    if (Date.now() < until) return false; // still cooling
+    keyCooldownUntil.delete(token);        // cooldown expired — restore
   }
-  return false;
+  // Soft block: proactive RPM ceiling reached — rotate before hitting the limit
+  if (isKeyNearRpmLimit(token)) {
+    console.info(`[ZenAI] Key ...${token.substring(0, 8)} at soft RPM ceiling (${getKeyRpm(token)}/${RPM_SOFT_LIMIT}). Rotating proactively.`);
+    return false;
+  }
+  return true;
 };
 
 const markKeyCooling = (token: string, reason: string, customCooldownMs?: number) => {
@@ -524,6 +636,57 @@ export const callWithFallbackUnthrottled = async (
   return await _callWithFallbackInner(buildRequest, false, signal);
 };
 
+/**
+ * VOICE MODEL CALLER — Uses Flash Lite for instant conversational responses.
+ * Use for: AEGIS synthesis, NAVIGATOR, TITAN writes, any short spoken answer.
+ * Bypasses semaphore (same as Unthrottled) but forces VOICE_MODEL_PRIORITY order.
+ */
+export const callWithVoiceModel = async (
+  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>,
+  signal?: AbortSignal
+): Promise<any> => {
+  // Force voice model by injecting a wrapper that pins the model name
+  const voiceWrapper = async (genAI: GoogleGenerativeAI, _modelName: string) => {
+    // Try voice models in order
+    for (const model of VOICE_MODEL_PRIORITY) {
+      try {
+        return await buildRequest(genAI, model);
+      } catch (err: any) {
+        const msg = (err?.message || '').toLowerCase();
+        if (msg.includes('404') || msg.includes('not found') || msg.includes('deprecated')) continue;
+        throw err;
+      }
+    }
+    // Last resort: use whatever _callWithFallbackInner picks
+    return await buildRequest(genAI, _modelName);
+  };
+  return await _callWithFallbackInner(voiceWrapper, false, signal);
+};
+
+/**
+ * RESEARCH MODEL CALLER — Uses 2.5 Flash for deep work with latest data.
+ * Use for: ORACLE (email/task reading), ENIGMA (analytics), HERMES (drafting),
+ * CHRONOS (calendar planning), any complex multi-step reasoning task.
+ */
+export const callWithResearchModel = async (
+  buildRequest: (genAI: GoogleGenerativeAI, modelName: string) => Promise<any>,
+  signal?: AbortSignal
+): Promise<any> => {
+  const researchWrapper = async (genAI: GoogleGenerativeAI, _modelName: string) => {
+    for (const model of RESEARCH_MODEL_PRIORITY) {
+      try {
+        return await buildRequest(genAI, model);
+      } catch (err: any) {
+        const msg = (err?.message || '').toLowerCase();
+        if (msg.includes('404') || msg.includes('not found') || msg.includes('deprecated')) continue;
+        throw err;
+      }
+    }
+    return await buildRequest(genAI, _modelName);
+  };
+  return await _callWithFallbackInner(researchWrapper, false, signal);
+};
+
 // Startup Model Health Check ──────────────────────────────────────────────────────
 // Proactively validates which models are actually available.
 // If a model 404s, it goes on a 60-second cooldown before being tried again.
@@ -634,6 +797,7 @@ const _callWithFallbackInner = async (
       } else {
         try {
           const genAI = new GoogleGenerativeAI('oauth_dummy_key');
+          recordKeyRequest('oauth_personal'); // ✅ RPM tracking for personal OAuth key
           apiQuotaStore.recordRequest();
           const result = await buildRequest(genAI, modelName);
           return result;
@@ -681,7 +845,7 @@ const _callWithFallbackInner = async (
     // Previously allKeys.length (e.g. 10) meant we'd try ALL 10 keys per model,
     // then ALL 10 again on model 2, and model 3 — burning 30 requests in seconds.
     // With 3 models × min(10,3) = 9 attempts max across the entire mission.
-    const MAX_KEY_ROTATIONS = Math.min(livePool.length, 3);
+    const MAX_KEY_ROTATIONS = livePool.length;
     let rotationsUsed = 0;
 
     while (rotationsUsed < MAX_KEY_ROTATIONS) {
@@ -691,6 +855,7 @@ const _callWithFallbackInner = async (
 
       try {
         const genAI  = new GoogleGenerativeAI(keyObj.token);
+        recordKeyRequest(keyObj.token); // ✅ RPM tracking — proactive rotation before 429
         apiQuotaStore.recordRequest();
         const result = await buildRequest(genAI, modelName);
         return result; // ✅ success
@@ -855,30 +1020,27 @@ export class RobustChatSession {
     return history;
   }
 
-  private async rebuildSession(modelName: string, keyIndex: number, history: any[]) {
+  private async rebuildSession(modelName: string, keyIndex: number, history: any[], explicitToken?: string) {
     const safeHistory = this.sanitizeHistory(history);
-    // ✅ FIXED: Don't fall back to allKeys[0] if keyIndex is invalid — that's the
-    // key we just rate-limited. Instead use round-robin to get a fresh available key.
-    let keyToUse: string;
-    if (allKeys[keyIndex] && isKeyAvailable(allKeys[keyIndex])) {
-      keyToUse = allKeys[keyIndex];
-    } else {
-      // Pick next available key via round-robin (sync part of pickNextSharedKey)
-      let found = false;
-      for (let attempt = 0; attempt < allKeys.length; attempt++) {
-        const idx = (keyIndex + attempt) % allKeys.length;
-        if (isKeyAvailable(allKeys[idx])) {
-          keyToUse = allKeys[idx];
-          found = true;
-          break;
+    let keyToUse = explicitToken;
+    if (!keyToUse) {
+      const liveKeys = getActiveKeyPool();
+      if (liveKeys[keyIndex] && isKeyAvailable(liveKeys[keyIndex])) {
+        keyToUse = liveKeys[keyIndex];
+      } else {
+        let found = false;
+        for (let attempt = 0; attempt < liveKeys.length; attempt++) {
+          const idx = (keyIndex + attempt) % liveKeys.length;
+          if (isKeyAvailable(liveKeys[idx])) {
+            keyToUse = liveKeys[idx];
+            found = true;
+            break;
+          }
         }
-      }
-      if (!found) {
-        // All cooling — use the provided index anyway (cooldown will expire soon)
-        keyToUse = allKeys[keyIndex] || allKeys[0] || '';
+        if (!found) keyToUse = liveKeys[keyIndex] || liveKeys[0] || '';
       }
     }
-    const genAI = new GoogleGenerativeAI(keyToUse);
+    const genAI = new GoogleGenerativeAI(keyToUse || 'proxy_dummy_key');
     const model = genAI.getGenerativeModel({
       model: modelName,
       systemInstruction: this.systemPrompt,
@@ -895,7 +1057,8 @@ export class RobustChatSession {
     const modelList = effectiveModels.length > 0 ? effectiveModels : MODEL_PRIORITY;
     for (let mi = this.modelIndex; mi < modelList.length; mi++) {
       const modelName = modelList[mi];
-      const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
+      const liveKeys = getActiveKeyPool();
+      const MAX_KEY_ROTATIONS = liveKeys.length || 1;
       let rotationsUsed = 0;
 
       while (rotationsUsed < MAX_KEY_ROTATIONS) {
@@ -911,7 +1074,7 @@ export class RobustChatSession {
         try {
           if (mi !== this.modelIndex || keyIdx !== this.keyIndex || rotationsUsed > 0) {
             const history = await this.getHistory();
-            this.session    = await this.rebuildSession(modelName, keyIdx, history);
+            this.session    = await this.rebuildSession(modelName, keyIdx, history, keyObj?.token);
             this.modelName  = modelName;
             this.modelIndex = mi;
             this.keyIndex   = keyIdx;
@@ -1005,7 +1168,8 @@ export class RobustChatSession {
     const modelList = effectiveModels.length > 0 ? effectiveModels : MODEL_PRIORITY;
     for (let mi = this.modelIndex; mi < modelList.length; mi++) {
       const modelName = modelList[mi];
-      const MAX_KEY_ROTATIONS = Math.min(3, allKeys.length || 1);
+      const liveKeys = getActiveKeyPool();
+      const MAX_KEY_ROTATIONS = liveKeys.length || 1;
       let rotationsUsed = 0;
 
       while (rotationsUsed < MAX_KEY_ROTATIONS) {
@@ -1017,7 +1181,7 @@ export class RobustChatSession {
         try {
           if (mi !== this.modelIndex || keyIdx !== this.keyIndex || rotationsUsed > 0) {
             const history = await this.getHistory();
-            this.session = await this.rebuildSession(modelName, keyIdx, history);
+            this.session = await this.rebuildSession(modelName, keyIdx, history, keyObj?.token);
             this.modelName = modelName;
             this.modelIndex = mi;
             this.keyIndex = keyIdx;

@@ -3,15 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo_white.png" />
-    <link rel="preload" href="/bg-video.mp4" as="video" type="video/mp4" fetchpriority="high">
+    <!-- Prevent white flash on load — tell browser this is a dark-themed app -->
+    <meta name="color-scheme" content="dark" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css" integrity="sha384-GvrOXuhMATgEsSwCs4smul74iXGOixntILdUW9XmUC6+HX0sLNAK3q710xrm/QbB" crossorigin="anonymous">
     <meta name="theme-color" content="#000000">
     <link rel="apple-touch-icon" href="/icon-192.png">
+
+    <!--
+      PERFORMANCE: bg-video.mp4 preload REMOVED.
+      Authenticated users never see the landing page. Preloading a video
+      file on every page load wasted 5–10MB of mobile bandwidth for every
+      logged-in user on every app open.
+      The Landing component lazy-loads the video element itself when needed.
+    -->
+
+    <!--
+      Fonts: preconnect first, then non-blocking stylesheet load.
+      Using media="print" trick: browser loads font CSS without blocking render,
+      then swaps to screen media when done. This eliminates render-blocking font CSS.
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    >
+    <!-- Fallback for no-JS environments -->
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    </noscript>
+
+    <!-- KaTeX CSS: loaded non-blocking (only used in learning/agent modules) -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"
+      integrity="sha384-GvrOXuhMATgEsSwCs4smul74iXGOixntILdUW9XmUC6+HX0sLNAK3q710xrm/QbB"
+      crossorigin="anonymous"
+      media="print"
+      onload="this.media='all'"
+    >
+
     <title>ZenTrack</title>
+
     <!-- BYPASS STALE PWA SERVICE WORKERS ON FIREBASE AUTH DOMAIN -->
     <script>
       if (window.location.pathname.startsWith('/__/')) {
@@ -23,7 +58,6 @@
     </script>
   </head>
   <body>
-
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

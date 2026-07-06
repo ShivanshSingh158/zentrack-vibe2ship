@@ -85,6 +85,8 @@ export const useProactiveAgent = (
   const taskIdsHash = tasks.map((t: any) => t.id).sort().join(',');
 
   useEffect(() => {
+    // Disabled by user request to prevent instant rate limiting
+    return;
     if (!tasks || tasks.length === 0) return;
     // ✅ BUG-C4: Use module-level guard instead of useRef
     if (_proactiveHasRun) return;
