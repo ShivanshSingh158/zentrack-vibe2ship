@@ -3,7 +3,9 @@ import { auth } from '../services/firebase';
 
 // In production, this will connect to your deployed Render/Railway backend.
 // In development, it defaults to your local machine.
-const SOCKET_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+const SOCKET_URL = import.meta.env.PROD 
+  ? 'https://zentrack-vibe2ship.onrender.com' 
+  : 'http://localhost:3001';
 
 export const orchestrateAgent = (
   instruction: string,
