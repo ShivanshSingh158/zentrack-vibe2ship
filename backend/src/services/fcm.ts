@@ -17,7 +17,7 @@ import { db, auth } from './firebase';
 
 // VAPID key — MUST be set as VITE_FIREBASE_VAPID_KEY in Vercel env vars.
 // No fallback: a missing key means the deploy is misconfigured — fail loudly.
-const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY as string;
+const VAPID_KEY = process.env.VITE_FIREBASE_VAPID_KEY as string;
 if (!VAPID_KEY) {
   console.error('[FCM] VITE_FIREBASE_VAPID_KEY is not set. Push notifications will be disabled.');
 }

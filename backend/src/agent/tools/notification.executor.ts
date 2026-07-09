@@ -119,7 +119,7 @@ case 'send_notification': {
 
             if (phone) {
               // Call the Vercel SMS endpoint (works even in browser — it's our own API)
-              const VERCEL_BASE = import.meta.env.VITE_APP_URL || 'https://myzentrack.vercel.app';
+              const VERCEL_BASE = process.env.VITE_APP_URL || 'https://myzentrack.vercel.app';
               const smsBody = [
                 args.title,
                 '',

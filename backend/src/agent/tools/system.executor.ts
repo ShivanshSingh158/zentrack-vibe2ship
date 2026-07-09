@@ -417,11 +417,11 @@ Thank you for your understanding.`;
 case 'execute_system_task': {
       // BUG-001 FIX: The original code unconditionally fetched http://localhost:8000/chat,
       // which always fails in Vercel production (no local server). Now:
-      // - In production (import.meta.env.PROD): return a clear user-facing message unless
-      //   VITE_JARVIS_URL is explicitly set to a reachable URL.
-      // - In development: defaults to localhost:8000 unless VITE_JARVIS_URL overrides it.
-      const jarvisUrl = (import.meta.env.VITE_JARVIS_URL as string | undefined)?.trim();
-      if (!jarvisUrl && import.meta.env.PROD) {
+      // - In production (process.env.NODE_ENV === 'production'): return a clear user-facing message unless
+      //   we know the jarvis proxy is actually setup (if we added it later).
+      // For now, if no url is provided, assume unconfigured in prod.
+      const jarvisUrl = (process.env.VITE_JARVIS_URL as string | undefined)?.trim();
+      if (!jarvisUrl && process.env.NODE_ENV === 'production') {
         return {
           success: false,
           data: null,

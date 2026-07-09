@@ -267,7 +267,7 @@ export const getActiveKeyPool = (): string[] => {
 //
 //   callWithFallback() → uses shared pool (runtime keys only, may be empty)
 //   The main agent callers in core.ts now route through the proxy client.
-const rawApiKey = import.meta.env.DEV ? (import.meta.env.VITE_GEMINI_API_KEY || '') : '';
+const rawApiKey = (process.env.NODE_ENV === 'development') ? (process.env.VITE_GEMINI_API_KEY || '') : '';
 
 // ── Live key pool — reflects only manually added runtime keys ─────────────────
 export const allKeys = getActiveKeyPool();
