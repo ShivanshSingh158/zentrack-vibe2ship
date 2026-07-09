@@ -1,6 +1,6 @@
 import {
   collection, addDoc, query, where, orderBy, limit, getDocs, serverTimestamp
-} from 'firebase/firestore';
+} from './firebase';
 import { db, auth } from './firebase';
 
 /**

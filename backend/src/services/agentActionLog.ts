@@ -26,7 +26,7 @@
  * delete_internal_app_data, focus_lock, rebuild_day, create_habit, create_goal, create_note
  */
 
-import { addDoc, collection, getDocs, query, orderBy, limit as fsLimit } from 'firebase/firestore';
+import { addDoc, collection, getDocs, query, orderBy, limit as fsLimit } from './firebase';
 import { db, auth } from './firebase';
 
 // ── Session ID ────────────────────────────────────────────────────────────────

@@ -35,6 +35,7 @@ export const auth = {
 // --- Firebase Client SDK v9 Adapter for Firebase Admin ---
 export const collection = (dbInstance: any, path: string) => dbInstance.collection(path);
 export const doc = (dbInstance: any, colPath: string, docId: string) => dbInstance.collection(colPath).doc(docId);
+export const serverTimestamp = () => require('firebase-admin/firestore').FieldValue.serverTimestamp();
 export const addDoc = (colRef: any, data: any) => colRef.add(data);
 export const updateDoc = (docRef: any, data: any) => docRef.update(data);
 export const deleteDoc = (docRef: any) => docRef.delete();

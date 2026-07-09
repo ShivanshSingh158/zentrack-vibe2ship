@@ -113,7 +113,7 @@ case 'send_notification': {
         if (isUrgent) {
           try {
             // Get user's phone from Firestore profile
-            const { getDoc, doc: fsDoc } = await import('firebase/firestore');
+            const { getDoc, doc: fsDoc } = await import('../../services/firebase');
             const profileSnap = await getDoc(fsDoc(db, 'user_profiles', user.uid));
             const phone = profileSnap.data()?.phoneNumber || profileSnap.data()?.phone;
 

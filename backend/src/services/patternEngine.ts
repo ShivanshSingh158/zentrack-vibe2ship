@@ -31,7 +31,7 @@
  *   - avgDailyCompletedCount — baseline for daily load planning
  */
 
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp } from './firebase';
 import { db, auth } from './firebase';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
