@@ -37,10 +37,11 @@
   justify-content: space-between;
   padding: 0 2rem;
   height: 56px;
-  background: rgba(3, 13, 26, 0.82);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(255,255,255,0.06);
+  /* Warm Obsidian top-nav */
+  background: rgba(10, 8, 5, 0.84);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(210, 175, 130, 0.07);
   margin: 0;
   max-width: 100%;
   border-radius: 0;
@@ -82,7 +83,8 @@
 .expandable-search {
   display: flex;
   align-items: center;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 100px;
   height: 40px;
   width: 40px;
@@ -90,18 +92,26 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   cursor: pointer;
   position: relative;
-  color: #a1a1aa;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .expandable-search:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  color: #ffffff;
+}
+
+.expandable-search:focus,
+.expandable-search:active,
+.expandable-search:focus-visible,
+.expandable-search:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .expandable-search.expanded {
   width: 500px;
-  background: #2a2b2e;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(14, 11, 7, 0.88);
+  border: 1px solid rgba(196, 149, 106, 0.22);
 }
 
 .search-icon-wrapper {
@@ -672,54 +682,136 @@
 }
 
 /* ==========================================================================
-   Sidebar Enhanced Interactions
+   Sidebar — Thin Rail (52px, icons only, Warm Obsidian)
    ========================================================================== */
 
 .sidebar {
-  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  width: var(--sidebar-width);
+  transition: width var(--dur-normal) var(--ease-emerge);
+  will-change: width;
 }
 
 .sidebar-nav .nav-item {
   position: relative;
-  transition: background 0.2s, color 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), padding-left 0.2s !important;
+  border-radius: var(--radius-md);
+  transition:
+    background var(--dur-fast) var(--ease-water),
+    color var(--dur-fast) var(--ease-water);
+  /* NO translateX — rail items stay in place */
 }
 
-.sidebar-nav .nav-item:hover {
-  transform: translateX(3px) !important;
-}
-
+/* Icon inside nav-item */
 .sidebar-nav .nav-item svg {
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s;
+  transition:
+    color var(--dur-fast) var(--ease-water),
+    transform var(--dur-normal) var(--ease-spring);
+  color: var(--sidebar-icon-default);
 }
 
 .sidebar-nav .nav-item:hover svg {
-  transform: scale(1.15);
+  color: var(--sidebar-icon-hover);
+  transform: scale(1.12);
+}
+
+.sidebar-nav .nav-item.active {
+  background: var(--sidebar-active-bg);
+}
+
+.sidebar-nav .nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  height: 60%;
+  width: 2.5px;
+  background: var(--sidebar-active-border);
+  border-radius: 0 2px 2px 0;
+  box-shadow: 0 0 8px var(--zen-copper-glow);
 }
 
 .sidebar-nav .nav-item.active svg {
-  filter: drop-shadow(0 0 6px rgba(167,139,250,0.7));
+  color: var(--sidebar-icon-active);
+  /* Subtle warm glow — not neon, just warmth */
+  filter: drop-shadow(0 0 5px rgba(196, 149, 106, 0.55));
+  transform: scale(1.0);
 }
 
-/* Sidebar entrance animation for items */
-.sidebar-nav .nav-item:nth-child(1) { animation: slideInLeft 0.4s 0.0s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.sidebar-nav .nav-item:nth-child(2) { animation: slideInLeft 0.4s 0.05s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.sidebar-nav .nav-item:nth-child(3) { animation: slideInLeft 0.4s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.sidebar-nav .nav-item:nth-child(4) { animation: slideInLeft 0.4s 0.15s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.sidebar-nav .nav-item:nth-child(5) { animation: slideInLeft 0.4s 0.2s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.sidebar-nav .nav-item:nth-child(6) { animation: slideInLeft 0.4s 0.25s cubic-bezier(0.16, 1, 0.3, 1) both; }
-.sidebar-nav .nav-item:nth-child(7) { animation: slideInLeft 0.4s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* Tooltip — appears to the right of the rail on hover */
+.sidebar-nav .nav-item .nav-tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--glass-2-bg);
+  backdrop-filter: var(--glass-2-blur);
+  border: 1px solid var(--glass-2-border);
+  border-radius: var(--radius-md);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-water);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 200;
+}
+.sidebar-nav .nav-item:hover .nav-tooltip {
+  opacity: 1;
+}
+
+/* Staggered entrance animation for sidebar items */
+.sidebar-nav .nav-item:nth-child(1)  { animation: slideInLeft 0.35s 0.00s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(2)  { animation: slideInLeft 0.35s 0.04s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(3)  { animation: slideInLeft 0.35s 0.08s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(4)  { animation: slideInLeft 0.35s 0.12s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(5)  { animation: slideInLeft 0.35s 0.16s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(6)  { animation: slideInLeft 0.35s 0.20s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(7)  { animation: slideInLeft 0.35s 0.24s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(8)  { animation: slideInLeft 0.35s 0.28s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(9)  { animation: slideInLeft 0.35s 0.32s var(--ease-emerge) both; }
+.sidebar-nav .nav-item:nth-child(10) { animation: slideInLeft 0.35s 0.36s var(--ease-emerge) both; }
+
+/* Agent-active sidebar accent line */
+body.agent-active .sidebar::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgba(196, 149, 106, 0.45) 40%,
+    rgba(196, 149, 106, 0.45) 60%,
+    transparent 100%
+  );
+  animation: sidebar-pulse 2s ease-in-out infinite;
+}
+@keyframes sidebar-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1.0; }
+}
+
 
 /* ==========================================================================
-   Top Nav Animations
+   Top Nav — Warm Obsidian
    ========================================================================== */
 
 .top-nav {
-  animation: nav-enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: nav-enter var(--dur-slow) var(--ease-emerge) both;
+  background: rgba(10, 8, 5, 0.84) !important;
+  border-bottom: 1px solid rgba(210, 175, 130, 0.07) !important;
 }
 
 .top-nav .nav-link {
-  transition: color 0.2s, opacity 0.2s;
+  transition:
+    color var(--dur-fast) var(--ease-water),
+    opacity var(--dur-fast) var(--ease-water);
   position: relative;
+  color: rgba(185, 168, 145, 0.60) !important;
 }
 
 .top-nav .nav-link::after {
@@ -728,11 +820,12 @@
   bottom: -4px;
   left: 50%;
   transform: translateX(-50%) scaleX(0);
-  width: 100%;
-  height: 1.5px;
-  background: linear-gradient(90deg, #a78bfa, #60a5fa);
+  width: 80%;
+  height: 1px;
+  background: var(--zen-copper);
   border-radius: 2px;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform var(--dur-fast) var(--ease-emerge);
+  opacity: 0.7;
 }
 
 .top-nav .nav-link:hover::after,
@@ -740,49 +833,93 @@
   transform: translateX(-50%) scaleX(1);
 }
 
+.top-nav .nav-link:hover,
+.top-nav .nav-link.active {
+  color: var(--text-primary) !important;
+}
+
 /* ==========================================================================
-   Card Universal Hover
+   Card — Warm glass hover
    ========================================================================== */
 
 .card {
-  transition: 
-    border-color 0.25s,
-    box-shadow 0.25s,
-    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    border-color var(--dur-fast) var(--ease-water),
+    box-shadow    var(--dur-normal) var(--ease-water),
+    transform     var(--dur-normal) var(--ease-water);
 }
 
 .card:hover {
-  border-color: rgba(255,255,255,0.12);
-  transform: translateY(-1px);
+  border-color: rgba(196, 149, 106, 0.20);
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
+
+/* Glass utility classes */
+.glass-1 {
+  background: var(--glass-1-bg);
+  backdrop-filter: var(--glass-1-blur);
+  -webkit-backdrop-filter: var(--glass-1-blur);
+  border: 1px solid var(--glass-1-border);
+  box-shadow: var(--glass-1-shadow);
+}
+.glass-2 {
+  background: var(--glass-2-bg);
+  backdrop-filter: var(--glass-2-blur);
+  -webkit-backdrop-filter: var(--glass-2-blur);
+  border: 1px solid var(--glass-2-border);
+  box-shadow: var(--glass-2-shadow);
+}
+.glass-ghost {
+  background: var(--glass-3-bg);
+  border: 1px solid var(--glass-3-border);
+  /* No backdrop-filter — saves GPU on long lists */
 }
 
 /* ==========================================================================
-   Dropdown / Modal Entrance
+   Dropdown / Modal Entrance — Warm
    ========================================================================== */
 
 .profile-dropdown {
-  animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  background: var(--glass-2-bg) !important;
+  backdrop-filter: var(--glass-2-blur) !important;
+  border: 1px solid var(--glass-2-border) !important;
+  box-shadow: var(--glass-2-shadow) !important;
+  animation: scaleIn var(--dur-fast) var(--ease-emerge) both;
   transform-origin: top right;
 }
 
-/* ==========================================================================
-   Focus Ring — Glowing violet
-   ========================================================================== */
+.profile-dropdown-item {
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  transition:
+    background var(--dur-fast) var(--ease-water),
+    color var(--dur-fast) var(--ease-water);
+}
 
-*:focus-visible {
-  outline: 1.5px solid rgba(167,139,250,0.6);
-  outline-offset: 2px;
-  border-radius: 4px;
-  box-shadow: 0 0 0 3px rgba(167,139,250,0.12);
+.profile-dropdown-item:hover {
+  background: rgba(181, 80, 60, 0.10) !important;
+  color: var(--zen-rose) !important;
 }
 
 /* ==========================================================================
-   Skeleton Loading Shimmer
+   Focus Ring — Warm copper
+   ========================================================================== */
+
+*:focus-visible {
+  outline: 1.5px solid rgba(196, 149, 106, 0.60);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.12);
+}
+
+/* ==========================================================================
+   Skeleton Loading — Warm shimmer
    ========================================================================== */
 
 .skeleton {
-  background: rgba(255,255,255,0.04);
-  border-radius: 8px;
+  background: rgba(196, 149, 106, 0.05);
+  border-radius: var(--radius-md);
   position: relative;
   overflow: hidden;
 }
@@ -794,9 +931,125 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255,255,255,0.04) 50%,
+    rgba(196, 149, 106, 0.07) 50%,
     transparent 100%
   );
-  animation: shimmer 1.5s ease-in-out infinite;
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
 }
 
+/* ==========================================================================
+   Page transitions — Water easing
+   ========================================================================== */
+
+.main-content > * {
+  animation: pageEnter var(--dur-normal) var(--ease-emerge) both;
+}
+.page-wrapper {
+  animation: pageEnter var(--dur-normal) var(--ease-emerge) both;
+  min-height: 100%;
+}
+@keyframes pageEnter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+@keyframes nav-enter {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+/* ==========================================================================
+   Warm utility overrides — components that hardcoded old colors
+   ========================================================================== */
+
+/* Kanban column */
+.column {
+  background: var(--glass-3-bg) !important;
+  border: 1px solid var(--glass-3-border) !important;
+}
+.column::before {
+  background: linear-gradient(90deg, var(--zen-copper), var(--zen-sage)) !important;
+  opacity: 0.35 !important;
+}
+.column-count {
+  background: rgba(196, 149, 106, 0.10) !important;
+  color: var(--zen-copper) !important;
+  border: 1px solid rgba(196, 149, 106, 0.22) !important;
+}
+
+/* App drawer */
+.app-drawer,
+.google-style-drawer {
+  background: var(--glass-2-bg) !important;
+  backdrop-filter: var(--glass-2-blur) !important;
+  border: 1px solid var(--glass-2-border) !important;
+  box-shadow: var(--glass-2-shadow) !important;
+  color: var(--text-primary) !important;
+}
+.app-drawer-item:hover  { background: rgba(196, 149, 106, 0.07) !important; }
+.app-drawer-label       { color: var(--text-secondary); }
+
+/* User avatar */
+.user-avatar {
+  border: 1px solid rgba(196, 149, 106, 0.22);
+  transition: transform var(--dur-fast) var(--ease-water), box-shadow var(--dur-fast) var(--ease-water);
+}
+.user-avatar-btn:hover .user-avatar {
+  transform: scale(1.06);
+  box-shadow: 0 0 12px rgba(196, 149, 106, 0.30);
+}
+.user-avatar-fallback {
+  background: rgba(196, 149, 106, 0.15);
+  color: var(--zen-copper);
+}
+
+/* Health indicator */
+.health-value { color: var(--zen-sage); }
+
+/* Pin indicator */
+.pin-indicator {
+  background: var(--zen-copper);
+  border-color: var(--color-bg);
+}
+
+/* Menu / icon buttons */
+.menu-button {
+  background: rgba(196, 149, 106, 0.06);
+  border: 1px solid rgba(196, 149, 106, 0.12);
+  color: var(--text-secondary);
+}
+.menu-button:hover {
+  background: rgba(196, 149, 106, 0.14);
+  color: var(--text-primary);
+}
+
+/* Expandable search */
+.expandable-search { border-radius: 100px !important; outline: none !important; box-shadow: none !important; }
+.expandable-search:hover  { background: rgba(196, 149, 106, 0.08) !important; color: var(--text-primary) !important; }
+.expandable-search.expanded { background: rgba(12, 9, 5, 0.70) !important; border: 1px solid rgba(196, 149, 106, 0.22) !important; border-radius: 100px !important; }
+
+/* Icon button active state in nav-right */
+.icon-button:hover,
+.icon-button.active {
+  background: rgba(196, 149, 106, 0.10) !important;
+  color: var(--zen-copper) !important;
+}
+
+/* nav-link base for top nav */
+.nav-link {
+  color: rgba(185, 168, 145, 0.55) !important;
+}
+.nav-link:hover,
+.nav-link.active {
+  color: var(--text-primary) !important;
+  background: rgba(196, 149, 106, 0.06) !important;
+}
+
+/* top-nav-right pill */
+.top-nav-right {
+  border: 1px solid rgba(210, 175, 130, 0.12) !important;
+  background: rgba(196, 149, 106, 0.05) !important;
+}

@@ -1,0 +1,738 @@
+/* ==========================================================================
+   ZenTrack — zen-theme.css
+   Warm Obsidian override layer — applies to ALL modules consistently.
+   Imported last in index.css to ensure highest specificity.
+   ========================================================================== */
+
+/* ══════════════════════════════════════════════════════════════
+   GLOBAL MODULE HEADERS — Instrument Serif, warm parchment
+   ══════════════════════════════════════════════════════════════ */
+
+.module-title,
+.page-title,
+.section-title,
+h1.title, h2.title {
+  font-family: var(--font-display) !important;
+  color: var(--text-primary) !important;
+  letter-spacing: -0.025em !important;
+}
+
+.module-subtitle,
+.page-subtitle,
+.section-subtitle {
+  color: var(--text-secondary) !important;
+  font-size: 0.875rem !important;
+}
+
+/* Card section headers — small uppercase labels */
+.card-label,
+.stat-label,
+.widget-label,
+[class*="-label"]:not(.nav-tooltip):not(.app-drawer-label) {
+  font-size: 0.70rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.07em !important;
+  text-transform: uppercase !important;
+  color: var(--text-muted) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   TODO / TASKS MODULE
+   ══════════════════════════════════════════════════════════════ */
+
+/* Date sidebar buttons */
+.date-btn:hover {
+  background: rgba(196, 149, 106, 0.07) !important;
+  color: var(--text-primary) !important;
+}
+.date-btn.selected {
+  background: rgba(196, 149, 106, 0.12) !important;
+  border-color: rgba(196, 149, 106, 0.28) !important;
+  color: var(--zen-copper) !important;
+}
+.date-btn.selected .date-num { color: var(--zen-copper) !important; }
+
+/* Priority left-border system */
+.todo-item-p1,
+.priority-p1 { border-left-color: var(--zen-rose) !important; }
+.todo-item-p2,
+.priority-p2 { border-left-color: var(--zen-amber) !important; }
+.todo-item-p3,
+.priority-p3 { border-left-color: var(--zen-sage) !important; }
+
+/* Checkbox — copper fill on complete */
+.todo-checkbox:checked,
+.checkbox-filled {
+  background: var(--zen-copper) !important;
+  border-color: var(--zen-copper) !important;
+}
+.todo-checkbox:focus {
+  box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.18) !important;
+}
+
+/* Filter pills / tabs */
+.filter-pill,
+.tab-pill,
+.filter-btn {
+  border-radius: var(--radius-pill) !important;
+  transition: background var(--dur-fast) var(--ease-water), color var(--dur-fast) var(--ease-water) !important;
+}
+.filter-pill.active,
+.tab-pill.active,
+.filter-btn.active {
+  background: rgba(196, 149, 106, 0.15) !important;
+  color: var(--zen-copper) !important;
+  border-color: rgba(196, 149, 106, 0.30) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LEARNING MODULE — Violet accent system
+   ══════════════════════════════════════════════════════════════ */
+
+.topic-card {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+  backdrop-filter: var(--glass-1-blur) !important;
+}
+
+.topic-card:hover {
+  border-color: rgba(155, 142, 196, 0.22) !important;
+}
+
+/* Progress bars in learning — violet */
+.topic-progress,
+.lecture-progress,
+[class*="progress-bar"],
+[class*="progress-fill"] {
+  background: linear-gradient(90deg, #9b8ec4, #b5a8d8) !important;
+  border-radius: 999px !important;
+}
+
+/* Progress track */
+[class*="progress-track"],
+[class*="progress-bg"] {
+  background: rgba(155, 142, 196, 0.12) !important;
+  border-radius: 999px !important;
+}
+
+/* Play button / video controls */
+.play-btn,
+[class*="play-button"] {
+  background: rgba(155, 142, 196, 0.15) !important;
+  border: 1px solid rgba(155, 142, 196, 0.28) !important;
+  color: #b5a8d8 !important;
+}
+.play-btn:hover,
+[class*="play-button"]:hover {
+  background: rgba(155, 142, 196, 0.25) !important;
+  border-color: rgba(155, 142, 196, 0.45) !important;
+}
+
+/* Add topic form */
+.add-topic-form {
+  background: var(--glass-3-bg) !important;
+  border: 1px solid rgba(155, 142, 196, 0.14) !important;
+}
+.add-topic-form:focus-within {
+  border-color: rgba(155, 142, 196, 0.30) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GYM MODULE — Copper accent, energised feel
+   ══════════════════════════════════════════════════════════════ */
+
+/* Day selector pill */
+.gym-day-btn,
+[class*="day-selector"] button,
+[class*="day-pill"] {
+  background: var(--glass-3-bg) !important;
+  border: 1px solid var(--glass-3-border) !important;
+  color: var(--text-secondary) !important;
+  border-radius: var(--radius-pill) !important;
+  transition: background var(--dur-fast) var(--ease-water), color var(--dur-fast) var(--ease-water) !important;
+}
+.gym-day-btn.active,
+[class*="day-selector"] button.active,
+[class*="day-pill"].active {
+  background: rgba(196, 149, 106, 0.15) !important;
+  border-color: rgba(196, 149, 106, 0.30) !important;
+  color: var(--zen-copper) !important;
+  font-weight: 600 !important;
+}
+
+/* Exercise cards */
+[class*="exercise-card"],
+[class*="workout-card"] {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+  backdrop-filter: var(--glass-1-blur) !important;
+  border-radius: var(--radius-lg) !important;
+}
+
+/* Sets/Reps chips — amber */
+[class*="set-chip"],
+[class*="rep-chip"],
+[class*="weight-chip"] {
+  background: rgba(196, 122, 58, 0.12) !important;
+  color: var(--zen-amber) !important;
+  border: 1px solid rgba(196, 122, 58, 0.22) !important;
+  border-radius: var(--radius-pill) !important;
+}
+
+/* Log workout CTA — full copper */
+[class*="log-workout"],
+[class*="log-btn"],
+[class*="workout-log"] {
+  background: linear-gradient(135deg, #c4956a, #dba87e) !important;
+  color: #1a110a !important;
+  font-weight: 700 !important;
+  border: none !important;
+  border-radius: var(--radius-pill) !important;
+}
+
+/* Gym progress bars — copper */
+[class*="gym-progress"],
+[class*="muscle-progress"] {
+  background: linear-gradient(90deg, #c4956a, #dba87e) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   HABITS MODULE — Sage accent for streaks
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="habit-card"],
+[class*="streak-card"] {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+}
+
+/* Streak indicator */
+[class*="streak-count"],
+[class*="streak-num"] {
+  color: var(--zen-copper) !important;
+  font-family: var(--font-display) !important;
+}
+
+/* Habit checkbox dot */
+[class*="habit-check"]:checked,
+[class*="habit-dot"].done {
+  background: var(--zen-sage) !important;
+  border-color: var(--zen-sage) !important;
+}
+
+/* Week grid cells */
+[class*="week-cell"].done,
+[class*="habit-cell"].done {
+  background: rgba(122, 158, 130, 0.25) !important;
+  border-color: rgba(122, 158, 130, 0.40) !important;
+}
+[class*="week-cell"].missed,
+[class*="habit-cell"].missed {
+  background: rgba(181, 80, 60, 0.10) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GOALS MODULE — Copper arcs, parchment display numbers
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="goal-card"] {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+  backdrop-filter: var(--glass-1-blur) !important;
+}
+
+/* Circular progress arc */
+[class*="goal-arc"],
+[class*="progress-arc"],
+[class*="arc-fill"] {
+  stroke: var(--zen-copper) !important;
+  filter: drop-shadow(0 0 4px rgba(196,149,106,0.35)) !important;
+}
+
+/* Progress percentage display */
+[class*="goal-percent"],
+[class*="arc-label"] {
+  color: var(--zen-copper) !important;
+  font-family: var(--font-display) !important;
+}
+
+/* Key results check */
+[class*="kr-item"].done,
+[class*="key-result"].done {
+  color: var(--zen-sage) !important;
+}
+
+/* Goal complete sweep animation */
+[class*="goal-card"].complete {
+  border-color: rgba(122, 158, 130, 0.35) !important;
+  background: rgba(122, 158, 130, 0.07) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   CALENDAR MODULE — Sky accent system
+   ══════════════════════════════════════════════════════════════ */
+
+/* Today indicator */
+[class*="today-marker"],
+[class*="calendar-today"] {
+  background: rgba(196, 149, 106, 0.15) !important;
+  border: 1px solid rgba(196, 149, 106, 0.30) !important;
+  border-radius: var(--radius-md) !important;
+}
+[class*="today-dot"] {
+  background: var(--zen-copper) !important;
+}
+
+/* Event chips */
+[class*="event-chip"],
+[class*="cal-event"] {
+  background: rgba(56, 189, 248, 0.09) !important;
+  border-left: 2px solid rgba(56, 189, 248, 0.55) !important;
+  color: var(--text-primary) !important;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0 !important;
+}
+
+/* Selected day */
+[class*="calendar-day"].selected,
+[class*="day-cell"].selected {
+  background: rgba(196, 149, 106, 0.12) !important;
+  border-color: rgba(196, 149, 106, 0.28) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ANALYTICS MODULE — Warm data visualization
+   ══════════════════════════════════════════════════════════════ */
+
+/* Stat display cards */
+[class*="stat-card"],
+[class*="metric-card"] {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+}
+
+/* Large stat numbers */
+[class*="stat-value"],
+[class*="metric-value"],
+[class*="big-number"] {
+  font-family: var(--font-display) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Chart lines — copper primary */
+[class*="recharts-line-dot"],
+.recharts-dot { fill: var(--zen-copper) !important; }
+[class*="recharts-cartesian-axis-tick-value"] { fill: var(--text-muted) !important; }
+.recharts-tooltip-wrapper {
+  background: var(--glass-2-bg) !important;
+  border: 1px solid var(--glass-2-border) !important;
+  border-radius: var(--radius-md) !important;
+}
+
+/* Period tabs */
+[class*="period-tab"].active,
+[class*="range-tab"].active {
+  background: rgba(196, 149, 106, 0.12) !important;
+  color: var(--zen-copper) !important;
+  border-color: rgba(196, 149, 106, 0.28) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   NOTES MODULE — Clean editorial
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="notes-sidebar"],
+[class*="note-list"] {
+  background: var(--glass-3-bg) !important;
+  border-color: var(--glass-3-border) !important;
+}
+
+[class*="note-item"]:hover {
+  background: rgba(196, 149, 106, 0.06) !important;
+}
+[class*="note-item"].active,
+[class*="note-item"].selected {
+  background: rgba(196, 149, 106, 0.10) !important;
+  border-left: 2px solid var(--zen-copper) !important;
+}
+
+[class*="note-tag"] {
+  background: rgba(155, 142, 196, 0.12) !important;
+  color: #b5a8d8 !important;
+  border: 1px solid rgba(155, 142, 196, 0.22) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   AGENT DASHBOARD / CONSOLE — Terminal warm
+   ══════════════════════════════════════════════════════════════ */
+
+.active-deployment-card,
+.urgency-matrix,
+.roi-card,
+.workspace-card {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+  box-shadow: var(--glass-1-shadow) !important;
+}
+
+/* Command bar */
+.command-bar-container {
+  background: rgba(12, 9, 5, 0.60) !important;
+  border: 1px solid rgba(196, 149, 106, 0.16) !important;
+}
+.command-bar-container:focus-within {
+  border-color: rgba(196, 149, 106, 0.38) !important;
+  background: rgba(18, 14, 8, 0.75) !important;
+}
+.agent-command-input { color: var(--text-primary) !important; }
+.agent-command-input::placeholder { color: rgba(185, 168, 145, 0.30) !important; }
+
+/* Agent fleet nodes */
+.fleet-node {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+}
+.fleet-node.active,
+.fleet-node.thinking {
+  border-color: var(--zen-copper-border) !important;
+  box-shadow: 0 0 16px var(--zen-copper-glow) !important;
+}
+.fleet-node.orchestrator {
+  border-color: rgba(196, 149, 106, 0.40) !important;
+  box-shadow: 0 0 24px rgba(196, 149, 106, 0.20) !important;
+}
+
+/* Terminal feed */
+[class*="terminal-line"],
+[class*="agent-log"] {
+  color: var(--text-secondary) !important;
+  font-family: var(--font-mono) !important;
+}
+[class*="terminal-prompt"] {
+  color: var(--zen-copper) !important;
+}
+[class*="terminal-success"] { color: var(--zen-sage) !important; }
+[class*="terminal-error"]   { color: var(--zen-rose) !important; }
+[class*="terminal-info"]    { color: var(--zen-amber) !important; }
+
+/* ══════════════════════════════════════════════════════════════
+   JOBS / KANBAN
+   ══════════════════════════════════════════════════════════════ */
+
+.job-card {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+  box-shadow: var(--glass-1-shadow) !important;
+}
+.job-card:hover {
+  border-color: rgba(196, 149, 106, 0.20) !important;
+  transform: translateY(-3px) !important;
+}
+
+.tag.wishlist      { background: rgba(155,142,196,0.12) !important; color: #b5a8d8 !important; border-color: rgba(155,142,196,0.22) !important; }
+.tag.applied       { background: rgba(56,189,248,0.10)  !important; color: #7dd3fc !important; border-color: rgba(56,189,248,0.22)  !important; }
+.tag.interviewing  { background: rgba(196,122,58,0.12)  !important; color: var(--zen-amber) !important; border-color: rgba(196,122,58,0.25)  !important; }
+.tag.offer         { background: rgba(122,158,130,0.12) !important; color: var(--zen-sage) !important; border-color: rgba(122,158,130,0.25) !important; }
+.tag.rejected      { background: rgba(181,80,60,0.12)   !important; color: #c47060 !important; border-color: rgba(181,80,60,0.22)   !important; }
+
+/* ══════════════════════════════════════════════════════════════
+   DASHBOARD (HOME) — Sara/Agent HUD
+   ══════════════════════════════════════════════════════════════ */
+
+/* Greeting text */
+[class*="greeting"],
+[class*="welcome-text"] {
+  font-family: var(--font-display) !important;
+  color: var(--text-primary) !important;
+  letter-spacing: -0.02em !important;
+}
+
+/* Quick stat widgets */
+[class*="quick-stat"],
+[class*="hud-stat"] {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+}
+
+/* Sara orb ring — copper when active */
+[class*="sara-ring"],
+[class*="orb-ring"] {
+  border-color: rgba(196, 149, 106, 0.40) !important;
+  box-shadow: 0 0 20px rgba(196, 149, 106, 0.20) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   ACADEMIC MODULES (Attendance, Assignments, Grades)
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="attendance-card"],
+[class*="assignment-card"],
+[class*="grade-card"] {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+}
+
+/* Status badges in academic */
+[class*="status-present"]  { color: var(--zen-sage) !important; background: rgba(122,158,130,0.12) !important; }
+[class*="status-absent"]   { color: var(--zen-rose) !important; background: rgba(181,80,60,0.12) !important; }
+[class*="status-pending"]  { color: var(--zen-amber) !important; background: rgba(196,122,58,0.12) !important; }
+
+/* Grade arcs — copper */
+[class*="grade-arc"],
+[class*="gpa-arc"] { stroke: var(--zen-copper) !important; }
+
+/* ══════════════════════════════════════════════════════════════
+   FLOW / POMODORO / FOCUS MODE
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="timer-display"],
+[class*="pomodoro-timer"],
+[class*="focus-timer"] {
+  font-family: var(--font-display) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Timer ring */
+[class*="timer-ring"],
+[class*="pomodoro-ring"] {
+  stroke: var(--zen-copper) !important;
+}
+[class*="timer-ring-bg"],
+[class*="pomodoro-ring-bg"] {
+  stroke: rgba(196, 149, 106, 0.12) !important;
+}
+
+/* Focus mode overlay */
+[class*="focus-overlay"],
+[class*="focus-mode-bg"] {
+  background: rgba(8, 6, 3, 0.94) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INTEGRATIONS & SETTINGS
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="integration-card"],
+[class*="settings-card"],
+[class*="api-card"] {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+}
+
+[class*="connected-badge"] {
+  background: rgba(122, 158, 130, 0.12) !important;
+  color: var(--zen-sage) !important;
+  border: 1px solid rgba(122, 158, 130, 0.25) !important;
+}
+[class*="disconnected-badge"] {
+  background: rgba(140, 124, 104, 0.10) !important;
+  color: var(--text-muted) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE BOTTOM NAV — Warm Obsidian
+   ══════════════════════════════════════════════════════════════ */
+
+.mobile-bottom-nav,
+[class*="bottom-nav"] {
+  background: rgba(10, 8, 5, 0.90) !important;
+  backdrop-filter: blur(20px) !important;
+  border-top: 1px solid rgba(210, 175, 130, 0.08) !important;
+}
+
+[class*="bottom-nav-item"].active,
+[class*="nav-tab"].active {
+  color: var(--zen-copper) !important;
+}
+
+[class*="bottom-nav-item"],
+[class*="nav-tab"] {
+  color: rgba(185, 168, 145, 0.45) !important;
+}
+
+/* Mobile sheet overlay */
+.mobile-sheet-overlay {
+  background: rgba(4, 3, 2, 0.72) !important;
+}
+.mobile-sheet-content {
+  background: var(--glass-2-bg) !important;
+  backdrop-filter: var(--glass-2-blur) !important;
+  border: 1px solid var(--glass-2-border) !important;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0 !important;
+}
+
+.sheet-item {
+  color: var(--text-secondary) !important;
+}
+.sheet-item.active {
+  color: var(--zen-copper) !important;
+}
+.sheet-icon {
+  background: rgba(196, 149, 106, 0.08) !important;
+  border: 1px solid rgba(196, 149, 106, 0.14) !important;
+}
+.sheet-item.active .sheet-icon {
+  background: rgba(196, 149, 106, 0.15) !important;
+  border-color: rgba(196, 149, 106, 0.30) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   COMMAND PALETTE
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="command-palette"],
+[class*="cmd-palette"] {
+  background: var(--glass-2-bg) !important;
+  backdrop-filter: var(--glass-2-blur) !important;
+  border: 1px solid var(--glass-2-border) !important;
+  box-shadow: var(--glass-2-shadow) !important;
+}
+
+[class*="palette-item"]:hover,
+[class*="cmd-item"]:hover {
+  background: rgba(196, 149, 106, 0.08) !important;
+  color: var(--text-primary) !important;
+}
+[class*="palette-item"].active,
+[class*="cmd-item"].active {
+  background: rgba(196, 149, 106, 0.14) !important;
+  color: var(--zen-copper) !important;
+}
+
+/* Palette search input */
+[class*="palette-input"],
+[class*="cmd-input"] {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+  border-bottom: 1px solid rgba(196, 149, 106, 0.12) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   GOOGLE WORKSPACE BANNER
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="workspace-banner"],
+.google-workspace-banner {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid rgba(196, 149, 106, 0.14) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Sara / VOICE ORB
+   ══════════════════════════════════════════════════════════════ */
+
+/* Sara base ring — copper when active */
+[class*="sara-orb"]:not([class*="idle"]) {
+  box-shadow: 0 0 32px rgba(196, 149, 106, 0.25), 0 0 64px rgba(196, 149, 106, 0.12) !important;
+}
+
+/* Thinking state — amber */
+[class*="thinking-ring"],
+[class*="agent-thinking"] {
+  border-color: rgba(196, 122, 58, 0.45) !important;
+  box-shadow: 0 0 20px rgba(196, 122, 58, 0.20) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   REVIEWS / WEEKLY REVIEW
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="review-card"] {
+  background: var(--glass-1-bg) !important;
+  border: 1px solid var(--glass-1-border) !important;
+}
+
+[class*="review-score"],
+[class*="week-score"] {
+  color: var(--zen-copper) !important;
+  font-family: var(--font-display) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   NOTIFICATIONS / TOASTS
+   ══════════════════════════════════════════════════════════════ */
+
+[class*="toast"],
+[class*="notification-popup"] {
+  background: var(--glass-2-bg) !important;
+  border: 1px solid var(--glass-2-border) !important;
+  box-shadow: var(--glass-2-shadow) !important;
+  color: var(--text-primary) !important;
+}
+
+[class*="toast-success"]  { border-left: 3px solid var(--zen-sage) !important; }
+[class*="toast-warning"]  { border-left: 3px solid var(--zen-amber) !important; }
+[class*="toast-error"]    { border-left: 3px solid var(--zen-rose) !important; }
+[class*="toast-info"]     { border-left: 3px solid var(--zen-copper) !important; }
+
+/* ══════════════════════════════════════════════════════════════
+   TOOLTIPS & POPOVERS
+   ══════════════════════════════════════════════════════════════ */
+
+[role="tooltip"],
+[class*="tooltip"]:not(.nav-tooltip) {
+  background: rgba(18, 14, 8, 0.95) !important;
+  border: 1px solid rgba(210, 175, 130, 0.14) !important;
+  color: var(--text-primary) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45) !important;
+  font-size: 0.78rem !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LOADING STATES
+   ══════════════════════════════════════════════════════════════ */
+
+/* Spinner — copper */
+.animate-spin,
+.spin {
+  color: var(--zen-copper) !important;
+}
+
+/* Solar system loader background */
+[class*="loader-bg"],
+[class*="loading-screen"] {
+  background: var(--color-bg) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   DIVIDERS & SEPARATORS
+   ══════════════════════════════════════════════════════════════ */
+
+hr,
+[class*="divider"],
+[class*="separator"] {
+  border-color: rgba(210, 175, 130, 0.08) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   LINKS
+   ══════════════════════════════════════════════════════════════ */
+
+a:not([class]) {
+  color: var(--zen-copper) !important;
+  text-decoration: none !important;
+}
+a:not([class]):hover {
+  color: var(--zen-copper-light) !important;
+  text-decoration: underline !important;
+  text-underline-offset: 3px !important;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   OVERRULE remaining cold hardcodes
+   ══════════════════════════════════════════════════════════════ */
+
+/* Anything still using raw purple/violet as accent */
+[style*="#a78bfa"],
+[style*="rgba(167,139,250"],
+[style*="rgba(124,58,237"],
+[style*="#8b5cf6"],
+[style*="#7c3aed"] {
+  /* Cannot override inline style with CSS — handled in component edits */
+}
+
+/* Selection highlight */
+::selection {
+  background: rgba(196, 149, 106, 0.25) !important;
+  color: var(--text-primary) !important;
+}

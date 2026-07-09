@@ -68,7 +68,21 @@ function markRateLimited(entry: KeyEntry) {
   console.warn(`[Sarvam] ${entry.label} rate-limited. Cooling down for ${COOLDOWN_MS / 1000}s. Keys still available: ${available}`);
 }
 
-// ─── Public TTS function ────────────────────────────────────────────────────
+// ─── Language detection ────────────────────────────────────────────────────
+/**
+ * Auto-detects whether text is primarily English or Hindi (Devanagari).
+ * Sarvam bulbul:v3 applies phoneme rules per target_language_code — using
+ * hi-IN for English text causes mispronunciation. Using en-IN for Hinglish
+ * still works fine because bulbul handles code-switching internally.
+ */
+function detectLanguageCode(text: string): 'en-IN' | 'hi-IN' {
+  const devanagariChars = (text.match(/[\u0900-\u097F]/g) || []).length;
+  const ratio = devanagariChars / Math.max(text.length, 1);
+  // If >15% of characters are Devanagari script → use hi-IN; otherwise en-IN
+  return ratio > 0.15 ? 'hi-IN' : 'en-IN';
+}
+
+// ─── Public TTS function ─────────────────────────────────────────────────────
 
 /**
  * Calls the Sarvam AI TTS endpoint.
@@ -92,22 +106,38 @@ export async function synthesizeSpeechSarvam({ text, speaker = DEFAULT_SPEAKER }
 
     console.log(`[Sarvam] Using ${entry.label} (use #${entry.useCount})`);
 
-    const response = await fetch('https://api.sarvam.ai/text-to-speech', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-subscription-key': entry.key,
-      },
-      body: JSON.stringify({
-        inputs: [text],
-        target_language_code: 'hi-IN',
-        speaker: speaker.toLowerCase(),
-        pace: 1.1,
-        speech_sample_rate: 8000,
-        enable_preprocessing: true,
-        model: 'bulbul:v3',
-      }),
-    });
+    // FIX: 8-second timeout prevents TTS queue from hanging forever on Sarvam API slowness
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    let response: Response;
+    try {
+      response = await fetch('https://api.sarvam.ai/text-to-speech', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-subscription-key': entry.key,
+        },
+        body: JSON.stringify({
+          inputs: [text],
+          // FIX: Auto-detect language — 'hi-IN' hardcoded caused English words to be
+          // pronounced with Hindi phonemes, causing quality drift mid-response.
+          target_language_code: detectLanguageCode(text),
+          speaker: speaker.toLowerCase(),
+          // FIX: pace 1.05 caused audio clipping on some hardware. 1.0 is natural speed.
+          pace: 1.0,
+          speech_sample_rate: 22050,
+          enable_preprocessing: true,
+          model: 'bulbul:v3',
+        }),
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') throw new Error('Sarvam TTS timeout after 8s — queue will retry with next key');
+      throw err;
+    }
+    clearTimeout(timeoutId);
 
     if (response.status === 429) {
       markRateLimited(entry);
@@ -183,4 +213,52 @@ export function getSarvamKeyStatus() {
     cooldownRemainingSeconds: Math.max(0, Math.ceil((k.rateLimitedUntil - now) / 1000)),
     useCount: k.useCount,
   }));
+}
+
+/**
+ * Converts speech to text using Sarvam AI's STT endpoint.
+ * Automatically rotates through configured API keys on 429.
+ */
+export async function transcribeSpeechSarvam(audioBlob: Blob): Promise<string> {
+  if (keyPool.length === 0) {
+    throw new Error('No Sarvam API keys configured.');
+  }
+
+  const maxAttempts = keyPool.length;
+  let attemptsLeft = maxAttempts;
+
+  while (attemptsLeft > 0) {
+    const entry = getNextKey();
+    if (!entry) throw new Error('All Sarvam API keys are currently rate-limited.');
+
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'audio.webm');
+    formData.append('prompt', ''); // Optional context
+
+    try {
+      const response = await fetch('https://api.sarvam.ai/speech-to-text-translate', {
+        method: 'POST',
+        headers: {
+          'api-subscription-key': entry.key,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        if (response.status === 429) {
+          markRateLimited(entry);
+          attemptsLeft--;
+          continue;
+        }
+        throw new Error(`Sarvam API STT error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.transcript || '';
+    } catch (err) {
+      console.error('[Sarvam] STT API Error:', err);
+      throw err;
+    }
+  }
+  throw new Error('All Sarvam keys rate-limited during transcription.');
 }

@@ -1,6 +1,7 @@
 /* Learning Container */
 .learning-container {
   padding: 2rem;
+  padding-bottom: 120px; /* Space for the bottom nav bar */
   display: flex;
   flex-direction: column;
   gap: 1.5rem;

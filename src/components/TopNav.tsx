@@ -262,16 +262,16 @@ export function TopNav() {
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: [1, 1.2, 1] }}
               transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(0, 240, 255, 0.2)', boxShadow: '0 0 10px rgba(0, 240, 255, 0.6)' }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(196, 149, 106, 0.18)', boxShadow: '0 0 10px rgba(196, 149, 106, 0.45)' }}
             >
-              <Mic size={14} color="#00F0FF" />
+              <Mic size={14} color="#c4956a" />
             </motion.div>
           )}
           <button 
             onClick={() => setIsMuted(!isMuted)}
             className="icon-button"
             title={isMuted ? "Unmute Jarvis Voice" : "Mute Jarvis Voice"}
-            style={{ color: isMuted ? '#6b7280' : '#00F0FF', transition: 'color 0.2s ease' }}
+            style={{ color: isMuted ? 'rgba(140, 124, 104, 0.45)' : '#c4956a', transition: 'color 0.2s ease' }}
           >
             {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
           </button>

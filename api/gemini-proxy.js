@@ -69,6 +69,33 @@ try {
 
 const IS_LOCAL_DEV = process.env.NODE_ENV !== 'production';
 
+// ── Sarvam TTS Key Pool (server-side, never exposed to browser) ────────────────
+const SARVAM_COOLDOWN_MS = 60_000;
+const sarvamKeyPool = (() => {
+  const keys = [];
+  for (let i = 1; i <= 10; i++) {
+    const key = (process.env[`SARVAM_API_KEY_${i}`] || '').trim();
+    if (key) keys.push({ key, label: `sarvam_key${i}`, rateLimitedUntil: 0 });
+  }
+  const legacy = (process.env.SARVAM_API_KEY || '').trim();
+  if (legacy && !keys.find(k => k.key === legacy)) {
+    keys.push({ key: legacy, label: 'sarvam_legacy', rateLimitedUntil: 0 });
+  }
+  return keys;
+})();
+let _sarvamRrIndex = 0;
+
+const getNextSarvamKey = () => {
+  const now = Date.now();
+  for (let i = 0; i < sarvamKeyPool.length; i++) {
+    const idx = (_sarvamRrIndex + i) % sarvamKeyPool.length;
+    if (now >= sarvamKeyPool[idx].rateLimitedUntil) {
+      _sarvamRrIndex = (idx + 1) % sarvamKeyPool.length;
+      return sarvamKeyPool[idx];
+    }
+  }
+  return null;
+};
 
 // ── Key Rotation (round-robin across the pool) ────────────────────────────────
 const GEMINI_KEYS = (process.env.GEMINI_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
@@ -97,6 +124,57 @@ export default async function handler(req, res) {
   setCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+
+  // ── Sarvam TTS Action (no auth needed — keys are server-side) ────────────────
+  if (req.query.action === 'tts') {
+    const { text, speaker = 'Shubh' } = req.body || {};
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'text is required' });
+    }
+    if (sarvamKeyPool.length === 0) {
+      return res.status(503).json({ error: 'No Sarvam API keys configured on server.' });
+    }
+    // Auto-detect language: if >15% chars are Devanagari, use hi-IN, else en-IN
+    const devanagariCount = (text.match(/[\u0900-\u097F]/g) || []).length;
+    const langCode = (devanagariCount / text.length) > 0.15 ? 'hi-IN' : 'en-IN';
+    let attemptsLeft = sarvamKeyPool.length;
+    while (attemptsLeft > 0) {
+      const entry = getNextSarvamKey();
+      if (!entry) return res.status(429).json({ error: 'All Sarvam keys rate-limited. Retry in 60s.' });
+      try {
+        const sarvamRes = await fetch('https://api.sarvam.ai/text-to-speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'api-subscription-key': entry.key },
+          body: JSON.stringify({
+            inputs: [text.substring(0, 500)],
+            target_language_code: langCode,
+            speaker: speaker.toLowerCase(),
+            pace: 1.0,
+            speech_sample_rate: 8000,
+            enable_preprocessing: true,
+            model: 'bulbul:v3',
+          }),
+        });
+        if (sarvamRes.status === 429) {
+          entry.rateLimitedUntil = Date.now() + SARVAM_COOLDOWN_MS;
+          attemptsLeft--;
+          continue;
+        }
+        if (!sarvamRes.ok) {
+          const errText = await sarvamRes.text();
+          return res.status(502).json({ error: `Sarvam error ${sarvamRes.status}: ${errText}` });
+        }
+        const data = await sarvamRes.json();
+        const audio = data?.audios?.[0];
+        if (!audio) return res.status(502).json({ error: 'Sarvam returned no audio' });
+        return res.status(200).json({ audio });
+      } catch (err) {
+        console.error(`[gemini-proxy/tts] Network error with ${entry.label}:`, err.message);
+        attemptsLeft--;
+      }
+    }
+    return res.status(503).json({ error: 'TTS failed after all retries.' });
+  }
 
   // ── 1. Verify Firebase ID Token (skipped in local dev) ─────────────────────
   const authHeader = req.headers['authorization'] || '';

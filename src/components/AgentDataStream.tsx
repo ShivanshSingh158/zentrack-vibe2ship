@@ -28,7 +28,8 @@ export const AgentDataStream: React.FC = () => {
         const tool = step.toolName || step.title || '';
         text = `Protocol complete: ${tool}`;
       } else if (step.type === 'answer') {
-        text = step.text || step.title || step.message || '';
+        // Do not display the final answer in the processing stream to avoid duplicating UI text.
+        return;
       } else {
         text = step.text || step.title || step.message || JSON.stringify(step);
       }
@@ -40,6 +41,10 @@ export const AgentDataStream: React.FC = () => {
         }
         
         setLogs(prev => {
+          // Deduplicate: Don't add if the text is exactly the same as the last one
+          if (prev.length > 0 && prev[prev.length - 1].text === sourceLabel + text) {
+            return prev;
+          }
           const newLogs = [...prev, { id: Math.random().toString(36).substr(2, 9), text: sourceLabel + text }];
           // Keep only the last 3 logs for a clean cinematic look
           return newLogs.slice(-3);

@@ -10,7 +10,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { agentMemoryStore } from '../../stores/agentMemoryStore';
 
-export const VoiceQuickCaptureWidget = () => {
+interface VoiceQuickCaptureWidgetProps {
+  inline?: boolean;
+}
+
+export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWidgetProps = {}) => {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcription, setTranscription] = useState('');
@@ -130,13 +134,14 @@ export const VoiceQuickCaptureWidget = () => {
     }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
     recognition.onstart = () => {
       setIsListening(true);
       setTranscription('');
+      window.dispatchEvent(new CustomEvent('close-mission-report'));
     };
 
     recognition.onresult = (event: any) => {
@@ -149,7 +154,7 @@ export const VoiceQuickCaptureWidget = () => {
 
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error', event.error);
-      if (event.error !== 'no-speech') {
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
         toast.error('Microphone error: ' + event.error);
       }
       setIsListening(false);
@@ -244,17 +249,14 @@ export const VoiceQuickCaptureWidget = () => {
       navigate('/home');
 
       if (!isChat) {
-        // ✅ Surface result visually in Mission Report panel automatically
-        window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: answer } }));
+        // Auto-surface Mission Report on success
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: answer } }));
+        }, 500);
       }
       
-      // Also speak the result via TTS for eyes-free UX
-      // Dispatch an agent-log event of type 'answer' so the global VoiceContext handles it with Sarvam AI
-      window.dispatchEvent(new CustomEvent('agent-log', {
-        detail: { type: 'answer', text: answer }
-      }));
-      
       setTranscription('');
+      window.dispatchEvent(new CustomEvent('close-mission-report'));
     } catch (err: any) {
       console.error('Agent execution error:', err);
       toast.error('Agent failed: ' + (err.message || 'Unknown error'), { id: processToastId });
@@ -284,6 +286,7 @@ export const VoiceQuickCaptureWidget = () => {
     e.stopPropagation();
     if (recognitionRef.current) {
       setTranscription('');
+      window.dispatchEvent(new CustomEvent('close-mission-report'));
       recognitionRef.current.stop();
     }
   };
@@ -295,19 +298,28 @@ export const VoiceQuickCaptureWidget = () => {
 
   return (
     <motion.div 
-      drag
+      drag={!inline}
       dragMomentum={false}
       dragElastic={0.1}
-      whileDrag={{ scale: 1.05 }}
+      whileDrag={{ scale: inline ? 1 : 1.05 }}
       animate={controls}
-      className="voice-widget-fab"
+      className={inline ? "" : "voice-widget-fab"}
       onDragStart={() => {
-        if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+        if (!inline && idleTimerRef.current) clearTimeout(idleTimerRef.current);
       }}
       onDragEnd={() => {
-        resetIdleTimer();
+        if (!inline) resetIdleTimer();
       }}
-      style={{
+      style={inline ? {
+        position: 'relative',
+        display: isGym ? 'none' : 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '0.5rem',
+        zIndex: 10,
+        pointerEvents: 'none'
+      } : {
         position: 'fixed',
         bottom: bottomPosition,
         right: '2rem',

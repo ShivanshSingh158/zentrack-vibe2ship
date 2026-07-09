@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   collection, query, where, onSnapshot, addDoc, updateDoc,
   doc, writeBatch, limit as firestoreLimit, getDocs,
@@ -124,6 +125,16 @@ export const AttendanceModule = () => {
     const unsub = onAuthStateChanged(auth, (u) => setUser(u));
     return () => unsub();
   }, []);
+
+  // ── Prevent Background Scrolling when Modals are Open ──
+  useEffect(() => {
+    if (isTimetableModalOpen || isHistoryModalOpen || isExtraOpen || confirmDeleteId || confirmResetSemester) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [isTimetableModalOpen, isHistoryModalOpen, isExtraOpen, confirmDeleteId, confirmResetSemester]);
 
   // ── Subjects (with schemaVersion migration guard) ──
   useEffect(() => {
@@ -762,8 +773,9 @@ export const AttendanceModule = () => {
       )}
 
       {/* ── Timetable Modal ── */}
-      {isTimetableModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem' }}>
+      {isTimetableModalOpen && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem' }}
+             onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
           <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {/* Modal Header */}
             <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
@@ -778,7 +790,7 @@ export const AttendanceModule = () => {
             </div>
 
             {/* Modal Body */}
-            <div style={{ overflowY: 'auto', flex: 1, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               {subjects.map(subject => (
                 <div key={subject.id} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.9rem' }}>
                   {/* Subject Header */}
@@ -878,12 +890,14 @@ export const AttendanceModule = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Full History Modal ── */}
-      {isHistoryModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem' }}>
+      {isHistoryModalOpen && createPortal(
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem' }}
+             onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
           <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '580px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><History size={17} /> Full Log History ({logs.length})</h2>
@@ -912,7 +926,8 @@ export const AttendanceModule = () => {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Confirm Dialogs ── */}

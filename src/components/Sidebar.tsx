@@ -72,62 +72,205 @@ function savePinned(pinned: string[]) {
 }
 
 const sidebarStyles = `
+  /* ── Sidebar Shell — Warm Obsidian Thin Rail ── */
   .sidebar {
-    background: rgba(0,15,30,0.8) !important;
-    backdrop-filter: blur(20px) !important;
-    border-right: 1px solid rgba(255,255,255,0.07) !important;
-    width: 240px !important;
+    background: rgba(10, 8, 5, 0.82) !important;
+    backdrop-filter: blur(24px) !important;
+    -webkit-backdrop-filter: blur(24px) !important;
+    border-right: 1px solid rgba(210, 175, 130, 0.07) !important;
+    width: 52px !important;
+    min-width: 52px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: visible !important;
+    position: relative !important;
   }
+
+  /* ── Logo area — just the icon mark, no text on rail ── */
   .sidebar-header {
-    padding: 1.25rem 1rem !important;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    border-bottom: none !important;
+    padding: 1rem 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border-bottom: 1px solid rgba(210, 175, 130, 0.06) !important;
+    margin-bottom: 0.5rem !important;
   }
   .sidebar-header .app-logo {
-    font-family: 'Instrument Serif', serif !important;
-    font-size: 1.4rem !important;
-    font-weight: 400 !important;
-    color: white !important;
+    font-size: 0 !important; /* hide text */
   }
+  .sidebar-header .app-logo img {
+    width: 22px !important;
+    height: 22px !important;
+    filter: brightness(0.85) !important;
+    transition: filter 0.15s ease !important;
+  }
+  .sidebar-header .app-logo:hover img {
+    filter: brightness(1.2) sepia(0.3) saturate(2) hue-rotate(-10deg) !important;
+  }
+
+  /* ── Nav items — icon only, tooltip on hover ── */
   .sidebar-nav .nav-item {
     display: flex !important;
     align-items: center !important;
-    gap: 0.65rem !important;
-    padding: 0.55rem 0.875rem !important;
-    border-radius: 0.6rem !important;
-    margin: 0.1rem 0.5rem !important;
-    color: rgba(255,255,255,0.5) !important;
-    font-size: 0.85rem !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 0.7rem 0 !important;
+    border-radius: 0 !important;
+    margin: 0.05rem 0 !important;
+    color: rgba(185, 168, 145, 0.42) !important;
+    font-size: 0 !important; /* hide label text */
     cursor: pointer !important;
-    transition: all 0.2s !important;
+    transition: color 0.15s ease, background 0.15s ease !important;
     border: none !important;
-    background: transparent;
+    background: transparent !important;
+    position: relative !important;
+    width: 100% !important;
+    text-decoration: none !important;
   }
-  .sidebar-nav .nav-item::before, .sidebar-nav .nav-item::after {
+
+  /* Hide labels — rail is icon-only */
+  .sidebar-nav .nav-item span:not(.nav-tooltip) {
     display: none !important;
   }
-  .sidebar-nav .nav-item:hover {
-    background: rgba(255,255,255,0.05) !important;
-    color: rgba(255,255,255,0.85) !important;
+
+  .sidebar-nav .nav-item svg {
+    width: 18px !important;
+    height: 18px !important;
+    color: inherit !important;
+    flex-shrink: 0 !important;
+    transition: color 0.15s ease, transform 0.2s cubic-bezier(0.34,1.56,0.64,1) !important;
   }
+
+  /* Hover state */
+  .sidebar-nav .nav-item:hover {
+    color: rgba(235, 224, 204, 0.88) !important;
+    background: rgba(196, 149, 106, 0.06) !important;
+  }
+  .sidebar-nav .nav-item:hover svg {
+    transform: scale(1.15) !important;
+  }
+
+  /* Active state — copper */
   .sidebar-nav .nav-item.active {
-    background: rgba(167,139,250,0.12) !important;
-    color: #a78bfa !important;
+    color: #c4956a !important;
+    background: rgba(196, 149, 106, 0.10) !important;
     border: none !important;
   }
-  .sidebar-nav .nav-item svg {
-    width: 16px !important;
-    height: 16px !important;
-    color: inherit;
+  .sidebar-nav .nav-item.active svg {
+    color: #c4956a !important;
+    filter: drop-shadow(0 0 5px rgba(196,149,106,0.55)) !important;
   }
+  /* Left accent line on active */
+  .sidebar-nav .nav-item.active::before {
+    content: '' !important;
+    display: block !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 22% !important;
+    height: 56% !important;
+    width: 2.5px !important;
+    background: #c4956a !important;
+    border-radius: 0 2px 2px 0 !important;
+    box-shadow: 0 0 8px rgba(196,149,106,0.50) !important;
+  }
+  .sidebar-nav .nav-item::after {
+    display: none !important;
+  }
+
+  /* Tooltip — slides in from the right of the rail */
+  .sidebar-nav .nav-item .nav-tooltip {
+    position: absolute !important;
+    left: calc(100% + 10px) !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    background: rgba(18, 14, 8, 0.95) !important;
+    backdrop-filter: blur(20px) !important;
+    border: 1px solid rgba(210, 175, 130, 0.14) !important;
+    border-radius: 8px !important;
+    padding: 0.32rem 0.65rem !important;
+    font-size: 0.78rem !important;
+    font-weight: 500 !important;
+    color: rgba(235, 224, 204, 0.90) !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    transition: opacity 0.12s ease !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45) !important;
+    z-index: 300 !important;
+    letter-spacing: 0.01em !important;
+  }
+  .sidebar-nav .nav-item:hover .nav-tooltip {
+    opacity: 1 !important;
+  }
+
+  /* Group label — hidden on 52px rail */
   .sidebar-nav .group-label {
-    font-size: 0.6rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.12em !important;
-    color: rgba(255,255,255,0.25) !important;
-    padding: 0.75rem 1.25rem 0.25rem !important;
+    display: none !important;
+  }
+
+  /* Secondary items — slightly more muted */
+  .sidebar-nav .nav-item.secondary {
+    color: rgba(140, 124, 104, 0.38) !important;
+  }
+  .sidebar-nav .nav-item.secondary:hover {
+    color: rgba(185, 168, 145, 0.75) !important;
+  }
+
+  /* Sidebar footer — avatar only, centered */
+  .sidebar-footer {
+    padding: 0.6rem 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    border-top: 1px solid rgba(210, 175, 130, 0.06) !important;
+    margin-top: auto !important;
+  }
+  .sidebar-footer .user-name {
+    display: none !important;
+  }
+  .sidebar-footer .user-profile {
+    justify-content: center !important;
+  }
+  .btn-logout {
+    background: transparent !important;
+    border: none !important;
+    color: rgba(140, 124, 104, 0.45) !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+    transition: color 0.15s ease, background 0.15s ease !important;
+  }
+  .btn-logout:hover {
+    color: #b5503c !important;
+    background: rgba(181, 80, 60, 0.10) !important;
+  }
+
+  /* Mobile menu trigger — hide on desktop */
+  .mobile-menu-trigger {
+    display: none !important;
+  }
+
+  /* Desktop-only links — visible */
+  .desktop-only-links {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1 !important;
+    overflow-y: auto !important;
+    overflow-x: visible !important;
+  }
+
+  /* Pomodoro mini widget — narrow on rail */
+  .hide-on-mobile [style*="background: rgba(124,58,237"] {
+    background: rgba(196, 149, 106, 0.07) !important;
+    border: 1px solid rgba(196, 149, 106, 0.18) !important;
+    border-radius: 8px !important;
+    margin: 0 4px !important;
+    padding: 0.5rem !important;
   }
 `;
 
@@ -205,9 +348,9 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
         <nav className="sidebar-nav">
           {/* Pinned links always visible */}
           {pinnedModules.map(m => (
-            <NavLink key={m.id} to={m.path} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${m.mobileOnly ? 'hide-on-desktop' : ''}`} style={m.isPremium ? { color: '#fbbf24' } : undefined}>
+            <NavLink key={m.id} to={m.path} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${m.mobileOnly ? 'hide-on-desktop' : ''}`}>
               {m.icon}
-              <span>{m.label}</span>
+              <span className="nav-tooltip">{m.label}</span>
             </NavLink>
           ))}
 
@@ -223,27 +366,24 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
               const idx = ALL_MODULES.findIndex(am => am.id === m.id);
               return idx < SECONDARY_START_INDEX;
             }).map(m => (
-              <NavLink key={m.id} to={m.path} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${m.mobileOnly ? 'hide-on-desktop' : ''}`} style={m.isPremium ? { color: '#fbbf24' } : undefined}>
+              <NavLink key={m.id} to={m.path} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''} ${m.mobileOnly ? 'hide-on-desktop' : ''}`}>
                 {m.icon}
-                <span>{m.label}</span>
+                <span className="nav-tooltip">{m.label}</span>
               </NavLink>
             ))}
 
-            {/* Divider between primary and secondary */}
+            {/* Secondary modules — slightly more muted */}
             {moreModules.some(m => ALL_MODULES.findIndex(am => am.id === m.id) >= SECONDARY_START_INDEX) && (
-              <div className="group-label">
-                More
-              </div>
+              <div className="group-label">More</div>
             )}
 
-            {/* Secondary modules — slightly dimmer */}
             {moreModules.filter(m => {
               const idx = ALL_MODULES.findIndex(am => am.id === m.id);
               return idx >= SECONDARY_START_INDEX;
             }).map(m => (
-              <NavLink key={m.id} to={m.path} className={({ isActive }) => `nav-item secondary ${isActive ? 'active' : ''} ${m.mobileOnly ? 'hide-on-desktop' : ''}`} style={m.isPremium ? { color: '#fbbf24' } : undefined}>
+              <NavLink key={m.id} to={m.path} className={({ isActive }) => `nav-item secondary ${isActive ? 'active' : ''} ${m.mobileOnly ? 'hide-on-desktop' : ''}`}>
                 {m.icon}
-                <span>{m.label}</span>
+                <span className="nav-tooltip">{m.label}</span>
               </NavLink>
             ))}
           </div>
@@ -251,31 +391,22 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
           {/* Mini Pomodoro Indicator */}
           {state.taskId && (
             <div className="hide-on-mobile" style={{
-              marginTop: 'auto', padding: '0.75rem',
-              background: 'rgba(124,58,237,0.08)', border: '1px solid rgba(124,58,237,0.2)',
-              borderRadius: 'var(--radius-sm)', display: 'flex', flexDirection: 'column', gap: '0.4rem',
+              marginTop: 'auto', padding: '0.5rem 4px',
+              background: 'rgba(196,149,106,0.07)', border: '1px solid rgba(196,149,106,0.18)',
+              borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: '0.35rem',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600 }}>Focusing On</div>
-                <div style={{ display: 'flex', gap: '0.2rem' }}>
-                  <button className="btn-icon" onClick={toggleFocusMode} style={{ padding: '0.2rem', color: 'var(--text-muted)' }} title="Focus Mode"><Zap size={14} /></button>
-                  <button className="btn-icon" onClick={dismissTimer} style={{ padding: '0.2rem', color: 'var(--text-muted)' }} aria-label="Dismiss"><X size={14} /></button>
+                <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>Focus</div>
+                <div style={{ display: 'flex', gap: '0.15rem' }}>
+                  <button className="btn-icon" onClick={toggleFocusMode} style={{ padding: '0.15rem', color: 'var(--text-muted)' }} title="Focus Mode"><Zap size={12} /></button>
+                  <button className="btn-icon" onClick={dismissTimer} style={{ padding: '0.15rem', color: 'var(--text-muted)' }} aria-label="Dismiss"><X size={12} /></button>
                 </div>
               </div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{state.taskText}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ fontSize: '1.2rem', fontWeight: 700, background: 'linear-gradient(135deg, #a855f7, #c084fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontFamily: 'var(--font-display)' }}>{formatTime(state.timeLeft)}</span>
-                <div style={{ display: 'flex', gap: '0.2rem', marginLeft: 'auto' }}>
-                  {!state.isRunning && (
-                    <>
-                      <button className="btn-icon" onClick={() => setDuration(Math.max(1, Math.floor(state.timeLeft / 60) - 5))} style={{ fontSize: '0.65rem', padding: '0.2rem', fontWeight: 700 }}>-5</button>
-                      <button className="btn-icon" onClick={() => setDuration(Math.floor(state.timeLeft / 60) + 5)} style={{ fontSize: '0.65rem', padding: '0.2rem', fontWeight: 700 }}>+5</button>
-                    </>
-                  )}
-                  <button className="btn-icon" onClick={() => state.isRunning ? pauseTimer() : resumeTimer()} style={{ padding: '0.3rem' }}>
-                    {state.isRunning ? <Pause size={14} /> : <Play size={14} />}
-                  </button>
-                </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.3rem' }}>
+                <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--zen-copper)', fontFamily: 'var(--font-display)' }}>{formatTime(state.timeLeft)}</span>
+                <button className="btn-icon" onClick={() => state.isRunning ? pauseTimer() : resumeTimer()} style={{ padding: '0.2rem' }}>
+                  {state.isRunning ? <Pause size={12} /> : <Play size={12} />}
+                </button>
               </div>
             </div>
           )}
@@ -301,7 +432,7 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
 
             {/* Sheet header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
                 <img src="/logo_white.png" alt="ZenTrack" className="logo-icon" style={{ width: 18, height: 18, objectFit: 'contain' }} /> All Modules
               </h3>
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -310,11 +441,11 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
                   style={{
                     display: 'flex', alignItems: 'center', gap: '0.35rem',
                     padding: '0.4rem 0.75rem', borderRadius: '999px', fontSize: '0.78rem',
-                    background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)',
-                    color: '#a855f7', cursor: 'pointer', fontWeight: 600,
+                    background: 'rgba(196,149,106,0.12)', border: '1px solid rgba(196,149,106,0.28)',
+                    color: '#c4956a', cursor: 'pointer', fontWeight: 600,
                   }}
                 >
-                  <Settings2 size={13} /> Customize Nav
+                  <Settings2 size={13} /> Customize
                 </button>
                 <button className="btn-icon" onClick={closeAll} style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '50%', padding: '0.4rem' }}>
                   <X size={18} />

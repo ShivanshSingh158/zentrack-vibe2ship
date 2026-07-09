@@ -19,6 +19,9 @@ const PROACTIVE_THROTTLE_MS = 60 * 60 * 1000;   // 1 hour between emergency acti
 const GHOST_THROTTLE_MS     = 24 * 60 * 60 * 1000; // 24 hours between ghost scans
 const STORAGE_KEY    = 'zen_proactive_last_run';
 const GHOST_SCAN_KEY = 'zen_ghost_last_scan';
+// MISSING-007: SPECTRE 6-hour intra-day ghost scan
+const SPECTRE_6H_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours between intra-day SPECTRE scans
+const SPECTRE_6H_KEY = 'zen_spectre_last_scan_6h';  // throttle key independent of 24h ghost scan
 
 /**
  * Returns the correct time-of-day session label and emoji based on the user's
@@ -708,11 +711,59 @@ Keep it under 200 words.`;
     // GAP-5: Snooze intervention — run 15s after mount (let tasks load first)
     setTimeout(() => { runSnoozeInterventionCheck(); }, 15_000);
 
+    // MISSING-007: SPECTRE 6-hour intra-day ghost-deadline scan.
+    // The existing ghost scan throttles to 24h — only one scan per day.
+    // This separate 6-hour interval gives SPECTRE genuine proactive power:
+    // new inbox commitments that arrive mid-day are caught and surfaced as tasks.
+    // Uses a separate throttle key (zen_spectre_last_scan_6h) so it doesn't
+    // interfere with the 24h ghost scan cadence.
+    const runSpectre6hScan = async () => {
+      if (!isSignedInToGoogle()) return;
+      const lastScan = parseInt(localStorage.getItem(SPECTRE_6H_KEY) || '0', 10);
+      if (Date.now() - lastScan < SPECTRE_6H_INTERVAL_MS) return;
+      if (_isProactiveRunning) return;
+      if (!tryAcquireLock('proactive')) return;
+      _isProactiveRunning = true;
+      localStorage.setItem(SPECTRE_6H_KEY, Date.now().toString());
+      try {
+        const apiKey = '';
+        const spectrePrompt = `SPECTRE_INTRA_DAY_SCAN — Scan the inbox for hidden commitments made in the last 6 hours.
+Focus ONLY on emails received TODAY. Look for: "I'll get that to you", "by end of day", "before Friday", "can you send me", "expect it by", and similar implied deadlines.
+For each ghost commitment found: call create_task with a descriptive title, due date matching the implied deadline, and source="ghost_spectre".
+If nothing found: respond "No new ghost deadlines detected."
+Do NOT re-process tasks already in the system. Keep this scan lightweight.`;
+        const spectreOnStep = (step: any) => window.dispatchEvent(new CustomEvent('agent-log', {
+          detail: { ...step, isProactive: true, title: step.title ? `[SPECTRE-6H] ${step.title}` : undefined }
+        }));
+        const result = await orchestrateAgent(spectrePrompt, globalData, apiKey, spectreOnStep, [], new AbortController().signal);
+        const foundDeadlines = !result.toLowerCase().includes('no new ghost');
+        if (foundDeadlines) {
+          toast.info('👻 SPECTRE detected hidden commitments', {
+            description: 'Sara found implied deadlines in your recent emails and created tasks.',
+            duration: 10000,
+            action: { label: 'View Tasks', onClick: () => window.dispatchEvent(new Event('nav-tasks')) }
+          });
+        }
+      } catch (e) {
+        console.warn('[Spectre6h] Scan failed (non-blocking):', e);
+      } finally {
+        _isProactiveRunning = false;
+        releaseLock('proactive');
+      }
+    };
+
+    // Stagger: 2 minutes after app load (after emergency loop + ghost scan settle)
+    const spectre6hInitTimer = setTimeout(() => { runSpectre6hScan().catch(() => {}); }, 2 * 60_000);
+    // Then run every 6 hours
+    const spectre6hInterval = setInterval(() => { runSpectre6hScan().catch(() => {}); }, SPECTRE_6H_INTERVAL_MS);
+
     return () => {
       clearTimeout(emergencyTimer);
       clearTimeout(ghostTimer);
+      clearTimeout(spectre6hInitTimer);
       clearInterval(watchdog);
       clearInterval(proactiveClock);
+      clearInterval(spectre6hInterval);
       // Flush any pending learning store writes on unmount (page close / nav)
       userLearningStore.flush().catch(() => {});
     };

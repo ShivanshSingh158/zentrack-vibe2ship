@@ -9,10 +9,9 @@ import { auth, db } from './services/firebase';
 import { runModelHealthCheck } from './services/gemini/core';
 import Lenis from 'lenis';
 
-// â”€â”€â”€ Always-on components (tiny, needed immediately) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ————————————————————————————————————————————————————————
 import { Login } from './components/Login';
 import { Landing } from './components/Landing';
-import { TopNav } from './components/TopNav';
 import { BackgroundEffects } from './components/BackgroundEffects';
 import { UpdatePrompt } from './components/UpdatePrompt';
 import { DeveloperMatrix } from './components/overlays/DeveloperMatrix';
@@ -27,16 +26,18 @@ import { SkeletonCard } from './components/ui/SkeletonCard';
 import { OfflineIndicator } from './components/ui/OfflineIndicator';
 import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
-import { FloatingExtraWorks, VoiceQuickCaptureWidget } from './features/_shared';
+import { FloatingExtraWorks } from './features/_shared';
+import { HomeDashboard } from './features/dashboard/HomeDashboard';
 import { MissionReport } from './features/dashboard/MissionReport';
 import { ReportArchive } from './features/dashboard/ReportArchive';
+
+import { CommandPalette } from './components/CommandPalette';
 import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap } from 'lucide-react';
 import { AgentDataStream } from './components/AgentDataStream';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
-import { GoogleWorkspaceBanner } from './components/GoogleWorkspaceBanner';
-import { BottomNav } from './components/BottomNav';
 import { SolarSystemLoader } from './components/SolarSystemLoader';
 import { SaraInterface } from './components/SaraInterface';
+import { BottomHeader } from './components/BottomHeader';
 
 
 import { useContextReminders } from './hooks/useContextReminders';
@@ -220,7 +221,6 @@ const lazyWithRetry = (componentImport: () => Promise<{ default: React.Component
 };
 
 // ——— Lazily-loaded page modules (~1.9 MB → ~300 KB initial bundle) —————————————————
-const HomeDashboard = lazyWithRetry(() => import('./features/dashboard/HomeDashboard').then(m => ({ default: m.HomeDashboard })), 'HomeDashboard');
 const TodoListModule = lazyWithRetry(() => import('./features/tasks/TodoListModule').then(m => ({ default: m.TodoListModule })), 'TodoListModule');
 const CalendarModule = lazyWithRetry(() => import('./features/calendar').then(m => ({ default: m.CalendarModule })), 'CalendarModule');
 const NotesModule = lazyWithRetry(() => import('./features/notes').then(m => ({ default: m.NotesModule })), 'NotesModule');
@@ -274,7 +274,7 @@ const AnimatedRoutes = () => {
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Navigate to="/home" replace />} />
-        <Route path="/home"        element={<PageTransition><ErrorBoundary name="Dashboard"><HomeDashboard /></ErrorBoundary></PageTransition>} />
+        <Route path="/home"        element={<ErrorBoundary name="Dashboard"><HomeDashboard /></ErrorBoundary>} />
         <Route path="/tasks"       element={<PageTransition><ErrorBoundary name="Tasks"><Suspense fallback={<PageLoader />}><TodoListModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><Suspense fallback={<PageLoader />}><CalendarModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/notes"       element={<PageTransition><ErrorBoundary name="Notes"><Suspense fallback={<PageLoader />}><NotesModule /></Suspense></ErrorBoundary></PageTransition>} />
@@ -303,8 +303,26 @@ const AnimatedRoutes = () => {
 // This gate renders ONCE at the top level, so all routes get clean data on first paint.
 const DataReadyGate: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isLoading } = useGlobalData();
-  if (!isLoading) return <>{children}</>;
-  return <SolarSystemLoader title="Syncing your data..." subtitle="Loading tasks, habits and calendar" />;
+  
+  return (
+    <AnimatePresence mode="wait">
+      {isLoading ? (
+        <motion.div key="data-loader" exit={{ opacity: 0, transition: { duration: 0.5, ease: 'easeInOut' } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#030712' }}>
+          <SolarSystemLoader title="Syncing your data..." subtitle="Loading tasks, habits and calendar" />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="data-content"
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.25, 0.8, 0.25, 1] }}
+          style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', flex: 1, position: 'relative' }}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 };
 
 function App() {
@@ -346,7 +364,6 @@ function App() {
   const [showLogin, setShowLogin]     = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showSara, setShowSara] = useState(false);
-  const [showFab,   setShowFab]   = useState(false);
   // ✅ U2 FIX: Track panel closing animation state.
   const [isPanelClosing, setIsPanelClosing] = useState(false);
   const [showDeveloperMatrix, setShowDeveloperMatrix] = useState(false);
@@ -367,19 +384,12 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const handleToggleGlobalFab = () => {
-      setShowFab(prev => !prev);
-    };
-
     const handleToggleSara = () => {
       setShowSara(prev => !prev);
-      setShowFab(false);
     };
 
-    window.addEventListener('toggle-global-fab', handleToggleGlobalFab);
     window.addEventListener('toggle-sara', handleToggleSara);
     return () => {
-      window.removeEventListener('toggle-global-fab', handleToggleGlobalFab);
       window.removeEventListener('toggle-sara', handleToggleSara);
     };
   }, []);
@@ -509,16 +519,6 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  if (authLoading) {
-    const isProbablyLoggedIn = localStorage.getItem('zen_is_logged_in') === '1';
-    const isProtectedRoute = !['/', '/landing', '/login'].includes(window.location.pathname);
-
-    if (isProbablyLoggedIn || isProtectedRoute) {
-      return (
-      <SolarSystemLoader />
-    );
-    }
-  }
 
   // ——— SINGLE UNIFIED RENDER ——————————————————————————————————————————————————————
   // All auth phase transitions are controlled here by a single AnimatePresence.
@@ -549,8 +549,21 @@ function App() {
   // It only becomes visible when the overlay on top (app or loading) fades out.
   const isLogin = authPhase === 'unauthenticated' && (showLogin || location.pathname === '/login');
 
-  if (authPhase === 'authenticated' && user) {
-    return (
+  const isProbablyLoggedIn = localStorage.getItem('zen_is_logged_in') === '1';
+  const isProtectedRoute = !['/', '/landing', '/login'].includes(window.location.pathname);
+  const showSolarLoader = authLoading && (isProbablyLoggedIn || isProtectedRoute);
+
+  return (
+    <AnimatePresence mode="wait">
+      {showSolarLoader ? (
+        <motion.div key="solar-loader" exit={{ opacity: 1, transition: { duration: 0 } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#030712' }}>
+          <SolarSystemLoader />
+        </motion.div>
+      ) : authPhase === 'authenticated' && user ? (
+        <motion.div 
+          key="app-shell" 
+          style={{ position: 'contents' }}
+        >
       <ErrorBoundary name="GlobalProviders">
       <GlobalDataProvider>
       <PomodoroProvider>
@@ -565,9 +578,7 @@ function App() {
         <FocusModeOverlay />
         <DailyBriefingOverlay />
         <FloatingExtraWorks />
-        <VoiceQuickCaptureWidget />
         {/* ── Global Cinematic Agent HUD ── */}
-        <AgentDataStream />
         <MissionReport />
         <ReportArchive />
         <SessionEnforcer />
@@ -585,148 +596,6 @@ function App() {
           </ErrorBoundary>
         )}
 
-        {/* Zen Agent SpeedDial FAB */}
-        {(() => {
-          const petals = [
-            {
-              id: 'sara',
-              label: '⚡ Sara OS',
-              icon: <Zap size={16} />,
-              color: 'linear-gradient(135deg, #00d4ff, #0066ff)',
-              shadow: 'rgba(0,200,255,0.6)',
-              action: () => { setShowSara(true); setShowFab(false); },
-            },
-            {
-              id: 'risk',
-              label: 'Risk Scan',
-              icon: <ShieldAlert size={16} />,
-              color: 'linear-gradient(135deg,#ef4444,#f97316)',
-              shadow: 'rgba(239,68,68,0.5)',
-              action: () => {
-                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "ARGUS_RISK_SCAN: Call get_tasks('all') then score all overdue and high-priority tasks by risk level (CRITICAL/HIGH/MEDIUM). Send a send_notification with the top 3 critical items listed clearly. Be concise." } }));
-                setShowFab(false);
-              },
-            },
-            {
-              id: 'ghost',
-              label: 'Ghost Scan',
-              icon: <Ghost size={16} />,
-              color: 'linear-gradient(135deg,#06b6d4,#0891b2)',
-              shadow: 'rgba(6,182,212,0.5)',
-              action: () => {
-                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "SPECTRE_GHOST_SCAN: Scan my Gmail inbox for hidden deadlines and commitments (phrases like 'by Friday', 'due date', 'ASAP', 'please submit', 'can you send'). Create a ZenTrack task for each untracked commitment you find. Report how many ghost tasks were created." } }));
-                setShowFab(false);
-              },
-            },
-            {
-              id: 'inbox',
-              label: 'Inbox Zero',
-              icon: <Mail size={16} />,
-              color: 'linear-gradient(135deg,#eab308,#ca8a04)',
-              shadow: 'rgba(234,179,8,0.5)',
-              action: () => {
-                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "HERMES_INBOX_ZERO: Read my 10 most recent unread emails. For each one: (1) summarize in one line, (2) flag if it needs a task created. Create tasks for any actionable emails. Then list the summaries. Keep total response under 300 words." } }));
-                setShowFab(false);
-              },
-            },
-            {
-              id: 'schedule',
-              label: 'Auto-Schedule',
-              icon: <Calendar size={16} />,
-              color: 'linear-gradient(135deg,#10b981,#059669)',
-              shadow: 'rgba(16,185,129,0.5)',
-              action: () => {
-                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "CHRONOS_SCHEDULE_OPTIMIZER: Call get_tasks('today') to get today's pending tasks and get_free_calendar_slots() to find available time blocks. Block calendar time for the top 3 priority tasks in the best available slots. Report what was scheduled." } }));
-                setShowFab(false);
-              },
-            },
-            {
-              id: 'focus',
-              label: 'Deep Focus',
-              icon: <Target size={16} />,
-              color: 'linear-gradient(135deg,#f43f5e,#e11d48)',
-              shadow: 'rgba(244,63,94,0.5)',
-              action: () => {
-                window.dispatchEvent(new CustomEvent('zen-tool-direct', { detail: { tool: 'focus_lock', args: { durationHours: 1 } } }));
-                setShowFab(false);
-              },
-            },
-            {
-              id: 'briefing',
-              label: 'Daily Briefing',
-              icon: <Sun size={16} />,
-              color: 'linear-gradient(135deg,#f59e0b,#d97706)',
-              shadow: 'rgba(245,158,11,0.5)',
-              action: () => {
-                window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: "ORACLE_DAILY_BRIEF: Call get_tasks('dashboard') for today's agenda. Output a clean morning brief: 📅 TODAY (top 3 tasks by priority) | ⚠️ OVERDUE (count) | 💡 ONE THING to start with. Max 150 words. Be direct and energizing." } }));
-                setShowFab(false);
-              },
-            },
-          ];
-
-          return (
-            <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 900 }}>
-              <AnimatePresence>
-                {showFab && petals.map((p, i) => (
-                  <motion.div
-                    key={p.id}
-                    initial={{ opacity: 0, scale: 0.5, y: 0 }}
-                    animate={{ 
-                      opacity: 1, 
-                      scale: 1, 
-                      y: -(72 + i * 62), 
-                    }}
-                    exit={{ 
-                      opacity: 0, 
-                      scale: 0.5, 
-                      y: 0, 
-                      transition: { duration: 0.2, ease: "easeIn" } 
-                    }}
-                    transition={{ 
-                      type: 'spring', 
-                      stiffness: 260, 
-                      damping: 25, 
-                      delay: i * 0.04 
-                    }}
-                    style={{ position: 'absolute', bottom: 0, right: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'flex-end', transformOrigin: 'bottom center' }}
-                  >
-                    <motion.span
-                      initial={{ opacity: 0, x: 15, filter: 'blur(4px)' }}
-                      animate={{ opacity: 1, x: 0, filter: 'blur(0px)' }}
-                      exit={{ opacity: 0, x: 10, filter: 'blur(2px)', transition: { duration: 0.15 } }}
-                      transition={{ type: 'spring', stiffness: 300, damping: 25, delay: i * 0.04 + 0.1 }}
-                      style={{ background: 'rgba(15,15,20,0.85)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 600, color: '#f4f4f5', whiteSpace: 'nowrap', boxShadow: '0 8px 16px rgba(0,0,0,0.5)' }}
-                    >
-                      {p.label}
-                    </motion.span>
-                    <motion.button
-                      onClick={p.action}
-                      whileHover={{ scale: 1.12 }}
-                      whileTap={{ scale: 0.9 }}
-                      style={{ width: 48, height: 48, borderRadius: '50%', border: 'none', background: p.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: `0 8px 24px ${p.shadow}, inset 0 2px 4px rgba(255,255,255,0.2)` }}
-                    >
-                      {p.icon}
-                    </motion.button>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-
-              <motion.button
-                onClick={() => setShowFab(f => !f)}
-                className="hide-on-mobile"
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.94 }}
-                animate={{ rotate: showFab ? 135 : 0, scale: isPanelClosing ? 0 : 1 }}
-                transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-                style={{ position: 'relative', zIndex: 1, background: showFab ? 'linear-gradient(135deg,#374151,#1f2937)' : 'linear-gradient(135deg,#8b5cf6,#3b82f6)', border: 'none', borderRadius: '50%', width: 56, height: 56, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: showFab ? '0 8px 32px rgba(0,0,0,0.4)' : '0 8px 32px rgba(139,92,246,0.45)', cursor: 'pointer', transition: 'background 0.3s ease, box-shadow 0.3s ease' }}
-                aria-label={showFab ? 'Close agent menu' : 'Open Zen Agent'}
-              >
-                <Bot size={26} />
-              </motion.button>
-            </div>
-          );
-        })()}
-
         <AnimatePresence>
           {showSara && (
             <motion.div
@@ -740,40 +609,24 @@ function App() {
           )}
         </AnimatePresence>
 
-        {/* â”€â”€ Smooth auth entry animation â€” the whole app fades in from below â”€â”€ */}
-        <motion.div
-          key="app-shell"
-          initial={{ opacity: 0, scale: 0.99, filter: 'blur(4px)' }}
-          animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-          exit={{ opacity: 0, scale: 0.99, filter: 'blur(4px)' }}
-          transition={phaseTransition}
-          style={{ position: 'contents' }}
-        />
+
 
         <BackgroundEffects />
         <div className="app-container flex-col">
-          <TopNav />
-          <div className="hide-on-mobile"><GoogleWorkspaceBanner /></div>
           <div className="main-content full-width">
             <Suspense fallback={<PageLoader />}>
               <AnimatedRoutes />
             </Suspense>
           </div>
         </div>
-        <BottomNav />
+        <BottomHeader showSara={showSara} onOpenSara={() => setShowSara(true)} />
         </DataReadyGate>
       </PomodoroProvider>
       </GlobalDataProvider>
       </ErrorBoundary>
-    );
-  }
-
-  // â”€â”€ UNAUTHENTICATED / INITIALIZING / AUTHENTICATING PHASES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // Landing page is always rendered. A full-screen overlay sits on top:
-  //   - 'initializing'    â†’ dark overlay (app is checking stored session)
-  //   - 'authenticating'  â†’ dark overlay with spinner (popup in progress)
-  //   - 'unauthenticated' â†’ overlay is gone; Landing is fully visible
-  return (
+        </motion.div>
+      ) : (
+        <motion.div key="unauth-shell" exit={{ opacity: 0, transition: { duration: 0.5 } }}>
     <>
       <Toaster {...toasterProps} />
 
@@ -845,9 +698,10 @@ function App() {
         )}
       </AnimatePresence>
     </>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
-
 export default App;
-

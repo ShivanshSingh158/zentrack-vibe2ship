@@ -11,9 +11,8 @@
  *  - interimTranscript — live partial speech (not yet finalized)
  *  - toggleListening   — start/stop the mic
  */
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
-import { SarvamAudioStreamer } from '../services/voice/sarvamStream';
 
 const SILENCE_THRESHOLD_MS = 1800;
 
@@ -37,7 +36,7 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
 
   useEffect(() => { commandInputRef.current = commandInput; }, [commandInput]);
 
-  const streamerRef = useRef<SarvamAudioStreamer | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   const cancelSilenceCountdown = useCallback(() => {
     if (silenceTimerRef.current)  { clearTimeout(silenceTimerRef.current);  silenceTimerRef.current  = null; }
@@ -63,9 +62,9 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
   const submitAfterSilence = useCallback(() => {
     const captured = commandInputRef.current.trim();
     if (!captured) return;
-    if (streamerRef.current) {
-      streamerRef.current.stopListening();
-      streamerRef.current = null;
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch(e) {}
+      recognitionRef.current = null;
     }
     setIsListening(false);
     setInterimTranscript('');
@@ -75,17 +74,17 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
 
   useEffect(() => {
     return () => {
-      if (streamerRef.current) {
-        streamerRef.current.stopListening();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e) {}
       }
     };
   }, []);
 
   const toggleListening = useCallback(async () => {
     if (isListening) {
-      if (streamerRef.current) {
-        streamerRef.current.stopListening();
-        streamerRef.current = null;
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch(e) {}
+        recognitionRef.current = null;
       }
       cancelSilenceCountdown();
       setIsListening(false);
@@ -94,14 +93,38 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
     } else {
       setCommandInput('');
       try {
-        streamerRef.current = new SarvamAudioStreamer();
-        
-        streamerRef.current.onTranscript = (text, isFinal) => {
-          if (isFinal) {
-            setCommandInput(prev => prev ? `${prev} ${text.trim()}` : text.trim());
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+          toast.error('Voice conversation is not supported in this browser.');
+          return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-IN'; // Optimized for Indian accent
+
+        recognition.onstart = () => {
+          setIsListening(true);
+          toast.info("🎙️ Listening securely...", { duration: 3000 });
+        };
+
+        recognition.onresult = (event: any) => {
+          let currentFinal = '';
+          let interim = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              currentFinal += event.results[i][0].transcript;
+            } else {
+              interim += event.results[i][0].transcript;
+            }
+          }
+
+          if (currentFinal) {
+            setCommandInput(prev => prev ? `${prev} ${currentFinal.trim()}` : currentFinal.trim());
             setInterimTranscript('');
           } else {
-            setInterimTranscript(text);
+            setInterimTranscript(interim);
           }
           
           cancelSilenceCountdown();
@@ -110,13 +133,21 @@ export function useAgentVoice({ onCommand, commandInput, setCommandInput }: UseA
           startSilenceCountdown();
         };
 
-        streamerRef.current.onVolumeChange = (vol) => setPlaybackVolume(vol);
+        recognition.onerror = (event: any) => {
+          if (event.error !== 'no-speech' && event.error !== 'aborted') {
+            toast.error('Microphone error: ' + event.error);
+          }
+          setIsListening(false);
+        };
+        
+        recognition.onend = () => {
+          setIsListening(false);
+        };
 
-        await streamerRef.current.startListening();
-        setIsListening(true);
-        toast.info("🎙️ Listening securely via Sarvam Gateway...", { duration: 3000 });
+        recognition.start();
+        recognitionRef.current = recognition;
       } catch (err) {
-        toast.error('Could not connect to microphone or Gateway.');
+        toast.error('Could not connect to microphone.');
         setIsListening(false);
       }
     }

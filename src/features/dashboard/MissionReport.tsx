@@ -19,6 +19,8 @@ import {
   Video, FileText, Loader2, Send, AlertTriangle, Key, Mic
 } from 'lucide-react';
 import { signInWithGoogle, isSignedInToGoogle, wasEverConnectedToGoogle } from '../../services/googleCalendar';
+import { useVoice } from '../../contexts/VoiceContext';
+import { agentMemoryStore } from '../../stores/agentMemoryStore';
 
 function parseMissionActions(report: string) {
   if (!report) return { meetLinks: [] as string[], docLinks: [] as string[] };
@@ -37,35 +39,14 @@ export function MissionReport() {
   const [isExecuting, setIsExecuting] = useState(false);
   const [commandInput, setCommandInput] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const { conversationTranscript, isConversationActive } = useVoice();
 
+  // Auto-close modal if user starts speaking again while it's open
   useEffect(() => {
-    // Check support for Web Speech API
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
-
-      recognition.onstart = () => setIsListening(true);
-      recognition.onresult = (event: any) => {
-        let currentTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          currentTranscript += event.results[i][0].transcript;
-        }
-        setCommandInput(prev => {
-           // We might want to append if there was existing text, but overwriting is cleaner for dictation
-           return currentTranscript; 
-        });
-      };
-      recognition.onerror = () => setIsListening(false);
-      recognition.onend = () => setIsListening(false);
-      
-      recognitionRef.current = recognition;
+    if (agentResult && isConversationActive && conversationTranscript && conversationTranscript !== 'Listening...' && conversationTranscript !== 'WORKING...') {
+      onClose();
     }
-  }, []);
+  }, [agentResult, isConversationActive, conversationTranscript]);
 
   useEffect(() => {
     const handleShow = (e: Event) => {
@@ -93,13 +74,35 @@ export function MissionReport() {
       setAgentResult(null);
     };
 
-    window.addEventListener('show-mission-report', handleShow);
+    const handleClose = () => setAgentResult(null);
+
+    // Separate handler for click-to-open from orb (no detail, just show last result)
+    const handleShowLatest = () => {
+      const msgs = agentMemoryStore.getSnapshot();
+      const lastAgentMsg = [...msgs].reverse().find((m: any) => m.role === 'agent');
+      if (lastAgentMsg?.title) {
+        setAgentResult(lastAgentMsg.title);
+        setMissionComplete(true);
+        setIsExecuting(false);
+      }
+    };
+
+    window.addEventListener('show-mission-report', (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.result) {
+        handleShow(e);
+      } else {
+        handleShowLatest();
+      }
+    });
     window.addEventListener('show-proactive-report', handleProactive);
     window.addEventListener('agent-executing', handleExec);
+    window.addEventListener('close-mission-report', handleClose);
     return () => {
       window.removeEventListener('show-mission-report', handleShow);
       window.removeEventListener('show-proactive-report', handleProactive);
       window.removeEventListener('agent-executing', handleExec);
+      window.removeEventListener('close-mission-report', handleClose);
     };
   }, []);
 
@@ -107,7 +110,6 @@ export function MissionReport() {
 
   const onFollowUp = () => {
     if (!commandInput.trim() || isExecuting) return;
-    if (isListening && recognitionRef.current) recognitionRef.current.stop();
     window.dispatchEvent(new CustomEvent('agent-shortcut', { detail: { prompt: commandInput } }));
     setCommandInput('');
     setIsExecuting(true);
@@ -115,19 +117,7 @@ export function MissionReport() {
   };
 
   const toggleListening = () => {
-    if (!recognitionRef.current) {
-      alert('Voice typing is not supported in this browser.');
-      return;
-    }
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      try {
-        recognitionRef.current.start();
-      } catch (e) {
-        console.error(e);
-      }
-    }
+    alert('Please use the main microphone button on the HUD to speak.');
   };
 
   if (typeof document === 'undefined') return null;
@@ -156,8 +146,7 @@ export function MissionReport() {
           >
             <div className="mission-report-header">
               <div className="mission-report-title">
-                <BrainCircuit size={18} style={{ color: '#06b6d4' }} />
-                <span>Divine Mandate Report</span>
+                <span>Agent Response</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <button
@@ -233,45 +222,75 @@ export function MissionReport() {
             </div>
 
             <div className="mission-report-footer">
-              <input
-                type="text"
-                value={commandInput}
-                onChange={e => setCommandInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') onFollowUp(); }}
-                disabled={isExecuting}
-                placeholder={isListening ? "Listening..." : "Assign a follow-up task..."}
-                className="agent-command-input focus:outline-none focus:ring-0"
-              />
-              <button
-                type="button"
-                onClick={toggleListening}
-                disabled={isExecuting}
-                style={{ 
-                  background: isListening ? 'rgba(239, 68, 68, 0.2)' : 'transparent', 
-                  border: `1px solid ${isListening ? '#ef4444' : 'transparent'}`,
-                  color: isListening ? '#ef4444' : '#a1a1aa',
-                  borderRadius: '8px',
-                  width: '36px',
-                  height: '36px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  marginRight: '8px',
-                  transition: 'all 0.2s',
-                  flexShrink: 0
-                }}
-                title="Voice Dictation"
-              >
-                <Mic size={18} />
-              </button>
-              <button
-                className="execute-command-btn"
-                onClick={onFollowUp}
-                disabled={isExecuting || !commandInput.trim()}
-              >
-                {isExecuting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
-              </button>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                width: '100%',
+                background: '#2f2f2f',
+                borderRadius: '24px',
+                padding: '0.4rem 0.5rem 0.4rem 1.25rem',
+                border: '1px solid rgba(255,255,255,0.05)'
+              }}>
+                <input
+                  type="text"
+                  value={commandInput}
+                  onChange={e => setCommandInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') onFollowUp(); }}
+                  disabled={isExecuting}
+                  placeholder="Message agent..."
+                  className="focus:outline-none focus:ring-0"
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#ececec',
+                    fontSize: '0.95rem',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  disabled={isExecuting}
+                  style={{ 
+                    background: 'transparent', 
+                    border: 'none',
+                    color: '#a1a1aa',
+                    borderRadius: '50%',
+                    width: '36px',
+                    height: '36px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    marginRight: '8px',
+                    transition: 'all 0.2s',
+                    flexShrink: 0
+                  }}
+                  title="Voice Dictation"
+                >
+                  <Mic size={18} />
+                </button>
+                <button
+                  onClick={onFollowUp}
+                  disabled={isExecuting || !commandInput.trim()}
+                  style={{
+                    background: commandInput.trim() ? '#ececec' : '#3f3f46',
+                    color: commandInput.trim() ? '#171717' : '#71717a',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '36px',
+                    height: '36px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: commandInput.trim() ? 'pointer' : 'default',
+                    transition: 'all 0.2s',
+                    flexShrink: 0
+                  }}
+                >
+                  {isExecuting ? <Loader2 size={16} className="spin" /> : <Send size={16} />}
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

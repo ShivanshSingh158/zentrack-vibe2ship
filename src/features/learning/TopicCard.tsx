@@ -117,7 +117,7 @@ export const SubTaskItem = React.memo(({
         </div>
       )}
       <div
-        className={`subtask-item ${subTask.status === 'completed' ? 'completed' : ''}`}
+        className={`subtask-item ${subTask.isCompleted || (subTask as any).status === 'completed' ? 'completed' : ''}`}
         style={{ alignItems: 'center', position: 'relative', zIndex: 2 }}
         onDoubleClick={handleDoubleClick}
         onTouchStart={handleTouchStart}
@@ -140,10 +140,10 @@ export const SubTaskItem = React.memo(({
             {isSelected && <Check size={11} color="#fff" strokeWidth={3} />}
           </button>
         ) : (
-          <button className={`todo-checkbox ${subTask.status === 'completed' ? 'checked' : ''}`}
+          <button className={`todo-checkbox ${subTask.isCompleted || (subTask as any).status === 'completed' ? 'checked' : ''}`}
             onClick={() => toggleSubTask(topicId, subTask.id)}
-            role="checkbox" aria-checked={subTask.status === 'completed'} style={{ flexShrink: 0 }}>
-            {subTask.status === 'completed' && <Check size={13} strokeWidth={3} />}
+            role="checkbox" aria-checked={subTask.isCompleted || (subTask as any).status === 'completed'} style={{ flexShrink: 0 }}>
+            {(subTask.isCompleted || (subTask as any).status === 'completed') && <Check size={13} strokeWidth={3} />}
           </button>
         )}
 
@@ -151,7 +151,7 @@ export const SubTaskItem = React.memo(({
           <div style={{ flexShrink: 0, width: '40px', height: '27px', borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden', position: 'relative', cursor: 'pointer' }}
             onClick={() => onPlayVideo(videoId, subTask.id, topicId)}>
             <img src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`} alt="" loading="lazy"
-              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: subTask.status === 'completed' ? 0.35 : 0.85, transition: 'opacity 200ms' }} />
+              style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: subTask.isCompleted || (subTask as any).status === 'completed' ? 0.35 : 0.85, transition: 'opacity 200ms' }} />
             <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div style={{ background: 'rgba(0,0,0,0.5)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px' }}>
                 <Play size={8} fill="white" color="white" />
@@ -160,7 +160,7 @@ export const SubTaskItem = React.memo(({
           </div>
         )}
 
-        <span className="todo-text" style={{ flex: 1 }}>{subTask.text}</span>
+        <span className="todo-text" style={{ flex: 1 }}>{subTask.title || (subTask as any).text}</span>
 
         {(subTask as any).needsReview && !isEditMode && (
           <span title="Flagged for review in AI chat" style={{ fontSize: '0.65rem', flexShrink: 0, background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.28)', borderRadius: '99px', padding: '0.05rem 0.32rem', color: '#fbbf24', fontWeight: 700 }}>🚩 review</span>
@@ -170,7 +170,7 @@ export const SubTaskItem = React.memo(({
           <span title="Pinned" style={{ fontSize: '0.75rem', flexShrink: 0 }}>⭐</span>
         )}
 
-        {videoId && !isEditMode && subTask.status !== 'completed' && (() => {
+        {videoId && !isEditMode && !(subTask.isCompleted || (subTask as any).status === 'completed') && (() => {
           try {
             const s = Number(localStorage.getItem(TS_KEY(videoId)) || '0');
             if (s > 5) {
@@ -187,7 +187,7 @@ export const SubTaskItem = React.memo(({
             <>
               {videoId && (
                 <button onClick={() => onPlayVideo(videoId, subTask.id, topicId)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', padding: '0.22rem 0.5rem', borderRadius: '7px', background: subTask.status === 'completed' ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.32)', color: subTask.status === 'completed' ? 'rgba(239,68,68,0.45)' : '#ef4444', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, minHeight: '28px' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', padding: '0.22rem 0.5rem', borderRadius: '7px', background: subTask.isCompleted || (subTask as any).status === 'completed' ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.32)', color: subTask.isCompleted || (subTask as any).status === 'completed' ? 'rgba(239,68,68,0.45)' : '#ef4444', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, minHeight: '28px' }}>
                   <Play size={10} fill="currentColor" /> Watch
                 </button>
               )}
@@ -211,7 +211,7 @@ export const SubTaskItem = React.memo(({
                   <Play size={9} fill="currentColor" />
                 </button>
               )}
-              <button onClick={() => onStartRename?.(topicId, subTask.id, subTask.text)}
+              <button onClick={() => onStartRename?.(topicId, subTask.id, subTask.title || (subTask as any).text)}
                 style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.4rem', borderRadius: '6px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa', cursor: 'pointer', minHeight: '28px' }}>
                 <Edit3 size={11} />
               </button>

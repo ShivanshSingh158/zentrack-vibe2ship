@@ -44,7 +44,7 @@ export const ConfirmDialog = ({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 9999,
+        zIndex: 999999,
         background: 'rgba(0, 0, 0, 0.6)',
         backdropFilter: 'blur(4px)',
         padding: '1rem',

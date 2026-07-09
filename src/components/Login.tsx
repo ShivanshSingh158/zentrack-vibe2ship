@@ -98,9 +98,9 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
         display: 'flex', 
         alignItems: 'center', 
         justifyContent: 'center', 
-        background: 'rgba(5, 15, 30, 0.45)', 
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        background: 'rgba(6, 5, 3, 0.55)', 
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         overflow: 'hidden' 
       }}
     >
@@ -121,13 +121,13 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
             gap: '0.5rem',
             background: 'none',
             border: 'none',
-            color: 'rgba(255,255,255,0.7)',
-            fontSize: '0.9rem',
+            color: 'rgba(185, 168, 145, 0.70)',
+            fontSize: '0.875rem',
             cursor: 'pointer',
             padding: '0.5rem',
             zIndex: 110,
           }}
-          whileHover={{ color: '#fff', x: -3 }}
+          whileHover={{ color: 'rgba(235, 224, 204, 1)', x: -3 }}
         >
           <ArrowLeft size={18} />
           Back to Home
@@ -152,7 +152,11 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
           position: 'relative',
           zIndex: 10,
           margin: '1rem',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255,255,255,0.05)'
+          background: 'rgba(18, 14, 8, 0.88)',
+          backdropFilter: 'blur(32px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(32px) saturate(180%)',
+          border: '1px solid rgba(210, 175, 130, 0.14)',
+          boxShadow: '0 1px 0 rgba(235, 210, 175, 0.07) inset, 0 32px 72px rgba(0,0,0,0.65)',
         }}
       >
         {/* Animated Brand Logo/Text */}
@@ -160,10 +164,10 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.3, ease: "easeOut" }}
-          style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', color: 'white' }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', color: 'rgba(235, 224, 204, 0.95)' }}
         >
-          <img src="/logo_white.png" alt="ZenTrack Logo" style={{ width: 44, height: 44, objectFit: 'contain' }} />
-          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 400, margin: 0, letterSpacing: '0.02em' }}>
+          <img src="/logo_white.png" alt="ZenTrack Logo" style={{ width: 44, height: 44, objectFit: 'contain', filter: 'brightness(0.9) sepia(0.15)' }} />
+          <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '3rem', fontWeight: 400, margin: 0, letterSpacing: '-0.01em' }}>
             ZenTrack
           </h1>
         </motion.div>
@@ -172,7 +176,7 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.6 }}
-          style={{ color: 'rgba(255,255,255,0.7)', fontSize: '1.05rem', lineHeight: 1.6, marginBottom: '2.5rem' }}
+          style={{ color: 'rgba(185, 168, 145, 0.72)', fontSize: '1rem', lineHeight: 1.65, marginBottom: '2.5rem' }}
         >
           Enter the flow state. Master your tasks, time, and habits with an intelligent companion.
         </motion.p>
@@ -197,18 +201,20 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
               gap: '0.75rem',
               width: '100%',
               padding: '1.15rem',
-              borderRadius: '0.75rem',
-              color: 'white',
-              fontSize: '1.05rem',
-              fontWeight: 500,
+              borderRadius: '0.875rem',
+              color: '#1a110a',
+              fontSize: '1rem',
+              fontWeight: 700,
               cursor: 'pointer',
-              border: '1px solid rgba(255,255,255,0.2)',
+              border: 'none',
+              background: 'linear-gradient(135deg, #c4956a 0%, #dba87e 50%, #c4956a 100%)',
+              backgroundSize: '200% 100%',
               opacity: isLoading ? 0.7 : 1,
-              transition: 'background-color 0.3s ease'
+              letterSpacing: '0.02em',
             }}
           >
             {isLoading ? <Loader2 size={20} className="spin" /> : <LogIn size={20} />}
-            {isLoading ? 'Synchronizing...' : 'Initialize Session'}
+            {isLoading ? 'Synchronizing...' : 'Sign in with Google'}
           </motion.button>
           
           {/* Secondary Action Button */}
@@ -242,19 +248,19 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
               justifyContent: 'center',
               gap: '0.5rem',
               width: '100%',
-              padding: '1rem',
-              borderRadius: '0.75rem',
-              background: 'transparent',
-              color: 'rgba(255,255,255,0.6)',
-              fontSize: '0.95rem',
+              padding: '0.9rem',
+              borderRadius: '0.875rem',
+              background: 'rgba(196, 149, 106, 0.07)',
+              color: 'rgba(185, 168, 145, 0.65)',
+              fontSize: '0.9rem',
               fontWeight: 500,
               cursor: 'pointer',
-              border: '1px solid transparent',
-              transition: 'color 0.3s ease'
+              border: '1px solid rgba(196, 149, 106, 0.15)',
+              transition: 'color 0.2s ease, background 0.2s ease'
             }}
           >
             <Play size={16} />
-            Try Demo
+            Try Demo Mode
           </motion.button>
         </motion.div>
 
@@ -263,10 +269,10 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1, delay: 1.2 }}
-          style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.75rem', marginTop: '2.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+          style={{ color: 'rgba(140, 124, 104, 0.55)', fontSize: '0.72rem', marginTop: '2.5rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}
         >
           Secure Google Authentication<br/>
-          <span style={{ fontSize: '0.65rem', opacity: 0.7, textTransform: 'none', display: 'block', marginTop: '0.25rem' }}>Requires Gmail, Docs, and Drive API Scopes</span>
+          <span style={{ fontSize: '0.65rem', opacity: 0.75, textTransform: 'none', display: 'block', marginTop: '0.25rem' }}>Gmail · Calendar · Drive · Tasks</span>
         </motion.p>
       </motion.div>
     </motion.div>

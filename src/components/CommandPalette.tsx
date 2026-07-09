@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { Search, ListTodo, BookOpen, Activity, Briefcase, Plus, Droplets, Timer, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
@@ -250,8 +251,8 @@ export const CommandPalette = () => {
     }
 
     const filtered = allData.filter(item => 
-      item.title.toLowerCase().includes(q) || 
-      item.subtitle.toLowerCase().includes(q)
+      (item.title?.toLowerCase() || '').includes(q) || 
+      (item.subtitle?.toLowerCase() || '').includes(q)
     ).slice(0, 12 - actionResults.length);
     
     setResults([...actionResults, ...filtered]);
@@ -296,65 +297,37 @@ export const CommandPalette = () => {
     }
   };
 
+
+
   return (
-    <div className="command-palette-container" ref={containerRef} style={{ position: 'relative' }}>
-      <div 
-        className={`expandable-search ${isOpen ? 'expanded' : ''}`}
-        onClick={() => setIsOpen(true)}
+    <div className="command-palette-container" ref={containerRef} style={{ position: 'relative', border: 'none', outline: 'none', background: 'transparent', boxShadow: 'none' }}>
+      {/* Flawless Circular Button */}
+      <motion.button 
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setIsOpen(!isOpen)}
+        style={{
+          background: isOpen ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.05)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '50%',
+          width: '40px', height: '40px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer', color: isOpen ? '#ffffff' : 'rgba(255,255,255,0.7)',
+          transition: 'all 0.2s ease',
+          outline: 'none',
+          boxShadow: 'none',
+          padding: 0
+        }}
       >
-        <div className="search-icon-wrapper">
-          <Search size={20} />
-        </div>
-        
-        {isOpen ? (
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Type /task, /water, /focus, or search..."
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                executeFirstResult();
-              } else if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setSelectedIndex(prev => (prev < results.length - 1 ? prev + 1 : prev));
-              } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setSelectedIndex(prev => (prev > 0 ? prev - 1 : prev));
-              }
-            }}
-            style={{
-              flex: 1, background: 'transparent', border: 'none', outline: 'none',
-              color: 'var(--text-primary)', fontSize: '0.95rem', fontFamily: 'var(--font-sans)',
-              width: '100%'
-            }}
-          />
-        ) : (
-          <span className="search-placeholder">Search...</span>
-        )}
-        
-        {isOpen && (
-          <button 
-            className="clear-btn" 
-            onClick={(e) => { 
-              e.stopPropagation(); 
-              setIsOpen(false);
-              setSearchQuery('');
-            }}
-          >
-            <X size={18} />
-          </button>
-        )}
-      </div>
+        <Search size={18} />
+      </motion.button>
 
       {isOpen && (
         <div style={{
           position: 'absolute',
-          top: 'calc(100% + 0.25rem)',
-          right: 0,
-          width: '100%',
+          bottom: 'calc(100% + 0.5rem)',
+          left: 0,
+          width: '500px',
           background: 'rgba(18, 18, 20, 0.95)',
           backdropFilter: 'blur(40px) saturate(200%)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
@@ -362,8 +335,48 @@ export const CommandPalette = () => {
           boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
           zIndex: 1000,
           animation: 'slideUp 0.2s var(--spring-bouncy)',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          transformOrigin: 'bottom left'
         }}>
+          {/* Header Input */}
+          <div style={{ display: 'flex', alignItems: 'center', padding: '1.25rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <Search size={22} style={{ color: '#a1a1aa', marginRight: '16px' }} />
+            <input
+              ref={inputRef}
+              type="text"
+              placeholder="Type /task, /water, /focus, or search..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  executeFirstResult();
+                } else if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setSelectedIndex(prev => (prev < results.length - 1 ? prev + 1 : prev));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setSelectedIndex(prev => (prev > 0 ? prev - 1 : prev));
+                }
+              }}
+              style={{
+                flex: 1, background: 'transparent', border: 'none', outline: 'none',
+                color: 'var(--text-primary)', fontSize: '1.1rem', fontFamily: 'var(--font-sans)',
+                width: '100%'
+              }}
+            />
+            <button 
+              onClick={() => { setIsOpen(false); setSearchQuery(''); }}
+              style={{ 
+                background: 'rgba(255,255,255,0.05)', border: 'none', color: '#a1a1aa', 
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '32px', height: '32px', borderRadius: '50%', transition: 'all 0.2s', outline: 'none'
+              }}
+            >
+              <X size={16} />
+            </button>
+          </div>
+
           {/* Results */}
         <div style={{ maxHeight: '400px', overflowY: 'auto', padding: '0.5rem' }}>
           {searchQuery.trim() === '' ? (

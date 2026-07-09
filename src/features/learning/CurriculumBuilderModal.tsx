@@ -414,7 +414,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
           <div style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', zIndex: 10 }}>
             <button onClick={() => setPreviewVideoId(null)} style={{ background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: '50%', padding: '0.4rem', cursor: 'pointer' }}><X size={14} /></button>
           </div>
-          <iframe src={`https://www.youtube-nocookie.com/embed/${previewVideoId}?autoplay=1`} frameBorder="0" allow="autoplay; encrypted-media" allowFullScreen style={{ width: '100%', height: '100%' }} />
+          <iframe src={`https://www.youtube-nocookie.com/embed/${previewVideoId}?autoplay=1&origin=${typeof window !== 'undefined' ? window.location.origin : 'https://zentrack-vibe2ship.vercel.app'}`} frameBorder="0" allow="autoplay; encrypted-media" allowFullScreen style={{ width: '100%', height: '100%' }} />
         </div>
       )}
 

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { getActiveGeminiKey } from '../services/userGeminiAuth';
-import { getActiveKeyPool } from '../services/gemini/core';
 
 const RPM_PER_KEY = 15; // Gemini standard free tier limit
 
@@ -9,12 +8,15 @@ class ApiQuotaStore {
   private listeners: Set<() => void> = new Set();
   private maxCapacity: number = 15; // fallback
   private timer: any = null;
+  private sharedKeyCount: number = 0;
 
   constructor() {
-    // Avoid calling recalculateCapacity() here to prevent circular dependency TDZ crash with core.ts
     // ✅ Listen for runtime key additions/removals and recalculate live
     if (typeof window !== 'undefined') {
-      window.addEventListener('zen-api-keys-changed', () => {
+      window.addEventListener('zen-api-keys-changed', (e: any) => {
+        if (e.detail?.count !== undefined) {
+          this.sharedKeyCount = e.detail.count;
+        }
         this.recalculateCapacity();
         this.emit();
       });
@@ -22,7 +24,7 @@ class ApiQuotaStore {
   }
 
   private recalculateCapacity() {
-    let keyCount = getActiveKeyPool().length;
+    let keyCount = this.sharedKeyCount;
     if (getActiveGeminiKey()) {
       keyCount += 1; // personal OAuth key also contributes capacity
     }

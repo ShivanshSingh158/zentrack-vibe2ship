@@ -25,7 +25,7 @@ export const BackgroundEffects = () => {
         pointerEvents: 'none',
         zIndex: -1,
         overflow: 'hidden',
-        background: '#05050A',
+        background: '#0f0d0a',
         // Contain layout+paint so the browser skips full-page recalc for this subtree
         contain: 'strict',
       }}

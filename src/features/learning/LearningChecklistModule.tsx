@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import YouTube from 'react-youtube';
+import ReactPlayer from 'react-player';
 import {
   Plus, Check, ChevronDown, ChevronRight, BookOpen, Trash2,
   FileText, Search, X, Play, GripVertical,
@@ -45,27 +45,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   const [speed, setSpeed] = useState<number>(() => {
     try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
   });
-  const [player, setPlayer] = useState<any>(null);
-
-  useEffect(() => {
-    if (player) {
-      player.setPlaybackRate(speed);
-    }
-  }, [speed, player]);
-
-  // Sync timeline progress to localStorage
-  useEffect(() => {
-    if (!player) return;
-    const interval = setInterval(async () => {
-      try {
-        const time = await player.getCurrentTime();
-        if (time > 0) {
-          localStorage.setItem(`zt_vid_time_${playing.videoId}`, Math.floor(time).toString());
-        }
-      } catch (err) {}
-    }, 5000); // Check every 5 seconds
-    return () => clearInterval(interval);
-  }, [player, playing.videoId]);
+  // (player state and effects removed because react-player handles playbackRate and onProgress intrinsically)
 
   const [showNotes, setShowNotes] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -210,23 +190,30 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
               flex: 1, position: 'relative', aspectRatio: focusMode ? 'auto' : '16/9', height: focusMode ? '100%' : 'auto', 
               background: '#000', borderRadius: focusMode ? '0' : '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0, transition: 'all 0.3s' 
             }}>
-            <YouTube
-              videoId={playing.videoId}
-              title={playing.title}
-              opts={{
-                playerVars: { 
-                  autoplay: 1, 
-                  rel: 0, 
-                  modestbranding: 1,
-                  start: Number(localStorage.getItem(`zt_vid_time_${playing.videoId}`)) || undefined
-                },
-                width: '100%',
-                height: '100%'
+            <ReactPlayer
+              src={`https://www.youtube.com/watch?v=${playing.videoId}`}
+              width="100%"
+              height="100%"
+              playing={true}
+              controls={true}
+              playbackRate={speed}
+              onTimeUpdate={(e: any) => {
+                const currentTime = e.target.currentTime;
+                if (currentTime > 0) {
+                  localStorage.setItem(`zt_vid_time_${playing.videoId}`, Math.floor(currentTime).toString());
+                }
               }}
-              onReady={(e: any) => {
-                setPlayer(e.target);
+              config={{
+                youtube: {
+                  playerVars: {
+                    modestbranding: 1,
+                    rel: 0,
+                    origin: typeof window !== 'undefined' ? window.location.origin : 'https://zentrack-vibe2ship.vercel.app',
+                    start: Number(localStorage.getItem(`zt_vid_time_${playing.videoId}`)) || undefined
+                  }
+                }
               }}
-              style={{ width: '100%', height: '100%', border: 0 }}
+              style={{ position: 'absolute', top: 0, left: 0 }}
             />
           </div>
           {/* Gemini AI chat sidebar */}
@@ -589,8 +576,8 @@ export const LearningChecklistModule = () => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
     const st = topic.subTasks.find(s => s.id === subtaskId);
-    if (!st || st.status === 'completed') return;
-    const updated = topic.subTasks.map(s => s.id === subtaskId ? { ...s, status: 'completed' } : s);
+    if (!st || (st.isCompleted || st.status === 'completed')) return;
+    const updated = topic.subTasks.map(s => s.id === subtaskId ? { ...s, isCompleted: true, status: 'completed' } : s);
     playPopSound();
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
@@ -605,7 +592,7 @@ export const LearningChecklistModule = () => {
     if (!topic) return;
     const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, notes: note } : st);
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); } catch {}
+    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); } catch (err) { console.error('[Learning] Failed to save video note to Firestore:', err); }
   }, [topics]);
 
   // ── Pin / Unpin subtask ──────────────────────────────────────────────────
@@ -618,7 +605,7 @@ export const LearningChecklistModule = () => {
     const unpinned = updated.filter(s => !s.pinned);
     const sorted = [...pinned, ...unpinned];
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: sorted } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(sorted) }); } catch {}
+    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(sorted) }); } catch (err) { console.error('[Learning] Failed to save pin state to Firestore:', err); }
   }, [topics]);
 
   // ── Custom Playlist Handlers ──────────────────────────────────────────────
@@ -938,7 +925,7 @@ export const LearningChecklistModule = () => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
     let newStatus = false;
-    const updated = topic.subTasks.map(st => { if (st.id === subTaskId) { newStatus = st.status !== 'completed'; return { ...st, isCompleted: newStatus }; } return st; });
+    const updated = topic.subTasks.map(st => { if (st.id === subTaskId) { newStatus = !(st.isCompleted || st.status === 'completed'); return { ...st, isCompleted: newStatus, status: newStatus ? 'completed' : 'pending' }; } return st; });
     if (newStatus) playPopSound();
     setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }

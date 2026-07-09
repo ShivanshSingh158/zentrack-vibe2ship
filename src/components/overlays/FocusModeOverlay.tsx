@@ -5,6 +5,7 @@ import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import type { LearningSubTask } from '../../types/index';
 import { playPopSound } from '../../utils/sound';
+import { ParticleFlowBackground } from '../ui/ParticleFlowBackground';
 
 export const FocusModeOverlay = () => {
   const { state, focusMode, toggleFocusMode, pauseTimer, resumeTimer, resetTimer, dismissTimer, formatTime, setAmbientSound, setDuration } = usePomodoroContext();
@@ -101,6 +102,7 @@ export const FocusModeOverlay = () => {
 
   return (
     <div className="focus-overlay hide-on-mobile" style={{ background: bgGradient, transition: 'background 1s ease' }}>
+      <ParticleFlowBackground speedMultiplier={state.isRunning ? 1.0 : 0.2} opacity={0.3} />
       <audio ref={audioRef} />
       {isYoutube && focusMode && (
         <iframe

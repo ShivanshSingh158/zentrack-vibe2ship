@@ -3,59 +3,64 @@
    Added during the Aurora Dark redesign.
    ========================================================================== */
 
-/* ── Input Fields ── */
+/* ── Input Fields — Warm Obsidian ── */
 .input {
   width: 100%;
   padding: 0.75rem 1rem;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 12px;
-  color: #fff;
-  font-size: 0.9rem;
+  background: rgba(12, 9, 5, 0.55);
+  border: 1px solid rgba(196, 149, 106, 0.16);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: 0.875rem;
   font-family: var(--font-sans);
-  transition: border-color 200ms ease, box-shadow 200ms ease, background 200ms ease;
+  transition:
+    border-color var(--dur-fast) var(--ease-water),
+    box-shadow var(--dur-fast) var(--ease-water),
+    background var(--dur-fast) var(--ease-water);
   outline: none;
 }
 
-.input::placeholder { color: rgba(255,255,255,0.25); }
+.input::placeholder { color: rgba(185, 168, 145, 0.32); }
 
 .input:focus {
-  border-color: rgba(0, 212, 255, 0.4);
-  background: rgba(0, 212, 255, 0.03);
-  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.08);
+  border-color: rgba(196, 149, 106, 0.50);
+  background: rgba(18, 14, 8, 0.70);
+  box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.10);
 }
 
-/* ── Badges ── */
+/* ── Badges — Warm Obsidian palette ── */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.25rem 0.65rem;
-  border-radius: 100px;
-  font-size: 0.72rem;
+  padding: 0.22rem 0.6rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.70rem;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
-.badge-cyan   { background: rgba(0,212,255,0.12);  color: #00D4FF;  border: 1px solid rgba(0,212,255,0.2);  }
-.badge-violet { background: rgba(139,92,246,0.12); color: #A78BFA;  border: 1px solid rgba(139,92,246,0.2); }
-.badge-amber  { background: rgba(245,158,11,0.12); color: #FCD34D;  border: 1px solid rgba(245,158,11,0.2); }
-.badge-red    { background: rgba(239,68,68,0.12);  color: #FCA5A5;  border: 1px solid rgba(239,68,68,0.2);  }
-.badge-green  { background: rgba(16,185,129,0.12); color: #6EE7B7;  border: 1px solid rgba(16,185,129,0.2); }
+/* copper = active/primary, sage = done/calm, amber = warning, rose = critical, violet = learning */
+.badge-cyan   { background: rgba(196, 149, 106, 0.12); color: #c4956a; border: 1px solid rgba(196, 149, 106, 0.22); }
+.badge-violet { background: rgba(155, 142, 196, 0.12); color: #b5a8d8; border: 1px solid rgba(155, 142, 196, 0.22); }
+.badge-amber  { background: rgba(196, 122, 58, 0.12);  color: #c47a3a; border: 1px solid rgba(196, 122, 58, 0.22);  }
+.badge-red    { background: rgba(181, 80, 60, 0.12);   color: #c47060; border: 1px solid rgba(181, 80, 60, 0.22);   }
+.badge-green  { background: rgba(122, 158, 130, 0.12); color: #7a9e82; border: 1px solid rgba(122, 158, 130, 0.22); }
 
-/* ── Card System ── */
+/* ── Card System — Warm Obsidian ── */
 .card {
   position: relative;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 20px;
+  background: var(--glass-1-bg);
+  border: 1px solid var(--glass-1-border);
+  border-radius: var(--radius-xl);
   padding: 1.5rem;
   overflow: hidden;
   transition:
-    transform 350ms cubic-bezier(0.34, 1.2, 0.64, 1),
-    box-shadow 350ms ease,
-    border-color 300ms ease;
+    transform var(--dur-normal) var(--ease-water),
+    box-shadow var(--dur-normal) var(--ease-water),
+    border-color var(--dur-fast) var(--ease-water);
 }
 
+/* Warm inner top highlight — like light catching paper edge */
 .card::before {
   content: '';
   position: absolute;
@@ -65,16 +70,17 @@
   height: 1px;
   background: linear-gradient(90deg,
     transparent,
-    rgba(255,255,255,0.15),
+    rgba(235, 210, 175, 0.12),
     transparent);
 }
 
+/* Warm ambient glow — barely perceptible */
 .card::after {
   content: '';
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse 80% 60% at 50% 0%,
-    var(--card-glow, rgba(0,212,255,0.04)) 0%,
+    var(--card-glow, rgba(196, 149, 106, 0.04)) 0%,
     transparent 70%);
   pointer-events: none;
 }

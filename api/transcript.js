@@ -58,9 +58,18 @@ export default async function handler(req, res) {
 
   try {
     const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+    // BUG-012 FIX: youtube-transcript library returns `offset` in milliseconds in v1.x
+    // but in SECONDS in some forks/newer versions. If we always divide by 1000 and the
+    // values are already in seconds, all timestamps show [0:00] for the first ~16 minutes.
+    // Detection: if any offset value is > 10000, it's almost certainly milliseconds
+    // (a 10-second mark in ms = 10000; a 10000-second video would be ~2.7 hours — edge case).
+    const firstOffset = transcript[0]?.offset ?? 0;
+    const isMilliseconds = firstOffset > 10000 || (transcript.length > 1 && transcript[1]?.offset > 10000);
     const text = transcript
       .map(item => {
-        const startSec = Math.floor(item.offset / 1000);
+        const startSec = isMilliseconds
+          ? Math.floor(item.offset / 1000)
+          : Math.floor(item.offset);
         const mm = Math.floor(startSec / 60);
         const ss = String(startSec % 60).padStart(2, '0');
         return `[${mm}:${ss}] ${item.text.replace(/\n/g, ' ')}`;

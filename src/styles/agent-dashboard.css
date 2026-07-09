@@ -825,21 +825,20 @@
   z-index: 99998;
 }
 
-/* Mission Report Overlay — fixed centered overlay */
+/* Mission Report Overlay — sleek chatGPT style */
 .mission-report-overlay {
   position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 90vw;
-  max-width: 800px;
-  height: 80vh;
-  max-height: 700px;
-  background: rgba(8, 8, 14, 0.98);
-  backdrop-filter: blur(25px);
-  border: 1px solid rgba(168, 85, 247, 0.45);
-  border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), 0 0 50px rgba(168, 85, 247, 0.25);
+  width: 95vw;
+  max-width: 768px;
+  height: 85vh;
+  max-height: 800px;
+  background: #171717; /* ChatGPT dark mode gray */
+  border: 1px solid #2f2f2f;
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   z-index: 99999;
   display: flex;
   flex-direction: column;
@@ -868,19 +867,18 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  background: rgba(168, 85, 247, 0.1);
-  border-bottom: 1px solid rgba(168, 85, 247, 0.2);
+  background: transparent;
+  border-bottom: 1px solid #2f2f2f;
 }
 
 .mission-report-title {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: var(--font-display);
+  font-family: var(--font-sans, 'Inter', sans-serif);
   font-weight: 600;
-  font-size: 1.1rem;
-  color: #fff;
-  letter-spacing: 0.05em;
+  font-size: 1rem;
+  color: #ececec;
 }
 
 .mission-report-action {
@@ -898,17 +896,17 @@
 }
 
 .mission-report-content {
-  padding: 1.5rem 2rem;
+  padding: 1.5rem 2.5rem;
   overflow-y: auto;
   overscroll-behavior: contain;
-  flex: 1;  /* fill available height in the overlay flex column */
-  color: #e4e4e7;
-  font-family: var(--font-body);
-  line-height: 1.7;
+  flex: 1;
+  color: #d4d4d8;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  line-height: 1.6;
   overflow-wrap: break-word;
   word-break: break-word;
   max-width: 100%;
-  font-size: 0.97rem;
+  font-size: 1rem;
 }
 
 .agent-terminal-entry {
@@ -937,16 +935,17 @@
 }
 
 .mission-report-content strong {
-  color: #d8b4fe;
+  color: #ececec;
+  font-weight: 600;
 }
 
 .mission-report-footer {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 1rem;
-  background: rgba(10, 10, 15, 0.9);
-  border-top: 1px solid rgba(168, 85, 247, 0.2);
+  padding: 1rem 1.5rem;
+  background: #171717;
+  border-top: 1px solid transparent; /* let the pill shape stand out */
 }
 
 /* Markdown Tables */
@@ -956,26 +955,25 @@
   margin: 1.5rem 0;
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.9rem;
-  background: rgba(10, 10, 15, 0.4);
+  background: transparent;
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  box-shadow: none;
 }
 
 .mission-report-content th,
 .mission-report-content td {
   padding: 0.75rem 1rem;
-  border: 1px solid rgba(168, 85, 247, 0.15);
+  border: 1px solid #3f3f46;
   text-align: left;
 }
 
 .mission-report-content th {
-  background: rgba(168, 85, 247, 0.15);
-  color: #d8b4fe;
+  background: #27272a;
+  color: #ececec;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-family: var(--font-display, 'Outfit', sans-serif);
+  text-transform: none;
+  font-family: var(--font-sans, 'Inter', sans-serif);
 }
 
 .mission-report-content tr:nth-child(even) {
@@ -983,15 +981,14 @@
 }
 
 .mission-report-content tr:hover {
-  background: rgba(168, 85, 247, 0.05);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* Markdown LaTeX */
 .mission-report-content .katex-display {
-  background: rgba(0, 0, 0, 0.3);
+  background: #27272a;
   padding: 1rem;
   border-radius: 8px;
-  border-left: 3px solid #a855f7;
   overflow-x: auto;
   margin: 1.5rem 0;
 }

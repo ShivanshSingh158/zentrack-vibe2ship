@@ -152,6 +152,8 @@ export default async function handler(req, res) {
     generationConfig,
     systemInstruction,
     safetySettings,
+    tools,       // ✅ CRITICAL: Forward function declarations to enable agent tool calling
+    toolConfig,  // ✅ CRITICAL: Forward tool config (mode: ANY/AUTO + allowedFunctionNames)
   } = req.body || {};
 
   if (!contents || !Array.isArray(contents) || contents.length === 0) {
@@ -168,6 +170,9 @@ export default async function handler(req, res) {
   if (generationConfig) requestBody.generationConfig = generationConfig;
   if (systemInstruction) requestBody.systemInstruction = systemInstruction;
   if (safetySettings) requestBody.safetySettings = safetySettings;
+  // ✅ CRITICAL: Forward tools and toolConfig so agents can call functions in production
+  if (tools) requestBody.tools = tools;
+  if (toolConfig) requestBody.toolConfig = toolConfig;
 
   let geminiRes;
   let lastError;

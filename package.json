@@ -9,17 +9,26 @@
     "url": "https://github.com/ShivanshSingh158/zentrack-vibe2ship.git"
   },
   "keywords": [
-    "ai", "productivity", "multi-agent", "gemini", "firebase",
-    "voice-assistant", "google-workspace", "react", "typescript", "pwa"
+    "ai",
+    "productivity",
+    "multi-agent",
+    "gemini",
+    "firebase",
+    "voice-assistant",
+    "google-workspace",
+    "react",
+    "typescript",
+    "pwa"
   ],
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:backend": "cd backend && npx tsx src/server.ts",
     "dev:server": "npx nodemon server/sarvamGateway.js",
     "dev:relay": "cd ../../voice_agent_system/server && npx nodemon --ext py --exec python app.py",
     "dev:agent": "cd ../../voice_agent_system/agent && npx nodemon --ext py --exec python local_agent.py",
-    "start:all": "concurrently \"npm run dev\" \"npm run dev:server\" \"npm run dev:relay\" \"npm run dev:agent\"",
+    "start:all": "concurrently \"npm run dev\" \"npm run dev:server\" \"npm run dev:relay\" \"npm run dev:agent\" \"npm run dev:backend\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -46,12 +55,14 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-markdown": "^10.1.0",
+    "react-player": "^3.4.0",
     "react-router-dom": "^7.17.0",
     "react-youtube": "^10.1.0",
     "recharts": "^3.8.1",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
     "ws": "^8.21.0"
   },
@@ -70,6 +81,8 @@
     "firebase-admin": "^13.10.0",
     "globals": "^17.6.0",
     "node-fetch": "^3.3.2",
+    "puppeteer": "^25.3.0",
+    "ts-morph": "^28.0.0",
     "twilio": "^4.23.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",

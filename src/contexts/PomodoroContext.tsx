@@ -4,7 +4,7 @@ import { playPopSound } from '../utils/sound';
 import { toast } from 'sonner';
 import {
   collection, query, where, getDocs, addDoc, updateDoc,
-  doc, getDoc,
+  doc, getDoc, setDoc, onSnapshot
 } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import { getLocalDateString } from '../utils/dateUtils';
@@ -20,6 +20,7 @@ interface PomodoroState {
   learningTopicId?: string | null;
   learningSubTaskId?: string | null;
   ambientSound: 'none' | 'rain' | 'soft-rain' | 'forest' | 'waves';
+  targetEndTime?: number | null;
 }
 
 interface PomodoroContextType {
@@ -63,8 +64,8 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Don't auto-resume — user must manually restart after page reload
-        return { ...defaultState, ...parsed, isRunning: false };
+        // Don't auto-resume locally — let DB hydrate it if it's still running
+        return { ...defaultState, ...parsed, isRunning: false, targetEndTime: null };
       }
     } catch { /* ignore corrupt storage */ }
     return defaultState;
@@ -76,11 +77,39 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
   // Track session wall-clock start so elapsed is computed from real time (not DEFAULT_DURATION)
   const sessionStartTimeRef = useRef<number>(0);
 
+  const saveState = useCallback((newState: PomodoroState) => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newState));
+    const user = auth.currentUser;
+    if (user) {
+      setDoc(doc(db, 'active_timers', user.uid), newState, { merge: true }).catch(() => {});
+    }
+  }, []);
 
-  // Persist to localStorage on every state change
+  // ── Sync with DB for background and cross-device catchup ─────────────────
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    const unsubAuth = auth.onAuthStateChanged(user => {
+      if (!user) return;
+      const unsubSnap = onSnapshot(doc(db, 'active_timers', user.uid), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as PomodoroState;
+          setState(prev => {
+            // Only update if there is a real meaningful change from the cloud
+            if (
+              prev.taskId !== data.taskId || 
+              prev.isRunning !== data.isRunning || 
+              prev.targetEndTime !== data.targetEndTime ||
+              prev.ambientSound !== data.ambientSound
+            ) {
+              return { ...prev, ...data };
+            }
+            return prev;
+          });
+        }
+      });
+      return () => unsubSnap();
+    });
+    return () => unsubAuth();
+  }, []);
 
   // ── Sync Pomodoro completion to Daily Log ─────────────────────────────────
   const syncPomodoroToDailyLog = async () => {
@@ -193,7 +222,11 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
 
       elapsedRef.current = 0;
       sessionStartTimeRef.current = 0;
-      setState(prev => ({ ...prev, isRunning: false }));
+      setState(prev => {
+        const newState = { ...prev, isRunning: false, targetEndTime: null };
+        saveState(newState);
+        return newState;
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.isRunning, state.timeLeft]);
@@ -216,7 +249,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
       
       // Calculate the exact time this timer should hit 0, based on the *current* timeLeft.
       // E.g. if we have 300 seconds left, target time is Date.now() + 300000
-      const targetEndTime = Date.now() + (state.timeLeft * 1000);
+      const targetEndTime = state.targetEndTime || (Date.now() + (state.timeLeft * 1000));
 
       timerRef.current = window.setInterval(() => {
         setState(prev => {
@@ -238,7 +271,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         timerRef.current = null;
       }
     };
-  }, [state.isRunning]);
+  }, [state.isRunning, state.targetEndTime]);
 
 
   // ── Actions ───────────────────────────────────────────────────────────────
@@ -256,7 +289,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         prev.taskId === taskId && prev.timeLeft > 0
           ? prev.timeLeft
           : (durationMinutes ? durationMinutes * 60 : DEFAULT_DURATION);
-      return {
+      const newState = {
         taskId,
         taskText,
         timeLeft:          duration,
@@ -264,28 +297,52 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
         learningTopicId:   learningTopicId  || null,
         learningSubTaskId: learningSubTaskId || null,
         ambientSound:      prev.ambientSound,
+        targetEndTime:     Date.now() + (duration * 1000),
       };
+      saveState(newState);
+      return newState;
     });
-  }, []);
+  }, [saveState]);
 
-  const pauseTimer  = useCallback(() => setState(prev => ({ ...prev, isRunning: false })), []);
+  const pauseTimer  = useCallback(() => {
+    setState(prev => {
+      const newState = { ...prev, isRunning: false, targetEndTime: null };
+      saveState(newState);
+      return newState;
+    });
+  }, [saveState]);
+  
   const resumeTimer = useCallback(() => {
-    setState(prev => prev.timeLeft > 0 ? { ...prev, isRunning: true } : prev);
-  }, []);
+    setState(prev => {
+      if (prev.timeLeft > 0) {
+        const newState = { ...prev, isRunning: true, targetEndTime: Date.now() + (prev.timeLeft * 1000) };
+        saveState(newState);
+        return newState;
+      }
+      return prev;
+    });
+  }, [saveState]);
 
   const resetTimer = useCallback(() => {
     elapsedRef.current = 0;
-    setState(prev => ({ ...prev, timeLeft: DEFAULT_DURATION, isRunning: false }));
-  }, []);
+    setState(prev => {
+      const newState = { ...prev, timeLeft: DEFAULT_DURATION, isRunning: false, targetEndTime: null };
+      saveState(newState);
+      return newState;
+    });
+  }, [saveState]);
 
   const dismissTimer = useCallback(() => {
     if (elapsedRef.current >= 1) {
       syncTimeToLearning(state.learningTopicId, state.learningSubTaskId, elapsedRef.current);
     }
     elapsedRef.current = 0;
-    setState(prev => ({ ...defaultState, ambientSound: prev.ambientSound }));
-    localStorage.removeItem(STORAGE_KEY);
-  }, [state.learningTopicId, state.learningSubTaskId]);
+    setState(prev => {
+      const newState = { ...defaultState, ambientSound: prev.ambientSound };
+      saveState(newState);
+      return newState;
+    });
+  }, [state.learningTopicId, state.learningSubTaskId, saveState]);
 
   const formatTime = useCallback((seconds: number) => {
     const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -297,12 +354,25 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
   const toggleFocusMode = useCallback(() => setFocusMode(prev => !prev), []);
 
   const setAmbientSound = useCallback((sound: 'none' | 'rain' | 'soft-rain' | 'forest' | 'waves') => {
-    setState(prev => ({ ...prev, ambientSound: sound }));
-  }, []);
+    setState(prev => {
+      const newState = { ...prev, ambientSound: sound };
+      saveState(newState);
+      return newState;
+    });
+  }, [saveState]);
 
   const setDuration = useCallback((minutes: number) => {
-    setState(prev => ({ ...prev, timeLeft: Math.max(1, minutes) * 60 }));
-  }, []);
+    setState(prev => {
+      const duration = Math.max(1, minutes) * 60;
+      const newState = {
+        ...prev,
+        timeLeft: duration,
+        targetEndTime: prev.isRunning ? Date.now() + (duration * 1000) : null
+      };
+      saveState(newState);
+      return newState;
+    });
+  }, [saveState]);
 
   return (
     <PomodoroContext.Provider value={{
