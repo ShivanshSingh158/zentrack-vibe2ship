@@ -54,6 +54,11 @@ const io = new Server(httpServer, {
 app.use(cors());
 app.use(express.json());
 
+// Health check endpoint for cron-job.org to keep the server awake
+app.get('/health', (req, res) => {
+  res.status(200).send('ZenTrack Backend is Awake');
+});
+
 // Socket.io connection for real-time agent logs
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
