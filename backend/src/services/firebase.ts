@@ -1,64 +1,81 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, setPersistence, browserLocalPersistence } from 'firebase/auth';
-import {
-  initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
-} from 'firebase/firestore';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';
+import dotenv from 'dotenv';
+import { AsyncLocalStorage } from 'async_hooks';
 
-/**
- * Firebase client config — uses VITE_ env vars so values can differ between
- * environments without changing source code.
- *
- * NOTE: Firebase `apiKey` is a PUBLIC identifier (it identifies your GCP project),
- * NOT a secret. It is safe to expose via VITE_ prefix. Actual security comes
- * from Firebase Security Rules + Firebase Auth, not from hiding the apiKey.
- *
- * Required .env entries:
- *   VITE_FIREBASE_API_KEY
- *   VITE_FIREBASE_AUTH_DOMAIN
- *   VITE_FIREBASE_PROJECT_ID
- *   VITE_FIREBASE_STORAGE_BUCKET
- *   VITE_FIREBASE_MESSAGING_SENDER_ID
- *   VITE_FIREBASE_APP_ID
- */
-// In production on Vercel, use our own domain as the authDomain so Firebase
-// stores OAuth tokens on the same origin (no cross-origin iframe needed).
-// On localhost, fall back to the standard firebaseapp.com domain.
-const prodAuthDomain = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-  ? window.location.hostname
-  : (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string);
+dotenv.config();
 
-const firebaseConfig = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY            as string,
-  authDomain:        prodAuthDomain,
-  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID         as string,
-  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET     as string,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,
-  appId:             import.meta.env.VITE_FIREBASE_APP_ID             as string,
-  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID     as string | undefined,
+if (getApps().length === 0) {
+  try {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      initializeApp({ credential: cert(serviceAccount) });
+    } else {
+      initializeApp();
+    }
+  } catch (e) {
+    console.warn('Firebase Admin initialization failed.', e);
+  }
+}
+
+export const db = getFirestore();
+export const adminAuth = getAuth();
+
+// --- AsyncLocalStorage Context for Multi-Tenant Auth & Tokens ---
+import type { Socket } from 'socket.io';
+export const contextStorage = new AsyncLocalStorage<{ user?: { uid: string }, googleAccessToken?: string, socket?: Socket }>();
+
+export const auth = {
+  get currentUser() {
+    return contextStorage.getStore()?.user || null;
+  }
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-
-// Explicitly set persistence to local to prevent unexpected logouts over time
-setPersistence(auth, browserLocalPersistence).catch(console.error);
-
-/**
- * Firebase v12 offline persistence + multi-tab sync.
- *
- * persistentLocalCache  → stores Firestore data in IndexedDB so reads work
- *                         offline and writes are queued until back online.
- * persistentMultipleTabManager → all open browser tabs share the same cache;
- *                         when Tab A writes, Tab B's onSnapshot fires instantly.
- *
- * This replaces the removed `enableMultiTabIndexedDbPersistence` API.
- */
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-});
-
-export const googleProvider = new GoogleAuthProvider();
+// --- Firebase Client SDK v9 Adapter for Firebase Admin ---
+export const collection = (dbInstance: any, path: string) => dbInstance.collection(path);
+export const doc = (dbInstance: any, colPath: string, docId: string) => dbInstance.collection(colPath).doc(docId);
+export const addDoc = (colRef: any, data: any) => colRef.add(data);
+export const updateDoc = (docRef: any, data: any) => docRef.update(data);
+export const deleteDoc = (docRef: any) => docRef.delete();
+export const getDoc = async (docRef: any) => {
+  const snapshot = await docRef.get();
+  return {
+    exists: () => snapshot.exists,
+    data: () => snapshot.data(),
+    id: snapshot.id
+  };
+};
+export const getDocs = async (queryRef: any) => {
+  const snapshot = await queryRef.get();
+  return {
+    docs: snapshot.docs.map((d: any) => ({
+      id: d.id,
+      data: () => d.data()
+    })),
+    empty: snapshot.empty,
+    size: snapshot.size
+  };
+};
+export const query = (colRef: any, ...clauses: any[]) => {
+  let q = colRef;
+  for (const clause of clauses) {
+    q = clause(q);
+  }
+  return q;
+};
+export const where = (fieldPath: string, opStr: string, value: any) => {
+  return (q: any) => q.where(fieldPath, opStr, value);
+};
+export const writeBatch = (dbInstance: any) => {
+  const batch = dbInstance.batch();
+  return {
+    set: (docRef: any, data: any, options: any) => { batch.set(docRef, data, options); },
+    update: (docRef: any, data: any) => { batch.update(docRef, data); },
+    delete: (docRef: any) => { batch.delete(docRef); },
+    commit: () => batch.commit()
+  };
+};
+export const setDoc = (docRef: any, data: any, options?: any) => docRef.set(data, options);
+export const orderBy = (fieldPath: string, directionStr?: string) => (q: any) => q.orderBy(fieldPath, directionStr);
+export const limit = (limitNum: number) => (q: any) => q.limit(limitNum);
