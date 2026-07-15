@@ -616,6 +616,11 @@ export const AttendanceModule = () => {
           <Palmtree size={44} style={{ color: '#10b981', margin: '0 auto 0.85rem', opacity: 0.85 }} />
           <h3 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '0.4rem' }}>No classes scheduled!</h3>
           <p style={{ color: 'var(--text-muted)' }}>Enjoy your free time. Set up your timetable to see classes here.</p>
+          {subjects.length === 0 && (
+            <button className="btn-primary" onClick={() => setIsTimetableOpen(true)} style={{ marginTop: '1.25rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Settings size={16} /> Setup Timetable
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: '1.25rem' }}>

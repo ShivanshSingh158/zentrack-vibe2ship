@@ -4,7 +4,7 @@ import { db } from '../../../services/firebase';
 import { Target, Activity, CheckCircle, Zap, Heart, Award, Timer } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import type { GymDayLog } from '../../../types/gym.types';
-import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../../data/gymPlan';
+import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

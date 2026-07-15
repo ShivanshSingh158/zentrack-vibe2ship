@@ -1,0 +1,426 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Platform, TextInput, KeyboardAvoidingView, ScrollView, Switch, Alert } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import YoutubeIframe from 'react-native-youtube-iframe';
+import { COLORS, FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
+import { useMobileData } from '../../contexts/MobileDataContext';
+import { useGymLog, planDayIndexForDate } from '../../hooks/useGymLog';
+import { GYM_PLAN } from '../../data/gymPlan';
+import { resolveMuscleColor, hexToRgba } from '../../utils/gymUtils';
+import { GymExerciseLog } from '../../types/gym.types';
+import { hapticMedium, hapticLight } from '../../utils/haptics';
+
+const extractVideoId = (urlOrId: string) => {
+  if (!urlOrId) return '';
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = urlOrId.match(regExp);
+  return (match && match[2].length === 11) ? match[2] : urlOrId;
+};
+
+export default function ExerciseDetailScreen() {
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const exerciseId = route.params?.exerciseId;
+  const date = route.params?.date;
+  
+  const { gymLogs, userGymPlan, updateMasterPlan } = useMobileData();
+  const { log, updateExercise, deleteExercise } = useGymLog(date); // Only works if date is passed
+
+  const currentExercise = log?.exercises?.find(e => e.exerciseId === exerciseId);
+
+  // Local state for the form
+  const [name, setName] = useState('');
+  const [muscle, setMuscle] = useState('');
+  const [targetSets, setTargetSets] = useState('');
+  const [targetReps, setTargetReps] = useState('');
+  const [restTimeSecs, setRestTimeSecs] = useState('');
+  const [videoLink, setVideoLink] = useState('');
+  const [showVideo, setShowVideo] = useState(false);
+  const [saveGlobal, setSaveGlobal] = useState(false);
+
+  // Initialize form
+  useEffect(() => {
+    if (currentExercise) {
+      setName(currentExercise.name || '');
+      setMuscle(currentExercise.muscle || 'General');
+      setTargetSets(currentExercise.targetSets?.toString() || '');
+      setTargetReps(currentExercise.targetReps || '');
+      setRestTimeSecs(currentExercise.restTimeSecs?.toString() || '90');
+      if (currentExercise.videoId) {
+        setVideoLink(`https://youtube.com/watch?v=${currentExercise.videoId}`);
+      }
+    } else {
+      // Fallback if accessed without a date
+      let fallbackDef: any = null;
+      Object.values(GYM_PLAN).forEach(day => {
+        const found = day.exercises.find(e => e.id === exerciseId);
+        if (found) fallbackDef = found;
+      });
+      if (fallbackDef) {
+        setName(fallbackDef.name || '');
+        setMuscle(fallbackDef.muscle || 'General');
+        setTargetSets(fallbackDef.targetSets?.toString() || '');
+        setTargetReps(fallbackDef.targetReps || '');
+        setRestTimeSecs('90');
+        if (fallbackDef.videoId) {
+          setVideoLink(`https://youtube.com/watch?v=${fallbackDef.videoId}`);
+        }
+      }
+    }
+  }, [currentExercise, exerciseId]);
+
+  // Find history
+  const history = gymLogs
+    .map(l => ({
+      date: l.date,
+      ex: l.exercises?.find(e => e.exerciseId === exerciseId) as GymExerciseLog | undefined
+    }))
+    .filter(item => item.ex)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5); // Last 5 times
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Remove Exercise",
+      `Are you sure you want to remove ${name || 'this exercise'} from today's workout?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Remove", 
+          style: "destructive", 
+          onPress: () => {
+            if (!log) return;
+            const index = log.exercises.findIndex(e => e.exerciseId === exerciseId);
+            if (index !== -1) {
+              hapticMedium();
+              deleteExercise(index);
+              navigation.goBack();
+            }
+          } 
+        }
+      ]
+    );
+  };
+
+  const handleSave = async () => {
+    if (!log || !currentExercise || !date) {
+      navigation.goBack();
+      return;
+    }
+    
+    hapticMedium();
+    const index = log.exercises.findIndex(e => e.exerciseId === exerciseId);
+    if (index === -1) return;
+    
+    const parsedTargetSets = parseInt(targetSets, 10) || 1;
+    
+    const updated: GymExerciseLog = {
+      ...currentExercise,
+      name: name || 'Custom Exercise',
+      muscle: muscle || 'General',
+      targetSets: parsedTargetSets,
+      targetReps: targetReps || '10',
+      restTimeSecs: parseInt(restTimeSecs, 10) || 90,
+      videoId: extractVideoId(videoLink)
+    };
+    
+    // Adjust setsLog length if target sets increased
+    if (parsedTargetSets > updated.setsLog.length) {
+      for (let i = updated.setsLog.length; i < parsedTargetSets; i++) {
+        updated.setsLog.push({ setNumber: i + 1, reps: null, weight: null, completed: false });
+      }
+    }
+    
+    updateExercise(index, updated);
+
+    if (saveGlobal) {
+      const planIdx = planDayIndexForDate(date);
+      const currentMasterDay = userGymPlan?.customDays?.[planIdx] || GYM_PLAN.find(d => d.dayIndex === planIdx);
+      if (currentMasterDay) {
+        const exists = currentMasterDay.exercises.some(e => e.id === exerciseId);
+        let updatedExercises = [...currentMasterDay.exercises];
+        if (exists) {
+          updatedExercises = updatedExercises.map(e =>
+            e.id === exerciseId
+              ? { ...e, name: updated.name, muscle: updated.muscle, targetSets: updated.targetSets, targetReps: updated.targetReps, videoId: updated.videoId }
+              : e
+          );
+        } else {
+          updatedExercises.push({
+            id: exerciseId,
+            name: updated.name,
+            muscle: updated.muscle,
+            targetSets: updated.targetSets,
+            targetReps: updated.targetReps,
+            videoId: updated.videoId
+          });
+        }
+        await updateMasterPlan(planIdx, { ...currentMasterDay, exercises: updatedExercises });
+      }
+    }
+
+    navigation.goBack();
+  };
+
+  return (
+    <SafeAreaView style={styles.root}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <Ionicons name="chevron-down" size={24} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Edit Exercise</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={handleDelete} style={{ padding: 6 }}>
+              <Ionicons name="trash-outline" size={22} color="#FF453A" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleSave} style={styles.saveBtn}>
+              <Text style={styles.saveBtnText}>Save</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          
+          {/* Header Preview */}
+          <View style={styles.previewHeader}>
+            <View style={[styles.musclePill, { backgroundColor: hexToRgba(COLORS.accentPrimary, 0.15) }]}>
+              <View style={[styles.muscleDot, { backgroundColor: COLORS.accentPrimary }]} />
+              <Text style={[styles.muscleText, { color: COLORS.accentPrimary }]}>{muscle || 'General'}</Text>
+            </View>
+          </View>
+
+          {/* Form Fields */}
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>Exercise Name</Text>
+            <TextInput
+              style={styles.input}
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. Bulgarian Split Squats"
+              placeholderTextColor={COLORS.textMuted}
+            />
+          </View>
+
+          <View style={styles.rowForm}>
+            <View style={[styles.formGroup, { flex: 1 }]}>
+              <Text style={styles.label}>Muscle Focus</Text>
+              <TextInput
+                style={styles.input}
+                value={muscle}
+                onChangeText={setMuscle}
+                placeholder="e.g. Quads"
+                placeholderTextColor={COLORS.textMuted}
+              />
+            </View>
+            <View style={{ width: 16 }} />
+            <View style={[styles.formGroup, { flex: 1 }]}>
+              <Text style={styles.label}>Rest Time (sec)</Text>
+              <TextInput
+                style={styles.input}
+                value={restTimeSecs}
+                onChangeText={setRestTimeSecs}
+                keyboardType="numeric"
+                placeholder="e.g. 90"
+                placeholderTextColor={COLORS.textMuted}
+              />
+            </View>
+          </View>
+
+          <View style={styles.rowForm}>
+            <View style={[styles.formGroup, { flex: 1 }]}>
+              <Text style={styles.label}>Target Sets</Text>
+              <TextInput
+                style={styles.input}
+                value={targetSets}
+                onChangeText={setTargetSets}
+                keyboardType="numeric"
+                placeholder="e.g. 3"
+                placeholderTextColor={COLORS.textMuted}
+              />
+            </View>
+            <View style={{ width: 16 }} />
+            <View style={[styles.formGroup, { flex: 1 }]}>
+              <Text style={styles.label}>Target Reps</Text>
+              <TextInput
+                style={styles.input}
+                value={targetReps}
+                onChangeText={setTargetReps}
+                placeholder="e.g. 8-10"
+                placeholderTextColor={COLORS.textMuted}
+              />
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>YouTube Video Link</Text>
+            <View style={styles.videoInputRow}>
+              <TextInput
+                style={[styles.input, { flex: 1, marginBottom: 0 }]}
+                value={videoLink}
+                onChangeText={setVideoLink}
+                placeholder="https://youtube.com/..."
+                placeholderTextColor={COLORS.textMuted}
+                autoCapitalize="none"
+              />
+              {!!videoLink && (
+                <TouchableOpacity 
+                  style={styles.previewVideoBtn} 
+                  onPress={() => { hapticLight(); setShowVideo(!showVideo); }}
+                >
+                  <Ionicons name={showVideo ? "eye-off" : "play"} size={20} color={COLORS.background} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {showVideo && extractVideoId(videoLink) && (
+            <View style={styles.videoContainer}>
+              <YoutubeIframe height={200} videoId={extractVideoId(videoLink)} initialPlayerParams={{ modestbranding: true }} />
+            </View>
+          )}
+
+          <View style={styles.divider} />
+
+          {/* Master Split Toggle */}
+          <View style={styles.masterSplitContainer}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.masterSplitTitle}>Save to Master Split</Text>
+              <Text style={styles.masterSplitDesc}>Update this exercise for all future workouts on this day.</Text>
+            </View>
+            <Switch
+              value={saveGlobal}
+              onValueChange={setSaveGlobal}
+              trackColor={{ false: 'rgba(255,255,255,0.1)', true: COLORS.accentPrimary }}
+              thumbColor={Platform.OS === 'ios' ? '#fff' : saveGlobal ? '#fff' : '#f4f3f4'}
+            />
+          </View>
+
+          <View style={styles.divider} />
+
+          {/* History */}
+          <Text style={styles.sectionTitle}>Past 5 Sessions</Text>
+          {history.length > 0 ? history.map((item, index) => {
+            const ex = item.ex!;
+            const maxWeight = Math.max(0, ...ex.setsLog.filter(s => s.completed && s.weight).map(s => s.weight as number));
+            const completedSets = ex.setsLog.filter(s => s.completed).length;
+
+            return (
+              <View key={index} style={styles.historyItem}>
+                <View style={styles.historyHeader}>
+                  <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
+                  <Text style={styles.historySummary}>
+                    {completedSets} sets {maxWeight > 0 ? `· Max ${maxWeight}kg` : ''}
+                  </Text>
+                </View>
+                <View style={styles.setsList}>
+                  {ex.setsLog.map((s, idx) => (
+                    <View key={idx} style={[styles.setBubble, s.completed ? styles.setBubbleCompleted : styles.setBubbleMissed]}>
+                      <Text style={[styles.setBubbleText, !s.completed && { opacity: 0.5 }]}>
+                        {s.reps || '--'} {s.weight ? `@ ${s.weight}` : ''}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            );
+          }) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="time-outline" size={32} color={COLORS.textMuted} />
+              <Text style={styles.emptyText}>No previous logs found for this exercise.</Text>
+            </View>
+          )}
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#000000' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACE.xl,
+    paddingTop: Platform.OS === 'ios' ? 50 : 40,
+    paddingBottom: SPACE.md,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.05)',
+  },
+  backBtn: { padding: SPACE.xs },
+  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: COLORS.textPrimary },
+  saveBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(165,153,255,0.15)', borderRadius: RADIUS.sm },
+  saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: COLORS.accentPrimary },
+  
+  scrollContent: { padding: SPACE.xl, paddingBottom: 100 },
+  
+  previewHeader: { alignItems: 'center', marginBottom: SPACE.lg },
+  musclePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  muscleDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  muscleText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 },
+
+  formGroup: { marginBottom: SPACE.lg },
+  rowForm: { flexDirection: 'row', justifyContent: 'space-between' },
+  label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: COLORS.textMuted, marginBottom: 8, letterSpacing: 0.5 },
+  input: {
+    backgroundColor: '#161618',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 16,
+    height: 48,
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+  },
+  
+  videoInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  previewVideoBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.accentPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  videoContainer: { width: '100%', borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: SPACE.xl, marginTop: SPACE.sm },
+  
+  masterSplitContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACE.md },
+  masterSplitTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: COLORS.textPrimary, marginBottom: 4 },
+  masterSplitDesc: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: COLORS.textMuted },
+
+  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: SPACE.xl },
+  sectionTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: COLORS.textPrimary, marginBottom: SPACE.md },
+  
+  historyItem: {
+    backgroundColor: '#161618',
+    borderRadius: RADIUS.md,
+    padding: SPACE.md,
+    marginBottom: SPACE.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.02)',
+  },
+  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.md },
+  historyDate: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: COLORS.textPrimary },
+  historySummary: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: COLORS.accentPrimary },
+  
+  setsList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  setBubble: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  setBubbleCompleted: { backgroundColor: 'rgba(165,153,255, 0.15)' },
+  setBubbleMissed: { backgroundColor: 'rgba(255,255,255,0.02)' },
+  setBubbleText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: COLORS.textPrimary },
+  
+  emptyState: { alignItems: 'center', marginTop: 20, gap: SPACE.md },
+  emptyText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: COLORS.textMuted },
+  
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, backgroundColor: 'rgba(255, 69, 58, 0.1)', borderRadius: RADIUS.md },
+  deleteBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#FF453A' },
+});

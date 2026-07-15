@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
-// import { uploadFileToCloudinary } from '../../services/cloudinary';
+import { uploadFileToCloudinary } from '../../services/cloudinary';
 import type { StorageNode } from '../../types/index';
 import { Folder, File as FileIcon, FileText, Image as ImageIcon, Trash2, X, ChevronRight, ChevronDown, Upload, ArrowLeft, MoreVertical, Edit2, Move, Search, HardDrive, Sparkles, List, MessageSquare, Download, AlignLeft, Columns, Eye, Loader2, User, Bot } from 'lucide-react';
 import { toast } from 'sonner';
@@ -537,8 +537,7 @@ export const NotesModule = () => {
     try {
       // Use Cloudinary for fast, reliable uploads (no Firebase Storage rules needed)
       const result = await Promise.race([
-        // uploadFileToCloudinary(file),
-        Promise.resolve({ secure_url: "dummy_url", bytes: file.size, public_id: "dummy_id" }),
+        uploadFileToCloudinary(file),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Upload timed out after 2 minutes. Please try again with a smaller file or check your connection.')), 120000)
         ),

@@ -572,32 +572,34 @@ export const TodoListModule = () => {
         >
           <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.5), transparent)' }} />
           
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(168,85,247,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Plus size={16} style={{ color: '#c084fc' }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ width: '32px', height: '32px', borderRadius: '10px', background: 'rgba(168,85,247,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Plus size={16} style={{ color: '#c084fc' }} />
+              </div>
+              <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>New Task</span>
             </div>
-            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>New Task</span>
-          </div>
 
-          {/* Row 1: text + add */}
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 250px' }}>
-              <input 
-                className="input"
-                type="text" 
-                placeholder="What needs to get done…" 
-                value={newTaskText} 
-                onChange={e => setNewTaskText(e.target.value)} 
-                style={{ flex: 1, minWidth: 0 }} 
-              />
-              <button type="button" onClick={() => setShowTaskOptions(s => !s)} style={{ padding: '0.65rem 0.75rem', borderRadius: '10px', background: showTaskOptions ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showTaskOptions ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: showTaskOptions ? '#c084fc' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="More options">
-                <ListChecks size={14} /> {showTaskOptions ? 'Less' : 'Options'}
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button type="button" onClick={() => setShowTaskOptions(s => !s)} style={{ padding: '0.5rem 0.75rem', borderRadius: '10px', background: showTaskOptions ? 'rgba(168,85,247,0.2)' : 'rgba(255,255,255,0.05)', border: `1px solid ${showTaskOptions ? 'rgba(168,85,247,0.4)' : 'rgba(255,255,255,0.08)'}`, color: showTaskOptions ? '#c084fc' : 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.3rem' }} title="More options">
+                <ListChecks size={14} /> <span className="hide-on-mobile">{showTaskOptions ? 'Less' : 'Options'}</span>
+              </button>
+              <button type="submit" disabled={!newTaskText.trim()} className="btn-add-task" style={{ padding: '0.5rem 1rem', whiteSpace: 'nowrap' }}>
+                Add Task
               </button>
             </div>
-            
-            <button type="submit" disabled={!newTaskText.trim()} className="btn-add-task" style={{ whiteSpace: 'nowrap' }}>
-              Add Task
-            </button>
+          </div>
+
+          {/* Row 1: text */}
+          <div style={{ display: 'flex', width: '100%' }}>
+            <input 
+              className="input"
+              type="text" 
+              placeholder="What needs to get done…" 
+              value={newTaskText} 
+              onChange={e => setNewTaskText(e.target.value)} 
+              style={{ flex: 1, minWidth: 0, width: '100%' }} 
+            />
           </div>
 
           {/* Row 2: options (collapsible) */}
@@ -621,62 +623,83 @@ export const TodoListModule = () => {
                     ))}
                   </div>
 
-                  {/* Subject autocomplete */}
-                  <div className="hide-on-mobile" style={{ position: 'relative' }}>
-                    <input
-                      type="text"
-                      placeholder="Subject"
-                      value={newTaskSubject}
-                      onChange={e => { setNewTaskSubject(e.target.value); setShowSubjectSuggest(true); }}
-                      onFocus={() => setShowSubjectSuggest(true)}
-                      onBlur={() => setTimeout(() => setShowSubjectSuggest(false), 150)}
-                      style={{ width: '80px', padding: '0.35rem 0.5rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '0.82rem', outline: 'none' }}
-                      onFocusCapture={e => (e.currentTarget.style.borderColor = 'rgba(168,85,247,0.5)')} 
-                    />
-                    {showSubjectSuggest && allSubjects.filter(s => s.toLowerCase().includes(newTaskSubject.toLowerCase()) && s !== newTaskSubject).length > 0 && (
-                      <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 50, background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.4)', minWidth: '120px', overflow: 'hidden', marginTop: '2px' }}>
-                        {allSubjects.filter(s => s.toLowerCase().includes(newTaskSubject.toLowerCase()) && s !== newTaskSubject).slice(0, 6).map(s => (
-                          <button type="button" key={s} onMouseDown={() => { setNewTaskSubject(s); setShowSubjectSuggest(false); }} style={{ display: 'block', width: '100%', padding: '0.4rem 0.75rem', background: 'none', border: 'none', color: 'var(--text-primary)', fontSize: '0.82rem', textAlign: 'left', cursor: 'pointer' }}
-                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(99,102,241,0.1)')}
-                            onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Time range */}
+
+                  {/* Time, Duration & Recurring Group (All in one line) */}
                   <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-                    <input type="time" value={newTaskStartTime} onChange={e => setNewTaskStartTime(e.target.value)} style={{ padding: '0.35rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '80px' }} title="Start Time" />
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 0.2rem' }}>→</span>
-                    <input type="time" value={newTaskEndTime} onChange={e => setNewTaskEndTime(e.target.value)} style={{ padding: '0.35rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '80px' }} title="End Time" />
+                    <input 
+                      type={newTaskStartTime ? "time" : "text"} 
+                      placeholder="Start"
+                      value={newTaskStartTime} 
+                      onChange={e => {
+                        setNewTaskStartTime(e.target.value);
+                        if (e.target.value && newTaskEndTime) {
+                          const [sH, sM] = e.target.value.split(':').map(Number);
+                          const [eH, eM] = newTaskEndTime.split(':').map(Number);
+                          let diff = (eH * 60 + eM) - (sH * 60 + sM);
+                          if (diff < 0) diff += 24 * 60;
+                          setNewTaskEstimate(diff.toString());
+                        }
+                      }}
+                      onFocus={e => { e.target.type = "time"; try { e.target.showPicker() } catch(err){} }}
+                      onBlur={e => { if (!e.target.value) e.target.type = "text"; }}
+                      onClick={e => { e.currentTarget.type = "time"; try { e.currentTarget.showPicker() } catch(err){} }}
+                      style={{ padding: '0.35rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '85px', cursor: 'pointer', textAlign: 'center' }} 
+                      title="Start Time" 
+                    />
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 0.1rem' }}>→</span>
+                    <input 
+                      type={newTaskEndTime ? "time" : "text"} 
+                      placeholder="End"
+                      value={newTaskEndTime} 
+                      onChange={e => {
+                        setNewTaskEndTime(e.target.value);
+                        if (newTaskStartTime && e.target.value) {
+                          const [sH, sM] = newTaskStartTime.split(':').map(Number);
+                          const [eH, eM] = e.target.value.split(':').map(Number);
+                          let diff = (eH * 60 + eM) - (sH * 60 + sM);
+                          if (diff < 0) diff += 24 * 60;
+                          setNewTaskEstimate(diff.toString());
+                        }
+                      }} 
+                      onFocus={e => { e.target.type = "time"; try { e.target.showPicker() } catch(err){} }}
+                      onBlur={e => { if (!e.target.value) e.target.type = "text"; }}
+                      onClick={e => { e.currentTarget.type = "time"; try { e.currentTarget.showPicker() } catch(err){} }}
+                      style={{ padding: '0.35rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '85px', cursor: 'pointer', textAlign: 'center' }} 
+                      title="End Time" 
+                    />
+                    <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)', margin: '0 0.2rem' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.4rem', width: '65px' }}>
+                      <Timer size={12} color="rgba(255,255,255,0.5)" />
+                      <input 
+                        type="number" 
+                        value={newTaskEstimate} 
+                        onChange={e => setNewTaskEstimate(e.target.value)} 
+                        min="1" max="480" 
+                        style={{ width: '100%', padding: '0.35rem 0 0.35rem 0.2rem', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.82rem', outline: 'none' }} 
+                        placeholder="min"
+                        title="Duration (mins)" 
+                      />
+                    </div>
+                    <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)', margin: '0 0.2rem' }} />
+                    <button
+                      type="button"
+                      onClick={() => setNewTaskRecurring(!newTaskRecurring)}
+                      style={{
+                        padding: '0.35rem 0.6rem',
+                        border: 'none',
+                        background: newTaskRecurring ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                        color: newTaskRecurring ? 'var(--accent-primary)' : 'var(--text-muted)',
+                        cursor: 'pointer',
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        transition: 'all 0.2s',
+                        height: '100%',
+                      }}
+                    >
+                      ↻ {newTaskRecurring ? 'Daily' : 'Once'}
+                    </button>
                   </div>
-
-                  {/* Duration */}
-                  <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '0 0.4rem', width: '60px' }}>
-                    <Timer size={12} color="rgba(255,255,255,0.5)" />
-                    <input type="number" value={newTaskEstimate} onChange={e => setNewTaskEstimate(e.target.value)} min="1" max="480" style={{ width: '100%', padding: '0.35rem 0 0.35rem 0.2rem', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.82rem', outline: 'none' }} title="Duration (mins)" />
-                  </div>
-
-                  {/* Recurring Toggle */}
-                  <button
-                    type="button"
-                    onClick={() => setNewTaskRecurring(!newTaskRecurring)}
-                    style={{
-                      padding: '0.35rem 0.6rem',
-                      borderRadius: '8px',
-                      border: newTaskRecurring ? '1px solid var(--accent-primary)' : '1px solid rgba(255,255,255,0.08)',
-                      background: newTaskRecurring ? 'rgba(99, 102, 241, 0.15)' : 'rgba(0,0,0,0.3)',
-                      color: newTaskRecurring ? 'var(--accent-primary)' : 'var(--text-muted)',
-                      cursor: 'pointer',
-                      fontSize: '0.82rem',
-                      fontWeight: 600,
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    ↻ {newTaskRecurring ? 'Daily' : 'Once'}
-                  </button>
 
                 </div>
               </motion.div>

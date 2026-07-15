@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import { GYM_PLAN } from '../../../data/gymPlan';
+import { GYM_PLAN } from '../data/gymPlan';
 import { MUSCLE_COLORS } from './ExerciseCard';
 import { toast } from 'sonner';
 import type { GymExerciseLog, GymPlanExercise } from '../../../types/gym.types';

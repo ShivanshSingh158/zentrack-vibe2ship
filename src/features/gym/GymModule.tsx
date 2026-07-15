@@ -4,7 +4,7 @@ import {
   Download, ChevronLeft, ChevronRight, User, Timer, Trophy,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { GYM_PLAN } from '../../data/gymPlan';
+import { GYM_PLAN } from './data/gymPlan';
 const ZenGymAI = React.lazy(() => import('./ZenGymAI').then(m => ({ default: m.ZenGymAI })));
 import { useGymLog, todayStr, dateStrOffset, dayLabelFromDate, planDayIndexForDate } from './hooks/useGymLog';
 import { usePreviousSession } from './hooks/usePreviousSession';

@@ -64,8 +64,19 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   socket.on('execute-mission', async (data) => {
-    const { prompt, history, googleAccessToken, userId } = data;
+    const { prompt, history, googleAccessToken, userId, appContext } = data;
     
+    // Build a rich appContext for the agents — includes the user's real data
+    const agentAppContext = {
+      tasks:        appContext?.tasks        ?? [],
+      habits:       appContext?.habits       ?? [],
+      notes:        appContext?.notes        ?? [],
+      goals:        appContext?.goals        ?? [],
+      gymLogs:      appContext?.gymLogs      ?? [],
+      userId:       userId                  ?? '',
+      googleAccessToken: googleAccessToken  ?? '',
+    };
+
     const onStep = (step: any) => {
       socket.emit('agent-log', step);
     };
@@ -75,7 +86,7 @@ io.on('connection', (socket) => {
       
       // Wrap the entire execution in AsyncLocalStorage context so tools can access tokens
       await contextStorage.run({ user: { uid: userId }, googleAccessToken, socket }, async () => {
-        const result = await orchestrateAgent(prompt, {}, '', onStep, history, undefined, googleAccessToken);
+        const result = await orchestrateAgent(prompt, agentAppContext, '', onStep, history, undefined, googleAccessToken);
         socket.emit('agent-log', { type: 'answer', title: result });
       });
     } catch (err: any) {

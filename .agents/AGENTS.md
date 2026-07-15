@@ -15,6 +15,19 @@ This file is the single source of truth for the codebase map, data schemas, and 
 
 ---
 
+## 🔴 HARD CONSTRAINT: MOBILE ARCHITECTURE FIRST (CRITICAL DIRECTIVE)
+
+**KEYWORD TRIGGERS**: Any mention of "mobile app", "Expo", "React Native", "Sara on mobile", "mobile notification", "mobile screen", "mobile agent", "orchestrator.ts (mobile)", or any Expo/React Native specific feature **ABSOLUTELY MUST** trigger reading the mobile architecture file first.
+
+**MANDATORY MOBILE EXECUTION PROTOCOL:**
+1. **FIRST ACTION:** Call `view_file` on `mobile/MOBILE_ARCHITECTURE.md`. Do not do anything else until this is done.
+2. Use **Section 4 (File Index)** to jump directly to the exact file you need.
+3. Call `view_file` on that exact path.
+4. Only then may you proceed. Do NOT use `grep_search` or `list_dir` on mobile code without reading the architecture first.
+
+This file covers: all 35+ packages with exact versions, 30+ screen paths, all services/hooks/contexts, SARA AI flow (voice → Gemini transcription → Socket.IO → 16 agents → Sarvam TTS), 18 Firestore collections with TypeScript types, notification channels, AsyncStorage keys, XP system, gym plan, backend architecture, and known hotspots.
+
+
 ## Rule: No Scratch/Temp Files Inside the Project
 Never create temporary, throwaway, or helper scripts inside the project workspace directory (`zentrack-vibe2ship/` or any subfolder within it).
 

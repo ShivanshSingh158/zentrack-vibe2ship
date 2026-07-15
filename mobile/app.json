@@ -1,0 +1,93 @@
+{
+  "expo": {
+    "newArchEnabled": true,
+    "jsEngine": "hermes",
+    "name": "ZenTrack",
+    "slug": "mobile",
+    "owner": "shiv_157",
+    "scheme": "zentrack",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo_white.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/logo_white.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#060509"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.shiv157.zentrack",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#060509",
+        "foregroundImage": "./assets/logo_white.png"
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.INTERNET",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
+      ],
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "ZenTrack needs microphone access for S.A.R.A voice commands."
+        }
+      ],
+      "expo-web-browser",
+      "./plugins/withAndroidManifestMod.js",
+      "@react-native-community/datetimepicker",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e"
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "ZenTrack needs access to the camera to scan barcodes and take progress photos."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "ZenTrack needs access to your photos to let you set a profile picture or log progress photos."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "ZenTrack needs location access to remind you to log workouts when you arrive at the gym."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "902d1185-e0dc-41d8-ab6c-98b9036f8a0e"
+      }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/902d1185-e0dc-41d8-ab6c-98b9036f8a0e"
+    }
+  }
+}

@@ -49,6 +49,11 @@ service cloud.firestore {
 
       // User profiles are never deleted from the client
       allow delete: if false;
+
+      // Allow access to user subcollections (like profile/identity)
+      match /profile/{docId} {
+        allow read, write: if isSignedIn() && isOwner(userId);
+      }
     }
 
     // ── Generic User-Scoped Collections ───────────────────────────────────────
@@ -62,6 +67,7 @@ service cloud.firestore {
         && collection != 'fcm_tokens'
         && collection != 'notification_throttle'
         && collection != 'rate_limits'
+        && collection != 'user_gym_plans'
         && ownsDoc();
 
       allow create: if isSignedIn()
@@ -69,6 +75,7 @@ service cloud.firestore {
         && collection != 'fcm_tokens'
         && collection != 'notification_throttle'
         && collection != 'rate_limits'
+        && collection != 'user_gym_plans'
         && ownsNewDoc()
         && notTooLarge();
     }
@@ -86,8 +93,14 @@ service cloud.firestore {
       allow read, write: if isSignedIn() && isOwner(userId);
     }
 
+    // ── User Gym Plans ────────────────────────────────────────────────────────
+    // Document ID is the userId
+    match /user_gym_plans/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
     // ── Gym Logs ──────────────────────────────────────────────────────────────
-    match /gymLogs/{docId} {
+    match /gym_logs/{docId} {
       allow read, update, delete: if isSignedIn() && ownsDoc();
       allow create: if isSignedIn() && ownsNewDoc() && notTooLarge();
     }

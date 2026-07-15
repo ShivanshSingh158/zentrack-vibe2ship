@@ -7,7 +7,7 @@ import { db, auth } from '../services/firebase';
 import { initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle, getTokenTimeRemaining, forceSilentRefresh, pollGoogleCalendarChanges } from '../services/googleCalendar';
 import { loadUserGeminiKey } from '../services/userGeminiAuth';
 import type { Task, CalendarEvent } from '../types/domain';
-import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
+import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../features/gym/data/gymPlan';
 
 interface GlobalDataContextType {
   tasks: Task[];

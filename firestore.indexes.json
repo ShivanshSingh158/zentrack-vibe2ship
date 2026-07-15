@@ -51,6 +51,22 @@
         { "fieldPath": "uid", "order": "ASCENDING" },
         { "fieldPath": "expireAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "pomodoro_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "date", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "pomodoro_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "startTime", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

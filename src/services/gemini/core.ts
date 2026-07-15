@@ -319,28 +319,7 @@ export const visibilityAwareSleep = async (ms: number, signal?: AbortSignal): Pr
   }
 };
 
-// ── ARCH-001: Tab Visibility Warning Listener ─────────────────────────────────
-// When the tab is hidden during an active mission, dispatch a warning into the
-// terminal feed so the user understands execution may slow.
-let _tabHiddenAt = 0;
-if (typeof document !== 'undefined') {
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) {
-      _tabHiddenAt = Date.now();
-    } else if (_tabHiddenAt > 0) {
-      const hiddenForMs = Date.now() - _tabHiddenAt;
-      _tabHiddenAt = 0;
-      if (hiddenForMs > 5_000) {
-        // Only warn if tab was hidden for more than 5s (not just a quick alt-tab)
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('agent-log', {
-            detail: { type: 'thinking', title: `ℹ️ Tab was hidden for ${Math.round(hiddenForMs / 1000)}s. Timer drift may have slowed agents.` }
-          }));
-        }
-      }
-    }
-  });
-}
+
 
 // ── Global Concurrency Semaphore ──────────────────────────────────────────────
 // This is the PRIMARY fix for the thundering-herd / key exhaustion problem.

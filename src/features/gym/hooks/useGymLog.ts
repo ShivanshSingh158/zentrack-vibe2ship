@@ -3,7 +3,7 @@ import { doc, getDoc, setDoc, deleteDoc, arrayUnion } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from '../../../services/firebase';
 import { toast } from 'sonner';
-import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../../data/gymPlan';
+import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 import { syncGymHabit } from '../utils/habitSync';
 import type {
   GymDayLog, GymExerciseLog, GymCardioLog, GymProfile,

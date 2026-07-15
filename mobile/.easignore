@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+npm-debug.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+expo-env.d.ts
+.eas/
+android/
+ios/
+bundle.js
