@@ -313,7 +313,7 @@ export const HabitsModule = () => {
                               const done = habitLogs.has(day);
                               const isToday = day === today;
                               const dayOfWeek = new Date(day).getDay();
-                              const isActive = habit.activeDays.includes(dayOfWeek);
+                              const isActive = (habit.activeDays || [0, 1, 2, 3, 4, 5, 6]).includes(dayOfWeek);
                               return (
                                 <div
                                   key={day}
