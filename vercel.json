@@ -1,15 +1,6 @@
 {
   "functions": {
-    "api/gemini-proxy.js": {
-      "maxDuration": 30
-    },
-    "api/gemini-proxy-stream.js": {
-      "maxDuration": 30
-    },
-    "api/youtube.js": {
-      "maxDuration": 60
-    },
-    "api/cron-watchdog.js": {
+    "api/index.ts": {
       "maxDuration": 60
     }
   },
@@ -54,6 +45,10 @@
     }
   ],
   "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
+    },
     {
       "source": "/__/auth/:path*",
       "destination": "https://job-tracker-6b672.firebaseapp.com/__/auth/:path*"

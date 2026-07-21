@@ -15,6 +15,7 @@
 
 import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -176,10 +177,14 @@ export default function VoiceOrb({
             borderRadius: coreSize / 2,
             backgroundColor: PURPLE,
             shadowColor: PURPLE,
+            alignItems: 'center',
+            justifyContent: 'center',
           },
           coreStyle,
         ]}
-      />
+      >
+        <Ionicons name="planet" size={coreSize * 0.55} color="rgba(255, 255, 255, 0.9)" />
+      </Animated.View>
     </View>
   );
 }

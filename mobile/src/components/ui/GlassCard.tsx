@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { COLORS, RADIUS, SHADOW } from '../../theme/tokens';
+import { RADIUS, SHADOW } from '../../theme/tokens';
+import { useTheme } from "../../contexts/ThemeContext";
 
 interface GlassCardProps {
   children: React.ReactNode;
@@ -24,6 +25,8 @@ export default function GlassCard({
   borderRadius = RADIUS.md,
   noBorder = false,
 }: GlassCardProps) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   return (
     <View
       style={[
@@ -43,10 +46,10 @@ export default function GlassCard({
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    overflow: 'hidden',
-    borderColor: COLORS.border,
-    backgroundColor: 'rgba(10, 9, 12, 0.4)',
-  },
-});
+const makeStyles = (colors: any) => StyleSheet.create({
+      container: {
+        overflow: 'hidden',
+        borderColor: colors.border,
+        backgroundColor: 'rgba(10, 9, 12, 0.4)',
+      },
+    });

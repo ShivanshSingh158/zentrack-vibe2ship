@@ -57,7 +57,6 @@ https://generativelanguage.googleapis.com  ← Direct Gemini API (primary path)
 | `expo-document-picker` | ~14.0.8 | File picker (Notes uploads) |
 | `expo-sharing` | ~14.0.8 | Share workout summaries |
 | `expo-crypto` | ~15.0.9 | Cryptographic utilities |
-| `expo-random` | ^14.0.1 | Secure random generation |
 | `expo-web-browser` | ~15.0.11 | In-app browser (OAuth flows) |
 | `expo-auth-session` | ~7.0.11 | OAuth session management |
 | `expo-apple-authentication` | ~8.0.8 | Apple Sign In (iOS only) |
@@ -83,7 +82,6 @@ https://generativelanguage.googleapis.com  ← Direct Gemini API (primary path)
 | `react-native-youtube-iframe` | ^2.4.1 | YouTube player wrapper |
 | `react-native-confetti-cannon` | ^1.5.2 | Confetti (workout completion) |
 | `react-native-view-shot` | 4.0.3 | Screenshot capture (share workout) |
-| `@google/generative-ai` | ^0.24.1 | Gemini SDK — used only if needed by saraAgent |
 
 > [!IMPORTANT]
 > `socket.io-client` has been **removed** (2026-07-14). The mobile app no longer connects to a Socket.IO backend. All AI calls go through `callProxy()` in `geminiProxy.ts`.
@@ -119,8 +117,10 @@ mobile/
 │   └── withAndroidManifestMod.js         Custom Expo plugin (Android manifest patches)
 └── src/
     ├── agent/
-    │   ├── orchestrator.ts               MAIN AI ENTRY: direct callProxy() Gemini loop (no Socket.IO)
-    │   └── saraAgent.ts                  processSaraChat() + processGymChat() — direct Gemini via callProxy()
+    │   ├── orchestrator.ts               SARA ENGINE v2: CMG+IRCI+BFE+Cap4+Cap6 wired (direct callProxy)
+    │   ├── intentClassifier.ts           IRCI: on-device intent + selective context (<5ms, 0 API calls)
+    │   ├── dagExecutor.ts                DAG executor for multi-node parallel tasks (uses webScraper)
+    │   └── saraAgent.ts                  processGymChat() — GYM-GPT coaching agent
     ├── components/
     │   ├── Academic/
     │   │   └── AddSubjectModal.tsx        (12KB)
@@ -128,83 +128,115 @@ mobile/
     │   ├── Calendar/
     │   │   └── AddEventModal.tsx          (7KB)
     │   ├── Dashboard/
-    │   │   ├── SaraBriefingCard.tsx       AI briefing widget on home
-    │   │   └── ProactiveNudgeCard.tsx     Amber nudge card
+    │   │   └── QuickCaptureSheet.tsx      Slide-up quick capture (Task/Note/Habit tabs, NL date parser)
     │   ├── Gym/
     │   │   ├── ExerciseCard.tsx           Set logging, RPE, rest timer (18KB)
-    │   │   ├── ZenGymAiModal.tsx          GAINS agent coaching modal (13KB)
-    │   │   ├── AddExerciseModal.tsx       (9KB)
-    │   │   ├── CardioCard.tsx             (5KB)
-    │   │   ├── ExerciseHistoryDrawer.tsx  (4KB)
-    │   │   ├── AddCardioModal.tsx         (4KB)
-    │   │   └── GymProfileModal.tsx        (3KB)
+    │   │   ├── ZenGymAiModal.tsx          GAINS agent coaching modal — uses processGymChat()
+    │   │   ├── AddExerciseModal.tsx       Exercise search + add modal
+    │   │   ├── AddCardioModal.tsx         Cardio session add modal
+    │   │   ├── LogCardioModal.tsx         Cardio log entry modal
+    │   │   ├── CardioCard.tsx             Cardio session display card
+    │   │   ├── ExerciseHistoryDrawer.tsx  Per-exercise history drawer
+    │   │   ├── GymNotificationModal.tsx   Gym reminder notification settings
+    │   │   ├── GymProfileModal.tsx        User gym profile modal
+    │   │   ├── AnimatedRestTimer.tsx      Rest timer between sets (animated)
+    │   │   └── BeforeAfterSlider.tsx      Progress photo before/after slider
     │   ├── SARA/
-    │   │   ├── SaraBubble.tsx             Bubble types: sara/user/action_card/quick_reply (6KB)
-    │   │   ├── VoiceOrb.tsx               Animated orb: idle/listening/speaking states (5KB)
-    │   │   ├── ActionConfirmationCard.tsx Confirm/reject proposed action (5KB)
-    │   │   ├── VoiceMicButton.tsx         Mic button in chat input bar (2KB)
-    │   │   └── StreamingText.tsx          Animated streaming text renderer (2KB)
+    │   │   ├── SaraBubble.tsx             Bubble types: sara/user/action_card/quick_reply
+    │   │   ├── VoiceOrb.tsx               Animated orb: idle/listening/speaking states
+    │   │   ├── ActionConfirmationCard.tsx Confirm/reject proposed action (Tier 3)
+    │   │   ├── VoiceMicButton.tsx         Mic button in chat input bar
+    │   │   ├── StreamingText.tsx          Animated streaming text renderer
+    │   │   ├── ReasoningFeed.tsx          [v2 Cap4] Live reasoning steps feed during thinking
+    │   │   ├── SaraHUDBanner.tsx          [v2 Cap5] PSI dismissable surface banner (per-screen)
+    │   │   ├── SaraHUDToast.tsx           [v2 Cap3] Tier-1 auto-execute passive toast
+    │   │   └── InlineActionPill.tsx       [v2 Cap3] Tier-2 inline quick-confirm pill
+    │   ├── Learning/
+    │   │   ├── LearningTopicCard.tsx      Draggable topic card + subtask list renderer
+    │   │   ├── LearningVideoPlayer.tsx    YouTube player + controls + AI chat + notes panel
+    │   │   └── LearningModals.tsx         Add Topic / Add Subtask / Roadmap import modals
+    │   ├── Notes/                         Reserved for future NotesScreen splits
     │   ├── Tasks/
-    │   │   └── TaskRow.tsx                (6KB)
+    │   │   ├── TaskRow.tsx                Task list row with swipe actions
+    │   │   └── Modals/                    Reserved for future TasksScreen modal extraction
     │   └── ui/
-    │       ├── FloatingActionButton.tsx   (1KB)
-    │       └── GlassCard.tsx              (1KB)
-    ├── config/                            [NEW 2026-07-14] App-wide constants
-    │   └── constants.ts                   Endpoints, storage keys, screen names, collection names, limits
+    │       ├── FloatingActionButton.tsx   Reusable FAB component
+    │       └── GlassCard.tsx              Glassmorphism card wrapper
+    ├── config/
+    │   ├── constants.ts                   Endpoints, storage keys, screen names, collection names, limits
+    │   └── saraActionPolicy.ts            [v2 Cap3] 3-tier action gateway (Tier1/2/3 routing table)
     ├── contexts/
-    │   └── MobileDataContext.tsx          CRITICAL: 18 Firestore subscriptions + all TypeScript interfaces (16KB)
+    │   ├── MobileDataContext.tsx          Root data provider: composes all domain contexts + shared utils
+    │   ├── ThemeContext.tsx                Dark/light theme toggle (useTheme)
+    │   ├── PortalContext.tsx               Modal portal system
+    │   └── domains/                       Domain-split data contexts (each manages its Firestore subscriptions)
+    │       ├── CoreDataContext.tsx         Tasks, habits, habitLogs, notes, goals (with write-lock guards)
+    │       ├── AcademicContext.tsx         Attendance, assignments, semesters, subjects
+    │       ├── WellnessContext.tsx         Gym logs, user gym plans, water logs, sleep logs
+    │       ├── PlannerContext.tsx          Calendar events, weekly reviews
+    │       └── CreativeContext.tsx         Storage nodes (Notes file system), job applications, learning topics
     ├── data/
-    │   └── gymPlan.ts                     Static 6-day PPL gym plan + YouTube exercise IDs (8KB)
+    │   └── gymPlan.ts                     Static 6-day PPL gym plan + YouTube exercise IDs
     ├── hooks/
-    │   ├── useSaraNavigation.ts           Parses [NAVIGATE:X] tokens from agent responses (3KB)
-    │   ├── useGymLog.ts                   Gym session state machine (8KB)
-    │   └── useProactiveAgent.ts           Conflict detection trigger (<1KB)
+    │   ├── useSaraNavigation.ts           Parses [NAVIGATE:X] tokens from agent responses
+    │   ├── useSaraSurface.ts              [v2 Cap5] PSI hook: per-screen banners, 60s cooldown, cached
+    │   ├── useGymLog.ts                   Gym session state machine (set logging, swap, persistence)
+    │   └── useProactiveAgent.ts           Conflict detection trigger
     ├── navigation/
-    │   ├── AppNavigator.tsx               Root navigator: auth gate, tab/stack setup (15KB)
-    │   └── GymStack.tsx                   Nested gym screen stack (1KB)
+    │   ├── AppNavigator.tsx               Root navigator: auth gate, tab/stack + GlobalSaraButton
+    │   └── GymStack.tsx                   Nested gym screen stack
     ├── screens/
-    │   ├── SaraScreen.tsx                 ChatGPT-style AI chat + voice mode (22KB+)
-    │   ├── TasksScreen.tsx                Full task manager (50KB)
-    │   ├── AttendanceScreen.tsx           Attendance tracker + timetable (44KB)
-    │   ├── NotesScreen.tsx                Rich notes + file storage (41KB)
-    │   ├── OnboardingScreen.tsx           5-step psychological onboarding (28KB)
-    │   ├── GoalsScreen.tsx                (23KB)
-    │   ├── CalendarScreen.tsx             (23KB)
-    │   ├── HabitsScreen.tsx               (20KB)
-    │   ├── SettingsScreen.tsx             (16KB)
-    │   ├── JobsScreen.tsx                 (15KB)
-    │   ├── AssignmentsScreen.tsx          (14KB)
-    │   ├── GradesScreen.tsx               (14KB)
-    │   ├── LearningScreen.tsx             (12KB)
-    │   ├── AuthScreen.tsx                 (11KB)
-    │   ├── AnalyticsScreen.tsx            (10KB)
-    │   ├── MoreScreen.tsx                 Module launcher (10KB)
-    │   ├── SocialScreen.tsx               (10KB)
-    │   ├── DashboardScreen.tsx            Home: briefing, tasks, stats, nudge (9KB)
-    │   ├── FocusScreen.tsx                Pomodoro timer (9KB)
-    │   ├── GuestDashboard.tsx             (5KB)
-    │   ├── LandingScreen.tsx              (4KB)
-    │   ├── AuthModal.tsx                  (4KB)
+    │   ├── SaraScreen.tsx                 ChatGPT-style AI chat + voice mode (63KB — LARGEST)
+    │   ├── TasksScreen.tsx                Full task manager (72KB)
+    │   ├── NotesScreen.tsx                Rich notes + AI + PDF export + file storage (59KB)
+    │   ├── AttendanceScreen.tsx           Attendance tracker + timetable (45KB)
+    │   ├── CalendarScreen.tsx             Calendar grid + events (49KB)
+    │   ├── AnalyticsScreen.tsx            Productivity charts + XP stats (48KB)
+    │   ├── OnboardingScreen.tsx           5-step psychological onboarding (22KB)
+    │   ├── GoalsScreen.tsx                OKR goal tracking (24KB)
+    │   ├── GradesScreen.tsx               SGPA grade calculator (29KB)
+    │   ├── HabitsScreen.tsx               Habit tracking + streaks (22KB)
+    │   ├── SettingsScreen.tsx             App settings + notifications (25KB)
+    │   ├── NotificationsSettingsScreen.tsx Notification preferences (26KB)
+    │   ├── JobsScreen.tsx                 Kanban job tracker (15KB)
+    │   ├── AssignmentsScreen.tsx          Assignment tracker (14KB)
+    │   ├── LearningScreen.tsx             Thin orchestrator (heavy logic in components/Learning/)
+    │   ├── SocialScreen.tsx               Social module (18KB)
+    │   ├── MoreScreen.tsx                 Module launcher (17KB)
+    │   ├── DashboardScreen.tsx            Home: briefing, tasks, stats, nudge (35KB)
+    │   ├── AuthScreen.tsx                 Sign in (Google + Apple on iOS) (10KB)
+    │   ├── GuestDashboard.tsx             Guest mode landing (5KB)
+    │   ├── LandingScreen.tsx              Unauthenticated landing (4KB)
+    │   ├── StudyRoomScreen.tsx            Collaborative study room (11KB)
+    │   ├── WeeklyReviewScreen.tsx         Weekly reflection + review (5KB)
+    │   ├── GoalDetailScreen.tsx           Goal detail + key results (7KB)
+    │   ├── StreakDetailScreen.tsx         Habit streak detail (7KB)
     │   └── gym/
     │       ├── GymHomeScreen.tsx          Today's plan + muscle diagram (21KB)
     │       ├── ActiveLoggingScreen.tsx    Live set-by-set logging (15KB)
     │       ├── GymProgressScreen.tsx      Strength progress charts (11KB)
-    │       ├── GymHistoryScreen.tsx       (8KB)
-    │       ├── WorkoutSummaryScreen.tsx   Post-workout stats (7KB)
-    │       ├── ExerciseDetailScreen.tsx   (7KB)
-    │       ├── ExerciseSwapScreen.tsx     (6KB)
-    │       └── CardioLogScreen.tsx        (6KB)
+    │       ├── GymHistoryScreen.tsx       Workout history (8KB)
+    │       ├── WorkoutSummaryScreen.tsx   Post-workout stats + share (7KB)
+    │       ├── ExerciseDetailScreen.tsx   Exercise info + history (7KB)
+    │       ├── ExerciseSwapScreen.tsx     Exercise swap with permanent override (6KB)
+    │       └── CardioLogScreen.tsx        Cardio session logging (6KB)
     ├── services/
     │   ├── firebase.ts                    Firebase init with AsyncStorage persistence
-    │   ├── geminiProxy.ts                 Direct Gemini REST calls with 9-key rotation (CRITICAL)
-    │   ├── sarvaProxy.ts                  Sarvam AI TTS via Vercel voice-proxy
-    │   ├── voiceEngine.ts                 Mic recording + Gemini audio transcription
-    │   ├── notifications.ts               Local scheduled notifications (zero-cost)
-    │   ├── xpSystem.ts                    XP/gamification (Skinner variable rewards)
+    │   ├── geminiProxy.ts                 CRITICAL: Direct Gemini REST + 9-key rotation + transcription
+    │   ├── sarvamProxy.ts                 Sarvam AI TTS via Vercel voice-proxy (500-char chunk limit)
+    │   ├── voiceEngine.ts                 VAD (startVADRecording) + manual (startVoiceRecording)
+    │   ├── saraMemory.ts                  CMG + BFE: AsyncStorage memory graph + behavioral fingerprint
+    │   ├── notifications.ts               Local scheduled notifications (zero-cost, 6 categories)
+    │   ├── xpSystem.ts                    XP/gamification (Skinner variable rewards, 8 levels)
     │   ├── conflictDetector.ts            Schedule conflict detection engine
-    │   └── cloudinary.ts                  File upload for Notes storage nodes
+    │   ├── cloudinary.ts                  File upload for Notes storage nodes
+    │   ├── backgroundTasks.ts             Expo TaskManager background task registration
+    │   ├── backgroundProactiveAgent.ts    Background AI proactive check (registered in App.tsx)
+    │   ├── webScraper.ts                  Web search via DuckDuckGo (used by dagExecutor)
+    │   ├── offlineSync.ts                 Offline queue drain for gym logs
+    │   └── progressiveOverload.ts         Progressive overload calculator for gym coaching
     ├── theme/
-    │   ├── tokens.ts                      COLORS, RADIUS, SPACE, FONT_FAMILY, SHADOW
+    │   ├── tokens.ts                      COLORS, RADIUS, SPACE, FONT_FAMILY, SHADOW (design system)
     │   ├── animations.ts                  Reanimated animation presets
     │   └── motion.ts                      Timing/easing constants
     ├── types/
@@ -212,6 +244,27 @@ mobile/
     └── utils/
         └── haptics.ts                     feedback.tap/commit/success/warning
 ```
+
+## 3a. SARA Engine v2 — Capability Map (2026-07-19)
+
+> All 7 capabilities are now live. Zero external dependencies added. Full TypeScript type check passes.
+
+| Cap | Name | File | Key Mechanism |
+|---|---|---|---|
+| **1** | Contextual Memory Graph (CMG) | `src/services/saraMemory.ts` | `extractAndStore()` async after every response, AsyncStorage JSON graph |
+| **2** | Intent-Ranked Context Injection (IRCI) | `src/agent/intentClassifier.ts` | `classifyIntent()` + `buildSelectiveContext()` — 0 API calls, <5ms |
+| **3** | Confidence-Gated Actions | `src/config/saraActionPolicy.ts` + `SaraHUDToast.tsx` + `InlineActionPill.tsx` | `getActionTier()` routes to Tier1/2/3 in SaraScreen |
+| **4** | Streaming Reasoning Transparency | `src/components/SARA/ReasoningFeed.tsx` | `reasoning_step` step type in `orchestrateAgent()` onStep |
+| **5** | Predictive Surface Injection (PSI) | `src/hooks/useSaraSurface.ts` + `SaraHUDBanner.tsx` | 60s cooldown, per-screen, dismiss tracked in AsyncStorage |
+| **6** | Dual-Stream Voice (VAD + sentence TTS) | `src/services/voiceEngine.ts` | `startVADRecording()` with RMS polling + `voice_sentence_ready` step |
+| **7** | Behavioral Fingerprint Engine (BFE) | `src/services/saraMemory.ts` | `updateFingerprint()` on every action, adapts tone/quotes/module order |
+
+### Integration Points
+- **orchestrator.ts**: CMG (Cap1), IRCI (Cap2), Cap4 reasoning steps, Cap6 voice sentence streaming, Cap7 fingerprint update
+- **SaraScreen.tsx**: Cap3 3-tier gateway, Cap4 ReasoningFeed render, Cap6 VAD, Cap6 voice_sentence_ready → speakWithSarvam (`sarvamProxy.ts`)
+- **DashboardScreen.tsx**: Cap5 SaraHUDBanner, Cap7 BFE-powered daily quote
+- **AttendanceScreen.tsx**: Cap5 SaraHUDBanner (at-risk subject detection)
+- **MoreScreen.tsx**: Cap7 BFE module reordering in Quick Access row
 
 ---
 
@@ -221,19 +274,20 @@ mobile/
 | Purpose | Exact File Path | Key Export |
 |---|---|---|
 | **Sara mission dispatch (MAIN ENTRY)** | `src/agent/orchestrator.ts` | `orchestrateAgent()` |
+| **IRCI intent classifier** | `src/agent/intentClassifier.ts` | `classifyIntent()`, `buildSelectiveContext()` |
 | Sara full context + system prompt | `src/agent/orchestrator.ts` | `buildSystemPrompt()` |
 | Sign-out cleanup (no-op stub) | `src/agent/orchestrator.ts` | `disconnectSocket()` |
-| Sara chat agent (single-turn) | `src/agent/saraAgent.ts` | `processSaraChat()` |
 | GYM-GPT coaching | `src/agent/saraAgent.ts` | `processGymChat()` |
 | Parse `[[ACTION:{...}]]` from response | `src/agent/saraAgent.ts` | `parseActionFromText()` |
+| DAG parallel task executor | `src/agent/dagExecutor.ts` | `executeDag()` |
 | Direct Gemini REST + key rotation | `src/services/geminiProxy.ts` | `callProxy()` |
 | Parse Gemini REST response | `src/services/geminiProxy.ts` | `parseProxyResponse()` |
 | Audio transcription | `src/services/geminiProxy.ts` | `transcribeAudioViaProxy()` |
 | Quick text prompt | `src/services/geminiProxy.ts` | `callGeminiProxy()` |
 | Gym AI coaching | `src/services/geminiProxy.ts` | `askGymCoach()` |
-| Sara TTS playback | `src/services/sarvaProxy.ts` | `speakWithSarvam()` |
-| Stop Sara speaking | `src/services/sarvaProxy.ts` | `stopSpeech()` |
-| Language detection (hi-IN/en-IN) | `src/services/sarvaProxy.ts` | `detectLanguageCode()` |
+| Sara TTS playback | `src/services/sarvamProxy.ts` | `speakWithSarvam()` |
+| Stop Sara speaking | `src/services/sarvamProxy.ts` | `stopSpeech()` |
+| Language detection (hi-IN/en-IN) | `src/services/sarvamProxy.ts` | `detectLanguageCode()` |
 | Begin mic recording | `src/services/voiceEngine.ts` | `startVoiceRecording()` |
 | Stop + transcribe audio | `src/services/voiceEngine.ts` | `stopAndTranscribe()` |
 | Cancel recording | `src/services/voiceEngine.ts` | `cancelVoiceRecording()` |
@@ -243,6 +297,7 @@ mobile/
 |---|---|---|
 | **ALL Firestore data (provider)** | `src/contexts/MobileDataContext.tsx` | `MobileDataProvider` |
 | Access data in components | `src/contexts/MobileDataContext.tsx` | `useMobileData()` |
+| **Theme (dark/light)** | `src/contexts/ThemeContext.tsx` | `useTheme()`, `ThemeProvider` |
 | Firebase init | `src/services/firebase.ts` | `auth`, `db`, `googleProvider` |
 | Rebuild notification schedule | `src/services/notifications.ts` | `scheduleTaskReminders()` |
 | Setup notification channels | `src/services/notifications.ts` | `requestNotificationPermissions()` |
@@ -296,7 +351,7 @@ mobile/
 | Learning Topics | `src/screens/LearningScreen.tsx` |
 | Jobs (Kanban) | `src/screens/JobsScreen.tsx` |
 | Analytics | `src/screens/AnalyticsScreen.tsx` |
-| Focus (Pomodoro) | `src/screens/FocusScreen.tsx` |
+| Focus (Pomodoro) | **REMOVED** (2026-07-15) — module deleted, data in Firestore kept |
 | More (module launcher) | `src/screens/MoreScreen.tsx` |
 | Settings | `src/screens/SettingsScreen.tsx` |
 | Social | `src/screens/SocialScreen.tsx` |
@@ -622,6 +677,7 @@ File: `src/theme/tokens.ts`
 | `zentrack_xp_streak` | `'0'` | Daily streak count |
 | `zentrack_onboarded_v2` | `null` | Onboarding flag (`'true'` = onboarded) |
 | `google_workspace_token` | `null` | Google OAuth access token |
+| `@zentrack_theme` | `'dark'` | User's theme preference (`'dark'` \| `'light'`) |
 
 > All keys are also available as constants in `src/config/constants.ts → STORAGE_KEYS`.
 
@@ -650,11 +706,10 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 | File | Severity | Issue |
 |---|---|---|
 | `sarvaProxy.ts` | **HIGH** | 500-char chunk limit NOT yet implemented on mobile (web app chunks correctly). Long Sara responses silently fail TTS. Add chunking before `speakWithSarvam()`. |
-| `MobileDataContext.tsx:scheduleTaskReminders` | **MEDIUM** | Fires on every data change with NO debounce — cancels and re-creates 100+ notifications on every Firestore snapshot. Add 2s debounce. |
+| `MobileDataContext.tsx:scheduleTaskReminders` | **MEDIUM** | Fires on every data change with 3s debounce (previously no debounce — fixed 2026-07-14). |
 | `MobileDataContext.tsx` | **MEDIUM** | `waterLogs` and `sleepLogs` have context types and useState but ZERO Firestore subscriptions — always return empty arrays. |
 | `voiceEngine.ts` | **MEDIUM** | Transcription fails silently on recordings under ~0.5s — Gemini rejects near-empty audio. |
 | `AppNavigator.tsx` | **HIGH** | `OnboardingScreen` renders OUTSIDE all Stack/Tab navigators. Any `useNavigation()` inside OnboardingScreen will throw. Pass navigation callbacks via props only. |
-| `GymHomeScreen.tsx` | LOW | Uses static `GYM_PLAN` — now supplemented by `userGymPlan` from Firestore `user_gym_plans` collection. |
 | `conflictDetector.ts` | LOW | Simplified placeholder. Web app has a more sophisticated conflict engine. |
 | `DashboardScreen.tsx:49-60` | LOW | Streak logic breaks on any day with no tasks AND no gym — penalizes rest days and weekends unfairly. |
 | `notifications.ts` | MEDIUM | FCM remote push (for killed-app delivery) needs a dev build — fails in Expo Go SDK 53+. Local scheduling works fine. |
@@ -690,11 +745,23 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 
 ## 16. Changelog
 
+### 2026-07-21 — Full Codebase Restructure (Professional Cleanup)
+- **RENAMED** `src/services/sarvaProxy.ts` → `src/services/sarvamProxy.ts` — fixed the typo in the filename. Updated import in `SaraScreen.tsx`. All references in this doc updated.
+- **DELETED** `mobile/src/hooks/useSpotify.ts` — Spotify integration hook (9.4KB), not an active feature
+- **DELETED** `mobile/src/components/Gym/SpotifyMiniPlayer.tsx` — Spotify mini player component dependent on deleted hook
+- **DELETED** `mobile/bundle.js` — compiled bundle artifact (should never be in source control)
+- **UPDATED** folder map: added all previously undocumented files (`dagExecutor.ts`, `GoalDetailScreen.tsx`, `StreakDetailScreen.tsx`, `StudyRoomScreen.tsx`, `WeeklyReviewScreen.tsx`, `NotificationsSettingsScreen.tsx`, all gym sub-components, all services)
+- **UPDATED** contexts section: documented the `domains/` split (5 sub-contexts: Core, Academic, Wellness, Planner, Creative)
+- **UPDATED** screens list: corrected all file sizes to match actual disk sizes; sorted by size descending for quick reference
+- **UPDATED** file index: removed `processSaraChat` entry (no longer called from any screen after orchestrateAgent swap), added `dagExecutor.ts` entry
+- **TypeScript check**: `npx tsc --noEmit` passes with zero errors after all changes
+
 ### 2026-07-14 — Direct Gemini Orchestrator (Critical Architecture Change)
 - **REPLACED** `src/agent/orchestrator.ts` — removed all Socket.IO code. The mobile app no longer connects to a Render backend via WebSocket. Sara now calls `callProxy()` (direct Gemini REST) with a full system prompt containing all app context. Same `orchestrateAgent(instruction, appContext, onStep, history)` signature preserved — all callers unchanged.
 - **UPDATED** `src/screens/SaraScreen.tsx` — swapped `processSaraChat` → `orchestrateAgent`. Thinking steps now stream into Sara bubble. All Firestore write handlers (task/habit/attendance/note/calendar) unchanged.
 - **REMOVED** `socket.io-client` from `mobile/package.json`
 - **ADDED** `disconnectSocket()` no-op stub in `orchestrator.ts` for API compatibility with sign-out callers.
+
 
 ### 2026-07-14 — Constants Config File Added
 - **ADDED** `src/config/constants.ts` — central source of truth for all mobile constants: API endpoints, storage keys, screen names, Firestore collection names, data limits, XP levels.
@@ -716,3 +783,35 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 - **FIXED** `voiceEngine.ts` — `stopAndTranscribe()` now sends real base64 audio to Gemini. Old code returned hardcoded string `"This is a simulated transcript"`.
 - **FIXED** `notifications.ts` — wrapped in try/catch to prevent SDK 53 FCM crash in Expo Go.
 - **FIXED** `AppNavigator.tsx:GlobalSaraButton` — Added try/catch + null safety to `useNavigationState` selector.
+
+### 2026-07-15 — Critical Gym Data Persistence Fix
+- **FIXED** `src/hooks/useGymLog.ts:saveLog()` — was writing to Firestore collection `'gymLogs'` (ghost collection). `MobileDataContext` subscribes to `'gym_logs'`. All workout data was written but never read back — appeared deleted on app restart. Corrected to `'gym_logs'`.
+- **FIXED** `src/hooks/useGymLog.ts:makeSwapPermanent()` — was writing permanent exercise swaps to `'gymPlans'`. `MobileDataContext` subscribes to `'user_gym_plans'`. Corrected to `'user_gym_plans'`.
+- **FIXED** `src/services/offlineSync.ts:syncOfflineLogs()` — same `'gymLogs'` → `'gym_logs'` mismatch in the offline queue drain path.
+
+### 2026-07-17 — Habit Flicker Fix + Dashboard Navigation + Notes AI Overhaul
+- **FIXED** `src/contexts/domains/CoreDataContext.tsx` — Habit card flickering: added `habitWriteLockRef`/`habitLogWriteLockRef` write-lock (2s) so Firestore snapshots don't overwrite in-flight optimistic updates.
+- **FIXED** `src/screens/HabitsScreen.tsx` — Added `estimatedItemSize={160}` + `extraData={todayLogs}` to FlashList; memoized `todayLogs`.
+- **ADDED** `src/screens/DashboardScreen.tsx` — HABITS ring now navigates to `MoreStack → Habits` on tap with haptic feedback.
+- **FIXED** `src/screens/NotesScreen.tsx` — Preview white-box bug: `markdownStyles` now explicitly overrides ALL node types the `react-native-markdown-display` library uses (`body`, `paragraph`, `fence`, `pre`, `code_block`, `code_inline`, `blockquote`, `bullet_list`, `ordered_list`, `list_item`, etc.) with dark backgrounds (`transparent` or `#1a1a2e` for code). No white areas possible.
+- **FIXED** `src/screens/NotesScreen.tsx` — PDF export: replaced simple regex replace with a proper line-by-line parser that handles code fences correctly, escapes HTML, and produces a polished Inter-font document with proper footer.
+- **OVERHAULED** `src/screens/NotesScreen.tsx:handleAiSubmit` — Sara's AI system prompt completely rewritten: ultra-personalized, expert-level, no markdown symbols (*, ##, ===), uses NUMBERED SECTIONS + CAPITALISED SUBHEADINGS + complete prose. Added 6 contextual quick-action buttons (Deep Summary, Action Items, Polish, Expand, Explain, Study Guide).
+
+### 2026-07-16 — Complete Gym Module Bug Fix Sprint
+- **FIXED** `src/screens/gym/ActiveLoggingScreen.tsx` — TextInput flickering: was using `defaultValue` (uncontrolled), which reset the cursor every time `saveLog` triggered `setLog`. Replaced with controlled `value` + per-set local `setInputs` state. Inputs only sync to log state on `onBlur` or on "Log Set" press.
+- **FIXED** `src/hooks/useGymLog.ts` — Duplicate exercises on edit: `updateExercise` was looking up exercise by `exercise.id` which is an optional field never assigned, so `findIndex` returned `-1`. `splice(-1)` mutated the last element, making it appear as a duplicate. Fixed by using array index directly + guard for out-of-bounds.
+- **FIXED** `src/hooks/useGymLog.ts` — Exercises disappearing on back navigation: `useEffect` re-ran on every Firestore `gymLogs` snapshot. If the live document had a different `id` format, it fell through to the `else` branch and replaced local state with a fresh template. Fixed with a `hasInitialised` ref — Firestore initialises the log once; after that, local state is authoritative.
+- **FIXED** `src/screens/gym/ActiveLoggingScreen.tsx` — Last session data not showing: `lastTimeData` only checked *completed* sets. New sessions have no completed sets yet, so the banner was always empty. Now reads `lastSessionSets` pre-filled by the hook (from previous workout) and shows it immediately.
+- **FIXED** `src/screens/gym/ActiveLoggingScreen.tsx` — No way to uncheck a completed set: checkmark was one-way. Added `handleToggleSetComplete` — tapping a completed set's checkmark now reverts it to incomplete.
+- **FIXED** `src/hooks/useGymLog.ts` — All mutators (updateSet, toggleSetComplete, deleteExercise, addSet, removeSet, addCardio, updateCardio, swapExercise, startWorkout, endWorkout, resumeWorkout, startRestTimer, clearRestTimer, updateRestTimerDuration) rewritten to use `setLog(prev => ...)` functional updates + call `saveLog` inside — decouples UI from async Firestore write.
+- **FIXED** `src/screens/gym/ActiveLoggingScreen.tsx` — realExerciseIndex now derived by name+exerciseId match against `log.exercises` (unfiltered), so skipped exercises don't corrupt the index passed to `updateExercise`.
+
+### 2026-07-18 — Gym Module: 5 Root-Cause Exercise Loading Bugs Fixed
+- **FIXED** `src/hooks/useGymLog.ts:todayStr()` — replaced `toISOString().slice(0,10)` (UTC) with local date component assembly. In IST (UTC+5:30), `toISOString()` returns the previous calendar date before 5:30 AM.
+- **FIXED** `src/hooks/useGymLog.ts:dateStrOffset()` — same UTC→local fix. `new Date(fromStr)` on an ISO date string parses as UTC midnight; replaced with `new Date(y, m-1, d)`.
+- **FIXED** `src/hooks/useGymLog.ts:planDayIndexForDate()` — `new Date(dateStr).getDay()` returns UTC day-of-week. In IST, every date mapped to the previous day's plan. Primary cause of "wrong exercises shown" and "Sunday shows Saturday's legs instead of rest day". Fixed with local-component parse.
+- **FIXED** `src/hooks/useGymLog.ts` — `updatedAt` staleness guard type mismatch: Firestore `updatedAt` is a `Timestamp` object (`.toMillis()`), local `updatedAt` is `Date.now()` (number). `Timestamp <= number` is always `false`, so the guard never fired and every snapshot overwrote local state. Fixed by normalizing both sides to milliseconds.
+- **FIXED** `src/hooks/useGymLog.ts` — `hasInitialised` ref was assigned but never read as a guard. Any Firestore snapshot finding 0 results for today replaced the in-progress workout with a blank template. Added `if (hasInitialised.current) return;` guard to `else if (gymLogsReady)` branch.
+- **FIXED** `src/hooks/useGymLog.ts` — `hasInitialised.current` never reset when `dateStr` changes. Switching dates got stuck because the guard blocked exercise initialization for the new day. Added `hasInitialised.current = false` to the dateStr-change effect.
+
+

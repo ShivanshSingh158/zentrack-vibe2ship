@@ -13,6 +13,8 @@ import {
   View, Text, StyleSheet, Animated, TouchableOpacity,
   Modal, TextInput, KeyboardAvoidingView, Platform, Alert, ScrollView
 } from 'react-native';
+import BottomSheet from '../components/ui/BottomSheet';
+import Reanimated, { useSharedValue, useAnimatedStyle, withSequence, withTiming } from 'react-native-reanimated';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,26 +23,33 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 
 import { useMobileData, Goal, GoalKeyResult } from '../contexts/MobileDataContext';
-import { COLORS, FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { animateFadeInUp, triggerLayoutAnimation } from '../theme/animations';
 import { db } from '../services/firebase';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { awardXP } from '../services/xpSystem';
+import { COLLECTION } from '../config/constants';
+import { useTheme } from "../contexts/ThemeContext";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-const STATUS_COLORS: Record<string, string> = {
-  active: COLORS.accentPrimary,
-  completed: COLORS.accentGreen,
-  paused: COLORS.accentAmber,
-  cancelled: COLORS.error,
-};
+function getStatusColors(colors: any): Record<string, string> {
+  return {
+    active: colors.accentPrimary,
+    completed: colors.accentGreen,
+    paused: colors.accentAmber,
+    cancelled: colors.error,
+  };
+}
 
 // ─── Circular Progress Arc Component ──────────────────────────────────────────
 
-function CircularArc({ progress, size = 60, strokeWidth = 6, color = COLORS.accentPrimary }: {
+function CircularArc({ progress, size = 60, strokeWidth = 6, color }: {
   progress: number; size?: number; strokeWidth?: number; color?: string;
 }) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+    const resolvedColor = color ?? colors.accentPrimary;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const fillPct = Math.min(Math.max(progress, 0), 100);
@@ -66,12 +75,12 @@ function CircularArc({ progress, size = 60, strokeWidth = 6, color = COLORS.acce
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Circle
           cx={size / 2} cy={size / 2} r={radius}
-          stroke={COLORS.surface2} strokeWidth={strokeWidth}
+          stroke={colors.surface2} strokeWidth={strokeWidth}
           fill="none"
         />
         <AnimatedCircle
           cx={size / 2} cy={size / 2} r={radius}
-          stroke={color} strokeWidth={strokeWidth}
+          stroke={resolvedColor} strokeWidth={strokeWidth}
           fill="none"
           strokeDasharray={circumference}
           strokeDashoffset={strokeDashoffset}
@@ -81,7 +90,7 @@ function CircularArc({ progress, size = 60, strokeWidth = 6, color = COLORS.acce
         />
       </Svg>
       <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
-        <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: COLORS.textPrimary }}>
+        <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary }}>
           {Math.round(fillPct)}%
         </Text>
       </View>
@@ -97,10 +106,12 @@ function GoalCard({ item, onComplete, onDelete, onUpdateKR }: {
   onDelete: (id: string, title: string) => void;
   onUpdateKR: (goalId: string, krs: GoalKeyResult[]) => void;
 }) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const [expanded, setExpanded] = useState(false);
   const [newKRTitle, setNewKRTitle] = useState('');
   const isCompleted = item.status === 'completed';
-  const statusColor = STATUS_COLORS[item.status] || COLORS.accentPrimary;
+  const statusColor = getStatusColors(colors)[item.status] || colors.accentPrimary;
 
   // Calculate actual progress based on KRs if they exist, otherwise fallback to item.progress
   const calcProgress = () => {
@@ -151,7 +162,7 @@ function GoalCard({ item, onComplete, onDelete, onUpdateKR }: {
         </View>
 
         <TouchableOpacity style={styles.menuBtn} onPress={() => onDelete(item.id, item.title)}>
-           <Ionicons name="trash-outline" size={16} color={COLORS.textMuted} />
+           <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </TouchableOpacity>
 
@@ -171,7 +182,7 @@ function GoalCard({ item, onComplete, onDelete, onUpdateKR }: {
                 onPress={() => toggleKR(kr.id)}
               >
                 <View style={[styles.krCheck, kr.completed && { backgroundColor: statusColor, borderColor: statusColor }]}>
-                  {kr.completed && <Ionicons name="checkmark" size={12} color={COLORS.background} />}
+                  {kr.completed && <Ionicons name="checkmark" size={12} color={colors.background} />}
                 </View>
                 <Text style={[styles.krText, kr.completed && styles.krTextDone]}>{kr.title}</Text>
               </TouchableOpacity>
@@ -179,25 +190,25 @@ function GoalCard({ item, onComplete, onDelete, onUpdateKR }: {
             
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACE.sm }}>
                <TextInput
-                 style={{ flex: 1, backgroundColor: COLORS.surface2, color: COLORS.textPrimary, padding: SPACE.sm, borderRadius: RADIUS.md, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm }}
+                 style={{ flex: 1, backgroundColor: colors.surface2, color: colors.textPrimary, padding: SPACE.sm, borderRadius: RADIUS.md, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm }}
                  placeholder="Add key result..."
-                 placeholderTextColor={COLORS.textMuted}
+                 placeholderTextColor={colors.textMuted}
                  value={newKRTitle}
                  onChangeText={setNewKRTitle}
                  onSubmitEditing={addKR}
                />
                <TouchableOpacity onPress={addKR} style={{ padding: SPACE.sm, marginLeft: SPACE.xs }}>
-                 <Ionicons name="add-circle" size={24} color={newKRTitle.trim() ? COLORS.accentPrimary : COLORS.textMuted} />
+                 <Ionicons name="add-circle" size={24} color={newKRTitle.trim() ? colors.accentPrimary : colors.textMuted} />
                </TouchableOpacity>
             </View>
           </View>
 
           <TouchableOpacity 
-            style={[styles.completeGoalBtn, isCompleted && { backgroundColor: COLORS.surface2, borderColor: COLORS.border }]}
+            style={[styles.completeGoalBtn, isCompleted && { backgroundColor: colors.surface2, borderColor: colors.border }]}
             onPress={() => onComplete(item.id, item.status)}
           >
-            <Ionicons name={isCompleted ? "refresh-outline" : "trophy-outline"} size={16} color={isCompleted ? COLORS.textMuted : COLORS.background} />
-            <Text style={[styles.completeGoalText, isCompleted && { color: COLORS.textMuted }]}>
+            <Ionicons name={isCompleted ? "refresh-outline" : "trophy-outline"} size={16} color={isCompleted ? colors.textMuted : colors.background} />
+            <Text style={[styles.completeGoalText, isCompleted && { color: colors.textMuted }]}>
               {isCompleted ? 'Mark as Active' : 'Complete Goal'}
             </Text>
           </TouchableOpacity>
@@ -210,6 +221,8 @@ function GoalCard({ item, onComplete, onDelete, onUpdateKR }: {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function GoalsScreen() {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const { goals, user } = useMobileData();
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-10)).current;
@@ -227,7 +240,10 @@ export default function GoalsScreen() {
   const [metric, setMetric] = useState('');
   
   // Slide animation for wizard
-  const slideAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useSharedValue(0);
+  const slideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: slideAnim.value }]
+  }));
 
   useEffect(() => { animateFadeInUp(headerFade, headerSlide, 0).start(); }, []);
 
@@ -243,11 +259,11 @@ export default function GoalsScreen() {
   const nextStep = () => {
     if (wizardStep < 4) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      Animated.sequence([
-        Animated.timing(slideAnim, { toValue: -50, duration: 150, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 50, duration: 0, useNativeDriver: true }),
-        Animated.timing(slideAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
-      ]).start();
+      slideAnim.value = withSequence(
+        withTiming(-50, { duration: 150 }),
+        withTiming(50, { duration: 0 }),
+        withTiming(0, { duration: 250 })
+      );
       setWizardStep(s => s + 1);
     } else {
       handleSaveGoal();
@@ -269,7 +285,7 @@ export default function GoalsScreen() {
     keyResults.push({ id: 'kr3_' + Date.now(), title: `Complete final milestone`, completed: false });
 
     setTimeout(() => {
-      addDoc(collection(db, 'goals'), {
+      addDoc(collection(db, COLLECTION.GOALS), {
         userId: user.uid,
         title: title.trim(),
         status: 'active',
@@ -292,7 +308,7 @@ export default function GoalsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       await awardXP('GOAL_MILESTONE');
     }
-    await updateDoc(doc(db, 'goals', id), {
+    await updateDoc(doc(db, COLLECTION.GOALS, id), {
       status: newStatus,
       progress: newStatus === 'completed' ? 100 : 0,
       updatedAt: Date.now(),
@@ -304,7 +320,7 @@ export default function GoalsScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
-        onPress: () => deleteDoc(doc(db, 'goals', id)).catch(console.error),
+        onPress: () => deleteDoc(doc(db, COLLECTION.GOALS, id)).catch(console.error),
       },
     ]);
   };
@@ -317,7 +333,7 @@ export default function GoalsScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
-    await updateDoc(doc(db, 'goals', goalId), {
+    await updateDoc(doc(db, COLLECTION.GOALS, goalId), {
       keyResults: krs,
       progress,
       updatedAt: Date.now(),
@@ -339,7 +355,7 @@ export default function GoalsScreen() {
             <TextInput
               style={styles.wizardInput}
               placeholder="e.g., Run a 5k without stopping"
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={title}
               onChangeText={setTitle}
               autoFocus
@@ -358,7 +374,7 @@ export default function GoalsScreen() {
             </Text>
             
             <TouchableOpacity style={styles.datePickerBtn} onPress={() => setShowPicker(true)}>
-              <Ionicons name="calendar-outline" size={20} color={COLORS.accentPrimary} />
+              <Ionicons name="calendar-outline" size={20} color={colors.accentPrimary} />
               <Text style={styles.datePickerText}>{deadline.toISOString().split('T')[0]}</Text>
             </TouchableOpacity>
 
@@ -385,7 +401,7 @@ export default function GoalsScreen() {
             <TextInput
               style={styles.wizardInput}
               placeholder="e.g., Buy running shoes online"
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={firstStep}
               onChangeText={setFirstStep}
               autoFocus
@@ -402,7 +418,7 @@ export default function GoalsScreen() {
             <TextInput
               style={styles.wizardInput}
               placeholder="e.g., Timing app says 30 mins"
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={metric}
               onChangeText={setMetric}
               autoFocus
@@ -448,24 +464,24 @@ export default function GoalsScreen() {
       />
 
       {/* SMART Goal Wizard Modal */}
-      <Modal visible={showWizard} animationType="slide" transparent>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
+      <BottomSheet visible={showWizard} onClose={() => setShowWizard(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalSheet}>
             
             <View style={styles.wizardTop}>
               <TouchableOpacity onPress={() => setShowWizard(false)}>
-                <Ionicons name="close" size={24} color={COLORS.textMuted} />
+                <Ionicons name="close" size={24} color={colors.textMuted} />
               </TouchableOpacity>
               <View style={styles.wizardProgress}>
                 {[1,2,3,4].map(s => (
-                  <View key={s} style={[styles.wizardDot, wizardStep >= s && { backgroundColor: COLORS.accentPrimary }]} />
+                  <View key={s} style={[styles.wizardDot, wizardStep >= s && { backgroundColor: colors.accentPrimary }]} />
                 ))}
               </View>
             </View>
 
-            <Animated.View style={{ flex: 1, transform: [{ translateX: slideAnim }] }}>
+            <Reanimated.View style={[{ flex: 1 }, slideStyle]}>
               {renderWizardStep()}
-            </Animated.View>
+            </Reanimated.View>
 
             <TouchableOpacity
               style={[styles.wizardNextBtn, (wizardStep === 1 && !title.trim()) && { opacity: 0.4 }]}
@@ -477,128 +493,128 @@ export default function GoalsScreen() {
 
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+      </BottomSheet>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACE.xl,
-    paddingBottom: SPACE.lg,
-  },
-  title: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.xxl, color: COLORS.textPrimary },
-  subtitle: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: COLORS.textMuted, marginTop: 4 },
-  fab: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: COLORS.accentPrimary, 
-    alignItems: 'center', justifyContent: 'center',
-    ...SHADOW.accent(),
-  },
-  list: { padding: SPACE.xl, paddingTop: SPACE.xs, paddingBottom: 120 },
-  
-  // Card
-  card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl, 
-    marginBottom: SPACE.md,
-    borderWidth: 1, borderColor: COLORS.borderHover,
-    overflow: 'hidden',
-  },
-  cardDone: { opacity: 0.6, borderColor: COLORS.border },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACE.lg,
-  },
-  cardHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  cardTitle: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.lg, color: COLORS.textPrimary, marginBottom: 2 },
-  cardTitleDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
-  deadlineText: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.xs, color: COLORS.textMuted },
-  menuBtn: { padding: SPACE.sm },
-  
-  // Expanded Content
-  expandedContent: {
-    padding: SPACE.lg,
-    paddingTop: 0,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.surface2 + '40',
-  },
-  goalDesc: {
-    fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary,
-    lineHeight: 20, marginTop: SPACE.md, marginBottom: SPACE.md,
-  },
-  
-  // Key Results
-  krSection: { marginTop: SPACE.md },
-  krHeader: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: COLORS.textMuted, letterSpacing: 1, marginBottom: SPACE.sm },
-  krRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginBottom: SPACE.sm },
-  krCheck: {
-    width: 20, height: 20, borderRadius: 10,
-    borderWidth: 1.5, borderColor: COLORS.borderHover,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  krText: { flex: 1, fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: COLORS.textPrimary },
-  krTextDone: { textDecorationLine: 'line-through', color: COLORS.textMuted },
-  
-  completeGoalBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
-    backgroundColor: COLORS.accentPrimary,
-    paddingVertical: SPACE.md, borderRadius: RADIUS.lg,
-    marginTop: SPACE.xl,
-  },
-  completeGoalText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: COLORS.background },
+const makeStyles = (colors: any) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: colors.background },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: SPACE.xl,
+        paddingBottom: SPACE.lg,
+      },
+      title: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.xxl, color: colors.textPrimary },
+      subtitle: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted, marginTop: 4 },
+      fab: {
+        width: 44, height: 44, borderRadius: 22,
+        backgroundColor: colors.accentPrimary, 
+        alignItems: 'center', justifyContent: 'center',
+        ...SHADOW.accent(),
+      },
+      list: { padding: SPACE.xl, paddingTop: SPACE.xs, paddingBottom: 120 },
+      
+      // Card
+      card: {
+        backgroundColor: colors.surface,
+        borderRadius: RADIUS.xl, 
+        marginBottom: SPACE.md,
+        borderWidth: 1, borderColor: colors.borderHover,
+        overflow: 'hidden',
+      },
+      cardDone: { opacity: 0.6, borderColor: colors.border },
+      cardHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: SPACE.lg,
+      },
+      cardHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+      },
+      cardTitle: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.lg, color: colors.textPrimary, marginBottom: 2 },
+      cardTitleDone: { textDecorationLine: 'line-through', color: colors.textMuted },
+      deadlineText: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.xs, color: colors.textMuted },
+      menuBtn: { padding: SPACE.sm },
+      
+      // Expanded Content
+      expandedContent: {
+        padding: SPACE.lg,
+        paddingTop: 0,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        backgroundColor: colors.surface2 + '40',
+      },
+      goalDesc: {
+        fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textSecondary,
+        lineHeight: 20, marginTop: SPACE.md, marginBottom: SPACE.md,
+      },
+      
+      // Key Results
+      krSection: { marginTop: SPACE.md },
+      krHeader: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: colors.textMuted, letterSpacing: 1, marginBottom: SPACE.sm },
+      krRow: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md, marginBottom: SPACE.sm },
+      krCheck: {
+        width: 20, height: 20, borderRadius: 10,
+        borderWidth: 1.5, borderColor: colors.borderHover,
+        alignItems: 'center', justifyContent: 'center',
+      },
+      krText: { flex: 1, fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: colors.textPrimary },
+      krTextDone: { textDecorationLine: 'line-through', color: colors.textMuted },
+      
+      completeGoalBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACE.sm,
+        backgroundColor: colors.accentPrimary,
+        paddingVertical: SPACE.md, borderRadius: RADIUS.lg,
+        marginTop: SPACE.xl,
+      },
+      completeGoalText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.background },
 
-  // Empty State
-  emptyState: { alignItems: 'center', marginTop: 100, gap: SPACE.md },
-  emptyText: {
-    fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md,
-    color: COLORS.textMuted, textAlign: 'center', lineHeight: 22,
-  },
+      // Empty State
+      emptyState: { alignItems: 'center', marginTop: 100, gap: SPACE.md },
+      emptyText: {
+        fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md,
+        color: colors.textMuted, textAlign: 'center', lineHeight: 22,
+      },
 
-  // Wizard Modal
-  modalBg: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.85)' },
-  modalSheet: {
-    backgroundColor: COLORS.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32,
-    height: '75%', padding: SPACE.xl,
-    borderTopWidth: 1, borderTopColor: COLORS.borderHover,
-  },
-  wizardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.xl },
-  wizardProgress: { flexDirection: 'row', gap: SPACE.sm },
-  wizardDot: { width: 32, height: 4, borderRadius: 2, backgroundColor: COLORS.surface2 },
-  
-  wizardContent: { flex: 1, paddingVertical: SPACE.md },
-  wizardLabel: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.xs, color: COLORS.accentPrimary, letterSpacing: 2, marginBottom: SPACE.xs },
-  wizardTitle: { fontFamily: FONT_FAMILY.title, fontSize: 32, color: COLORS.textPrimary, lineHeight: 38, marginBottom: SPACE.sm },
-  wizardSub: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: COLORS.textMuted, marginBottom: SPACE.xl },
-  
-  wizardInput: {
-    fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.lg, color: COLORS.textPrimary,
-    borderBottomWidth: 2, borderBottomColor: COLORS.borderHover,
-    paddingVertical: SPACE.sm,
-  },
-  
-  datePickerBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
-    backgroundColor: COLORS.surface2, padding: SPACE.lg, borderRadius: RADIUS.lg,
-    alignSelf: 'flex-start',
-  },
-  datePickerText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg, color: COLORS.textPrimary },
+      // Wizard Modal
+      modalBg: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.85)' },
+      modalSheet: {
+        backgroundColor: colors.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32,
+        height: '75%', padding: SPACE.xl,
+        borderTopWidth: 1, borderTopColor: colors.borderHover,
+      },
+      wizardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.xl },
+      wizardProgress: { flexDirection: 'row', gap: SPACE.sm },
+      wizardDot: { width: 32, height: 4, borderRadius: 2, backgroundColor: colors.surface2 },
+      
+      wizardContent: { flex: 1, paddingVertical: SPACE.md },
+      wizardLabel: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.xs, color: colors.accentPrimary, letterSpacing: 2, marginBottom: SPACE.xs },
+      wizardTitle: { fontFamily: FONT_FAMILY.title, fontSize: 32, color: colors.textPrimary, lineHeight: 38, marginBottom: SPACE.sm },
+      wizardSub: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: colors.textMuted, marginBottom: SPACE.xl },
+      
+      wizardInput: {
+        fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.lg, color: colors.textPrimary,
+        borderBottomWidth: 2, borderBottomColor: colors.borderHover,
+        paddingVertical: SPACE.sm,
+      },
+      
+      datePickerBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
+        backgroundColor: colors.surface2, padding: SPACE.lg, borderRadius: RADIUS.lg,
+        alignSelf: 'flex-start',
+      },
+      datePickerText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
 
-  wizardNextBtn: {
-    backgroundColor: COLORS.accentPrimary, borderRadius: RADIUS.full,
-    paddingVertical: 18, alignItems: 'center',
-    marginBottom: SPACE.xl, ...SHADOW.accent(),
-  },
-  wizardNextText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: COLORS.background },
-});
+      wizardNextBtn: {
+        backgroundColor: colors.accentPrimary, borderRadius: RADIUS.full,
+        paddingVertical: 18, alignItems: 'center',
+        marginBottom: SPACE.xl, ...SHADOW.accent(),
+      },
+      wizardNextText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.background },
+    });

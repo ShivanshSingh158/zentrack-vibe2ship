@@ -7,27 +7,27 @@
 
 /* Calendar Sidebar */
 .calendar-sidebar {
-  width: calc(250px + max(0px, 50vw - 700px));
-  background: rgba(12, 12, 16, 0.6);
-  border-right: 1px solid var(--border-subtle);
-  padding: 1.5rem 1.5rem 1.5rem 0;
+  width: 200px; /* Reduced box size */
+  background: var(--glass-1-bg);
+  border-right: 1px solid var(--glass-1-border);
+  padding: 1.5rem 1rem 1.5rem 0.5rem;
   padding-top: 6.75rem; /* Push content down to avoid TopNav */
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   margin-top: -7.25rem; /* Pull background up to top of screen */
   margin-bottom: -2rem;
-  margin-left: calc(-2rem - max(0px, 50vw - 700px));
+  margin-left: -2rem; /* Sit perfectly at the edge of the screen padding */
 }
 
 .calendar-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.5rem;
   color: var(--text-primary);
   font-family: var(--font-display);
-  padding-left: 0;
+  padding-left: 1rem;
 }
 
 .calendar-dates {
@@ -50,9 +50,9 @@
   gap: 0.5rem;
   cursor: pointer;
   transition: transform 0.25s var(--ease-out-expo), opacity 0.25s var(--ease-out-expo), background-color 0.25s var(--ease-out-expo), border-color 0.25s var(--ease-out-expo), box-shadow 0.25s var(--ease-out-expo), color 0.25s var(--ease-out-expo);
-  text-align: center;
-  justify-content: center;
-  padding-left: 0;
+  text-align: left;
+  justify-content: flex-start;
+  padding-left: 1rem;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   border-left: none;
   position: relative;

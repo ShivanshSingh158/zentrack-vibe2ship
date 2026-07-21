@@ -25,7 +25,7 @@ export const BackgroundEffects = () => {
         pointerEvents: 'none',
         zIndex: -1,
         overflow: 'hidden',
-        background: '#0f0d0a',
+        background: 'var(--color-midnight-base)',
         // Contain layout+paint so the browser skips full-page recalc for this subtree
         contain: 'strict',
       }}
@@ -48,6 +48,7 @@ export const BackgroundEffects = () => {
         {/* Orb 3 — Amber, center */}
         <div className="bg-orb bg-orb-3" />
       </div>
+      <div className="grain-overlay" />
     </div>
   );
 };

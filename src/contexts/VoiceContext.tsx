@@ -832,7 +832,7 @@ Raw transcript: "${raw}"`);
     if (!liveStarted) {
       // ── Fallback: Chrome STT pipeline (turn-based, reliable) ───────────────
       console.log('[VoiceConversation] Gemini Live unavailable — falling back to Chrome STT');
-      toast.success('🎙️ Voice conversation started! Speak naturally — Sara is listening.', { duration: 4000 });
+      // Notification removed as per user request
       startMicListening();
     }
   }, [startLiveMode, startMicListening]);
@@ -884,7 +884,7 @@ Raw transcript: "${raw}"`);
     playerRef.current?.flush();
     ttsQueueRef.current = [];
 
-    toast.info('Voice conversation ended.', { duration: 2000 });
+    // Notification removed as per user request
   }, [stopLiveMode]);
 
   // Cleanup on unmount

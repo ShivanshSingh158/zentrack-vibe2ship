@@ -14,10 +14,10 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  max-width: 1400px;
-  margin: 0 auto;
   width: 100%;
+  max-width: 100%;
   padding: 2rem;
+  background: transparent;
 }
 
 .main-content.full-width {
@@ -37,15 +37,15 @@
   justify-content: space-between;
   padding: 0 2rem;
   height: 56px;
-  /* Warm Obsidian top-nav */
-  background: rgba(10, 8, 5, 0.84);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-bottom: 1px solid rgba(210, 175, 130, 0.07);
+  /* Obsidian Cosmos top-nav — true black glass */
+  background: rgba(0, 0, 0, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.10);
   margin: 0;
   max-width: 100%;
   border-radius: 0;
-  /* Force GPU compositing — prevents nav from being re-drawn on every scroll tick */
+  /* Force GPU compositing */
   transform: translateZ(0);
   will-change: transform;
 }
@@ -56,9 +56,9 @@
 }
 
 .app-logo {
-  font-family: 'Instrument Serif', serif;
-  font-size: 1.5rem;
-  font-weight: 400;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
   color: white;
   letter-spacing: -0.02em;
   display: flex;
@@ -110,8 +110,8 @@
 
 .expandable-search.expanded {
   width: 500px;
-  background: rgba(14, 11, 7, 0.88);
-  border: 1px solid rgba(196, 149, 106, 0.22);
+  background: rgba(10, 10, 11, 0.92);
+  border: 1px solid rgba(59, 130, 246, 0.28);
 }
 
 .search-icon-wrapper {
@@ -248,8 +248,9 @@
 
 .nav-link {
   font-size: 0.85rem;
-  color: rgba(255,255,255,0.55) !important;
-  transition: color 0.2s;
+  font-weight: 500;
+  color: rgba(142, 142, 147, 0.80) !important;
+  transition: color 0.15s ease, background 0.15s ease;
   background: none;
   border: none;
   cursor: pointer;
@@ -257,22 +258,23 @@
   border-radius: 0.5rem;
   white-space: nowrap;
   text-decoration: none;
+  letter-spacing: -0.01em;
 }
 
 .nav-link:hover, .nav-link.active {
   color: white !important;
-  background: rgba(255,255,255,0.06);
+  background: rgba(59, 130, 246, 0.10);
 }
 
 .top-nav-right {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  border: 1px solid rgba(255,255,255,0.12);
+  gap: 1.2rem;
+  border: 1px solid rgba(59, 130, 246, 0.10);
   border-radius: 999px;
   padding: 0.3rem 0.9rem;
-  background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(8px);
+  background: rgba(28, 28, 29, 0.60);
+  backdrop-filter: blur(12px);
 }
 
 .icon-button {
@@ -286,13 +288,13 @@
   border-radius: 50%;
   width: 36px;
   height: 36px;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
 }
 
 .icon-button:hover,
 .icon-button.active {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
 }
 
 .app-drawer-container {
@@ -305,14 +307,14 @@
 .app-drawer {
   position: absolute;
   top: calc(100% + 12px);
-  right: -60px; /* shift a bit so it aligns nicely with the avatar */
+  right: -60px;
   width: 320px;
-  background: rgba(20, 20, 26, 0.85);
-  backdrop-filter: blur(24px) saturate(160%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(20, 20, 22, 0.96);
+  backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(59, 130, 246, 0.12);
   border-radius: 20px;
   padding: 1.5rem;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(59, 130, 246, 0.06) inset;
   z-index: 100;
   animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: top right;
@@ -324,9 +326,9 @@
 }
 
 .google-style-drawer {
-  background: #202124;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  background: #1c1c1d;
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(59,130,246,0.05) inset;
   border-radius: 24px;
   padding: 1rem 0;
   width: 340px;
@@ -357,8 +359,8 @@
 }
 
 .drawer-edit-btn {
-  background: #e8f0fe;
-  color: #1a73e8;
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
   border: none;
   width: 32px;
   height: 32px;
@@ -367,18 +369,11 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.2s;
-}
-
-@media (prefers-color-scheme: dark) {
-  .drawer-edit-btn {
-    background: #3c4043;
-    color: #8ab4f8;
-  }
+  transition: background 0.15s ease;
 }
 
 .drawer-edit-btn:hover {
-  filter: brightness(0.95);
+  background: rgba(59, 130, 246, 0.20);
 }
 
 .drawer-scroll-area {
@@ -416,13 +411,7 @@
 }
 
 .app-drawer-item:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-
-@media (prefers-color-scheme: dark) {
-  .app-drawer-item:hover {
-    background: rgba(255, 255, 255, 0.04);
-  }
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .app-drawer-item:active {
@@ -475,8 +464,8 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #2dd4bf; /* Teal checkmark equivalent */
-  border: 2px solid #202124;
+  background: #3b82f6;
+  border: 2px solid #1c1c1d;
   opacity: 0;
   transform: scale(0.5);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -536,13 +525,13 @@
   height: 32px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.20);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .user-avatar-btn:hover .user-avatar {
   transform: scale(1.05);
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
 }
 
 .google-pro-border {
@@ -1028,14 +1017,14 @@ body.agent-active .sidebar::after {
 
 /* Expandable search */
 .expandable-search { border-radius: 100px !important; outline: none !important; box-shadow: none !important; }
-.expandable-search:hover  { background: rgba(196, 149, 106, 0.08) !important; color: var(--text-primary) !important; }
-.expandable-search.expanded { background: rgba(12, 9, 5, 0.70) !important; border: 1px solid rgba(196, 149, 106, 0.22) !important; border-radius: 100px !important; }
+.expandable-search:hover  { background: rgba(59, 130, 246, 0.08) !important; color: var(--text-primary) !important; }
+.expandable-search.expanded { background: rgba(10, 10, 11, 0.80) !important; border: 1px solid rgba(59, 130, 246, 0.26) !important; border-radius: 100px !important; }
 
 /* Icon button active state in nav-right */
 .icon-button:hover,
 .icon-button.active {
-  background: rgba(196, 149, 106, 0.10) !important;
-  color: var(--zen-copper) !important;
+  background: rgba(59, 130, 246, 0.10) !important;
+  color: var(--zen-purple) !important;
 }
 
 /* nav-link base for top nav */

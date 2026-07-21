@@ -12,6 +12,7 @@ import {
 import AnimatedPressable from '../components/AnimatedPressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../theme/tokens';
+import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -49,6 +50,16 @@ export default function SettingsScreen() {
   const contextData = useMobileData();
   const { user, googleAccessToken, tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, pinnedModules, setPinnedModules } = contextData;
   const [hasWorkspace, setHasWorkspace] = useState(!!googleAccessToken);
+
+  // ── Theme ──────────────────────────────────────────────────────────────────
+  const { isDark, colors, toggleTheme } = useTheme();
+  // Build styles dynamically so they react to theme changes
+  const s = makeStyles(colors);
+
+  const handleThemeToggle = useCallback((v: boolean) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    toggleTheme();
+  }, [toggleTheme]);
 
   // Settings state
   const [notifTimeStr, setNotifTimeStr] = useState('9:00am');
@@ -251,7 +262,7 @@ export default function SettingsScreen() {
             <Text style={s.profileName}>{displayName}</Text>
             <Text style={s.profileEmail}>{emailLine}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={14} color={COLORS.textTertiary} />
+          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
         </AnimatedPressable>
 
         {/* ── GENERAL ── */}
@@ -318,7 +329,9 @@ export default function SettingsScreen() {
 
             <Hairline />
 
-            {/* Biometric Lock */}
+          <Hairline />
+
+          {/* Biometric Lock */}
             <View style={s.settingRow}>
               <View style={[s.iconBox, biometricEnabled ? { backgroundColor: 'rgba(94,218,158,0.15)' } : {}]}>
                 <Ionicons name="finger-print-outline" size={15} color={biometricEnabled ? COLORS.accentGreen : COLORS.accentPrimary} />
@@ -390,20 +403,21 @@ export default function SettingsScreen() {
 
         {/* ── UPCOMING FEATURES ── */}
         <SectionLabel text="UPCOMING FEATURES" />
-        
+
         <View style={[s.groupCard, { opacity: 0.6 }]}>
-          {/* Dark mode — always on, honestly labeled */}
-          <View style={s.settingRow}>
-            <View style={s.iconBox}><Ionicons name="moon-outline" size={15} color={COLORS.textMuted} /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.settingTitle}>Dark mode</Text>
-              <Text style={s.settingSubtitle}>Currently locked to Obsidian Cosmos</Text>
+          {/* Appearance / Theme toggle — locked */}
+          <AnimatedPressable style={s.settingRow} activeOpacity={0.7} onPress={() => Alert.alert('Coming Soon', 'Light mode is currently being polished and will return in a future update!')}>
+            <View style={[s.iconBox, { backgroundColor: 'rgba(124,111,247,0.12)' }]}>
+              <Ionicons name="sunny" size={15} color={colors.accentPrimary} />
             </View>
-            <Ionicons name="lock-closed" size={12} color={COLORS.textTertiary} />
-          </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.settingTitle}>Appearance (Light Mode)</Text>
+              <Text style={s.settingSubtitle}>Coming in next update</Text>
+            </View>
+            <Ionicons name="lock-closed" size={14} color={colors.textTertiary} />
+          </AnimatedPressable>
 
           <Hairline />
-
           {/* Google Workspace */}
           <View style={s.settingRow}>
             <View style={[s.iconBox, { backgroundColor: 'rgba(217,48,37,0.2)' }]}>
@@ -413,7 +427,7 @@ export default function SettingsScreen() {
               <Text style={s.settingTitle}>Google Workspace</Text>
               <Text style={s.settingSubtitle}>Integration coming soon</Text>
             </View>
-            <Ionicons name="construct-outline" size={14} color={COLORS.textTertiary} />
+            <Ionicons name="construct-outline" size={14} color={colors.textTertiary} />
           </View>
 
           <Hairline />
@@ -424,7 +438,7 @@ export default function SettingsScreen() {
               activeOpacity={0.7}
               onPress={() => Alert.alert('Multi-language Support', 'ZenTrack currently only supports English (US). Additional languages will be available in future updates.')}
             >
-              <View style={s.iconBox}><Ionicons name="language-outline" size={15} color={COLORS.accentPrimary} /></View>
+              <View style={s.iconBox}><Ionicons name="language-outline" size={15} color={colors.accentPrimary} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={s.settingTitle}>Language</Text>
                 <Text style={s.settingSubtitle}>English (US)</Text>
@@ -457,23 +471,24 @@ export default function SettingsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  root:   { flex: 1, backgroundColor: COLORS.background },
+const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext').useTheme>['colors']) =>
+  StyleSheet.create({
+  root:   { flex: 1, backgroundColor: colors.background },
   scroll: { paddingHorizontal: 8, paddingTop: 16, paddingBottom: 60 },
 
   profileCard: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.surface, borderRadius: 16,
+    backgroundColor: colors.surface, borderRadius: 16,
     padding: 14, paddingHorizontal: 16, marginBottom: 24,
-    borderWidth: 1, borderColor: '#2c2c2e',
+    borderWidth: 1, borderColor: colors.border,
   },
   profileAvatar: {
     width: 42, height: 42, borderRadius: 21,
-    backgroundColor: COLORS.accentPrimary, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.accentPrimary, alignItems: 'center', justifyContent: 'center',
   },
   profileAvatarText: { fontFamily: 'Inter_700Bold', fontSize: 17, color: '#000000' },
-  profileName:  { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: COLORS.textPrimary },
-  profileEmail: { fontFamily: 'Inter_400Regular',  fontSize: 12, color: COLORS.textTertiary, marginTop: 2 },
+  profileName:  { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.textPrimary },
+  profileEmail: { fontFamily: 'Inter_400Regular',  fontSize: 12, color: colors.textTertiary, marginTop: 2 },
 
   collapsibleHeader: {
     flexDirection: 'row', alignItems: 'center',
@@ -481,12 +496,12 @@ const s = StyleSheet.create({
   },
   sectionLabel: {
     fontFamily: 'Inter_600SemiBold', fontSize: 11,
-    letterSpacing: 0.8, color: COLORS.textTertiary, marginBottom: 8,
+    letterSpacing: 0.8, color: colors.textTertiary, marginBottom: 8,
   },
 
   groupCard: {
-    backgroundColor: COLORS.surface, borderRadius: 16,
-    borderWidth: 1, borderColor: '#2c2c2e',
+    backgroundColor: colors.surface, borderRadius: 16,
+    borderWidth: 1, borderColor: colors.border,
     overflow: 'hidden', marginBottom: 4,
   },
 
@@ -496,66 +511,67 @@ const s = StyleSheet.create({
   },
   iconBox: {
     width: 30, height: 30, borderRadius: 8,
-    backgroundColor: COLORS.accentDim,
+    backgroundColor: colors.accentDim,
     alignItems: 'center', justifyContent: 'center',
   },
   iconBoxActive: { backgroundColor: 'rgba(165,153,255,0.2)' },
-  settingTitle:    { fontFamily: 'Inter_400Regular',  fontSize: 14, color: COLORS.textPrimary },
-  settingSubtitle: { fontFamily: 'Inter_400Regular',  fontSize: 11, color: COLORS.textTertiary, marginTop: 2, lineHeight: 15 },
+  settingTitle:    { fontFamily: 'Inter_400Regular',  fontSize: 14, color: colors.textPrimary },
+  settingSubtitle: { fontFamily: 'Inter_400Regular',  fontSize: 11, color: colors.textTertiary, marginTop: 2, lineHeight: 15 },
 
-  hairline: { height: StyleSheet.hairlineWidth, backgroundColor: '#1c1c1e', marginLeft: 58 },
+  hairline: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 58 },
 
   valueChip: {
-    backgroundColor: COLORS.surfaceRaised, borderRadius: 8,
+    backgroundColor: colors.surfaceRaised, borderRadius: 8,
     paddingHorizontal: 12, paddingVertical: 6,
   },
-  valueChipText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: COLORS.accentPrimary },
+  valueChipText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.accentPrimary },
 
   // Tab customization
   tabHint: {
-    fontFamily: 'Inter_400Regular', fontSize: 12, color: COLORS.textTertiary,
+    fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textTertiary,
     lineHeight: 18, marginBottom: 8, marginLeft: 2,
   },
   tabCount: {
-    fontFamily: 'Inter_400Regular', fontSize: 11, color: COLORS.textTertiary,
+    fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textTertiary,
     textAlign: 'right', marginTop: 6, marginRight: 4, marginBottom: 8,
   },
   checkBox: {
     width: 22, height: 22, borderRadius: 11,
-    borderWidth: 1.5, borderColor: COLORS.textTertiary,
+    borderWidth: 1.5, borderColor: colors.textTertiary,
     alignItems: 'center', justifyContent: 'center',
   },
   checkBoxActive: {
-    backgroundColor: COLORS.accentPrimary, borderColor: COLORS.accentPrimary,
+    backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary,
   },
 
   versionText: {
-    fontFamily: 'Inter_400Regular', fontSize: 11, color: COLORS.textTertiary,
+    fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textTertiary,
     textAlign: 'center', marginTop: 32,
   } as any,
 
   // Sign out modal
   modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.3)',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center', alignItems: 'center', padding: 32,
   },
   confirmCard: {
-    backgroundColor: '#1c1c1e', borderRadius: 20,
+    backgroundColor: colors.surfaceRaised, borderRadius: 20,
     padding: 24, width: '100%',
-    borderWidth: 1, borderColor: '#2c2c2e',
+    borderWidth: 1, borderColor: colors.border,
   },
-  confirmTitle: { fontFamily: 'Inter_700Bold',   fontSize: 17, color: COLORS.textPrimary, marginBottom: 8 },
-  confirmBody:  { fontFamily: 'Inter_400Regular', fontSize: 14, color: COLORS.textMuted, lineHeight: 20, marginBottom: 24 },
+  confirmTitle: { fontFamily: 'Inter_700Bold',   fontSize: 17, color: colors.textPrimary, marginBottom: 8 },
+  confirmBody:  { fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textMuted, lineHeight: 20, marginBottom: 24 },
   confirmBtns:  { flexDirection: 'row', gap: 12 },
   confirmCancel: {
     flex: 1, padding: 14, borderRadius: 12,
-    backgroundColor: '#2c2c2e', alignItems: 'center',
+    backgroundColor: colors.surfaceRaised, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border,
   },
-  confirmCancelText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: COLORS.textPrimary },
+  confirmCancelText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.textPrimary },
   confirmDanger: {
     flex: 1, padding: 14, borderRadius: 12,
-    backgroundColor: COLORS.errorBg, alignItems: 'center',
-    borderWidth: 1, borderColor: COLORS.error,
+    backgroundColor: colors.errorBg, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.error,
   },
-  confirmDangerText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: COLORS.error },
+  confirmDangerText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.error },
 });

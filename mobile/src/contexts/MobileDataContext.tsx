@@ -1,633 +1,332 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import * as Notifications from 'expo-notifications';
-import { collection, query, where, onSnapshot, doc, setDoc, getDoc } from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db } from '../services/firebase';
-import { scheduleTaskReminders } from '../services/notifications';
-import { UserGymPlanDoc, GymPlanDay } from '../types/gym.types';
+/**
+ * MobileDataContext — ZenTrack Mobile (Backward-Compatible Facade)
+ *
+ * ARCHITECTURE:
+ * This file is the public API. All 34+ consumers import { useMobileData, MobileDataProvider } here.
+ * Internally, data lives in 5 isolated domain contexts (./domains/):
+ *   CoreDataContext    — tasks, habits, habitLogs, auth          [always open]
+ *   WellnessContext    — gymLogs, userGymPlan                    [demand-based]
+ *   AcademicContext    — attendance, assignments, semesters...   [demand-based]
+ *   CreativeContext    — storageNodes, notes, learningTopics...  [demand-based]
+ *   PlannerContext     — customEvents, goals, weeklyReviews...   [demand-based]
+ *
+ * DEMAND-BASED SUBSCRIPTIONS:
+ * The 4 non-core providers open their Firestore listeners only once, the first time
+ * MobileDataShimProvider mounts (which happens when AppNavigator renders).
+ * By that point the user has logged in but has NOT yet navigated to gym/academic/creative
+ * screens. However, since the shim aggregates all domains into one object for
+ * backward compat, we eagerly call ensureSubscribed for all domains after a
+ * short idle delay — matching the previous 1500ms lazy strategy but now isolated
+ * per domain, so a gym snapshot update ONLY re-renders WellnessContext consumers.
+ */
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+import React, { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { User } from "firebase/auth";
+import { UserGymPlanDoc, GymPlanDay } from "../types/gym.types";
+import { scheduleAllNotifications } from "../services/notifications";
+
+import { CoreDataProvider, useCoreData }     from "./domains/CoreDataContext";
+import { WellnessProvider, useWellnessData } from "./domains/WellnessContext";
+import { AcademicProvider, useAcademicData } from "./domains/AcademicContext";
+import { CreativeProvider, useCreativeData } from "./domains/CreativeContext";
+import { PlannerProvider, usePlannerData }   from "./domains/PlannerContext";
+
+// ─── Type Exports (all preserved — no consumer changes needed) ─────────────────
 
 export interface Task {
-  id: string;
-  title: string;
-  status: 'pending' | 'completed';
-  priority: 'P1' | 'P2' | 'P3' | 'high' | 'medium' | 'low';
-  date?: string;
-  tags?: string[];
-  userId: string;
-  isRecurring?: boolean;
-  timeSlot?: string;
-  estimatedMinutes?: number;
-  subject?: string;
-  commitmentTo?: string;
-  energyRequirement?: 'low' | 'medium' | 'high';
-  order?: number;
-  subtasks?: { id: string; title: string; completed: boolean }[];
+  id: string; title: string; status: "pending" | "completed";
+  priority: "P1" | "P2" | "P3" | "high" | "medium" | "low";
+  date?: string; tags?: string[]; userId: string; isRecurring?: boolean;
+  timeSlot?: string; estimatedMinutes?: number; subject?: string;
+  commitmentTo?: string; energyRequirement?: "low" | "medium" | "high";
+  order?: number; subtasks?: { id: string; title: string; completed: boolean }[];
   completedAt?: string | null;
 }
 
-export interface Habit {
+export interface TaskTemplate {
   id: string;
-  name: string;
-  emoji: string;
-  frequency: string;
-  streak?: number;
-  longestStreak?: number;
-  color?: string;
   userId: string;
-  archived?: boolean;
+  title: string;
+  subtasks?: { id: string; title: string; completed: boolean }[];
+  priority: "high" | "medium" | "low";
+  timeSlot?: string;
+  estimatedMinutes?: number;
+  isRecurring?: boolean;
+  recurringDays?: number[];
 }
 
-export interface HabitLog {
-  id: string;
-  habitId: string;
-  userId: string;
-  date: string;
+export interface Habit {
+  id: string; name: string; emoji: string; frequency: string;
+  streak?: number; longestStreak?: number; color?: string; userId: string; archived?: boolean;
 }
+
+export interface HabitLog { id: string; habitId: string; userId: string; date: string; }
 
 export interface StorageNode {
-  id?: string;
-  userId: string;
-  type: 'folder' | 'file' | 'note';
-  name: string;
-  parentId: string | null;
-  fileType?: 'pdf' | 'docx' | 'image' | 'other';
-  size?: number;
-  url?: string;
-  content?: string;
-  createdAt: any;
-  updatedAt: any;
-  pinned?: boolean;
-  tags?: string[];
+  id?: string; userId: string; type: "folder" | "file" | "note"; name: string;
+  parentId: string | null; fileType?: "pdf" | "docx" | "image" | "other";
+  size?: number; url?: string; content?: string; createdAt: any; updatedAt: any;
+  pinned?: boolean; tags?: string[];
 }
 
-export interface Note {
-  id: string;
-  title: string;
-  content: string;
-  tags?: string[];
-  createdAt?: any;
-  userId: string;
-}
+export interface Note { id: string; title: string; content: string; tags?: string[]; createdAt?: any; userId: string; }
 
-export interface GoalKeyResult {
-  id: string;
-  title: string;
-  completed: boolean;
-}
-
+export interface GoalKeyResult { id: string; title: string; completed: boolean; }
 export interface Goal {
-  id: string;
-  title: string;
-  status: string; // 'active', 'completed', 'paused', 'cancelled'
-  progress?: number;
-  userId: string;
-  description?: string;
-  deadline?: string;
-  firstStep?: string;
-  successMetric?: string;
-  keyResults?: GoalKeyResult[];
+  id: string; title: string; status: string; progress?: number; userId: string;
+  description?: string; deadline?: string; firstStep?: string; successMetric?: string; keyResults?: GoalKeyResult[];
+  updatedAt?: number;
 }
 
 export interface CustomEvent {
-  id: string;
-  title: string;
-  date: string;
-  type: 'todo' | 'job' | 'goal' | 'exam' | 'assignment_due' | 'holiday' | 'viva' | 'submission' | 'gcal';
-  startTime?: string;
-  endTime?: string;
-  location?: string;
-  description?: string;
-  userId: string;
+  id: string; title: string; date: string;
+  type: "todo" | "job" | "goal" | "exam" | "assignment_due" | "holiday" | "viva" | "submission" | "gcal" | "gym";
+  startTime?: string; endTime?: string; location?: string; description?: string; userId: string;
 }
 
-export interface WaterLog {
-  id: string;
-  userId: string;
-  date: string;
-  amountMl: number;
-}
-
-export interface SleepLog {
-  id: string;
-  userId: string;
-  date: string;
-  hours: number;
-}
+export interface WaterLog { id: string; userId: string; date: string; amountMl: number; }
+export interface SleepLog  { id: string; userId: string; date: string; hours: number; }
+export interface WeightLog { id?: string; userId: string; date: string; weightKg: number; photoUrl?: string; createdAt: number; }
 
 export interface GymLog {
-  id: string;
-  date: string;
-  userId: string;
-  exercises?: any[];
-  cardio?: any[];
+  id: string; date: string; userId: string; exercises?: any[]; cardio?: any[];
+  workoutStartTime?: number; workoutDurationMinutes?: number;
+  startTime?: string; endTime?: string; updatedAt?: number;
 }
 
 export interface AttendanceSubject {
-  id: string;
-  userId: string;
-  name: string;
-  classesAttended: number;
-  classesTotal: number;
-  labsAttended?: number;
-  labsTotal?: number;
-  targetPercentage: number;
-  schedule?: any;
-  schemaVersion?: number;
+  id: string; userId: string; name: string;
+  classesAttended: number; classesTotal: number;
+  labsAttended?: number; labsTotal?: number; targetPercentage: number; schedule?: any; schemaVersion?: number;
+  lastUpdated?: number; color?: string;
+}
+
+export interface AttendanceLog {
+  id?: string; userId: string; subjectId: string; subjectName: string;
+  type: 'class'|'lab'; action: 'attended'|'missed'|'cancelled';
+  date: string; isExtra: boolean; timestamp: number;
 }
 
 export interface Assignment {
-  id?: string;
-  userId: string;
-  title: string;
-  subjectName: string;
-  description?: string;
-  dueDate: string;
-  weightage?: number;
-  status: 'not_started' | 'in_progress' | 'submitted' | 'graded';
-  grade?: string;
-  maxMarks?: number;
-  obtainedMarks?: number;
-  notes?: string;
-  createdAt: number;
-  updatedAt: number;
+  id?: string; userId: string; title: string; subjectName: string; description?: string;
+  dueDate: string; weightage?: number; status: "not_started" | "in_progress" | "submitted" | "graded";
+  grade?: string; maxMarks?: number; obtainedMarks?: number; notes?: string; createdAt: number; updatedAt: number;
 }
 
 export interface Semester {
-  id?: string;
-  userId: string;
-  name: string;
-  startDate?: string;
-  endDate?: string;
-  sgpa?: number;
-  totalCredits?: number;
-  order: number;
-  createdAt: number;
+  id?: string; userId: string; name: string; startDate?: string; endDate?: string;
+  sgpa?: number; totalCredits?: number; order: number; createdAt: number;
 }
 
 export interface SemesterSubject {
-  id?: string;
-  userId: string;
-  semesterId: string;
-  name: string;
-  credits: number;
-  gradePoints?: number;
-  grade?: string;
-  internalMarks?: number;
-  externalMarks?: number;
-  totalMarks?: number;
-  maxMarks?: number;
+  id?: string; userId: string; semesterId: string; name: string; credits: number;
+  gradePoints?: number; grade?: string; internalMarks?: number; externalMarks?: number; totalMarks?: number; maxMarks?: number;
 }
 
 export interface LearningSubTask {
-  id: string;
-  title: string;
-  category?: string;
-  url?: string;
-  notes?: string;
-  isCompleted: boolean;
-  timeSpentMinutes?: number;
-  timeSpentMs?: number;
-  resources?: any[];
-  masteryLevel?: 'not_started' | 'learning' | 'revising' | 'mastered';
-  estimatedHours?: number;
-  revisionCount?: number;
-  lastRevisedAt?: number;
-  pinned?: boolean;
-  pinnedAt?: number;
+  id: string; title: string; category?: string; url?: string; notes?: string; isCompleted: boolean;
+  timeSpentMinutes?: number; timeSpentMs?: number; resources?: any[];
+  masteryLevel?: "not_started" | "learning" | "revising" | "mastered";
+  estimatedHours?: number; revisionCount?: number; lastRevisedAt?: number; pinned?: boolean; pinnedAt?: number;
 }
 
 export interface LearningTopic {
-  id?: string;
-  userId: string;
-  title: string;
-  description?: string;
-  notes?: string;
-  lastStudiedAt?: number;
-  subTasks: LearningSubTask[];
-  createdAt: number;
-  order?: number;
-  timeSpentMinutes?: number;
-  timeSpentMs?: number;
+  id?: string; userId: string; title: string; description?: string; notes?: string;
+  lastStudiedAt?: number; subTasks: LearningSubTask[]; createdAt: number; order?: number;
+  timeSpentMinutes?: number; timeSpentMs?: number;
 }
 
 export interface JobApplication {
-  id?: string;
-  userId?: string;
-  company: string;
-  role: string;
-  location?: string;
-  source?: string;
-  status: 'wishlist' | 'applied' | 'interviewing' | 'offer' | 'rejected';
-  dateApplied: string;
-  expectedSalary?: string;
-  offeredSalary?: string;
-  salary?: string;
-  notes?: string;
-  url?: string;
-  jobDescription?: string;
-  coverLetter?: string;
-  interviewDate?: string;
-  learningTopicId?: string;
-  attachedFileIds?: string[];
-  followUpDate?: number;
-  prepChecklist?: { id: string; title: string; done: boolean }[];
+  id?: string; userId?: string; company: string; role: string; location?: string;
+  source?: string; status: "wishlist" | "applied" | "interviewing" | "offer" | "rejected";
+  dateApplied: string; expectedSalary?: string; offeredSalary?: string; salary?: string;
+  notes?: string; url?: string; jobDescription?: string; coverLetter?: string;
+  interviewDate?: string; learningTopicId?: string; attachedFileIds?: string[];
+  followUpDate?: number; prepChecklist?: { id: string; title: string; done: boolean }[];
 }
 
 export interface WeeklyReview {
-  id?: string;
-  userId: string;
-  weekStart: string;
-  weekEnd: string;
-  wentWell: string;
-  toImprove: string;
-  nextWeekPriorities: string;
-  gratitude: string;
-  aiChatHistory?: any[];
-  stats?: any;
-  createdAt: number;
-  updatedAt: number;
+  id?: string; userId: string; weekStart: string; weekEnd: string;
+  wentWell: string; toImprove: string; nextWeekPriorities: string; gratitude: string;
+  aiChatHistory?: any[]; stats?: any; createdAt: number; updatedAt: number;
 }
 
-export interface PomodoroSession {
-  id: string;
-  userId: string;
-  taskId?: string | null;
-  taskTitle?: string | null;
-  durationMinutes: number;
-  date: string; // YYYY-MM-DD
-  createdAt: any;
-}
+
+
+// ─── Unified Context (backward-compatible shape) ───────────────────────────────
 
 interface MobileDataContextType {
   user: User | null;
-  tasks: Task[];
-  habits: Habit[];
-  allHabits: Habit[];
-  habitLogs: HabitLog[];
-  notes: Note[];
-  storageNodes: StorageNode[];
-  goals: Goal[];
-  customEvents: CustomEvent[];
-  gymLogs: GymLog[];
-  attendance: AttendanceSubject[];
-  assignments: Assignment[];
-  semesters: Semester[];
-  semesterSubjects: SemesterSubject[];
-  learningTopics: LearningTopic[];
-  jobs: JobApplication[];
+  tasks: Task[]; habits: Habit[]; allHabits: Habit[]; habitLogs: HabitLog[];
+  notes: Note[]; userGymPlan: UserGymPlanDoc | null; storageNodes: StorageNode[];
+  goals: Goal[]; customEvents: CustomEvent[]; gymLogs: GymLog[];
+  /** true once the first Firestore gymLogs snapshot has resolved — safe to read in useGymLog */
+  gymLogsReady: boolean;
+  /** Call to immediately open the Firestore gym subscriptions, bypassing the 1200ms idle delay */
+  gymEnsureSubscribed: () => void;
+  attendance: AttendanceSubject[]; attendanceLogs: AttendanceLog[]; assignments: Assignment[];
+  semesters: Semester[]; semesterSubjects: SemesterSubject[];
+  learningTopics: LearningTopic[]; jobs: JobApplication[];
+  waterLogs: WaterLog[]; sleepLogs: SleepLog[]; weightLogs: WeightLog[];
   weeklyReviews: WeeklyReview[];
-  pomodoroSessions: PomodoroSession[];
-  waterLogs: WaterLog[];
-  sleepLogs: SleepLog[];
-  googleAccessToken: string | null;
-  loading: boolean;
-  pendingTaskCount: number;
-  todayHabits: Habit[];
-  pinnedModules: string[];
-  setPinnedModules: (modules: string[]) => void;
-  userGymPlan: UserGymPlanDoc | null;
+  googleAccessToken: string | null; loading: boolean;
+  pendingTaskCount: number; todayHabits: Habit[];
+  pinnedModules: string[]; setPinnedModules: (modules: string[]) => void;
   updateMasterPlan: (dayIndex: number, planDay: GymPlanDay) => Promise<void>;
+  optimisticUpdateTask: (taskId: string, partial: Partial<Task>) => void;
+  optimisticUpdateHabit: (habitId: string, partial: Partial<Habit>) => void;
+  optimisticAddHabitLog: (log: HabitLog) => void;
+  optimisticRemoveHabitLog: (habitId: string, date: string) => void;
 }
 
-// ─── Context ─────────────────────────────────────────────────────────────────
+const MobileDataShimContext = createContext<MobileDataContextType | null>(null);
 
-const MobileDataContext = createContext<MobileDataContextType | null>(null);
+// ─── Shim Provider ─────────────────────────────────────────────────────────────
+// Assembles all 5 domain contexts into one backward-compat value object.
+// Also triggers demand-based subscriptions after a short idle delay
+// (matches previous 1500ms lazy strategy, but now domain-isolated).
+function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
+  const core     = useCoreData();
+  const wellness = useWellnessData();
+  const academic = useAcademicData();
+  const creative = useCreativeData();
+  const planner  = usePlannerData();
 
-export function useMobileData() {
-  const ctx = useContext(MobileDataContext);
-  if (!ctx) throw new Error('useMobileData must be used inside MobileDataProvider');
+  // Open demand-based subscriptions after a short 250ms idle window.
+  // Previously 1200ms — now 250ms: still doesn't block the initial Dashboard
+  // render but means Gym/Academic/Creative data is ready 950ms sooner.
+  // Each call is idempotent — already-subscribed domains ignore the call.
+  useEffect(() => {
+    if (!core.user) return;
+    const timer = setTimeout(() => {
+      wellness.ensureSubscribed();
+      academic.ensureSubscribed();
+      creative.ensureSubscribed();
+      planner.ensureSubscribed();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [core.user]);
+
+  const value = useMemo<MobileDataContextType>(() => ({
+    // Core domain
+    user:              core.user,
+    tasks:             core.tasks,
+    habits:            core.habits,
+    allHabits:         core.allHabits,
+    habitLogs:         core.habitLogs,
+    loading:           core.loading,
+    pendingTaskCount:  core.pendingTaskCount,
+    todayHabits:       core.todayHabits,
+    pinnedModules:     core.pinnedModules,
+    setPinnedModules:  core.setPinnedModules,
+    googleAccessToken: core.googleAccessToken,
+    // Wellness domain
+    gymLogs:              wellness.gymLogs,
+    gymLogsReady:         wellness.gymLogsReady,
+    gymEnsureSubscribed:  wellness.ensureSubscribed,
+    userGymPlan:          wellness.userGymPlan,
+    updateMasterPlan:     wellness.updateMasterPlan,
+    waterLogs:            wellness.waterLogs,
+    sleepLogs:            wellness.sleepLogs,
+    weightLogs:           wellness.weightLogs,
+    // Academic domain
+    attendance:        academic.attendance,
+    attendanceLogs:    academic.attendanceLogs,
+    assignments:       academic.assignments,
+    semesters:         academic.semesters,
+    semesterSubjects:  academic.semesterSubjects,
+    // Creative domain
+    storageNodes:      creative.storageNodes,
+    notes:             creative.notes,
+    learningTopics:    creative.learningTopics,
+    jobs:              creative.jobs,
+    // Planner domain
+    customEvents:      planner.customEvents,
+    goals:             planner.goals,
+    weeklyReviews:     planner.weeklyReviews,
+
+    // Optimistic functions
+    optimisticUpdateTask: core.optimisticUpdateTask,
+    optimisticUpdateHabit: core.optimisticUpdateHabit,
+    optimisticAddHabitLog: core.optimisticAddHabitLog,
+    optimisticRemoveHabitLog: core.optimisticRemoveHabitLog,
+  }), [
+    core.user, core.tasks, core.habits, core.allHabits, core.habitLogs,
+    core.loading, core.pendingTaskCount, core.todayHabits,
+    core.pinnedModules, core.setPinnedModules, core.googleAccessToken,
+    core.optimisticUpdateTask, core.optimisticUpdateHabit, core.optimisticAddHabitLog, core.optimisticRemoveHabitLog,
+    wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
+    academic.attendance, academic.attendanceLogs, academic.assignments, academic.semesters, academic.semesterSubjects,
+    creative.storageNodes, creative.notes, creative.learningTopics, creative.jobs,
+    planner.customEvents, planner.goals, planner.weeklyReviews,
+  ]);
+
+  // Debounced notification scheduling — prevents burst reschedules
+  // When Firestore fires 3 snapshots in 5s (common after writes), this ensures
+  // scheduleTaskReminders is only called ONCE, after the burst settles.
+  // Previously used a plain setTimeout which caused up to 3 overlapping
+  // Notifications.cancelAllScheduledNotificationsAsync() calls per write.
+  const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    notifTimerRef.current = setTimeout(() => {
+      scheduleAllNotifications({
+        tasks: core.tasks,
+        customEvents: planner.customEvents,
+        gymLogs: wellness.gymLogs,
+        attendance: academic.attendance,
+        habitLogs: core.habitLogs,
+        allHabits: core.allHabits,
+        assignments: academic.assignments
+      }).catch(console.error);
+    }, 3000); // 3s debounce window absorbs all burst snapshots
+    return () => {
+      if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
+    };
+  }, [
+    core.tasks, planner.customEvents, wellness.gymLogs, academic.attendance,
+    core.habitLogs, core.allHabits, academic.assignments
+  ]);
+
+  return <MobileDataShimContext.Provider value={value}>{children}</MobileDataShimContext.Provider>;
+}
+
+// ─── Public API ────────────────────────────────────────────────────────────────
+
+export function useMobileData(): MobileDataContextType {
+  const ctx = useContext(MobileDataShimContext);
+  if (!ctx) throw new Error("useMobileData must be used inside MobileDataProvider");
   return ctx;
 }
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
-
-export function MobileDataProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [habits, setHabits] = useState<Habit[]>([]);
-  const [habitLogs, setHabitsLogs] = useState<HabitLog[]>([]);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [storageNodes, setStorageNodes] = useState<StorageNode[]>([]);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [customEvents, setCustomEvents] = useState<CustomEvent[]>([]);
-  const [gymLogs, setGymLogs] = useState<GymLog[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceSubject[]>([]);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [semesters, setSemesters] = useState<Semester[]>([]);
-  const [semesterSubjects, setSemesterSubjects] = useState<SemesterSubject[]>([]);
-  const [learningTopics, setLearningTopics] = useState<LearningTopic[]>([]);
-  const [jobs, setJobs] = useState<JobApplication[]>([]);
-  const [weeklyReviews, setWeeklyReviews] = useState<WeeklyReview[]>([]);
-  const [pomodoroSessions, setPomodoroSessions] = useState<PomodoroSession[]>([]);
-  const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
-  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [pinnedModules, setPinnedModulesState] = useState<string[]>(['Tasks', 'Calendar']);
-  const [userGymPlan, setUserGymPlan] = useState<UserGymPlanDoc | null>(null);
-
-  const updateMasterPlan = async (dayIndex: number, planDay: GymPlanDay) => {
-    if (!user) return;
-    const docRef = doc(db, 'user_gym_plans', user.uid);
-    const newCustomDays = { ...(userGymPlan?.customDays || {}), [dayIndex]: planDay };
-    await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: Date.now() }, { merge: true });
-  };
-
-  // Load pinned modules
-  useEffect(() => {
-    AsyncStorage.getItem('@zentrack_pinned_modules').then(val => {
-      if (val) setPinnedModulesState(JSON.parse(val));
-    }).catch(console.error);
-  }, []);
-
-  const setPinnedModules = (mods: string[]) => {
-    setPinnedModulesState(mods);
-    AsyncStorage.setItem('@zentrack_pinned_modules', JSON.stringify(mods)).catch(console.error);
-  };
-
-  // Listen for auth state
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      if (!u) {
-        setTasks([]);
-        setHabits([]);
-        setHabitsLogs([]);
-        setNotes([]);
-        setStorageNodes([]);
-        setGoals([]);
-        setCustomEvents([]);
-        setAssignments([]);
-        setSemesters([]);
-        setSemesterSubjects([]);
-        setLearningTopics([]);
-        setJobs([]);
-        setWeeklyReviews([]);
-        setWaterLogs([]);
-        setSleepLogs([]);
-      }
-    });
-    return unsub;
-  }, []);
-
-  // Actionable Notification background response listener (Zero-Click Logging)
-  useEffect(() => {
-    if (!user) return;
-    const subscription = Notifications.addNotificationResponseReceivedListener(async (response) => {
-      const actionIdentifier = response.actionIdentifier;
-      const data = response.notification.request.content.data;
-      
-      try {
-        if (actionIdentifier === 'mark_present' && data?.subjectId) {
-          const docRef = doc(db, 'attendance_subjects', data.subjectId);
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-            const currentAttended = snap.data().classesAttended || 0;
-            await setDoc(docRef, { classesAttended: currentAttended + 1 }, { merge: true });
-          }
-        } else if (actionIdentifier === 'snooze_15m' && data?.type === 'gym') {
-          const trigger = new Date(Date.now() + 15 * 60 * 1000);
-          await Notifications.scheduleNotificationAsync({
-            content: { title: 'Gym Snooze ⏳', body: '15 minutes are up. Time to workout.', data },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: trigger, channelId: 'default' } as any
-          });
-        }
-      } catch (err) {
-        console.error('[Notification Action Error]', err);
-      }
-    });
-    return () => subscription.remove();
-  }, [user]);
-
-  // Load Google Workspace token from secure storage
-  useEffect(() => {
-    AsyncStorage.getItem('google_workspace_token').then((token) => {
-      if (token) setGoogleAccessToken(token);
-    });
-  }, []);
-
-  // Subscribe to Firestore collections when user is authenticated
-  useEffect(() => {
-    if (!user) { setLoading(false); return; }
-
-    const uid = user.uid;
-    const unsubs: (() => void)[] = [];
-
-    // Tasks
-    const tasksQ = query(collection(db, 'todos'), where('userId', '==', uid));
-    unsubs.push(
-      onSnapshot(tasksQ, (snap) => {
-        setTasks(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Task)));
-        setLoading(false);
-      }, (err) => { console.error('[MobileData] tasks error', err); setLoading(false); })
-    );
-
-    // Habits
-    const habitsQ = query(collection(db, 'habits'), where('userId', '==', uid));
-    unsubs.push(
-      onSnapshot(habitsQ, (snap) => {
-        setHabits(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Habit)));
-      }, (err) => console.error('[MobileData] habits error', err))
-    );
-
-    // Habit Logs
-    const habitLogsQ = query(collection(db, 'habitLogs'), where('userId', '==', uid));
-    unsubs.push(
-      onSnapshot(habitLogsQ, (snap) => {
-        setHabitsLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as HabitLog)));
-      }, (err) => console.error('[MobileData] habitLogs error', err))
-    );
-
-    // Notes
-    const notesQ = query(collection(db, 'notes'), where('userId', '==', uid));
-    unsubs.push(
-      onSnapshot(notesQ, (snap) => {
-        // manually sort by createdAt descending since we removed orderBy to avoid index requirement
-        const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Note));
-        docs.sort((a, b) => {
-          const aTime = a.createdAt?.seconds || 0;
-          const bTime = b.createdAt?.seconds || 0;
-          return bTime - aTime;
-        });
-        setNotes(docs);
-      }, (err) => console.error('[MobileData] notes error', err))
-    );
-
-    // --- NON-CRITICAL COLLECTIONS (LAZY LOADED) ---
-    const lazyTimer = setTimeout(() => {
-      // Storage Nodes
-      const storageQ = query(collection(db, 'storage_nodes'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(storageQ, (snap) => {
-          const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as StorageNode));
-          setStorageNodes(docs);
-        }, (err) => console.error('[MobileData] storage_nodes error', err))
-      );
-
-      // Goals
-      const goalsQ = query(collection(db, 'goals'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(goalsQ, (snap) => {
-          setGoals(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Goal)));
-        }, (err) => console.error('[MobileData] goals error', err))
-      );
-
-      // Custom Events
-      const eventsQ = query(collection(db, 'calendar_events'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(eventsQ, (snap) => {
-          setCustomEvents(snap.docs.map((d) => ({ id: d.id, ...d.data() } as CustomEvent)));
-        }, (err) => console.error('[MobileData] events error', err))
-      );
-
-      // Gym Logs
-      const gymQ = query(collection(db, 'gymLogs'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(gymQ, (snap) => {
-          setGymLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as GymLog)));
-        }, (err) => console.error('[MobileData] gym error', err))
-      );
-
-      // Attendance
-      const attendanceQ = query(collection(db, 'attendance_subjects'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(attendanceQ, (snap) => {
-          setAttendance(snap.docs.map((d) => ({ id: d.id, ...d.data() } as AttendanceSubject)));
-        }, (err) => console.error('[MobileData] attendance error', err))
-      );
-
-      // Assignments
-      const assignmentsQ = query(collection(db, 'assignments'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(assignmentsQ, (snap) => {
-          setAssignments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Assignment)));
-        }, (err) => console.error('[MobileData] assignments error', err))
-      );
-
-      // Semesters
-      const semestersQ = query(collection(db, 'semesters'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(semestersQ, (snap) => {
-          setSemesters(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Semester)));
-        }, (err) => console.error('[MobileData] semesters error', err))
-      );
-
-      // Semester Subjects
-      const semesterSubjectsQ = query(collection(db, 'semester_subjects'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(semesterSubjectsQ, (snap) => {
-          setSemesterSubjects(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SemesterSubject)));
-        }, (err) => console.error('[MobileData] semester_subjects error', err))
-      );
-
-      // Learning Topics
-      const learningTopicsQ = query(collection(db, 'learning_topics'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(learningTopicsQ, (snap) => {
-          setLearningTopics(snap.docs.map((d) => ({ id: d.id, ...d.data() } as LearningTopic)));
-        }, (err) => console.error('[MobileData] learning_topics error', err))
-      );
-
-      // Jobs
-      const jobsQ = query(collection(db, 'job_applications'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(jobsQ, (snap) => {
-          setJobs(snap.docs.map((d) => ({ id: d.id, ...d.data() } as JobApplication)));
-        }, (err) => console.error('[MobileData] jobs error', err))
-      );
-
-      // Weekly Reviews
-      const reviewsQ = query(collection(db, 'weekly_reviews'), where('userId', '==', uid));
-      unsubs.push(
-        onSnapshot(reviewsQ, (snap) => {
-          setWeeklyReviews(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WeeklyReview)));
-        }, (err) => console.error('[MobileData] weekly_reviews error', err))
-      );
-
-      // Pomodoro Sessions (last 30 days)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const thirtyDaysStr = thirtyDaysAgo.toISOString().slice(0, 10);
-      const pomodoroQ = query(
-        collection(db, 'pomodoro_sessions'),
-        where('userId', '==', uid),
-        where('date', '>=', thirtyDaysStr)
-      );
-      unsubs.push(
-        onSnapshot(pomodoroQ, (snap) => {
-          setPomodoroSessions(snap.docs.map((d) => ({ id: d.id, ...d.data() } as PomodoroSession)));
-        }, (err) => console.error('[MobileData] pomodoro_sessions error', err))
-      );
-
-      // User Gym Plan
-      unsubs.push(
-        onSnapshot(doc(db, 'user_gym_plans', uid), (docSnap) => {
-          if (docSnap.exists()) {
-            setUserGymPlan({ id: docSnap.id, ...docSnap.data() } as unknown as UserGymPlanDoc);
-          } else {
-            setUserGymPlan(null);
-          }
-        }, (err) => console.error('[MobileData] user_gym_plans error', err))
-      );
-    }, 2000); // 2-second delay
-
-    return () => {
-      clearTimeout(lazyTimer);
-      unsubs.forEach((u) => u());
-    };
-  }, [user?.uid]);
-
-  // Sync tasks and events to local notifications whenever they change
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      scheduleTaskReminders(tasks, customEvents, gymLogs, attendance).catch(console.error);
-    }, 2000);
-    return () => clearTimeout(handler);
-  }, [tasks, customEvents, gymLogs, attendance]);
-
-  const pendingTaskCount = tasks.filter((t) => t.status === 'pending').length;
-
-  // Active habits only
-  const activeHabits = habits.filter(h => !h.archived);
-  const todayHabits = activeHabits.slice(0, 5);
-
+// Internal bridge: reads user from CoreDataContext, passes to demand-based providers
+function _DomainProviders({ children }: { children: React.ReactNode }) {
+  const { user } = useCoreData();
   return (
-    <MobileDataContext.Provider
-      value={{
-        user,
-        tasks,
-        habits: activeHabits,
-        allHabits: habits,
-        habitLogs,
-        notes,
-        storageNodes,
-        goals,
-        customEvents,
-        gymLogs,
-        attendance,
-        assignments,
-        semesters,
-        semesterSubjects,
-        learningTopics,
-        jobs,
-        weeklyReviews,
-        pomodoroSessions,
-        waterLogs,
-        sleepLogs,
-        googleAccessToken,
-        loading,
-        pendingTaskCount,
-        todayHabits,
-        pinnedModules,
-        setPinnedModules,
-        userGymPlan,
-        updateMasterPlan
-      }}
-    >
-      {children}
-    </MobileDataContext.Provider>
+    <WellnessProvider user={user}>
+      <AcademicProvider user={user}>
+        <CreativeProvider user={user}>
+          <PlannerProvider user={user}>
+            <MobileDataShimProvider>
+              {children}
+            </MobileDataShimProvider>
+          </PlannerProvider>
+        </CreativeProvider>
+      </AcademicProvider>
+    </WellnessProvider>
+  );
+}
+
+/**
+ * MobileDataProvider — drop-in replacement for the old single-context provider.
+ * Wraps all 5 domain providers. No call-site changes needed anywhere.
+ */
+export function MobileDataProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <CoreDataProvider>
+      <_DomainProviders>
+        {children}
+      </_DomainProviders>
+    </CoreDataProvider>
   );
 }

@@ -178,10 +178,14 @@ ${globalCtx || ''}
    - Make it a self-contained reference they can study from later
 
 == RESPONSE FORMAT ==
-- **bold** for key terms, \`inline code\` for snippets
-- Numbered lists for steps, bullets for options
-- Keep Q&A under 300 words unless code example requires more
-- Never start with "Sure!", "Of course!", "Great question!" — just answer
+- **bold** for key terms, \`inline code\` for snippets, fenced code blocks with language for all code
+- Numbered lists for steps/processes, bullets for features/options/comparisons
+- Use markdown headers (## and ###) to organise detailed responses
+- For mathematical content: use LaTeX inline ($formula$) and block ($$formula$$)
+- Write as deeply as the topic demands — never artificially truncate a response
+- Complex concepts deserve full explanations with multiple examples, edge cases, and analogies
+- Never start with "Sure!", "Of course!", "Great question!" — get directly to the explanation
+- Always finish every thought completely. If a response is long, that means the topic deserved it.
 
 ${transcript
     ? `=== VIDEO TRANSCRIPT (with timestamps) ===
@@ -264,7 +268,8 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
 
       const generator = callGeminiProxyStream({
         contents: newContents,
-        systemInstruction: { parts: [{ text: systemRef.current }] }
+        systemInstruction: { parts: [{ text: systemRef.current }] },
+        generationConfig: { maxOutputTokens: 32768, temperature: 0.7 }
       });
 
       let aiText = '';

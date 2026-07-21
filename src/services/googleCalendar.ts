@@ -218,7 +218,7 @@ export const signInWithGoogle = (): Promise<void> => {
 
     const doRequest = () => {
       try {
-        const needsConsent = !localStorage.getItem('zen_gcal_refresh_token');
+        const needsConsent = !localStorage.getItem('zen_gcal_has_refresh_token') && !localStorage.getItem('zen_gcal_refresh_token');
         const authConfig: any = {
           client_id: CLIENT_ID,
           scope: SCOPES,
@@ -358,8 +358,8 @@ export const ensureToken = async (): Promise<string> => {
   if (isSignedInToGoogle()) return _accessToken!;
 
   // Try silent refresh via backend — this requires NO user gesture
-  const refreshToken = localStorage.getItem('zen_gcal_refresh_token');
-  if (refreshToken) {
+  const hasRefreshToken = localStorage.getItem('zen_gcal_has_refresh_token') || localStorage.getItem('zen_gcal_refresh_token');
+  if (hasRefreshToken) {
     try {
       await forceSilentRefresh();
       if (isSignedInToGoogle()) return _accessToken!;
@@ -371,6 +371,7 @@ export const ensureToken = async (): Promise<string> => {
       localStorage.removeItem('zen_gcal_access_token');
       localStorage.removeItem('zen_gcal_token_expiry');
       localStorage.removeItem('zen_gcal_refresh_token');
+      localStorage.removeItem('zen_gcal_has_refresh_token');
     }
   }
 

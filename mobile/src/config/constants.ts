@@ -49,25 +49,39 @@ export const STORAGE_KEYS = {
   XP_STREAK: 'zentrack_xp_streak',
   ONBOARDED: 'zentrack_onboarded_v2',
   GOOGLE_TOKEN: 'google_workspace_token',
+  THEME: '@zentrack_theme',              // 'dark' | 'light' — user's theme preference
+  // ── SARA Engine v2 ────────────────────────────────────────────────────────
+  SARA_CMG: '@sara_cmg_v1',             // Contextual Memory Graph JSON
+  SARA_FINGERPRINT: '@sara_fingerprint_v1', // Behavioral Fingerprint JSON
+  SARA_SURFACE_LAST: '@sara_surface_last_v1',      // Last PSI injection timestamp per screen (JSON)
+  SARA_SURFACE_DISMISSED: '@sara_surface_dismissed_v1', // Dismissed PSI banners (JSON array)
+  DASHBOARD_LAYOUT: '@zentrack_dashboard_layout', // Custom dashboard widget order
 } as const;
 
 // ── Firestore Collections ─────────────────────────────────────────────────────
 export const COLLECTION = {
-  TASKS: 'tasks',
+  TASKS: 'todos',
   HABITS: 'habits',
   HABIT_LOGS: 'habitLogs',
   GOALS: 'goals',
-  NOTES: 'notes',
+  STORAGE_NODES: 'storage_nodes',
   GYM_LOGS: 'gym_logs',
+  USER_GYM_PLANS: 'user_gym_plans',
   JOBS: 'job_applications',
-  LEARNING_TOPICS: 'learningTopics',
+  LEARNING_TOPICS: 'learning_topics',
   ATTENDANCE: 'attendance_subjects',
+  ATTENDANCE_LOGS: 'attendance_logs',
+  ATTENDANCE_HOLIDAYS: 'attendance_holidays',
   ASSIGNMENTS: 'assignments',
   CALENDAR_EVENTS: 'calendar_events',
   SEMESTERS: 'semesters',
   SEMESTER_SUBJECTS: 'semester_subjects',
+  STUDY_ROOMS: 'study_rooms',
+  POMODORO_SESSIONS: 'pomodoro_sessions',
   WEEKLY_REVIEWS: 'weekly_reviews',
-  USER_GYM_PLANS: 'user_gym_plans',
+  WATER_LOGS: 'water_logs',
+  SLEEP_LOGS: 'sleep_logs',
+  USER_PROFILES: 'user_profiles',
 } as const;
 
 // ── Navigation Screen Names ───────────────────────────────────────────────────
@@ -85,14 +99,16 @@ export const SCREENS = {
   SARA: 'Sara',
   CALENDAR: 'Calendar',
   HABITS: 'Habits',
+  STREAK_DETAIL: 'StreakDetail',
   GYM: 'Gym',
   GOALS: 'Goals',
   NOTES: 'Notes',
   ANALYTICS: 'Analytics',
   ATTENDANCE: 'Attendance',
-  FOCUS: 'Focus',
+  WEEKLY_REVIEW: 'WeeklyReview',
   SETTINGS: 'Settings',
   SOCIAL: 'Social',
+  STUDY_ROOM: 'StudyRoom',
   ASSIGNMENTS: 'Assignments',
   GRADES: 'Grades',
   LEARNING: 'Learning',

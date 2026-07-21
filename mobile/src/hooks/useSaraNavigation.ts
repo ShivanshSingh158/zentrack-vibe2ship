@@ -20,19 +20,19 @@ import { useNavigation } from '@react-navigation/native';
 import { useCallback } from 'react';
 
 // Maps route tokens to real screen names in the AppNavigator
-const ROUTE_MAP: Record<string, { stack: 'MoreStack' | 'MainTabs'; screen: string; nested?: string }> = {
-  gym:          { stack: 'MoreStack', screen: 'Gym' },
-  gymhome:      { stack: 'MoreStack', screen: 'Gym' },
-  gymtracker:   { stack: 'MoreStack', screen: 'Gym' },
-  gymprogress:  { stack: 'MoreStack', screen: 'Gym', nested: 'GymProgress' },
-  gymhistory:   { stack: 'MoreStack', screen: 'Gym', nested: 'GymHistory' },
-  tasks:        { stack: 'MoreStack', screen: 'Tasks' },
-  habits:       { stack: 'MoreStack', screen: 'Habits' },
-  calendar:     { stack: 'MoreStack', screen: 'Calendar' },
-  goals:        { stack: 'MoreStack', screen: 'Goals' },
-  notes:        { stack: 'MoreStack', screen: 'Notes' },
-  analytics:    { stack: 'MoreStack', screen: 'Analytics' },
-  attendance:   { stack: 'MoreStack', screen: 'Attendance' },
+const ROUTE_MAP: Record<string, { stack: string; screen?: string; nested?: string }> = {
+  gym:          { stack: 'Gym' },
+  gymhome:      { stack: 'Gym' },
+  gymtracker:   { stack: 'Gym' },
+  gymprogress:  { stack: 'Gym', screen: 'GymProgress' },
+  gymhistory:   { stack: 'Gym', screen: 'GymHistory' },
+  tasks:        { stack: 'Tasks' },
+  habits:       { stack: 'Habits' },
+  calendar:     { stack: 'Calendar' },
+  goals:        { stack: 'Goals' },
+  notes:        { stack: 'Notes' },
+  analytics:    { stack: 'Analytics' },
+  attendance:   { stack: 'Attendance' },
   focus:        { stack: 'MoreStack', screen: 'Focus' },
   settings:     { stack: 'MoreStack', screen: 'Settings' },
 };
@@ -63,10 +63,14 @@ export function useSaraNavigation() {
       }
 
       try {
-        navigation.navigate(route.stack, {
-          screen: route.screen,
-          ...(route.nested ? { params: { screen: route.nested } } : {}),
-        });
+        if (!route.screen) {
+          navigation.navigate(route.stack);
+        } else {
+          navigation.navigate(route.stack, {
+            screen: route.screen,
+            ...(route.nested ? { params: { screen: route.nested } } : {}),
+          });
+        }
         return true;
       } catch (e) {
         console.warn('[Sara] Navigation error:', e);

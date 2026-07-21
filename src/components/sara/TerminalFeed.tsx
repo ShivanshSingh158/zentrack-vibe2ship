@@ -40,18 +40,13 @@ export const TerminalFeed: React.FC<TerminalFeedProps> = ({
       {/* ── AGENT ACTIVITY // LIVE FEED (30%) ───────────────────────────── */}
       <div style={{
         flex: 3,
-        background: 'rgba(10, 8, 5, 0.5)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(196, 149, 106, 0.08)',
-        borderRadius: '12px',
-        padding: '1.2rem 1rem',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden'
       }}>
-        <div style={{ fontSize: '0.65rem', fontFamily: "'Orbitron', sans-serif", letterSpacing: '0.22em', color: '#c4956a', opacity: 0.7, marginBottom: '0.4rem', flexShrink: 0 }}>
+        <div style={{ fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", fontWeight: 500, letterSpacing: '0.02em', color: 'rgba(255, 255, 255, 0.9)', marginBottom: '1.2rem', flexShrink: 0 }}>
           Agent Activity
         </div>
-        <div className="hide-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.8rem', paddingRight: '0.5rem' }}>
+        <div className="hide-scrollbar" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', paddingRight: '0.5rem' }}>
           <AnimatePresence initial={false}>
             {recentActivities.map(log => {
               const isAnswer = log.type === 'answer';
@@ -60,28 +55,30 @@ export const TerminalFeed: React.FC<TerminalFeedProps> = ({
                 return (
                   <motion.div
                     key={log.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
+                    layout
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
                     style={{
-                      background: 'rgba(122, 158, 130, 0.07)',
-                      border: '1px solid rgba(122, 158, 130, 0.18)',
-                      borderRadius: '6px',
-                      padding: '7px 8px',
+                      background: 'rgba(122, 158, 130, 0.1)',
+                      border: '1px solid rgba(122, 158, 130, 0.2)',
+                      borderRadius: '12px',
+                      padding: '10px 12px',
                       cursor: 'pointer',
-                      display: 'flex', flexDirection: 'column', gap: '0.2rem',
-                      marginTop: '0.2rem'
+                      display: 'flex', flexDirection: 'column', gap: '0.3rem',
+                      marginTop: '0.4rem',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
                     }}
                     onClick={() => {
                       window.dispatchEvent(new CustomEvent('show-mission-report', { detail: { result: log.text } }));
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ color: '#7a9e82', fontSize: '0.7rem' }}>✓</span>
-                      <span style={{ color: '#7a9e82', fontSize: '0.65rem', fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, letterSpacing: '0.05em' }}>
-                        MISSION REPORT GENERATED
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ color: '#7a9e82', fontSize: '0.8rem' }}>✓</span>
+                      <span style={{ color: '#7a9e82', fontSize: '0.75rem', fontFamily: "'Inter', sans-serif", fontWeight: 600, letterSpacing: '0.02em' }}>
+                        Mission Report Generated
                       </span>
                     </div>
-                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6rem', paddingLeft: '1.1rem', fontFamily: "'Rajdhani', sans-serif" }}>
+                    <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.65rem', paddingLeft: '1.1rem', fontFamily: "'Inter', sans-serif" }}>
                       Tap to open full response
                     </div>
                   </motion.div>
@@ -93,19 +90,23 @@ export const TerminalFeed: React.FC<TerminalFeedProps> = ({
               
               return (
                 <motion.div
+                  layout
                   key={log.id}
-                  initial={{ opacity: 0, x: -6 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}
+                  initial={{ opacity: 0, filter: 'blur(4px)', x: -10 }}
+                  animate={{ opacity: 1, filter: 'blur(0px)', x: 0 }}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}
                 >
-                  <span style={{ color: dotColor, fontSize: '0.7rem', marginTop: '1px', flexShrink: 0, textShadow: `0 0 8px ${dotColor}80` }}>◎</span>
+                  <span style={{ color: dotColor, fontSize: '0.8rem', marginTop: '2px', flexShrink: 0, textShadow: `0 0 12px ${dotColor}80` }}>●</span>
                   <span style={{ 
                     color: textColor, 
-                    fontSize: '0.7rem', 
-                    fontFamily: "'JetBrains Mono', monospace",
-                    lineHeight: 1.5 
+                    fontSize: '0.8rem', 
+                    fontFamily: "'Inter', sans-serif",
+                    lineHeight: 1.6,
+                    fontWeight: 400
                   }}>
-                    {log.agent ? `${log.agent} is ${log.text.toLowerCase().replace(/^\[.*?\]\s*/, '')}` : log.text}
+                    {log.agent ? <span style={{ fontWeight: 600, color: dotColor, textTransform: 'capitalize' }}>{log.agent.toLowerCase()}</span> : null}
+                    {log.agent ? ' is ' : ''}
+                    {log.agent ? log.text.toLowerCase().replace(/^\[.*?\]\s*/, '') : log.text}
                   </span>
                 </motion.div>
               );
@@ -122,30 +123,24 @@ export const TerminalFeed: React.FC<TerminalFeedProps> = ({
       {/* ── SYSTEM TERMINAL // LIVE LOG (50%) ────────────────────────────── */}
       <div style={{
         flex: 5,
-        background: 'rgba(10, 8, 5, 0.5)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(196, 149, 106, 0.08)',
-        borderRadius: '12px',
-        padding: '1.2rem 1rem',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden'
       }}>
-        <div style={{ fontSize: '0.65rem', fontFamily: "'Orbitron', sans-serif", letterSpacing: '0.22em', color: '#c4956a', opacity: 0.7, marginBottom: '0.4rem', flexShrink: 0 }}>
+        <div style={{ fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", fontWeight: 500, letterSpacing: '0.02em', color: 'rgba(255, 255, 255, 0.9)', marginBottom: '1.2rem', flexShrink: 0 }}>
           Terminal Logs
         </div>
         <div className="hide-scrollbar" style={{ 
           flex: 1, overflowY: 'auto', paddingRight: '0.5rem',
-          display: 'flex', flexDirection: 'column', gap: '0.9rem',
-          borderLeft: '1px solid rgba(196, 149, 106, 0.3)',
-          paddingLeft: '0.8rem', marginLeft: '0.2rem'
+          display: 'flex', flexDirection: 'column', gap: '0.5rem',
+          paddingLeft: '0.2rem', marginLeft: '0'
         }}>
           {recentTerminal.map((line, idx) => {
             const isErr = line.includes('ERR') || line.includes('WARN') || line.includes('❌');
             const isSuccess = line.includes('✓') || line.includes('success') || line.includes('OK') || line.includes('complete');
             const isReal = line.includes('[APP]') || line.includes('[SYS]') || line.includes('[SYNC]');
             
-            let bg = 'rgba(196, 149, 106, 0.03)';
-            let border = 'rgba(196, 149, 106, 0.3)';
+            let bg = 'rgba(255, 255, 255, 0.03)';
+            let border = 'rgba(255, 255, 255, 0.1)';
             let color = '#d1b28e';
             let glow = 'none';
 
@@ -157,46 +152,29 @@ export const TerminalFeed: React.FC<TerminalFeedProps> = ({
             } else if (isSuccess) {
               bg = 'rgba(122, 158, 130, 0.05)';
               border = '#7a9e82';
-              color = '#c2d6c6';
-              glow = '0 0 10px rgba(122,158,130,0.1)';
+              bg = 'rgba(16, 185, 129, 0.08)';
+              border = 'rgba(16, 185, 129, 0.2)';
+              color = '#10b981';
             } else if (isReal) {
-              const match = line.match(/^\[([A-Z_]+)\]/);
-              const agentId = match ? match[1] : null;
-              const agentObj = agentId ? AGENTS.find(a => a.id === agentId) : null;
-              
-              if (agentObj) {
-                bg = agentObj.color + '10'; // 6% opacity approx
-                border = agentObj.color;
-                color = agentObj.color + 'e6'; // 90% opacity
-                glow = `0 0 10px ${agentObj.color}20`;
-              } else {
-                bg = 'rgba(255, 170, 0, 0.08)';
-                border = '#fbbf24';
-                color = '#fde68a';
-                glow = '0 0 10px rgba(255,170,0,0.15)';
-              }
+              bg = 'rgba(59, 130, 246, 0.08)';
+              border = 'rgba(59, 130, 246, 0.2)';
+              color = '#3b82f6';
             }
 
             return (
               <motion.div
+                layout
+                initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
                 key={idx}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
                 style={{
-                  background: bg,
-                  borderLeft: `3px solid ${border}`,
-                  borderRadius: '0 4px 4px 0',
-                  padding: '8px 12px',
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: '0.65rem',
+                  padding: '4px 8px',
+                  fontSize: '0.75rem',
                   color: color,
-                  lineHeight: 1.5,
-                  boxShadow: `0 2px 5px rgba(0,0,0,0.2), ${glow}`,
-                  display: 'flex',
-                  gap: '8px',
-                  alignItems: 'flex-start',
+                  fontFamily: "'Inter', sans-serif",
+                  lineHeight: 1.6,
                   wordBreak: 'break-word',
-                  letterSpacing: '0.02em',
+                  fontWeight: 400
                 }}
               >
                 {line}
@@ -214,19 +192,14 @@ export const TerminalFeed: React.FC<TerminalFeedProps> = ({
       {/* ── ACTIVE ORCHESTRATION GRAPH (20%) ────────────────────────────── */}
       <div style={{
         flex: 2,
-        background: 'rgba(10, 8, 5, 0.5)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(196, 149, 106, 0.08)',
-        borderRadius: '12px',
-        padding: '1.2rem 1rem',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden'
       }}>
-        <div style={{ fontSize: '0.65rem', fontFamily: "'Orbitron', sans-serif", letterSpacing: '0.22em', color: '#c4956a', opacity: 0.7, marginBottom: '1rem', flexShrink: 0 }}>
+        <div style={{ fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", fontWeight: 500, letterSpacing: '0.02em', color: 'rgba(255, 255, 255, 0.9)', marginBottom: '1.2rem', flexShrink: 0 }}>
           Orchestration Graph
         </div>
-        <div style={{ fontSize: '0.5rem', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.4)', marginBottom: '0.8rem', flexShrink: 0 }}>
-          LIVE SUB-AGENT TRACKER
+        <div style={{ fontSize: '0.65rem', letterSpacing: '0.02em', color: 'rgba(255,255,255,0.4)', marginBottom: '1rem', flexShrink: 0, fontFamily: "'Inter', sans-serif" }}>
+          Live Sub-Agent Tracker
         </div>
         <div className="hide-scrollbar" style={{ flex: 1, overflowY: 'auto', paddingRight: '0.2rem', display: 'flex', flexWrap: 'wrap', gap: '8px', alignContent: 'flex-start' }}>
           {activeAgents.length > 0 ? (
@@ -239,27 +212,27 @@ export const TerminalFeed: React.FC<TerminalFeedProps> = ({
                   initial={{ scale: 0.8, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   style={{
-                    padding: '6px 10px',
-                    borderRadius: '6px',
-                    border: `1px solid ${agent.color}80`,
+                    padding: '8px 12px',
+                    borderRadius: '12px',
+                    border: `1px solid ${agent.color}40`,
                     background: `${agent.color}15`,
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    boxShadow: `0 0 12px ${agent.color}30`
+                    display: 'flex', alignItems: 'center', gap: '10px',
+                    boxShadow: `0 4px 12px ${agent.color}20`
                   }}
                 >
                   <motion.div 
                     animate={{ opacity: [1, 0.4, 1] }} 
                     transition={{ duration: 1.5, repeat: Infinity }}
-                    style={{ width: '6px', height: '6px', borderRadius: '50%', background: agent.color, boxShadow: `0 0 8px ${agent.color}` }}
+                    style={{ width: '8px', height: '8px', borderRadius: '50%', background: agent.color, boxShadow: `0 0 12px ${agent.color}` }}
                   />
-                  <span style={{ fontSize: '0.6rem', color: agent.color, fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, letterSpacing: '0.05em' }}>
-                    {agent.title.split(' ')[0].toUpperCase()}
+                  <span style={{ fontSize: '0.75rem', color: agent.color, fontFamily: "'Inter', sans-serif", fontWeight: 600, letterSpacing: '0.02em', textTransform: 'capitalize' }}>
+                    {agent.title.split(' ')[0].toLowerCase()}
                   </span>
                 </motion.div>
               );
             })
           ) : (
-            <div style={{ fontSize: '0.55rem', color: 'rgba(196,149,106,0.3)', fontStyle: 'italic', fontFamily: "'JetBrains Mono', monospace", width: '100%', textAlign: 'center', marginTop: '10px' }}>
+            <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', fontFamily: "'Inter', sans-serif", width: '100%', textAlign: 'center', marginTop: '10px', fontWeight: 500 }}>
               No active orchestrations
             </div>
           )}

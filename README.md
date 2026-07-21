@@ -435,7 +435,7 @@ The agent fleet uses a two-tier model strategy:
 | Tier | Models | Used By |
 |---|---|---|
 | **Research Tier** | `gemini-2.5-flash` | ORACLE, HERMES, CHRONOS, ENIGMA, SPECTRE, ARCHIVE |
-| **Voice Tier** | `gemini-2.5-flash-lite-preview-06-17` | NAVIGATOR, AEGIS, TITAN, ATLAS, ARGUS |
+| **Voice Tier** | `gemini-2.5-flash` | NAVIGATOR, AEGIS, TITAN, ATLAS, ARGUS |
 
 ---
 

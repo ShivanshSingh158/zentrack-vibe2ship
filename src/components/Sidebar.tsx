@@ -72,12 +72,12 @@ function savePinned(pinned: string[]) {
 }
 
 const sidebarStyles = `
-  /* ── Sidebar Shell — Warm Obsidian Thin Rail ── */
+  /* ── Sidebar Shell — Obsidian Cosmos Thin Rail ── */
   .sidebar {
-    background: rgba(10, 8, 5, 0.82) !important;
-    backdrop-filter: blur(24px) !important;
-    -webkit-backdrop-filter: blur(24px) !important;
-    border-right: 1px solid rgba(210, 175, 130, 0.07) !important;
+    background: rgba(0, 0, 0, 0.96) !important;
+    backdrop-filter: blur(28px) !important;
+    -webkit-backdrop-filter: blur(28px) !important;
+    border-right: 1px solid rgba(59, 130, 246, 0.08) !important;
     width: 52px !important;
     min-width: 52px !important;
     display: flex !important;
@@ -86,26 +86,27 @@ const sidebarStyles = `
     position: relative !important;
   }
 
-  /* ── Logo area — just the icon mark, no text on rail ── */
+  /* ── Logo area ── */
   .sidebar-header {
     padding: 1rem 0 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border-bottom: 1px solid rgba(210, 175, 130, 0.06) !important;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.07) !important;
     margin-bottom: 0.5rem !important;
   }
   .sidebar-header .app-logo {
-    font-size: 0 !important; /* hide text */
+    font-size: 0 !important;
   }
   .sidebar-header .app-logo img {
     width: 22px !important;
     height: 22px !important;
-    filter: brightness(0.85) !important;
-    transition: filter 0.15s ease !important;
+    filter: brightness(0.9) !important;
+    transition: filter 0.15s ease, transform 0.2s cubic-bezier(0.34,1.56,0.64,1) !important;
   }
   .sidebar-header .app-logo:hover img {
-    filter: brightness(1.2) sepia(0.3) saturate(2) hue-rotate(-10deg) !important;
+    filter: brightness(1.15) drop-shadow(0 0 6px rgba(59,130,246,0.55)) !important;
+    transform: scale(1.08) !important;
   }
 
   /* ── Nav items — icon only, tooltip on hover ── */
@@ -117,8 +118,8 @@ const sidebarStyles = `
     padding: 0.7rem 0 !important;
     border-radius: 0 !important;
     margin: 0.05rem 0 !important;
-    color: rgba(185, 168, 145, 0.42) !important;
-    font-size: 0 !important; /* hide label text */
+    color: rgba(142, 142, 147, 0.55) !important;
+    font-size: 0 !important;
     cursor: pointer !important;
     transition: color 0.15s ease, background 0.15s ease !important;
     border: none !important;
@@ -128,7 +129,7 @@ const sidebarStyles = `
     text-decoration: none !important;
   }
 
-  /* Hide labels — rail is icon-only */
+  /* Hide labels */
   .sidebar-nav .nav-item span:not(.nav-tooltip) {
     display: none !important;
   }
@@ -143,24 +144,24 @@ const sidebarStyles = `
 
   /* Hover state */
   .sidebar-nav .nav-item:hover {
-    color: rgba(235, 224, 204, 0.88) !important;
-    background: rgba(196, 149, 106, 0.06) !important;
+    color: rgba(242, 242, 247, 0.90) !important;
+    background: rgba(59, 130, 246, 0.07) !important;
   }
   .sidebar-nav .nav-item:hover svg {
     transform: scale(1.15) !important;
   }
 
-  /* Active state — copper */
+  /* Active state — purple */
   .sidebar-nav .nav-item.active {
-    color: #c4956a !important;
-    background: rgba(196, 149, 106, 0.10) !important;
+    color: #3b82f6 !important;
+    background: rgba(59, 130, 246, 0.10) !important;
     border: none !important;
   }
   .sidebar-nav .nav-item.active svg {
-    color: #c4956a !important;
-    filter: drop-shadow(0 0 5px rgba(196,149,106,0.55)) !important;
+    color: #3b82f6 !important;
+    filter: drop-shadow(0 0 6px rgba(59,130,246,0.60)) !important;
   }
-  /* Left accent line on active */
+  /* Left accent line on active — purple glow */
   .sidebar-nav .nav-item.active::before {
     content: '' !important;
     display: block !important;
@@ -169,33 +170,33 @@ const sidebarStyles = `
     top: 22% !important;
     height: 56% !important;
     width: 2.5px !important;
-    background: #c4956a !important;
+    background: linear-gradient(180deg, #60a5fa, #3b82f6) !important;
     border-radius: 0 2px 2px 0 !important;
-    box-shadow: 0 0 8px rgba(196,149,106,0.50) !important;
+    box-shadow: 0 0 10px rgba(59,130,246,0.65), 0 0 20px rgba(59,130,246,0.25) !important;
   }
   .sidebar-nav .nav-item::after {
     display: none !important;
   }
 
-  /* Tooltip — slides in from the right of the rail */
+  /* Tooltip — slides in from right of rail */
   .sidebar-nav .nav-item .nav-tooltip {
     position: absolute !important;
     left: calc(100% + 10px) !important;
     top: 50% !important;
     transform: translateY(-50%) !important;
-    background: rgba(18, 14, 8, 0.95) !important;
+    background: rgba(28, 28, 29, 0.98) !important;
     backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(210, 175, 130, 0.14) !important;
+    border: 1px solid rgba(59, 130, 246, 0.16) !important;
     border-radius: 8px !important;
     padding: 0.32rem 0.65rem !important;
     font-size: 0.78rem !important;
     font-weight: 500 !important;
-    color: rgba(235, 224, 204, 0.90) !important;
+    color: rgba(242, 242, 247, 0.92) !important;
     white-space: nowrap !important;
     pointer-events: none !important;
     opacity: 0 !important;
     transition: opacity 0.12s ease !important;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.45) !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.60), 0 0 0 1px rgba(59,130,246,0.06) !important;
     z-index: 300 !important;
     letter-spacing: 0.01em !important;
   }
@@ -208,22 +209,22 @@ const sidebarStyles = `
     display: none !important;
   }
 
-  /* Secondary items — slightly more muted */
+  /* Secondary items — more muted */
   .sidebar-nav .nav-item.secondary {
-    color: rgba(140, 124, 104, 0.38) !important;
+    color: rgba(99, 99, 102, 0.55) !important;
   }
   .sidebar-nav .nav-item.secondary:hover {
-    color: rgba(185, 168, 145, 0.75) !important;
+    color: rgba(142, 142, 147, 0.80) !important;
   }
 
-  /* Sidebar footer — avatar only, centered */
+  /* Sidebar footer */
   .sidebar-footer {
     padding: 0.6rem 0 !important;
     display: flex !important;
     flex-direction: column !important;
     align-items: center !important;
     gap: 0.5rem !important;
-    border-top: 1px solid rgba(210, 175, 130, 0.06) !important;
+    border-top: 1px solid rgba(59, 130, 246, 0.07) !important;
     margin-top: auto !important;
   }
   .sidebar-footer .user-name {
@@ -235,7 +236,7 @@ const sidebarStyles = `
   .btn-logout {
     background: transparent !important;
     border: none !important;
-    color: rgba(140, 124, 104, 0.45) !important;
+    color: rgba(99, 99, 102, 0.55) !important;
     cursor: pointer !important;
     display: flex !important;
     align-items: center !important;
@@ -246,8 +247,8 @@ const sidebarStyles = `
     transition: color 0.15s ease, background 0.15s ease !important;
   }
   .btn-logout:hover {
-    color: #b5503c !important;
-    background: rgba(181, 80, 60, 0.10) !important;
+    color: #ff6961 !important;
+    background: rgba(255, 105, 97, 0.10) !important;
   }
 
   /* Mobile menu trigger — hide on desktop */
@@ -255,7 +256,7 @@ const sidebarStyles = `
     display: none !important;
   }
 
-  /* Desktop-only links — visible */
+  /* Desktop-only links */
   .desktop-only-links {
     display: flex !important;
     flex-direction: column !important;
@@ -264,10 +265,10 @@ const sidebarStyles = `
     overflow-x: visible !important;
   }
 
-  /* Pomodoro mini widget — narrow on rail */
+  /* Pomodoro mini widget */
   .hide-on-mobile [style*="background: rgba(124,58,237"] {
-    background: rgba(196, 149, 106, 0.07) !important;
-    border: 1px solid rgba(196, 149, 106, 0.18) !important;
+    background: rgba(59, 130, 246, 0.07) !important;
+    border: 1px solid rgba(59, 130, 246, 0.18) !important;
     border-radius: 8px !important;
     margin: 0 4px !important;
     padding: 0.5rem !important;

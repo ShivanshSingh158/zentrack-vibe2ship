@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Platform, TextInput, KeyboardAvoidingView, ScrollView, Switch, Alert } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import YoutubeIframe from 'react-native-youtube-iframe';
-import { COLORS, FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
+import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
 import { useMobileData } from '../../contexts/MobileDataContext';
-import { useGymLog, planDayIndexForDate } from '../../hooks/useGymLog';
+import { useGymLog, planDayIndexForDate, getCustomPlanDay } from '../../hooks/useGymLog';
 import { GYM_PLAN } from '../../data/gymPlan';
 import { resolveMuscleColor, hexToRgba } from '../../utils/gymUtils';
-import { GymExerciseLog } from '../../types/gym.types';
+import { GymExerciseLog, GymNavigationParamList } from '../../types/gym.types';
 import { hapticMedium, hapticLight } from '../../utils/haptics';
+import { useTheme } from "../../contexts/ThemeContext";
 
 const extractVideoId = (urlOrId: string) => {
   if (!urlOrId) return '';
@@ -19,10 +21,12 @@ const extractVideoId = (urlOrId: string) => {
 };
 
 export default function ExerciseDetailScreen() {
-  const navigation = useNavigation<any>();
-  const route = useRoute<any>();
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
+  const route = useRoute<RouteProp<GymNavigationParamList, 'ExerciseDetail'>>();
   const exerciseId = route.params?.exerciseId;
-  const date = route.params?.date;
+  const date = route.params?.date || '';
   
   const { gymLogs, userGymPlan, updateMasterPlan } = useMobileData();
   const { log, updateExercise, deleteExercise } = useGymLog(date); // Only works if date is passed
@@ -37,6 +41,12 @@ export default function ExerciseDetailScreen() {
   const [restTimeSecs, setRestTimeSecs] = useState('');
   const [videoLink, setVideoLink] = useState('');
   const [showVideo, setShowVideo] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
+  
+  useEffect(() => {
+    setVideoReady(false);
+  }, [showVideo]);
+
   const [saveGlobal, setSaveGlobal] = useState(false);
 
   // Initialize form
@@ -141,9 +151,9 @@ export default function ExerciseDetailScreen() {
 
     if (saveGlobal) {
       const planIdx = planDayIndexForDate(date);
-      const currentMasterDay = userGymPlan?.customDays?.[planIdx] || GYM_PLAN.find(d => d.dayIndex === planIdx);
+      const currentMasterDay = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
       if (currentMasterDay) {
-        const exists = currentMasterDay.exercises.some(e => e.id === exerciseId);
+        const exists = currentMasterDay.exercises.some((e: any) => e.id === exerciseId);
         let updatedExercises = [...currentMasterDay.exercises];
         if (exists) {
           updatedExercises = updatedExercises.map(e =>
@@ -173,7 +183,7 @@ export default function ExerciseDetailScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="chevron-down" size={24} color={COLORS.textPrimary} />
+            <Ionicons name="chevron-down" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Edit Exercise</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -190,9 +200,9 @@ export default function ExerciseDetailScreen() {
           
           {/* Header Preview */}
           <View style={styles.previewHeader}>
-            <View style={[styles.musclePill, { backgroundColor: hexToRgba(COLORS.accentPrimary, 0.15) }]}>
-              <View style={[styles.muscleDot, { backgroundColor: COLORS.accentPrimary }]} />
-              <Text style={[styles.muscleText, { color: COLORS.accentPrimary }]}>{muscle || 'General'}</Text>
+            <View style={[styles.musclePill, { backgroundColor: hexToRgba(colors.accentPrimary, 0.15) }]}>
+              <View style={[styles.muscleDot, { backgroundColor: colors.accentPrimary }]} />
+              <Text style={[styles.muscleText, { color: colors.accentPrimary }]}>{muscle || 'General'}</Text>
             </View>
           </View>
 
@@ -204,7 +214,7 @@ export default function ExerciseDetailScreen() {
               value={name}
               onChangeText={setName}
               placeholder="e.g. Bulgarian Split Squats"
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={colors.textMuted}
             />
           </View>
 
@@ -216,7 +226,7 @@ export default function ExerciseDetailScreen() {
                 value={muscle}
                 onChangeText={setMuscle}
                 placeholder="e.g. Quads"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
               />
             </View>
             <View style={{ width: 16 }} />
@@ -228,7 +238,7 @@ export default function ExerciseDetailScreen() {
                 onChangeText={setRestTimeSecs}
                 keyboardType="numeric"
                 placeholder="e.g. 90"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
               />
             </View>
           </View>
@@ -242,7 +252,7 @@ export default function ExerciseDetailScreen() {
                 onChangeText={setTargetSets}
                 keyboardType="numeric"
                 placeholder="e.g. 3"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
               />
             </View>
             <View style={{ width: 16 }} />
@@ -253,7 +263,7 @@ export default function ExerciseDetailScreen() {
                 value={targetReps}
                 onChangeText={setTargetReps}
                 placeholder="e.g. 8-10"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
               />
             </View>
           </View>
@@ -266,7 +276,7 @@ export default function ExerciseDetailScreen() {
                 value={videoLink}
                 onChangeText={setVideoLink}
                 placeholder="https://youtube.com/..."
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
                 autoCapitalize="none"
               />
               {!!videoLink && (
@@ -274,7 +284,7 @@ export default function ExerciseDetailScreen() {
                   style={styles.previewVideoBtn} 
                   onPress={() => { hapticLight(); setShowVideo(!showVideo); }}
                 >
-                  <Ionicons name={showVideo ? "eye-off" : "play"} size={20} color={COLORS.background} />
+                  <Ionicons name={showVideo ? "eye-off" : "play"} size={20} color={colors.background} />
                 </TouchableOpacity>
               )}
             </View>
@@ -282,7 +292,14 @@ export default function ExerciseDetailScreen() {
 
           {showVideo && extractVideoId(videoLink) && (
             <View style={styles.videoContainer}>
-              <YoutubeIframe height={200} videoId={extractVideoId(videoLink)} initialPlayerParams={{ modestbranding: true }} />
+              <YoutubeIframe 
+                play={videoReady} 
+                onReady={() => setVideoReady(true)}
+                forceAndroidAutoplay={true} 
+                height={200} 
+                videoId={extractVideoId(videoLink)} 
+                initialPlayerParams={{ modestbranding: true, autoplay: 1 }} 
+              />
             </View>
           )}
 
@@ -297,7 +314,7 @@ export default function ExerciseDetailScreen() {
             <Switch
               value={saveGlobal}
               onValueChange={setSaveGlobal}
-              trackColor={{ false: 'rgba(255,255,255,0.1)', true: COLORS.accentPrimary }}
+              trackColor={{ false: 'rgba(255,255,255,0.1)', true: colors.accentPrimary }}
               thumbColor={Platform.OS === 'ios' ? '#fff' : saveGlobal ? '#fff' : '#f4f3f4'}
             />
           </View>
@@ -332,7 +349,7 @@ export default function ExerciseDetailScreen() {
             );
           }) : (
             <View style={styles.emptyState}>
-              <Ionicons name="time-outline" size={32} color={COLORS.textMuted} />
+              <Ionicons name="time-outline" size={32} color={colors.textMuted} />
               <Text style={styles.emptyText}>No previous logs found for this exercise.</Text>
             </View>
           )}
@@ -343,84 +360,84 @@ export default function ExerciseDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000000' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACE.xl,
-    paddingTop: Platform.OS === 'ios' ? 50 : 40,
-    paddingBottom: SPACE.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  backBtn: { padding: SPACE.xs },
-  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: COLORS.textPrimary },
-  saveBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(165,153,255,0.15)', borderRadius: RADIUS.sm },
-  saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: COLORS.accentPrimary },
-  
-  scrollContent: { padding: SPACE.xl, paddingBottom: 100 },
-  
-  previewHeader: { alignItems: 'center', marginBottom: SPACE.lg },
-  musclePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  muscleDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
-  muscleText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 },
+const makeStyles = (colors: any) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: '#000000' },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: SPACE.xl,
+        paddingTop: Platform.OS === 'ios' ? 50 : 40,
+        paddingBottom: SPACE.md,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+      },
+      backBtn: { padding: SPACE.xs },
+      headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
+      saveBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(165,153,255,0.15)', borderRadius: RADIUS.sm },
+      saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.accentPrimary },
+      
+      scrollContent: { padding: SPACE.xl, paddingBottom: 100 },
+      
+      previewHeader: { alignItems: 'center', marginBottom: SPACE.lg },
+      musclePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+      muscleDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+      muscleText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 },
 
-  formGroup: { marginBottom: SPACE.lg },
-  rowForm: { flexDirection: 'row', justifyContent: 'space-between' },
-  label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: COLORS.textMuted, marginBottom: 8, letterSpacing: 0.5 },
-  input: {
-    backgroundColor: '#161618',
-    borderRadius: RADIUS.md,
-    paddingHorizontal: 16,
-    height: 48,
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 15,
-    color: COLORS.textPrimary,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
-  },
-  
-  videoInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  previewVideoBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.accentPrimary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  videoContainer: { width: '100%', borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: SPACE.xl, marginTop: SPACE.sm },
-  
-  masterSplitContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACE.md },
-  masterSplitTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: COLORS.textPrimary, marginBottom: 4 },
-  masterSplitDesc: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: COLORS.textMuted },
+      formGroup: { marginBottom: SPACE.lg },
+      rowForm: { flexDirection: 'row', justifyContent: 'space-between' },
+      label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 },
+      input: {
+        backgroundColor: '#161618',
+        borderRadius: RADIUS.md,
+        paddingHorizontal: 16,
+        height: 48,
+        fontFamily: FONT_FAMILY.body,
+        fontSize: 15,
+        color: colors.textPrimary,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.04)',
+      },
+      
+      videoInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+      previewVideoBtn: {
+        width: 48,
+        height: 48,
+        borderRadius: RADIUS.md,
+        backgroundColor: colors.accentPrimary,
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      videoContainer: { width: '100%', borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: SPACE.xl, marginTop: SPACE.sm },
+      
+      masterSplitContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: SPACE.md },
+      masterSplitTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginBottom: 4 },
+      masterSplitDesc: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted },
 
-  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: SPACE.xl },
-  sectionTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: COLORS.textPrimary, marginBottom: SPACE.md },
-  
-  historyItem: {
-    backgroundColor: '#161618',
-    borderRadius: RADIUS.md,
-    padding: SPACE.md,
-    marginBottom: SPACE.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.02)',
-  },
-  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.md },
-  historyDate: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: COLORS.textPrimary },
-  historySummary: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: COLORS.accentPrimary },
-  
-  setsList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  setBubble: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-  setBubbleCompleted: { backgroundColor: 'rgba(165,153,255, 0.15)' },
-  setBubbleMissed: { backgroundColor: 'rgba(255,255,255,0.02)' },
-  setBubbleText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: COLORS.textPrimary },
-  
-  emptyState: { alignItems: 'center', marginTop: 20, gap: SPACE.md },
-  emptyText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: COLORS.textMuted },
-  
-  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, backgroundColor: 'rgba(255, 69, 58, 0.1)', borderRadius: RADIUS.md },
-  deleteBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#FF453A' },
-});
+      divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: SPACE.xl },
+      sectionTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary, marginBottom: SPACE.md },
+      
+      historyItem: {
+        backgroundColor: '#161618',
+        borderRadius: RADIUS.md,
+        padding: SPACE.md,
+        marginBottom: SPACE.md,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.02)',
+      },
+      historyHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.md },
+      historyDate: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
+      historySummary: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.accentPrimary },
+      
+      setsList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+      setBubble: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+      setBubbleCompleted: { backgroundColor: 'rgba(165,153,255, 0.15)' },
+      setBubbleMissed: { backgroundColor: 'rgba(255,255,255,0.02)' },
+      setBubbleText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary },
+      
+      emptyState: { alignItems: 'center', marginTop: 20, gap: SPACE.md },
+      emptyText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textMuted },
+      
+      deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 16, backgroundColor: 'rgba(255, 69, 58, 0.1)', borderRadius: RADIUS.md },
+      deleteBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#FF453A' },
+    });

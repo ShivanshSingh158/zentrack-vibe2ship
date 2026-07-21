@@ -17,7 +17,7 @@
 - **Build**: `npm run build` (Vite + PWA plugin, outputs to `dist/`)
 
 ### Architecture Philosophy
-The web app calls Gemini **directly** through `/api/gemini-proxy` (Vercel serverless). There is **no separate backend server** required for the web. The Render/Socket.IO backend in `backend/` is a legacy artifact and is NOT used by the web app.
+The web app calls Gemini **directly** through `/api/gemini-proxy` (Vercel serverless). There is **no separate backend server**. All backend logic lives in Vercel Serverless Functions under `/api/`. The legacy Socket.IO/Render `backend/` directory has been permanently deleted (2026-07-21).
 
 ---
 
@@ -36,10 +36,7 @@ zentrack-vibe2ship/
 │   ├── send-sms.ts                 Twilio SMS sender
 │   ├── cron-watchdog.js            System health cron + dead-letter queue
 │   ├── daily-briefing.ts           Daily briefing generator
-│   ├── youtube.js                  YouTube Data API v3 wrapper
-│   └── auth/
-│       ├── google.ts               Google OAuth callback handler
-│       └── refresh.ts              Silent Google OAuth token refresh
+│   └── youtube.js                  YouTube Data API v3 wrapper
 ├── src/
 │   ├── main.tsx                    App bootstrap: BrowserRouter + Sentry + VoiceProvider + App
 │   ├── App.tsx                     Root: Firebase auth guard, React Router routes (lazy), global event listeners
@@ -588,6 +585,20 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 ---
 
 ## 12. Changelog
+
+### 2026-07-21 — Full Codebase Restructure (Professional Cleanup)
+- **DELETED** root-level one-off scripts: `fix_blur.cjs`, `patch_modals.js`, `replace_models.js`, `replace_models2.cjs`, `revert_blur.cjs`, `update_app_json.cjs`
+- **DELETED** `temp_notifs.txt` (56KB plaintext dump — temp file violating no-scratch-in-project rule)
+- **DELETED** `Dockerfile` and `cloudbuild.yaml` (unused — app is on Vercel, not Docker/GCP)
+- **DELETED** `ARCHITECTURE.md` root-level duplicate (single source of truth is `.agents/SYSTEM_ARCHITECTURE.md`)
+- **DELETED** `scratch/` directory (`scratch/update_dashboard_layout.cjs` — one-off script violating workspace rules)
+- **DELETED** `scripts/` directory (`fix_imports.cjs`, `split_tools.cjs` — one-off refactor scripts)
+- **DELETED** `project-apex/` directory (empty)
+- **DELETED** `backend/` directory (entire) — confirmed dead: legacy Socket.IO/Render server, never used by web or mobile
+- **DELETED** `api/auth/` directory (empty placeholder)
+- **DELETED** `src/data/brutalQuotes.ts` — 24KB quotes file with zero import references in the codebase
+- **KEPT** `src/data/roadmaps.ts` — imported by `LearningChecklistModule.tsx`
+- **TypeScript check**: `npx tsc --noEmit` passes with zero errors after all deletions
 
 ### 2026-07-14 — Codebase Restructure + Architecture Rewrite
 - **DELETED** root junk files: `diff_appnav.txt` (7.3MB), `test-browser.js`, `test-ddg.js`, `test-lite.js`, `madge-output.json`

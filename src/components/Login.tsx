@@ -139,7 +139,7 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
         initial={{ opacity: 0, y: 40, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-        className="liquid-glass"
+        className="premium-matte-card premium-glow premium-glow-active"
         style={{
           width: '100%',
           maxWidth: '440px',
@@ -152,11 +152,7 @@ export const Login: React.FC<LoginProps> = ({ onBack }) => {
           position: 'relative',
           zIndex: 10,
           margin: '1rem',
-          background: 'rgba(18, 14, 8, 0.88)',
-          backdropFilter: 'blur(32px) saturate(180%)',
-          WebkitBackdropFilter: 'blur(32px) saturate(180%)',
-          border: '1px solid rgba(210, 175, 130, 0.14)',
-          boxShadow: '0 1px 0 rgba(235, 210, 175, 0.07) inset, 0 32px 72px rgba(0,0,0,0.65)',
+          boxShadow: '0 32px 72px rgba(0,0,0,0.65)',
         }}
       >
         {/* Animated Brand Logo/Text */}

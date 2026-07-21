@@ -1,6 +1,23 @@
 /**
  * OnboardingScreen — ZenTrack Mobile
  * Editorial Design Rewrite
+ *
+ * ╔══════════════════════════════════════════════════════════════════════════╗
+ * ║  🔴 BUG-H6 SAFETY CONSTRAINT — READ THIS BEFORE EDITING               ║
+ * ║                                                                          ║
+ * ║  OnboardingScreen renders OUTSIDE all Stack/Tab navigators in           ║
+ * ║  AppNavigator.tsx. It is returned as a standalone component when        ║
+ * ║  authLoading=false and hasOnboarded=false, BEFORE the main navigator.  ║
+ * ║                                                                          ║
+ * ║  NEVER call useNavigation() inside this file. It will throw:           ║
+ * ║    "Couldn't find a navigation object. Is your component inside        ║
+ * ║     NavigationContainer?"                                               ║
+ * ║  ...crashing the app for EVERY new user on first launch.               ║
+ * ║                                                                          ║
+ * ║  Navigation callbacks must be passed as PROPS from AppNavigator.tsx.   ║
+ * ║  The existing pattern (calling onFinish() prop after onboarding) is    ║
+ * ║  the correct approach. Do not change this pattern.                     ║
+ * ╚══════════════════════════════════════════════════════════════════════════╝
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -21,6 +38,7 @@ import * as Notifications from 'expo-notifications';
 // Fonts
 import { useFonts, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold, PlayfairDisplay_600SemiBold_Italic } from '@expo-google-fonts/playfair-display';
+import { COLLECTION } from '../config/constants';
 
 const { width } = Dimensions.get('window');
 
@@ -140,7 +158,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
         }, { merge: true }).catch(e => console.log('Identity save issue:', e));
 
         if (goal.trim()) {
-          addDoc(collection(db, 'goals'), {
+          addDoc(collection(db, COLLECTION.GOALS), {
             userId: uid,
             title: goal.trim(),
             status: 'active',

@@ -3,8 +3,9 @@ import { View, Text, StyleSheet, Modal, TouchableOpacity, Switch, Platform, Aler
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { COLORS, FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { hapticMedium, hapticSelection } from '../../utils/haptics';
+import { useTheme } from "../../contexts/ThemeContext";
 
 interface Props {
   visible: boolean;
@@ -12,6 +13,8 @@ interface Props {
 }
 
 export function GymNotificationModal({ visible, onClose }: Props) {
+    const { colors, isDark } = useTheme();
+    const s = makeStyles(colors);
   const [enabled, setEnabled] = useState(true);
   const [time, setTime] = useState<Date>(new Date());
   const [showPicker, setShowPicker] = useState(false);
@@ -66,7 +69,7 @@ export function GymNotificationModal({ visible, onClose }: Props) {
           <View style={s.header}>
             <Text style={s.title}>Workout Reminders</Text>
             <TouchableOpacity onPress={onClose} style={s.closeBtn}>
-              <Ionicons name="close" size={24} color={COLORS.textSecondary} />
+              <Ionicons name="close" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -78,8 +81,8 @@ export function GymNotificationModal({ visible, onClose }: Props) {
             <Switch
               value={enabled}
               onValueChange={(val) => { hapticSelection(); setEnabled(val); }}
-              trackColor={{ false: COLORS.border, true: COLORS.accentPrimary }}
-              thumbColor={Platform.OS === 'android' ? COLORS.textPrimary : undefined}
+              trackColor={{ false: colors.border, true: colors.accentPrimary }}
+              thumbColor={Platform.OS === 'android' ? colors.textPrimary : undefined}
             />
           </View>
 
@@ -118,79 +121,79 @@ export function GymNotificationModal({ visible, onClose }: Props) {
   );
 }
 
-const s = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  card: {
-    backgroundColor: '#141416',
-    borderTopLeftRadius: RADIUS.xxl,
-    borderTopRightRadius: RADIUS.xxl,
-    padding: SPACE.xl,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACE.xxl,
-  },
-  title: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.xl,
-    color: COLORS.textPrimary,
-  },
-  closeBtn: {
-    padding: SPACE.xs,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#1c1c1e',
-    padding: SPACE.lg,
-    borderRadius: RADIUS.lg,
-    marginBottom: SPACE.md,
-  },
-  rowText: {
-    flex: 1,
-    paddingRight: SPACE.md,
-  },
-  rowTitle: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.base,
-    color: COLORS.textPrimary,
-    marginBottom: 4,
-  },
-  rowSub: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textSecondary,
-    lineHeight: 18,
-  },
-  timeBtn: {
-    backgroundColor: '#2c2c2e',
-    paddingHorizontal: SPACE.md,
-    paddingVertical: SPACE.sm,
-    borderRadius: RADIUS.md,
-  },
-  timeBtnText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: FONT_SIZE.base,
-    color: COLORS.textPrimary,
-  },
-  saveBtn: {
-    backgroundColor: COLORS.textPrimary,
-    paddingVertical: SPACE.lg,
-    borderRadius: RADIUS.xl,
-    alignItems: 'center',
-    marginTop: SPACE.xl,
-  },
-  saveBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.md,
-    color: COLORS.background,
-  },
-});
+const makeStyles = (colors: any) => StyleSheet.create({
+      overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'flex-end',
+      },
+      card: {
+        backgroundColor: '#141416',
+        borderTopLeftRadius: RADIUS.xxl,
+        borderTopRightRadius: RADIUS.xxl,
+        padding: SPACE.xl,
+        paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+      },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: SPACE.xxl,
+      },
+      title: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.xl,
+        color: colors.textPrimary,
+      },
+      closeBtn: {
+        padding: SPACE.xs,
+      },
+      row: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#1c1c1e',
+        padding: SPACE.lg,
+        borderRadius: RADIUS.lg,
+        marginBottom: SPACE.md,
+      },
+      rowText: {
+        flex: 1,
+        paddingRight: SPACE.md,
+      },
+      rowTitle: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.base,
+        color: colors.textPrimary,
+        marginBottom: 4,
+      },
+      rowSub: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: FONT_SIZE.sm,
+        color: colors.textSecondary,
+        lineHeight: 18,
+      },
+      timeBtn: {
+        backgroundColor: '#2c2c2e',
+        paddingHorizontal: SPACE.md,
+        paddingVertical: SPACE.sm,
+        borderRadius: RADIUS.md,
+      },
+      timeBtnText: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: FONT_SIZE.base,
+        color: colors.textPrimary,
+      },
+      saveBtn: {
+        backgroundColor: colors.textPrimary,
+        paddingVertical: SPACE.lg,
+        borderRadius: RADIUS.xl,
+        alignItems: 'center',
+        marginTop: SPACE.xl,
+      },
+      saveBtnText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.md,
+        color: colors.background,
+      },
+    });

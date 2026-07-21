@@ -88,5 +88,27 @@ export const staggerIn = (anims: Animated.Value[], delay = 60) =>
   );
 
 import { LayoutAnimation, Platform, UIManager } from 'react-native';
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) { UIManager.setLayoutAnimationEnabledExperimental(true); }
-export const triggerLayoutAnimation = () => { LayoutAnimation.configureNext({ duration: 250, update: { type: 'spring', springDamping: 0.7 }, create: { type: 'easeInEaseOut', property: 'opacity' }, delete: { type: 'easeOut', property: 'opacity' } }); };
+
+export const triggerLayoutAnimation = (type = 'easeInEaseOut') => {
+  if (Platform.OS === 'android') {
+    if (UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }
+  // @ts-ignore
+  LayoutAnimation.configureNext(LayoutAnimation.Presets[type] || LayoutAnimation.Presets.easeInEaseOut);
+};
+
+// ─── REANIMATED PRESETS ──────────────────────────────────────────────────────
+
+import { withTiming, withSpring, withDelay, SharedValue } from 'react-native-reanimated';
+
+export const springEnter = (val: SharedValue<number>, from = 50, to = 0, delay = 0) => {
+  val.value = from;
+  val.value = withDelay(delay, withSpring(to, { damping: 15, stiffness: 150 }));
+};
+
+export const fadeEnter = (val: SharedValue<number>, delay = 0) => {
+  val.value = 0;
+  val.value = withDelay(delay, withTiming(1, { duration: 300 }));
+};

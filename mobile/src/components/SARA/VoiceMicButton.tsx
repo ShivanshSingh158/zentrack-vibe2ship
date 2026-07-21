@@ -46,8 +46,8 @@ export default function VoiceMicButton({
   };
 
   return (
-    <Animated.View style={[s.button, { 
-      transform: [{ scale: scaleAnim }], 
+    <Animated.View style={[s.button, {
+      transform: [{ scale: scaleAnim }],
       opacity: disabled ? 0.5 : 1,
       backgroundColor: isRecording ? 'rgba(255, 77, 79, 0.15)' : 'rgba(165,153,255,0.15)',
       borderColor: isRecording ? 'rgba(255, 77, 79, 0.4)' : 'rgba(165,153,255,0.4)',

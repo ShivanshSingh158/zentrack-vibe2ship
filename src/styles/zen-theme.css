@@ -42,15 +42,15 @@ h1.title, h2.title {
 
 /* Date sidebar buttons */
 .date-btn:hover {
-  background: rgba(196, 149, 106, 0.07) !important;
+  background: rgba(59, 130, 246, 0.07) !important;
   color: var(--text-primary) !important;
 }
 .date-btn.selected {
-  background: rgba(196, 149, 106, 0.12) !important;
-  border-color: rgba(196, 149, 106, 0.28) !important;
-  color: var(--zen-copper) !important;
+  background: rgba(59, 130, 246, 0.12) !important;
+  border-color: rgba(59, 130, 246, 0.28) !important;
+  color: var(--zen-purple) !important;
 }
-.date-btn.selected .date-num { color: var(--zen-copper) !important; }
+.date-btn.selected .date-num { color: var(--zen-purple) !important; }
 
 /* Priority left-border system */
 .todo-item-p1,
@@ -60,14 +60,14 @@ h1.title, h2.title {
 .todo-item-p3,
 .priority-p3 { border-left-color: var(--zen-sage) !important; }
 
-/* Checkbox — copper fill on complete */
+/* Checkbox — purple fill on complete */
 .todo-checkbox:checked,
 .checkbox-filled {
-  background: var(--zen-copper) !important;
-  border-color: var(--zen-copper) !important;
+  background: var(--zen-purple) !important;
+  border-color: var(--zen-purple) !important;
 }
 .todo-checkbox:focus {
-  box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.18) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18) !important;
 }
 
 /* Filter pills / tabs */
@@ -80,9 +80,9 @@ h1.title, h2.title {
 .filter-pill.active,
 .tab-pill.active,
 .filter-btn.active {
-  background: rgba(196, 149, 106, 0.15) !important;
-  color: var(--zen-copper) !important;
-  border-color: rgba(196, 149, 106, 0.30) !important;
+  background: rgba(59, 130, 246, 0.14) !important;
+  color: var(--zen-purple) !important;
+  border-color: rgba(59, 130, 246, 0.30) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -179,21 +179,21 @@ h1.title, h2.title {
   border-radius: var(--radius-pill) !important;
 }
 
-/* Log workout CTA — full copper */
+/* Log workout CTA — full purple */
 [class*="log-workout"],
 [class*="log-btn"],
 [class*="workout-log"] {
-  background: linear-gradient(135deg, #c4956a, #dba87e) !important;
-  color: #1a110a !important;
+  background: linear-gradient(135deg, #3b82f6, #60a5fa) !important;
+  color: #0a0814 !important;
   font-weight: 700 !important;
   border: none !important;
   border-radius: var(--radius-pill) !important;
 }
 
-/* Gym progress bars — copper */
+/* Gym progress bars — purple */
 [class*="gym-progress"],
 [class*="muscle-progress"] {
-  background: linear-gradient(90deg, #c4956a, #dba87e) !important;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -376,15 +376,15 @@ h1.title, h2.title {
 
 /* Command bar */
 .command-bar-container {
-  background: rgba(12, 9, 5, 0.60) !important;
-  border: 1px solid rgba(196, 149, 106, 0.16) !important;
+  background: rgba(10, 10, 11, 0.80) !important;
+  border: 1px solid rgba(59, 130, 246, 0.14) !important;
 }
 .command-bar-container:focus-within {
-  border-color: rgba(196, 149, 106, 0.38) !important;
-  background: rgba(18, 14, 8, 0.75) !important;
+  border-color: rgba(59, 130, 246, 0.36) !important;
+  background: rgba(14, 14, 16, 0.92) !important;
 }
 .agent-command-input { color: var(--text-primary) !important; }
-.agent-command-input::placeholder { color: rgba(185, 168, 145, 0.30) !important; }
+.agent-command-input::placeholder { color: rgba(142, 142, 147, 0.35) !important; }
 
 /* Agent fleet nodes */
 .fleet-node {
@@ -393,12 +393,12 @@ h1.title, h2.title {
 }
 .fleet-node.active,
 .fleet-node.thinking {
-  border-color: var(--zen-copper-border) !important;
-  box-shadow: 0 0 16px var(--zen-copper-glow) !important;
+  border-color: var(--zen-purple-border) !important;
+  box-shadow: 0 0 16px var(--zen-purple-glow) !important;
 }
 .fleet-node.orchestrator {
-  border-color: rgba(196, 149, 106, 0.40) !important;
-  box-shadow: 0 0 24px rgba(196, 149, 106, 0.20) !important;
+  border-color: rgba(59, 130, 246, 0.40) !important;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.20) !important;
 }
 
 /* Terminal feed */
@@ -408,7 +408,7 @@ h1.title, h2.title {
   font-family: var(--font-mono) !important;
 }
 [class*="terminal-prompt"] {
-  color: var(--zen-copper) !important;
+  color: var(--zen-purple) !important;
 }
 [class*="terminal-success"] { color: var(--zen-sage) !important; }
 [class*="terminal-error"]   { color: var(--zen-rose) !important; }
@@ -529,29 +529,29 @@ h1.title, h2.title {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   MOBILE BOTTOM NAV — Warm Obsidian
+   MOBILE BOTTOM NAV — Obsidian Cosmos
    ══════════════════════════════════════════════════════════════ */
 
 .mobile-bottom-nav,
 [class*="bottom-nav"] {
-  background: rgba(10, 8, 5, 0.90) !important;
-  backdrop-filter: blur(20px) !important;
-  border-top: 1px solid rgba(210, 175, 130, 0.08) !important;
+  background: rgba(0, 0, 0, 0.92) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  border-top: 1px solid rgba(59, 130, 246, 0.10) !important;
 }
 
 [class*="bottom-nav-item"].active,
 [class*="nav-tab"].active {
-  color: var(--zen-copper) !important;
+  color: var(--zen-purple) !important;
 }
 
 [class*="bottom-nav-item"],
 [class*="nav-tab"] {
-  color: rgba(185, 168, 145, 0.45) !important;
+  color: rgba(142, 142, 147, 0.55) !important;
 }
 
 /* Mobile sheet overlay */
 .mobile-sheet-overlay {
-  background: rgba(4, 3, 2, 0.72) !important;
+  background: rgba(0, 0, 0, 0.72) !important;
 }
 .mobile-sheet-content {
   background: var(--glass-2-bg) !important;
@@ -564,15 +564,15 @@ h1.title, h2.title {
   color: var(--text-secondary) !important;
 }
 .sheet-item.active {
-  color: var(--zen-copper) !important;
+  color: var(--zen-purple) !important;
 }
 .sheet-icon {
-  background: rgba(196, 149, 106, 0.08) !important;
-  border: 1px solid rgba(196, 149, 106, 0.14) !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+  border: 1px solid rgba(59, 130, 246, 0.14) !important;
 }
 .sheet-item.active .sheet-icon {
-  background: rgba(196, 149, 106, 0.15) !important;
-  border-color: rgba(196, 149, 106, 0.30) !important;
+  background: rgba(59, 130, 246, 0.15) !important;
+  border-color: rgba(59, 130, 246, 0.30) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════

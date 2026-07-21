@@ -19,7 +19,7 @@ export const SEND_NOTIFICATION_URL = `${APP_URL}/api/send-notification`;
 
 // ── Gemini Models ─────────────────────────────────────────────────────────────
 export const GEMINI_MODEL_DEFAULT = 'gemini-2.5-flash';
-export const GEMINI_MODEL_VOICE = 'gemini-2.5-flash-lite-preview-06-17';
+export const GEMINI_MODEL_VOICE = 'gemini-2.5-flash';
 export const GEMINI_MODEL_RESEARCH = 'gemini-2.5-flash';
 
 // ── Agent System ──────────────────────────────────────────────────────────────

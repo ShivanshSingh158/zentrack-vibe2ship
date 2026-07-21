@@ -42,7 +42,7 @@
  * | Function | Model | Use Case |
  * |---|---|---|
  * | `callWithResearchModel` | gemini-2.5-flash | Deep analysis (ORACLE, HERMES) |
- * | `callWithVoiceModel` | gemini-2.5-flash-lite-preview-06-17 | Fast responses (AEGIS, NAVIGATOR) |
+ * | `callWithVoiceModel` | gemini-2.5-flash | Fast responses (AEGIS, NAVIGATOR) |
  * | `callWithFallback` | (primary, with key rotation fallback) | General purpose |
  *
  * @see {@link ../../../api/gemini-proxy.js} for the server-side proxy implementation
@@ -126,7 +126,7 @@ if (typeof window !== 'undefined') {
 //   Latest data, best reasoning, used for any major work.
 //
 // Real Gemini API IDs (not marketing names):
-//   gemini-2.5-flash-lite-preview-06-17 = Flash Lite (fast/cheap — VOICE tier)
+//   gemini-2.5-flash = Flash Lite (fast/cheap — VOICE tier)
 //   gemini-2.5-flash                    = 2.5 Flash (smart/latest — RESEARCH tier)
 //   gemini-2.0-flash                    = 2.0 Flash (stable fallback)
 

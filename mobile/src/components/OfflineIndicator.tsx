@@ -1,40 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import NetInfo from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT_FAMILY, FONT_SIZE, SHADOW } from '../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, SHADOW } from '../theme/tokens';
+import { useTheme } from "../contexts/ThemeContext";
 
 export function OfflineIndicator() {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const [isOffline, setIsOffline] = useState(false);
-  const translateY = React.useRef(new Animated.Value(-100)).current;
+  const translateY = useSharedValue(-100);
   const insets = useSafeAreaInsets();
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
-      // In iOS simulator this can initially be null, so check explicitly for false
       const offline = state.isConnected === false;
       setIsOffline(offline);
-      
-      Animated.spring(translateY, {
-        toValue: offline ? 0 : -100,
-        useNativeDriver: true,
-        bounciness: 0,
-        speed: 12
-      }).start();
+      translateY.value = withSpring(offline ? Math.max(insets.top, 10) + 10 : -100);
     });
 
     return () => unsubscribe();
-  }, [translateY]);
+  }, [translateY, insets.top]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }]
+  }));
 
   return (
     <Animated.View 
       style={[
         styles.container, 
-        { 
-          transform: [{ translateY }], 
-          top: Math.max(insets.top, 10) + 10 
-        }
+        animatedStyle
       ]}
       pointerEvents="none"
     >
@@ -46,29 +44,29 @@ export function OfflineIndicator() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 9999,
-    alignItems: 'center',
-    paddingHorizontal: 16,
-  },
-  banner: {
-    backgroundColor: '#FDE293', // Warning yellow
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    ...SHADOW.md,
-  },
-  text: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.xs,
-    color: '#000',
-  }
-});
+const makeStyles = (colors: any) => StyleSheet.create({
+      container: {
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        zIndex: 9999,
+        alignItems: 'center',
+        paddingHorizontal: 16,
+      },
+      banner: {
+        backgroundColor: '#FDE293', // Warning yellow
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+        paddingVertical: 10,
+        paddingHorizontal: 20,
+        borderRadius: 24,
+        ...SHADOW.md,
+      },
+      text: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.xs,
+        color: '#000',
+      }
+    });

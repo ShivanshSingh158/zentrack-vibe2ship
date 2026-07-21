@@ -1,17 +1,23 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withSequence, withDelay } from 'react-native-reanimated';
-import { COLORS, FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
+import { GymDayLog, GymNavigationParamList } from '../../types/gym.types';
 import { springs } from '../../theme/motion';
 import { useMobileData } from '../../contexts/MobileDataContext';
 import { calculateGymStreak } from '../../utils/gymUtils';
+import { useTheme } from "../../contexts/ThemeContext";
 
 export default function GymHistoryScreen() {
-  const navigation = useNavigation<any>();
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const { gymLogs } = useMobileData();
+  const scrollViewRef = useRef<ScrollView>(null);
 
   // Streak
   const streak = useMemo(() => calculateGymStreak(gymLogs), [gymLogs]);
@@ -32,7 +38,7 @@ export default function GymHistoryScreen() {
   }));
 
   // Heatmap generation
-  const weeks = 15; // 15 weeks visible
+  const weeks = 13; // 13 weeks visible (approx 90 days)
   const daysPerWeek = 7;
   
   const heatmapData = useMemo(() => {
@@ -87,7 +93,7 @@ export default function GymHistoryScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={COLORS.textPrimary} />
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>History</Text>
         <View style={{ width: 24 }} />
@@ -113,7 +119,15 @@ export default function GymHistoryScreen() {
         <View style={styles.heatmapCard}>
           <Text style={styles.heatmapTitle}>Activity</Text>
           
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false} 
+            contentContainerStyle={{ paddingBottom: 10 }}
+            ref={scrollViewRef}
+            onContentSizeChange={() => {
+              scrollViewRef.current?.scrollToEnd({ animated: false });
+            }}
+          >
             <View style={styles.gridContainer}>
               {/* Day Labels */}
               <View style={styles.dayLabels}>
@@ -168,33 +182,33 @@ export default function GymHistoryScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.background },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.xl, paddingTop: Platform.OS === 'ios' ? 10 : 20, paddingBottom: SPACE.md },
-  backBtn: { padding: SPACE.xs },
-  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: COLORS.textPrimary },
-  
-  content: { padding: SPACE.xl, paddingBottom: 100 },
+const makeStyles = (colors: any) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: colors.background },
+      header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.xl, paddingTop: Platform.OS === 'ios' ? 10 : 20, paddingBottom: SPACE.md },
+      backBtn: { padding: SPACE.xs },
+      headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
+      
+      content: { padding: SPACE.xl, paddingBottom: 100 },
 
-  streakCard: { backgroundColor: '#1C1C1E', borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...SHADOW.md },
-  streakLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  streakBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 140, 0, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 140, 0, 0.3)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: RADIUS.full },
-  streakBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#FFD166' },
-  streakTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: COLORS.textPrimary },
-  streakSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: COLORS.textMuted },
+      streakCard: { backgroundColor: '#1C1C1E', borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...SHADOW.md },
+      streakLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+      streakBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 140, 0, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 140, 0, 0.3)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: RADIUS.full },
+      streakBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#FFD166' },
+      streakTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
+      streakSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted },
 
-  heatmapCard: { backgroundColor: '#1C1C1E', borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.md },
-  heatmapTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: COLORS.textPrimary, marginBottom: SPACE.xl },
-  
-  gridContainer: { flexDirection: 'row' },
-  dayLabels: { justifyContent: 'space-between', marginRight: SPACE.sm, paddingVertical: 2 },
-  dayLabelText: { fontFamily: FONT_FAMILY.body, fontSize: 10, color: COLORS.textMuted, height: 16, lineHeight: 16, textAlign: 'center' },
-  
-  grid: { flexDirection: 'row', gap: 4 },
-  column: { gap: 4 },
-  square: { width: 16, height: 16, borderRadius: 4 },
-  
-  legendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: SPACE.xl, gap: 4 },
-  legendText: { fontFamily: FONT_FAMILY.body, fontSize: 10, color: COLORS.textMuted, marginHorizontal: 4 },
-  legendSquare: { width: 12, height: 12, borderRadius: 3 },
-});
+      heatmapCard: { backgroundColor: '#1C1C1E', borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.md },
+      heatmapTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginBottom: SPACE.xl },
+      
+      gridContainer: { flexDirection: 'row' },
+      dayLabels: { justifyContent: 'space-between', marginRight: SPACE.sm, paddingVertical: 2 },
+      dayLabelText: { fontFamily: FONT_FAMILY.body, fontSize: 10, color: colors.textMuted, height: 16, lineHeight: 16, textAlign: 'center' },
+      
+      grid: { flexDirection: 'row', gap: 4 },
+      column: { gap: 4 },
+      square: { width: 16, height: 16, borderRadius: 4 },
+      
+      legendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: SPACE.xl, gap: 4 },
+      legendText: { fontFamily: FONT_FAMILY.body, fontSize: 10, color: colors.textMuted, marginHorizontal: 4 },
+      legendSquare: { width: 12, height: 12, borderRadius: 3 },
+    });

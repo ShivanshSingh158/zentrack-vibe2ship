@@ -61,3 +61,61 @@ export const calculateGymStreak = (logs: any[] | null | undefined): number => {
   
   return streak;
 };
+
+import { GymExerciseLog, GymDayLog } from '../types/gym.types';
+
+export const calculateExerciseMaxWeight = (exercise: GymExerciseLog | undefined | null): number => {
+  if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
+  const completedSets = exercise.setsLog.filter(s => s.completed && s.weight && s.weight > 0);
+  if (completedSets.length === 0) return 0;
+  return Math.max(...completedSets.map(s => s.weight as number));
+};
+
+export const calculateEstimated1RM = (exercise: GymExerciseLog | undefined | null): number => {
+  if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
+  const completedSets = exercise.setsLog.filter(s => s.completed && s.weight && s.weight > 0 && s.reps && s.reps > 0);
+  if (completedSets.length === 0) return 0;
+  
+  // Epley Formula: 1RM = Weight * (1 + (Reps / 30))
+  const oneRepMaxes = completedSets.map(s => {
+    const w = s.weight as number;
+    const r = s.reps as number;
+    return w * (1 + (r / 30));
+  });
+  
+  return Math.round(Math.max(...oneRepMaxes));
+};
+
+export const calculateHistorical1RM = (gymLogs: any[], exerciseId: string): number => {
+  if (!gymLogs || gymLogs.length === 0) return 0;
+  let max1RM = 0;
+  
+  gymLogs.forEach(log => {
+    const ex = log.exercises?.find((e: any) => e.exerciseId === exerciseId);
+    if (ex) {
+      const ex1RM = calculateEstimated1RM(ex);
+      if (ex1RM > max1RM) max1RM = ex1RM;
+    }
+  });
+  
+  return max1RM;
+};
+
+export const calculateExerciseAvgReps = (exercise: GymExerciseLog | undefined | null): number => {
+  if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
+  const completedSets = exercise.setsLog.filter(s => s.completed && s.reps && s.reps > 0);
+  if (completedSets.length === 0) return 0;
+  const totalReps = completedSets.reduce((sum, s) => sum + (s.reps as number), 0);
+  return Math.round(totalReps / completedSets.length);
+};
+
+export const calculateWorkoutMaxWeight = (log: GymDayLog | undefined | null): number => {
+  if (!log || !log.exercises || log.exercises.length === 0) return 0;
+  let maxW = 0;
+  for (const ex of log.exercises) {
+    if (ex.skipped) continue;
+    const exMax = calculateExerciseMaxWeight(ex);
+    if (exMax > maxW) maxW = exMax;
+  }
+  return maxW;
+};

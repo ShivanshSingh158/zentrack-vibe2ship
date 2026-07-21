@@ -37,15 +37,13 @@ export const AgentCluster: React.FC<AgentClusterProps> = ({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-      {/* System Health — compact bars */}
+      {/* ── METRICS (30%) ──────────────────────────────────────────────────────── */}
       <div style={{
-        background: 'rgba(10, 8, 5, 0.5)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(196, 149, 106, 0.08)',
-        borderRadius: '12px',
-        padding: '1.2rem 1rem',
+        flex: 3,
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden'
       }}>
-        <div style={{ fontSize: '0.65rem', fontFamily: "'Orbitron', sans-serif", letterSpacing: '0.22em', color: '#c4956a', opacity: 0.7, marginBottom: '0.8rem' }}>
+        <div style={{ fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", fontWeight: 500, letterSpacing: '0.02em', color: 'rgba(255, 255, 255, 0.9)', marginBottom: '1.2rem', flexShrink: 0 }}>
           User Load Diagnostics
         </div>
         {[
@@ -54,10 +52,10 @@ export const AgentCluster: React.FC<AgentClusterProps> = ({
           { label: 'DAILY PROGRESS', val: donePercent, text: `${donePercent}%`, color: '#10b981' },
           { label: 'S.A.R.A SYNC',   val: focusLoad, text: `${focusLoad}%`, color: '#c4956a' },
         ].map(item => (
-          <div key={item.label} style={{ marginBottom: '0.8rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.6rem', letterSpacing: '0.08em', marginBottom: '4px', opacity: 0.75 }}>
-              <span>{item.label}</span>
-              <span style={{ color: item.color }}>{item.text}</span>
+          <div key={item.label} style={{ marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontFamily: "'Inter', sans-serif", letterSpacing: '0.02em', marginBottom: '6px', color: 'rgba(255, 255, 255, 0.6)', fontWeight: 500 }}>
+              <span style={{ textTransform: 'capitalize' }}>{item.label.toLowerCase()}</span>
+              <span style={{ color: item.color, fontWeight: 600 }}>{item.text}</span>
             </div>
             <div style={{ height: '3px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px' }}>
               <motion.div
@@ -70,15 +68,13 @@ export const AgentCluster: React.FC<AgentClusterProps> = ({
         ))}
       </div>
 
-      {/* Agent Fleet — compact dot + name rows */}
+      {/* ── ACTIVE AGENTS LIST (70%) ────────────────────────────────────────────── */}
       <div style={{
-        background: 'rgba(10, 8, 5, 0.5)',
-        backdropFilter: 'blur(12px)',
-        border: '1px solid rgba(196, 149, 106, 0.08)',
-        borderRadius: '12px',
-        padding: '1.2rem 1rem',
+        flex: 7,
+        display: 'flex', flexDirection: 'column',
+        overflow: 'hidden'
       }}>
-        <div style={{ fontSize: '0.65rem', fontFamily: "'Orbitron', sans-serif", letterSpacing: '0.22em', color: '#c4956a', opacity: 0.7, marginBottom: '0.8rem' }}>
+        <div style={{ fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", fontWeight: 500, letterSpacing: '0.02em', color: 'rgba(255, 255, 255, 0.9)', marginBottom: '1.2rem', flexShrink: 0 }}>
           Active Agents
         </div>
         {AGENTS.map(agent => {
@@ -91,16 +87,18 @@ export const AgentCluster: React.FC<AgentClusterProps> = ({
 
           return (
             <div key={agent.id} style={{ marginBottom: '4px' }}>
-              <div
+              <motion.div
+                whileHover={{ scale: 1.02, background: isSelected ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)' }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => setSelectedAgentId(isSelected ? null : agent.id)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '10px',
-                  padding: '6px 8px',
-                  borderRadius: '4px',
-                  background: isActive ? `${dotColor}15` : isSelected ? 'rgba(255,255,255,0.02)' : 'transparent',
-                  border: `1px solid ${isActive ? dotColor + '60' : isSelected ? 'rgba(255,255,255,0.1)' : 'transparent'}`,
-                  boxShadow: isActive ? `0 0 12px ${dotColor}30 inset, 0 0 8px ${dotColor}20` : 'none',
-                  transition: 'all 0.3s ease',
+                  display: 'flex', alignItems: 'center', gap: '12px',
+                  padding: '10px 14px',
+                  borderRadius: '16px',
+                  background: isActive ? `${dotColor}15` : isSelected ? 'rgba(255,255,255,0.04)' : 'transparent',
+                  border: 'none',
+                  boxShadow: isActive ? `inset 0 0 12px ${dotColor}10` : 'none',
+                  transition: 'background 0.3s ease, box-shadow 0.3s ease',
                   cursor: 'pointer',
                 }}
               >
@@ -113,20 +111,21 @@ export const AgentCluster: React.FC<AgentClusterProps> = ({
                   style={{ width: '6px', height: '6px', borderRadius: '50%', background: isActive ? dotColor : inactiveColor, flexShrink: 0 }}
                 />
                 <span style={{
-                  fontSize: '0.7rem', letterSpacing: '0.1em', flex: 1,
+                  fontSize: '0.8rem', letterSpacing: '0.02em', flex: 1, fontFamily: "'Inter', sans-serif",
                   color: isActive ? dotColor : isSelected ? agent.color : inactiveTextColor,
-                  fontWeight: isActive ? 600 : 400,
-                  textShadow: isActive ? `0 0 10px ${dotColor}80` : 'none',
+                  fontWeight: isActive ? 600 : 500,
+                  textTransform: 'capitalize',
+                  textShadow: isActive ? `0 0 8px ${dotColor}60` : 'none',
                   transition: 'color 0.2s',
                 }}>
-                  {agent.id}
+                  {agent.id.toLowerCase()}
                 </span>
                 {isActive && (
-                  <span style={{ fontSize: '0.55rem', color: dotColor, fontFamily: "'JetBrains Mono', monospace", fontWeight: 'bold' }}>
-                    {isError ? 'ERR' : 'RUN'}
+                  <span style={{ fontSize: '0.65rem', color: dotColor, fontFamily: "'Inter', sans-serif", fontWeight: 700, letterSpacing: '0.05em' }}>
+                    {isError ? 'Error' : 'Active'}
                   </span>
                 )}
-              </div>
+              </motion.div>
               
               <AnimatePresence>
                 {isSelected && (
@@ -138,16 +137,16 @@ export const AgentCluster: React.FC<AgentClusterProps> = ({
                   >
                     <div style={{
                       margin: '4px 8px 8px 8px',
-                      padding: '8px 10px',
-                      background: 'rgba(0,0,0,0.3)',
-                      borderRadius: '6px',
-                      borderLeft: `2px solid ${dotColor}`,
-                      fontSize: '0.6rem',
+                      padding: '12px 14px',
+                      background: 'rgba(255,255,255,0.03)',
+                      borderRadius: '16px',
+                      borderLeft: `3px solid ${dotColor}`,
+                      fontSize: '0.75rem',
                       color: 'rgba(255,255,255,0.7)',
-                      lineHeight: 1.4,
-                      fontFamily: "'Rajdhani', sans-serif"
+                      lineHeight: 1.5,
+                      fontFamily: "'Inter', sans-serif"
                     }}>
-                      <div style={{ color: dotColor, fontWeight: 'bold', marginBottom: '4px', fontSize: '0.65rem', letterSpacing: '0.05em' }}>
+                      <div style={{ color: dotColor, fontWeight: 600, marginBottom: '6px', fontSize: '0.75rem', letterSpacing: '0.02em' }}>
                         {agent.title}
                       </div>
                       <div style={{ opacity: 0.9 }}>

@@ -9,16 +9,18 @@ import CardioLogScreen from '../screens/gym/CardioLogScreen';
 import ExerciseSwapScreen from '../screens/gym/ExerciseSwapScreen';
 import GymProgressScreen from '../screens/gym/GymProgressScreen';
 import GymHistoryScreen from '../screens/gym/GymHistoryScreen';
-import { COLORS } from '../theme/tokens';
+import { useTheme } from "../contexts/ThemeContext";
 
 const Stack = createNativeStackNavigator();
 
 export default function GymStack() {
+    const { colors, isDark } = useTheme();
+
   return (
     <Stack.Navigator
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: COLORS.background },
+        contentStyle: { backgroundColor: colors.background },
       }}
     >
       <Stack.Screen name="GymHome" component={GymHomeScreen} />

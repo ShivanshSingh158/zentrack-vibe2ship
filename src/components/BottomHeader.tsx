@@ -94,10 +94,8 @@ export const BottomHeader: React.FC<BottomHeaderProps> = ({ onOpenSara, showSara
       left: 0,
       width: '100%',
       height: '80px',
-      background: 'rgba(10, 8, 5, 0.75)',
-      backdropFilter: 'blur(30px)',
-      WebkitBackdropFilter: 'blur(30px)',
-      borderTop: '1px solid rgba(196, 149, 106, 0.15)',
+      background: 'transparent',
+      borderTop: 'none',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
@@ -107,18 +105,10 @@ export const BottomHeader: React.FC<BottomHeaderProps> = ({ onOpenSara, showSara
       
       {/* ── LEFT: Logo & Search ── */}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '24px' }}>
-        {/* ZenTrack Logo */}
-        <div 
-          onClick={() => navigate('/home')}
-          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
-        >
-          <img src="/logo_white.png" alt="ZenTrack" style={{ width: 28, height: 28, objectFit: 'contain' }} />
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: '1.4rem', fontWeight: 400, color: 'white', letterSpacing: '0.02em' }}>ZenTrack</span>
-        </div>
-
-        {/* Command Palette (Expandable Inline Search) */}
-        <CommandPalette />
+        {/* ZenTrack Logo Removed */}
       </div>
+
+
 
       {/* ── CENTER: Navigation Dock ── */}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>

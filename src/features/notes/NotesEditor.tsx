@@ -92,6 +92,15 @@ export const NotesEditor: React.FC<NotesEditorProps> = ({
             </div>
           </div>
         )}
+
+        {/* Hidden fully-rendered markdown for PDF Export */}
+        <div style={{ display: 'none' }}>
+          <div id="hidden-pdf-export-content" className="markdown-body">
+            {activeNote.content ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{activeNote.content}</ReactMarkdown>
+            ) : null}
+          </div>
+        </div>
       </div>
     </div>
   );

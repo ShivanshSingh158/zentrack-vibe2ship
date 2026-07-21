@@ -18,6 +18,9 @@ export interface GymExerciseLog {
   skipped?: boolean;
   supersetGroup?: string; // e.g. 'A', 'B' — exercises with same letter are supersets
   restTimeSecs?: number;
+  isCompound?: boolean;
+  lastSessionSets?: any[];
+  _idx?: number;
 }
 
 export interface GymCardioLog {
@@ -42,6 +45,8 @@ export interface GymDayLog {
   notes?: string;
   workoutStartTime?: number;
   workoutDurationMinutes?: number;
+  startTime?: string;
+  endTime?: string;
   restTimerStartTime?: number;
   restTimerDurationSecs?: number;
   restTimerExerciseName?: string;
@@ -57,6 +62,7 @@ export interface GymPlanExercise {
   muscle?: string;
   videoId?: string;
   restTimeSecs?: number;
+  isCompound?: boolean;
 }
 
 export interface GymPlanDay {
@@ -152,3 +158,14 @@ export interface BodyweightLog {
   weightKg: number;
   loggedAt: number;   // timestamp
 }
+
+export type GymNavigationParamList = {
+  GymHome: undefined;
+  ActiveLogging: { date: string; initialIndex?: number };
+  WorkoutSummary: { date?: string; readOnly?: boolean } | undefined;
+  GymProgress: { date?: string } | undefined;
+  ExerciseDetail: { exerciseId: string; date?: string };
+  ExerciseSwap: { exerciseIndex: number; date: string; currentName: string; originalExerciseId?: string };
+  GymHistory: undefined;
+  CardioLog: { date: string; cardioId?: string };
+};

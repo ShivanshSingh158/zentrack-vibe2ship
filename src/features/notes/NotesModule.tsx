@@ -55,7 +55,7 @@ export const NotesModule = () => {
   // Note Enhancements State
   const [viewMode, setViewMode] = useState<'split'|'edit'|'preview'>('split');
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const [chatHistory, setChatHistory] = useState<{role: 'user'|'model', title: string, model?: string}[]>([]);
+  const [chatHistory, setChatHistory] = useState<{role: 'user'|'model', text: string, model?: string}[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
   const [isAiExpanded, setIsAiExpanded] = useState(false);
@@ -287,20 +287,47 @@ export const NotesModule = () => {
     }
 
     if (format === 'pdf') {
+      const parsedHtml = document.querySelector('#hidden-pdf-export-content')?.innerHTML || activeNote.content;
+      
       const element = document.createElement('div');
       element.innerHTML = `
-        <div style="font-family: sans-serif; padding: 20px;">
-          <h1 style="border-bottom: 1px solid #ccc; padding-bottom: 10px;">${activeNote.name || 'Note'}</h1>
-          <div class="markdown-body" style="color: #000;">
-            ${document.querySelector('.markdown-body')?.innerHTML || activeNote.content}
+        <div style="font-family: 'Inter', system-ui, sans-serif; padding: 40px; background: white; color: black; max-width: 800px; margin: 0 auto;">
+          <style>
+            /* Force light mode for PDF export */
+            .markdown-body { color: #1f2328 !important; background: transparent !important; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif !important; font-size: 14px; line-height: 1.4; word-wrap: break-word; }
+            .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { color: #1f2328 !important; margin-top: 16px; margin-bottom: 8px; font-weight: 600; line-height: 1.25; }
+            .markdown-body h1 { font-size: 2em; padding-bottom: .3em; border-bottom: 1px solid #d0d7de; }
+            .markdown-body h2 { font-size: 1.5em; padding-bottom: .3em; border-bottom: 1px solid #d0d7de; }
+            .markdown-body p, .markdown-body blockquote, .markdown-body ul, .markdown-body ol, .markdown-body dl, .markdown-body table, .markdown-body pre, .markdown-body details { margin-top: 0; margin-bottom: 8px; }
+            .markdown-body p:empty { display: none; }
+            .markdown-body blockquote { padding: 0 1em; color: #656d76 !important; border-left: .25em solid #d0d7de; margin: 0 0 8px 0; }
+            .markdown-body ul, .markdown-body ol { padding-left: 2em; }
+            .markdown-body code, .markdown-body tt { padding: .2em .4em; margin: 0; font-size: 85%; background-color: rgba(175,184,193,0.2) !important; border-radius: 6px; font-family: ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace; }
+            .markdown-body pre { padding: 16px; overflow: auto; font-size: 85%; line-height: 1.45; background-color: #f6f8fa !important; border-radius: 6px; }
+            .markdown-body pre code { display: inline; max-width: auto; padding: 0; margin: 0; overflow: visible; line-height: inherit; word-wrap: normal; background-color: transparent !important; border: 0; }
+            .markdown-body table { display: block; width: 100%; width: max-content; max-width: 100%; overflow: auto; margin-top: 0; margin-bottom: 16px; border-spacing: 0; border-collapse: collapse; }
+            .markdown-body table th { font-weight: 600; }
+            .markdown-body table th, .markdown-body table td { padding: 6px 13px; border: 1px solid #d0d7de; }
+            .markdown-body table tr { background-color: #ffffff; border-top: 1px solid #hsla(210,18%,87%,1); }
+            .markdown-body table tr:nth-child(2n) { background-color: #f6f8fa; }
+            
+            /* Clean up UI elements that shouldn't be printed */
+            .btn-primary, .btn-secondary, button { display: none !important; }
+          </style>
+          
+          <h1 style="border-bottom: 2px solid #e1e4e8; padding-bottom: 12px; margin-bottom: 24px; font-size: 28px; font-weight: 700; color: #1a1a1a;">
+            ${activeNote.name || 'Untitled Note'}
+          </h1>
+          <div class="markdown-body">
+            ${parsedHtml}
           </div>
         </div>
       `;
       const opt = {
         margin:       0.5,
-        filename:     `${activeNote.name || 'note'}.pdf`,
+        filename:     `${activeNote.name || 'Note'}.pdf`,
         image:        { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true },
+        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
         jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' as const }
       };
       toast.success('Generating PDF...');
@@ -333,7 +360,7 @@ export const NotesModule = () => {
       noteAiSession.current = startNoteAIChat(title, contentToAnalyze);
     }
     
-    setChatHistory(prev => [...prev, { role: 'user', title: prompt }]);
+    setChatHistory(prev => [...prev, { role: 'user', text: prompt }]);
     setIsAiLoading(true);
     setAiQuestion('');
     
@@ -346,7 +373,7 @@ export const NotesModule = () => {
           if (newHistory[newHistory.length - 1]?.role === 'model') {
             newHistory[newHistory.length - 1].text = fullText;
           } else {
-            newHistory.push({ role: 'model', title: fullText });
+            newHistory.push({ role: 'model', text: fullText });
           }
           return newHistory;
         });
@@ -372,15 +399,15 @@ export const NotesModule = () => {
       sendChatMessage(aiQuestion);
     } else if (action === 'summarize') {
       sendChatMessage(
-        'Analyze this document and produce a precise, grounded summary. Include: (1) A 2-3 paragraph Executive Summary using ONLY the document content, (2) The Central Thesis or Main Argument of the document, (3) 5-8 Key Points with direct quotes or close paraphrases, (4) Any limitations or caveats the document itself mentions, (5) End with "Document Coverage: [X] pages analyzed". Cite page numbers wherever possible.'
+        'Produce a complete, exhaustive analysis of this document. Include: (1) A rich multi-paragraph Executive Summary grounded entirely in the document content — minimum 3 detailed paragraphs, (2) The Central Thesis or Main Argument, (3) ALL Key Points with direct quotes or close paraphrases — do not artificially limit the number, (4) Methodology or Approach used (if applicable), (5) All Limitations, Caveats, or Assumptions stated in the document, (6) Key Data, Statistics, or Findings with exact values, (7) End with "Document Coverage: [X] pages analyzed, [Y] key concepts identified". Be exhaustive. Write as much as this document demands.'
       );
     } else if (action === 'concepts') {
       sendChatMessage(
-        'Extract ALL key concepts, terms, definitions, formulas, and important facts from this document. For each concept: give the EXACT definition as stated in the document (not your own definition). Group them by theme/section. Include any equations or mathematical notation exactly as they appear. Add page/section references for each concept. Be exhaustive — do not skip minor but important terms.'
+        'Extract and define EVERY important term, concept, formula, and definition in this document — miss nothing, not even minor but important terms. For each concept: (1) Give the EXACT definition as stated in the document (not your interpretation), (2) Group related concepts under clear thematic headers, (3) Reproduce all equations and mathematical notations exactly as they appear with LaTeX formatting, (4) Note page/section references for each concept, (5) Include all acronyms with full expansions, (6) Identify cross-concept relationships and dependencies. Be exhaustive and surgical in your extraction.'
       );
     } else if (action === 'flashcards') {
       sendChatMessage(
-        'Generate 10-12 high-yield flashcards based ONLY on this document\'s content. Format: **Q:** [question] → **A:** [precise answer from document] → *Source: "[exact quote from doc]"*. Include a mix of: definition cards, comparison cards, cause-effect cards, and application/calculation cards. Ensure every answer is directly traceable to the document text.'
+        'Generate 15-20 high-yield flashcards sourced directly from this document. For each card: Q: [question testing deep understanding, not just recall] A: [precise, complete answer from document] Source: "[exact quote from doc] (Page N)". Include a mix of: definition cards, comparison cards, cause-effect cards, application/calculation cards, and tricky edge case cards. Difficulty: 30% basic recall, 40% application, 30% deep understanding. End with a personalised Study Tip based on this content\'s specific structure and difficulty.'
       );
     }
   };

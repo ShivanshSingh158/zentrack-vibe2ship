@@ -5,8 +5,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useMobileData } from '../../contexts/MobileDataContext';
+import { useTheme } from "../../contexts/ThemeContext";
 
 interface Props {
   visible: boolean;
@@ -16,6 +17,8 @@ interface Props {
 }
 
 export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClose }: Props) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const { gymLogs } = useMobileData();
 
   // Find history: either all workouts, or specific exercise
@@ -40,7 +43,7 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>{exerciseName} History</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -88,15 +91,15 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
   );
 }
 
-const styles = StyleSheet.create({
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: COLORS.background, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, height: '70%', padding: SPACE.xl },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.xl },
-  title: { flex: 1, fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.lg, color: COLORS.textPrimary },
-  closeBtn: { padding: SPACE.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.full },
-  item: { paddingVertical: SPACE.md, borderBottomWidth: 1, borderBottomColor: COLORS.surface2 },
-  dateText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: COLORS.textPrimary, marginBottom: 4 },
-  statsRow: { flexDirection: 'row', gap: SPACE.lg },
-  stat: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: COLORS.textMuted },
-  emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: COLORS.textMuted, textAlign: 'center', marginTop: SPACE.xxl },
-});
+const makeStyles = (colors: any) => StyleSheet.create({
+      modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+      sheet: { backgroundColor: colors.background, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, height: '70%', padding: SPACE.xl },
+      header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.xl },
+      title: { flex: 1, fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
+      closeBtn: { padding: SPACE.sm, backgroundColor: colors.surface, borderRadius: RADIUS.full },
+      item: { paddingVertical: SPACE.md, borderBottomWidth: 1, borderBottomColor: colors.surface2 },
+      dateText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary, marginBottom: 4 },
+      statsRow: { flexDirection: 'row', gap: SPACE.lg },
+      stat: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted },
+      emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted, textAlign: 'center', marginTop: SPACE.xxl },
+    });

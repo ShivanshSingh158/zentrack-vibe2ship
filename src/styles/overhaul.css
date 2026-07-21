@@ -3,12 +3,12 @@
    Added during the Aurora Dark redesign.
    ========================================================================== */
 
-/* ── Input Fields — Warm Obsidian ── */
+/* ── Input Fields — Obsidian Cosmos ── */
 .input {
   width: 100%;
   padding: 0.75rem 1rem;
-  background: rgba(12, 9, 5, 0.55);
-  border: 1px solid rgba(196, 149, 106, 0.16);
+  background: rgba(28, 28, 29, 0.60);
+  border: 1px solid rgba(59, 130, 246, 0.14);
   border-radius: var(--radius-lg);
   color: var(--text-primary);
   font-size: 0.875rem;
@@ -20,12 +20,12 @@
   outline: none;
 }
 
-.input::placeholder { color: rgba(185, 168, 145, 0.32); }
+.input::placeholder { color: rgba(142, 142, 147, 0.35); }
 
 .input:focus {
-  border-color: rgba(196, 149, 106, 0.50);
-  background: rgba(18, 14, 8, 0.70);
-  box-shadow: 0 0 0 3px rgba(196, 149, 106, 0.10);
+  border-color: rgba(59, 130, 246, 0.48);
+  background: rgba(28, 28, 29, 0.80);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.10);
 }
 
 /* ── Badges — Warm Obsidian palette ── */
@@ -39,18 +39,19 @@
   font-weight: 600;
   letter-spacing: 0.05em;
 }
-/* copper = active/primary, sage = done/calm, amber = warning, rose = critical, violet = learning */
-.badge-cyan   { background: rgba(196, 149, 106, 0.12); color: #c4956a; border: 1px solid rgba(196, 149, 106, 0.22); }
+/* purple = active/primary, violet = learning, amber = warning, rose = critical, sage = success */
+.badge-cyan   { background: rgba(59, 130, 246, 0.12); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.22); }
 .badge-violet { background: rgba(155, 142, 196, 0.12); color: #b5a8d8; border: 1px solid rgba(155, 142, 196, 0.22); }
-.badge-amber  { background: rgba(196, 122, 58, 0.12);  color: #c47a3a; border: 1px solid rgba(196, 122, 58, 0.22);  }
-.badge-red    { background: rgba(181, 80, 60, 0.12);   color: #c47060; border: 1px solid rgba(181, 80, 60, 0.22);   }
-.badge-green  { background: rgba(122, 158, 130, 0.12); color: #7a9e82; border: 1px solid rgba(122, 158, 130, 0.22); }
+.badge-amber  { background: rgba(255, 159, 77, 0.12);  color: #ff9f4d; border: 1px solid rgba(255, 159, 77, 0.22);  }
+.badge-red    { background: rgba(255, 105, 97, 0.12);  color: #ff6961; border: 1px solid rgba(255, 105, 97, 0.22);  }
+.badge-green  { background: rgba(94, 218, 158, 0.12);  color: #5eda9e; border: 1px solid rgba(94, 218, 158, 0.22);  }
 
-/* ── Card System — Warm Obsidian ── */
+/* ── Card System — Obsidian Cosmos ── */
 .card {
   position: relative;
   background: var(--glass-1-bg);
   border: 1px solid var(--glass-1-border);
+  backdrop-filter: var(--glass-1-blur);
   border-radius: var(--radius-xl);
   padding: 1.5rem;
   overflow: hidden;
@@ -60,7 +61,7 @@
     border-color var(--dur-fast) var(--ease-water);
 }
 
-/* Warm inner top highlight — like light catching paper edge */
+/* Glass inner top highlight */
 .card::before {
   content: '';
   position: absolute;
@@ -70,40 +71,39 @@
   height: 1px;
   background: linear-gradient(90deg,
     transparent,
-    rgba(235, 210, 175, 0.12),
+    rgba(59, 130, 246, 0.12),
     transparent);
 }
 
-/* Warm ambient glow — barely perceptible */
+/* Glass ambient glow — barely perceptible */
 .card::after {
   content: '';
   position: absolute;
   inset: 0;
   background: radial-gradient(ellipse 80% 60% at 50% 0%,
-    var(--card-glow, rgba(196, 149, 106, 0.04)) 0%,
+    var(--card-glow, rgba(59, 130, 246, 0.04)) 0%,
     transparent 70%);
   pointer-events: none;
 }
 
 .card:hover {
   transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow:
-    0 20px 60px rgba(0,0,0,0.5),
-    0 0 0 1px rgba(255,255,255,0.05) inset;
+  border-color: rgba(59, 130, 246, 0.28);
+  box-shadow: var(--shadow-card-hover);
 }
 
-.card[data-module="todo"]   { --card-glow: rgba(0, 212, 255, 0.06); }
-.card[data-module="habits"] { --card-glow: rgba(245, 158, 11, 0.06); }
-.card[data-module="goals"]  { --card-glow: rgba(139, 92, 246, 0.06); }
+.card[data-module="todo"]   { --card-glow: rgba(94, 218, 158, 0.06); }
+.card[data-module="habits"] { --card-glow: rgba(255, 159, 77, 0.06); }
+.card[data-module="goals"]  { --card-glow: rgba(59, 130, 246, 0.06); }
 
 /* ── Stat Cards ── */
 .stat-card {
   position: relative;
   padding: 1.5rem;
   border-radius: 20px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.07);
+  background: var(--glass-1-bg);
+  border: 1px solid var(--glass-1-border);
+  backdrop-filter: var(--glass-1-blur);
   overflow: hidden;
   cursor: default;
   transition: transform 350ms cubic-bezier(0.34, 1.2, 0.64, 1);

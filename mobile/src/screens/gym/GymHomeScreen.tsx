@@ -49,7 +49,7 @@ export default function GymHomeScreen() {
   const { gymLogs } = useMobileData();
   const currentStreak = useMemo(() => calculateGymStreak(gymLogs), [gymLogs]);
 
-  const { log, startWorkout, resumeWorkout, endWorkout, restTimerRemaining, clearRestTimer, addExercise, deleteExercise, updateSet, saveLog, addCardio, updateCardio, planDay } = useGymLog(selectedDate);
+  const { log, startWorkout, resumeWorkout, endWorkout, addExercise, deleteExercise, updateSet, saveLog, addCardio, updateCardio, planDay } = useGymLog(selectedDate);
 
   // Modal states
   const [showAddModal, setShowAddModal] = useState(false);
@@ -66,18 +66,13 @@ export default function GymHomeScreen() {
     extrapolate: 'clamp'
   });
 
-  const animHeader = useRef(new Animated.Value(0)).current;
-  const animWeek = useRef(new Animated.Value(0)).current;
-  const animBanner = useRef(new Animated.Value(0)).current;
-  const animList = useRef(new Animated.Value(0)).current;
+  const animHeader = useRef(new Animated.Value(1)).current;
+  const animWeek = useRef(new Animated.Value(1)).current;
+  const animBanner = useRef(new Animated.Value(1)).current;
+  const animList = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    Animated.stagger(100, [
-      Animated.timing(animHeader, { toValue: 1, duration: 400, useNativeDriver: true }),
-      Animated.spring(animWeek, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
-      Animated.spring(animBanner, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
-      Animated.spring(animList, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
-    ]).start();
+    // Disabled mount animations for instant load
   }, []);
 
   // Mocks for AI modal
@@ -401,16 +396,7 @@ export default function GymHomeScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Rest Timer Overlay */}
-        {restTimerRemaining > 0 && (
-          <Animated.View style={s.restTimerOverlay}>
-            <Text style={s.restTimerLabel}>REST</Text>
-            <Text style={s.restTimerText}>{Math.floor(restTimerRemaining / 60)}:{(restTimerRemaining % 60).toString().padStart(2, '0')}</Text>
-            <TouchableOpacity onPress={clearRestTimer} style={s.restTimerClose}>
-              <Ionicons name="close-circle" size={24} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          </Animated.View>
-        )}
+
 
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -430,8 +416,8 @@ const s = StyleSheet.create({
   dayCol: { alignItems: 'center', gap: 6 },
   dayLetter: { fontSize: 11, color: COLORS.textTertiary, fontFamily: 'Inter-Regular' },
   dayLetterActive: { color: COLORS.textPrimary },
-  dayPill: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
-  dayPillActive: { backgroundColor: COLORS.accentPrimary },
+  dayPill: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0)' },
+  dayPillActive: { backgroundColor: COLORS.accentPrimary, borderRadius: 18, overflow: 'hidden' },
   dayNum: { fontSize: 13, color: COLORS.textTertiary, fontFamily: 'Inter-Regular' },
   dayNumActive: { color: '#000000', fontWeight: '700' },
 

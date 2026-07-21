@@ -32,7 +32,7 @@
  * ## Model Tiers
  * Agents are split across two model tiers for cost/speed tradeoffs:
  * - Research tier: `gemini-2.5-flash` (deep analysis, email reading, analytics)
- * - Voice tier: `gemini-2.5-flash-lite-preview-06-17` (fast responses, navigation)
+ * - Voice tier: `gemini-2.5-flash` (fast responses, navigation)
  *
  * ## Streaming vs Non-Streaming
  * Agents use non-streaming Gemini calls with function calling. Streaming is used

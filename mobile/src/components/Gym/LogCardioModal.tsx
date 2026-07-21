@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT_FAMILY, SPACE, RADIUS, FONT_SIZE } from '../../theme/tokens';
+import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE } from '../../theme/tokens';
 import { GymCardioLog } from '../../types/gym.types';
+import { useTheme } from "../../contexts/ThemeContext";
 
 interface Props {
   visible: boolean;
@@ -12,6 +13,8 @@ interface Props {
 }
 
 export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const [minutes, setMinutes] = useState('');
   const [km, setKm] = useState('');
   const [incline, setIncline] = useState('');
@@ -44,7 +47,7 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
             <View style={styles.header}>
               <Text style={styles.title}>Log {cardio.type}</Text>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -53,7 +56,7 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
               <TextInput
                 style={styles.input}
                 placeholder="e.g. 30"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
                 value={minutes}
                 onChangeText={setMinutes}
@@ -65,7 +68,7 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
               <TextInput
                 style={styles.input}
                 placeholder="e.g. 5.5"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
                 value={km}
                 onChangeText={setKm}
@@ -77,7 +80,7 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
               <TextInput
                 style={styles.input}
                 placeholder="e.g. 12"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
                 keyboardType="numeric"
                 value={incline}
                 onChangeText={setIncline}
@@ -94,15 +97,15 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: COLORS.background, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, padding: SPACE.xl, paddingBottom: SPACE.xxl },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.xl },
-  title: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg, color: COLORS.textPrimary },
-  closeBtn: { padding: SPACE.sm, backgroundColor: COLORS.surface, borderRadius: RADIUS.full },
-  inputGroup: { marginBottom: SPACE.lg },
-  label: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: COLORS.textSecondary, marginBottom: SPACE.xs },
-  input: { backgroundColor: COLORS.surface, borderRadius: RADIUS.md, padding: SPACE.md, color: COLORS.textPrimary, fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.md },
-  saveBtn: { backgroundColor: COLORS.success, borderRadius: RADIUS.md, padding: SPACE.lg, alignItems: 'center', marginTop: SPACE.md },
-  saveBtnText: { color: '#000', fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.md },
-});
+const makeStyles = (colors: any) => StyleSheet.create({
+      modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+      sheet: { backgroundColor: colors.background, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, padding: SPACE.xl, paddingBottom: SPACE.xxl },
+      header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.xl },
+      title: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
+      closeBtn: { padding: SPACE.sm, backgroundColor: colors.surface, borderRadius: RADIUS.full },
+      inputGroup: { marginBottom: SPACE.lg },
+      label: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: colors.textSecondary, marginBottom: SPACE.xs },
+      input: { backgroundColor: colors.surface, borderRadius: RADIUS.md, padding: SPACE.md, color: colors.textPrimary, fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.md },
+      saveBtn: { backgroundColor: colors.success, borderRadius: RADIUS.md, padding: SPACE.lg, alignItems: 'center', marginTop: SPACE.md },
+      saveBtnText: { color: '#000', fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.md },
+    });

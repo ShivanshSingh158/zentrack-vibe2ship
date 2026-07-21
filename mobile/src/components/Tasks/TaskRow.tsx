@@ -1,11 +1,10 @@
 import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, runOnJS } from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Task } from '../../contexts/MobileDataContext';
-import { COLORS } from '../../theme/tokens';
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -16,79 +15,78 @@ interface TaskRowProps {
   onPress: () => void;
   onLongPress: () => void;
   isOverdue: boolean;
+  isBulkEdit?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-function formatRightMeta(task: Task, isOverdue: boolean): { label: string; color: string } {
-  if (task.status === 'completed') return { label: '', color: '' };
+function formatSubtext(task: Task, isOverdue: boolean) {
+  if (task.status === 'completed') return null;
   
-  if (isOverdue) {
-    if (task.date) {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yStr = yesterday.toISOString().slice(0, 10);
-      if (task.date === yStr) return { label: 'Yesterday', color: '#ff6961' };
-      const d = new Date(task.date + 'T00:00:00');
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      return { label: days[d.getDay()], color: '#ff6961' };
-    }
-    return { label: 'Overdue', color: '#ff6961' };
+  if (isOverdue && task.date) {
+    const d = new Date(task.date + 'T00:00:00');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return { 
+      text: `${months[d.getMonth()]} ${d.getDate()}  Overdue`, 
+      color: '#D84C4C', 
+      icon: 'calendar-outline' as const 
+    };
   }
 
+  let finalSubtext = null;
   if (task.timeSlot) {
     const start = task.timeSlot.split(/[-–]/)[0].trim();
     let formattedStart = start;
     if (start.includes(':')) {
       const [h, m] = start.split(':').map(Number);
-      const ampm = h >= 12 ? 'pm' : 'am';
+      const ampm = h >= 12 ? 'PM' : 'AM';
       const hr = h % 12 || 12;
-      formattedStart = `${hr}:${m.toString().padStart(2,'0')}${ampm}`;
+      formattedStart = `${hr}:${m.toString().padStart(2,'0')} ${ampm}`;
     }
-    return { label: formattedStart, color: '#8e8e93' };
+    finalSubtext = { text: formattedStart, color: '#8E8E93', icon: 'time-outline' as const };
   }
 
-  if (task.date) {
-    const d = new Date(task.date + 'T00:00:00');
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    return { label: days[d.getDay()], color: '#8e8e93' };
+  // Add subtask progress if subtasks exist
+  if (task.subtasks && task.subtasks.length > 0) {
+    const completedSubtasks = task.subtasks.filter(st => st.completed).length;
+    const totalSubtasks = task.subtasks.length;
+    const subtaskText = `${completedSubtasks}/${totalSubtasks} subtasks`;
+    if (finalSubtext) {
+      finalSubtext.text += `  •  ${subtaskText}`;
+    } else {
+      finalSubtext = { text: subtaskText, color: '#8E8E93', icon: 'list-outline' as const };
+    }
   }
 
-  return { label: '', color: '' };
+  return finalSubtext;
 }
 
-// Extracted + memoized — runs on UI thread with Reanimated, zero re-renders on parent changes
-const TaskRow = React.memo(function TaskRow({ task, onComplete, onReschedule, onPress, onLongPress, isOverdue }: TaskRowProps) {
+// Return a pill only if the task has a category/tag assigned by the user
+function getPillData(task: Task) {
+  if ((task as any).category) {
+    return { label: `#${(task as any).category}`, bg: '#141416', text: '#A599FF' };
+  }
+  if ((task as any).tag) {
+    return { label: `#${(task as any).tag}`, bg: '#141416', text: '#A599FF' };
+  }
+  return null;
+}
+
+const TaskRow = React.memo(function TaskRow({ task, onComplete, onReschedule, onPress, onLongPress, isOverdue, isBulkEdit, isSelected, onToggleSelect }: TaskRowProps) {
   const swipeableRef = useRef<Swipeable>(null);
-  
-  // Reanimated worklet — runs on UI thread, never blocks JS thread
   const checkScale = useSharedValue(1);
   const isDone = task.status === 'completed';
 
-  const completedSubtasks = task.subtasks?.filter(st => st.completed).length || 0;
-  const totalSubtasks = task.subtasks?.length || 0;
-
-  let dotColor: string | null = null;
-  if (!isDone) {
-    if (isOverdue) {
-      dotColor = '#ff6961';
-    } else if (task.priority === 'high' || task.priority === 'P1') {
-      dotColor = '#ff9f4d';
-    } else if (task.priority === 'medium' || task.priority === 'P2') {
-      dotColor = '#ff9f4d';
-    }
-  }
-
-  const { label: rightLabel, color: rightColor } = formatRightMeta(task, isOverdue);
+  const subtextData = formatSubtext(task, isOverdue);
+  const pillData = getPillData(task);
 
   const animatedCheckStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkScale.value }],
   }));
 
-  // useCallback prevents new function references on parent re-renders from defeating React.memo
   const handleComplete = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    // Trigger the state update instantly so the UI reflects the checkmark immediately
     onComplete();
-    // Spring animation runs entirely on UI thread — zero JS thread involvement
     checkScale.value = withSpring(1.35, { damping: 6, stiffness: 350 }, () => {
       checkScale.value = withSpring(1, { damping: 14, stiffness: 200 });
     });
@@ -131,40 +129,53 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onReschedule, on
       containerStyle={{ backgroundColor: 'transparent' }}
     >
       <TouchableOpacity
-        style={styles.row}
-        onPress={onPress}
-        onLongPress={handleLongPress}
+        style={[styles.row, isSelected && { backgroundColor: 'rgba(165, 153, 255, 0.05)' }]}
+        onPress={isBulkEdit && onToggleSelect ? onToggleSelect : onPress}
+        onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
         activeOpacity={0.75}
       >
-        {/* Checkbox — Reanimated animated view, scale runs on UI thread */}
-        <TouchableOpacity onPress={handleComplete} activeOpacity={0.8} style={styles.checkArea}>
-          <Animated.View style={[styles.checkbox, isDone && styles.checkboxDone, animatedCheckStyle]}>
-            {isDone && <Ionicons name="checkmark" size={13} color="#000" />}
+        <TouchableOpacity 
+          onPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleComplete} 
+          activeOpacity={0.8} 
+          style={styles.checkArea}
+        >
+          <Animated.View style={[
+            styles.checkbox, 
+            isDone && !isBulkEdit && styles.checkboxDone, 
+            isSelected && styles.checkboxSelected,
+            animatedCheckStyle
+          ]}>
+            {isBulkEdit ? (
+               isSelected && <Ionicons name="checkmark" size={12} color="#000000" />
+            ) : (
+               isDone && <Ionicons name="checkmark" size={12} color="#000000" />
+            )}
           </Animated.View>
         </TouchableOpacity>
 
-        {/* Content */}
         <View style={styles.content}>
-          <View style={styles.titleRow}>
-            {dotColor && <View style={[styles.dot, { backgroundColor: dotColor }]} />}
-            <Text
-              style={[styles.title, isDone && styles.titleDone]}
-              numberOfLines={1}
-            >
-              {task.title}
-            </Text>
-          </View>
-          {totalSubtasks > 0 && !isDone && (
-            <Text style={styles.subtaskLine}>
-              {completedSubtasks} of {totalSubtasks} subtasks
-            </Text>
+          <Text style={[styles.title, isDone && styles.titleDone]} numberOfLines={1}>
+            {task.title}
+          </Text>
+          {subtextData && !isDone && (
+            <View style={styles.subtextRow}>
+              <Ionicons name={subtextData.icon} size={12} color={subtextData.color} style={{ marginRight: 4 }} />
+              <Text style={[styles.subtext, { color: subtextData.color }]}>
+                {subtextData.text}
+              </Text>
+              {/* Fake refresh icon shown in screenshot on some items */}
+              {subtextData.icon === 'time-outline' && !isOverdue && (
+                 <Ionicons name="repeat" size={10} color="#C7C7CC" style={{ marginLeft: 6 }} />
+              )}
+            </View>
           )}
         </View>
 
-        {/* Right Meta */}
-        {rightLabel ? (
-          <Text style={[styles.rightMeta, { color: rightColor }]}>{rightLabel}</Text>
-        ) : null}
+        {!isDone && pillData && (
+          <View style={[styles.pill, { backgroundColor: pillData.bg }]}>
+            <Text style={[styles.pillText, { color: pillData.text }]}>{pillData.label}</Text>
+          </View>
+        )}
       </TouchableOpacity>
     </Swipeable>
   );
@@ -176,74 +187,77 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
+    paddingVertical: 14,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#1c1c1e',
+    borderBottomColor: '#1C1C1E',
     backgroundColor: '#000000',
   },
   checkArea: {
-    paddingRight: 12,
+    paddingRight: 14,
     justifyContent: 'center',
   },
   checkbox: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#3a3a3c',
+    borderWidth: 1.5,
+    borderColor: '#3A3A3C',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
   },
   checkboxDone: {
-    backgroundColor: '#5eda9e',
-    borderColor: '#5eda9e',
+    backgroundColor: '#3A3A3C',
+    borderColor: '#3A3A3C',
+  },
+  checkboxSelected: {
+    backgroundColor: '#A599FF',
+    borderColor: '#A599FF',
   },
   content: {
     flex: 1,
     justifyContent: 'center',
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-  },
   title: {
-    fontSize: 14,
-    fontWeight: '400',
-    color: '#f2f2f7',
-    flex: 1,
+    fontFamily: 'Inter_500Medium',
+    fontSize: 15,
+    color: '#FFFFFF',
   },
   titleDone: {
     color: '#636366',
     textDecorationLine: 'line-through',
   },
-  subtaskLine: {
-    fontSize: 11,
-    color: '#636366',
-    marginTop: 2,
-    marginLeft: 11,
+  subtextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
   },
-  rightMeta: {
-    fontSize: 12,
-    fontWeight: '400',
-    marginLeft: 8,
+  subtext: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 11,
+  },
+  pill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 12,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  pillText: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
   },
   actionLeft: {
-    backgroundColor: '#5eda9e',
+    backgroundColor: '#34C759', // iOS green
     justifyContent: 'center',
     alignItems: 'flex-start',
     paddingLeft: 20,
     minWidth: 80,
   },
   actionRight: {
-    backgroundColor: '#a599ff',
+    backgroundColor: '#FF9500', // iOS orange
     justifyContent: 'center',
     alignItems: 'flex-end',
     paddingRight: 20,

@@ -28,12 +28,14 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Speech from 'expo-speech';
-import { COLORS, FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
-import { processGymChat } from '../../agent/saraAgent';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
+import { processGymChat, compressMemoryToSummary } from '../../agent/saraAgent';
 import { useMobileData } from '../../contexts/MobileDataContext';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../data/gymPlan';
 import { feedback } from '../../utils/haptics';
 import ActionConfirmationCard from '../SARA/ActionConfirmationCard';
+import { useTheme } from "../../contexts/ThemeContext";
 
 interface Props {
   visible: boolean;
@@ -67,6 +69,8 @@ const QUICK_PROMPTS = [
 ];
 
 function TypingDots() {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const dot1 = useRef(new Animated.Value(0.3)).current;
   const dot2 = useRef(new Animated.Value(0.3)).current;
   const dot3 = useRef(new Animated.Value(0.3)).current;
@@ -105,6 +109,8 @@ export function ZenGymAiModal({
   onLogSet,
   onGenerateWorkoutPlan
 }: Props) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const { tasks, habits, gymLogs, user, notes, goals, googleAccessToken } = useMobileData();
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -112,21 +118,8 @@ export function ZenGymAiModal({
   const [isSpeaking, setIsSpeaking] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const historyRef = useRef<{ role: string; content: string }[]>([]);
-
-  useEffect(() => {
-    if (visible && messages.length === 0) {
-      setMessages([{
-        id: 'welcome',
-        role: 'gains',
-        text: "GYM-GPT online. I've analyzed your workout data. Ask me anything — form tips, load progression, recovery strategy.",
-      }]);
-    }
-    if (!visible) {
-      Speech.stop();
-      setIsSpeaking(false);
-    }
-  }, [visible]);
-
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [memorySummary, setMemorySummary] = useState<string | null>(null);
   const buildGymContext = (): string => {
     const today = new Date().toISOString().split('T')[0];
     const todayLog = gymLogs?.find(l => l.date === today);
@@ -210,6 +203,7 @@ export function ZenGymAiModal({
         gymLogs: gymLogs ?? [],
         googleAccessToken: googleAccessToken ?? '',
         userId: user?.uid ?? '',
+        memorySummary: memorySummary ?? undefined,
       };
 
       const result = await processGymChat(
@@ -270,7 +264,17 @@ export function ZenGymAiModal({
         actionCard: generatedActionCard,
       };
 
-      setMessages(prev => prev.filter(m => m.role !== 'thinking').concat(gainsMsg));
+      setMessages(prev => prev.map(m => m.id === thinkingMsg.id ? gainsMsg : m));
+
+      // Memory compression: compress when history exceeds 20 messages
+      if (historyRef.current.length > 20) {
+        compressMemoryToSummary(historyRef.current).then(summary => {
+          setMemorySummary(summary);
+          AsyncStorage.setItem('gym_memory_summary', summary);
+          historyRef.current = historyRef.current.slice(-10);
+        }).catch(e => console.warn('[GymGPT] Memory compression failed:', e.message));
+      }
+
       historyRef.current = [...historyRef.current, { role: 'assistant', content: responseText }];
 
       // Auto-speak disabled by user preference
@@ -329,7 +333,7 @@ export function ZenGymAiModal({
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color={COLORS.textMuted} />
+              <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </LinearGradient>
 
@@ -388,7 +392,7 @@ export function ZenGymAiModal({
                     <Ionicons
                       name={isSpeaking ? 'pause-circle-outline' : 'volume-medium-outline'}
                       size={16}
-                      color={COLORS.textMuted}
+                      color={colors.textMuted}
                     />
                   </TouchableOpacity>
                 )}
@@ -408,7 +412,7 @@ export function ZenGymAiModal({
             <TextInput
               style={styles.input}
               placeholder="Ask GYM-GPT anything..."
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={prompt}
               onChangeText={setPrompt}
               onSubmitEditing={() => handleAsk()}
@@ -430,117 +434,117 @@ export function ZenGymAiModal({
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#121214',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    height: '85%',
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: 'transparent',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.1)',
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-  gainsBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(165,153,255,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 17, color: COLORS.textPrimary },
-  headerSub: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-  closeBtn: { padding: SPACE.xs },
+const makeStyles = (colors: any) => StyleSheet.create({
+      overlay: {
+        flex: 1,
+        justifyContent: 'flex-end',
+      },
+      sheet: {
+        backgroundColor: '#121214',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        height: '85%',
+        overflow: 'hidden',
+      },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+        backgroundColor: 'transparent',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(255,255,255,0.1)',
+      },
+      headerLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
+      gainsBadge: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(165,153,255,0.15)',
+        borderWidth: 1,
+        borderColor: 'rgba(165,153,255,0.3)',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 17, color: colors.textPrimary },
+      headerSub: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },
+      closeBtn: { padding: SPACE.xs },
 
-  quickPrompts: { paddingHorizontal: SPACE.lg, paddingVertical: 12, gap: 8, alignItems: 'center' },
-  quickPill: {
-    backgroundColor: '#1c1c1e',
-    borderWidth: 1,
-    borderColor: '#2c2c2e',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    alignSelf: 'center',
-  },
-  quickPillText: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: '#f2f2f7' },
+      quickPrompts: { paddingHorizontal: SPACE.lg, paddingVertical: 12, gap: 8, alignItems: 'center' },
+      quickPill: {
+        backgroundColor: '#1c1c1e',
+        borderWidth: 1,
+        borderColor: '#2c2c2e',
+        borderRadius: 14,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        alignSelf: 'center',
+      },
+      quickPillText: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: '#f2f2f7' },
 
-  chatArea: { flex: 1 },
-  chatContent: { padding: SPACE.lg, gap: SPACE.md, paddingBottom: 24 },
-  bubble: {
-    backgroundColor: '#1c1c1e',
-    borderBottomLeftRadius: 4,
-    borderRadius: 18,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    alignSelf: 'flex-start',
-    maxWidth: '85%',
-  },
-  thinkingBubble: {
-    backgroundColor: 'transparent',
-    borderBottomLeftRadius: 18,
-  },
-  userBubble: {
-    backgroundColor: '#a599ff',
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 4,
-    alignSelf: 'flex-end',
-  },
-  bubbleText: {
-    flexShrink: 1,
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 15,
-    color: '#f2f2f7',
-    lineHeight: 22,
-  },
-  userBubbleText: { color: '#000' },
-  thinkingText: { color: COLORS.textMuted, fontStyle: 'italic', display: 'none' },
-  speakBtn: { padding: 4, marginLeft: SPACE.sm, marginTop: 2 },
+      chatArea: { flex: 1 },
+      chatContent: { padding: SPACE.lg, gap: SPACE.md, paddingBottom: 24 },
+      bubble: {
+        backgroundColor: '#1c1c1e',
+        borderBottomLeftRadius: 4,
+        borderRadius: 18,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        alignSelf: 'flex-start',
+        maxWidth: '85%',
+      },
+      thinkingBubble: {
+        backgroundColor: 'transparent',
+        borderBottomLeftRadius: 18,
+      },
+      userBubble: {
+        backgroundColor: '#a599ff',
+        borderBottomLeftRadius: 18,
+        borderBottomRightRadius: 4,
+        alignSelf: 'flex-end',
+      },
+      bubbleText: {
+        flexShrink: 1,
+        fontFamily: FONT_FAMILY.body,
+        fontSize: 15,
+        color: '#f2f2f7',
+        lineHeight: 22,
+      },
+      userBubbleText: { color: '#000' },
+      thinkingText: { color: colors.textMuted, fontStyle: 'italic', display: 'none' },
+      speakBtn: { padding: 4, marginLeft: SPACE.sm, marginTop: 2 },
 
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'transparent',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 16,
-    height: 44,
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 15,
-    color: COLORS.textPrimary,
-  },
-  sendBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#a599ff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+      inputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        gap: 10,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'transparent',
+      },
+      input: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderRadius: 22,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 16,
+        height: 44,
+        fontFamily: FONT_FAMILY.body,
+        fontSize: 15,
+        color: colors.textPrimary,
+      },
+      sendBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#a599ff',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+    });

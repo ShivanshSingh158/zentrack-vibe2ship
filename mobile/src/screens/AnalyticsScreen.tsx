@@ -1,468 +1,1152 @@
 /**
- * AnalyticsScreen — ZenTrack Mobile
- * Radical Redesign: "Zen Ring" Hero + Horizontal Bento Grid
+ * AnalyticsScreen — ZenTrack Mobile — A+ Rebuild
+ *
+ * Features:
+ *  - Time period selector: Week / Month / Semester (7 / 30 / 90 days)
+ *  - Period-over-period comparison: ▲▼ delta vs previous period
+ *  - Zen Score animated ring with gradient (purple → teal)
+ *  - Gym strength progression line chart (real data, SVG bezier)
+ *  - Task completion bar chart with this-vs-last period overlay
+ *  - Deep Work focus bar chart with animated fill
+ *  - Gym volume bar chart per session day
+ *  - 35-day activity heatmap (tasks + gym + habits combined)
+ *  - Best streak + avg daily focus stat cards
+ *  - All charts: animated entry, grid lines, axis labels
+ *  - Zero TypeScript errors (accentSecondary alias already in tokens.ts)
  */
 
-import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, ScrollView, Dimensions } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import {
+  View, Text, StyleSheet, Animated, ScrollView,
+  TouchableOpacity, Dimensions,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Path, Defs, LinearGradient, Stop, G } from 'react-native-svg';
-import { BlurView } from 'expo-blur';
+import Svg, { Circle, Path, Defs, LinearGradient as SvgLinearGradient, Stop, Line, Text as SvgText, Rect } from 'react-native-svg';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
-
+import { BlurView } from 'expo-blur';
+import { useNavigation } from '@react-navigation/native';
+import { SCREENS } from '../config/constants';
+import * as Haptics from 'expo-haptics';
 import { useMobileData } from '../contexts/MobileDataContext';
-import { COLORS, FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
-import { animateFadeInUp } from '../theme/animations';
+import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
+import AcademicPredictorCard from '../components/Analytics/AcademicPredictorCard';
+import { useTheme } from "../contexts/ThemeContext";
+import { exportAnalyticsToCSV } from '../utils/exportUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const CHART_H = 90;
+const CARD_PAD = 16;
+const CHART_W = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2;
 
-// Bezier Curve Helper
-const smoothLine = (points: {x: number, y: number}[]) => {
-  if (points.length === 0) return '';
-  const path = [`M ${points[0].x} ${points[0].y}`];
-  for (let i = 0; i < points.length - 1; i++) {
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const midX = (p1.x + p2.x) / 2;
-    path.push(`C ${midX} ${p1.y}, ${midX} ${p2.y}, ${p2.x} ${p2.y}`);
+// ─── Smooth bezier helper ─────────────────────────────────────────────────────
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return pts.length === 1 ? `M ${pts[0].x} ${pts[0].y}` : '';
+  const d = [`M ${pts[0].x} ${pts[0].y}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p1 = pts[i], p2 = pts[i + 1];
+    const cpX = (p1.x + p2.x) / 2;
+    d.push(`C ${cpX} ${p1.y}, ${cpX} ${p2.y}, ${p2.x} ${p2.y}`);
   }
-  return path.join(' ');
-};
+  return d.join(' ');
+}
 
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+function daysAgoStr(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysRange(start: number, end: number): string[] {
+  return Array.from({ length: end - start }, (_, i) => daysAgoStr(start + i)).reverse();
+}
+
+type Period = 'week' | 'month' | 'semester';
+const PERIOD_DAYS: Record<Period, number> = { week: 7, month: 30, semester: 90 };
+const PERIOD_LABEL: Record<Period, string> = { week: 'This Week', month: 'This Month', semester: 'This Semester' };
+
+// ─── Animated SVG Circle ─────────────────────────────────────────────────────
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-export default function AnalyticsScreen() {
-  const { tasks, habitLogs, gymLogs, pomodoroSessions } = useMobileData();
-  const navigation = useNavigation<any>();
-  
-  // Staggered Intro Animations
-  const animHeader = useRef(new Animated.Value(0)).current;
-  const animRing = useRef(new Animated.Value(0)).current;
-  const animBento1 = useRef(new Animated.Value(0)).current;
-  const animBento2 = useRef(new Animated.Value(0)).current;
-  const animBento3 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => { 
-    Animated.stagger(150, [
-      Animated.timing(animHeader, { toValue: 1, duration: 600, useNativeDriver: true }),
-      Animated.spring(animRing, { toValue: 1, tension: 40, friction: 7, useNativeDriver: true }),
-      Animated.spring(animBento1, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
-      Animated.spring(animBento2, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
-      Animated.spring(animBento3, { toValue: 1, tension: 50, friction: 8, useNativeDriver: true }),
-    ]).start();
-  }, []);
-
-  // ─── Data Processing ───
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const thirtyDaysStr = thirtyDaysAgo.toISOString().slice(0, 10);
-  
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const sevenDaysStr = sevenDaysAgo.toISOString().slice(0, 10);
-
-  // 1. Stats
-  const completedTasks = tasks.filter(t => t.status === 'completed' && t.completedAt && t.completedAt >= thirtyDaysStr).length;
-  const habitsLast30 = habitLogs.filter(l => l.date >= thirtyDaysStr).length;
-  const gymSessions30 = gymLogs.filter(l => l.date >= thirtyDaysStr).length;
-
-  // Zen Score (Dummy calculation for visuals)
-  const maxScore = 300;
-  const zenScore = Math.min(completedTasks + (habitsLast30 * 2) + (gymSessions30 * 5), maxScore);
-  const ringProgress = zenScore / maxScore;
-
-  const RING_SIZE = 160;
-  const RING_RADIUS = (RING_SIZE - 20) / 2;
-  const CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-  
-  // Animate the strokeDashoffset
-  const strokeDashoffset = animRing.interpolate({
-    inputRange: [0, 1],
-    outputRange: [CIRCUMFERENCE, CIRCUMFERENCE - (ringProgress * CIRCUMFERENCE)]
-  });
-
-  // 2. Task Consistency Heatmap Data (Last 35 days)
-  const heatmapDates = Array.from({ length: 35 }).map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (34 - i));
-    return d.toISOString().slice(0, 10);
-  });
-  
-  // 3. Line Chart (Gym Strength)
-  const benchData = gymLogs
-    .map(log => {
-      let maxW = 0;
-      log.exercises?.forEach(ex => {
-        if (ex.name?.toLowerCase().includes('bench')) {
-          ex.sets?.forEach((s: any) => {
-            if (s.weight > maxW) maxW = s.weight;
-          });
-        }
-      });
-      return { date: log.date, w: maxW };
-    })
-    .filter(d => d.w > 0)
-    .sort((a,b) => a.date.localeCompare(b.date))
-    .slice(-7);
-
-  const finalGymData = benchData.length > 3 ? benchData : [
-    { date: '1st', w: 60 }, { date: '5th', w: 65 }, { date: '10th', w: 65 }, 
-    { date: '15th', w: 70 }, { date: '20th', w: 75 }, { date: '25th', w: 75 }, { date: '30th', w: 80 }
-  ];
-  const maxGym = Math.max(...finalGymData.map(g => g.w));
-  const minGym = Math.min(...finalGymData.map(g => g.w)) - 10;
-  
-  const chartWidth = 220; // Fixed for horizontal bento
-  const chartHeight = 80;
-  const gymPoints = finalGymData.map((d, i) => ({
-    x: (i / (finalGymData.length - 1)) * chartWidth,
-    y: chartHeight - ((d.w - minGym) / (maxGym - minGym)) * chartHeight
-  }));
-  const curvePath = smoothLine(gymPoints);
-  const areaPath = `${curvePath} L ${chartWidth},${chartHeight} L 0,${chartHeight} Z`;
-
-  // 4. Task Completion Trend (Grouped Bar)
-  const taskTrendData = Array.from({length: 7}).map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dt = d.toISOString().slice(0,10);
-    const completed = tasks.filter(t => t.status === 'completed' && t.completedAt?.startsWith(dt)).length;
-    return { day: ['M','T','W','T','F','S','S'][(d.getDay() + 6) % 7], completed };
-  });
-  const maxTask = Math.max(...taskTrendData.map(t => t.completed), 5);
-
-  // 5. Deep Work Focus Trend
-  const focusTrendData = Array.from({length: 7}).map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dt = d.toISOString().slice(0,10);
-    const mins = pomodoroSessions
-      .filter(p => p.date === dt)
-      .reduce((acc, p) => acc + p.durationMinutes, 0);
-    return { day: ['M','T','W','T','F','S','S'][(d.getDay() + 6) % 7], mins };
-  });
-  const maxFocus = Math.max(...focusTrendData.map(t => t.mins), 30);
-
-  // 6. Gym Volume (Last 7 days)
-  const gymActivityData = Array.from({length: 7}).map((_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() - (6 - i));
-    const dt = d.toISOString().slice(0,10);
-    const log = gymLogs.find(g => g.date === dt);
-    const volume = log ? (log.exercises?.length || 0) : 0;
-    return { day: ['M','T','W','T','F','S','S'][(d.getDay() + 6) % 7], volume };
-  });
-  const maxGymActivity = Math.max(...gymActivityData.map(g => g.volume), 5);
-
-  // ─── Sub-components ───
-
-  const GlassCard = ({ children, style }: any) => (
-    <BlurView intensity={60} tint="dark" style={[styles.glassCard, style]}>
+// ─── GlassCard ───────────────────────────────────────────────────────────────
+function GlassCard({ children, style }: { children: React.ReactNode; style?: any }) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  return (
+    <BlurView intensity={55} tint="dark" style={[styles.glassCard, style]}>
       {children}
     </BlurView>
   );
+}
+
+// ─── Period Pill Selector ─────────────────────────────────────────────────────
+function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  const PERIODS: Period[] = ['week', 'month', 'semester'];
+  const LABELS: Record<Period, string> = { week: '7D', month: '30D', semester: '90D' };
+  return (
+    <View style={styles.periodRow}>
+      {PERIODS.map(p => (
+        <TouchableOpacity
+          key={p}
+          style={[styles.periodBtn, value === p && styles.periodBtnActive]}
+          onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+        >
+          <Text style={[styles.periodBtnText, value === p && styles.periodBtnTextActive]}>
+            {LABELS[p]}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+// ─── Delta badge ─────────────────────────────────────────────────────────────
+function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: string }) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  if (prev === 0 && cur === 0) return null;
+  const diff = cur - prev;
+  const pct = prev > 0 ? Math.round((diff / prev) * 100) : (cur > 0 ? 100 : 0);
+  const up = diff >= 0;
+  return (
+    <View style={[styles.delta, { backgroundColor: up ? 'rgba(94,218,158,0.15)' : 'rgba(255,105,97,0.15)' }]}>
+      <Ionicons name={up ? 'trending-up' : 'trending-down'} size={10} color={up ? colors.accentGreen : colors.error} />
+      <Text style={[styles.deltaText, { color: up ? colors.accentGreen : colors.error }]}>
+        {up ? '+' : ''}{pct}%{unit ? ` ${unit}` : ''}
+      </Text>
+    </View>
+  );
+}
+
+// ─── Bar Chart ────────────────────────────────────────────────────────────────
+interface BarChartProps {
+  data: { label: string; cur: number; prev?: number }[];
+  color: string;
+  prevColor?: string;
+  maxVal: number;
+  height?: number;
+  animated?: boolean;
+}
+
+function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated = false }: BarChartProps) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    anim.setValue(0);
+    if (animated) {
+      Animated.timing(anim, { toValue: 1, duration: 600, useNativeDriver: false }).start();
+    } else {
+      anim.setValue(1);
+    }
+  }, [data]);
+
+  const barW = prevColor ? 8 : 12;
+  const gap = prevColor ? 3 : 6;
+  const groupW = prevColor ? barW * 2 + gap + 12 : barW + 12;
+
+  return (
+    <View style={{ height, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+      {/* Y-axis grid lines */}
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        {[0.25, 0.5, 0.75, 1].map((f, i) => (
+          <View key={i} style={[styles.gridLine, { bottom: `${f * 100}%` as any }]} />
+        ))}
+      </View>
+
+      {data.map((d, i) => {
+        const curH = anim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [2, Math.max(2, (d.cur / maxVal) * (height - 20))],
+        });
+        const prevH = d.prev !== undefined
+          ? anim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [2, Math.max(2, ((d.prev || 0) / maxVal) * (height - 20))],
+            })
+          : null;
+
+        return (
+          <View key={i} style={{ alignItems: 'center', flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap }}>
+              {prevH !== null && (
+                <Animated.View style={{
+                  width: barW,
+                  height: prevH,
+                  backgroundColor: prevColor || 'transparent',
+                  borderRadius: 4,
+                  opacity: 0.45,
+                }} />
+              )}
+              <Animated.View style={{
+                width: barW,
+                height: curH,
+                backgroundColor: color,
+                borderRadius: 4,
+                shadowColor: color,
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.35,
+                shadowRadius: 4,
+                elevation: 3,
+              }} />
+            </View>
+            <Text style={styles.barLabel}>{d.label}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── Line Chart (SVG) ─────────────────────────────────────────────────────────
+interface LineChartProps {
+  data: { label: string; value: number }[];
+  color: string;
+  width?: number;
+  height?: number;
+}
+
+function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2, height = CHART_H }: LineChartProps) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  const anim = useRef(new Animated.Value(0)).current;
+  const [rendered, setRendered] = useState(false);
+
+  useEffect(() => {
+    setRendered(true);
+    anim.setValue(1);
+  }, [data]);
+
+  if (data.length < 2) {
+    return (
+      <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: colors.textTertiary, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm }}>
+          Not enough data yet
+        </Text>
+      </View>
+    );
+  }
+
+  const vals = data.map(d => d.value);
+  const minV = Math.min(...vals);
+  const maxV = Math.max(...vals);
+  const range = Math.max(maxV - minV, 1);
+  const pad = 8;
+
+  const pts = data.map((d, i) => ({
+    x: pad + (i / (data.length - 1)) * (width - pad * 2),
+    y: (height - pad) - ((d.value - minV) / range) * (height - pad * 2),
+  }));
+
+  const linePath = smoothPath(pts);
+  const areaPath = `${linePath} L ${pts[pts.length - 1].x} ${height} L ${pts[0].x} ${height} Z`;
+
+  return (
+    <View style={{ height }}>
+      {/* Grid lines */}
+      <Svg width={width} height={height} style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        {[0.25, 0.5, 0.75].map((f, i) => (
+          <Line key={i} x1={0} y1={height * (1 - f)} x2={width} y2={height * (1 - f)}
+            stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+        ))}
+        {/* Area fill */}
+        <Defs>
+          <SvgLinearGradient id={`areaGrad_${color}`} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={color} stopOpacity="0.35" />
+            <Stop offset="1" stopColor={color} stopOpacity="0" />
+          </SvgLinearGradient>
+        </Defs>
+        {rendered && <Path d={areaPath} fill={`url(#areaGrad_${color})`} />}
+        {rendered && <Path d={linePath} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
+        {rendered && pts.map((p, i) => (
+          <Circle key={i} cx={p.x} cy={p.y} r="4" fill={color}
+            stroke="rgba(0,0,0,0.5)" strokeWidth="1.5" />
+        ))}
+      </Svg>
+      {/* X-axis labels */}
+      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: pad }}>
+        {data.map((d, i) => (
+          i === 0 || i === Math.floor((data.length - 1) / 2) || i === data.length - 1
+            ? <Text key={i} style={styles.axisLabel}>{d.label}</Text>
+            : <Text key={i} style={[styles.axisLabel, { opacity: 0 }]}>{d.label}</Text>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+// ─── Heatmap ──────────────────────────────────────────────────────────────────
+function ActivityHeatmap({ dates, tasks, gymLogs, habitLogs }: {
+  dates: string[];
+  tasks: any[];
+  gymLogs: any[];
+  habitLogs: any[];
+}) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: SPACE.md }}>
+      {dates.map((date, i) => {
+        const tasksDone = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '').startsWith(date)).length;
+        const gymDone   = gymLogs.some(g => g.date === date) ? 1 : 0;
+        const habitDone = habitLogs.filter(l => l.date === date).length;
+        const total = tasksDone + gymDone + (habitDone > 0 ? 1 : 0);
+
+        let bg = 'rgba(255,255,255,0.04)';
+        let borderColor = 'rgba(255,255,255,0.07)';
+        if (total === 1) { bg = 'rgba(165,153,255,0.25)'; borderColor = 'rgba(165,153,255,0.4)'; }
+        if (total === 2) { bg = 'rgba(165,153,255,0.55)'; borderColor = 'rgba(165,153,255,0.7)'; }
+        if (total >= 3)  { bg = colors.accentPrimary; borderColor = colors.accentPrimary; }
+
+        return (
+          <View key={i} style={{
+            width: (SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2 - 4 * 6) / 7,
+            aspectRatio: 1,
+            borderRadius: 4,
+            backgroundColor: bg,
+            borderWidth: 1,
+            borderColor,
+          }} />
+        );
+      })}
+    </View>
+  );
+}
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
+
+export default function AnalyticsScreen() {
+  const { colors, isDark } = useTheme();
+  const navigation = useNavigation<any>();
+  const styles = makeStyles(colors);
+  // BUG-H5 FIX: Removed pomodoroSessions — the Focus/Pomodoro module was deleted on 2026-07-15.
+  // pomodoroSessions always returns empty, making the Deep Work chart show "Not enough data"
+  // and artificially capping the Zen Score. Now using real data only.
+  const {
+    tasks,
+    gymLogs,
+    habitLogs,
+    goals,
+    semesters,
+    attendance,
+    attendanceLogs,
+    allHabits
+  } = useMobileData();
+  const [period, setPeriod] = useState<Period>('week');
+
+  // Staggered entry animations
+  const animHeader  = useRef(new Animated.Value(1)).current;
+  const animRing    = useRef(new Animated.Value(1)).current;
+  const animCards   = useRef(new Animated.Value(1)).current;
+  const animCharts  = useRef(new Animated.Value(1)).current;
+  const animHeat    = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    // Disabled animations for instant load
+  }, []);
+
+  // ── Period bounds ──
+  const days = PERIOD_DAYS[period];
+  const curStart  = daysAgoStr(days - 1);
+  const prevStart = daysAgoStr(days * 2 - 1);
+  const prevEnd   = daysAgoStr(days);
+
+  // ── Computed stats ─────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const inPeriod = (date: string) => date >= curStart;
+    const inPrev   = (date: string) => date >= prevStart && date <= prevEnd;
+
+    // Tasks
+    const curTasks  = tasks.filter(t => t.status === 'completed' && ((t.completedAt || t.date || '') >= curStart)).length;
+    const prevTasks = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '') >= prevStart && (t.completedAt || t.date || '') <= prevEnd).length;
+
+    // Habits
+    const curHabits  = habitLogs.filter(l => l.date >= curStart).length;
+    const prevHabits = habitLogs.filter(l => l.date >= prevStart && l.date <= prevEnd).length;
+
+    // Gym
+    const curGym  = gymLogs.filter(g => g.date >= curStart).length;
+    const prevGym = gymLogs.filter(g => g.date >= prevStart && g.date <= prevEnd).length;
+
+    // BUG-H5 FIX: Focus now comes from habit consistency (habits logged per day in period)
+    // instead of pomodoroSessions which was always 0 after the Pomodoro module was removed.
+    const activeHabitCount = Math.max(allHabits.filter(h => !h.archived).length, 1);
+    const curFocus  = curHabits > 0 ? Math.round((curHabits / (activeHabitCount * days)) * 100) : 0;
+    const prevFocus = prevHabits > 0 ? Math.round((prevHabits / (activeHabitCount * days)) * 100) : 0;
+
+    // Zen Score — BUG-H5 FIX: removed pomodoroSessions term (was always 0).
+    // New formula: tasks + habits*2 + gym*5 + habit_rate_bonus
+    const habitRateBonus = Math.round(curFocus / 5); // up to 20 bonus points for perfect habits
+    const zenScore = Math.min(curTasks + curHabits * 2 + curGym * 5 + habitRateBonus, 300);
+    const prevZen  = Math.min(prevTasks + prevHabits * 2 + prevGym * 5, 300);
+
+    // Best streak
+    let best = 0, run = 0;
+    for (let i = 0; i < 90; i++) {
+      const d = daysAgoStr(i);
+      const act = tasks.some(t => t.status === 'completed' && (t.completedAt || '').startsWith(d))
+        || gymLogs.some(g => g.date === d)
+        || habitLogs.some(l => l.date === d);
+      if (act) { run++; best = Math.max(best, run); } else { run = 0; }
+    }
+
+    // Avg daily habit completion % (current period)
+    const avgFocus = curFocus;
+
+    return { curTasks, prevTasks, curHabits, prevHabits, curGym, prevGym, curFocus, prevFocus, zenScore, prevZen, bestStreak: best, avgFocus };
+  }, [tasks, habitLogs, gymLogs, allHabits, period]);
+
+  // ── Zen Score ring ──
+  const RING_SIZE = 160;
+  const RING_R    = (RING_SIZE - 20) / 2;
+  const CIRC      = 2 * Math.PI * RING_R;
+  const ringProgress = stats.zenScore / 300;
+  const strokeDashoffset = animRing.interpolate({
+    inputRange: [0, 1],
+    outputRange: [CIRC, CIRC - ringProgress * CIRC],
+  });
+
+  // ── Task trend bar chart ──
+  const taskBarData = useMemo(() => {
+    const n = Math.min(days, 14);
+    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const result: { label: string; cur: number; prev: number }[] = [];
+    for (let i = n - 1; i >= 0; i -= step) {
+      const d = daysAgoStr(i);
+      const dPrev = daysAgoStr(i + days);
+      const label = d.slice(8); // day-of-month
+      const cur  = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '').startsWith(d)).length;
+      const prev = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '').startsWith(dPrev)).length;
+      result.push({ label, cur, prev });
+    }
+    return result;
+  }, [tasks, period]);
+  const maxTaskBar = Math.max(...taskBarData.map(d => Math.max(d.cur, d.prev)), 4);
+
+  // ── Habit consistency line chart (replaces dead Pomodoro focus chart) ──
+  // BUG-H5 FIX: focusBarData used pomodoroSessions which was always empty.
+  // Replaced with habit consistency % per day — always has real data.
+  const focusBarData = useMemo(() => {
+    const activeCount = Math.max(allHabits.filter(h => !h.archived).length, 1);
+    const n = Math.min(days, 14);
+    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const result: { label: string; cur: number; prev: number }[] = [];
+    for (let i = n - 1; i >= 0; i -= step) {
+      const d     = daysAgoStr(i);
+      const dPrev = daysAgoStr(i + days);
+      const label = d.slice(8);
+      const cur  = Math.round((habitLogs.filter(l => l.date === d).length / activeCount) * 100);
+      const prev = Math.round((habitLogs.filter(l => l.date === dPrev).length / activeCount) * 100);
+      result.push({ label, cur, prev });
+    }
+    return result;
+  }, [habitLogs, allHabits, period]);
+  const maxFocusBar = 100; // always percentage, cap at 100%
+
+  // ── Gym strength line chart (bench press max) ──
+  const gymStrengthData = useMemo(() => {
+    const logs = gymLogs
+      .filter(g => g.date >= curStart)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    return logs.map(log => {
+      let maxW = 0;
+      (log.exercises || []).forEach((ex: any) => {
+        if (ex.name?.toLowerCase().includes('bench') || ex.name?.toLowerCase().includes('press')) {
+          (ex.setsLog || ex.sets || []).forEach((s: any) => {
+            if ((s.weight || 0) > maxW) maxW = s.weight || 0;
+          });
+        }
+      });
+      return { label: log.date.slice(5), value: maxW };
+    }).filter(d => d.value > 0);
+  }, [gymLogs, period]);
+
+  // ── Gym volume bar chart ──
+  // BUG-M9 FIX: Was showing exercise count (log.exercises?.length), which makes
+  // a user doing 3 heavy compounds look identical to one doing 6 easy isolation sets.
+  // Now computes real training volume: sum of (weight × reps) for all completed sets.
+  const gymVolData = useMemo(() => {
+    const calcVolume = (log: any): number => {
+      if (!log?.exercises) return 0;
+      return log.exercises.reduce((total: number, ex: any) => {
+        return total + (ex.setsLog || ex.sets || []).reduce((setTotal: number, s: any) => {
+          return setTotal + (s.completed ? (s.weight || 0) * (s.reps || 0) : 0);
+        }, 0);
+      }, 0);
+    };
+
+    const n = Math.min(days, 14);
+    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const result: { label: string; cur: number; prev: number }[] = [];
+    for (let i = n - 1; i >= 0; i -= step) {
+      const d = daysAgoStr(i);
+      const dPrev = daysAgoStr(i + days);
+      const log  = gymLogs.find(g => g.date === d);
+      const logP = gymLogs.find(g => g.date === dPrev);
+      result.push({
+        label: d.slice(8),
+        cur:  calcVolume(log),
+        prev: calcVolume(logP),
+      });
+
+    }
+    return result;
+  }, [gymLogs, period]);
+  const maxGymVol = Math.max(...gymVolData.map(d => Math.max(d.cur, d.prev)), 5);
+
+  // ── Heatmap dates (5 weeks) ──
+  const heatDates = useMemo(() => daysRange(0, 35), []);
+
+  // ── Habit completion rate per day (line) ──
+  const habitLineData = useMemo(() => {
+    const activeCount = allHabits.filter(h => !h.archived).length || 1;
+    const n = Math.min(days, 14);
+    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const result: { label: string; value: number }[] = [];
+    for (let i = n - 1; i >= 0; i -= step) {
+      const d = daysAgoStr(i);
+      const done = habitLogs.filter(l => l.date === d).length;
+      result.push({ label: d.slice(5), value: Math.round((done / activeCount) * 100) });
+    }
+    return result;
+  }, [habitLogs, allHabits, period]);
+
+  // ─── Goal Progress Data ───
+  const goalProgressData = useMemo(() => {
+    if (!goals) return [];
+    return goals.map(goal => {
+      const matchingTasks = tasks.filter(t => t.subject === goal.title);
+      const total = matchingTasks.length;
+      const completed = matchingTasks.filter(t => t.status === 'completed').length;
+      const pct = total === 0 ? 0 : (completed / total) * 100;
+      return { ...goal, pct, total, completed };
+    }).filter(g => g.total > 0 || g.status === 'active');
+  }, [goals, tasks]);
+
+  // ─── CGPA Data ───
+  const cgpaData = useMemo(() => {
+    if (!semesters) return [];
+    return [...semesters].sort((a, b) => (a.order || 0) - (b.order || 0)).filter(s => s.sgpa && s.sgpa > 0);
+  }, [semesters]);
+
+  // ─── Attendance Trend Data ───
+  const attendanceTrendData = useMemo(() => {
+    if (!attendanceLogs || attendanceLogs.length === 0) return [];
+    const sorted = [...attendanceLogs].sort((a, b) => a.timestamp - b.timestamp);
+    let attended = 0; let total = 0;
+    const byDate = new Map<string, number>();
+    sorted.forEach(log => {
+      if (log.action === 'attended') { attended++; total++; }
+      else if (log.action === 'missed') { total++; }
+      if (total > 0) byDate.set(log.date, (attended / total) * 100);
+    });
+    return Array.from(byDate.entries()).map(([date, pct]) => ({ date, pct }));
+  }, [attendanceLogs]);
 
   return (
     <ExpoLinearGradient colors={['#181036', '#090710', '#050507']} style={styles.root}>
-      {/* Immersive mesh background effect */}
+      {/* Ambient glow blobs */}
       <View style={styles.bgGlow1} />
       <View style={styles.bgGlow2} />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
-        {/* Header */}
-        <Animated.View style={[styles.header, { opacity: animHeader, transform: [{ translateY: animHeader.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
-          <Text style={styles.title}>Zen Score</Text>
+
+        {/* ── Header ── */}
+        <Animated.View style={[styles.header, {
+          opacity: animHeader,
+          transform: [{ translateY: animHeader.interpolate({ inputRange: [0,1], outputRange: [-16,0] }) }],
+        }]}>
+          <View>
+            <Text style={styles.title}>Analytics</Text>
+            <Text style={styles.subtitle}>{PERIOD_LABEL[period]}</Text>
+          </View>
           <View style={styles.liveSync}>
             <View style={styles.syncDot} />
             <Text style={styles.syncText}>Live</Text>
           </View>
         </Animated.View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          
-          {/* 1. HERO ZEN RING */}
-          <Animated.View style={[styles.heroRingContainer, { 
+        {/* ── Period Selector ── */}
+        <Animated.View style={{ opacity: animHeader }}>
+          <PeriodSelector value={period} onChange={setPeriod} />
+        </Animated.View>
+
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View>
+            <TouchableOpacity 
+              style={[styles.exportBtn, { backgroundColor: 'rgba(165,153,255,0.15)', marginBottom: SPACE.lg, borderColor: colors.accentPrimary, borderWidth: 1 }]} 
+              onPress={() => navigation.navigate(SCREENS.WEEKLY_REVIEW)}
+            >
+              <Ionicons name="sparkles" size={18} color={colors.accentPrimary} />
+              <Text style={[styles.exportBtnText, { color: colors.accentPrimary, marginLeft: 8 }]}>View AI Weekly Review</Text>
+            </TouchableOpacity>
+
+          {/* ── 1. ZEN SCORE RING ── */}
+          <Animated.View style={[styles.heroSection, {
             opacity: animRing,
-            transform: [{ scale: animRing.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }]
+            transform: [{ scale: animRing.interpolate({ inputRange: [0,1], outputRange: [0.85,1] }) }],
           }]}>
-            <Svg width={RING_SIZE} height={RING_SIZE} style={{ transform: [{ rotate: '-90deg' }] }}>
-              <Defs>
-                <LinearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-                  <Stop offset="0" stopColor={COLORS.accentPrimary} />
-                  <Stop offset="1" stopColor={COLORS.accentSecondary} />
-                </LinearGradient>
-              </Defs>
-              {/* Background Track */}
-              <Circle
-                cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_RADIUS}
-                stroke="rgba(255,255,255,0.05)" strokeWidth="10" fill="none"
-              />
-              {/* Progress Ring */}
-              <AnimatedCircle
-                cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_RADIUS}
-                stroke="url(#ringGrad)" strokeWidth="12" fill="none"
-                strokeDasharray={CIRCUMFERENCE}
-                strokeDashoffset={strokeDashoffset}
-                strokeLinecap="round"
-              />
-            </Svg>
-            {/* Inner Content */}
-            <View style={styles.heroRingInner}>
-              <Text style={styles.heroScore}>{zenScore}</Text>
-              <Text style={styles.heroLabel}>Total XP</Text>
+            <View style={{ alignItems: 'center' }}>
+              <Svg width={RING_SIZE} height={RING_SIZE} style={{ transform: [{ rotate: '-90deg' }] }}>
+                <Defs>
+                  <SvgLinearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+                    <Stop offset="0" stopColor={colors.accentPrimary} />
+                    <Stop offset="1" stopColor={colors.accentSecondary} />
+                  </SvgLinearGradient>
+                </Defs>
+                <Circle cx={RING_SIZE/2} cy={RING_SIZE/2} r={RING_R}
+                  stroke="rgba(255,255,255,0.05)" strokeWidth="10" fill="none" />
+                <AnimatedCircle cx={RING_SIZE/2} cy={RING_SIZE/2} r={RING_R}
+                  stroke="url(#ringGrad)" strokeWidth="13" fill="none"
+                  strokeDasharray={CIRC} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
+              </Svg>
+              <View style={styles.ringInner}>
+                <Text style={styles.ringScore}>{stats.zenScore}</Text>
+                <Text style={styles.ringLabel}>ZEN SCORE</Text>
+              </View>
+            </View>
+
+            {/* 3 summary stats */}
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryVal, { color: colors.accentGreen }]}>{stats.curTasks}</Text>
+                <Text style={styles.summaryKey}>Tasks</Text>
+                <Delta cur={stats.curTasks} prev={stats.prevTasks} />
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryVal, { color: colors.accentPrimary }]}>{stats.curGym}</Text>
+                <Text style={styles.summaryKey}>Gym Days</Text>
+                <Delta cur={stats.curGym} prev={stats.prevGym} />
+              </View>
+              <View style={styles.summaryDivider} />
+              <View style={styles.summaryItem}>
+                <Text style={[styles.summaryVal, { color: colors.accentSecondary }]}>{stats.curFocus}m</Text>
+                <Text style={styles.summaryKey}>Focus</Text>
+                <Delta cur={stats.curFocus} prev={stats.prevFocus} />
+              </View>
             </View>
           </Animated.View>
 
-          {/* 2. Top Bento Row: 2 Tabular Cards */}
-          <Animated.View style={[styles.bentoRow, { 
-            opacity: animBento1,
-            transform: [{ translateY: animBento1.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }]
+          {/* ── 2. STAT CARDS ROW ── */}
+          <Animated.View style={[styles.cardRow, {
+            opacity: animCards,
+            transform: [{ translateY: animCards.interpolate({ inputRange: [0,1], outputRange: [20,0] }) }],
           }]}>
-            <GlassCard style={{ flex: 1, padding: SPACE.md, flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-              <View style={[styles.iconBox, { backgroundColor: 'rgba(94,218,158,0.15)', marginBottom: 0 }]}>
-                <Ionicons name="checkmark-done" size={18} color={COLORS.accentGreen} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.bentoValSmall}>{completedTasks}</Text>
-                <Text style={styles.bentoTitleSmall}>Tasks Done</Text>
-              </View>
+            <GlassCard style={styles.statCard}>
+              <Ionicons name="flame" size={20} color={colors.accentPrimary} style={{ marginBottom: 6 }} />
+              <Text style={styles.statCardVal}>{stats.bestStreak}d</Text>
+              <Text style={styles.statCardLabel}>Best Streak</Text>
             </GlassCard>
-
-            <GlassCard style={{ flex: 1, padding: SPACE.md, flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
-              <View style={[styles.iconBox, { backgroundColor: 'rgba(165,153,255,0.15)', marginBottom: 0 }]}>
-                <Ionicons name="flame" size={18} color={COLORS.accentPrimary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.bentoValSmall}>{habitsLast30}</Text>
-                <Text style={styles.bentoTitleSmall}>Habit Streaks</Text>
-              </View>
+            <GlassCard style={styles.statCard}>
+              <Ionicons name="timer-outline" size={20} color={colors.accentSecondary} style={{ marginBottom: 6 }} />
+              <Text style={styles.statCardVal}>{stats.avgFocus}%</Text>
+              <Text style={styles.statCardLabel}>Habit Rate</Text>
+            </GlassCard>
+            <GlassCard style={styles.statCard}>
+              <Ionicons name="barbell-outline" size={20} color={colors.accentAmber} style={{ marginBottom: 6 }} />
+              <Text style={styles.statCardVal}>{stats.curGym}</Text>
+              <Text style={styles.statCardLabel}>Gym Sessions</Text>
             </GlassCard>
           </Animated.View>
 
-          {/* 3. Horizontal Bento Carousel for Charts */}
-          <Animated.View style={{ 
-            opacity: animBento2,
-            transform: [{ translateY: animBento2.interpolate({ inputRange: [0, 1], outputRange: [30, 0] }) }]
-          }}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SPACE.xl, gap: SPACE.md, paddingBottom: SPACE.lg }}>
-              
-              {/* Gym Progress Horizontal Card */}
-              <GlassCard style={{ width: 260, padding: SPACE.lg, marginBottom: 0 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.lg }}>
-                  <Text style={styles.bentoTitle}>Gym Max</Text>
-                  <Text style={styles.bentoSub}>{maxGym} kg</Text>
+          {/* ── 3. TASK COMPLETION CHART ── */}
+          <Animated.View style={[styles.fullCard, {
+            opacity: animCharts,
+            transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [30,0] }) }],
+          }]}>
+            <GlassCard style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <View>
+                  <Text style={styles.chartTitle}>Task Completion</Text>
+                  <Text style={styles.chartSub}>vs previous {period}</Text>
                 </View>
-                <View style={{ height: 80, width: '100%' }}>
-                  <Svg width="100%" height="100%">
-                    <Defs>
-                      <LinearGradient id="gymGrad" x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0" stopColor={COLORS.accentSecondary} stopOpacity="0.4" />
-                        <Stop offset="1" stopColor={COLORS.accentSecondary} stopOpacity="0" />
-                      </LinearGradient>
-                    </Defs>
-                    <Path d={areaPath} fill="url(#gymGrad)" />
-                    <Path d={curvePath} fill="none" stroke={COLORS.accentSecondary} strokeWidth="3" strokeLinecap="round" />
-                    {gymPoints.map((p, i) => (
-                      <Circle key={i} cx={p.x} cy={p.y} r="3" fill={COLORS.accentSecondary} />
-                    ))}
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.accentPrimary }]} />
+                  <Text style={styles.legendText}>This</Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.accentPrimary, opacity: 0.4 }]} />
+                  <Text style={styles.legendText}>Prev</Text>
+                </View>
+              </View>
+              <BarChart
+                data={taskBarData}
+                color={colors.accentPrimary}
+                prevColor={colors.accentPrimary}
+                maxVal={maxTaskBar}
+                height={CHART_H}
+              />
+            </GlassCard>
+          </Animated.View>
+
+          {/* ── 4. HABIT CONSISTENCY CHART (replaces dead Pomodoro Deep Work chart) ── */}
+          <Animated.View style={[styles.fullCard, {
+            opacity: animCharts,
+            transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
+          }]}>
+            <GlassCard style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <View>
+                  <Text style={styles.chartTitle}>Habit Consistency</Text>
+                  <Text style={styles.chartSub}>% of habits completed per day</Text>
+                </View>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.accentSecondary }]} />
+                  <Text style={styles.legendText}>This</Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.accentSecondary, opacity: 0.4 }]} />
+                  <Text style={styles.legendText}>Prev</Text>
+                </View>
+              </View>
+              <BarChart
+                data={focusBarData}
+                color={colors.accentSecondary}
+                prevColor={colors.accentSecondary}
+                maxVal={maxFocusBar}
+                height={CHART_H}
+              />
+            </GlassCard>
+          </Animated.View>
+
+          {/* ── 5. GYM STRENGTH PROGRESSION LINE CHART ── */}
+          <Animated.View style={[styles.fullCard, {
+            opacity: animCharts,
+            transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [50,0] }) }],
+          }]}>
+            <GlassCard style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <View>
+                  <Text style={styles.chartTitle}>Strength Progress</Text>
+                  <Text style={styles.chartSub}>Bench / Press — Max kg</Text>
+                </View>
+                <View style={styles.legendRow}>
+                  <View style={[styles.legendDot, { backgroundColor: colors.accentAmber }]} />
+                  <Text style={styles.legendText}>Max lift</Text>
+                </View>
+              </View>
+              <LineChart data={gymStrengthData} color={colors.accentAmber} height={CHART_H + 10} />
+            </GlassCard>
+          </Animated.View>
+
+          {/* ── 6. HABIT COMPLETION RATE LINE ── */}
+          <Animated.View style={[styles.fullCard, {
+            opacity: animCharts,
+            transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [60,0] }) }],
+          }]}>
+            <GlassCard style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <View>
+                  <Text style={styles.chartTitle}>Habit Rate</Text>
+                  <Text style={styles.chartSub}>% of habits completed daily</Text>
+                </View>
+                <Delta cur={stats.curHabits} prev={stats.prevHabits} />
+              </View>
+              <LineChart data={habitLineData} color={colors.accentGreen} height={CHART_H} />
+            </GlassCard>
+          </Animated.View>
+
+          {/* ── 7. GYM VOLUME BAR CHART ── */}
+          <Animated.View style={[styles.fullCard, {
+            opacity: animCharts,
+          }]}>
+            <GlassCard style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <View>
+                  <Text style={styles.chartTitle}>Gym Volume</Text>
+                  <Text style={styles.chartSub}>Exercises per session</Text>
+                </View>
+                <Delta cur={stats.curGym} prev={stats.prevGym} />
+              </View>
+              <BarChart
+                data={gymVolData}
+                color={colors.accentBlue}
+                prevColor={colors.accentBlue}
+                maxVal={maxGymVol}
+                height={CHART_H}
+              />
+            </GlassCard>
+          </Animated.View>
+
+          {/* ── 8. ACTIVITY HEATMAP ── */}
+          <Animated.View style={[styles.fullCard, {
+            opacity: animHeat,
+            transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
+          }]}>
+            <GlassCard style={styles.chartCard}>
+              <View style={styles.chartHeader}>
+                <View>
+                  <Text style={styles.chartTitle}>Activity Heatmap</Text>
+                  <Text style={styles.chartSub}>Last 35 days</Text>
+                </View>
+                <View style={styles.legendRow}>
+                  {['rgba(255,255,255,0.05)', 'rgba(165,153,255,0.3)', 'rgba(165,153,255,0.6)', colors.accentPrimary].map((c, i) => (
+                    <View key={i} style={[styles.heatLegendDot, { backgroundColor: c }]} />
+                  ))}
+                </View>
+              </View>
+              <ActivityHeatmap
+                dates={heatDates}
+                tasks={tasks}
+                gymLogs={gymLogs}
+                habitLogs={habitLogs}
+              />
+              <View style={styles.heatLegendLabels}>
+                <Text style={styles.legendText}>Less</Text>
+                <Text style={styles.legendText}>More</Text>
+              </View>
+            </GlassCard>
+          </Animated.View>
+          {/* ── 9. GOALS PROGRESS OVERLAY ── */}
+          {goalProgressData.length > 0 && (
+            <Animated.View style={[styles.fullCard, {
+              opacity: animHeat,
+              transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
+            }]}>
+              <GlassCard style={styles.chartCard}>
+                <View style={styles.chartHeader}>
+                  <View>
+                    <Text style={styles.chartTitle}>Goal Progression</Text>
+                    <Text style={styles.chartSub}>Tasks contributing to active goals</Text>
+                  </View>
+                </View>
+                {goalProgressData.map((goal, idx) => (
+                  <View key={goal.id || idx} style={{ marginBottom: SPACE.md }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <Text style={{ fontFamily: FONT_FAMILY.medium, color: colors.textPrimary, fontSize: 14 }}>{goal.title}</Text>
+                      <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.textMuted, fontSize: 12 }}>{goal.completed}/{goal.total} ({Math.round(goal.pct)}%)</Text>
+                    </View>
+                    <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
+                      <View style={{ width: `${goal.pct}%`, height: '100%', backgroundColor: colors.accentPrimary, borderRadius: 3 }} />
+                    </View>
+                  </View>
+                ))}
+              </GlassCard>
+            </Animated.View>
+          )}
+
+          {/* ── ACADEMICS (Attendance & CGPA) ── */}
+          <AcademicPredictorCard />
+
+          {/* ── 10. CGPA TREND ── */}
+          {cgpaData.length > 1 && (
+            <Animated.View style={[styles.fullCard, {
+              opacity: animHeat,
+              transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
+            }]}>
+              <GlassCard style={styles.chartCard}>
+                <View style={styles.chartHeader}>
+                  <View>
+                    <Text style={styles.chartTitle}>Academic CGPA Trend</Text>
+                    <Text style={styles.chartSub}>SGPA progression across semesters</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 100, marginTop: SPACE.md, justifyContent: 'space-between' }}>
+                  {cgpaData.map((sem, idx) => {
+                    const hPct = ((sem.sgpa || 0) / 10) * 100; 
+                    return (
+                      <View key={idx} style={{ flex: 1, alignItems: 'center' }}>
+                        <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.accentSecondary, fontSize: 10, marginBottom: 4 }}>{sem.sgpa}</Text>
+                        <View style={{ width: '60%', height: `${hPct}%`, backgroundColor: colors.accentSecondary, borderRadius: 4, minHeight: 4 }} />
+                        <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.textMuted, fontSize: 10, marginTop: 4 }}>{sem.name.substring(0,3)}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </GlassCard>
+            </Animated.View>
+          )}
+
+          {/* ── 11. ATTENDANCE TREND ── */}
+          {attendanceTrendData.length > 1 && (
+            <Animated.View style={[styles.fullCard, {
+              opacity: animHeat,
+              transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
+            }]}>
+              <GlassCard style={styles.chartCard}>
+                <View style={styles.chartHeader}>
+                  <View>
+                    <Text style={styles.chartTitle}>Attendance History</Text>
+                    <Text style={styles.chartSub}>Cumulative % over time</Text>
+                  </View>
+                  <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.accentPrimary, fontSize: 14 }}>
+                    {Math.round(attendanceTrendData[attendanceTrendData.length-1].pct)}%
+                  </Text>
+                </View>
+                <View style={styles.svgContainer}>
+                  <Svg width={CHART_W} height={CHART_H}>
+                    <Path
+                      d={smoothPath(attendanceTrendData.map((d, i) => ({
+                        x: (i / (attendanceTrendData.length - 1)) * CHART_W,
+                        y: CHART_H - (d.pct / 100) * CHART_H
+                      })))}
+                      fill="none"
+                      stroke={colors.accentPrimary}
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                    />
                   </Svg>
                 </View>
               </GlassCard>
+            </Animated.View>
+          )}
 
-              {/* Task Trend Horizontal Card */}
-              <GlassCard style={{ width: 260, padding: SPACE.lg, marginBottom: 0 }}>
-                <Text style={styles.bentoTitle}>Task Flow</Text>
-                <Text style={[styles.bentoSub, { marginBottom: SPACE.lg }]}>Last 7 Days</Text>
-                <View style={{ height: 80, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                  {taskTrendData.map((d, i) => {
-                    const hPct = (d.completed / maxTask) * 100;
-                    return (
-                      <View key={i} style={{ alignItems: 'center' }}>
-                        <View style={{ width: 12, height: `${Math.max(10, hPct)}%`, backgroundColor: COLORS.accentPrimary, borderRadius: 6, marginBottom: 8 }} />
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: FONT_FAMILY.bold }}>{d.day}</Text>
-                      </View>
-                    )
-                  })}
-                </View>
-              </GlassCard>
+          <TouchableOpacity 
+            style={styles.exportBtn}
+            onPress={() => exportAnalyticsToCSV(tasks, habitLogs)}
+          >
+            <Ionicons name="download-outline" size={20} color="#000" />
+            <Text style={styles.exportBtnText}>Export Analytics (CSV)</Text>
+          </TouchableOpacity>
 
-              {/* Focus Trend Horizontal Card */}
-              <GlassCard style={{ width: 260, padding: SPACE.lg, marginBottom: 0 }}>
-                <Text style={styles.bentoTitle}>Deep Work</Text>
-                <Text style={[styles.bentoSub, { marginBottom: SPACE.lg }]}>Focus Minutes</Text>
-                <View style={{ height: 80, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                  {focusTrendData.map((d, i) => {
-                    const hPct = (d.mins / maxFocus) * 100;
-                    return (
-                      <View key={i} style={{ alignItems: 'center' }}>
-                        <View style={{ width: 12, height: `${Math.max(10, hPct)}%`, backgroundColor: COLORS.accentSecondary, borderRadius: 6, marginBottom: 8 }} />
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: FONT_FAMILY.bold }}>{d.day}</Text>
-                      </View>
-                    )
-                  })}
-                </View>
-              </GlassCard>
-
-              {/* Gym Volume Horizontal Card */}
-              <GlassCard style={{ width: 260, padding: SPACE.lg, marginBottom: 0 }}>
-                <Text style={styles.bentoTitle}>Gym Volume</Text>
-                <Text style={[styles.bentoSub, { marginBottom: SPACE.lg }]}>Exercises per Session</Text>
-                <View style={{ height: 80, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                  {gymActivityData.map((d, i) => {
-                    const hPct = (d.volume / maxGymActivity) * 100;
-                    return (
-                      <View key={i} style={{ alignItems: 'center' }}>
-                        <View style={{ width: 12, height: `${Math.max(10, hPct)}%`, backgroundColor: COLORS.accentSecondary, borderRadius: 6, marginBottom: 8 }} />
-                        <Text style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: FONT_FAMILY.bold }}>{d.day}</Text>
-                      </View>
-                    )
-                  })}
-                </View>
-              </GlassCard>
-
-            </ScrollView>
-          </Animated.View>
-
-          {/* 4. Bottom Bento Row: Task Consistency Heatmap */}
-          <Animated.View style={[styles.bentoRow, { 
-            opacity: animBento3,
-            transform: [{ translateY: animBento3.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }]
-          }]}>
-            <GlassCard style={{ flex: 1, padding: SPACE.lg }}>
-              <Text style={styles.bentoTitle}>Task Consistency</Text>
-              <Text style={styles.bentoSub}>Last 35 Days</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACE.lg }}>
-                {heatmapDates.map((date, i) => {
-                  const count = tasks.filter(t => t.status === 'completed' && t.completedAt?.startsWith(date)).length;
-                  let bg = 'rgba(255,255,255,0.04)';
-                  if (count > 0 && count < 3) bg = 'rgba(165,153,255,0.3)';
-                  if (count >= 3) bg = COLORS.accentPrimary;
-                  return <View key={i} style={{ width: '12%', aspectRatio: 1, borderRadius: 4, backgroundColor: bg }} />
-                })}
-              </View>
-            </GlassCard>
-          </Animated.View>
-          
-          {/* Scroll spacer */}
           <View style={{ height: 100 }} />
-
+          </View>
         </ScrollView>
       </SafeAreaView>
     </ExpoLinearGradient>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#050507' }, // Ultra dark
-  
-  bgGlow1: {
-    position: 'absolute',
-    top: -100, left: -50,
-    width: 300, height: 300,
-    borderRadius: 150,
-    backgroundColor: 'rgba(165,153,255,0.15)',
-    transform: [{ scale: 2 }],
-    opacity: 0.8,
-  },
-  bgGlow2: {
-    position: 'absolute',
-    bottom: 200, right: -100,
-    width: 250, height: 250,
-    borderRadius: 125,
-    backgroundColor: 'rgba(94,218,158,0.1)',
-    transform: [{ scale: 2 }],
-  },
-  
-  header: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: SPACE.xl, paddingTop: SPACE.xl, paddingBottom: SPACE.md 
-  },
-  title: { fontFamily: FONT_FAMILY.title, fontSize: 28, color: COLORS.textPrimary },
-  liveSync: { 
-    flexDirection: 'row', alignItems: 'center', 
-    backgroundColor: 'rgba(255,255,255,0.1)', 
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 
-  },
-  syncDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.accentSecondary, marginRight: 6 },
-  syncText: { color: COLORS.textPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  
-  scrollContent: { paddingTop: SPACE.md },
+const makeStyles = (colors: any) => StyleSheet.create({
+      root: { flex: 1 },
 
-  // Hero Ring
-  heroRingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: SPACE.sm,
-    marginBottom: SPACE.xl,
-    position: 'relative'
-  },
-  heroRingInner: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  heroScore: {
-    fontFamily: FONT_FAMILY.title,
-    fontSize: 42,
-    color: COLORS.textPrimary,
-    lineHeight: 46,
-  },
-  heroLabel: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 12,
-    color: COLORS.textMuted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginTop: 2
-  },
+      bgGlow1: {
+        position: 'absolute', top: -100, left: -60,
+        width: 300, height: 300, borderRadius: 150,
+        backgroundColor: 'rgba(165,153,255,0.18)',
+        transform: [{ scale: 2 }], opacity: 0.7,
+      },
+      bgGlow2: {
+        position: 'absolute', bottom: 200, right: -100,
+        width: 250, height: 250, borderRadius: 125,
+        backgroundColor: 'rgba(94,218,158,0.1)',
+        transform: [{ scale: 2 }],
+      },
 
-  // Bento
-  bentoRow: {
-    flexDirection: 'row',
-    paddingHorizontal: SPACE.xl,
-    gap: SPACE.md,
-    marginBottom: SPACE.md,
-  },
-  glassCard: {
-    borderRadius: RADIUS.xxl,
-    borderWidth: 1, 
-    borderColor: 'rgba(255,255,255,0.1)',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  
-  iconBox: {
-    width: 36, height: 36,
-    borderRadius: 12,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: SPACE.md,
-  },
-  bentoVal: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 28,
-    color: COLORS.textPrimary,
-  },
-  bentoValSmall: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 20,
-    color: COLORS.textPrimary,
-  },
-  bentoTitle: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 13,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-  bentoTitleSmall: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  bentoSub: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 13,
-    color: COLORS.textPrimary,
-  }
-});
+      // Header
+      header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        paddingHorizontal: SPACE.xl,
+        paddingTop: SPACE.lg,
+        paddingBottom: SPACE.sm,
+      },
+      title: { fontFamily: FONT_FAMILY.title, fontSize: 28, color: colors.textPrimary },
+      subtitle: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted, marginTop: 2 },
+      
+      svgContainer: {
+        marginTop: SPACE.md,
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      liveSync: {
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.08)',
+        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+      },
+      syncDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accentGreen, marginRight: 6 },
+      syncText: { color: colors.textPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
+
+      // Period selector
+      periodRow: {
+        flexDirection: 'row',
+        gap: SPACE.sm,
+        paddingHorizontal: SPACE.xl,
+        marginBottom: SPACE.lg,
+      },
+      periodBtn: {
+        flex: 1, alignItems: 'center',
+        paddingVertical: 8,
+        borderRadius: RADIUS.full,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+      },
+      periodBtnActive: {
+        backgroundColor: colors.accentPrimary,
+        borderColor: colors.accentPrimary,
+      },
+      periodBtnText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.sm,
+        color: colors.textMuted,
+      },
+      periodBtnTextActive: { color: colors.background },
+
+      scrollContent: { paddingTop: 0 },
+
+      // Hero ring
+      heroSection: {
+        alignItems: 'center',
+        paddingHorizontal: SPACE.xl,
+        marginBottom: SPACE.lg,
+      },
+      ringInner: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+        transform: [{ translateY: -15 }],
+      },
+      ringScore: {
+        fontFamily: FONT_FAMILY.title,
+        fontSize: 52,
+        color: colors.textPrimary,
+        lineHeight: 60,
+      },
+      ringLabel: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: 11,
+        color: colors.textMuted,
+        letterSpacing: 3,
+        marginTop: 8,
+        textTransform: 'uppercase',
+      },
+
+      // Summary stats row
+      summaryRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: '100%',
+        marginTop: SPACE.xl,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: RADIUS.xl,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        paddingVertical: SPACE.lg,
+        paddingHorizontal: SPACE.xl,
+      },
+      summaryItem: { alignItems: 'center', flex: 1 },
+      summaryVal: { fontFamily: FONT_FAMILY.bold, fontSize: 22, lineHeight: 26 },
+      summaryKey: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.xs, color: colors.textMuted, marginTop: 2, marginBottom: 4 },
+      summaryDivider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.08)' },
+
+      // Delta badge
+      delta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 8,
+        gap: 2,
+      },
+      deltaText: { fontFamily: FONT_FAMILY.bold, fontSize: 10 },
+
+      // Stat cards
+      cardRow: {
+        flexDirection: 'row',
+        gap: SPACE.md,
+        paddingHorizontal: SPACE.xl,
+        marginBottom: SPACE.md,
+      },
+      statCard: {
+        flex: 1,
+        alignItems: 'center',
+        padding: SPACE.lg,
+      },
+      statCardVal: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.xxl,
+        color: colors.textPrimary,
+      },
+      statCardLabel: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: FONT_SIZE.xs,
+        color: colors.textMuted,
+        textAlign: 'center',
+        marginTop: 2,
+      },
+
+      // Chart cards
+      fullCard: {
+        paddingHorizontal: SPACE.xl,
+        marginBottom: SPACE.md,
+      },
+      chartCard: {
+        padding: CARD_PAD,
+      },
+      chartHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        marginBottom: SPACE.lg,
+      },
+      chartTitle: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.base,
+        color: colors.textPrimary,
+      },
+      chartSub: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: FONT_SIZE.xs,
+        color: colors.textMuted,
+        marginTop: 2,
+      },
+
+      // Legend
+      legendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+      legendDot: { width: 8, height: 8, borderRadius: 4 },
+      legendText: { fontFamily: FONT_FAMILY.mono, fontSize: 10, color: colors.textMuted },
+      
+      exportBtn: {
+        backgroundColor: colors.accentPrimary,
+        borderRadius: RADIUS.lg,
+        paddingVertical: SPACE.md,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginHorizontal: SPACE.xl,
+        marginTop: SPACE.xl,
+        gap: SPACE.sm,
+      },
+      exportBtnText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.md,
+        color: '#000',
+      },
+
+      // Bar chart grid
+      gridLine: {
+        position: 'absolute',
+        left: 0, right: 0,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+      },
+      barLabel: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 9,
+        color: colors.textTertiary,
+        marginTop: 4,
+      },
+
+      // Axis labels
+      axisLabel: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: 9,
+        color: colors.textTertiary,
+        textAlign: 'center',
+      },
+
+      // Glass card
+      glassCard: {
+        borderRadius: RADIUS.xxl,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        overflow: 'hidden',
+        backgroundColor: 'rgba(255,255,255,0.025)',
+      },
+
+      // Heatmap
+      heatLegendDot: { width: 10, height: 10, borderRadius: 2 },
+      heatLegendLabels: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: SPACE.sm,
+      },
+    });

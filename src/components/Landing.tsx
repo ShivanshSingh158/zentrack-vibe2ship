@@ -180,6 +180,13 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
   const [soundLevel, setSoundLevel] = useState<SoundLevel>('low');
   useAmbientSound(soundLevel);
 
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: containerRef, offset: ['start start', 'end start'] });
   const smooth = useSpring(scrollYProgress, { stiffness: 80, damping: 30 });
@@ -226,10 +233,12 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
           ))}
         </motion.div>
 
-        <motion.button initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
-          onClick={onTryNow} className="btn-glass liquid-glass">
-          Log In
-        </motion.button>
+        {!isMobile && (
+          <motion.button initial={{ opacity: 0, y: -12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.2 }}
+            onClick={onTryNow} className="btn-glass premium-matte-card premium-glow">
+            Log In
+          </motion.button>
+        )}
       </nav>
 
       {/* ══════════════════════════════════════════════════
@@ -256,18 +265,38 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
 
         <motion.div style={{ display: 'flex', gap: '1rem', marginTop: '3rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}
           initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.75 }}>
-          <motion.button onClick={onTryNow} className="hero-cta-btn liquid-glass"
-            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} style={{ marginTop: 0 }}>
-            Try ZenTrack Now
-          </motion.button>
+          {!isMobile && (
+            <motion.button onClick={onTryNow} className="hero-cta-btn premium-matte-card premium-glow"
+              whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} style={{ marginTop: 0 }}>
+              Try ZenTrack Now
+            </motion.button>
+          )}
           <motion.button onClick={() => scrollTo('Agents')}
             whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem' }}>
+            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: '0.9rem', marginLeft: '1rem' }}>
             See how it works
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M7 2v10M2 7l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </motion.button>
+          
+          <div style={{ width: '1px', height: '14px', background: 'rgba(255,255,255,0.2)', margin: '0 0.5rem' }}></div>
+
+          <motion.a href="https://drive.google.com/file/d/1inQH0PL4EbVjw89r6s8r9BB9wwDJeHxO/view?usp=sharing" target="_blank" rel="noopener noreferrer"
+            whileHover={{ scale: 1.05, color: 'rgba(235, 224, 204, 1)' }} whileTap={{ scale: 0.97 }}
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'rgba(235, 224, 204, 0.05)', 
+              border: '1px solid rgba(235, 224, 204, 0.15)', cursor: 'pointer', 
+              color: 'rgba(235, 224, 204, 0.85)', fontSize: '0.9rem', textDecoration: 'none',
+              padding: '0.5rem 1rem', borderRadius: '2rem', fontFamily: 'var(--font-primary)'
+            }}>
+            Download the app
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </motion.a>
         </motion.div>
       </motion.div>
 
@@ -276,7 +305,7 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
       ══════════════════════════════════════════════════ */}
       <FadeUp>
         <div style={{ position: 'relative', zIndex: 10, maxWidth: '72rem', margin: '0 auto 6rem', padding: '0 2rem' }} className="landing-stats-bar">
-          <div className="liquid-glass landing-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderRadius: '1.25rem', border: '1px solid rgba(255,255,255,0.1)' }}>
+          <div className="premium-matte-card premium-glow landing-stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderRadius: '1.25rem', border: '1px solid rgba(255,255,255,0.1)' }}>
             {STATS.map((s, i) => (
               <div key={i} className="landing-stats-item" style={{ padding: '1.75rem 1rem', textAlign: 'center', borderRight: i < 3 ? '1px solid rgba(255,255,255,0.07)' : 'none' }}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: '2.6rem', fontWeight: 400, color: 'white', lineHeight: 1 }}>{s.value}</div>
@@ -322,9 +351,9 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
                     ))}
                   </ul>
                 </FadeUp>
-                {idx === FEATURES.length - 1 && (
+                {idx === FEATURES.length - 1 && !isMobile && (
                   <FadeUp delay={0.28}>
-                    <motion.button onClick={onTryNow} className="hero-cta-btn liquid-glass"
+                    <motion.button onClick={onTryNow} className="hero-cta-btn premium-matte-card premium-glow"
                       whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
                       style={{ marginTop: 0, padding: '0.9rem 2.5rem', fontSize: '0.95rem' }}>
                       Get Started — It's Free
@@ -364,11 +393,19 @@ export const Landing = ({ onTryNow }: { onTryNow: () => void }) => {
             <p style={{ color: 'rgba(255,255,255,0.42)', fontSize: '1.05rem', lineHeight: 1.7, maxWidth: '38rem', margin: '0 auto 3rem' }}>
               Join thousands building calmer, more intentional, fully automated lives — powered by an AI that actually works for you.
             </p>
-            <motion.button onClick={onTryNow} className="hero-cta-btn liquid-glass"
-              whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
-              style={{ marginTop: 0, padding: '1.1rem 3.5rem', fontSize: '1rem' }}>
-              Try ZenTrack — it's free
-            </motion.button>
+            {isMobile ? (
+              <motion.a href="https://drive.google.com/file/d/1inQH0PL4EbVjw89r6s8r9BB9wwDJeHxO/view?usp=sharing" target="_blank" rel="noopener noreferrer" className="hero-cta-btn premium-matte-card premium-glow"
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                style={{ marginTop: 0, padding: '1.1rem 3.5rem', fontSize: '1rem', textDecoration: 'none', display: 'inline-block' }}>
+                Download the app for best experience
+              </motion.a>
+            ) : (
+              <motion.button onClick={onTryNow} className="hero-cta-btn premium-matte-card premium-glow"
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }}
+                style={{ marginTop: 0, padding: '1.1rem 3.5rem', fontSize: '1rem' }}>
+                Try ZenTrack — it's free
+              </motion.button>
+            )}
           </div>
         </FadeUp>
       </section>

@@ -9,7 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { GoogleAuthProvider, signInWithCredential, signInAnonymously } from 'firebase/auth';
 import { auth } from '../services/firebase';
-import { COLORS, RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW, SPACE } from '../theme/tokens';
+import { RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW, SPACE } from '../theme/tokens';
+import { useTheme } from "../contexts/ThemeContext";
 
 // Web client ID from Google Cloud Console
 const WEB_CLIENT_ID = '336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com';
@@ -32,6 +33,8 @@ try {
 }
 
 export default function AuthScreen() {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const [loading, setLoading] = useState(false);
   const [skipLoading, setSkipLoading] = useState(false);
   const [error, setError] = useState('');
@@ -195,7 +198,7 @@ export default function AuthScreen() {
         <View style={styles.bottomBlock}>
           <TouchableOpacity onPress={handleSkip} disabled={skipLoading} style={styles.skipBtn}>
             {skipLoading
-              ? <ActivityIndicator color={COLORS.textMuted} size="small" />
+              ? <ActivityIndicator color={colors.textMuted} size="small" />
               : <Text style={styles.skipText}>Skip for now  →</Text>
             }
           </TouchableOpacity>
@@ -206,106 +209,106 @@ export default function AuthScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 32,
-    justifyContent: 'space-between',
-    paddingTop: 32,
-    paddingBottom: 48,
-  },
-  topHeader: {
-    marginTop: 24,
-  },
-  brand: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textMuted,
-    letterSpacing: 2,
-    marginBottom: 4,
-  },
-  step: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textMuted,
-    opacity: 0.7,
-  },
-  mainBlock: {
-    justifyContent: 'center',
-    marginBottom: 40,
-  },
-  headline: {
-    fontFamily: FONT_FAMILY.title,
-    fontSize: 40,
-    color: COLORS.textPrimary,
-    lineHeight: 46,
-    marginBottom: 16,
-  },
-  sub: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.base,
-    color: COLORS.textMuted,
-    lineHeight: 24,
-    marginBottom: 48,
-  },
-  errorBox: {
-    backgroundColor: 'rgba(239,68,68,0.1)',
-    borderRadius: RADIUS.sm,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.3)',
-    marginBottom: 24,
-  },
-  errorText: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.sm,
-    color: '#ef4444',
-  },
-  btnContainer: {
-    width: '100%',
-    marginBottom: 24,
-  },
-  googleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    borderRadius: RADIUS.md,
-    paddingVertical: 16,
-    width: '100%',
-    gap: 12,
-  },
-  googleLogo: {
-    width: 20,
-    height: 20,
-    resizeMode: 'contain',
-  },
-  googleBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.base,
-    color: '#1a1a1a',
-  },
-  legalText: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.xs,
-    color: COLORS.textMuted,
-    lineHeight: 18,
-    opacity: 0.6,
-  },
-  bottomBlock: {
-    alignItems: 'flex-start',
-  },
-  skipBtn: {
-    paddingVertical: 12,
-  },
-  skipText: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.sm,
-    color: COLORS.textMuted,
-    opacity: 0.7,
-  },
-});
+const makeStyles = (colors: any) => StyleSheet.create({
+      root: {
+        flex: 1,
+        backgroundColor: colors.background,
+      },
+      content: {
+        flex: 1,
+        paddingHorizontal: 32,
+        justifyContent: 'space-between',
+        paddingTop: 32,
+        paddingBottom: 48,
+      },
+      topHeader: {
+        marginTop: 24,
+      },
+      brand: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.xs,
+        color: colors.textMuted,
+        letterSpacing: 2,
+        marginBottom: 4,
+      },
+      step: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: FONT_SIZE.xs,
+        color: colors.textMuted,
+        opacity: 0.7,
+      },
+      mainBlock: {
+        justifyContent: 'center',
+        marginBottom: 40,
+      },
+      headline: {
+        fontFamily: FONT_FAMILY.title,
+        fontSize: 40,
+        color: colors.textPrimary,
+        lineHeight: 46,
+        marginBottom: 16,
+      },
+      sub: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: FONT_SIZE.base,
+        color: colors.textMuted,
+        lineHeight: 24,
+        marginBottom: 48,
+      },
+      errorBox: {
+        backgroundColor: 'rgba(239,68,68,0.1)',
+        borderRadius: RADIUS.sm,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(239,68,68,0.3)',
+        marginBottom: 24,
+      },
+      errorText: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: FONT_SIZE.sm,
+        color: '#ef4444',
+      },
+      btnContainer: {
+        width: '100%',
+        marginBottom: 24,
+      },
+      googleBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#ffffff',
+        borderRadius: RADIUS.md,
+        paddingVertical: 16,
+        width: '100%',
+        gap: 12,
+      },
+      googleLogo: {
+        width: 20,
+        height: 20,
+        resizeMode: 'contain',
+      },
+      googleBtnText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: FONT_SIZE.base,
+        color: '#1a1a1a',
+      },
+      legalText: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: FONT_SIZE.xs,
+        color: colors.textMuted,
+        lineHeight: 18,
+        opacity: 0.6,
+      },
+      bottomBlock: {
+        alignItems: 'flex-start',
+      },
+      skipBtn: {
+        paddingVertical: 12,
+      },
+      skipText: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: FONT_SIZE.sm,
+        color: colors.textMuted,
+        opacity: 0.7,
+      },
+    });

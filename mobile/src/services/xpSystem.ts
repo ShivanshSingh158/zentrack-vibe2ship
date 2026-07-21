@@ -14,6 +14,8 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db, auth } from './firebase';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -72,11 +74,24 @@ export interface XPState {
 
 // ─── Core Functions ───────────────────────────────────────────────────────────
 
-/** Get current total XP */
+/** Get current total XP — local cache first, Firestore fallback on first launch */
 export async function getXP(): Promise<number> {
   try {
     const stored = await AsyncStorage.getItem(XP_KEY);
-    return stored ? parseInt(stored, 10) : 0;
+    if (stored !== null) return parseInt(stored, 10);
+
+    // FIX #12: No local cache (fresh install or reinstall) — load from Firestore
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      const snap = await getDoc(doc(db, 'user_profiles', uid));
+      if (snap.exists()) {
+        const firestoreXP = snap.data()?.xp ?? 0;
+        // Seed local cache so future reads are instant
+        await AsyncStorage.setItem(XP_KEY, String(firestoreXP));
+        return firestoreXP;
+      }
+    }
+    return 0;
   } catch {
     return 0;
   }
@@ -131,7 +146,13 @@ export async function awardXP(
   const previousLevel = getLevel(currentXP).level;
 
   const newXP = currentXP + totalAdded;
+  // FIX #12: Persist XP to BOTH AsyncStorage (fast reads) AND Firestore (survives reinstall)
   await AsyncStorage.setItem(XP_KEY, String(newXP));
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    setDoc(doc(db, 'user_profiles', uid), { xp: newXP }, { merge: true })
+      .catch(e => console.warn('[XP] Firestore sync failed:', e.message));
+  }
 
   const newState = getLevel(newXP);
 
@@ -155,4 +176,10 @@ export async function getXPState(): Promise<XPState> {
 /** Reset XP (for testing / account linking) */
 export async function resetXP(): Promise<void> {
   await AsyncStorage.setItem(XP_KEY, '0');
+  // FIX #12: Also reset in Firestore
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    setDoc(doc(db, 'user_profiles', uid), { xp: 0 }, { merge: true })
+      .catch(e => console.warn('[XP] Firestore reset failed:', e.message));
+  }
 }

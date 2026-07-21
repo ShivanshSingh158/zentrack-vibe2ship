@@ -24,28 +24,15 @@ svg.lucide {
 
 body {
   font-family: var(--font-sans);
-  /* Warm ambient background — the "lamp in the corner" effect.
-     A barely-visible copper glow from top-right, violet from bottom-left.
-     You won't consciously notice it, but without it the screen feels dead. */
-  background:
-    radial-gradient(
-      ellipse 75% 55% at 88% 3%,
-      rgba(196, 149, 106, 0.055) 0%,
-      transparent 62%
-    ),
-    radial-gradient(
-      ellipse 50% 40% at 8% 96%,
-      rgba(122, 158, 130, 0.035) 0%,
-      transparent 60%
-    ),
-    var(--color-bg);
+  /* Obsidian Cosmos ambient — OLED-true-black base. */
+  background: var(--bg-base);
   color: var(--text-primary);
   line-height: 1.65;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Ambient glow when agents are active */
+/* Ambient glow when agents are active — purple pulse */
 body.agent-active::after {
   content: '';
   position: fixed;
@@ -53,7 +40,7 @@ body.agent-active::after {
   right: 0;
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, rgba(196, 149, 106, 0.07) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.07) 0%, transparent 70%);
   animation: ambient-breathe 3.5s ease-in-out infinite;
   pointer-events: none;
   z-index: 0;
@@ -63,14 +50,14 @@ body.agent-active::after {
   50%       { opacity: 1;   transform: scale(1.08); }
 }
 
-/* Scrollbar — warm and subtle */
+/* Scrollbar — purple and subtle */
 ::-webkit-scrollbar        { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  {
-  background: rgba(196, 149, 106, 0.18);
+  background: rgba(59, 130, 246, 0.20);
   border-radius: 999px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(196, 149, 106, 0.35); }
+::-webkit-scrollbar-thumb:hover { background: rgba(59, 130, 246, 0.40); }
 
 /* Reduced motion — ALWAYS respect this */
 @media (prefers-reduced-motion: reduce) {
@@ -87,7 +74,7 @@ body.agent-active::after {
    Buttons — Warm Obsidian system
    ========================================================================== */
 
-/* Primary: copper gradient pill — the only true CTA */
+/* Primary: purple gradient pill — the signature CTA */
 .btn-primary {
   position: relative;
   display: inline-flex;
@@ -100,10 +87,10 @@ body.agent-active::after {
   font-size: 0.825rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: linear-gradient(135deg, #c4956a 0%, #dba87e 50%, #c4956a 100%);
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%);
   background-size: 200% 100%;
   border: none;
-  color: #1a110a;
+  color: #0a0814;
   cursor: pointer;
   transition:
     transform var(--dur-fast) var(--ease-spring),
@@ -128,12 +115,12 @@ body.agent-active::after {
 }
 .btn-primary:active  { transform: scale(0.97); }
 
-/* Secondary: warm glass outline */
+/* Secondary: purple glass outline */
 .btn-secondary {
-  background: rgba(196, 149, 106, 0.07);
-  border: 1px solid rgba(196, 149, 106, 0.22);
+  background: rgba(59, 130, 246, 0.07);
+  border: 1px solid rgba(59, 130, 246, 0.22);
   border-radius: var(--radius-pill);
-  color: rgba(235, 224, 204, 0.75);
+  color: rgba(242, 242, 247, 0.75);
   font-family: var(--font-sans);
   font-size: 0.825rem;
   font-weight: 500;
@@ -151,14 +138,14 @@ body.agent-active::after {
   white-space: nowrap;
 }
 .btn-secondary:hover {
-  border-color: rgba(196, 149, 106, 0.45);
-  background: rgba(196, 149, 106, 0.12);
+  border-color: rgba(59, 130, 246, 0.45);
+  background: rgba(59, 130, 246, 0.12);
   color: var(--color-text-1);
   transform: translateY(-1px);
 }
 .btn-secondary:active { transform: translateY(0) scale(0.98); }
 
-/* Icon button: warm glass square */
+/* Icon button: purple glass square */
 .btn-icon {
   width: 34px;
   height: 34px;
@@ -166,8 +153,8 @@ body.agent-active::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(210, 175, 130, 0.05);
-  border: 1px solid rgba(210, 175, 130, 0.10);
+  background: rgba(59, 130, 246, 0.05);
+  border: 1px solid rgba(59, 130, 246, 0.10);
   color: var(--color-text-2);
   cursor: pointer;
   transition:
@@ -177,16 +164,16 @@ body.agent-active::after {
     border-color var(--dur-fast) var(--ease-water);
 }
 .btn-icon:hover {
-  background: rgba(196, 149, 106, 0.12);
-  border-color: rgba(196, 149, 106, 0.30);
-  color: var(--zen-copper);
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.30);
+  color: var(--zen-purple);
   transform: scale(1.08);
 }
 .btn-icon:active { transform: scale(0.93); }
 .btn-icon.danger:hover {
   color: var(--zen-rose);
-  border-color: rgba(181, 80, 60, 0.30);
-  background: rgba(181, 80, 60, 0.10);
+  border-color: rgba(255, 105, 97, 0.30);
+  background: rgba(255, 105, 97, 0.10);
 }
 
 /* ==========================================================================
@@ -1440,4 +1427,65 @@ body.ai-panel-open #youtube-floating-pip {
 
 .siren-active {
   animation: siren-flash 1s infinite;
+}
+
+/* ==========================================================================
+   Premium Deep Midnight Aesthetics
+   ========================================================================== */
+:root {
+  --color-midnight-base: #0B1120;
+  --color-matte-card: #0F172A;
+  --color-indigo-glow: rgba(59, 130, 246, 0.45);
+}
+
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+}
+
+.premium-matte-card {
+  background: var(--color-matte-card);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+  position: relative;
+}
+
+.premium-glow {
+  position: relative;
+}
+
+.premium-glow::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.6) 0%, rgba(139, 92, 246, 0.6) 100%);
+  border-radius: inherit;
+  filter: blur(40px);
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 0.4s ease;
+}
+
+/* For cards that always glow (like SARA dashboard panels) */
+.premium-glow-active {
+  position: relative;
+}
+.premium-glow-active::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.4) 0%, rgba(139, 92, 246, 0.4) 100%);
+  border-radius: inherit;
+  filter: blur(40px);
+  opacity: 1;
+  z-index: -1;
+}
+
+.premium-glow:hover::before {
+  opacity: 1;
 }

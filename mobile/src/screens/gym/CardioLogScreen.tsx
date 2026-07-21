@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, FONT_FAMILY, SPACE, RADIUS } from '../../theme/tokens';
+import { FONT_FAMILY, SPACE, RADIUS } from '../../theme/tokens';
 import { useGymLog, todayStr } from '../../hooks/useGymLog';
+import { GymNavigationParamList } from '../../types/gym.types';
 import { hapticMedium, hapticSuccess } from '../../utils/haptics';
+import { useTheme } from "../../contexts/ThemeContext";
 
 export default function CardioLogScreen() {
-  const navigation = useNavigation<any>();
-  const route = useRoute<any>();
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
+  const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
+  const route = useRoute<RouteProp<GymNavigationParamList, 'CardioLog'>>();
   const cardioId = route.params?.cardioId;
   const date = route.params?.date || todayStr();
 
@@ -47,7 +52,7 @@ export default function CardioLogScreen() {
     };
     
     const index = log.cardio?.findIndex(c => c.id === cardioId) ?? -1;
-    if (index >= 0) {
+    if (index >= 0 && cardioId) {
       updateCardio(cardioId, updated as any);
     }
     
@@ -61,7 +66,7 @@ export default function CardioLogScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="chevron-down" size={24} color={COLORS.textPrimary} />
+            <Ionicons name="chevron-down" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Log Cardio</Text>
           <View style={{ width: 40 }} />
@@ -76,7 +81,7 @@ export default function CardioLogScreen() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Ionicons name="walk" size={32} color={COLORS.background} />
+              <Ionicons name="walk" size={32} color={colors.background} />
             </LinearGradient>
             <Text style={styles.title}>{cardioItem.type}</Text>
           </View>
@@ -90,7 +95,7 @@ export default function CardioLogScreen() {
                 onChangeText={setDuration}
                 keyboardType="numeric"
                 placeholder="e.g. 20"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
               />
             </View>
 
@@ -102,7 +107,7 @@ export default function CardioLogScreen() {
                 onChangeText={setDistance}
                 keyboardType="numeric"
                 placeholder="e.g. 5.2"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
               />
             </View>
 
@@ -114,7 +119,7 @@ export default function CardioLogScreen() {
                 onChangeText={setCalories}
                 keyboardType="numeric"
                 placeholder="e.g. 250"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
               />
             </View>
 
@@ -140,43 +145,43 @@ export default function CardioLogScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0D0D0E' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACE.xl,
-    paddingTop: Platform.OS === 'ios' ? 50 : 40,
-    paddingBottom: SPACE.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  backBtn: { padding: SPACE.xs },
-  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: COLORS.textMuted, letterSpacing: 1 },
-  
-  content: { padding: SPACE.xl, alignItems: 'center' },
-  
-  iconContainer: { alignItems: 'center', marginBottom: SPACE.xl * 1.5 },
-  iconCircle: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.md },
-  title: { fontFamily: FONT_FAMILY.bold, fontSize: 24, color: COLORS.textPrimary },
-  
-  form: { width: '100%', gap: SPACE.lg },
-  inputGroup: { gap: SPACE.xs },
-  label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
-  input: {
-    backgroundColor: '#161618',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACE.md,
-    height: 50,
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 18,
-    color: COLORS.textPrimary,
-  },
-  
-  saveBtnWrapper: { marginTop: SPACE.lg, borderRadius: RADIUS.lg, overflow: 'hidden' },
-  saveBtn: { paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-  saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: COLORS.background },
-});
+const makeStyles = (colors: any) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: '#0D0D0E' },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: SPACE.xl,
+        paddingTop: Platform.OS === 'ios' ? 50 : 40,
+        paddingBottom: SPACE.md,
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
+      },
+      backBtn: { padding: SPACE.xs },
+      headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted, letterSpacing: 1 },
+      
+      content: { padding: SPACE.xl, alignItems: 'center' },
+      
+      iconContainer: { alignItems: 'center', marginBottom: SPACE.xl * 1.5 },
+      iconCircle: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginBottom: SPACE.md },
+      title: { fontFamily: FONT_FAMILY.bold, fontSize: 24, color: colors.textPrimary },
+      
+      form: { width: '100%', gap: SPACE.lg },
+      inputGroup: { gap: SPACE.xs },
+      label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
+      input: {
+        backgroundColor: '#161618',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        borderRadius: RADIUS.md,
+        paddingHorizontal: SPACE.md,
+        height: 50,
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 18,
+        color: colors.textPrimary,
+      },
+      
+      saveBtnWrapper: { marginTop: SPACE.lg, borderRadius: RADIUS.lg, overflow: 'hidden' },
+      saveBtn: { paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
+      saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.background },
+    });

@@ -3,7 +3,8 @@ import { View, StyleSheet, TouchableOpacity, Text, Modal, Pressable } from 'reac
 import { Calendar, DateData } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { COLORS, FONT_FAMILY, RADIUS } from '../theme/tokens';
+import { FONT_FAMILY, RADIUS } from '../theme/tokens';
+import { useTheme } from "../contexts/ThemeContext";
 
 interface UniversalCalendarModalProps {
   visible: boolean;
@@ -13,13 +14,16 @@ interface UniversalCalendarModalProps {
   title?: string;
 }
 
-export default function UniversalCalendarModal({
+const UniversalCalendarModal = React.memo(function UniversalCalendarModal({
   visible,
   onClose,
   selectedDate,
   onDateSelect,
   title = "Select Date"
 }: UniversalCalendarModalProps) {
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors);
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <BlurView experimentalBlurMethod="dimezisBlurView" intensity={40} tint="dark" style={StyleSheet.absoluteFill}>
@@ -32,7 +36,7 @@ export default function UniversalCalendarModal({
             <View style={styles.header}>
               <Text style={styles.title}>{title}</Text>
               <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}>
-                <Ionicons name="close" size={20} color={COLORS.textMuted} />
+                <Ionicons name="close" size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -53,10 +57,10 @@ export default function UniversalCalendarModal({
                 selectedDayBackgroundColor: '#ff3b30',
                 selectedDayTextColor: '#ffffff',
                 todayTextColor: '#ff3b30',
-                dayTextColor: COLORS.textPrimary,
+                dayTextColor: colors.textPrimary,
                 textDisabledColor: '#3a3a3c',
-                arrowColor: COLORS.textPrimary,
-                monthTextColor: COLORS.textPrimary,
+                arrowColor: colors.textPrimary,
+                monthTextColor: colors.textPrimary,
                 indicatorColor: '#ff3b30',
                 textDayFontFamily: FONT_FAMILY.body,
                 textMonthFontFamily: FONT_FAMILY.heading,
@@ -82,49 +86,51 @@ export default function UniversalCalendarModal({
       </BlurView>
     </Modal>
   );
-}
-
-const styles = StyleSheet.create({
-  centeredView: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  calendarCard: {
-    backgroundColor: '#1c1c1e', // Apple iOS dark mode modal gray
-    borderRadius: RADIUS.lg,
-    width: '100%',
-    maxWidth: 360,
-    padding: 16,
-    paddingTop: 12,
-    borderWidth: 1,
-    borderColor: '#2c2c2e',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 5,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-    paddingHorizontal: 8,
-  },
-  title: {
-    fontFamily: FONT_FAMILY.heading,
-    fontSize: 18,
-    color: COLORS.textPrimary,
-    fontWeight: '600',
-  },
-  closeBtn: {
-    backgroundColor: '#2c2c2e',
-    borderRadius: 15,
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  }
 });
+
+const makeStyles = (colors: any) => StyleSheet.create({
+      centeredView: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+      },
+      calendarCard: {
+        backgroundColor: '#1c1c1e', // Apple iOS dark mode modal gray
+        borderRadius: RADIUS.lg,
+        width: '100%',
+        maxWidth: 360,
+        padding: 16,
+        paddingTop: 12,
+        borderWidth: 1,
+        borderColor: '#2c2c2e',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+        elevation: 5,
+      },
+      header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10,
+        paddingHorizontal: 8,
+      },
+      title: {
+        fontFamily: FONT_FAMILY.heading,
+        fontSize: 18,
+        color: colors.textPrimary,
+        fontWeight: '600',
+      },
+      closeBtn: {
+        backgroundColor: '#2c2c2e',
+        borderRadius: 15,
+        width: 30,
+        height: 30,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }
+    });
+
+export default UniversalCalendarModal;

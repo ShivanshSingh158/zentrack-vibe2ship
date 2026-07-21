@@ -133,7 +133,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
     const ro = new ResizeObserver(() => resize());
     ro.observe(canvas);
 
-    const N = 400; // Halved for consumer lite performance
+    const N = 800; // Increased for a denser, more realistic eye
     type Role = 'pupil' | 'iris' | 'eyebrow';
     type Node = { x: number; y: number; z: number; vx: number; vy: number; vz: number; r: number; brightness: number; eye: 'left' | 'right'; role: Role; index: number; };
     const nodes: Node[] = [];
@@ -144,15 +144,15 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
       for (let i = 0; i < N; i++) {
         const eye = i < N / 2 ? 'left' : 'right';
         const isNarrow = Wval < 768;
-        const offset = isNarrow ? Wval * 0.25 : Wval * 0.15;
+        const offset = isNarrow ? Wval * 0.15 : Wval * 0.08; // Reduced distance
         const eyeOffsetX = eye === 'left' ? -offset : offset;
         
         const localI = i % (N / 2);
         let role: Role = 'iris';
         let index = localI;
-        if (localI < 35) { role = 'pupil'; index = localI; }
-        else if (localI < 150) { role = 'iris'; index = localI - 35; }
-        else { role = 'eyebrow'; index = localI - 150; }
+        if (localI < 60) { role = 'pupil'; index = localI; }
+        else if (localI < 280) { role = 'iris'; index = localI - 60; }
+        else { role = 'eyebrow'; index = localI - 280; }
 
         nodes.push({
           x: eyeOffsetX + (Math.random() - 0.5) * Wval * 0.2,
@@ -211,9 +211,9 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         lookTargetX = (mouse.x - cx) * 0.6;
         lookTargetY = (mouse.y - cy) * 0.6;
         lastLookTime = t;
-      } else if (t - lastLookTime > 2 + Math.random() * 2) {
-        lookTargetX = (Math.random() - 0.5) * w * 0.25;
-        lookTargetY = (Math.random() - 0.5) * h * 0.25;
+      } else {
+        lookTargetX = 0;
+        lookTargetY = 0;
         lastLookTime = t;
       }
       currentLookX += (lookTargetX - currentLookX) * 0.05;
@@ -221,40 +221,8 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
 
       // Canvas background removed for GPU performance. Background is now handled by CSS.
 
-      // Performance: Draw pre-rendered hex grid
-      if (bgRenderedW !== w || bgRenderedH !== h) {
-        bgCanvas.width = w;
-        bgCanvas.height = h;
-        const bgCtx = bgCanvas.getContext('2d');
-        if (bgCtx) {
-          const hexSize = 32;
-          bgCtx.strokeStyle = 'rgba(196, 149, 106, 0.025)';
-          bgCtx.lineWidth = 0.5;
-          const sqrt3 = Math.sqrt(3);
-          const pi3 = Math.PI / 3;
-          const pi6 = Math.PI / 6;
-          for (let row = 0; row < h / (hexSize * 1.5) + 1; row++) {
-            for (let col = 0; col < w / (hexSize * sqrt3) + 1; col++) {
-              const hx = col * hexSize * sqrt3 + (row % 2 === 0 ? 0 : hexSize * sqrt3 / 2);
-              const hy = row * hexSize * 1.5;
-              bgCtx.beginPath();
-              for (let k = 0; k < 6; k++) {
-                const angle = pi3 * k - pi6;
-                const px = hx + hexSize * Math.cos(angle);
-                const py = hy + hexSize * Math.sin(angle);
-                if (k === 0) bgCtx.moveTo(px, py); else bgCtx.lineTo(px, py);
-              }
-              bgCtx.closePath();
-              bgCtx.stroke();
-            }
-          }
-        }
-        bgRenderedW = w;
-        bgRenderedH = h;
-      }
-      if (bgCanvas.width > 0 && bgCanvas.height > 0) {
-        ctx.drawImage(bgCanvas, 0, 0);
-      }
+      // Canvas background removed for GPU performance. Background is now handled by CSS.
+      // Performance: Draw pre-rendered hex grid removed for minimalist redesign.
 
       const fov = maxR * 1.5;
       const project = (x: number, y: number, z: number) => {
@@ -289,7 +257,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         if (Math.abs(node.z) > boundZ) node.vz -= Math.sign(node.z) * (Math.abs(node.z) - boundZ) * 0.05;
 
         const isNarrow = w < 768;
-        const offset = isNarrow ? w * 0.25 : w * 0.15;
+        const offset = isNarrow ? w * 0.15 : w * 0.08;
         const eyeOffsetX = node.eye === 'left' ? -offset : offset;
         const targetX = eyeOffsetX + currentLookX;
         const targetY = currentLookY;
@@ -400,18 +368,18 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         ctx.arc(p1.px, p1.py, node.r * p1.scale * listenBoost * (node.brightness > 1 ? 1.5 : 1), 0, Math.PI * 2);
         
         if (node.role === 'pupil') {
-            ctx.fillStyle = `rgba(255, 240, 225, ${nodeAlpha * Math.min(1, node.brightness) * p1.scale})`; 
+            ctx.fillStyle = `rgba(220, 215, 255, ${nodeAlpha * Math.min(1, node.brightness) * p1.scale})`; 
             if (node.brightness > 1) {
                 ctx.shadowBlur = 15 * p1.scale;
-                ctx.shadowColor = 'rgba(235, 180, 130, 0.9)';
+                ctx.shadowColor = 'rgba(59, 130, 246, 0.9)';
             }
         } else if (node.role === 'eyebrow') {
-            ctx.fillStyle = `rgba(196, 149, 106, ${nodeAlpha * Math.min(1, node.brightness) * 0.8 * p1.scale})`; 
+            ctx.fillStyle = `rgba(59, 130, 246, ${nodeAlpha * Math.min(1, node.brightness) * 0.8 * p1.scale})`; 
         } else {
-            ctx.fillStyle = `rgba(205, 160, 115, ${nodeAlpha * Math.min(1, node.brightness) * 0.6 * p1.scale})`; 
+            ctx.fillStyle = `rgba(184, 175, 255, ${nodeAlpha * Math.min(1, node.brightness) * 0.6 * p1.scale})`; 
             if (node.brightness > 1) {
                 ctx.shadowBlur = 8 * p1.scale;
-                ctx.shadowColor = 'rgba(196, 149, 106, 0.6)';
+                ctx.shadowColor = 'rgba(59, 130, 246, 0.6)';
             }
         }
 
@@ -492,9 +460,9 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         const alpha = 1 - distFromCenter * 0.5;
 
         const g = ctx.createLinearGradient(x, h / 2 - barHeight / 2, x, h / 2 + barHeight / 2);
-        g.addColorStop(0, `rgba(196, 149, 106, ${alpha * 0.3})`);
-        g.addColorStop(0.5, `rgba(196, 149, 106, ${alpha})`);
-        g.addColorStop(1, `rgba(196, 149, 106, ${alpha * 0.3})`);
+        g.addColorStop(0, `rgba(59, 130, 246, ${alpha * 0.3})`);
+        g.addColorStop(0.5, `rgba(59, 130, 246, ${alpha})`);
+        g.addColorStop(1, `rgba(59, 130, 246, ${alpha * 0.3})`);
 
         const rounding = Math.min(barW * 0.4, 3);
         ctx.fillStyle = g;
@@ -502,13 +470,13 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         ctx.roundRect(x + 1, h / 2 - barHeight / 2, barW - 2, barHeight, rounding);
         ctx.fill();
 
-        ctx.fillStyle = `rgba(196, 149, 106, ${alpha * 0.06})`;
+        ctx.fillStyle = `rgba(59, 130, 246, ${alpha * 0.06})`;
         ctx.beginPath();
         ctx.roundRect(x + 1, h / 2 - barHeight / 2, barW - 2, barHeight, rounding);
         ctx.fill();
       }
 
-      ctx.strokeStyle = 'rgba(196, 149, 106, 0.15)';
+      ctx.strokeStyle = 'rgba(59, 130, 246, 0.15)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
@@ -550,12 +518,12 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
   const modeLabel = isLiveMode ? '⚡ LIVE' : isConversationActive ? '◉ STD' : '';
 
   const statusColor = isSpeaking
-    ? '#7a9e82'
+    ? '#5eda9e'
     : isOrchestrating
-    ? '#dba87e'
+    ? '#ff9f4d'
     : isConversationListening
-    ? '#c4956a'
-    : '#8c7c68';
+    ? '#3b82f6'
+    : '#636366';
 
   return (
     <div style={{
@@ -563,39 +531,35 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
       top: 0,
       left: 0,
       right: 0,
-      bottom: isHomePage ? (isMobile ? 'calc(100px + env(safe-area-inset-bottom, 0px))' : '80px') : 0,
+      bottom: 0,
       zIndex: isHomePage ? 5 : 9999,
-      background: 'radial-gradient(ellipse at 50% 40%, #0f0d0a 0%, #0a0805 60%, #000000 100%)',
-      color: '#ebe0cc',
-      fontFamily: "'Rajdhani', 'JetBrains Mono', sans-serif",
+      background: 'transparent',
+      color: '#f2f2f7',
+      fontFamily: "'Inter', sans-serif",
       display: 'flex', flexDirection: 'column',
       overflow: 'hidden',
       userSelect: 'none',
     }}>
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 1,
-        background: `repeating-linear-gradient(to bottom, transparent 0px, transparent 3px, rgba(196,149,106,0.015) 3px, rgba(196,149,106,0.015) 4px)`,
-        mixBlendMode: 'overlay',
-      }} />
 
+      {/* ── TOP HUD BAR (FLOATING PILL) ─────────────────────────────────────── */}
       <div style={{
-        position: 'absolute', left: 0, right: 0, pointerEvents: 'none', zIndex: 2,
-        top: `${scanlineY}%`, height: '2px',
-        background: 'linear-gradient(90deg, transparent, rgba(196,149,106,0.06) 30%, rgba(196,149,106,0.06) 70%, transparent)',
-        transition: 'none',
-      }} />
-
-      {/* ── TOP HUD BAR ─────────────────────────────────────────────────────── */}
-      <div style={{
+        position: 'absolute',
+        top: '24px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 'calc(100% - 48px)',
+        maxWidth: '1200px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         flexDirection: 'row',
-        padding: isMobile ? '0.4rem 1rem' : '0.4rem 2rem',
-        gap: '0',
-        borderBottom: '1px solid rgba(210,175,130,0.1)',
-        background: 'rgba(10, 8, 5, 0.84)',
-        backdropFilter: 'blur(10px)',
-        zIndex: 10,
-        flexShrink: 0,
+        padding: isMobile ? '0.5rem 1rem' : '0.6rem 2rem',
+        gap: '1rem',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '32px',
+        background: 'rgba(20, 20, 22, 0.55)',
+        backdropFilter: 'saturate(180%) blur(32px)',
+        WebkitBackdropFilter: 'saturate(180%) blur(32px)',
+        zIndex: 20,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.5rem' : '1.5rem', flex: 1 }}>
           {!isHomePage && (
@@ -613,19 +577,10 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
           )}
 
           <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
-              <span style={{ fontSize: isMobile ? '1.2rem' : '1.6rem', fontWeight: 900, letterSpacing: '0.25em', color: '#fff' }}>S.A.R.A</span>
-              <motion.span
-                animate={{ opacity: [1, 0, 1] }}
-                transition={{ duration: 1, repeat: Infinity, ease: 'steps(1)' }}
-                style={{ fontSize: '1.6rem', color: '#c4956a', fontWeight: 900 }}
-              >_</motion.span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <img src="/logo_white.png" alt="ZenTrack Logo" style={{ width: 32, height: 32, objectFit: 'contain' }} />
+              <span style={{ fontSize: isMobile ? '1.5rem' : '1.75rem', fontWeight: 400, letterSpacing: '0.02em', color: '#fff', fontFamily: 'var(--font-display, sans-serif)' }}>ZenTrack</span>
             </div>
-            {!isMobile && (
-            <div style={{ fontSize: '0.55rem', letterSpacing: '0.2em', color: 'rgba(196,149,106,0.5)', marginTop: '2px' }}>
-              SYNTHETIC ARTIFICIAL RESOURCE ASSISTANT — OLYMPUS PROTOCOL v4.2
-            </div>
-            )}
           </div>
         </div>
 
@@ -661,9 +616,9 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
             
             {modeLabel && (
               <span style={{
-                fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.1em',
+                fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.05em',
                 color: isLiveMode ? '#00ff88' : '#fbbf24',
-                opacity: 0.8,
+                opacity: 0.9,
                 marginLeft: '4px'
               }}>
                 [{modeLabel}]
@@ -671,28 +626,66 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
             )}
           </div>
           {!isMobile && (
-            <div style={{ fontSize: '0.5rem', letterSpacing: '0.2em', color: 'rgba(196,149,106,0.35)' }}>
-              System Status: {isLiveMode ? 'GEMINI LIVE ACTIVE' : isSpeaking ? 'AUDIO STREAM ACTIVE' : isConversationListening ? 'STT PROCESSING' : 'STANDBY MODE'}
+            <div style={{ fontSize: '0.65rem', letterSpacing: '0.05em', color: 'rgba(255, 255, 255, 0.6)', fontWeight: 500 }}>
+              Status: {isLiveMode ? 'Gemini Live Active' : isSpeaking ? 'Audio Stream Active' : isConversationListening ? 'Processing Audio' : 'Standby'}
             </div>
           )}
         </div>
 
         <div style={{ textAlign: 'right', flex: 1 }}>
-          <div style={{ fontSize: isMobile ? '1.2rem' : '1.4rem', fontWeight: 900, letterSpacing: '0.15em', color: '#fff', lineHeight: 1 }}>
+          <div style={{ fontSize: isMobile ? '1.2rem' : '1.4rem', fontWeight: 600, letterSpacing: '0.02em', color: '#fff', lineHeight: 1 }}>
             {timeStr}
           </div>
           {!isMobile && (
-          <div style={{ fontSize: '0.65rem', letterSpacing: '0.2em', color: 'rgba(196,149,106,0.5)', marginTop: '4px' }}>
-            {dateStr} // IST
+          <div style={{ fontSize: '0.75rem', letterSpacing: '0.02em', color: 'rgba(255, 255, 255, 0.6)', marginTop: '4px', fontWeight: 500 }}>
+            {dateStr}
           </div>
           )}
         </div>
       </div>
 
       {/* ── MAIN BODY ───────────────────────────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 5 }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 5, position: 'relative', paddingTop: '100px' }}>
+        
+        {/* ── GLOBAL BACKGROUNDS (SPAN FULL WIDTH) ──────────────────────── */}
+        <div style={{ position: 'absolute', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+          <ParticleFlowBackground 
+            speedMultiplier={isSpeaking ? 3 : (isConversationActive ? 1.5 : 0.5)} 
+            opacity={0.15} 
+          />
+          
+          <motion.div 
+            style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              width: '150vh',
+              height: '150vh',
+              minWidth: '1000px',
+              minHeight: '1000px',
+              maxWidth: '2500px',
+              maxHeight: '2500px',
+              x: '-50%',
+              y: '-50%',
+              backgroundImage: 'url(/blackhole.jpg)',
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+              opacity: 0.15,
+              mixBlendMode: 'screen'
+            }}
+            animate={{ rotate: 360 }}
+            transition={{
+              repeat: Infinity,
+              ease: 'linear',
+              duration: isSpeaking ? 60 : (isConversationActive ? 100 : 200)
+            }}
+          />
+          <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 1, pointerEvents: 'auto' }} />
+        </div>
+        
         {/* ── PANELS CONTAINER ────────────────────────────────────────────── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', overflow: 'hidden', zIndex: 1, position: 'relative', pointerEvents: 'none' }}>
         {/* ── LEFT PANEL ─────────────────────────────────────────────────── */}
         {!isMobile && (
         <div 
@@ -708,6 +701,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
           overflowY: isMobile ? 'visible' : 'auto',
           overscrollBehavior: 'contain',
           zIndex: 10,
+          pointerEvents: 'auto'
         }}>
           <AgentCluster 
             AGENTS={AGENTS} 
@@ -722,49 +716,8 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         )}
 
         {/* ── CENTER ─────────────────────────────────────────────────────── */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', minHeight: 0 }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', minHeight: 0, pointerEvents: 'none' }}>
           <div style={{ flex: 1, position: 'relative' }}>
-            <ParticleFlowBackground 
-              speedMultiplier={isSpeaking ? 3 : (isConversationActive ? 1.5 : 0.5)} 
-              opacity={0.15} 
-            />
-            
-            {/* Extreme GPU Optimization: CSS Hardware Accelerated Black Hole Background */}
-            <motion.div 
-              style={{
-                position: 'absolute',
-                top: '50%',
-                left: '50%',
-                width: '150vh',
-                height: '150vh',
-                minWidth: '1000px',
-                minHeight: '1000px',
-                maxWidth: '2500px',
-                maxHeight: '2500px',
-                x: '-50%',
-                y: '-50%',
-                backgroundImage: 'url(/blackhole.jpg)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                borderRadius: '50%',
-                maskImage: 'radial-gradient(circle, rgba(0,0,0,1) 0%, rgba(0,0,0,0.8) 40%, rgba(0,0,0,0) 70%)',
-                WebkitMaskImage: 'radial-gradient(circle, rgba(0,0,0,1) 0%, rgba(0,0,0,0.8) 40%, rgba(0,0,0,0) 70%)',
-                opacity: 0.85,
-                zIndex: 0,
-                pointerEvents: 'none'
-              }}
-              animate={{
-                rotate: 360,
-                scale: isSpeaking ? 1.05 : 1.0,
-              }}
-              transition={{
-                rotate: { duration: 150, repeat: Infinity, ease: 'linear' },
-                scale: { duration: 0.2, ease: 'easeInOut' }
-              }}
-            />
-
-            <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', zIndex: 1 }} />
-
             {/* Contextual Orchestration Hologram */}
             <AnimatePresence>
               {isOrchestrating && (
@@ -787,13 +740,13 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
-                    style={{ width: '100%', height: '100%', position: 'absolute', border: '1px dashed rgba(196,149,106,0.15)', borderRadius: '50%' }}
+                    style={{ width: '100%', height: '100%', position: 'absolute', border: '1px dashed rgba(59,130,246,0.15)', borderRadius: '50%' }}
                   />
                   {/* Inner reverse-spinning agent node ring */}
                   <motion.div
                     animate={{ rotate: -360 }}
                     transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
-                    style={{ width: '75%', height: '75%', position: 'absolute', border: '1px solid rgba(196,149,106,0.05)', borderRadius: '50%' }}
+                    style={{ width: '75%', height: '75%', position: 'absolute', border: '1px solid rgba(59,130,246,0.06)', borderRadius: '50%' }}
                   >
                     {activeAgents.map((id, i) => {
                       const agent = AGENTS.find(a => a.id === id);
@@ -825,6 +778,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                 borderRadius: '50%',
                 cursor: 'pointer',
                 zIndex: 10,
+                pointerEvents: 'auto',
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
                 gap: '6px',
@@ -849,8 +803,9 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                   >
                     <div style={{
                       fontSize: '0.65rem', letterSpacing: '0.2em',
-                      color: 'rgba(196,149,106,0.8)', textShadow: '0 0 15px rgba(196,149,106,0.5)',
-                      fontFamily: "'Orbitron', sans-serif",
+                      color: 'rgba(59,130,246,0.80)', textShadow: '0 0 15px rgba(59,130,246,0.5)',
+                      fontFamily: "'Inter', sans-serif",
+                      fontWeight: 600,
                     }}>
                       CLICK ME TO ACTIVATE
                     </div>
@@ -876,10 +831,10 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                     animate={{ opacity: 1 }}
                     style={{
                       marginTop: '20px', maxWidth: '600px', fontSize: '1.1rem',
-                      fontFamily: "'Inter', 'Rajdhani', sans-serif",
-                      color: 'rgba(196,149,106,0.9)', letterSpacing: '0.02em',
+                      fontFamily: "'Inter', sans-serif",
+                      color: 'rgba(59,130,246,0.90)', letterSpacing: '0.01em',
                       lineHeight: 1.6, textAlign: 'center', fontWeight: 500,
-                      textShadow: '0 0 10px rgba(196,149,106,0.2)'
+                      textShadow: '0 0 10px rgba(59,130,246,0.25)'
                     }}
                   >
                     "{conversationTranscript}"
@@ -921,22 +876,22 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                       onClick={() => hasSteps ? window.dispatchEvent(new CustomEvent('show-mission-report')) : null}
                       style={{
                         marginTop: '24px', maxWidth: '680px', fontSize: '1.1rem',
-                        fontFamily: "'Inter', 'Rajdhani', sans-serif",
+                        fontFamily: "'Inter', sans-serif",
                         color: 'rgba(255,255,255,0.90)', letterSpacing: '0.01em',
                         lineHeight: 1.7, textAlign: 'center', fontWeight: 400,
                         cursor: hasSteps ? 'pointer' : 'default',
                         padding: isInitialGreeting ? 0 : '0.9rem 1.5rem',
                         borderRadius: isInitialGreeting ? 0 : '14px',
-                        border: isInitialGreeting ? 'none' : '1px solid rgba(255,255,255,0.06)',
-                        background: isInitialGreeting ? 'transparent' : 'rgba(255,255,255,0.02)',
+                        border: isInitialGreeting ? 'none' : '1px solid rgba(59,130,246,0.08)',
+                        background: isInitialGreeting ? 'transparent' : 'rgba(59,130,246,0.04)',
                         backdropFilter: isInitialGreeting ? 'none' : 'blur(6px)',
                         pointerEvents: 'auto',
                       }}
-                      whileHover={hasSteps ? { background: 'rgba(196,149,106,0.05)', borderColor: 'rgba(196,149,106,0.18)' } as any : undefined}
+                      whileHover={hasSteps ? { background: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.20)' } as any : undefined}
                     >
                       {display}
                       {hasSteps && (
-                        <div style={{ fontSize: '0.55rem', color: 'rgba(196,149,106,0.4)', marginTop: '0.6rem', letterSpacing: '0.2em', fontFamily: "'Orbitron', sans-serif" }}>
+                        <div style={{ fontSize: '0.55rem', color: 'rgba(59,130,246,0.45)', marginTop: '0.6rem', letterSpacing: '0.2em', fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>
                           TAP TO VIEW FULL REPORT
                         </div>
                       )}
@@ -948,16 +903,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
             </div>
           </div>
 
-          <div style={{ height: isMobile ? '40px' : '45px', borderTop: '1px solid rgba(196,149,106,0.08)', position: 'relative', flexShrink: 0 }}>
-            <canvas ref={waveCanvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
-            <div style={{
-              position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-              fontSize: '0.5rem', letterSpacing: '0.2em', color: 'rgba(196,149,106,0.4)',
-            }}>
-              Audio Spectrum
-            </div>
-          </div>
-
+          {/* Audio Spectrum Removed */}
           {/* Input Box moved to global footer */}
         </div>
 
@@ -978,6 +924,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
           padding: '1rem 1.5rem',
           gap: '2rem',
           zIndex: 10,
+          pointerEvents: 'auto'
         }}>
           <TerminalFeed 
             agentLogs={agentLogs}
@@ -989,45 +936,48 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         )}
         </div> {/* ── END PANELS CONTAINER ── */}
 
-        {/* ── FULL-WIDTH GLOBAL COMMAND BAR ──────────────────────────────── */}
+        {/* ── FLOATING GLOBAL COMMAND BAR ──────────────────────────────── */}
         <div style={{
-          background: 'rgba(0, 3, 10, 0.95)',
-          borderTop: '1px solid rgba(196, 149, 106, 0.15)',
-          boxShadow: '0 -5px 20px rgba(196, 149, 106, 0.03)',
-          padding: isMobile ? '0.75rem 1rem' : '0 2rem',
-          height: isMobile ? 'auto' : '64px',
+          position: 'absolute',
+          bottom: isMobile ? '120px' : '100px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 'calc(100% - 48px)',
+          maxWidth: '800px',
+          background: 'rgba(20, 20, 22, 0.65)',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          borderRadius: '32px',
+          backdropFilter: 'saturate(180%) blur(32px)',
+          WebkitBackdropFilter: 'saturate(180%) blur(32px)',
+          padding: '8px 12px 8px 24px',
           display: 'flex', alignItems: 'center',
-          flexShrink: 0, position: 'relative', zIndex: 20
+          zIndex: 20,
+          boxShadow: '0 16px 32px rgba(0,0,0,0.4)',
+          pointerEvents: 'auto'
         }}>
-          {/* Animated scanning line on top border */}
-          <motion.div 
-            animate={{ left: ['-10%', '110%'] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-            style={{ position: 'absolute', top: -1, width: '150px', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(196,149,106,1), transparent)', zIndex: 21 }}
-          />
 
           <form onSubmit={handleCommand} style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', width: '100%', gap: '1rem', height: '100%' }}>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, height: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 1, repeat: Infinity }} style={{ width: '6px', height: '12px', background: '#c4956a' }} />
-                <span style={{ color: '#c4956a', fontSize: '0.85rem', fontFamily: "'JetBrains Mono', monospace", fontWeight: 700, letterSpacing: '0.15em' }}>
-                  SYS.INPUT
+                <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 1, repeat: Infinity }} style={{ width: '6px', height: '12px', background: '#3b82f6', borderRadius: '3px' }} />
+                <span style={{ color: '#3b82f6', fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", fontWeight: 600, letterSpacing: '0.02em' }}>
+                  Sys.Input
                 </span>
               </div>
               
-              <div style={{ height: '24px', width: '1px', background: 'rgba(196,149,106,0.2)', margin: '0 0.5rem' }} />
+              <div style={{ height: '24px', width: '1px', background: 'rgba(255,255,255,0.1)', margin: '0 0.5rem' }} />
 
               <input
                 type="text"
                 value={displayText}
                 onChange={e => setInputText(e.target.value)}
-                placeholder={isConversationListening ? 'RECEIVING AUDIO STREAM...' : isSpeaking ? 'TRANSMITTING RESPONSE...' : 'ENTER COMMAND SEQUENCE...'}
+                placeholder={isConversationListening ? 'Receiving audio stream...' : isSpeaking ? 'Transmitting response...' : 'Enter command sequence...'}
                 disabled={isConversationListening || isSpeaking}
                 style={{
                   flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none',
-                  color: '#fff', fontSize: '1rem', fontFamily: "'JetBrains Mono', monospace",
-                  letterSpacing: '0.05em', caretColor: '#c4956a', height: '100%'
+                  color: '#fff', fontSize: '1.05rem', fontFamily: "'Inter', sans-serif",
+                  letterSpacing: '0.01em', caretColor: '#3b82f6', height: '100%'
                 }}
               />
             </div>
@@ -1039,11 +989,11 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: isConversationActive ? '#7a9e82' : '#c4956a',
+                  color: isConversationActive ? '#5eda9e' : '#3b82f6',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                  fontSize: '0.75rem', fontFamily: "'Orbitron', sans-serif", letterSpacing: '0.15em',
+                  fontSize: '0.75rem', fontFamily: "'Inter', sans-serif", letterSpacing: '0.10em',
                   transition: 'all 0.2s', fontWeight: 700,
-                  textShadow: isConversationActive ? '0 0 10px rgba(122,158,130,0.5)' : 'none'
+                  textShadow: isConversationActive ? '0 0 10px rgba(94,218,158,0.5)' : '0 0 10px rgba(59,130,246,0.4)'
                 }}
               >
                 {isConversationListening ? (
@@ -1057,15 +1007,14 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
               </button>
 
               <button type="submit" style={{
-                background: 'rgba(196, 149, 106, 0.05)', 
-                border: '1px solid rgba(196, 149, 106, 0.3)',
-                borderRadius: '2px',
-                padding: '8px 24px', 
-                color: '#c4956a',
+                background: '#3b82f6', 
+                border: 'none',
+                borderRadius: '24px',
+                padding: '10px 24px', 
+                color: '#000000',
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
-                fontSize: '0.75rem', fontFamily: "'Orbitron', sans-serif", letterSpacing: '0.15em', fontWeight: 600,
+                fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", letterSpacing: '0.05em', fontWeight: 600,
                 transition: 'all 0.2s',
-                boxShadow: 'inset 0 0 10px rgba(196,149,106,0.05)'
               }}>
                 <Send size={16} /> {!isMobile && 'EXECUTE'}
               </button>
@@ -1087,9 +1036,9 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
           scrollbar-width: none;
         }
         ::-webkit-scrollbar { width: 3px; }
-        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-        ::-webkit-scrollbar-thumb { background: rgba(196,149,106,0.2); border-radius: 2px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(196,149,106,0.4); }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+        ::-webkit-scrollbar-thumb { background: rgba(59,130,246,0.22); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,0.42); }
       `}</style>
     </div>
   );

@@ -19,7 +19,6 @@ import {
   Alert, Platform, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { COLORS } from '../theme/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,7 +27,7 @@ import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import { scheduleAllNotifications } from '../services/notifications';
 import { useMobileData } from '../contexts/MobileDataContext';
-
+import { useTheme } from "../contexts/ThemeContext";
 
 type TimePickerTarget =
   | 'morningBriefTime'
@@ -70,6 +69,8 @@ function displayTime(hm: string) {
 }
 
 export default function NotificationPreferencesComponent() {
+    const { colors, isDark } = useTheme();
+    const s = makeStyles(colors);
   const navigation = useNavigation<any>();
   const { tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments } = useMobileData();
 
@@ -214,7 +215,7 @@ export default function NotificationPreferencesComponent() {
   const BUFFER_OPTIONS = [{ label: '15 min', val: '15' }, { label: '30 min', val: '30' }, { label: '1 hr', val: '60' }, { label: '2 hr', val: '120' }];
   const INACTIVITY_OPTIONS = [{ label: '2 days', val: '2' }, { label: '3 days', val: '3' }, { label: '5 days', val: '5' }, { label: '7 days', val: '7' }];
 
-  const ToggleRow = ({ icon, label, subtitle, value, onToggle, iconColor = COLORS.accentPrimary }: {
+  const ToggleRow = ({ icon, label, subtitle, value, onToggle, iconColor = colors.accentPrimary }: {
     icon: string; label: string; subtitle?: string; value: boolean; onToggle: (v: boolean) => void; iconColor?: string;
   }) => (
     <View style={s.row}>
@@ -228,9 +229,9 @@ export default function NotificationPreferencesComponent() {
       <Switch
         value={value}
         onValueChange={onToggle}
-        trackColor={{ false: COLORS.surfaceRaised, true: COLORS.accentPrimary }}
+        trackColor={{ false: colors.surfaceRaised, true: colors.accentPrimary }}
         thumbColor={'#000000'}
-        ios_backgroundColor={COLORS.surfaceRaised}
+        ios_backgroundColor={colors.surfaceRaised}
         style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] }}
       />
     </View>
@@ -240,8 +241,8 @@ export default function NotificationPreferencesComponent() {
     icon: string; label: string; value: string; target: TimePickerTarget;
   }) => (
     <View style={s.row}>
-      <View style={[s.iconBox, { backgroundColor: COLORS.accentDim }]}>
-        <Ionicons name={icon as any} size={15} color={COLORS.accentPrimary} />
+      <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
+        <Ionicons name={icon as any} size={15} color={colors.accentPrimary} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={s.rowTitle}>{label}</Text>
@@ -263,7 +264,7 @@ export default function NotificationPreferencesComponent() {
       {/* Header */}
       <View style={s.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
-          <Ionicons name="chevron-back" size={24} color={COLORS.accentPrimary} />
+          <Ionicons name="chevron-back" size={24} color={colors.accentPrimary} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Notifications</Text>
         <View style={{ width: 44 }} />
@@ -338,7 +339,7 @@ export default function NotificationPreferencesComponent() {
             subtitle="Sunday evening reflection prompt"
             value={weeklyReview}
             onToggle={v => toggle('weekly_review', v, setWeeklyReview)}
-            iconColor={COLORS.accentPrimary}
+            iconColor={colors.accentPrimary}
           />
           <Hairline />
           <ToggleRow
@@ -385,8 +386,8 @@ export default function NotificationPreferencesComponent() {
           <TimeRow icon="alert-circle-outline" label="Overdue nudge time" value={overdueNudgeTime} target="overdueNudgeTime" />
           <Hairline />
           <View style={s.row}>
-            <View style={[s.iconBox, { backgroundColor: COLORS.accentDim }]}>
-              <Ionicons name="hourglass-outline" size={15} color={COLORS.accentPrimary} />
+            <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
+              <Ionicons name="hourglass-outline" size={15} color={colors.accentPrimary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>Pre-task reminder buffer</Text>
@@ -435,8 +436,8 @@ export default function NotificationPreferencesComponent() {
         <SectionHeader label="BEHAVIOR" />
         <View style={s.card}>
           <View style={s.row}>
-            <View style={[s.iconBox, { backgroundColor: COLORS.accentDim }]}>
-              <Ionicons name="bed-outline" size={15} color={COLORS.accentPrimary} />
+            <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
+              <Ionicons name="bed-outline" size={15} color={colors.accentPrimary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>Inactivity threshold</Text>
@@ -505,8 +506,8 @@ export default function NotificationPreferencesComponent() {
           />
           <Hairline />
           <View style={s.row}>
-            <View style={[s.iconBox, { backgroundColor: COLORS.accentDim }]}>
-              <Ionicons name="musical-notes-outline" size={15} color={COLORS.accentPrimary} />
+            <View style={[s.iconBox, { backgroundColor: colors.accentDim }]}>
+              <Ionicons name="musical-notes-outline" size={15} color={colors.accentPrimary} />
             </View>
             <View style={{ flex: 1, marginRight: 12 }}>
               <Text style={s.rowTitle}>Notification Sound</Text>
@@ -523,15 +524,15 @@ export default function NotificationPreferencesComponent() {
                       paddingHorizontal: 10,
                       paddingVertical: 6,
                       borderRadius: 12,
-                      backgroundColor: isSelected ? COLORS.accentPrimary : 'transparent',
+                      backgroundColor: isSelected ? colors.accentPrimary : 'transparent',
                       borderWidth: 1,
-                      borderColor: isSelected ? COLORS.accentPrimary : '#2c2c2e'
+                      borderColor: isSelected ? colors.accentPrimary : '#2c2c2e'
                     }}
                   >
                     <Text style={{ 
                       fontSize: 11, 
                       fontWeight: '600', 
-                      color: isSelected ? '#000' : COLORS.textPrimary,
+                      color: isSelected ? '#000' : colors.textPrimary,
                       textTransform: 'capitalize' 
                     }}>
                       {sName.replace('.wav', '')}
@@ -554,10 +555,10 @@ export default function NotificationPreferencesComponent() {
               <View style={s.pickerCard}>
                 <View style={s.pickerHeader}>
                   <TouchableOpacity onPress={closePicker}>
-                    <Text style={{ color: COLORS.accentPrimary, fontSize: 15 }}>Cancel</Text>
+                    <Text style={{ color: colors.accentPrimary, fontSize: 15 }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={closePicker}>
-                    <Text style={{ color: COLORS.accentPrimary, fontSize: 15, fontWeight: '600' }}>Done</Text>
+                    <Text style={{ color: colors.accentPrimary, fontSize: 15, fontWeight: '600' }}>Done</Text>
                   </TouchableOpacity>
                 </View>
                 <DateTimePicker
@@ -584,114 +585,114 @@ export default function NotificationPreferencesComponent() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.background },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#1c1c1e',
-  },
-  backBtn: {
-    width: 44, height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 16,
-    color: COLORS.textPrimary,
-  },
-  scroll: { padding: 16 },
+const makeStyles = (colors: any) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: colors.background },
+      header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 8,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#1c1c1e',
+      },
+      backBtn: {
+        width: 44, height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      headerTitle: {
+        fontFamily: 'Inter_600SemiBold',
+        fontSize: 16,
+        color: colors.textPrimary,
+      },
+      scroll: { padding: 16 },
 
-  sectionLabel: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 11,
-    color: COLORS.textTertiary,
-    letterSpacing: 0.8,
-    marginBottom: 8,
-    marginTop: 20,
-    marginLeft: 4,
-  },
-  card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#2c2c2e',
-    overflow: 'hidden',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  iconBox: {
-    width: 30, height: 30, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  rowTitle: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    marginBottom: 1,
-  },
-  rowSub: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 11,
-    color: COLORS.textMuted,
-    lineHeight: 15,
-  },
-  hairline: { height: StyleSheet.hairlineWidth, backgroundColor: '#1c1c1e', marginLeft: 58 },
+      sectionLabel: {
+        fontFamily: 'Inter_600SemiBold',
+        fontSize: 11,
+        color: colors.textTertiary,
+        letterSpacing: 0.8,
+        marginBottom: 8,
+        marginTop: 20,
+        marginLeft: 4,
+      },
+      card: {
+        backgroundColor: colors.surface,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#2c2c2e',
+        overflow: 'hidden',
+      },
+      row: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 14,
+        paddingHorizontal: 16,
+        gap: 12,
+      },
+      iconBox: {
+        width: 30, height: 30, borderRadius: 8,
+        alignItems: 'center', justifyContent: 'center',
+      },
+      rowTitle: {
+        fontFamily: 'Inter_400Regular',
+        fontSize: 14,
+        color: colors.textPrimary,
+        marginBottom: 1,
+      },
+      rowSub: {
+        fontFamily: 'Inter_400Regular',
+        fontSize: 11,
+        color: colors.textMuted,
+        lineHeight: 15,
+      },
+      hairline: { height: StyleSheet.hairlineWidth, backgroundColor: '#1c1c1e', marginLeft: 58 },
 
-  timeChip: {
-    backgroundColor: '#2c2c2e',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  timeChipText: {
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 13,
-    color: COLORS.accentPrimary,
-  },
+      timeChip: {
+        backgroundColor: '#2c2c2e',
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+      },
+      timeChipText: {
+        fontFamily: 'Inter_600SemiBold',
+        fontSize: 13,
+        color: colors.accentPrimary,
+      },
 
-  chipRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingBottom: 14,
-  },
-  chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: '#2c2c2e',
-  },
-  chipActive: { backgroundColor: COLORS.accentPrimary },
-  chipText: { fontFamily: 'Inter_400Regular', fontSize: 12.5, color: COLORS.textMuted },
-  chipTextActive: { color: '#000000', fontFamily: 'Inter_600SemiBold' },
+      chipRow: {
+        flexDirection: 'row',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingBottom: 14,
+      },
+      chip: {
+        paddingHorizontal: 14,
+        paddingVertical: 7,
+        borderRadius: 20,
+        backgroundColor: '#2c2c2e',
+      },
+      chipActive: { backgroundColor: colors.accentPrimary },
+      chipText: { fontFamily: 'Inter_400Regular', fontSize: 12.5, color: colors.textMuted },
+      chipTextActive: { color: '#000000', fontFamily: 'Inter_600SemiBold' },
 
-  pickerModalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  pickerCard: {
-    backgroundColor: '#1c1c1e',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingBottom: 34,
-  },
-  pickerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#2c2c2e',
-  },
-});
+      pickerModalOverlay: {
+        flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'flex-end',
+      },
+      pickerCard: {
+        backgroundColor: '#1c1c1e',
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingBottom: 34,
+      },
+      pickerHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        padding: 16,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: '#2c2c2e',
+      },
+    });

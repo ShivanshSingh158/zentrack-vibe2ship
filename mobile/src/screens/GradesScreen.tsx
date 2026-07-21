@@ -3,16 +3,20 @@ import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, K
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useMobileData, Semester, SemesterSubject } from '../contexts/MobileDataContext';
-import { COLORS, FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../theme/tokens';
+import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
+import { COLLECTION } from '../config/constants';
+import { useTheme } from "../contexts/ThemeContext";
 
 const GRADE_MAP: Record<string, number> = {
   'A+': 10, 'A': 9, 'B+': 8, 'B': 7, 'C': 6, 'D': 5, 'F': 0
 };
 
 export default function GradesScreen() {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const { semesters, semesterSubjects, user } = useMobileData();
 
   const [semModalVisible, setSemModalVisible] = useState(false);
@@ -135,7 +139,7 @@ export default function GradesScreen() {
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
     
     setTimeout(() => {
-      addDoc(collection(db, 'semesters'), {
+      addDoc(collection(db, COLLECTION.SEMESTERS), {
         userId: user.uid,
         name: semName.trim(),
         order: semesters.length,
@@ -153,7 +157,7 @@ export default function GradesScreen() {
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
     
     setTimeout(() => {
-      addDoc(collection(db, 'semester_subjects'), {
+      addDoc(collection(db, COLLECTION.SEMESTER_SUBJECTS), {
         userId: user.uid,
         semesterId: activeSemId,
         name: subName.trim(),
@@ -178,7 +182,7 @@ export default function GradesScreen() {
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 
     setTimeout(() => {
-      updateDoc(doc(db, 'semesters', activeSemId), {
+      updateDoc(doc(db, COLLECTION.SEMESTERS, activeSemId), {
         sgpa: sgpaVal,
         totalCredits: creditsVal
       }).catch(console.error);
@@ -189,7 +193,7 @@ export default function GradesScreen() {
 
   const handleClearDirect = async (semId: string) => {
     try {
-      await updateDoc(doc(db, 'semesters', semId), {
+      await updateDoc(doc(db, COLLECTION.SEMESTERS, semId), {
         sgpa: null,
         totalCredits: null
       });
@@ -201,14 +205,14 @@ export default function GradesScreen() {
   const deleteSem = (id: string) => {
     Alert.alert('Delete Semester', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteDoc(doc(db, 'semesters', id)) }
+      { text: 'Delete', style: 'destructive', onPress: () => deleteDoc(doc(db, COLLECTION.SEMESTERS, id)) }
     ]);
   };
 
   const deleteSub = (id: string) => {
     Alert.alert('Delete Subject', 'Are you sure?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteDoc(doc(db, 'semester_subjects', id)) }
+      { text: 'Delete', style: 'destructive', onPress: () => deleteDoc(doc(db, COLLECTION.SEMESTER_SUBJECTS, id)) }
     ]);
   };
 
@@ -227,7 +231,7 @@ export default function GradesScreen() {
         <View style={styles.chartBox}>
           {points.length === 0 ? (
             <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: COLORS.textMuted, fontFamily: FONT_FAMILY.body, fontSize: 13 }}>Not enough data to plot.</Text>
+              <Text style={{ color: colors.textMuted, fontFamily: FONT_FAMILY.body, fontSize: 13 }}>Not enough data to plot.</Text>
             </View>
           ) : (
             <Svg width={width - 40} height={height}>
@@ -563,69 +567,69 @@ export default function GradesScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000000' },
-  
-  header: { marginBottom: 24, marginTop: 8 },
-  iconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(165,153,255,0.12)', justifyContent: 'center', alignItems: 'center' },
-  iconCircleLg: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(165,153,255,0.12)', justifyContent: 'center', alignItems: 'center' },
-  screenTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#ffffff' },
-  screenSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: '#8e8e93' },
+const makeStyles = (colors: any) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: '#000000' },
+      
+      header: { marginBottom: 24, marginTop: 8 },
+      iconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(165,153,255,0.12)', justifyContent: 'center', alignItems: 'center' },
+      iconCircleLg: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(165,153,255,0.12)', justifyContent: 'center', alignItems: 'center' },
+      screenTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#ffffff' },
+      screenSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: '#8e8e93' },
 
-  heroCard: { backgroundColor: '#141415', borderRadius: 20, padding: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  heroLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 10.5, color: '#8e8e93', letterSpacing: 1, marginBottom: 4 },
-  heroValue: { fontFamily: FONT_FAMILY.bold, fontSize: 32, color: '#ffffff' },
+      heroCard: { backgroundColor: '#141415', borderRadius: 20, padding: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+      heroLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 10.5, color: '#8e8e93', letterSpacing: 1, marginBottom: 4 },
+      heroValue: { fontFamily: FONT_FAMILY.bold, fontSize: 32, color: '#ffffff' },
 
-  targetCard: { backgroundColor: '#141415', padding: 20, borderRadius: 16, marginBottom: 24 },
-  sectionHeading: { fontFamily: FONT_FAMILY.bold, color: '#f2f2f7', fontSize: 15 },
-  infoCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#1c1c1e', justifyContent: 'center', alignItems: 'center' },
-  
-  inputLabel: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: '#8e8e93', marginBottom: 8 },
-  targetInput: { backgroundColor: '#1c1c1e', height: 48, borderRadius: 10, paddingHorizontal: 16, color: '#f2f2f7', fontFamily: FONT_FAMILY.bold, fontSize: 20 },
-  
-  targetResultBox: { backgroundColor: 'rgba(165,153,255,0.1)', borderRadius: 10, height: 48, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(165,153,255,0.3)' },
-  targetResultValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#a599ff' },
+      targetCard: { backgroundColor: '#141415', padding: 20, borderRadius: 16, marginBottom: 24 },
+      sectionHeading: { fontFamily: FONT_FAMILY.bold, color: '#f2f2f7', fontSize: 15 },
+      infoCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#1c1c1e', justifyContent: 'center', alignItems: 'center' },
+      
+      inputLabel: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: '#8e8e93', marginBottom: 8 },
+      targetInput: { backgroundColor: '#1c1c1e', height: 48, borderRadius: 10, paddingHorizontal: 16, color: '#f2f2f7', fontFamily: FONT_FAMILY.bold, fontSize: 20 },
+      
+      targetResultBox: { backgroundColor: 'rgba(165,153,255,0.1)', borderRadius: 10, height: 48, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(165,153,255,0.3)' },
+      targetResultValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#a599ff' },
 
-  chartContainer: { marginTop: 8 },
-  chartBox: { backgroundColor: '#141415', borderRadius: 16, padding: 16, marginTop: 16 },
-  chartLegend: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 12 },
-  legendText: { fontSize: 10, color: '#8e8e93', fontFamily: FONT_FAMILY.bold },
+      chartContainer: { marginTop: 8 },
+      chartBox: { backgroundColor: '#141415', borderRadius: 16, padding: 16, marginTop: 16 },
+      chartLegend: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 12 },
+      legendText: { fontSize: 10, color: '#8e8e93', fontFamily: FONT_FAMILY.bold },
 
-  addBtnSmall: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#a599ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, gap: 4 },
-  addBtnSmallText: { fontFamily: FONT_FAMILY.bold, color: '#000', fontSize: 12 },
+      addBtnSmall: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#a599ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, gap: 4 },
+      addBtnSmallText: { fontFamily: FONT_FAMILY.bold, color: '#000', fontSize: 12 },
 
-  list: { paddingHorizontal: 20, paddingBottom: 100 },
-  card: { backgroundColor: '#141415', borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#f2f2f7' },
-  cardSub: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: '#8e8e93', marginTop: 2 },
-  
-  quickBadge: { backgroundColor: 'rgba(165,153,255,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  quickBadgeText: { color: '#a599ff', fontSize: 8, fontFamily: FONT_FAMILY.bold },
+      list: { paddingHorizontal: 20, paddingBottom: 100 },
+      card: { backgroundColor: '#141415', borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
+      cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
+      cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#f2f2f7' },
+      cardSub: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: '#8e8e93', marginTop: 2 },
+      
+      quickBadge: { backgroundColor: 'rgba(165,153,255,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+      quickBadgeText: { color: '#a599ff', fontSize: 8, fontFamily: FONT_FAMILY.bold },
 
-  cardExpanded: { padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: '#1c1c1d' },
-  subRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1c1c1d' },
-  subTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#f2f2f7' },
-  subCredits: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: '#8e8e93', marginTop: 2 },
-  gradeBadge: { backgroundColor: '#1c1c1d', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
-  gradeBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#a599ff' },
-  
-  addSubBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(165,153,255,0.12)', borderRadius: 10 },
-  addSubText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#a599ff' },
-  clearDirectBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#ff6961' },
+      cardExpanded: { padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: '#1c1c1d' },
+      subRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1c1c1d' },
+      subTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#f2f2f7' },
+      subCredits: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: '#8e8e93', marginTop: 2 },
+      gradeBadge: { backgroundColor: '#1c1c1d', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
+      gradeBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#a599ff' },
+      
+      addSubBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(165,153,255,0.12)', borderRadius: 10 },
+      addSubText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#a599ff' },
+      clearDirectBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#ff6961' },
 
-  empty: { padding: 40, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
-  emptyText: { fontFamily: FONT_FAMILY.body, color: '#636366', fontSize: 13, marginTop: 12 },
+      empty: { padding: 40, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
+      emptyText: { fontFamily: FONT_FAMILY.body, color: '#636366', fontSize: 13, marginTop: 12 },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: '#141415', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
-  modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#ffffff', marginBottom: 20 },
-  modalInputLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: '#8e8e93', letterSpacing: 1, marginBottom: 8 },
-  input: { backgroundColor: '#1c1c1d', borderRadius: 10, padding: 16, color: '#ffffff', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
-  
-  modalActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
-  cancelBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', backgroundColor: '#1c1c1d' },
-  cancelBtnText: { fontFamily: FONT_FAMILY.bold, color: '#ffffff', fontSize: 14 },
-  saveBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', backgroundColor: '#a599ff' },
-  saveBtnText: { fontFamily: FONT_FAMILY.bold, color: '#000000', fontSize: 14 },
-});
+      modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+      modalCard: { backgroundColor: '#141415', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
+      modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#ffffff', marginBottom: 20 },
+      modalInputLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: '#8e8e93', letterSpacing: 1, marginBottom: 8 },
+      input: { backgroundColor: '#1c1c1d', borderRadius: 10, padding: 16, color: '#ffffff', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
+      
+      modalActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
+      cancelBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', backgroundColor: '#1c1c1d' },
+      cancelBtnText: { fontFamily: FONT_FAMILY.bold, color: '#ffffff', fontSize: 14 },
+      saveBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', backgroundColor: '#a599ff' },
+      saveBtnText: { fontFamily: FONT_FAMILY.bold, color: '#000000', fontSize: 14 },
+    });

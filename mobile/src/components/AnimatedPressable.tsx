@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
-import { Animated, Pressable, PressableProps, StyleProp, ViewStyle, StyleSheet } from 'react-native';
+import React from 'react';
+import { Pressable, PressableProps, StyleProp, ViewStyle } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, EntryOrExitLayoutType } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
 interface AnimatedPressableProps extends PressableProps {
@@ -8,6 +9,8 @@ interface AnimatedPressableProps extends PressableProps {
   activeOpacity?: number;
   haptic?: 'light' | 'medium' | 'heavy' | 'none';
   children: React.ReactNode;
+  entering?: EntryOrExitLayoutType;
+  exiting?: EntryOrExitLayoutType;
 }
 
 const AnimatedPressableCore = Animated.createAnimatedComponent(Pressable);
@@ -18,27 +21,24 @@ export default function AnimatedPressable({
   activeOpacity = 0.8,
   haptic = 'light',
   children,
+  entering,
+  exiting,
   onPressIn,
   onPressOut,
   onPress,
   ...props
 }: AnimatedPressableProps) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const opacity = useRef(new Animated.Value(1)).current;
+  const scale = useSharedValue(1);
+  const opacity = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
 
   const handlePressIn = (e: any) => {
-    Animated.parallel([
-      Animated.timing(scale, {
-        toValue: scaleTo,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: activeOpacity,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    scale.value = withTiming(scaleTo, { duration: 100 });
+    opacity.value = withTiming(activeOpacity, { duration: 100 });
     
     if (haptic === 'light') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     else if (haptic === 'medium') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -48,29 +48,20 @@ export default function AnimatedPressable({
   };
 
   const handlePressOut = (e: any) => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: 1,
-        tension: 150,
-        friction: 12,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    scale.value = withSpring(1, { damping: 12, stiffness: 150 });
+    opacity.value = withTiming(1, { duration: 200 });
     
     if (onPressOut) onPressOut(e);
   };
 
   return (
     <AnimatedPressableCore
+      entering={entering}
+      exiting={exiting}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}
-      style={[style, { transform: [{ scale }], opacity }]}
+      style={[style, animatedStyle]}
       {...props}
     >
       {children}

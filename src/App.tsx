@@ -35,7 +35,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { Bot, ShieldAlert, Ghost, Code2, MessageSquare, Mail, Calendar, Target, Sun, Zap } from 'lucide-react';
 import { AgentDataStream } from './components/AgentDataStream';
 import { useDeadlineWatcher } from './hooks/useDeadlineWatcher';
-import { SolarSystemLoader } from './components/SolarSystemLoader';
+import { AppLoader } from './components/AppLoader';
 import { SaraInterface } from './components/SaraInterface';
 import { BottomHeader } from './components/BottomHeader';
 
@@ -255,10 +255,10 @@ const _isMobile = typeof window !== 'undefined'
 const PageTransition = ({ children }: { children: React.ReactNode }) => (
   <motion.div
     className="page-enter"
-    initial={{ opacity: 0, y: 15 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    transition={{ duration: _isMobile ? 0.2 : 0.3, ease: [0.25, 0.8, 0.25, 1] }}
+    initial={{ opacity: 0, x: 20 }}
+    animate={{ opacity: 1, x: 0 }}
+    exit={{ opacity: 0, x: -15 }}
+    transition={{ duration: _isMobile ? 0.25 : 0.35, ease: [0.22, 1, 0.36, 1] }}
     style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
   >
     {children}
@@ -308,7 +308,7 @@ const DataReadyGate: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     <AnimatePresence mode="wait">
       {isLoading ? (
         <motion.div key="data-loader" exit={{ opacity: 0, transition: { duration: 0.5, ease: 'easeInOut' } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#030712' }}>
-          <SolarSystemLoader title="Syncing your data..." subtitle="Loading tasks, habits and calendar" />
+          <AppLoader title="Syncing your data..." subtitle="Loading tasks, habits and calendar" />
         </motion.div>
       ) : (
         <motion.div
@@ -557,7 +557,7 @@ function App() {
     <AnimatePresence mode="wait">
       {showSolarLoader ? (
         <motion.div key="solar-loader" exit={{ opacity: 1, transition: { duration: 0 } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#030712' }}>
-          <SolarSystemLoader />
+          <AppLoader />
         </motion.div>
       ) : authPhase === 'authenticated' && user ? (
         <motion.div 
@@ -599,6 +599,7 @@ function App() {
         <AnimatePresence>
           {showSara && (
             <motion.div
+              style={{ position: 'fixed', inset: 0, zIndex: 9999 }}
               initial={{ opacity: 0, scale: 0.98, filter: 'blur(8px)' }}
               animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
               exit={{ opacity: 0, scale: 0.98, filter: 'blur(8px)' }}

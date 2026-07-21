@@ -1,7 +1,10 @@
 /*
  * ZenTrack Design System — vars.css
- * Theme: "Warm Obsidian" — burnished copper, sage, warm parchment
- * Philosophy: A private study at night. One lamp. Dark wood. Focused.
+ * Theme: "Obsidian Cosmos" — signature purple, OLED black, crisp surfaces
+ * Philosophy: A mission control at midnight. True black. Purple pulse. Focused.
+ *
+ * Mobile app uses: background #000000, surface #1c1c1d, accent #3b82f6
+ * This file mirrors those tokens exactly for web/mobile visual parity.
  *
  * Google Fonts are loaded non-blocking via index.html <link> tags.
  * Do NOT add @import url() here — CSS @import is render-blocking.
@@ -10,32 +13,33 @@
 :root {
   /* ── Typefaces ── */
   --font-sans:    'Inter', system-ui, sans-serif;
-  --font-display: 'Instrument Serif', serif;
+  --font-display: 'Inter', system-ui, sans-serif;
   --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
+  --font-serif:   'Instrument Serif', serif;
 
-  /* ── Base Palette — Warm Obsidian ── */
-  /* Background: near-black with barely-perceptible warm brown undertone */
-  --color-bg:         #0f0d0a;
-  --color-surface:    rgba(28, 22, 14, 0.68);
-  --color-surface-2:  rgba(38, 30, 20, 0.85);
-  --color-surface-3:  rgba(255, 245, 230, 0.025);   /* ghost — no blur needed */
-  --color-border:     rgba(210, 175, 130, 0.08);
-  --color-border-hover: rgba(210, 175, 130, 0.18);
+  /* ── Base Palette — Obsidian Cosmos ── */
+  /* Background: true black, OLED-friendly */
+  --color-bg:         #0B1120;
+  --color-surface:    rgba(28, 28, 29, 0.96);
+  --color-surface-2:  rgba(44, 44, 46, 0.98);
+  --color-surface-3:  rgba(255, 255, 255, 0.025);
+  --color-border:     rgba(59, 130, 246, 0.10);
+  --color-border-hover: rgba(59, 130, 246, 0.22);
 
-  /* Compatibility aliases (keep existing component refs working) */
+  /* Compatibility aliases */
   --bg-base:             var(--color-bg);
   --bg-surface:          var(--color-surface);
   --bg-surface-hover:    var(--color-surface-2);
-  --bg-surface-active:   rgba(48, 38, 26, 0.90);
-  --bg-elevated:         rgba(24, 18, 10, 0.95);
+  --bg-surface-active:   rgba(58, 54, 80, 0.90);
+  --bg-elevated:         rgba(28, 28, 29, 0.98);
   --border-subtle:       var(--color-border);
   --border-hover:        var(--color-border-hover);
-  --border-glow:         rgba(196, 149, 106, 0.30);
+  --border-glow:         rgba(59, 130, 246, 0.32);
 
-  /* ── Text — warm parchment, not cold white ── */
-  --color-text-1:   rgba(235, 224, 204, 0.92);  /* warm parchment */
-  --color-text-2:   rgba(185, 168, 145, 0.65);  /* warm dust */
-  --color-text-3:   rgba(140, 124, 104, 0.45);  /* like pencil marks */
+  /* ── Text — crisp white on black ── */
+  --color-text-1:   rgba(255, 255, 255, 0.95);   /* primary — headings, key data */
+  --color-text-2:   rgba(242, 242, 247, 0.70);   /* secondary — body labels */
+  --color-text-3:   rgba(142, 142, 147, 0.65);   /* muted — timestamps, subtitles */
   --text-primary:   var(--color-text-1);
   --text-secondary: var(--color-text-2);
   --text-muted:     var(--color-text-3);
@@ -51,84 +55,99 @@
   --text-4xl:  2.25rem;
   --text-5xl:  3rem;
 
-  /* ── Accent System — "The Copper-Sage Palette" ── */
-  /* Primary: burnished copper — like aged brass or a worn book spine */
-  --zen-copper:       #c4956a;
-  --zen-copper-light: #dba87e;
-  --zen-copper-dim:   rgba(196, 149, 106, 0.14);
-  --zen-copper-glow:  rgba(196, 149, 106, 0.24);
-  --zen-copper-border: rgba(196, 149, 106, 0.28);
+  /* ── Accent System — "Obsidian Cosmos" ── */
+  /* Primary: signature purple — #3b82f6 */
+  --zen-purple:        #3b82f6;
+  --zen-purple-light:  #60a5fa;
+  --zen-purple-dim:    rgba(59, 130, 246, 0.15);
+  --zen-purple-glow:   rgba(59, 130, 246, 0.24);
+  --zen-purple-border: rgba(59, 130, 246, 0.28);
 
-  /* Secondary: sage-mist — morning dew, calm states, progress */
-  --zen-sage:         #7a9e82;
-  --zen-sage-dim:     rgba(122, 158, 130, 0.13);
-  --zen-sage-glow:    rgba(122, 158, 130, 0.22);
+  /* Back-compat: map copper aliases → purple */
+  --zen-copper:        #3b82f6;
+  --zen-copper-light:  #60a5fa;
+  --zen-copper-dim:    rgba(59, 130, 246, 0.15);
+  --zen-copper-glow:   rgba(59, 130, 246, 0.24);
+  --zen-copper-border: rgba(59, 130, 246, 0.28);
 
-  /* Warning: burnt amber — warm urgency, not alarm */
-  --zen-amber:        #c47a3a;
-  --zen-amber-dim:    rgba(196, 122, 58, 0.14);
+  /* Secondary: emerald green — success, completed, attendance */
+  --zen-sage:         #5eda9e;
+  --zen-sage-dim:     rgba(94, 218, 158, 0.13);
+  --zen-sage-glow:    rgba(94, 218, 158, 0.22);
 
-  /* Critical: adobe red — terracotta danger, not screaming neon */
-  --zen-rose:         #b5503c;
-  --zen-rose-dim:     rgba(181, 80, 60, 0.14);
+  /* Warning: warm amber */
+  --zen-amber:        #ff9f4d;
+  --zen-amber-dim:    rgba(255, 159, 77, 0.14);
 
-  /* Accent compatibility tokens (keep working with existing codebase) */
-  --color-cyan:   var(--zen-copper);
+  /* Critical: vibrant red */
+  --zen-rose:         #ff6961;
+  --zen-rose-dim:     rgba(255, 105, 97, 0.14);
+
+  /* Mobile-matching semantic color tokens */
+  --accent-green:      #5eda9e;
+  --accent-green-dim:  rgba(94, 218, 158, 0.12);
+  --accent-green-glow: rgba(94, 218, 158, 0.28);
+  --accent-amber:      #ff9f4d;
+  --accent-amber-dim:  rgba(255, 159, 77, 0.10);
+  --accent-blue:       #89dceb;
+  --accent-blue-dim:   rgba(137, 220, 235, 0.14);
+  --accent-red:        #ff6961;
+  --accent-red-dim:    rgba(255, 105, 97, 0.12);
+
+  /* Accent compatibility tokens */
+  --color-cyan:   var(--zen-purple);
   --color-teal:   var(--zen-sage);
-  --color-violet: #9b8ec4;              /* slate-wisteria for learning module */
+  --color-violet: #3b82f6;
   --color-green:  var(--zen-sage);
   --color-red:    var(--zen-rose);
 
-  --accent-primary:         var(--zen-copper);
-  --accent-primary-hover:   var(--zen-copper-light);
+  --accent-primary:         var(--zen-purple);
+  --accent-primary-hover:   var(--zen-purple-light);
   --accent-secondary:       var(--zen-sage);
   --accent-tertiary:        var(--zen-rose);
-  --accent-gradient:        linear-gradient(135deg, #c4956a 0%, #dba87e 50%, #c4956a 100%);
-  --accent-glow:            var(--zen-copper-glow);
+  --accent-gradient:        linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%);
+  --accent-glow:            var(--zen-purple-glow);
   --accent-glow-secondary:  var(--zen-sage-glow);
 
-  /* ── Urgency Tokens (overridden by useUrgencyState) ── */
-  --urgency-primary:   var(--zen-copper);
+  /* ── Urgency Tokens ── */
+  --urgency-primary:   var(--zen-purple);
   --urgency-secondary: var(--zen-sage);
-  --urgency-glow:      var(--zen-copper-glow);
-  --urgency-bg-tint:   var(--zen-copper-dim);
-  --urgency-border:    var(--zen-copper-border);
+  --urgency-glow:      var(--zen-purple-glow);
+  --urgency-bg-tint:   var(--zen-purple-dim);
+  --urgency-border:    var(--zen-purple-border);
 
   /* ── Glass System ──
-     3 tiers — use the right tier for the right context:
-     Tier 1: Most cards, sidebar items — has backdrop-filter
-     Tier 2: Modals, drawers, top-nav — heavier blur
-     Tier 3: Long lists, ghost panels — NO blur (GPU budget)
-  ── */
-  --glass-1-bg:     rgba(28, 22, 14, 0.65);
-  --glass-1-border: rgba(210, 175, 130, 0.09);
-  --glass-1-blur:   blur(18px) saturate(160%);
-  --glass-1-shadow: 0 1px 0 rgba(235, 210, 175, 0.05) inset, 0 20px 40px rgba(0,0,0,0.42);
+     Tier 1: Cards, sidebar items — has backdrop-filter
+     Tier 2: Popovers, floating elements — stronger background/blur */
+  --glass-1-bg:         rgba(255, 255, 255, 0.04);
+  --glass-1-border:     rgba(59, 130, 246, 0.12);
+  --glass-1-blur:       blur(16px);
+  --glass-1-shadow:     0 4px 16px rgba(0, 0, 0, 0.4);
 
-  --glass-2-bg:     rgba(18, 14, 8, 0.88);
-  --glass-2-border: rgba(210, 175, 130, 0.13);
-  --glass-2-blur:   blur(28px) saturate(180%);
-  --glass-2-shadow: 0 1px 0 rgba(235, 210, 175, 0.07) inset, 0 32px 64px rgba(0,0,0,0.55);
-
-  --glass-3-bg:     rgba(255, 245, 230, 0.025);
-  --glass-3-border: rgba(210, 175, 130, 0.05);
+  --glass-2-bg:         rgba(255, 255, 255, 0.06);
+  --glass-2-border:     rgba(59, 130, 246, 0.16);
+  --glass-2-blur:       blur(24px);
+  --glass-2-shadow:     0 8px 32px rgba(0, 0, 0, 0.60);
+  
+  --glass-3-bg:         rgba(28, 28, 29, 0.40);
+  --glass-3-border:     rgba(59, 130, 246, 0.08);
 
   /* ── Sidebar (Thin Rail — 52px icon-only) ── */
   --sidebar-width:         52px;
   --sidebar-width-mobile:  100%;
-  --sidebar-bg:            rgba(12, 10, 6, 0.72);
-  --sidebar-border:        rgba(210, 175, 130, 0.06);
-  --sidebar-icon-default:  rgba(185, 168, 145, 0.42);
-  --sidebar-icon-hover:    rgba(235, 224, 204, 0.88);
-  --sidebar-icon-active:   var(--zen-copper);
-  --sidebar-active-bg:     rgba(196, 149, 106, 0.10);
-  --sidebar-active-border: var(--zen-copper);
+  --sidebar-bg:            rgba(0, 0, 0, 0.95);
+  --sidebar-border:        rgba(59, 130, 246, 0.08);
+  --sidebar-icon-default:  rgba(142, 142, 147, 0.55);
+  --sidebar-icon-hover:    rgba(242, 242, 247, 0.90);
+  --sidebar-icon-active:   var(--zen-purple);
+  --sidebar-active-bg:     rgba(59, 130, 246, 0.12);
+  --sidebar-active-border: var(--zen-purple);
 
   /* ── Shadows ── */
-  --shadow-glow:        0 0 24px var(--zen-copper-glow);
-  --shadow-card:        0 4px 16px rgba(0, 0, 0, 0.36), 0 1px 0 rgba(235, 210, 175, 0.04) inset;
-  --shadow-card-hover:  0 8px 28px rgba(0, 0, 0, 0.48), 0 1px 0 rgba(235, 210, 175, 0.06) inset;
-  --shadow-elevated:    0 24px 56px rgba(0, 0, 0, 0.60), 0 1px 0 rgba(235, 210, 175, 0.07) inset;
+  --shadow-glow:        0 0 24px var(--zen-purple-glow);
+  --shadow-card:        0 0 0 1px rgba(59,130,246,0.10), 0 8px 32px rgba(0,0,0,0.60);
+  --shadow-card-hover:  0 0 0 1px rgba(59,130,246,0.18), 0 12px 48px rgba(0,0,0,0.80);
+  --shadow-elevated:    0 24px 56px rgba(0, 0, 0, 0.80), 0 1px 0 rgba(59, 130, 246, 0.08) inset;
 
   /* ── Border Radii ── */
   --radius-sm:  6px;
@@ -138,13 +157,13 @@
   --radius-2xl: 24px;
   --radius-pill: 999px;
 
-  /* ── Animation Curves — "Water, not electricity" ── */
-  --ease-water:   cubic-bezier(0.25, 0.10, 0.25, 1.00);  /* default transitions */
-  --ease-emerge:  cubic-bezier(0.16, 1.00, 0.30, 1.00);  /* entrances, opens */
-  --ease-settle:  cubic-bezier(0.22, 1.00, 0.36, 1.00);  /* exits, closes */
-  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1.00);  /* subtle bounce */
-  
-  /* Legacy aliases — keep existing animations working */
+  /* ── Animation Curves — "Instant, not laggy" ── */
+  --ease-water:   cubic-bezier(0.25, 0.10, 0.25, 1.00);
+  --ease-emerge:  cubic-bezier(0.16, 1.00, 0.30, 1.00);
+  --ease-settle:  cubic-bezier(0.22, 1.00, 0.36, 1.00);
+  --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1.00);
+
+  /* Legacy aliases */
   --spring-soft:    var(--ease-spring);
   --spring-bouncy:  cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-out-expo:  var(--ease-emerge);
@@ -158,39 +177,39 @@
   /* ── Mobile ── */
   --mobile-transition: 150ms;
   --mobile-nav-height: 60px;
-  --primary-light: var(--zen-copper-light);
+  --primary-light: var(--zen-purple-light);
 }
 
 /* ════════════════════════════════════════════════════════════
-   URGENCY COLOR SYSTEM — Mapped to Warm Obsidian palette
+   URGENCY COLOR SYSTEM — Obsidian Cosmos palette
    Applied to :root by useUrgencyState hook in App.tsx
    ════════════════════════════════════════════════════════════ */
 
-/* CALM STATE — Sage warmth */
+/* CALM STATE — Green (safe) */
 :root.state-calm {
-  --urgency-primary:   #7a9e82;
-  --urgency-secondary: #6a8e72;
-  --urgency-glow:      rgba(122, 158, 130, 0.22);
-  --urgency-bg-tint:   rgba(122, 158, 130, 0.07);
-  --urgency-border:    rgba(122, 158, 130, 0.28);
+  --urgency-primary:   #5eda9e;
+  --urgency-secondary: #4dca8e;
+  --urgency-glow:      rgba(94, 218, 158, 0.22);
+  --urgency-bg-tint:   rgba(94, 218, 158, 0.07);
+  --urgency-border:    rgba(94, 218, 158, 0.28);
 }
 
-/* ACTIVE STATE — Burnt amber warmth */
+/* ACTIVE STATE — Amber (at-risk) */
 :root.state-active {
-  --urgency-primary:   #c47a3a;
-  --urgency-secondary: #d4924a;
-  --urgency-glow:      rgba(196, 122, 58, 0.25);
-  --urgency-bg-tint:   rgba(196, 122, 58, 0.07);
-  --urgency-border:    rgba(196, 122, 58, 0.32);
+  --urgency-primary:   #ff9f4d;
+  --urgency-secondary: #ffb266;
+  --urgency-glow:      rgba(255, 159, 77, 0.25);
+  --urgency-bg-tint:   rgba(255, 159, 77, 0.07);
+  --urgency-border:    rgba(255, 159, 77, 0.32);
 }
 
-/* CRITICAL STATE — Adobe red (warm, not neon) */
+/* CRITICAL STATE — Red */
 :root.state-critical {
-  --urgency-primary:   #b5503c;
-  --urgency-secondary: #c4604c;
-  --urgency-glow:      rgba(181, 80, 60, 0.28);
-  --urgency-bg-tint:   rgba(181, 80, 60, 0.08);
-  --urgency-border:    rgba(181, 80, 60, 0.38);
+  --urgency-primary:   #ff6961;
+  --urgency-secondary: #ff7f79;
+  --urgency-glow:      rgba(255, 105, 97, 0.28);
+  --urgency-bg-tint:   rgba(255, 105, 97, 0.08);
+  --urgency-border:    rgba(255, 105, 97, 0.38);
 }
 
 @keyframes critical-ambient-pulse {
@@ -210,8 +229,8 @@
 }
 
 @keyframes critical-orb-pulse {
-  0%, 100% { box-shadow: 0 0 20px rgba(181,80,60,0.28), 0 0 40px rgba(181,80,60,0.12); }
-  50%       { box-shadow: 0 0 34px rgba(181,80,60,0.55), 0 0 68px rgba(181,80,60,0.22); }
+  0%, 100% { box-shadow: 0 0 20px rgba(255,105,97,0.28), 0 0 40px rgba(255,105,97,0.12); }
+  50%       { box-shadow: 0 0 34px rgba(255,105,97,0.55), 0 0 68px rgba(255,105,97,0.22); }
 }
 
 /* Urgency banner */
@@ -228,20 +247,20 @@
   transition: all 0.5s var(--ease-water);
 }
 .urgency-banner.calm {
-  background: rgba(122, 158, 130, 0.10);
-  color: #7a9e82;
-  border: 1px solid rgba(122, 158, 130, 0.25);
+  background: rgba(94, 218, 158, 0.10);
+  color: #5eda9e;
+  border: 1px solid rgba(94, 218, 158, 0.25);
 }
 .urgency-banner.active {
-  background: rgba(196, 122, 58, 0.10);
-  color: #c47a3a;
-  border: 1px solid rgba(196, 122, 58, 0.30);
+  background: rgba(255, 159, 77, 0.10);
+  color: #ff9f4d;
+  border: 1px solid rgba(255, 159, 77, 0.30);
   animation: banner-pulse 2.2s ease-in-out infinite;
 }
 .urgency-banner.critical {
-  background: rgba(181, 80, 60, 0.10);
-  color: #b5503c;
-  border: 1px solid rgba(181, 80, 60, 0.35);
+  background: rgba(255, 105, 97, 0.10);
+  color: #ff6961;
+  border: 1px solid rgba(255, 105, 97, 0.35);
   animation: banner-pulse 1.2s ease-in-out infinite;
 }
 @keyframes banner-pulse {

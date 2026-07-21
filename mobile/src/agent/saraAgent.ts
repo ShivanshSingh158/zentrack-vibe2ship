@@ -15,6 +15,43 @@
 
 import { callProxy, parseProxyResponse } from '../services/geminiProxy';
 
+// ─── Memory Compression ──────────────────────────────────────────────────────
+
+/**
+ * Compress a long conversation history (>20 msgs) into a ≤200-word summary.
+ * Called from SaraScreen when history.length > 20 after each completed response.
+ * Stored in AsyncStorage under 'sara_memory_summary'.
+ */
+export async function compressMemoryToSummary(
+  history: { role: string; text?: string; content?: string }[]
+): Promise<string> {
+  const historyText = history
+    .map(m => `${m.role === 'user' ? 'User' : 'Sara'}: ${m.text || m.content || ''}`)
+    .join('\n');
+
+  const prompt = `You are summarizing a conversation between a college student and Sara (their AI assistant) for long-term memory storage.
+
+Conversation:
+${historyText}
+
+Create a concise memory summary (max 200 words) capturing:
+- Key decisions made or tasks created
+- Personal preferences expressed (time preferences, study habits, goals)
+- Ongoing concerns or recurring topics
+- Context needed to continue naturally in future conversations
+
+Write in third person ("The user..."). Be specific, not generic.`;
+
+  const data = await callProxy({
+    model: 'gemini-2.5-flash',
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: { temperature: 0.3, maxOutputTokens: 400 },
+  });
+
+  const { text } = parseProxyResponse(data);
+  return text.trim().slice(0, 1200); // Cap at ~200 words
+}
+
 // ─── Action types ────────────────────────────────────────────────────────────
 
 export type SaraActionType =
@@ -71,7 +108,7 @@ function parseSuggestions(text: string): { cleanText: string; suggestions: strin
 // ─── Context builder helpers ──────────────────────────────────────────────────
 
 function summarizeTasks(tasks: any[] = []) {
-  return tasks.slice(0, 40).map(t => ({
+  return tasks.map(t => ({
     id: t.id,
     title: t.title,
     status: t.status,
@@ -138,9 +175,15 @@ export async function processSaraChat(
 
   // ── Build compact context summaries ─────────────────────────────────────
   const tasksSummary = summarizeTasks(contextData.tasks);
+  const pendingTasks = tasksSummary.filter(t => t.status !== 'completed').sort((a, b) => {
+    // Sort so tasks with dates (especially upcoming) are prioritized over past or undated tasks
+    if (!a.date && !b.date) return 0;
+    if (!a.date) return 1;
+    if (!b.date) return -1;
+    return a.date.localeCompare(b.date);
+  });
   const habitsSummary = summarizeHabits(contextData.habits, contextData.habitLogs);
   const attendanceSummary = summarizeAttendance(contextData.attendance);
-  const pendingTasks = tasksSummary.filter(t => t.status !== 'completed');
   const completedTasksToday = (contextData.tasks || [])
     .filter(t => t.status === 'completed' && t.completedAt?.startsWith?.(todayISO))
     .map(t => ({ id: t.id, title: t.title, timeSlot: t.timeSlot }));
@@ -176,7 +219,7 @@ TOMORROW: ${tomorrowISO}
 ═══ FULL APP CONTEXT (READ ACCESS) ═══
 
 📋 TASKS (${pendingTasks.length} pending, ${completedToday} completed today):
-PENDING: ${JSON.stringify(pendingTasks.slice(0, 20))}
+PENDING: ${JSON.stringify(pendingTasks.slice(0, 40))}
 COMPLETED TODAY: ${JSON.stringify(completedTasksToday.slice(0, 10))}
 
 ✅ HABITS (${habitsSummary.length} tracked):
@@ -209,11 +252,14 @@ ${JSON.stringify(recentJobs)}
 ═══ HOW TO RESPOND ═══
 
 1. You have FULL READ ACCESS. NEVER say "I can't access your data". Read from the context above and answer directly.
-2. For WRITE operations, embed exactly ONE action block: [[ACTION:{"type":"...","field":"value"}]]
-3. Place the action block ANYWHERE in your response — the UI will extract it and show a confirmation card.
-4. The user MUST confirm before anything is saved to the database.
-5. After every text response, append [SUGGEST: action 1 | action 2] with 2 relevant follow-up suggestions.
-6. Tone: warm, direct, concise. Occasionally witty. Never verbose.
+2. SINGLE ACTION: For one write operation, embed: [[ACTION:{"type":"...","field":"value"}]]
+3. BATCH ACTIONS: If user asks to create MULTIPLE items (e.g. "add 3 tasks", "create tasks for this week"), use: [[BATCH_ACTIONS:[{"type":"createTask","title":"...","label":"Create task: ...","icon":"checkmark-circle-outline","dueDate":"YYYY-MM-DD","priority":"medium"},{...}]]]
+   - Each action in the array MUST include a "label" (human-readable description shown to user) and "icon" (ionicon name).
+   - The UI shows all actions with checkboxes — user selects which to confirm.
+4. NEVER use both [[ACTION]] and [[BATCH_ACTIONS]] in the same response.
+5. The user MUST confirm before anything is saved to the database.
+6. After every text response, append [SUGGEST: action 1 | action 2] with 2 relevant follow-up suggestions.
+7. Tone: warm, direct, concise. Occasionally witty. Never verbose.
 
 ═══ DATE & TIME RULES ═══
 - "tomorrow" = ${tomorrowISO}
@@ -257,8 +303,12 @@ type: "todo" | "exam" | "assignment_due" | "holiday"
 ═══ RULES ═══
 - For deleteTask/completeTask/logHabit/markAttendance: ALWAYS use the IDs from the context above, never make up IDs.
 - If a task/habit/subject isn't in the context, say so and ask for clarification.
-- Only 1 action block per response.
-- If user asks to create multiple tasks, pick the most important one and tell them to ask again for the rest.`;
+- Only 1 action block per response (either [[ACTION]] or [[BATCH_ACTIONS]]).`;
+
+  // Inject memory summary if available (passed via contextData)
+  const systemWithMemory = (contextData as any).memorySummary
+    ? systemPrompt + `\n\n═══ SARA MEMORY (from previous sessions) ═══\n${(contextData as any).memorySummary}`
+    : systemPrompt;
 
   // Build conversation contents (history = previous turns only, current added below)
   const contents: any[] = [];
@@ -274,7 +324,7 @@ type: "todo" | "exam" | "assignment_due" | "holiday"
     const data = await callProxy({
       model: 'gemini-2.5-flash',
       contents,
-      systemInstruction: systemPrompt,
+      systemInstruction: systemWithMemory,
       generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
     });
 
@@ -310,6 +360,7 @@ export async function processGymChat(
     habits?: any[];
     notes?: any[];
     googleAccessToken?: string;
+    memorySummary?: string;
   } = {}
 ): Promise<{
   type: 'text' | 'function_call';
@@ -339,6 +390,8 @@ RECENT GYM HISTORY:
 ${JSON.stringify(recentLogs)}
 
 USER GOALS: ${JSON.stringify((contextData.goals || []).slice(0, 5))}
+
+${contextData.memorySummary ? `\n═══ GYM MEMORY (from previous sessions) ═══\n${contextData.memorySummary}\n` : ''}
 
 When the user asks you to perform an action on their workout, include an action block:
 [[ACTION:{...}]]

@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { db } from '../../services/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
 import { useMobileData, CustomEvent } from '../../contexts/MobileDataContext';
+import { COLLECTION } from '../../config/constants';
+import { useTheme } from "../../contexts/ThemeContext";
 
 const EVENT_TYPES = [
   { id: 'exam', label: 'Exam', icon: '📝', color: '#ef4444' },
@@ -21,6 +23,8 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
   initialStartTime?: string;
   existingEvent?: CustomEvent | null;
 }) {
+    const { colors, isDark } = useTheme();
+    const styles = makeStyles(colors);
   const { user } = useMobileData();
   const [title, setTitle] = useState('');
   const [type, setType] = useState('exam');
@@ -59,10 +63,10 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
       if (endTime) payload.endTime = endTime;
 
       if (existingEvent) {
-        await updateDoc(doc(db, 'calendar_events', existingEvent.id), payload);
+        await updateDoc(doc(db, COLLECTION.CALENDAR_EVENTS, existingEvent.id), payload);
       } else {
         payload.createdAt = Date.now();
-        await addDoc(collection(db, 'calendar_events'), payload);
+        await addDoc(collection(db, COLLECTION.CALENDAR_EVENTS), payload);
       }
       onClose();
     } catch (e) {
@@ -78,7 +82,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{existingEvent ? 'Edit Event' : 'Add New Event'}</Text>
             <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -87,7 +91,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
             <TextInput
               style={styles.input}
               placeholder="e.g., Final Physics Exam"
-              placeholderTextColor={COLORS.textMuted}
+              placeholderTextColor={colors.textMuted}
               value={title}
               onChangeText={setTitle}
               autoFocus
@@ -113,7 +117,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Date</Text>
             <View style={styles.readOnlyField}>
-              <Ionicons name="calendar-outline" size={16} color={COLORS.textPrimary} />
+              <Ionicons name="calendar-outline" size={16} color={colors.textPrimary} />
               <Text style={styles.readOnlyText}>{existingEvent?.date || selectedDate}</Text>
             </View>
           </View>
@@ -124,7 +128,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
               <TextInput
                 style={styles.input}
                 placeholder="09:00"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
                 value={startTime}
                 onChangeText={setStartTime}
               />
@@ -134,7 +138,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
               <TextInput
                 style={styles.input}
                 placeholder="10:00"
-                placeholderTextColor={COLORS.textMuted}
+                placeholderTextColor={colors.textMuted}
                 value={endTime}
                 onChangeText={setEndTime}
               />
@@ -150,25 +154,25 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
   );
 }
 
-const styles = StyleSheet.create({
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: COLORS.background, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, padding: SPACE.xl, paddingBottom: 40 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.lg },
-  modalTitle: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.xl, color: COLORS.textPrimary },
-  
-  inputGroup: { marginBottom: SPACE.xl },
-  label: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: COLORS.textMuted, marginBottom: SPACE.sm },
-  input: { backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACE.md, color: COLORS.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base },
-  
-  typeScroll: { flexDirection: 'row' },
-  typeChip: { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border, marginRight: SPACE.sm },
-  typeIcon: { fontSize: 14 },
-  typeLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: COLORS.textPrimary },
-  
-  readOnlyField: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, backgroundColor: COLORS.surface2, padding: SPACE.md, borderRadius: RADIUS.md },
-  readOnlyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: COLORS.textPrimary },
-  
-  saveBtn: { backgroundColor: COLORS.textPrimary, padding: SPACE.md, borderRadius: RADIUS.md, alignItems: 'center', marginTop: SPACE.lg },
-  saveBtnDisabled: { opacity: 0.5 },
-  saveBtnText: { color: COLORS.background, fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base },
-});
+const makeStyles = (colors: any) => StyleSheet.create({
+      modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+      modalSheet: { backgroundColor: colors.background, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, padding: SPACE.xl, paddingBottom: 40 },
+      modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.lg },
+      modalTitle: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.xl, color: colors.textPrimary },
+      
+      inputGroup: { marginBottom: SPACE.xl },
+      label: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.textMuted, marginBottom: SPACE.sm },
+      input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: RADIUS.md, padding: SPACE.md, color: colors.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base },
+      
+      typeScroll: { flexDirection: 'row' },
+      typeChip: { flexDirection: 'row', alignItems: 'center', gap: SPACE.xs, paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: colors.border, marginRight: SPACE.sm },
+      typeIcon: { fontSize: 14 },
+      typeLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary },
+      
+      readOnlyField: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, backgroundColor: colors.surface2, padding: SPACE.md, borderRadius: RADIUS.md },
+      readOnlyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: colors.textPrimary },
+      
+      saveBtn: { backgroundColor: colors.textPrimary, padding: SPACE.md, borderRadius: RADIUS.md, alignItems: 'center', marginTop: SPACE.lg },
+      saveBtnDisabled: { opacity: 0.5 },
+      saveBtnText: { color: colors.background, fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base },
+    });
