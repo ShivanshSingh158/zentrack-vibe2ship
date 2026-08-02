@@ -120,8 +120,8 @@ export const BottomHeader: React.FC<BottomHeaderProps> = ({ onOpenSara, showSara
       {/* ── RIGHT: Agent Controls ── */}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '16px' }}>
 
-        {/* Voice Toggle (Floating Mic) */}
-        {!isHomePage && <VoiceQuickCaptureWidget inline={true} />}
+        {/* Voice Toggle (Floating Mic) - Hidden per user request */}
+        {/* {!isHomePage && <VoiceQuickCaptureWidget inline={true} />} */}
 
         {/* Bot / S.A.R.A Toggle */}
         <div style={{ position: 'relative' }}>
@@ -174,7 +174,7 @@ export const BottomHeader: React.FC<BottomHeaderProps> = ({ onOpenSara, showSara
             style={{
               position: 'relative',
               zIndex: 1,
-              background: 'linear-gradient(135deg,#8b5cf6,#3b82f6)',
+              background: 'linear-gradient(135deg,#8b5cf6,#a599ff)',
               border: 'none',
               borderRadius: '50%',
               width: '56px',

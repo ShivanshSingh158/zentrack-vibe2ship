@@ -273,7 +273,7 @@ export const SecuritySettingsModal: React.FC<{ onClose: () => void }> = ({ onClo
               {/* Agent Autonomy Level */}
               <div>
                 <h3 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-                  <UserCheck size={18} color="#3b82f6" /> Global Agent Autonomy Level
+                  <UserCheck size={18} color="#a599ff" /> Global Agent Autonomy Level
                 </h3>
                 <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1.5rem', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.05)' }}>
                   <input 
@@ -281,14 +281,14 @@ export const SecuritySettingsModal: React.FC<{ onClose: () => void }> = ({ onClo
                     min="1" max="3" 
                     value={agentLevel} 
                     onChange={(e) => setAgentLevel(parseInt(e.target.value))}
-                    style={{ width: '100%', accentColor: '#3b82f6', marginBottom: '1.5rem' }}
+                    style={{ width: '100%', accentColor: '#a599ff', marginBottom: '1.5rem' }}
                   />
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <div style={{ color: agentLevel === 1 ? '#3b82f6' : 'var(--text-muted)', fontWeight: agentLevel === 1 ? 600 : 400 }}>
+                    <div style={{ color: agentLevel === 1 ? '#a599ff' : 'var(--text-muted)', fontWeight: agentLevel === 1 ? 600 : 400 }}>
                       Level 1: Draft-Only (AI requires approval for all external actions like emails/calendar)
                     </div>
-                    <div style={{ color: agentLevel === 2 ? '#3b82f6' : 'var(--text-muted)', fontWeight: agentLevel === 2 ? 600 : 400 }}>
+                    <div style={{ color: agentLevel === 2 ? '#a599ff' : 'var(--text-muted)', fontWeight: agentLevel === 2 ? 600 : 400 }}>
                       Level 2: Standard (AI can schedule calendar blocks, but requires approval for emails)
                     </div>
                     <div style={{ color: agentLevel === 3 ? '#ef4444' : 'var(--text-muted)', fontWeight: agentLevel === 3 ? 600 : 400 }}>
@@ -399,7 +399,7 @@ export const SecuritySettingsModal: React.FC<{ onClose: () => void }> = ({ onClo
             <button 
               onClick={handleSave}
               disabled={isSaving}
-              style={{ padding: '0.75rem 2rem', borderRadius: '12px', border: 'none', background: '#3b82f6', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              style={{ padding: '0.75rem 2rem', borderRadius: '12px', border: 'none', background: '#a599ff', color: 'white', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
               {isSaving ? 'Saving...' : <><Save size={18} /> Save Settings</>}
             </button>

@@ -156,9 +156,9 @@ export const TerminalFeed: React.FC<TerminalFeedProps> = ({
               border = 'rgba(16, 185, 129, 0.2)';
               color = '#10b981';
             } else if (isReal) {
-              bg = 'rgba(59, 130, 246, 0.08)';
-              border = 'rgba(59, 130, 246, 0.2)';
-              color = '#3b82f6';
+              bg = 'rgba(165, 153, 255, 0.08)';
+              border = 'rgba(165, 153, 255, 0.2)';
+              color = '#a599ff';
             }
 
             return (

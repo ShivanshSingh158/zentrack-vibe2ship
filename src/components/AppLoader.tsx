@@ -49,7 +49,7 @@ export const AppLoader: React.FC<AppLoaderProps> = ({
       <div style={{
         position: 'absolute',
         inset: 0,
-        background: 'radial-gradient(circle at center, rgba(59, 130, 246, 0.08) 0%, #030712 70%)',
+        background: 'radial-gradient(circle at center, rgba(165, 153, 255, 0.08) 0%, #030712 70%)',
         zIndex: 1
       }} />
 
@@ -73,7 +73,7 @@ export const AppLoader: React.FC<AppLoaderProps> = ({
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
           <Loader2 
             size={36} 
-            color="#3b82f6" 
+            color="#a599ff" 
             style={{ animation: 'spin 1.5s linear infinite', marginBottom: '0.5rem' }} 
           />
           <h2 style={{ 
@@ -87,7 +87,7 @@ export const AppLoader: React.FC<AppLoaderProps> = ({
             {title}
           </h2>
           <p style={{ 
-            color: '#3b82f6', 
+            color: '#a599ff', 
             fontSize: '0.75rem', 
             fontWeight: 700, 
             letterSpacing: '0.15em', 

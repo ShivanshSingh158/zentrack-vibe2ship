@@ -16,16 +16,13 @@ const ALL_APPS = [
   { name: 'Calendar', img: 'https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg', route: '/calendar' },
   { name: 'Notes', img: 'https://img.icons8.com/color/96/000000/google-keep.png', route: '/notes' },
   { name: 'Goals', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Trophy/3D/trophy_3d.png', route: '/goals' },
-  { name: 'Gym', img: 'https://img.icons8.com/color/96/000000/dumbbell.png', route: '/gym' },
   { name: 'Analytics', img: 'https://img.icons8.com/color/96/000000/google-analytics.png', route: '/analytics' },
   { name: 'Habits', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Counterclockwise%20arrows%20button/3D/counterclockwise_arrows_button_3d.png', route: '/habits' },
   { name: 'Learning', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Brain/3D/brain_3d.png', route: '/learning' },
   { name: 'Assignments', img: 'https://img.icons8.com/color/96/000000/google-classroom.png', route: '/assignments' },
   { name: 'Jobs', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Briefcase/3D/briefcase_3d.png', route: '/jobs' },
-  { name: 'Review', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Crystal%20ball/3D/crystal_ball_3d.png', route: '/review' },
   { name: 'Attendance', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Graduation%20cap/3D/graduation_cap_3d.png', route: '/attendance' },
   { name: 'Grades', img: 'https://img.icons8.com/color/96/000000/exam.png', route: '/grades' },
-  { name: 'Integration', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Link/3D/link_3d.png', route: '/integrations' },
 ];
 
 interface FloatingDockProps {

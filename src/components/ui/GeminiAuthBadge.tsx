@@ -146,8 +146,8 @@ export const GeminiAuthBadge: React.FC = () => {
           animation: cyber-pulse-purple 2s infinite ease-in-out;
         }
         .cyber-node-dot.shared {
-          background: #60a5fa;
-          box-shadow: 0 0 5px rgba(96, 165, 250, 0.7);
+          background: #b8afff;
+          box-shadow: 0 0 5px rgba(165, 153, 255, 0.7);
           animation: cyber-breath 2.5s infinite ease-in-out;
         }
         .cyber-label {

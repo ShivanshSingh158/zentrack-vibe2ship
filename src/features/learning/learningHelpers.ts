@@ -42,7 +42,7 @@ export const UNDO_DELAY = 3500;
 
 export const progressColor = (pct: number) => {
   if (pct === 100) return '#10b981';
-  if (pct >= 75)   return '#3b82f6';
+  if (pct >= 75)   return '#a599ff';
   if (pct >= 25)   return '#f59e0b';
   return '#ef4444';
 };

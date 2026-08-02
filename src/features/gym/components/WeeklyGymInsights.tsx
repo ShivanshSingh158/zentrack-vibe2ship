@@ -27,7 +27,7 @@ function getWeekRange(dateStr: string) {
 
 function getMuscleColor(muscle: string) {
   const colors: Record<string, string> = {
-    Chest: '#3b82f6',
+    Chest: '#a599ff',
     Back: '#10b981',
     Legs: '#f59e0b',
     Shoulders: '#8b5cf6',

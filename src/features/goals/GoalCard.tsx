@@ -57,7 +57,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({
             <span style={{ 
               fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '999px', fontWeight: 500, textTransform: 'capitalize',
               ...(goal.status === 'active' ? { background: 'rgba(52,211,153,0.1)', color: '#34d399', border: '1px solid rgba(52,211,153,0.2)' } :
-                  goal.status === 'completed' ? { background: 'rgba(96,165,250,0.1)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.2)' } :
+                  goal.status === 'completed' ? { background: 'rgba(165,153,255,0.1)', color: '#b8afff', border: '1px solid rgba(165,153,255,0.2)' } :
                   { background: 'rgba(239,68,68,0.1)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.2)' })
             }}>{goal.status}</span>
           </div>
@@ -80,7 +80,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({
           <span style={{ fontSize: '0.7rem', color: '#a78bfa', fontFamily: 'monospace' }}>{totalProgress}%</span>
         </div>
         <div style={{ height: '4px', background: 'rgba(255,255,255,0.07)', borderRadius: '999px', overflow: 'hidden' }}>
-          <div style={{ width: `${totalProgress}%`, height: '100%', background: 'linear-gradient(90deg, #a78bfa, #60a5fa)', borderRadius: '999px', transition: 'width 0.8s cubic-bezier(0.16,1,0.3,1)' }} />
+          <div style={{ width: `${totalProgress}%`, height: '100%', background: 'linear-gradient(90deg, #a78bfa, #b8afff)', borderRadius: '999px', transition: 'width 0.8s cubic-bezier(0.16,1,0.3,1)' }} />
         </div>
       </div>
 

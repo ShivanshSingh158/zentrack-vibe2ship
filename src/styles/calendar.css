@@ -2,26 +2,21 @@
 .gc-app-container {
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 165px); /* Perfectly fits screen without causing outer scrollbar */
-  background-color: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1rem;
+  height: 100vh;
+  margin: -2rem;
+  padding-bottom: 80px; /* Avoid overlapping the bottom nav */
+  background-color: transparent;
   color: #E8EAED;
   font-family: 'Inter', sans-serif;
   overflow: hidden;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-  margin-top: 0.5rem;
 }
 
 .gc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.25rem;
+  padding: 0.5rem 1.25rem;
   height: 64px;
-  border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
 .gc-header-left {
@@ -61,7 +56,7 @@
 .gc-nav-arrows button:hover { background: rgba(255,255,255,0.08); }
 
 .gc-date-title {
-  font-family: 'Instrument Serif', serif;
+  font-family: 'Inter', sans-serif;
   font-size: 1.3rem;
   font-weight: 400;
   color: white;
@@ -98,11 +93,11 @@
 /* Sidebar */
 .gc-sidebar {
   width: 256px;
-  padding: 1rem;
+  padding: 0.5rem 1rem 1rem 1rem;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
-  border-right: 1px solid rgba(255,255,255,0.08);
+  border-right: none;
   /* Hide scrollbar for cleaner look */
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
@@ -117,19 +112,20 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  background: rgba(255,255,255,0.1);
+  background: #2b2d31;
   color: #E8EAED;
   border: none;
-  padding: 0.7rem 1.2rem;
+  padding: 0.8rem 1.5rem;
   border-radius: 24px;
   font-weight: 500;
   font-size: 0.95rem;
   cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
   margin-bottom: 2rem;
   align-self: flex-start;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
-.gc-create-btn:hover { background: rgba(255,255,255,0.15); box-shadow: 0 2px 5px rgba(0,0,0,0.4); }
+.gc-create-btn:hover { background: #333539; box-shadow: 0 2px 5px rgba(0,0,0,0.4); }
 
 /* Mini Calendar */
 .gc-mini-cal { margin-bottom: 2rem; }
@@ -147,13 +143,22 @@
 }
 .gc-mini-date.today:not(.active) { color: #a78bfa; font-weight: 600; }
 
-/* Filter Accordion */
-.gc-filters section { margin-bottom: 1.5rem; }
-.gc-filter-title { display: flex; align-items: center; justify-content: space-between; font-size: 0.9rem; font-weight: 500; color: #E8EAED; cursor: pointer; margin-bottom: 0.5rem; }
-.gc-filter-item { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; font-size: 0.85rem; color: #E8EAED; cursor: pointer;}
-.gc-filter-checkbox { 
-  width: 16px; height: 16px; border-radius: 2px; 
-  display: flex; align-items: center; justify-content: center;
+/* Accordions */
+.gc-accordion { margin-bottom: 1rem; }
+.gc-accordion-header { display: flex; justify-content: space-between; align-items: center; color: #E8EAED; font-size: 0.85rem; font-weight: 500; cursor: pointer; padding: 0.5rem 0.5rem; border-radius: 4px; }
+.gc-accordion-header:hover { background: rgba(255,255,255,0.04); }
+.gc-accordion-item { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem; border-radius: 4px; cursor: pointer; color: #E8EAED; font-size: 0.85rem; }
+.gc-accordion-item:hover { background: rgba(255,255,255,0.04); }
+
+.gc-grid-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 24px;
+  margin: 0 1rem 1rem 0;
 }
 
 /* Time Grid Area */
@@ -168,7 +173,7 @@
 
 .gc-grid-header {
   display: flex;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
 }
 .gc-timezone {
   width: 60px;
@@ -177,7 +182,7 @@
   text-align: right;
   padding-right: 0.5rem;
   padding-top: 1rem;
-  border-right: 1px solid rgba(255,255,255,0.08);
+  border-right: 1px solid rgba(255,255,255,0.03);
 }
 
 .gc-day-headers {
@@ -188,7 +193,7 @@
   flex: 1;
   text-align: center;
   padding: 0.5rem 0 1rem;
-  border-right: 1px solid rgba(255,255,255,0.08);
+  border-right: 1px solid rgba(255,255,255,0.03);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -223,7 +228,7 @@
 .gc-time-axis {
   width: 60px;
   position: relative;
-  border-right: 1px solid rgba(255,255,255,0.08);
+  border-right: 1px solid rgba(255,255,255,0.03);
 }
 .gc-time-label {
   height: 60px; /* 1 hour = 60px */
@@ -248,7 +253,7 @@
 .gc-day-col {
   flex: 1;
   position: relative;
-  border-right: 1px solid rgba(255,255,255,0.08);
+  border-right: 1px solid rgba(255,255,255,0.03);
 }
 
 /* Hourly lines */
@@ -265,10 +270,10 @@
   position: absolute;
   left: 2px;
   right: 4px;
-  background: rgba(96,165,250,0.15) !important;
-  border: 1px solid rgba(96,165,250,0.25);
+  background: rgba(165,153,255,0.15) !important;
+  border: 1px solid rgba(165,153,255,0.25);
   border-radius: 0.3rem !important;
-  color: #60a5fa !important;
+  color: #b8afff !important;
   font-size: 0.6rem !important;
   padding: 1px 5px !important;
   overflow: hidden;
@@ -305,8 +310,9 @@
   flex: 1;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  grid-auto-rows: 1fr;
-  border-top: 1px solid rgba(255,255,255,0.08);
+  grid-auto-rows: minmax(0, 1fr);
+  border-top: 1px solid rgba(255,255,255,0.03);
+  min-height: 0;
 }
 .gc-month-cell {
   border-right: 1px solid rgba(255,255,255,0.04);
@@ -315,6 +321,8 @@
   padding: 0.25rem;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 .gc-month-date {
   text-align: center;
@@ -335,10 +343,10 @@
   font-weight: 600; 
 }
 .gc-month-event {
-  background: rgba(96,165,250,0.15);
-  border: 1px solid rgba(96,165,250,0.25);
+  background: rgba(165,153,255,0.15);
+  border: 1px solid rgba(165,153,255,0.25);
   border-radius: 0.3rem;
-  color: #60a5fa;
+  color: #b8afff;
   font-size: 0.6rem;
   padding: 1px 5px;
   margin-bottom: 2px;
@@ -457,7 +465,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15) 0%, rgba(96, 165, 250, 0.15) 100%);
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.15) 0%, rgba(165, 153, 255, 0.15) 100%);
   color: #fff;
   border: 1px solid rgba(167, 139, 250, 0.3);
   padding: 0.7rem 1.2rem;
@@ -468,7 +476,7 @@
   cursor: pointer;
 }
 .gc-auto-btn:hover {
-  background: linear-gradient(135deg, rgba(167, 139, 250, 0.25) 0%, rgba(96, 165, 250, 0.25) 100%);
+  background: linear-gradient(135deg, rgba(167, 139, 250, 0.25) 0%, rgba(165, 153, 255, 0.25) 100%);
   border-color: rgba(167, 139, 250, 0.5);
   box-shadow: 0 0 12px rgba(167, 139, 250, 0.2);
 }

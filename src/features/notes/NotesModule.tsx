@@ -715,7 +715,7 @@ export const NotesModule = () => {
     if (node.type === 'folder') return <Folder size={32} style={{ color: '#fbbf24' }} />;
     if (node.type === 'note') return <FileText size={32} style={{ color: '#7c3aed' }} />;
     if (node.fileType === 'pdf') return <FileText size={32} style={{ color: '#ef4444' }} />;
-    if (node.fileType === 'docx') return <FileText size={32} style={{ color: '#3b82f6' }} />;
+    if (node.fileType === 'docx') return <FileText size={32} style={{ color: '#a599ff' }} />;
     if (node.fileType === 'image') return <ImageIcon size={32} style={{ color: '#10b981' }} />;
     return <FileIcon size={32} style={{ color: 'var(--text-muted)' }} />;
   };
@@ -1051,14 +1051,14 @@ export const NotesModule = () => {
   // Main Drive UI
   return (
     <div 
-      style={{ padding: '2rem', height: '100%', overflowY: 'auto', position: 'relative' }}
+      style={{ padding: '0.5rem', paddingBottom: '120px', height: '100%', width: '100%', overflowY: 'auto', position: 'relative' }}
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
       {isDraggingOver && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(99, 102, 241, 0.1)', border: '4px dashed var(--accent-primary)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '1rem', margin: '1rem', backdropFilter: 'blur(4px)' }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(99, 102, 241, 0.1)', border: '4px dashed var(--accent-primary)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '1rem', backdropFilter: 'blur(4px)' }}>
           <div style={{ background: 'var(--bg-surface)', padding: '2rem 4rem', borderRadius: '1rem', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
             <Upload size={48} style={{ color: 'var(--accent-primary)' }} />
             <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Drop files here to upload</h2>
@@ -1191,7 +1191,7 @@ export const NotesModule = () => {
           {folders.length > 0 && (
             <div style={{ marginBottom: '2rem' }}>
               <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>Folders</h4>
-              <div className="storage-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+              <div className="storage-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
                 {folders.map(folder => (
                   <div 
                     key={folder.id} 
@@ -1413,7 +1413,7 @@ export const NotesModule = () => {
       `}</style>
 
       {/* Storage Usage Indicator */}
-      <div className="hide-on-mobile" style={{ position: 'fixed', bottom: '2rem', right: '2rem', background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 50, minWidth: '250px' }}>
+      <div className="hide-on-mobile" style={{ position: 'fixed', bottom: '6rem', right: '2rem', background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 50, minWidth: '250px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.85rem' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}><HardDrive size={14} /> Storage Usage</span>
           <span style={{ color: 'var(--text-muted)' }}>{formatSize(totalUsedBytes)} / 25 GB</span>

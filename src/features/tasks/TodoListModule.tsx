@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Check, Trash2, Calendar as CalendarIcon, X, ChevronDown, ChevronRight, Timer, Maximize, GripVertical, Search, ListChecks, Edit2 } from 'lucide-react';
+import { Plus, Check, Trash2, Calendar as CalendarIcon, X, ChevronDown, ChevronRight, Timer, Maximize, GripVertical, Search, ListChecks, Edit2, Inbox, Clock, MoreHorizontal, Filter, Copy, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { collection, addDoc, updateDoc, deleteDoc, doc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
@@ -16,6 +16,7 @@ import { getUrgencyLevel, getCountdownText } from '../../hooks/useDeadlineWatche
 // import { RecoveryPlannerModal } from '../crisis/RecoveryPlannerModal';
 // import { ExtensionDraftModal } from '../crisis/ExtensionDraftModal';
 import { TodoCard, CompletedTodoItem } from './TodoCard';
+import { TimelineView } from './TimelineView';
 
 export const TodoListModule = () => {
   const { tasks: globalTodos, isLoading } = useGlobalData();
@@ -26,19 +27,33 @@ export const TodoListModule = () => {
     return globalTodos.filter(t => t.date === selectedDate);
   }, [globalTodos, selectedDate]);
   
+  const inboxTasks = useMemo(() => globalTodos.filter(t => !t.date && t.status !== 'completed').sort((a,b) => (a.order||0) - (b.order||0)), [globalTodos]);
+  const overdueTasks = useMemo(() => globalTodos.filter(t => t.date && t.date < todayStr && t.status !== 'completed').sort((a,b) => (a.order||0) - (b.order||0)), [globalTodos, todayStr]);
+  
   const [newTaskText, setNewTaskText] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<TodoItem['priority']>('medium');
-  const [newTaskRecurring, setNewTaskRecurring] = useState(false);
+  type RecurrenceRule = { type: 'once' | 'daily' | 'weekly' | 'monthly' | 'custom', interval?: number, daysOfWeek?: number[] };
+  const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule>({ type: 'once' });
+  const [showRecurrencePicker, setShowRecurrencePicker] = useState(false);
   const [newTaskEstimate, setNewTaskEstimate] = useState('');
   const [newTaskStartTime, setNewTaskStartTime] = useState('');
   const [newTaskEndTime, setNewTaskEndTime] = useState('');
   const [newTaskSubject, setNewTaskSubject] = useState('');
+  const [newTaskCommitment, setNewTaskCommitment] = useState('');
 
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [newSubtaskTexts, setNewSubtaskTexts] = useState<Record<string, string>>({});
   const [editingTask, setEditingTask] = useState<TodoItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'high' | 'recurring'>('all');
+  
+  // New Mobile Parity Features State
+  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
+  const [isInboxOpen, setIsInboxOpen] = useState(false);
+  const [isTimeLogOpen, setIsTimeLogOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [sortBy, setSortBy] = useState<'default' | 'priority'>('default');
+
   const [isBulkEdit, setIsBulkEdit] = useState(false);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [bulkRescheduleDate, setBulkRescheduleDate] = useState('');
@@ -89,6 +104,7 @@ export const TodoListModule = () => {
   const mobileJumpRef = useRef<HTMLInputElement>(null);
   const [showSubjectSuggest, setShowSubjectSuggest] = useState(false);
   const [showTaskOptions, setShowTaskOptions] = useState(false);
+  const [isNewTaskFormOpen, setIsNewTaskFormOpen] = useState(false);
 
   // Derive all previously-used subjects from all todos (no Firestore query needed)
   const allSubjects = useMemo(() => {
@@ -155,15 +171,22 @@ export const TodoListModule = () => {
       date: selectedDate,
       status: 'pending',
       priority: newTaskPriority,
-      isRecurring: newTaskRecurring,
+      isRecurring: recurrenceRule.type !== 'once',
       timeSlot: newTaskStartTime || null,
       subtasks: [],
       createdAt: Date.now(),
       order: incompleteCount,
     };
 
+    if (recurrenceRule.type !== 'once') {
+      newTodo.recurrenceRule = recurrenceRule;
+    }
+
     if (newTaskSubject.trim()) {
       newTodo.subject = newTaskSubject.trim();
+    }
+    if (newTaskCommitment.trim()) {
+      newTodo.commitmentTo = newTaskCommitment.trim();
     }
 
     if (newTaskEstimate) {
@@ -174,8 +197,10 @@ export const TodoListModule = () => {
       await addDoc(collection(db, 'todos'), newTodo);
       setNewTaskText('');
       setNewTaskSubject('');
+      setNewTaskCommitment('');
       setNewTaskStartTime('');
       setNewTaskEndTime('');
+      setRecurrenceRule({ type: 'once' });
     } catch (error) {
       console.error('Error adding task:', error);
       toast.error('Failed to add task');
@@ -394,6 +419,19 @@ export const TodoListModule = () => {
 
   const sortedTodos = [...filteredTodos].sort((a, b) => {
     if (a.status === 'completed' !== b.status === 'completed') return a.status === 'completed' ? 1 : -1;
+
+    if (a.timeSlot && b.timeSlot) {
+      const parseTime = (t: string) => {
+        const m = t.split(/[-–]/)[0].trim().match(/(\d+):(\d+)/);
+        if (!m) return 0;
+        return parseInt(m[1]) * 60 + parseInt(m[2]);
+      };
+      const valA = parseTime(a.timeSlot);
+      const valB = parseTime(b.timeSlot);
+      if (valA !== valB) return valA - valB;
+    }
+    if (a.timeSlot && !b.timeSlot) return -1;
+    if (!a.timeSlot && b.timeSlot) return 1;
     
     // Sort by Urgency x Priority
     const getUrgScore = (date: string) => {
@@ -431,7 +469,7 @@ export const TodoListModule = () => {
   const totalEstimate = todos.filter(t => t.status !== 'completed').reduce((acc, t) => acc + (t.estimatedMinutes || 0), 0);
 
   return (
-    <div className="module-container" style={{ position: 'relative' }}>
+    <div className="module-container" style={{ position: 'relative', marginTop: '-2rem' }}>
       <div className="calendar-sidebar">
         <div className="calendar-header hide-on-mobile">
           <CalendarIcon size={18} />
@@ -443,10 +481,7 @@ export const TodoListModule = () => {
             const isSelected = dateStr === selectedDate;
             const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
             const dayNum = dateObj.getDate();
-            const monthName = dateObj.toLocaleDateString('en-US', { month: 'short' });
-            // Dot indicator: does this date have tasks?
             const dateTodos = globalTodos.filter(t => t.date === dateStr);
-            const hasOverdue = dateTodos.some(t => t.status !== 'completed' && dateStr < todayStr);
             const hasTasks = dateTodos.length > 0;
             return (
               <button 
@@ -456,16 +491,10 @@ export const TodoListModule = () => {
                 aria-selected={isSelected}
                 aria-current={isSelected ? 'date' : undefined}
               >
-                <span className="date-month">{monthName}</span>
-                <span className="date-num">{dayNum}</span>
                 <span className="date-day">{dayName}</span>
+                <span className="date-num">{dayNum}</span>
                 {hasTasks && (
-                  <span style={{
-                    position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)',
-                    width: '5px', height: '5px', borderRadius: '50%',
-                    background: hasOverdue ? '#ef4444' : isSelected ? '#fff' : '#a855f7',
-                    boxShadow: hasOverdue ? '0 0 4px rgba(239,68,68,0.6)' : 'none',
-                  }} />
+                  <span className={`date-dot ${isSelected ? 'selected-dot' : ''}`} />
                 )}
               </button>
             );
@@ -493,20 +522,26 @@ export const TodoListModule = () => {
         </div>
       </div>
 
-      <div className="todo-content liquid-panel" style={{ padding: '1rem 1.5rem', border: 'none' }}>
+      <div className="todo-content liquid-panel" style={{ padding: '1rem 1.5rem', border: 'none', display: 'flex', flexDirection: 'column', flex: 1 }}>
         <div className="module-header" style={{ marginBottom: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', '--module-accent': 'var(--accent-gradient)' } as React.CSSProperties}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'nowrap', gap: '0.5rem' }}>
             <h1 style={{ margin: 0, fontSize: '2rem', fontWeight: 400, fontFamily: "'Instrument Serif', serif", color: 'white', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {selectedDate === todayStr ? "Today's Tasks" : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </h1>
             
-            <button 
-              className={`btn-secondary ${isBulkEdit ? 'active' : ''}`} 
-              onClick={() => { setIsBulkEdit(!isBulkEdit); setSelectedTaskIds(new Set()); }}
-              style={{ background: isBulkEdit ? 'var(--accent-primary)' : 'rgba(0,0,0,0.3)', color: isBulkEdit ? 'white' : 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.35rem 0.6rem', borderRadius: '8px', fontSize: '0.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-            >
-              <ListChecks size={14} /> {isBulkEdit ? (selectedTaskIds.size > 0 ? `${selectedTaskIds.size} selected · Cancel` : 'Cancel') : 'Bulk Edit'}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <button onClick={() => setIsInboxOpen(true)} title="Overdue Inbox" style={{ padding: '0.4rem', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex' }}><Inbox size={16} /></button>
+              <button onClick={() => setIsTimeLogOpen(true)} title="Time Spent" style={{ padding: '0.4rem', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex' }}><Timer size={16} /></button>
+              <button onClick={() => setViewMode(v => v === 'timeline' ? 'list' : 'timeline')} title="Timeline View" style={{ padding: '0.4rem', borderRadius: '50%', background: viewMode === 'timeline' ? 'rgba(165,153,255,0.2)' : 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: viewMode === 'timeline' ? '#a599ff' : 'var(--text-primary)', cursor: 'pointer', display: 'flex' }}><Clock size={16} /></button>
+              <button 
+                className={`btn-secondary ${isBulkEdit ? 'active' : ''}`} 
+                onClick={() => { setIsBulkEdit(!isBulkEdit); setSelectedTaskIds(new Set()); }}
+                style={{ background: isBulkEdit ? 'var(--accent-primary)' : 'rgba(0,0,0,0.3)', color: isBulkEdit ? 'white' : 'var(--text-primary)', border: '1px solid rgba(255,255,255,0.1)', padding: '0.35rem 0.6rem', borderRadius: '8px', fontSize: '0.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}
+              >
+                <ListChecks size={14} /> <span className="hide-on-mobile">{isBulkEdit ? (selectedTaskIds.size > 0 ? `${selectedTaskIds.size} selected · Cancel` : 'Cancel') : 'Bulk Edit'}</span>
+              </button>
+              <button onClick={() => setIsMenuOpen(true)} title="More Options" style={{ padding: '0.4rem', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex' }}><MoreHorizontal size={16} /></button>
+            </div>
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -514,63 +549,38 @@ export const TodoListModule = () => {
               <span>{completedCount}/{todos.length} done</span>
               {totalEstimate > 0 && <span>• ~{formatHoursDisplay(totalEstimate / 60)} estimated</span>}
             </p>
-
-
+            <button 
+              onClick={() => setIsNewTaskFormOpen(o => !o)}
+              style={{
+                width: '36px', height: '36px', borderRadius: '50%',
+                background: isNewTaskFormOpen ? 'rgba(255,255,255,0.1)' : 'var(--accent-primary)', 
+                color: 'white',
+                border: 'none', cursor: 'pointer', display: 'flex',
+                alignItems: 'center', justifyContent: 'center',
+                boxShadow: isNewTaskFormOpen ? 'none' : '0 4px 12px rgba(165,153,255,0.3)',
+                transform: isNewTaskFormOpen ? 'rotate(45deg)' : 'rotate(0deg)',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                flexShrink: 0
+              }}
+              title="Add New Task"
+            >
+              <Plus size={20} />
+            </button>
           </div>
         </div>
-
-
-        {/* Desktop Search & Filters */}
-        <div className="hide-on-mobile" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem', background: 'var(--bg-surface)', padding: '0.75rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-          <div 
-            style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', padding: '0 0.75rem', flex: '1 1 200px', minWidth: 0, transition: 'all 0.2s ease' }}
-            onFocus={e => { e.currentTarget.style.boxShadow = '0 0 0 2px rgba(168, 85, 247, 0.4)'; e.currentTarget.style.borderColor = 'rgba(168, 85, 247, 0.8)'; }}
-            onBlur={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.borderColor = 'var(--border-subtle)'; }}
-          >
-            <Search size={16} color="var(--text-muted)" />
-            <input 
-              className="input"
-              type="text" 
-              placeholder="Search tasks..." 
-              value={searchTerm} 
-              onChange={e => setSearchTerm(e.target.value)} 
-              style={{ border: 'none', background: 'transparent', padding: '0.5rem', width: '100%', color: 'var(--text-primary)', outline: 'none', boxShadow: 'none' }}
-            />
-          </div>
-          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-            <button className={`btn-secondary ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')} style={{ padding: '0.35rem 0.6rem', fontSize: '0.78rem' }}>All</button>
-            <button className={`btn-secondary ${filter === 'high' ? 'active' : ''}`} onClick={() => setFilter(filter === 'high' ? 'all' : 'high')} style={{ padding: '0.35rem 0.6rem', fontSize: '0.78rem' }}>🔴 High</button>
-            <button className={`btn-secondary ${filter === 'recurring' ? 'active' : ''}`} onClick={() => setFilter(filter === 'recurring' ? 'all' : 'recurring')} style={{ padding: '0.35rem 0.6rem', fontSize: '0.78rem' }}>↻ Daily</button>
-          </div>
-        </div>
-
-        {/* Mobile Search Input (shows conditionally) */}
-        <div className="show-on-mobile-only" style={{ marginBottom: showMobileSearch ? '1rem' : '0' }}>
-          {showMobileSearch && (
-            <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-base)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0 0.75rem', marginBottom: '1rem' }}>
-              <Search size={14} color="var(--text-muted)" />
-              <input
-                autoFocus
-                type="text"
-                placeholder="Search tasks..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                style={{ border: 'none', background: 'transparent', padding: '0.5rem', width: '100%', color: 'var(--text-primary)', outline: 'none', fontSize: '0.9rem' }}
-              />
-              {searchTerm && <button onClick={() => setSearchTerm('')} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={14} /></button>}
-            </div>
-          )}
-        </div>
-
 
         {/* Quick Add Task — progressive disclosure */}
-        <motion.form 
-          onSubmit={handleAddTask} 
-          style={{ background: 'rgba(20,20,25,0.6)', backdropFilter: 'blur(12px)', borderRadius: '24px', border: '1px solid rgba(168,85,247,0.2)', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden', marginBottom: '1.25rem' }} 
-          initial={{ opacity: 0, y: 10 }} 
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.5), transparent)' }} />
+        <AnimatePresence initial={false}>
+          {isNewTaskFormOpen && (
+            <motion.form 
+              onSubmit={handleAddTask} 
+              style={{ background: 'rgba(20,20,25,0.6)', backdropFilter: 'blur(12px)', borderRadius: '24px', border: '1px solid rgba(168,85,247,0.2)', padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.05), 0 8px 32px rgba(0,0,0,0.3)', position: 'relative', overflow: 'hidden', marginBottom: '1.25rem' }} 
+              initial={{ opacity: 0, height: 0, marginBottom: 0 }} 
+              animate={{ opacity: 1, height: 'auto', marginBottom: '1.25rem' }}
+              exit={{ opacity: 0, height: 0, marginBottom: 0, padding: 0, overflow: 'hidden' }}
+              transition={{ duration: 0.3, ease: 'easeInOut' }}
+            >
+              <div style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', width: '60%', height: '1px', background: 'linear-gradient(90deg, transparent, rgba(168,85,247,0.5), transparent)' }} />
           
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -612,93 +622,199 @@ export const TodoListModule = () => {
                 transition={{ duration: 0.2 }}
                 style={{ overflow: 'hidden' }}
               >
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', padding: '0.6rem 0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', marginTop: '0.25rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem', background: 'rgba(0,0,0,0.15)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.03)', marginTop: '0.5rem' }}>
                   
-                  {/* Priority pills */}
-                  <div style={{ display: 'flex', gap: '0.3rem' }}>
-                    {(['low', 'medium', 'high'] as const).map(p => (
-                      <button type="button" key={p} onClick={() => setNewTaskPriority(p)} style={{ padding: '0.3rem 0.65rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer', border: '1px solid', borderColor: newTaskPriority === p ? (p === 'high' ? '#ef4444' : p === 'medium' ? '#f59e0b' : '#10b981') : 'rgba(255,255,255,0.1)', background: newTaskPriority === p ? (p === 'high' ? 'rgba(239,68,68,0.15)' : p === 'medium' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)') : 'transparent', color: newTaskPriority === p ? (p === 'high' ? '#ef4444' : p === 'medium' ? '#f59e0b' : '#10b981') : 'var(--text-muted)', textTransform: 'capitalize', transition: 'all 0.15s' }}>
-                        {p === 'high' ? '🔴' : p === 'medium' ? '🟡' : '🟢'} {p}
-                      </button>
-                    ))}
+                  {/* Row 1: Priority */}
+                  <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                    
+                    {/* Priority Group */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', width: '55px' }}>Priority</span>
+                      <div style={{ display: 'flex', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        {(['low', 'medium', 'high'] as const).map(p => (
+                          <button type="button" key={p} onClick={() => setNewTaskPriority(p)} style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', border: 'none', borderRight: p !== 'high' ? '1px solid rgba(255,255,255,0.05)' : 'none', background: newTaskPriority === p ? (p === 'high' ? 'rgba(239,68,68,0.15)' : p === 'medium' ? 'rgba(245,158,11,0.15)' : 'rgba(16,185,129,0.15)') : 'transparent', color: newTaskPriority === p ? (p === 'high' ? '#ef4444' : p === 'medium' ? '#f59e0b' : '#10b981') : 'var(--text-muted)', textTransform: 'capitalize', transition: 'all 0.2s' }}>
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
-
-
-                  {/* Time, Duration & Recurring Group (All in one line) */}
-                  <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
-                    <input 
-                      type={newTaskStartTime ? "time" : "text"} 
-                      placeholder="Start"
-                      value={newTaskStartTime} 
-                      onChange={e => {
-                        setNewTaskStartTime(e.target.value);
-                        if (e.target.value && newTaskEndTime) {
-                          const [sH, sM] = e.target.value.split(':').map(Number);
-                          const [eH, eM] = newTaskEndTime.split(':').map(Number);
-                          let diff = (eH * 60 + eM) - (sH * 60 + sM);
-                          if (diff < 0) diff += 24 * 60;
-                          setNewTaskEstimate(diff.toString());
-                        }
-                      }}
-                      onFocus={e => { e.target.type = "time"; try { e.target.showPicker() } catch(err){} }}
-                      onBlur={e => { if (!e.target.value) e.target.type = "text"; }}
-                      onClick={e => { e.currentTarget.type = "time"; try { e.currentTarget.showPicker() } catch(err){} }}
-                      style={{ padding: '0.35rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '85px', cursor: 'pointer', textAlign: 'center' }} 
-                      title="Start Time" 
-                    />
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 0.1rem' }}>→</span>
-                    <input 
-                      type={newTaskEndTime ? "time" : "text"} 
-                      placeholder="End"
-                      value={newTaskEndTime} 
-                      onChange={e => {
-                        setNewTaskEndTime(e.target.value);
-                        if (newTaskStartTime && e.target.value) {
-                          const [sH, sM] = newTaskStartTime.split(':').map(Number);
-                          const [eH, eM] = e.target.value.split(':').map(Number);
-                          let diff = (eH * 60 + eM) - (sH * 60 + sM);
-                          if (diff < 0) diff += 24 * 60;
-                          setNewTaskEstimate(diff.toString());
-                        }
-                      }} 
-                      onFocus={e => { e.target.type = "time"; try { e.target.showPicker() } catch(err){} }}
-                      onBlur={e => { if (!e.target.value) e.target.type = "text"; }}
-                      onClick={e => { e.currentTarget.type = "time"; try { e.currentTarget.showPicker() } catch(err){} }}
-                      style={{ padding: '0.35rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '85px', cursor: 'pointer', textAlign: 'center' }} 
-                      title="End Time" 
-                    />
-                    <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)', margin: '0 0.2rem' }} />
-                    <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.4rem', width: '65px' }}>
-                      <Timer size={12} color="rgba(255,255,255,0.5)" />
+                  {/* Row 2: Text inputs (Subject & Commitment) */}
+                  <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '150px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', padding: '0 0.75rem' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginRight: '0.5rem' }}>📚</span>
                       <input 
-                        type="number" 
-                        value={newTaskEstimate} 
-                        onChange={e => setNewTaskEstimate(e.target.value)} 
-                        min="1" max="480" 
-                        style={{ width: '100%', padding: '0.35rem 0 0.35rem 0.2rem', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.82rem', outline: 'none' }} 
-                        placeholder="min"
-                        title="Duration (mins)" 
+                        type="text" 
+                        placeholder="Subject (e.g. CS101, Work)" 
+                        value={newTaskSubject}
+                        onChange={e => setNewTaskSubject(e.target.value)}
+                        style={{ flex: 1, padding: '0.5rem 0', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.8rem', outline: 'none' }} 
                       />
                     </div>
-                    <div style={{ width: '1px', height: '20px', background: 'rgba(255,255,255,0.1)', margin: '0 0.2rem' }} />
-                    <button
-                      type="button"
-                      onClick={() => setNewTaskRecurring(!newTaskRecurring)}
-                      style={{
-                        padding: '0.35rem 0.6rem',
-                        border: 'none',
-                        background: newTaskRecurring ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                        color: newTaskRecurring ? 'var(--accent-primary)' : 'var(--text-muted)',
-                        cursor: 'pointer',
-                        fontSize: '0.82rem',
-                        fontWeight: 600,
-                        transition: 'all 0.2s',
-                        height: '100%',
-                      }}
-                    >
-                      ↻ {newTaskRecurring ? 'Daily' : 'Once'}
-                    </button>
+                    <div style={{ flex: 1, minWidth: '150px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', padding: '0 0.75rem' }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginRight: '0.5rem' }}>🤝</span>
+                      <input 
+                        type="text" 
+                        placeholder="Promised to (e.g. Boss, Mom)" 
+                        value={newTaskCommitment}
+                        onChange={e => setNewTaskCommitment(e.target.value)}
+                        style={{ flex: 1, padding: '0.5rem 0', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.8rem', outline: 'none' }} 
+                      />
+                    </div>
+                  </div>
+
+                  {/* Row 3: Time & Recurring */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', overflow: 'hidden' }}>
+                      <input 
+                        type={newTaskStartTime ? "time" : "text"} 
+                        placeholder="Start"
+                        value={newTaskStartTime} 
+                        onChange={e => {
+                          setNewTaskStartTime(e.target.value);
+                          if (e.target.value && newTaskEndTime) {
+                            const [sH, sM] = e.target.value.split(':').map(Number);
+                            const [eH, eM] = newTaskEndTime.split(':').map(Number);
+                            let diff = (eH * 60 + eM) - (sH * 60 + sM);
+                            if (diff < 0) diff += 24 * 60;
+                            setNewTaskEstimate(diff.toString());
+                          }
+                        }}
+                        onFocus={e => { e.target.type = "time"; try { e.target.showPicker() } catch(err){} }}
+                        onBlur={e => { if (!e.target.value) e.target.type = "text"; }}
+                        onClick={e => { e.currentTarget.type = "time"; try { e.currentTarget.showPicker() } catch(err){} }}
+                        style={{ padding: '0.45rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '85px', cursor: 'pointer', textAlign: 'center' }} 
+                        title="Start Time" 
+                      />
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 0.1rem' }}>→</span>
+                      <input 
+                        type={newTaskEndTime ? "time" : "text"} 
+                        placeholder="End"
+                        value={newTaskEndTime} 
+                        onChange={e => {
+                          setNewTaskEndTime(e.target.value);
+                          if (newTaskStartTime && e.target.value) {
+                            const [sH, sM] = newTaskStartTime.split(':').map(Number);
+                            const [eH, eM] = e.target.value.split(':').map(Number);
+                            let diff = (eH * 60 + eM) - (sH * 60 + sM);
+                            if (diff < 0) diff += 24 * 60;
+                            setNewTaskEstimate(diff.toString());
+                          }
+                        }} 
+                        onFocus={e => { e.target.type = "time"; try { e.target.showPicker() } catch(err){} }}
+                        onBlur={e => { if (!e.target.value) e.target.type = "text"; }}
+                        onClick={e => { e.currentTarget.type = "time"; try { e.currentTarget.showPicker() } catch(err){} }}
+                        style={{ padding: '0.45rem 0.5rem', background: 'transparent', border: 'none', color: '#fff', outline: 'none', fontSize: '0.82rem', width: '85px', cursor: 'pointer', textAlign: 'center' }} 
+                        title="End Time" 
+                      />
+                      <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.1)', margin: '0 0.2rem' }} />
+                      <div style={{ display: 'flex', alignItems: 'center', padding: '0 0.4rem', width: '70px' }}>
+                        <Timer size={13} color="rgba(255,255,255,0.5)" />
+                        <input 
+                          type="number" 
+                          value={newTaskEstimate} 
+                          onChange={e => setNewTaskEstimate(e.target.value)} 
+                          min="1" max="480" 
+                          style={{ width: '100%', padding: '0.45rem 0 0.45rem 0.3rem', background: 'transparent', border: 'none', color: '#fff', fontSize: '0.82rem', outline: 'none' }} 
+                          placeholder="min"
+                          title="Duration (mins)" 
+                        />
+                      </div>
+                    </div>
+                    
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowRecurrencePicker(!showRecurrencePicker)}
+                        style={{
+                          padding: '0.45rem 0.8rem',
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '8px',
+                          background: recurrenceRule.type !== 'once' ? 'rgba(165, 153, 255, 0.15)' : 'rgba(0,0,0,0.3)',
+                          color: recurrenceRule.type !== 'once' ? '#a599ff' : 'var(--text-muted)',
+                          cursor: 'pointer',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.4rem'
+                        }}
+                      >
+                        ↻ {recurrenceRule.type === 'once' ? 'Does not repeat' : recurrenceRule.type === 'custom' ? 'Custom Repeat' : `Repeats ${recurrenceRule.type}`}
+                      </button>
+
+                      <AnimatePresence>
+                        {showRecurrencePicker && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            style={{ overflow: 'hidden', marginTop: '0.5rem', minWidth: '220px' }}
+                          >
+                            <div style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                              {(['once', 'daily', 'weekly', 'monthly', 'custom'] as const).map(rt => (
+                                <button
+                                  key={rt}
+                                  type="button"
+                                  onClick={() => {
+                                    setRecurrenceRule(prev => ({ ...prev, type: rt, interval: rt === 'custom' ? prev.interval || 1 : undefined }));
+                                    if (rt !== 'custom' && rt !== 'weekly') setShowRecurrencePicker(false);
+                                  }}
+                                  style={{ padding: '0.5rem 0.75rem', textAlign: 'left', background: recurrenceRule.type === rt ? 'rgba(165, 153, 255, 0.15)' : 'transparent', color: recurrenceRule.type === rt ? '#a599ff' : 'var(--text-primary)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', textTransform: 'capitalize' }}
+                                >
+                                  {rt === 'once' ? 'Does not repeat' : rt}
+                                </button>
+                              ))}
+
+                              {/* Custom recurrence inline editor */}
+                              {recurrenceRule.type === 'custom' && (
+                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Every</span>
+                                    <input 
+                                      type="number" 
+                                      value={recurrenceRule.interval || 1} 
+                                      onChange={e => setRecurrenceRule(prev => ({ ...prev, interval: Math.max(1, parseInt(e.target.value) || 1) }))}
+                                      style={{ width: '40px', padding: '0.25rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '4px', textAlign: 'center', outline: 'none' }}
+                                    />
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>days</span>
+                                  </div>
+                                </div>
+                              )}
+                              
+                              {recurrenceRule.type === 'weekly' && (
+                                <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem', display: 'block' }}>Repeat on:</span>
+                                  <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                                    {[{id: 1, l: 'M'}, {id: 2, l: 'T'}, {id: 3, l: 'W'}, {id: 4, l: 'T'}, {id: 5, l: 'F'}, {id: 6, l: 'S'}, {id: 0, l: 'S'}].map(d => {
+                                      const active = (recurrenceRule.daysOfWeek || []).includes(d.id);
+                                      return (
+                                        <button
+                                          key={d.id}
+                                          type="button"
+                                          onClick={() => {
+                                            setRecurrenceRule(prev => {
+                                              const current = prev.daysOfWeek || [];
+                                              const updated = active ? current.filter(x => x !== d.id) : [...current, d.id];
+                                              return { ...prev, daysOfWeek: updated };
+                                            });
+                                          }}
+                                          style={{ width: '22px', height: '22px', borderRadius: '50%', background: active ? '#a599ff' : 'transparent', border: active ? 'none' : '1px solid rgba(255,255,255,0.2)', color: active ? '#000' : 'var(--text-muted)', fontSize: '0.65rem', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                        >
+                                          {d.l}
+                                        </button>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
 
                 </div>
@@ -706,6 +822,8 @@ export const TodoListModule = () => {
             )}
           </AnimatePresence>
         </motion.form>
+          )}
+        </AnimatePresence>
 
         <div className="todo-list" aria-live="polite">
           {isLoading ? (
@@ -721,6 +839,8 @@ export const TodoListModule = () => {
             <div className="empty-state" style={{ marginTop: '2rem' }}>
               No tasks match your criteria.
             </div>
+          ) : viewMode === 'timeline' ? (
+            <TimelineView tasks={todos} selectedDate={selectedDate} onTaskClick={setEditingTask} />
           ) : (
             <DragDropContext onDragEnd={onDragEnd}>
               <Droppable droppableId="todos">
@@ -923,15 +1043,120 @@ export const TodoListModule = () => {
         isOpen={!!editingTask} 
         onClose={() => setEditingTask(null)} 
         todo={editingTask} 
+        onUpdate={handleUpdateTask} 
       />
+
+      {/* Inbox & Overdue Modal */}
       <AnimatePresence>
-        {/*recoveryTask && (
-          <RecoveryPlannerModal task={recoveryTask} onClose={() => setRecoveryTask(null)} />
-        )*/}
-        {/*extensionTask && (
-          <ExtensionDraftModal task={extensionTask} onClose={() => setExtensionTask(null)} />
-        )*/}
+        {isInboxOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={(e) => e.target === e.currentTarget && setIsInboxOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 50, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }}
+              style={{ background: 'var(--bg-panel)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '1.5rem', width: '90%', maxWidth: '600px', maxHeight: '80vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 24px 48px rgba(0,0,0,0.5)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Inbox size={20} color="#a599ff" /> Inbox & Overdue</h2>
+                <button onClick={() => setIsInboxOpen(false)} className="btn-icon"><X size={20} /></button>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                {overdueTasks.length > 0 && (
+                  <div>
+                    <h3 style={{ color: '#ff6961', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Overdue Tasks</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {overdueTasks.map(t => (
+                        <div key={t.id} style={{ padding: '0.75rem', background: 'rgba(255,105,97,0.1)', border: '1px solid rgba(255,105,97,0.2)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.9rem' }}>{t.title}</span>
+                          <span style={{ fontSize: '0.75rem', color: '#ff6961' }}>{t.date}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {inboxTasks.length > 0 && (
+                  <div>
+                    <h3 style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>Unscheduled Inbox</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {inboxTasks.map(t => (
+                        <div key={t.id} style={{ padding: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.9rem' }}>{t.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {overdueTasks.length === 0 && inboxTasks.length === 0 && (
+                  <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem 0' }}>All clear! No overdue or inbox tasks.</p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
+
+      {/* Options Menu Popover */}
+      <AnimatePresence>
+        {isMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, zIndex: 9998 }}
+            onClick={() => setIsMenuOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: -10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9, y: -10 }}
+              style={{ position: 'absolute', top: '120px', right: '40px', background: '#1c1c1d', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', padding: '0.5rem', minWidth: '220px', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', zIndex: 9999 }}
+              onClick={e => e.stopPropagation()}
+            >
+              <button onClick={() => { setSortBy(sortBy === 'priority' ? 'default' : 'priority'); setIsMenuOpen(false); }} style={{ padding: '0.75rem 1rem', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '8px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}><Filter size={16} /> Sort by Priority</span>
+                {sortBy === 'priority' && <Check size={16} color="#a599ff" />}
+              </button>
+              <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)', margin: '0.25rem 0' }} />
+              <button onClick={() => { setIsBulkEdit(true); setIsMenuOpen(false); }} style={{ padding: '0.75rem 1rem', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderRadius: '8px' }}>
+                <ListChecks size={16} /> Select Multiple
+              </button>
+              <div style={{ height: '1px', background: 'rgba(255,255,255,0.05)', margin: '0.25rem 0' }} />
+              {/* Note: In this component, clearCompleted triggers showClearConfirm */}
+              <button onClick={() => { (window as any).setShowClearConfirm?.(true); setIsMenuOpen(false); }} style={{ padding: '0.75rem 1rem', textAlign: 'left', background: 'transparent', border: 'none', color: '#ff6961', cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderRadius: '8px' }}>
+                <Trash2 size={16} color="#ff6961" /> Clear Completed
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
+      {/* Time Spent Modal */}
+      <AnimatePresence>
+        {isTimeLogOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onClick={(e) => e.target === e.currentTarget && setIsTimeLogOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 50, opacity: 0, scale: 0.95 }} animate={{ y: 0, opacity: 1, scale: 1 }} exit={{ y: 20, opacity: 0, scale: 0.95 }}
+              style={{ background: 'var(--bg-panel)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', padding: '1.5rem', width: '90%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 24px 48px rgba(0,0,0,0.5)' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Timer size={20} color="#a599ff" /> Time Spent</h2>
+                <button onClick={() => setIsTimeLogOpen(false)} className="btn-icon"><X size={20} /></button>
+              </div>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: 0 }}>
+                Total estimated time today: <strong>{formatHoursDisplay(todos.reduce((a, t) => a + (t.estimatedMinutes || 0), 0) / 60)}</strong>
+              </p>
+              <div style={{ padding: '1rem', background: 'rgba(165,153,255,0.1)', border: '1px solid rgba(165,153,255,0.2)', borderRadius: '8px', textAlign: 'center', marginTop: '1rem' }}>
+                <h3 style={{ margin: '0 0 0.5rem 0', color: '#a599ff', fontSize: '1.5rem' }}>Coming Soon</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: 0 }}>Detailed time tracking and manual logs will be available here.</p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };

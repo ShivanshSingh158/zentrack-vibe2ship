@@ -57,13 +57,13 @@ const SEVERITY_CONFIG = {
     badgeStyle: { background: 'rgba(234,179,8,0.15)', color: '#fef08a' },
   },
   info: {
-    border: 'rgba(59, 130, 246, 0.35)',
-    bg: 'rgba(59, 130, 246, 0.04)',
-    iconBg: 'rgba(59, 130, 246, 0.12)',
-    iconColor: '#3b82f6',
+    border: 'rgba(165, 153, 255, 0.35)',
+    bg: 'rgba(165, 153, 255, 0.04)',
+    iconBg: 'rgba(165, 153, 255, 0.12)',
+    iconColor: '#a599ff',
     label: 'INFO',
-    labelColor: '#60a5fa',
-    badgeStyle: { background: 'rgba(59,130,246,0.15)', color: '#93c5fd' },
+    labelColor: '#b8afff',
+    badgeStyle: { background: 'rgba(165,153,255,0.15)', color: '#93c5fd' },
   },
 };
 

@@ -455,11 +455,11 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
             </div>
             
             {/* Universal Link Bulker Collapsible */}
-            <details style={{ background: 'rgba(59,130,246,0.05)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: '8px', padding: '0.75rem' }}>
-              <summary style={{ fontSize: '0.8rem', color: '#3b82f6', fontWeight: 600, cursor: 'pointer', outline: 'none' }}>+ Bulk Universal Links (Articles, Videos)</summary>
+            <details style={{ background: 'rgba(165,153,255,0.05)', border: '1px solid rgba(165,153,255,0.2)', borderRadius: '8px', padding: '0.75rem' }}>
+              <summary style={{ fontSize: '0.8rem', color: '#a599ff', fontWeight: 600, cursor: 'pointer', outline: 'none' }}>+ Bulk Universal Links (Articles, Videos)</summary>
               <div style={{ marginTop: '0.75rem' }}>
                 <textarea placeholder="Paste links here..." value={bulkText} onChange={e => setBulkText(e.target.value)} style={{ width: '100%', padding: '0.6rem', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '6px', minHeight: '80px', outline: 'none', fontSize: '0.8rem', resize: 'vertical' }} />
-                <button onClick={handleBulkImport} disabled={fetchingBulk || !bulkText} style={{ width: '100%', padding: '0.6rem', marginTop: '0.5rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: bulkText ? 'pointer' : 'not-allowed' }}>
+                <button onClick={handleBulkImport} disabled={fetchingBulk || !bulkText} style={{ width: '100%', padding: '0.6rem', marginTop: '0.5rem', background: '#a599ff', color: '#fff', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: bulkText ? 'pointer' : 'not-allowed' }}>
                   {fetchingBulk ? 'Processing...' : 'Add Links'}
                 </button>
               </div>
@@ -525,7 +525,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
                               
                               {/* Inline Preview Play Button */}
                               {v.videoId && (
-                                <button onClick={(e) => { e.stopPropagation(); setPreviewVideoId(v.videoId); }} style={{ background: 'none', border: 'none', color: '#3b82f6', padding: '0.1rem', cursor: 'pointer', opacity: 0.8, flexShrink: 0 }} title="Preview Video">
+                                <button onClick={(e) => { e.stopPropagation(); setPreviewVideoId(v.videoId); }} style={{ background: 'none', border: 'none', color: '#a599ff', padding: '0.1rem', cursor: 'pointer', opacity: 0.8, flexShrink: 0 }} title="Preview Video">
                                   <Play size={13} />
                                 </button>
                               )}
@@ -548,7 +548,7 @@ export const CurriculumBuilderModal = ({ onClose, onPublish }: {
           <div style={{ background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.2)', padding: '1rem', borderRadius: '12px' }}>
             <p style={{ fontSize: '0.75rem', color: '#818cf8', marginBottom: '0.75rem', textAlign: 'center' }}>{selectedVideoIds.size} items selected</p>
             
-            <button onClick={createTopicFromSelected} disabled={selectedVideoIds.size === 0} style={{ width: '100%', padding: '0.65rem', background: selectedVideoIds.size > 0 ? '#3b82f6' : 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: selectedVideoIds.size > 0 ? 'pointer' : 'not-allowed', marginBottom: '0.5rem', fontSize: '0.8rem' }}>
+            <button onClick={createTopicFromSelected} disabled={selectedVideoIds.size === 0} style={{ width: '100%', padding: '0.65rem', background: selectedVideoIds.size > 0 ? '#a599ff' : 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: 600, cursor: selectedVideoIds.size > 0 ? 'pointer' : 'not-allowed', marginBottom: '0.5rem', fontSize: '0.8rem' }}>
               Create New Topic
             </button>
             

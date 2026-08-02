@@ -623,7 +623,7 @@
   color: #fff;
 }
 
-.app-icon.doc { background: #3b82f6; }
+.app-icon.doc { background: #a599ff; }
 .app-icon.mail { background: #ef4444; }
 .app-icon.cal { background: #fbbf24; }
 
@@ -776,13 +776,13 @@
   position: absolute;
   top: 50%; left: 50%; transform: translate(-50%, -50%);
   width: 0; height: 0;
-  border: 1px solid #3b82f6;
+  border: 1px solid #a599ff;
   border-radius: 50%;
   animation: radar-ping 1.5s ease-out infinite;
 }
 .coach-anim .radar-wave:nth-child(2) { animation-delay: 0.75s; }
 @keyframes radar-ping {
-  to { width: 50px; height: 50px; opacity: 0; border-width: 4px; box-shadow: 0 0 10px #3b82f6 inset; }
+  to { width: 50px; height: 50px; opacity: 0; border-width: 4px; box-shadow: 0 0 10px #a599ff inset; }
 }
 
 /* HABIT: Progress Ring */

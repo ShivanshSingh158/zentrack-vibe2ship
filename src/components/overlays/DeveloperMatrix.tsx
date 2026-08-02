@@ -93,7 +93,7 @@ export const DeveloperMatrix: React.FC<{ onClose: () => void }> = ({ onClose }) 
               <div key={log.id} style={{ fontSize: '0.8rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                   <span style={{ 
-                    color: log.method === 'GET' ? '#3b82f6' : log.method === 'POST' ? '#10b981' : log.method === 'DELETE' ? '#ef4444' : '#f59e0b',
+                    color: log.method === 'GET' ? '#a599ff' : log.method === 'POST' ? '#10b981' : log.method === 'DELETE' ? '#ef4444' : '#f59e0b',
                     fontWeight: 700
                   }}>
                     {log.method}

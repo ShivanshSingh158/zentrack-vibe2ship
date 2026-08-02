@@ -109,7 +109,7 @@ export function SnoozeInterventionDialog({ onAgentCommand }: Props) {
       label: 'Email supervisor for extension',
       action: 'draft_extension_email',
       icon: <Mail size={20} />,
-      color: '#3b82f6',
+      color: '#a599ff',
     },
     {
       id: 'delete',
@@ -255,8 +255,8 @@ export function SnoozeInterventionDialog({ onAgentCommand }: Props) {
                 disabled={isLoading !== null}
                 style={{
                   background: isLoading === option.id
-                    ? `rgba(${option.color === '#a855f7' ? '168,85,247' : option.color === '#3b82f6' ? '59,130,246' : '239,68,68'}, 0.25)`
-                    : `rgba(${option.color === '#a855f7' ? '168,85,247' : option.color === '#3b82f6' ? '59,130,246' : '239,68,68'}, 0.08)`,
+                    ? `rgba(${option.color === '#a855f7' ? '168,85,247' : option.color === '#a599ff' ? '165,153,255' : '239,68,68'}, 0.25)`
+                    : `rgba(${option.color === '#a855f7' ? '168,85,247' : option.color === '#a599ff' ? '165,153,255' : '239,68,68'}, 0.08)`,
                   border: `1px solid ${option.color}40`,
                   borderRadius: '12px',
                   padding: '0.875rem 1.25rem',
@@ -272,14 +272,14 @@ export function SnoozeInterventionDialog({ onAgentCommand }: Props) {
                 }}
                 onMouseEnter={(e) => {
                   if (!isLoading) {
-                    (e.currentTarget as HTMLElement).style.background = `rgba(${option.color === '#a855f7' ? '168,85,247' : option.color === '#3b82f6' ? '59,130,246' : '239,68,68'}, 0.18)`;
+                    (e.currentTarget as HTMLElement).style.background = `rgba(${option.color === '#a855f7' ? '168,85,247' : option.color === '#a599ff' ? '165,153,255' : '239,68,68'}, 0.18)`;
                     (e.currentTarget as HTMLElement).style.borderColor = `${option.color}80`;
                     (e.currentTarget as HTMLElement).style.transform = 'translateX(4px)';
                   }
                 }}
                 onMouseLeave={(e) => {
                   if (!isLoading) {
-                    (e.currentTarget as HTMLElement).style.background = `rgba(${option.color === '#a855f7' ? '168,85,247' : option.color === '#3b82f6' ? '59,130,246' : '239,68,68'}, 0.08)`;
+                    (e.currentTarget as HTMLElement).style.background = `rgba(${option.color === '#a855f7' ? '168,85,247' : option.color === '#a599ff' ? '165,153,255' : '239,68,68'}, 0.08)`;
                     (e.currentTarget as HTMLElement).style.borderColor = `${option.color}40`;
                     (e.currentTarget as HTMLElement).style.transform = 'translateX(0)';
                   }

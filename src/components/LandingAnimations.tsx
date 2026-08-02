@@ -82,7 +82,7 @@ export const ProactiveAgentAnimation: React.FC = () => {
                     <span style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.25)' }}>{ev.time}</span>
                     {isCurrent && (
                       <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1, repeat: Infinity }}
-                        style={{ fontSize: '0.58rem', color: '#60a5fa', background: 'rgba(96,165,250,0.1)', padding: '1px 6px', borderRadius: 999 }}>processing…</motion.span>
+                        style={{ fontSize: '0.58rem', color: '#b8afff', background: 'rgba(96,165,250,0.1)', padding: '1px 6px', borderRadius: 999 }}>processing…</motion.span>
                     )}
                   </div>
                   <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.85)', marginBottom: 2 }}>{ev.event}</div>
@@ -103,7 +103,7 @@ export const ProactiveAgentAnimation: React.FC = () => {
 
       {/* Metrics */}
       <div style={{ display: 'flex', gap: '0.5rem' }}>
-        {[{ v: '12', l: 'Triggered Today', c: '#a78bfa' }, { v: '2.4h', l: 'Time Saved', c: '#60a5fa' }, { v: '31', l: 'Actions Taken', c: '#34d399' }].map((m, i) => (
+        {[{ v: '12', l: 'Triggered Today', c: '#a78bfa' }, { v: '2.4h', l: 'Time Saved', c: '#b8afff' }, { v: '31', l: 'Actions Taken', c: '#34d399' }].map((m, i) => (
           <div key={i} className="liquid-glass" style={{ flex: 1, borderRadius: '0.75rem', border: '1px solid rgba(255,255,255,0.07)', padding: '0.65rem 0.5rem', textAlign: 'center' }}>
             <div style={{ fontSize: '1.15rem', fontWeight: 700, color: m.c, fontFamily: 'monospace', lineHeight: 1 }}>{m.v}</div>
             <div style={{ fontSize: '0.58rem', color: 'rgba(255,255,255,0.3)', marginTop: 3 }}>{m.l}</div>
@@ -226,7 +226,7 @@ const COLUMNS = [
     { title: 'Prepare Q3 slides', from: 'Gmail',    priority: 'P1', score: 94 },
     { title: 'Review PRD doc',    from: 'Docs',     priority: 'P2', score: 71 },
   ]},
-  { label: 'In Progress', color: '#60a5fa', tasks: [
+  { label: 'In Progress', color: '#b8afff', tasks: [
     { title: 'Team standup prep',    from: 'Calendar', priority: 'P1', score: 88 },
     { title: 'Update habit tracker', from: 'Tasks',    priority: 'P3', score: 42 },
   ]},
@@ -312,7 +312,7 @@ export const SmartTasksAnimation: React.FC = () => {
 
 const HABITS = [
   { name: 'Deep Work',    emoji: '🧠', streak: 12, week: [1,1,1,1,1,0,1], color: '#a78bfa' },
-  { name: 'Morning Run',  emoji: '🏃', streak: 7,  week: [1,1,0,1,1,1,1], color: '#60a5fa' },
+  { name: 'Morning Run',  emoji: '🏃', streak: 7,  week: [1,1,0,1,1,1,1], color: '#b8afff' },
   { name: 'Reading',      emoji: '📚', streak: 21, week: [1,1,1,1,1,1,1], color: '#34d399' },
   { name: 'Meditation',   emoji: '🧘', streak: 5,  week: [0,1,1,1,1,0,1], color: '#f9a8d4' },
 ];
@@ -414,7 +414,7 @@ export const FlowStateAnimation: React.FC = () => {
 ══════════════════════════════════════════════════════════════════════════════ */
 
 const MODULES = [
-  { title: 'TypeScript Mastery',     icon: '⚡', progress: 68, time: '14 min left', color: '#60a5fa', tag: 'Dev'      },
+  { title: 'TypeScript Mastery',     icon: '⚡', progress: 68, time: '14 min left', color: '#b8afff', tag: 'Dev'      },
   { title: 'Morning Routine Ritual', icon: '🌅', progress: 85, time: '6 min left',  color: '#f9a8d4', tag: 'Wellness' },
   { title: 'Deep Work Principles',   icon: '🧠', progress: 41, time: '22 min left', color: '#a78bfa', tag: 'Mindset'  },
 ];
@@ -502,7 +502,7 @@ const CONSOLE_LINES = [
 
 const ANALYTICS = [
   { label: 'Tasks Automated', value: '47', delta: '+8 today',     color: '#a78bfa' },
-  { label: 'Focus Hours',     value: '6.2h', delta: '+1.4h avg',  color: '#60a5fa' },
+  { label: 'Focus Hours',     value: '6.2h', delta: '+1.4h avg',  color: '#b8afff' },
   { label: 'Habit Score',     value: '94%', delta: '↑3% this wk', color: '#34d399' },
   { label: 'Emails Triaged',  value: '23', delta: '0 manual',     color: '#f9a8d4' },
 ];

@@ -61,7 +61,7 @@ export const AGENT_DETAILS: Record<string, AgentDetail> = {
     title: 'Synthesis Engine',
     tagline: 'Document analysis, markdown compiler & layout architect',
     color: '#06b6d4',
-    secondaryColor: '#3b82f6',
+    secondaryColor: '#a599ff',
     description: 'Generates reports, parses document structures, reads PDF/DOCX contents, and compiles output markdown.',
     image: '/agents/docs.png',
     icon: '📄',
@@ -90,7 +90,7 @@ export const AGENT_DETAILS: Record<string, AgentDetail> = {
   CHRONOS: {
     title: 'Chronos Coordinator',
     tagline: 'Calendar orchestration, meeting books & time slot checks',
-    color: '#60a5fa',
+    color: '#b8afff',
     secondaryColor: '#6366f1',
     description: 'Queries Google Calendar, books events, resolves schedule conflicts, and notifies deadlines.',
     image: '/agents/scheduler.png',
@@ -100,7 +100,7 @@ export const AGENT_DETAILS: Record<string, AgentDetail> = {
   ARCHIVE: {
     title: 'Aether Storage Sentry',
     tagline: 'Google Drive explorer, folder compiler & file tracker',
-    color: '#3b82f6',
+    color: '#a599ff',
     secondaryColor: '#1d4ed8',
     description: 'Navigates and searches Google Drive structures, tracks folders, downloads files, and uploads results.',
     image: '/agents/drive.png',

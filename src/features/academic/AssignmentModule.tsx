@@ -13,7 +13,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 const STATUS_CONFIG = {
   not_started: { label: 'Not Started', color: '#6b7280', bg: 'rgba(107,114,128,0.1)', icon: Clock },
   in_progress: { label: 'In Progress', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', icon: Edit2 },
-  submitted: { label: 'Submitted', color: '#3b82f6', bg: 'rgba(59,130,246,0.1)', icon: FileText },
+  submitted: { label: 'Submitted', color: '#a599ff', bg: 'rgba(165,153,255,0.1)', icon: FileText },
   graded: { label: 'Graded', color: '#10b981', bg: 'rgba(16,185,129,0.1)', icon: Check },
 };
 

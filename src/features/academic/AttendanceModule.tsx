@@ -212,10 +212,15 @@ export const AttendanceModule = () => {
 
   const todayScheduledSubjects = useMemo(() =>
     subjects.filter(s => {
-      const sch = s.schedule?.[selectedDayOfWeek];
-      return sch && (sch.classCount > 0 || sch.labCount > 0);
+      const sch = s.schedule?.[selectedDayOfWeek] || s.schedule?.[Number(selectedDayOfWeek)] || s.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || s.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
+      return sch && (
+        (sch.classes && sch.classes.length > 0) || 
+        (sch.labs && sch.labs.length > 0) ||
+        sch.classCount > 0 || 
+        sch.labCount > 0
+      );
     }),
-    [subjects, selectedDayOfWeek],
+    [subjects, selectedDayOfWeek, selectedDate],
   );
 
 
@@ -330,7 +335,20 @@ export const AttendanceModule = () => {
       if (!sub) return;
       const newSchedule = { ...sub.schedule };
       if (!newSchedule[dayIdx]) newSchedule[dayIdx] = { classCount: 0, labCount: 0 };
-      newSchedule[dayIdx] = { ...newSchedule[dayIdx], [field]: Math.max(0, value) };
+      
+      const arrField = field === 'classCount' ? 'classes' : 'labs';
+      const currentArr = newSchedule[dayIdx][arrField] || [];
+      const newValue = Math.max(0, value);
+      
+      let newArr = [...currentArr];
+      if (newValue > newArr.length) {
+        newArr = [...newArr, ...Array.from({ length: newValue - newArr.length }).map(() => ({}))];
+      } else if (newValue < newArr.length) {
+        newArr = newArr.slice(0, newValue);
+      }
+
+      newSchedule[dayIdx] = { ...newSchedule[dayIdx], [field]: newValue, [arrField]: newArr };
+      
       try {
         await updateDoc(doc(db, 'attendance_subjects', subId), { schedule: newSchedule });
       } catch (err: any) { toast.error(`Schedule update failed: ${err.message}`); }
@@ -409,7 +427,7 @@ export const AttendanceModule = () => {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="page-pad">
+    <div className="page-pad" style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column' }}>
 
       {/* ── Header ── */}
       <div className="page-header" style={{ marginBottom: '0.75rem' }}>
@@ -513,11 +531,11 @@ export const AttendanceModule = () => {
         {weekDates.map((date, i) => {
           const daySubjScheduled = subjects.filter(s => {
             const sch = s.schedule?.[i.toString()];
-            return sch && (sch.classCount > 0 || sch.labCount > 0);
+            return sch && ((sch.classes && sch.classes.length > 0) || (sch.labs && sch.labs.length > 0) || sch.classCount > 0 || sch.labCount > 0);
           });
           const totalSessions = daySubjScheduled.reduce((sum, s) => {
             const sch = s.schedule?.[i.toString()];
-            return sum + (sch?.classCount || 0) + (sch?.labCount || 0);
+            return sum + (sch?.classes?.length || sch?.classCount || 0) + (sch?.labs?.length || sch?.labCount || 0);
           }, 0);
           const dayLogs   = logs.filter(l => l.date === date && !l.isExtra);
           const isHol     = holidays.includes(date);
@@ -605,14 +623,14 @@ export const AttendanceModule = () => {
       </div>
 
       {isSelectedHoliday ? (
-        <div style={{ padding: '3rem 2rem', background: 'rgba(16,185,129,0.05)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '300px', padding: '3rem 2rem', background: 'rgba(16,185,129,0.05)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
           <Palmtree size={44} style={{ color: '#10b981', margin: '0 auto 0.85rem', opacity: 0.85 }} />
           <h3 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '0.4rem' }}>Holiday / Leave</h3>
           <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>This day is marked as a holiday.</p>
           <button className="btn-secondary" onClick={handleToggleHoliday} style={{ color: '#ef4444' }}>Remove Holiday Mark</button>
         </div>
       ) : todayScheduledSubjects.length === 0 ? (
-        <div style={{ padding: '3rem 2rem', background: 'rgba(16,185,129,0.05)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '300px', padding: '3rem 2rem', background: 'rgba(16,185,129,0.05)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
           <Palmtree size={44} style={{ color: '#10b981', margin: '0 auto 0.85rem', opacity: 0.85 }} />
           <h3 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '0.4rem' }}>No classes scheduled!</h3>
           <p style={{ color: 'var(--text-muted)' }}>Enjoy your free time. Set up your timetable to see classes here.</p>
@@ -625,21 +643,23 @@ export const AttendanceModule = () => {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: '1.25rem' }}>
           {todayScheduledSubjects.map(subject => {
-            const sch             = subject.schedule[selectedDayOfWeek];
+            const sch             = subject.schedule?.[selectedDayOfWeek] || subject.schedule?.[Number(selectedDayOfWeek)] || subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()] || { classCount: 0, labCount: 0 };
             const subLogs         = logsBySubjectId[subject.id!] || [];
             const classLogsToday  = subLogs.filter(l => l.date === selectedDate && !l.isExtra && (l.type === 'class' || !l.type)).sort((a: any, b: any) => a.timestamp - b.timestamp);
             const labLogsToday    = subLogs.filter(l => l.date === selectedDate && !l.isExtra && l.type === 'lab').sort((a: any, b: any) => a.timestamp - b.timestamp);
             const recentLogs      = subLogs.slice(0, 5);
             const classStatus     = calculateStatus(subject.classesAttended, subject.classesTotal, subject.targetPercentage);
             const labStatus       = calculateStatus(subject.labsAttended,    subject.labsTotal,    subject.targetPercentage);
-            const totalSessions   = (sch?.classCount || 0) + (sch?.labCount || 0);
+            const classCount      = sch.classes?.length || sch.classCount || 0;
+            const labCount        = sch.labs?.length || sch.labCount || 0;
+            const totalSessions   = classCount + labCount;
             const totalLogged     = classLogsToday.length + labLogsToday.length;
             const isDoneForToday  = totalSessions > 0 && totalLogged >= totalSessions;
 
             // Desktop projection (uses a rough 12-week estimate for remaining semester)
             const totalAtt       = (subject.classesAttended || 0) + (subject.labsAttended || 0);
             const totalCls       = (subject.classesTotal    || 0) + (subject.labsTotal    || 0);
-            const sessPerWeek    = Object.values(subject.schedule || {}).reduce((s, d) => s + d.classCount + d.labCount, 0);
+            const sessPerWeek    = Object.values(subject.schedule || {}).reduce((s: any, d: any) => s + (d?.classes?.length || d?.classCount || 0) + (d?.labs?.length || d?.labCount || 0), 0);
             const weeksLeft      = 12;
             const remaining      = sessPerWeek * weeksLeft;
             const bestCase       = totalCls + remaining > 0 ? Math.round(((totalAtt + remaining) / (totalCls + remaining)) * 100) : 0;
@@ -650,126 +670,104 @@ export const AttendanceModule = () => {
               <div key={subject.id} style={{
                 background: 'var(--bg-surface)',
                 border: `1px solid ${isDoneForToday ? 'rgba(16,185,129,0.35)' : 'var(--border-subtle)'}`,
-                borderRadius: 'var(--radius-lg)', overflow: 'hidden', display: 'flex', flexDirection: 'column',
+                borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem',
                 boxShadow: isDoneForToday ? '0 0 0 1px rgba(16,185,129,0.12)' : 'none',
                 transition: 'border-color 0.3s, box-shadow 0.3s',
               }}>
-                {/* Card Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.7rem 1rem', borderBottom: '1px solid var(--border-subtle)', background: isDoneForToday ? 'rgba(16,185,129,0.05)' : 'rgba(0,0,0,0.1)' }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.97rem' }}>{subject.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
-                    {isDoneForToday && (
-                      <span style={{ fontSize: '0.67rem', fontWeight: 700, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '0.12rem 0.45rem', borderRadius: '5px', border: '1px solid rgba(16,185,129,0.3)' }}>✓ Done today</span>
-                    )}
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Target: {target}%</span>
+                {/* Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>{subject.name}</h3>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                      Target: {target}% &nbsp;•&nbsp; Attend all: <span style={{ color: bestCase >= target ? '#10b981' : '#ef4444' }}>{bestCase}%</span> &nbsp;•&nbsp; Miss all: <span style={{ color: worstCase >= target ? '#10b981' : '#ef4444' }}>{worstCase}%</span>
+                    </div>
                   </div>
+                  {isDoneForToday && (
+                    <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '0.15rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.3)' }}>✓ Done</span>
+                  )}
                 </div>
 
-                {/* Classes Section */}
-                {sch.classCount > 0 && (
-                  <div style={{ padding: '0.7rem 1rem', display: 'flex', flexWrap: 'wrap', gap: '0.85rem', alignItems: 'flex-start', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <div style={{ flex: '1 1 105px' }}>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.1rem' }}>Classes ({sch.classCount})</div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
-                        <span style={{ fontSize: '1.25rem', fontFamily: 'var(--font-display)', fontWeight: 700, color: classStatus.safe ? '#10b981' : '#ef4444' }}>{Math.round(classStatus.pct)}%</span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({subject.classesAttended || 0}/{subject.classesTotal || 0})</span>
+                {/* Progress Bars Row */}
+                <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.75rem' }}>
+                  {classCount > 0 && (
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem', alignItems: 'baseline' }}>
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.7rem' }}>CLASSES <strong style={{ color: classStatus.safe ? '#10b981' : '#ef4444' }}>{Math.round(classStatus.pct)}%</strong></span>
+                        <span style={{ color: getProgressColor(classStatus.urgency), fontSize: '0.65rem' }}>{classStatus.bunkInfo}</span>
                       </div>
-                      <div style={{ margin: '0.28rem 0', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', borderRadius: '2px', width: `${Math.min(100, classStatus.pct)}%`, background: getProgressColor(classStatus.urgency), transition: 'width 0.5s ease' }} />
+                      <div style={{ height: '4px', background: 'rgba(255,255,255,0.07)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${Math.min(100, classStatus.pct)}%`, background: getProgressColor(classStatus.urgency), borderRadius: '2px', transition: 'width 0.5s ease' }} />
                       </div>
-                      <div style={{ fontSize: '0.66rem', fontWeight: 500, color: getProgressColor(classStatus.urgency) }}>{classStatus.bunkInfo}</div>
-                    </div>
-                    <div style={{ flex: '2 1 190px', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                      {Array.from({ length: sch.classCount }).map((_, idx) => {
-                        const logForSession = classLogsToday[idx];
-                        return (
-                          <div key={`class-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-base)', padding: '0.38rem 0.55rem', borderRadius: 'var(--radius-md)', flexWrap: 'wrap', gap: '0.35rem' }}>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 500 }}>Class {idx + 1}</span>
-                            {logForSession ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                <span style={{ fontSize: '0.72rem', color: logForSession.action === 'attended' ? '#10b981' : '#ef4444', fontWeight: 600 }}>{logForSession.action === 'attended' ? '✓ Attended' : '✗ Missed'}</span>
-                                <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{new Date(logForSession.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                <button onClick={() => handleUndo(logForSession.id)} className="btn-secondary" style={{ padding: '0.1rem 0.25rem', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}><RotateCcw size={9} /> Undo</button>
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', gap: '0.3rem' }}>
-                                <button onClick={() => handleLog(subject, 'class', 'attended')} className="btn-secondary btn-sm btn-success-outline" style={{ padding: '0.22rem 0.45rem', fontSize: '0.72rem' }}><Check size={11} /> Attended</button>
-                                <button onClick={() => handleLog(subject, 'class', 'missed')}   className="btn-secondary btn-sm btn-danger-outline"  style={{ padding: '0.22rem 0.45rem', fontSize: '0.72rem' }}><X     size={11} /> Missed</button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Labs Section */}
-                {sch.labCount > 0 && (
-                  <div style={{ padding: '0.7rem 1rem', display: 'flex', flexWrap: 'wrap', gap: '0.85rem', alignItems: 'flex-start', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <div style={{ flex: '1 1 105px' }}>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600, marginBottom: '0.1rem' }}>Labs ({sch.labCount})</div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem' }}>
-                        <span style={{ fontSize: '1.25rem', fontFamily: 'var(--font-display)', fontWeight: 700, color: labStatus.safe ? '#10b981' : '#ef4444' }}>{Math.round(labStatus.pct)}%</span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>({subject.labsAttended || 0}/{subject.labsTotal || 0})</span>
-                      </div>
-                      <div style={{ margin: '0.28rem 0', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', borderRadius: '2px', width: `${Math.min(100, labStatus.pct)}%`, background: getProgressColor(labStatus.urgency), transition: 'width 0.5s ease' }} />
-                      </div>
-                      <div style={{ fontSize: '0.66rem', fontWeight: 500, color: getProgressColor(labStatus.urgency) }}>{labStatus.bunkInfo}</div>
-                    </div>
-                    <div style={{ flex: '2 1 190px', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                      {Array.from({ length: sch.labCount }).map((_, idx) => {
-                        const logForSession = labLogsToday[idx];
-                        return (
-                          <div key={`lab-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-base)', padding: '0.38rem 0.55rem', borderRadius: 'var(--radius-md)', flexWrap: 'wrap', gap: '0.35rem' }}>
-                            <span style={{ fontSize: '0.78rem', fontWeight: 500 }}>Lab {idx + 1}</span>
-                            {logForSession ? (
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                <span style={{ fontSize: '0.72rem', color: logForSession.action === 'attended' ? '#10b981' : '#ef4444', fontWeight: 600 }}>{logForSession.action === 'attended' ? '✓ Attended' : '✗ Missed'}</span>
-                                <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{new Date(logForSession.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                <button onClick={() => handleUndo(logForSession.id)} className="btn-secondary" style={{ padding: '0.1rem 0.25rem', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}><RotateCcw size={9} /> Undo</button>
-                              </div>
-                            ) : (
-                              <div style={{ display: 'flex', gap: '0.3rem' }}>
-                                <button onClick={() => handleLog(subject, 'lab', 'attended')} className="btn-secondary btn-sm btn-success-outline" style={{ padding: '0.22rem 0.45rem', fontSize: '0.72rem' }}><Check size={11} /> Attended</button>
-                                <button onClick={() => handleLog(subject, 'lab', 'missed')}   className="btn-secondary btn-sm btn-danger-outline"  style={{ padding: '0.22rem 0.45rem', fontSize: '0.72rem' }}><X     size={11} /> Missed</button>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* Desktop-only Semester Projection */}
-                <div className="att-desktop-only" style={{ padding: '0.45rem 1rem', background: 'rgba(0,0,0,0.06)', borderBottom: '1px solid var(--border-subtle)', fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', gap: '1.25rem' }}>
-                  <span>📈 Attend all: <strong style={{ color: bestCase  >= target ? '#10b981' : '#ef4444' }}>{bestCase}%</strong></span>
-                  <span>📉 Miss all:   <strong style={{ color: worstCase >= target ? '#10b981' : '#ef4444' }}>{worstCase}%</strong></span>
-                  <span style={{ opacity: 0.5 }}>~{weeksLeft} wks left</span>
-                </div>
-
-                {/* Recent Logs */}
-                <div style={{ padding: '0.6rem 1rem', background: 'rgba(0,0,0,0.05)' }}>
-                  <div style={{ fontSize: '0.67rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.35rem', letterSpacing: '0.04em' }}>RECENT</div>
-                  {recentLogs.length === 0 ? (
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>No logs yet.</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.28rem' }}>
-                      {recentLogs.map(log => (
-                        <div key={`recent-${log.id}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.7rem' }}>
-                          <span style={{ color: log.action === 'attended' ? '#10b981' : '#ef4444' }}>
-                            {log.action === 'attended' ? '✓' : '✗'} {log.type || 'class'}{log.isExtra ? ' (Extra)' : ''}
-                          </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <span style={{ color: 'var(--text-muted)' }}>{formatDisplayDate(log.date)}</span>
-                            <button onClick={() => handleUndo(log.id)} className="btn-icon" style={{ padding: '0.08rem' }}><RotateCcw size={9} /></button>
-                          </div>
-                        </div>
-                      ))}
                     </div>
                   )}
+                  {labCount > 0 && (
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem', alignItems: 'baseline' }}>
+                        <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.7rem' }}>LABS <strong style={{ color: labStatus.safe ? '#10b981' : '#ef4444' }}>{Math.round(labStatus.pct)}%</strong></span>
+                        <span style={{ color: getProgressColor(labStatus.urgency), fontSize: '0.65rem' }}>{labStatus.bunkInfo}</span>
+                      </div>
+                      <div style={{ height: '4px', background: 'rgba(255,255,255,0.07)', borderRadius: '2px', overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${Math.min(100, labStatus.pct)}%`, background: getProgressColor(labStatus.urgency), borderRadius: '2px', transition: 'width 0.5s ease' }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Today's Schedule Time Slots */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.25rem' }}>
+                  {/* Class Slots */}
+                  {Array.from({ length: classCount }).map((_, idx) => {
+                    const session = sch.classes?.[idx];
+                    const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Class ${idx + 1}`;
+                    const logForSession = classLogsToday[idx];
+                    return (
+                      <div key={`class-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.4rem 0.6rem', borderRadius: '8px', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-primary)' }}>{timeStr}</span>
+                        {logForSession ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.72rem', color: logForSession.action === 'attended' ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                              {logForSession.action === 'attended' ? '✓ Attended' : '✗ Missed'}
+                            </span>
+                            <button onClick={() => handleUndo(logForSession.id)} className="btn-secondary" style={{ padding: '0.1rem 0.3rem', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
+                              <RotateCcw size={10} /> Undo
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            <button onClick={() => handleLog(subject, 'class', 'attended')} className="btn-secondary btn-sm btn-success-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}><Check size={12} /> Attended</button>
+                            <button onClick={() => handleLog(subject, 'class', 'missed')} className="btn-secondary btn-sm btn-danger-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}><X size={12} /> Missed</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Lab Slots */}
+                  {Array.from({ length: labCount }).map((_, idx) => {
+                    const session = sch.labs?.[idx];
+                    const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Lab ${idx + 1}`;
+                    const logForSession = labLogsToday[idx];
+                    return (
+                      <div key={`lab-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.4rem 0.6rem', borderRadius: '8px', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-primary)' }}><strong style={{color: 'var(--accent-primary)', fontSize: '0.7rem', textTransform: 'uppercase'}}>Lab</strong> &nbsp;{timeStr}</span>
+                        {logForSession ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <span style={{ fontSize: '0.72rem', color: logForSession.action === 'attended' ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                              {logForSession.action === 'attended' ? '✓ Attended' : '✗ Missed'}
+                            </span>
+                            <button onClick={() => handleUndo(logForSession.id)} className="btn-secondary" style={{ padding: '0.1rem 0.3rem', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
+                              <RotateCcw size={10} /> Undo
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '0.35rem' }}>
+                            <button onClick={() => handleLog(subject, 'lab', 'attended')} className="btn-secondary btn-sm btn-success-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}><Check size={12} /> Attended</button>
+                            <button onClick={() => handleLog(subject, 'lab', 'missed')} className="btn-secondary btn-sm btn-danger-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}><X size={12} /> Missed</button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -868,14 +866,18 @@ export const AttendanceModule = () => {
                         {(['classCount', 'labCount'] as const).map(field => (
                           <tr key={field}>
                             <td style={{ padding: '0.25rem', fontWeight: 600, textAlign: 'left', fontSize: '0.75rem' }}>{field === 'classCount' ? 'Classes' : 'Labs'}</td>
-                            {Object.keys(defaultSchedule).map(dayIdx => (
-                              <td key={dayIdx} style={{ padding: '0.2rem 0.1rem' }}>
-                                <input type="number" min="0" max="10"
-                                  defaultValue={subject.schedule?.[dayIdx]?.[field] || 0}
-                                  onChange={e => handleUpdateSchedule(subject.id!, dayIdx, field, parseInt(e.target.value) || 0)}
-                                  style={{ width: '100%', minWidth: '0', padding: '0.25rem 0', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
-                              </td>
-                            ))}
+                            {Object.keys(defaultSchedule).map(dayIdx => {
+                              const arrField = field === 'classCount' ? 'classes' : 'labs';
+                              const currentVal = subject.schedule?.[dayIdx]?.[arrField]?.length ?? subject.schedule?.[dayIdx]?.[field] ?? 0;
+                              return (
+                                <td key={dayIdx} style={{ padding: '0.2rem 0.1rem' }}>
+                                  <input type="number" min="0" max="10"
+                                    defaultValue={currentVal}
+                                    onChange={e => handleUpdateSchedule(subject.id!, dayIdx, field, parseInt(e.target.value) || 0)}
+                                    style={{ width: '100%', minWidth: '0', padding: '0.25rem 0', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
+                                </td>
+                              );
+                            })}
                           </tr>
                         ))}
                       </tbody>

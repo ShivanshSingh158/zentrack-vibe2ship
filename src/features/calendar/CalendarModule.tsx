@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Plus, AlertTriangle, Clock, ExternalLink, Link2, Link2Off, RefreshCw, Zap, AlertCircle, Wand2, Menu, Search, Settings, HelpCircle, Check } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, X, Plus, AlertTriangle, Clock, ExternalLink, Link2, Link2Off, RefreshCw, Zap, AlertCircle, Wand2, Menu, Search, Settings, HelpCircle, Check, Users, MapPin, Search as SearchIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import '../../styles/calendar.css';
@@ -45,11 +45,12 @@ export const EVENT_COLORS: Record<string, { color: string; bg: string; label: st
   assignment_due: { color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)', label: 'Assignment', icon: '📋' },
   holiday: { color: '#10b981', bg: 'rgba(16,185,129,0.1)', label: 'Holiday', icon: '🌴' },
   viva: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', label: 'Viva', icon: '🎤' },
-  submission: { color: '#3b82f6', bg: 'rgba(59,130,246,0.1)', label: 'Submission', icon: '📤' },
+  submission: { color: '#a599ff', bg: 'rgba(165,153,255,0.1)', label: 'Submission', icon: '📤' },
   todo: { color: '#7c3aed', bg: 'rgba(124,58,237,0.1)', label: 'Task', icon: '✅' },
   job: { color: '#fbbf24', bg: 'rgba(251,191,36,0.1)', label: 'Interview', icon: '💼' },
   goal: { color: '#ec4899', bg: 'rgba(236,72,153,0.1)', label: 'Deadline', icon: '🎯' },
   gcal: { color: '#4285f4', bg: 'rgba(66,133,244,0.1)', label: 'Google Cal', icon: '📅' },
+  class: { color: '#10b981', bg: 'rgba(16, 185, 129, 0.1)', label: 'Class', icon: '📚' },
 };
 
 export const CalendarModule = () => {
@@ -57,6 +58,7 @@ export const CalendarModule = () => {
   const [customEvents, setCustomEvents] = useState<CalendarEvent[]>([]);
   const [gcalEvents, setGcalEvents] = useState<CalendarEvent[]>([]); // Events pulled FROM Google Calendar
   const [isLoading, setIsLoading] = useState(true);
+  const [classesSubjects, setClassesSubjects] = useState<any[]>([]);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [viewMode, setViewMode] = useState<'month' | 'week' | 'day'>('day');
   const [hideCompleted, setHideCompleted] = useState(false);
@@ -337,7 +339,25 @@ export const CalendarModule = () => {
       todosEvents = [];
       snap.forEach(d => {
         const data = d.data();
-        if (data.date) todosEvents.push({ id: `todo_${d.id}`, title: data.text, date: data.date, type: 'todo', isCompleted: data.status === 'completed' });
+        if (data.date) {
+          let startTime, endTime;
+          if (data.timeSlot) {
+            const parts = data.timeSlot.split(/[-–]/);
+            const startStr = parts[0]?.trim();
+            if (startStr && startStr.match(/^\d{1,2}:\d{2}/)) {
+              startTime = startStr;
+              if (parts[1]) {
+                 endTime = parts[1].trim();
+              } else {
+                 const mins = data.estimatedMinutes || 30;
+                 const [h, m] = startStr.split(':').map(Number);
+                 const endD = new Date(0, 0, 0, h, m + mins);
+                 endTime = `${endD.getHours().toString().padStart(2, '0')}:${endD.getMinutes().toString().padStart(2, '0')}`;
+              }
+            }
+          }
+          todosEvents.push({ id: `todo_${d.id}`, title: data.text || data.title || 'Untitled Task', date: data.date, type: 'todo', isCompleted: data.status === 'completed', startTime, endTime });
+        }
       });
       updateEvents();
     });
@@ -395,13 +415,126 @@ export const CalendarModule = () => {
       }
     });
 
-    return () => { unsubTodos(); unsubJobs(); unsubGoals(); unsubAssignments(); unsubCustom(); };
+    const unsubClasses = onSnapshot(query(collection(db, 'attendance_subjects'), where('userId', '==', user.uid)), (snap) => {
+      setClassesSubjects(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    });
+
+    return () => { unsubTodos(); unsubJobs(); unsubGoals(); unsubAssignments(); unsubCustom(); unsubClasses(); };
   }, [pushToGCal]);
 
+  const classesEvents = useMemo(() => {
+    const generated: CalendarEvent[] = [];
+    if (classesSubjects.length === 0) return generated;
+
+    const parse12H = (ts: string) => {
+      if (!ts) return null;
+      const match = ts.match(/(\d+)(?::(\d+))?\s*(AM|PM)/i);
+      if (!match) return null;
+      let h = parseInt(match[1]);
+      const m = parseInt(match[2] || "0");
+      const isPM = match[3].toUpperCase() === 'PM';
+      if (isPM && h < 12) h += 12;
+      if (!isPM && h === 12) h = 0;
+      return { h, m };
+    };
+
+    const d = new Date(currentDate);
+    d.setDate(1);
+    d.setMonth(d.getMonth() - 1);
+    const endD = new Date(currentDate);
+    endD.setDate(1);
+    endD.setMonth(endD.getMonth() + 2);
+
+    for (let curr = new Date(d); curr < endD; curr.setDate(curr.getDate() + 1)) {
+       const dayStr = curr.getDay().toString();
+       const dateStr = getLocalDateString(curr);
+       
+       let fallbackHour = 9;
+       classesSubjects.forEach(sub => {
+         const schedule = sub.schedule?.[dayStr];
+         if (schedule) {
+           const hasTimeArrays = (schedule.classes && schedule.classes.length > 0) || (schedule.labs && schedule.labs.length > 0);
+           
+           if (hasTimeArrays) {
+             (schedule.classes || []).forEach((cls: any, i: number) => {
+               const parsed = parse12H(cls.time);
+               let sh = fallbackHour, sm = 0;
+               if (parsed) { sh = parsed.h; sm = parsed.m; }
+               
+               const startTime = `${String(sh).padStart(2, '0')}:${String(sm).padStart(2, '0')}`;
+               const endTime = `${String((sh + 1) % 24).padStart(2, '0')}:${String(sm).padStart(2, '0')}`;
+               
+               generated.push({
+                 id: `class_${sub.id}_${dateStr}_${i}`,
+                 title: sub.name,
+                 date: dateStr,
+                 type: 'class',
+                 startTime,
+                 endTime,
+               });
+               if (!parsed) fallbackHour++;
+             });
+             
+             (schedule.labs || []).forEach((lab: any, i: number) => {
+               const parsed = parse12H(lab.time);
+               let sh = fallbackHour, sm = 0;
+               if (parsed) { sh = parsed.h; sm = parsed.m; }
+               
+               const startTime = `${String(sh).padStart(2, '0')}:${String(sm).padStart(2, '0')}`;
+               const endTime = `${String((sh + 2) % 24).padStart(2, '0')}:${String(sm).padStart(2, '0')}`;
+               
+               generated.push({
+                 id: `lab_${sub.id}_${dateStr}_${i}`,
+                 title: `${sub.name} (Lab)`,
+                 date: dateStr,
+                 type: 'class',
+                 startTime,
+                 endTime,
+               });
+               if (!parsed) fallbackHour += 2;
+             });
+           } else {
+             // Fallback to legacy count-based calculation
+             const classCount = schedule.classCount || 0;
+             const labCount = schedule.labCount || 0;
+             
+             for (let i = 0; i < classCount; i++) {
+               const startTime = `${String(fallbackHour).padStart(2, '0')}:00`;
+               const endTime = `${String((fallbackHour + 1) % 24).padStart(2, '0')}:00`;
+               generated.push({
+                 id: `class_${sub.id}_${dateStr}_${i}`,
+                 title: sub.name,
+                 date: dateStr,
+                 type: 'class',
+                 startTime,
+                 endTime,
+               });
+               fallbackHour++;
+             }
+             for (let i = 0; i < labCount; i++) {
+               const startTime = `${String(fallbackHour).padStart(2, '0')}:00`;
+               const endTime = `${String((fallbackHour + 2) % 24).padStart(2, '0')}:00`;
+               generated.push({
+                 id: `lab_${sub.id}_${dateStr}_${i}`,
+                 title: `${sub.name} (Lab)`,
+                 date: dateStr,
+                 type: 'class',
+                 startTime,
+                 endTime,
+               });
+               fallbackHour += 2;
+             }
+           }
+         }
+       });
+    }
+    return generated;
+  }, [classesSubjects, currentDate]);
+
   const allEvents = useMemo(() => {
-    const combined = [...events, ...customEvents, ...gcalEvents];
+    const combined = [...events, ...customEvents, ...gcalEvents, ...classesEvents];
     return combined.filter(e => visibleTypes.has(e.type) && (!hideCompleted || e.status !== 'completed'));
-  }, [events, customEvents, gcalEvents, hideCompleted, visibleTypes]);
+  }, [events, customEvents, gcalEvents, classesEvents, hideCompleted, visibleTypes]);
 
   // Upcoming exams countdown
   const upcomingExams = useMemo(() => {
@@ -621,7 +754,7 @@ export const CalendarModule = () => {
                       const cfg = EVENT_COLORS[ev.type] || EVENT_COLORS.todo;
                       return (
                         <div key={ev.id} className="gc-event" style={{
-                          position: 'relative', height: '22px', background: cfg.color, color: '#fff', marginBottom: '2px', padding: '2px 6px', left: 'auto', right: 'auto', borderRadius: '4px', fontSize: '11px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis'
+                          position: 'relative', height: '22px', background: cfg.bg, color: cfg.color, borderLeft: `3px solid ${cfg.color}`, marginBottom: '2px', padding: '2px 6px', left: 'auto', right: 'auto', borderRadius: '4px', fontSize: '11px', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 500
                         }}>
                           {ev.title}
                         </div>
@@ -704,26 +837,24 @@ export const CalendarModule = () => {
                         height: `${height}px`,
                         left: '4px',
                         right: '8px',
-                        background: cfg.color,
+                        background: cfg.bg,
                         borderRadius: '4px',
                         padding: height <= 30 ? '2px 6px' : '4px 6px',
-                        color: '#fff',
+                        color: cfg.color,
                         fontSize: '12px',
                         overflow: 'hidden',
-                        boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.1), 0 2px 4px rgba(0,0,0,0.2)',
-                        borderLeft: '4px solid rgba(0,0,0,0.15)',
+                        borderLeft: `4px solid ${cfg.color}`,
                         zIndex: 2,
                         display: 'flex',
                         flexDirection: 'column',
                         fontFamily: 'var(--font-sans)',
-                        transition: 'box-shadow 0.2s ease',
                         lineHeight: 1.2
                       }}>
-                        <div style={{ fontWeight: 600, fontSize: '12px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
+                        <div style={{ fontWeight: 600, fontSize: '12px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden' }}>
                           {ev.title}{height <= 30 && `, ${formatTimeShort(ev.startTime!)}`}
                         </div>
                         {height > 30 && (
-                          <div style={{ opacity: 0.9, fontSize: '11px', fontWeight: 500, textShadow: '0 1px 2px rgba(0,0,0,0.2)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <div style={{ opacity: 0.9, fontSize: '11px', fontWeight: 500, marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {formatTimeShort(ev.startTime!)} – {formatTimeShort(ev.endTime || ev.startTime!)}
                           </div>
                         )}
@@ -794,7 +925,7 @@ export const CalendarModule = () => {
                     popoverPos: { x: rect.right + 16, y: rect.top },
                     existingEvent: ev
                   });
-                }} className="gc-month-event all-day" style={{ background: cfg.color, color: '#fff', padding: '2px 6px', borderRadius: '4px', borderLeft: '3px solid rgba(0,0,0,0.15)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.1)', textShadow: '0 1px 2px rgba(0,0,0,0.2)', marginBottom: '2px', fontWeight: 500 }}>
+                }} className="gc-month-event all-day" style={{ background: cfg.bg, color: cfg.color, padding: '2px 6px', borderRadius: '4px', borderLeft: `3px solid ${cfg.color}`, marginBottom: '2px', fontWeight: 500 }}>
                   {ev.title}
                 </div>
               );
@@ -805,8 +936,8 @@ export const CalendarModule = () => {
       );
     }
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: '#1A1B20' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', padding: '0.5rem 0', color: '#9AA0A6', fontSize: '0.75rem', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, background: 'transparent' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', textAlign: 'center', padding: '0.5rem 0', color: '#9AA0A6', fontSize: '0.75rem', fontWeight: 500, borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
           {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => <div key={day}>{day}</div>)}
         </div>
         <div className="gc-month-grid">
@@ -837,8 +968,10 @@ export const CalendarModule = () => {
           <div className="gc-hamburger" onClick={() => setIsSidebarOpen(true)} style={{ cursor: 'pointer' }}>
             <Menu size={20} />
           </div>
-          <div className="gc-logo-area">
-            <CalendarIcon size={24} color="#8AB4F8" />
+          <div className="gc-logo-area" style={{ cursor: 'pointer' }}>
+            <div style={{ background: '#8AB4F8', width: '28px', height: '28px', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1A1B20', fontWeight: 'bold', fontSize: '1.2rem' }}>
+              {currentDate.getDate()}
+            </div>
             <span>Calendar</span>
           </div>
           <button className="gc-today-btn" onClick={() => setCurrentDate(new Date())}>Today</button>
@@ -850,6 +983,9 @@ export const CalendarModule = () => {
         </div>
         
         <div className="gc-header-right">
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginRight: '1rem' }}>
+            {/* Removed hardcoded Search/Help/Settings icons */}
+          </div>
           <div style={{ position: 'relative' }}>
             <button 
               className="gc-view-select" 
@@ -984,55 +1120,12 @@ export const CalendarModule = () => {
               ))}
             </div>
           </div>
-
-          <div className="gc-filters">
-            <section>
-              <div className="gc-filter-title" onClick={() => setIsMyCalendarsExpanded(!isMyCalendarsExpanded)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                My calendars 
-                <ChevronRight size={16} style={{ transform: isMyCalendarsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}/>
-              </div>
-              {isMyCalendarsExpanded && Object.entries(EVENT_COLORS).filter(([k]) => k !== 'gcal' && k !== 'holiday').map(([key, cfg]) => (
-                <div key={key} className="gc-filter-item" onClick={() => {
-                  setVisibleTypes(prev => {
-                    const next = new Set(prev);
-                    if (next.has(key)) next.delete(key);
-                    else next.add(key);
-                    return next;
-                  });
-                }}>
-                  <div className="gc-filter-checkbox" style={{ background: visibleTypes.has(key) ? cfg.color : 'transparent', border: `2px solid ${cfg.color}`, backgroundClip: visibleTypes.has(key) ? 'border-box' : 'content-box' }}>
-                    {visibleTypes.has(key) && <Check size={12} color="#1A1B20" />}
-                  </div>
-                  <span>{cfg.icon} {cfg.label}</span>
-                </div>
-              ))}
-            </section>
-            <section>
-              <div className="gc-filter-title" onClick={() => setIsOtherCalendarsExpanded(!isOtherCalendarsExpanded)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                Other calendars 
-                <ChevronRight size={16} style={{ transform: isOtherCalendarsExpanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}/>
-              </div>
-              {isOtherCalendarsExpanded && Object.entries(EVENT_COLORS).filter(([k]) => k === 'gcal' || k === 'holiday').map(([key, cfg]) => (
-                <div key={key} className="gc-filter-item" onClick={() => {
-                  setVisibleTypes(prev => {
-                    const next = new Set(prev);
-                    if (next.has(key)) next.delete(key);
-                    else next.add(key);
-                    return next;
-                  });
-                }}>
-                  <div className="gc-filter-checkbox" style={{ background: visibleTypes.has(key) ? cfg.color : 'transparent', border: `2px solid ${cfg.color}`, backgroundClip: visibleTypes.has(key) ? 'border-box' : 'content-box' }}>
-                    {visibleTypes.has(key) && <Check size={12} color="#1A1B20" />}
-                  </div>
-                  <span>{cfg.icon} {cfg.label}</span>
-                </div>
-              ))}
-            </section>
-          </div>
+          
+          {/* Removed hardcoded Search, Booking pages, and dummy calendar lists */}
         </div>
 
         {/* MAIN CONTENT AREA */}
-        <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+        <div className="gc-grid-wrapper">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
               key={`${viewMode}-${currentDate.toISOString()}`}

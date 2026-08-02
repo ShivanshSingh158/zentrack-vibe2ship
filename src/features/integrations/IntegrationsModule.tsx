@@ -15,11 +15,11 @@ const Lottie = (LottieModule as any).default || LottieModule;
 
 // Google Workspace services — these are ALL covered by a single OAuth grant
 const GOOGLE_SERVICES = [
-  { id: 'gcal',   name: 'Google Calendar', icon: <Calendar size={22} />,     description: 'Full bi-directional sync for tasks and events.', color: '#3b82f6' },
+  { id: 'gcal',   name: 'Google Calendar', icon: <Calendar size={22} />,     description: 'Full bi-directional sync for tasks and events.', color: '#a599ff' },
   { id: 'gmail',  name: 'Gmail',            icon: <Mail size={22} />,         description: 'Ghost task detection and email automation.',     color: '#ef4444' },
   { id: 'gtasks', name: 'Google Tasks',     icon: <CheckSquare size={22} />,  description: 'Import and export your task lists.',             color: '#10b981' },
   { id: 'gmeet',  name: 'Google Meet',      icon: <Video size={22} />,        description: 'Automatic meeting scheduling and links.',        color: '#f59e0b' },
-  { id: 'gdocs',  name: 'Google Docs',      icon: <FileText size={22} />,     description: 'Document creation and context parsing.',        color: '#3b82f6' },
+  { id: 'gdocs',  name: 'Google Docs',      icon: <FileText size={22} />,     description: 'Document creation and context parsing.',        color: '#a599ff' },
   { id: 'gdrive', name: 'Google Drive',     icon: <HardDrive size={22} />,    description: 'File attachment and organisation.',             color: '#10b981' },
 ];
 

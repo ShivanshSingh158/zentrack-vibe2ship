@@ -437,7 +437,7 @@ const AnalyticsModuleInner = () => {
             <defs>
               <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#a78bfa" />
-                <stop offset="100%" stopColor="#60a5fa" />
+                <stop offset="100%" stopColor="#b8afff" />
               </linearGradient>
             </defs>
           </svg>
@@ -500,7 +500,7 @@ const AnalyticsModuleInner = () => {
               <StatCard icon={<CheckCircle size={22} />} label="Tasks Completed" value={todoMetrics.completed} sub={`${todoMetrics.rate}% completion rate`} color="#34d399" />
               <StatCard icon={<Flame size={22} />} label="Habit Check-ins" value={habitMetrics.totalChecked} sub={`${habitMetrics.daysWithActivity} active days`} color="#a78bfa" />
               <StatCard icon={<Dumbbell size={22} />} label="Gym Sessions" value={safeGymData.filter((d: any) => d.date >= last30[0]).length} sub={`${weekOverWeekMetrics.gym.diff > 0 ? '+' : ''}${weekOverWeekMetrics.gym.diff} this week`} color="#f59e0b" />
-              <StatCard icon={<Book size={22} />} label="Subjects Tracked" value={safeAttendance.length} sub="Attendance health" color="#60a5fa" />
+              <StatCard icon={<Book size={22} />} label="Subjects Tracked" value={safeAttendance.length} sub="Attendance health" color="#b8afff" />
             </div>
 
             {/* Week-over-Week Comparison */}
@@ -580,7 +580,7 @@ const AnalyticsModuleInner = () => {
                             <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} allowDecimals={false} domain={[0, 'auto']} />
                             <Tooltip contentStyle={TOOLTIP_STYLE} />
                             <Legend wrapperStyle={{ fontSize: '12px' }} />
-                            <Line type="monotone" dataKey="bench" stroke="#3b82f6" strokeWidth={3} name="Bench Press" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
+                            <Line type="monotone" dataKey="bench" stroke="#a599ff" strokeWidth={3} name="Bench Press" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
                             <Line type="monotone" dataKey="squat" stroke="#ef4444" strokeWidth={3} name="Squat" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
                             <Line type="monotone" dataKey="deadlift" stroke="#10b981" strokeWidth={3} name="Deadlift" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
                           </LineChart>
@@ -607,7 +607,7 @@ const AnalyticsModuleInner = () => {
                         <BarChart data={learningChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                           <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
                           <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: '#3b82f6' }} />
+                          <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: '#a599ff' }} />
                             <Bar dataKey="watchMinutes" name="Minutes Watched" fill="url(#barGradient)" radius={[4, 4, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>

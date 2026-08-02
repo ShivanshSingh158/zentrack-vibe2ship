@@ -371,15 +371,15 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
             ctx.fillStyle = `rgba(220, 215, 255, ${nodeAlpha * Math.min(1, node.brightness) * p1.scale})`; 
             if (node.brightness > 1) {
                 ctx.shadowBlur = 15 * p1.scale;
-                ctx.shadowColor = 'rgba(59, 130, 246, 0.9)';
+                ctx.shadowColor = 'rgba(165, 153, 255, 0.9)';
             }
         } else if (node.role === 'eyebrow') {
-            ctx.fillStyle = `rgba(59, 130, 246, ${nodeAlpha * Math.min(1, node.brightness) * 0.8 * p1.scale})`; 
+            ctx.fillStyle = `rgba(165, 153, 255, ${nodeAlpha * Math.min(1, node.brightness) * 0.8 * p1.scale})`; 
         } else {
             ctx.fillStyle = `rgba(184, 175, 255, ${nodeAlpha * Math.min(1, node.brightness) * 0.6 * p1.scale})`; 
             if (node.brightness > 1) {
                 ctx.shadowBlur = 8 * p1.scale;
-                ctx.shadowColor = 'rgba(59, 130, 246, 0.6)';
+                ctx.shadowColor = 'rgba(165, 153, 255, 0.6)';
             }
         }
 
@@ -460,9 +460,9 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         const alpha = 1 - distFromCenter * 0.5;
 
         const g = ctx.createLinearGradient(x, h / 2 - barHeight / 2, x, h / 2 + barHeight / 2);
-        g.addColorStop(0, `rgba(59, 130, 246, ${alpha * 0.3})`);
-        g.addColorStop(0.5, `rgba(59, 130, 246, ${alpha})`);
-        g.addColorStop(1, `rgba(59, 130, 246, ${alpha * 0.3})`);
+        g.addColorStop(0, `rgba(165, 153, 255, ${alpha * 0.3})`);
+        g.addColorStop(0.5, `rgba(165, 153, 255, ${alpha})`);
+        g.addColorStop(1, `rgba(165, 153, 255, ${alpha * 0.3})`);
 
         const rounding = Math.min(barW * 0.4, 3);
         ctx.fillStyle = g;
@@ -470,13 +470,13 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         ctx.roundRect(x + 1, h / 2 - barHeight / 2, barW - 2, barHeight, rounding);
         ctx.fill();
 
-        ctx.fillStyle = `rgba(59, 130, 246, ${alpha * 0.06})`;
+        ctx.fillStyle = `rgba(165, 153, 255, ${alpha * 0.06})`;
         ctx.beginPath();
         ctx.roundRect(x + 1, h / 2 - barHeight / 2, barW - 2, barHeight, rounding);
         ctx.fill();
       }
 
-      ctx.strokeStyle = 'rgba(59, 130, 246, 0.15)';
+      ctx.strokeStyle = 'rgba(165, 153, 255, 0.15)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(0, h / 2); ctx.lineTo(w, h / 2);
@@ -522,7 +522,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
     : isOrchestrating
     ? '#ff9f4d'
     : isConversationListening
-    ? '#3b82f6'
+    ? '#a599ff'
     : '#636366';
 
   return (
@@ -740,13 +740,13 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
-                    style={{ width: '100%', height: '100%', position: 'absolute', border: '1px dashed rgba(59,130,246,0.15)', borderRadius: '50%' }}
+                    style={{ width: '100%', height: '100%', position: 'absolute', border: '1px dashed rgba(165,153,255,0.15)', borderRadius: '50%' }}
                   />
                   {/* Inner reverse-spinning agent node ring */}
                   <motion.div
                     animate={{ rotate: -360 }}
                     transition={{ duration: 40, repeat: Infinity, ease: 'linear' }}
-                    style={{ width: '75%', height: '75%', position: 'absolute', border: '1px solid rgba(59,130,246,0.06)', borderRadius: '50%' }}
+                    style={{ width: '75%', height: '75%', position: 'absolute', border: '1px solid rgba(165,153,255,0.06)', borderRadius: '50%' }}
                   >
                     {activeAgents.map((id, i) => {
                       const agent = AGENTS.find(a => a.id === id);
@@ -803,7 +803,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                   >
                     <div style={{
                       fontSize: '0.65rem', letterSpacing: '0.2em',
-                      color: 'rgba(59,130,246,0.80)', textShadow: '0 0 15px rgba(59,130,246,0.5)',
+                      color: 'rgba(165,153,255,0.80)', textShadow: '0 0 15px rgba(165,153,255,0.5)',
                       fontFamily: "'Inter', sans-serif",
                       fontWeight: 600,
                     }}>
@@ -832,9 +832,9 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                     style={{
                       marginTop: '20px', maxWidth: '600px', fontSize: '1.1rem',
                       fontFamily: "'Inter', sans-serif",
-                      color: 'rgba(59,130,246,0.90)', letterSpacing: '0.01em',
+                      color: 'rgba(165,153,255,0.90)', letterSpacing: '0.01em',
                       lineHeight: 1.6, textAlign: 'center', fontWeight: 500,
-                      textShadow: '0 0 10px rgba(59,130,246,0.25)'
+                      textShadow: '0 0 10px rgba(165,153,255,0.25)'
                     }}
                   >
                     "{conversationTranscript}"
@@ -882,16 +882,16 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                         cursor: hasSteps ? 'pointer' : 'default',
                         padding: isInitialGreeting ? 0 : '0.9rem 1.5rem',
                         borderRadius: isInitialGreeting ? 0 : '14px',
-                        border: isInitialGreeting ? 'none' : '1px solid rgba(59,130,246,0.08)',
-                        background: isInitialGreeting ? 'transparent' : 'rgba(59,130,246,0.04)',
+                        border: isInitialGreeting ? 'none' : '1px solid rgba(165,153,255,0.08)',
+                        background: isInitialGreeting ? 'transparent' : 'rgba(165,153,255,0.04)',
                         backdropFilter: isInitialGreeting ? 'none' : 'blur(6px)',
                         pointerEvents: 'auto',
                       }}
-                      whileHover={hasSteps ? { background: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.20)' } as any : undefined}
+                      whileHover={hasSteps ? { background: 'rgba(165,153,255,0.08)', borderColor: 'rgba(165,153,255,0.20)' } as any : undefined}
                     >
                       {display}
                       {hasSteps && (
-                        <div style={{ fontSize: '0.55rem', color: 'rgba(59,130,246,0.45)', marginTop: '0.6rem', letterSpacing: '0.2em', fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>
+                        <div style={{ fontSize: '0.55rem', color: 'rgba(165,153,255,0.45)', marginTop: '0.6rem', letterSpacing: '0.2em', fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>
                           TAP TO VIEW FULL REPORT
                         </div>
                       )}
@@ -960,8 +960,8 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1, height: '100%' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 1, repeat: Infinity }} style={{ width: '6px', height: '12px', background: '#3b82f6', borderRadius: '3px' }} />
-                <span style={{ color: '#3b82f6', fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", fontWeight: 600, letterSpacing: '0.02em' }}>
+                <motion.div animate={{ opacity: [1, 0.2, 1] }} transition={{ duration: 1, repeat: Infinity }} style={{ width: '6px', height: '12px', background: '#a599ff', borderRadius: '3px' }} />
+                <span style={{ color: '#a599ff', fontSize: '0.85rem', fontFamily: "'Inter', sans-serif", fontWeight: 600, letterSpacing: '0.02em' }}>
                   Sys.Input
                 </span>
               </div>
@@ -977,7 +977,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                 style={{
                   flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none',
                   color: '#fff', fontSize: '1.05rem', fontFamily: "'Inter', sans-serif",
-                  letterSpacing: '0.01em', caretColor: '#3b82f6', height: '100%'
+                  letterSpacing: '0.01em', caretColor: '#a599ff', height: '100%'
                 }}
               />
             </div>
@@ -989,11 +989,11 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: isConversationActive ? '#5eda9e' : '#3b82f6',
+                  color: isConversationActive ? '#5eda9e' : '#a599ff',
                   cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px',
                   fontSize: '0.75rem', fontFamily: "'Inter', sans-serif", letterSpacing: '0.10em',
                   transition: 'all 0.2s', fontWeight: 700,
-                  textShadow: isConversationActive ? '0 0 10px rgba(94,218,158,0.5)' : '0 0 10px rgba(59,130,246,0.4)'
+                  textShadow: isConversationActive ? '0 0 10px rgba(94,218,158,0.5)' : '0 0 10px rgba(165,153,255,0.4)'
                 }}
               >
                 {isConversationListening ? (
@@ -1007,7 +1007,7 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
               </button>
 
               <button type="submit" style={{
-                background: '#3b82f6', 
+                background: '#a599ff', 
                 border: 'none',
                 borderRadius: '24px',
                 padding: '10px 24px', 
@@ -1037,8 +1037,8 @@ export const SaraInterface: React.FC<SaraProps> = ({ onClose, isHomePage = false
         }
         ::-webkit-scrollbar { width: 3px; }
         ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
-        ::-webkit-scrollbar-thumb { background: rgba(59,130,246,0.22); border-radius: 2px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(59,130,246,0.42); }
+        ::-webkit-scrollbar-thumb { background: rgba(165,153,255,0.22); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(165,153,255,0.42); }
       `}</style>
     </div>
   );

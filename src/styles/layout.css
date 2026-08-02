@@ -36,16 +36,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 2rem;
-  height: 56px;
-  /* Obsidian Cosmos top-nav — true black glass */
-  background: rgba(0, 0, 0, 0.92);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border-bottom: 1px solid rgba(59, 130, 246, 0.10);
+  height: 52px;
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-bottom: 1px solid rgba(165, 153, 255, 0.08);
   margin: 0;
   max-width: 100%;
   border-radius: 0;
-  /* Force GPU compositing */
   transform: translateZ(0);
   will-change: transform;
 }
@@ -111,7 +109,7 @@
 .expandable-search.expanded {
   width: 500px;
   background: rgba(10, 10, 11, 0.92);
-  border: 1px solid rgba(59, 130, 246, 0.28);
+  border: 1px solid rgba(165, 153, 255, 0.28);
 }
 
 .search-icon-wrapper {
@@ -263,14 +261,14 @@
 
 .nav-link:hover, .nav-link.active {
   color: white !important;
-  background: rgba(59, 130, 246, 0.10);
+  background: rgba(165, 153, 255, 0.10);
 }
 
 .top-nav-right {
   display: flex;
   align-items: center;
   gap: 1.2rem;
-  border: 1px solid rgba(59, 130, 246, 0.10);
+  border: 1px solid rgba(165, 153, 255, 0.10);
   border-radius: 999px;
   padding: 0.3rem 0.9rem;
   background: rgba(28, 28, 29, 0.60);
@@ -293,8 +291,8 @@
 
 .icon-button:hover,
 .icon-button.active {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
+  background: rgba(165, 153, 255, 0.12);
+  color: #a599ff;
 }
 
 .app-drawer-container {
@@ -311,10 +309,10 @@
   width: 320px;
   background: rgba(20, 20, 22, 0.96);
   backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(165, 153, 255, 0.12);
   border-radius: 20px;
   padding: 1.5rem;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(59, 130, 246, 0.06) inset;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(165, 153, 255, 0.06) inset;
   z-index: 100;
   animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: top right;
@@ -327,8 +325,8 @@
 
 .google-style-drawer {
   background: #1c1c1d;
-  border: 1px solid rgba(59, 130, 246, 0.12);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(59,130,246,0.05) inset;
+  border: 1px solid rgba(165, 153, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.70), 0 0 0 1px rgba(165,153,255,0.05) inset;
   border-radius: 24px;
   padding: 1rem 0;
   width: 340px;
@@ -359,8 +357,8 @@
 }
 
 .drawer-edit-btn {
-  background: rgba(59, 130, 246, 0.12);
-  color: #3b82f6;
+  background: rgba(165, 153, 255, 0.12);
+  color: #a599ff;
   border: none;
   width: 32px;
   height: 32px;
@@ -373,7 +371,7 @@
 }
 
 .drawer-edit-btn:hover {
-  background: rgba(59, 130, 246, 0.20);
+  background: rgba(165, 153, 255, 0.20);
 }
 
 .drawer-scroll-area {
@@ -411,7 +409,7 @@
 }
 
 .app-drawer-item:hover {
-  background: rgba(59, 130, 246, 0.08);
+  background: rgba(165, 153, 255, 0.08);
 }
 
 .app-drawer-item:active {
@@ -464,7 +462,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #3b82f6;
+  background: #a599ff;
   border: 2px solid #1c1c1d;
   opacity: 0;
   transform: scale(0.5);
@@ -525,13 +523,13 @@
   height: 32px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1px solid rgba(59, 130, 246, 0.20);
+  border: 1px solid rgba(165, 153, 255, 0.20);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .user-avatar-btn:hover .user-avatar {
   transform: scale(1.05);
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+  box-shadow: 0 0 12px rgba(165, 153, 255, 0.35);
 }
 
 .google-pro-border {
@@ -1017,13 +1015,13 @@ body.agent-active .sidebar::after {
 
 /* Expandable search */
 .expandable-search { border-radius: 100px !important; outline: none !important; box-shadow: none !important; }
-.expandable-search:hover  { background: rgba(59, 130, 246, 0.08) !important; color: var(--text-primary) !important; }
-.expandable-search.expanded { background: rgba(10, 10, 11, 0.80) !important; border: 1px solid rgba(59, 130, 246, 0.26) !important; border-radius: 100px !important; }
+.expandable-search:hover  { background: rgba(165, 153, 255, 0.08) !important; color: var(--text-primary) !important; }
+.expandable-search.expanded { background: rgba(10, 10, 11, 0.80) !important; border: 1px solid rgba(165, 153, 255, 0.26) !important; border-radius: 100px !important; }
 
 /* Icon button active state in nav-right */
 .icon-button:hover,
 .icon-button.active {
-  background: rgba(59, 130, 246, 0.10) !important;
+  background: rgba(165, 153, 255, 0.10) !important;
   color: var(--zen-purple) !important;
 }
 

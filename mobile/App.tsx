@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React from 'react';
-import { View, ActivityIndicator, LogBox, AppState } from 'react-native';
+import { View, ActivityIndicator, LogBox, AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
@@ -396,19 +396,48 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // Auto-clear AI conversations when app is backgrounded/closed
-  // This ensures Sara and Gym AI always start fresh every session
+  // ── Session-alive heartbeat ─────────────────────────────────────────────────
+  //
+  // PURPOSE: Enables WhatsApp-grade kill vs. resume detection in AppNavigator.
+  //
+  // KILL DETECTION:
+  //   When an app is killed, the JS thread stops immediately — no lifecycle
+  //   callback fires. So '@zentrack_session_alive' is ABSENT on the next cold boot.
+  //   AppNavigator sees it missing → boots to Home (kill behaviour).
+  //
+  // RESUME DETECTION:
+  //   When an app is backgrounded (process stays alive), AppState fires
+  //   'background'/'inactive' → we DELETE the key. When the user brings the app
+  //   back, AppState fires 'active' → we WRITE the key.
+  //   AppNavigator sees the key present on the next render → restores last tab.
+  //
+  // CHAT HISTORY CLEAR:
+  //   Sara and Gym AI conversations are cleared on background so every
+  //   foreground session starts fresh — same as before.
+
   React.useEffect(() => {
-    const sub = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background' || nextState === 'inactive') {
+    // Write the heartbeat immediately on mount (first foreground)
+    AsyncStorage.setItem('@zentrack_session_alive', '1').catch(() => {});
+
+    const handleAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        // App came to foreground (warm resume) — mark session alive
+        AsyncStorage.setItem('@zentrack_session_alive', '1').catch(() => {});
+      } else if (nextState === 'background' || nextState === 'inactive') {
+        // App going to background:
+        //   1. Mark session as NOT alive (so a future kill is detectable)
+        //   2. Clear AI chat histories so each session starts fresh
         AsyncStorage.multiRemove([
+          '@zentrack_session_alive',
           'sara_chat_history',
           'sara_memory_summary',
           'gym_chat_history',
           'gym_memory_summary',
         ]).catch(() => {});
       }
-    });
+    };
+
+    const sub = AppState.addEventListener('change', handleAppStateChange);
     return () => sub.remove();
   }, []);
 
@@ -424,7 +453,7 @@ export default function App() {
   // Fonts load invisibly in background; user sees something beautiful immediately.
   if (!fontsLoaded) {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#080510' }}>
         <SafeAreaProvider style={{ flex: 1, backgroundColor: '#080510' }}>
           <SplashLoader />
         </SafeAreaProvider>
@@ -433,7 +462,7 @@ export default function App() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#080510' }}>
       <SafeAreaProvider style={{ flex: 1, backgroundColor: '#080510' }}>
         <ThemeProvider>
           <PortalProvider>

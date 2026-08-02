@@ -40,7 +40,7 @@ body.agent-active::after {
   right: 0;
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.07) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(165, 153, 255, 0.07) 0%, transparent 70%);
   animation: ambient-breathe 3.5s ease-in-out infinite;
   pointer-events: none;
   z-index: 0;
@@ -54,10 +54,10 @@ body.agent-active::after {
 ::-webkit-scrollbar        { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  {
-  background: rgba(59, 130, 246, 0.20);
+  background: rgba(165, 153, 255, 0.20);
   border-radius: 999px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(59, 130, 246, 0.40); }
+::-webkit-scrollbar-thumb:hover { background: rgba(165, 153, 255, 0.40); }
 
 /* Reduced motion — ALWAYS respect this */
 @media (prefers-reduced-motion: reduce) {
@@ -74,7 +74,7 @@ body.agent-active::after {
    Buttons — Warm Obsidian system
    ========================================================================== */
 
-/* Primary: purple gradient pill — the signature CTA */
+/* Primary: solid purple pill — the signature CTA (matches mobile btn Primary) */
 .btn-primary {
   position: relative;
   display: inline-flex;
@@ -87,10 +87,10 @@ body.agent-active::after {
   font-size: 0.825rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 50%, #3b82f6 100%);
+  background: linear-gradient(135deg, #a599ff 0%, #b8afff 50%, #a599ff 100%);
   background-size: 200% 100%;
   border: none;
-  color: #0a0814;
+  color: #000000;
   cursor: pointer;
   transition:
     transform var(--dur-fast) var(--ease-spring),
@@ -104,7 +104,7 @@ body.agent-active::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(135deg, rgba(255,255,255,0.18) 0%, transparent 60%);
+  background: linear-gradient(135deg, rgba(255,255,255,0.16) 0%, transparent 60%);
   border-radius: inherit;
   pointer-events: none;
 }
@@ -113,14 +113,14 @@ body.agent-active::after {
   transform: scale(1.025);
   background-position: 100% 0;
 }
-.btn-primary:active  { transform: scale(0.97); }
+.btn-primary:active  { transform: scale(0.96); }
 
-/* Secondary: purple glass outline */
+/* Secondary: purple glass outline (matches mobile btn Secondary) */
 .btn-secondary {
-  background: rgba(59, 130, 246, 0.07);
-  border: 1px solid rgba(59, 130, 246, 0.22);
+  background: rgba(165, 153, 255, 0.08);
+  border: 1px solid rgba(165, 153, 255, 0.22);
   border-radius: var(--radius-pill);
-  color: rgba(242, 242, 247, 0.75);
+  color: #a599ff;
   font-family: var(--font-sans);
   font-size: 0.825rem;
   font-weight: 500;
@@ -138,9 +138,9 @@ body.agent-active::after {
   white-space: nowrap;
 }
 .btn-secondary:hover {
-  border-color: rgba(59, 130, 246, 0.45);
-  background: rgba(59, 130, 246, 0.12);
-  color: var(--color-text-1);
+  border-color: rgba(165, 153, 255, 0.45);
+  background: rgba(165, 153, 255, 0.14);
+  color: #b8afff;
   transform: translateY(-1px);
 }
 .btn-secondary:active { transform: translateY(0) scale(0.98); }
@@ -153,8 +153,8 @@ body.agent-active::after {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(59, 130, 246, 0.05);
-  border: 1px solid rgba(59, 130, 246, 0.10);
+  background: rgba(165, 153, 255, 0.05);
+  border: 1px solid rgba(165, 153, 255, 0.10);
   color: var(--color-text-2);
   cursor: pointer;
   transition:
@@ -164,8 +164,8 @@ body.agent-active::after {
     border-color var(--dur-fast) var(--ease-water);
 }
 .btn-icon:hover {
-  background: rgba(59, 130, 246, 0.12);
-  border-color: rgba(59, 130, 246, 0.30);
+  background: rgba(165, 153, 255, 0.12);
+  border-color: rgba(165, 153, 255, 0.30);
   color: var(--zen-purple);
   transform: scale(1.08);
 }
@@ -175,6 +175,62 @@ body.agent-active::after {
   border-color: rgba(255, 105, 97, 0.30);
   background: rgba(255, 105, 97, 0.10);
 }
+
+/* Ghost button: text only (matches mobile btn Ghost) */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: 0.825rem;
+  font-weight: 500;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #8e8e93;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-water),
+    color var(--dur-fast) var(--ease-water),
+    transform var(--dur-fast) var(--ease-water);
+  white-space: nowrap;
+}
+.btn-ghost:hover {
+  background: rgba(165, 153, 255, 0.06);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+.btn-ghost:active { transform: scale(0.97); }
+
+/* Danger button (matches mobile btn Danger) */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.4rem;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: 0.825rem;
+  font-weight: 500;
+  background: rgba(255, 105, 97, 0.12);
+  border: 1px solid rgba(255, 105, 97, 0.22);
+  color: #ff6961;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-water),
+    border-color var(--dur-fast) var(--ease-water),
+    transform var(--dur-fast) var(--ease-water);
+  white-space: nowrap;
+}
+.btn-danger:hover {
+  background: rgba(255, 105, 97, 0.20);
+  border-color: rgba(255, 105, 97, 0.40);
+  transform: translateY(-1px);
+}
+.btn-danger:active { transform: scale(0.97); }
 
 /* ==========================================================================
    Kanban Board
@@ -1076,7 +1132,7 @@ select option {
 .stat-card.stat-red::before { background: linear-gradient(180deg, #ef4444, #f97316); }
 .stat-card.stat-amber::before { background: linear-gradient(180deg, #f59e0b, #fbbf24); }
 .stat-card.stat-green::before { background: linear-gradient(180deg, #10b981, #34d399); }
-.stat-card.stat-blue::before { background: linear-gradient(180deg, #3b82f6, #60a5fa); }
+.stat-card.stat-blue::before { background: linear-gradient(180deg, #a599ff, #b8afff); }
 
 /* ==========================================================================
    Panel Cards — With gradient accent strip header
@@ -1145,7 +1201,7 @@ select option {
 .panel.panel-green::before { background: var(--accent-gradient-success); }
 .panel.panel-amber::before { background: var(--accent-gradient-warm); }
 .panel.panel-red::before { background: var(--accent-gradient-danger); }
-.panel.panel-blue::before { background: linear-gradient(135deg, #3b82f6, #60a5fa); }
+.panel.panel-blue::before { background: linear-gradient(135deg, #a599ff, #b8afff); }
 
 /* ==========================================================================
    Search Input
@@ -1248,7 +1304,7 @@ select option {
 .text-success { color: #34d399; }
 .text-danger { color: #f87171; }
 .text-warning { color: #fbbf24; }
-.text-info { color: #60a5fa; }
+.text-info { color: #b8afff; }
 .text-muted { color: var(--text-muted); }
 
 .bg-success-subtle { background: rgba(16, 185, 129, 0.08); }
@@ -1433,9 +1489,9 @@ body.ai-panel-open #youtube-floating-pip {
    Premium Deep Midnight Aesthetics
    ========================================================================== */
 :root {
-  --color-midnight-base: #0B1120;
-  --color-matte-card: #0F172A;
-  --color-indigo-glow: rgba(59, 130, 246, 0.45);
+  --color-midnight-base: #000000;
+  --color-matte-card: ##141415;
+  --color-indigo-glow: rgba(165, 153, 255, 0.45);
 }
 
 .grain-overlay {
@@ -1463,7 +1519,7 @@ body.ai-panel-open #youtube-floating-pip {
   content: '';
   position: absolute;
   inset: -2px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.6) 0%, rgba(139, 92, 246, 0.6) 100%);
+  background: linear-gradient(135deg, rgba(165, 153, 255, 0.6) 0%, rgba(139, 92, 246, 0.6) 100%);
   border-radius: inherit;
   filter: blur(40px);
   opacity: 0;
@@ -1479,7 +1535,7 @@ body.ai-panel-open #youtube-floating-pip {
   content: '';
   position: absolute;
   inset: -2px;
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.4) 0%, rgba(139, 92, 246, 0.4) 100%);
+  background: linear-gradient(135deg, rgba(165, 153, 255, 0.4) 0%, rgba(139, 92, 246, 0.4) 100%);
   border-radius: inherit;
   filter: blur(40px);
   opacity: 1;

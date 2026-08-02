@@ -225,7 +225,7 @@ export const FocusModeOverlay = () => {
               </button>
               <button
                 onClick={() => state.isRunning ? pauseTimer() : resumeTimer()}
-                style={{ background: 'linear-gradient(135deg, #a78bfa, #60a5fa)', borderRadius: '999px', border: 'none', color: 'white', padding: '0.75rem 2rem', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 600 }}
+                style={{ background: 'linear-gradient(135deg, #a78bfa, #b8afff)', borderRadius: '999px', border: 'none', color: 'white', padding: '0.75rem 2rem', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 600 }}
               >
                 {state.isRunning ? 'Pause' : 'Start'}
               </button>

@@ -1,38 +1,85 @@
-import React, { ComponentType, lazy } from 'react';
+/**
+ * ModulePrefetcher — ZenTrack Mobile
+ *
+ * WhatsApp-grade lazy module loading:
+ * 1. `cacheAwareLazy(id, importer)` — creates a lazy component backed by a
+ *    module registry. If already cached, renders synchronously on frame 1 (no
+ *    loading spinner, no blank flash).
+ * 2. `startPrefetching(pinnedModules)` — background-loads all registered
+ *    modules in priority order (pinned first) after interactions settle.
+ *
+ * KEY FIX: The loading stub (`null` Comp case) renders a transparent View,
+ * NOT one with a hardcoded background colour. This means it correctly inherits
+ * the dark screen background set by `sceneStyle` in the Tab.Navigator — no
+ * grey or wrong-colour flash when returning from background.
+ */
+
+import React, { ComponentType } from 'react';
 import { InteractionManager, View } from 'react-native';
 
-// In-memory cache registry
+// ─── Module Registry ──────────────────────────────────────────────────────────
+// In-memory cache: module id → resolved module object.
+// Never cleared — once loaded, always ready.
 const moduleCache = new Map<string, { default: ComponentType<any> }>();
 
-// Map of already created lazy components to avoid re-creating them
-const lazyComponents = new Map<string, React.LazyExoticComponent<React.ComponentType<any>>>();
+// Stable map of lazy component wrappers — created once per id, reused forever.
+// Prevents React from re-mounting screen components on parent re-renders.
+const wrapperCache = new Map<string, ComponentType<any>>();
 
-// Definition of a lazy importer
 type Importer = () => Promise<{ default: ComponentType<any> }>;
 
-// Queue of modules to prefetch
+// ─── Background Prefetch Queue ─────────────────────────────────────────────────
 const prefetchQueue: { id: string; importer: Importer }[] = [];
 let isPrefetching = false;
 
 /**
- * Registers a module for background prefetching.
- * Does not start the prefetch process.
+ * Registers a module in the background prefetch queue.
+ * Called at module declaration time (top of AppNavigator).
+ * Does NOT start loading — only enqueues.
  */
-const registerForPrefetch = (id: string, importer: Importer) => {
+const registerForPrefetch = (id: string, importer: Importer): void => {
   if (!moduleCache.has(id) && !prefetchQueue.some(item => item.id === id)) {
     prefetchQueue.push({ id, importer });
   }
 };
 
+const processNext = (): void => {
+  if (prefetchQueue.length === 0) {
+    isPrefetching = false;
+    return;
+  }
+  const next = prefetchQueue.shift();
+  if (!next) return;
+
+  // requestAnimationFrame keeps UI thread free during imports
+  requestAnimationFrame(() => {
+    if (moduleCache.has(next.id)) {
+      // Already loaded by the user navigating to it — skip, do next
+      processNext();
+      return;
+    }
+    next.importer()
+      .then(mod => {
+        moduleCache.set(next.id, mod);
+        requestAnimationFrame(processNext);
+      })
+      .catch(err => {
+        console.warn(`[ModulePrefetcher] Failed to prefetch ${next.id}:`, err);
+        requestAnimationFrame(processNext);
+      });
+  });
+};
+
 /**
- * Starts the background prefetch queue.
- * Should be called after critical startup tasks are complete.
+ * Starts background prefetching of all registered modules.
+ * Call this once after the initial tab renders (in a useEffect).
+ * Pinned modules are prioritised and loaded first.
  */
-export const startPrefetching = (pinnedModules: string[] = []) => {
+export const startPrefetching = (pinnedModules: string[] = []): void => {
   if (isPrefetching || prefetchQueue.length === 0) return;
   isPrefetching = true;
 
-  // Prioritize pinned modules: move them to the front of the queue
+  // Pinned modules go to the front of the queue
   prefetchQueue.sort((a, b) => {
     const aPinned = pinnedModules.includes(a.id);
     const bPinned = pinnedModules.includes(b.id);
@@ -41,70 +88,67 @@ export const startPrefetching = (pinnedModules: string[] = []) => {
     return 0;
   });
 
-  InteractionManager.runAfterInteractions(() => {
-    processNext();
-  });
-};
-
-const processNext = () => {
-  if (prefetchQueue.length === 0) {
-    isPrefetching = false;
-    return;
-  }
-
-  const nextModule = prefetchQueue.shift();
-  if (!nextModule) return;
-
-  // Small delay to ensure we don't block the UI thread during rapid module imports
-  requestAnimationFrame(() => {
-    // We only import if it hasn't been cached yet (it might have been loaded actively by the user)
-    if (!moduleCache.has(nextModule.id)) {
-      nextModule.importer().then((mod) => {
-        moduleCache.set(nextModule.id, mod);
-        // Process next module on next idle frame
-        requestAnimationFrame(processNext);
-      }).catch(err => {
-        console.warn(`[ModulePrefetcher] Failed to prefetch module ${nextModule.id}`, err);
-        // Continue even if one fails
-        requestAnimationFrame(processNext);
-      });
-    } else {
-      processNext();
-    }
-  });
+  // Wait for interactions (navigation animations) to complete before loading
+  InteractionManager.runAfterInteractions(processNext);
 };
 
 /**
- * A cache-aware wrapper around React.lazy.
- * If the module is already in the cache, it renders a standard component synchronously.
- * Otherwise, it falls back to a state-based loading mechanism without triggering Suspense.
+ * cacheAwareLazy — The core primitive.
+ *
+ * Creates a stable wrapper component for a lazy-loaded screen.
+ * The wrapper is created ONCE per id and reused — this is critical:
+ * recreating it would cause React to unmount/remount the screen component.
+ *
+ * Loading state:
+ * - If the module is already cached → renders synchronously, frame 1.
+ * - If not cached → shows a TRANSPARENT blank View (inherits screen bg)
+ *   while importing, then renders the component immediately on load.
+ *
+ * The transparent View (not a coloured one) is the fix for the grey flash:
+ * the Tab.Navigator's `sceneStyle: { backgroundColor: '#080510' }` already
+ * paints the correct dark background. Our stub must not paint over it.
  */
-export const cacheAwareLazy = (id: string, importer: Importer) => {
-  // Register it for the background queue
+export const cacheAwareLazy = (id: string, importer: Importer): ComponentType<any> => {
+  // Register for background loading
   registerForPrefetch(id, importer);
 
-  return (props: any) => {
-    // Initialize state synchronously so if it's cached, it renders on frame 1
+  // Return a stable wrapper — created once, then returned from cache
+  if (wrapperCache.has(id)) {
+    return wrapperCache.get(id)!;
+  }
+
+  const Wrapper = (props: any) => {
     const [Comp, setComp] = React.useState<ComponentType<any> | null>(() => {
+      // Synchronous init: if already cached, render immediately
       return moduleCache.has(id) ? moduleCache.get(id)!.default : null;
     });
 
     React.useEffect(() => {
-      if (!Comp) {
-        importer().then(mod => {
+      if (Comp) return; // Already loaded
+      let cancelled = false;
+      importer()
+        .then(mod => {
+          if (cancelled) return;
           moduleCache.set(id, mod);
-          // Use a function callback to set state in case the component itself is a function
           setComp(() => mod.default);
-        }).catch(err => {
-          console.warn(`[cacheAwareLazy] Failed to load module ${id}`, err);
+        })
+        .catch(err => {
+          console.warn(`[cacheAwareLazy] Failed to load ${id}:`, err);
         });
-      }
-    }, [Comp]);
+      return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     if (!Comp) {
-      return <View style={{ flex: 1, backgroundColor: '#0a090c' }} />;
+      // TRANSPARENT — inherits the dark background from Tab.Navigator sceneStyle.
+      // A hardcoded backgroundColor here would cause a flash on background resume.
+      return <View style={{ flex: 1 }} />;
     }
 
     return <Comp {...props} />;
   };
+
+  Wrapper.displayName = `LazyScreen(${id})`;
+  wrapperCache.set(id, Wrapper);
+  return Wrapper;
 };

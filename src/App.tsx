@@ -684,7 +684,7 @@ function App() {
             <div style={{ position: 'relative', width: 48, height: 48 }}>
               <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(139,92,246,0.15)' }} />
               <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#8b5cf6', animation: 'spin 0.8s linear infinite' }} />
-              <div style={{ position: 'absolute', inset: 6, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#3b82f6', animation: 'spin 1.2s linear infinite reverse' }} />
+              <div style={{ position: 'absolute', inset: 6, borderRadius: '50%', border: '2px solid transparent', borderTopColor: '#a599ff', animation: 'spin 1.2s linear infinite reverse' }} />
             </div>
 
             <motion.p

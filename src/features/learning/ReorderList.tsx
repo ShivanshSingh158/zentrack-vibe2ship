@@ -129,7 +129,7 @@ export const ReorderList = React.memo(({ items, onReorder, renderItem }: {
           return (
             <div key={item.id}>
               {isOverAbove && (
-                <div style={{ height: '3px', borderRadius: '3px', background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', margin: '2px 0', boxShadow: '0 0 10px rgba(59,130,246,0.7)' }} />
+                <div style={{ height: '3px', borderRadius: '3px', background: 'linear-gradient(90deg,#a599ff,#b8afff)', margin: '2px 0', boxShadow: '0 0 10px rgba(165,153,255,0.7)' }} />
               )}
               <div
                 ref={el => { itemRefs.current[index] = el; }}
@@ -144,7 +144,7 @@ export const ReorderList = React.memo(({ items, onReorder, renderItem }: {
                 {renderItem(item, index, isDraggingThis, (e: React.PointerEvent) => startDrag(e, index))}
               </div>
               {isOverBelow && (
-                <div style={{ height: '3px', borderRadius: '3px', background: 'linear-gradient(90deg,#3b82f6,#60a5fa)', margin: '2px 0', boxShadow: '0 0 10px rgba(59,130,246,0.7)' }} />
+                <div style={{ height: '3px', borderRadius: '3px', background: 'linear-gradient(90deg,#a599ff,#b8afff)', margin: '2px 0', boxShadow: '0 0 10px rgba(165,153,255,0.7)' }} />
               )}
             </div>
           );
@@ -164,9 +164,9 @@ export const ReorderList = React.memo(({ items, onReorder, renderItem }: {
             pointerEvents: 'none',
             zIndex: 999999,
             background: 'rgba(18,18,22,0.98)',
-            border: '1.5px solid rgba(59,130,246,0.6)',
+            border: '1.5px solid rgba(165,153,255,0.6)',
             borderRadius: '10px',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.8), 0 0 0 1px rgba(59,130,246,0.25)',
+            boxShadow: '0 24px 64px rgba(0,0,0,0.8), 0 0 0 1px rgba(165,153,255,0.25)',
             transform: 'scale(1.025) rotate(-0.4deg)',
             transformOrigin: 'center top',
             display: 'flex',
@@ -181,7 +181,7 @@ export const ReorderList = React.memo(({ items, onReorder, renderItem }: {
             const vid = item.url ? item.url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/)?.[1] : null;
             return (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', overflow: 'hidden' }}>
-                <div style={{ cursor: 'grabbing', color: '#3b82f6', display: 'flex', flexShrink: 0 }}>
+                <div style={{ cursor: 'grabbing', color: '#a599ff', display: 'flex', flexShrink: 0 }}>
                   <GripVertical size={14} />
                 </div>
                 {vid && (

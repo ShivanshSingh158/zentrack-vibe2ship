@@ -11,7 +11,7 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const EMOJI_OPTIONS = ['💪', '📚', '🧘', '💧', '🏃', '✍️', '🎯', '💤', '🥗', '🚫', '🎵', '🧠', '🌅', '🔥', '⭐'];
-const COLOR_OPTIONS = ['#7c3aed', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#14b8a6', '#f97316'];
+const COLOR_OPTIONS = ['#7c3aed', '#10b981', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#a599ff', '#f97316'];
 
 const PARTICLES = Array.from({ length: 30 }).map((_, i) => ({
   id: i,
@@ -342,7 +342,7 @@ export const HabitsModule = () => {
                         onClick={(e) => toggleHabitDay(habit.id!, today, e)}
                         style={{
                           width: '24px', height: '24px', borderRadius: '4px',
-                          background: todayDone ? 'linear-gradient(135deg, #a78bfa, #60a5fa)' : 'rgba(255,255,255,0.03)',
+                          background: todayDone ? 'linear-gradient(135deg, #a78bfa, #b8afff)' : 'rgba(255,255,255,0.03)',
                           border: todayDone ? 'none' : '1.5px solid rgba(255,255,255,0.2)',
                           color: todayDone ? '#fff' : 'transparent',
                           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',

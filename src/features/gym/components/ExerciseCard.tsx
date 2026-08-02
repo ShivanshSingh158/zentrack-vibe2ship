@@ -11,7 +11,7 @@ const fmtKg = (v: number | null | undefined): string => {
 };
 
 const MUSCLE_COLORS: Record<string, string> = {
-  'Chest': '#f97316', 'Back': '#3b82f6', 'Shoulders': '#8b5cf6',
+  'Chest': '#f97316', 'Back': '#a599ff', 'Shoulders': '#8b5cf6',
   'Side Delts': '#7c3aed', 'Rear Delts': '#6d28d9', 'Triceps': '#10b981',
   'Biceps': '#06b6d4', 'Brachialis': '#0284c7', 'Forearms': '#0891b2',
   'Quads': '#f59e0b', 'Hamstrings': '#d97706', 'Glutes/Hams': '#b45309',
@@ -399,7 +399,7 @@ const ExerciseCard = memo(({
               <button
                 className="gym-card-btn"
                 onClick={e => { e.stopPropagation(); onEditClick(index); }}
-                style={{ background: 'rgba(59,130,246,0.08)', borderColor: 'rgba(59,130,246,0.2)', color: '#3b82f6' }}
+                style={{ background: 'rgba(165,153,255,0.08)', borderColor: 'rgba(165,153,255,0.2)', color: '#a599ff' }}
               >
                 <Edit3 size={12} />
               </button>

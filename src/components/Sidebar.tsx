@@ -32,7 +32,6 @@ const ALL_MODULES: ModuleDef[] = [
   { id: 'todo',        label: 'To-Do',         shortLabel: 'To-Do',   path: '/todo',        icon: <ListTodo size={20} /> },
   { id: 'calendar',    label: 'Calendar',      shortLabel: 'Cal.',    path: '/calendar',    icon: <Calendar size={20} /> },
   { id: 'goals',       label: 'Goals & OKRs',  shortLabel: 'Goals',   path: '/goals',       icon: <Target size={20} /> },
-  { id: 'gym',         label: 'Gym AI',        shortLabel: 'Gym',     path: '/gym',         icon: <Dumbbell size={20} /> },
 
   // ── Secondary: Less frequent / Clutter modules (Hidden in "More") ──
   { id: 'notes',       label: 'Smart Storage', shortLabel: 'Notes',   path: '/notes',       icon: <BookOpen size={20} color="#fbbf24" /> },
@@ -43,14 +42,13 @@ const ALL_MODULES: ModuleDef[] = [
   { id: 'analytics',   label: 'Analytics',     shortLabel: 'Stats',   path: '/analytics',   icon: <BarChart3 size={20} /> },
   { id: 'attendance',  label: 'Attendance',    shortLabel: 'Attend.', path: '/attendance',  icon: <ClipboardCheck size={20} /> },
   { id: 'assignments', label: 'Assignments',   shortLabel: 'Assign.', path: '/assignments', icon: <ClipboardList size={20} /> },
-  { id: 'integrations',label: 'Integrations',  shortLabel: 'Connect', path: '/integrations',icon: <Zap size={20} /> },
 ];
 
 // The index where secondary modules start (after primary group)
 const SECONDARY_START_INDEX = 5;
 
 // Home is always pinned first; max 4 more can be pinned to bottom bar
-const DEFAULT_PINNED = ['home', 'todo', 'goals', 'calendar', 'gym'];
+const DEFAULT_PINNED = ['home', 'todo', 'goals', 'calendar'];
 const STORAGE_KEY = 'nav_pinned_v4';
 const MAX_PINNED = 5; // including home = 4 user slots
 
@@ -77,7 +75,7 @@ const sidebarStyles = `
     background: rgba(0, 0, 0, 0.96) !important;
     backdrop-filter: blur(28px) !important;
     -webkit-backdrop-filter: blur(28px) !important;
-    border-right: 1px solid rgba(59, 130, 246, 0.08) !important;
+    border-right: 1px solid rgba(165, 153, 255, 0.08) !important;
     width: 52px !important;
     min-width: 52px !important;
     display: flex !important;
@@ -92,7 +90,7 @@ const sidebarStyles = `
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
-    border-bottom: 1px solid rgba(59, 130, 246, 0.07) !important;
+    border-bottom: 1px solid rgba(165, 153, 255, 0.07) !important;
     margin-bottom: 0.5rem !important;
   }
   .sidebar-header .app-logo {
@@ -105,7 +103,7 @@ const sidebarStyles = `
     transition: filter 0.15s ease, transform 0.2s cubic-bezier(0.34,1.56,0.64,1) !important;
   }
   .sidebar-header .app-logo:hover img {
-    filter: brightness(1.15) drop-shadow(0 0 6px rgba(59,130,246,0.55)) !important;
+    filter: brightness(1.15) drop-shadow(0 0 6px rgba(165,153,255,0.55)) !important;
     transform: scale(1.08) !important;
   }
 
@@ -145,7 +143,7 @@ const sidebarStyles = `
   /* Hover state */
   .sidebar-nav .nav-item:hover {
     color: rgba(242, 242, 247, 0.90) !important;
-    background: rgba(59, 130, 246, 0.07) !important;
+    background: rgba(165, 153, 255, 0.07) !important;
   }
   .sidebar-nav .nav-item:hover svg {
     transform: scale(1.15) !important;
@@ -153,13 +151,13 @@ const sidebarStyles = `
 
   /* Active state — purple */
   .sidebar-nav .nav-item.active {
-    color: #3b82f6 !important;
-    background: rgba(59, 130, 246, 0.10) !important;
+    color: #a599ff !important;
+    background: rgba(165, 153, 255, 0.10) !important;
     border: none !important;
   }
   .sidebar-nav .nav-item.active svg {
-    color: #3b82f6 !important;
-    filter: drop-shadow(0 0 6px rgba(59,130,246,0.60)) !important;
+    color: #a599ff !important;
+    filter: drop-shadow(0 0 6px rgba(165,153,255,0.60)) !important;
   }
   /* Left accent line on active — purple glow */
   .sidebar-nav .nav-item.active::before {
@@ -170,9 +168,9 @@ const sidebarStyles = `
     top: 22% !important;
     height: 56% !important;
     width: 2.5px !important;
-    background: linear-gradient(180deg, #60a5fa, #3b82f6) !important;
+    background: linear-gradient(180deg, #b8afff, #a599ff) !important;
     border-radius: 0 2px 2px 0 !important;
-    box-shadow: 0 0 10px rgba(59,130,246,0.65), 0 0 20px rgba(59,130,246,0.25) !important;
+    box-shadow: 0 0 10px rgba(165,153,255,0.65), 0 0 20px rgba(165,153,255,0.25) !important;
   }
   .sidebar-nav .nav-item::after {
     display: none !important;
@@ -186,7 +184,7 @@ const sidebarStyles = `
     transform: translateY(-50%) !important;
     background: rgba(28, 28, 29, 0.98) !important;
     backdrop-filter: blur(20px) !important;
-    border: 1px solid rgba(59, 130, 246, 0.16) !important;
+    border: 1px solid rgba(165, 153, 255, 0.16) !important;
     border-radius: 8px !important;
     padding: 0.32rem 0.65rem !important;
     font-size: 0.78rem !important;
@@ -196,7 +194,7 @@ const sidebarStyles = `
     pointer-events: none !important;
     opacity: 0 !important;
     transition: opacity 0.12s ease !important;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.60), 0 0 0 1px rgba(59,130,246,0.06) !important;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.60), 0 0 0 1px rgba(165,153,255,0.06) !important;
     z-index: 300 !important;
     letter-spacing: 0.01em !important;
   }
@@ -224,7 +222,7 @@ const sidebarStyles = `
     flex-direction: column !important;
     align-items: center !important;
     gap: 0.5rem !important;
-    border-top: 1px solid rgba(59, 130, 246, 0.07) !important;
+    border-top: 1px solid rgba(165, 153, 255, 0.07) !important;
     margin-top: auto !important;
   }
   .sidebar-footer .user-name {
@@ -267,8 +265,8 @@ const sidebarStyles = `
 
   /* Pomodoro mini widget */
   .hide-on-mobile [style*="background: rgba(124,58,237"] {
-    background: rgba(59, 130, 246, 0.07) !important;
-    border: 1px solid rgba(59, 130, 246, 0.18) !important;
+    background: rgba(165, 153, 255, 0.07) !important;
+    border: 1px solid rgba(165, 153, 255, 0.18) !important;
     border-radius: 8px !important;
     margin: 0 4px !important;
     padding: 0.5rem !important;
@@ -342,7 +340,7 @@ export function Sidebar({ user, onLogout, onOpenSecurity }: SidebarProps) {
         <div className="sidebar-header">
           <Link to="/home" className="app-logo" style={{ textDecoration: 'none', color: 'inherit', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <img src="/logo_white.png" alt="ZenTrack" className="logo-icon" style={{ width: 24, height: 24, objectFit: 'contain' }} />
-            <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.5rem', transform: 'translateY(1px)' }}>ZenTrack</span>
+            <span style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.5rem', transform: 'translateY(3px)' }}>ZenTrack</span>
           </Link>
         </div>
 

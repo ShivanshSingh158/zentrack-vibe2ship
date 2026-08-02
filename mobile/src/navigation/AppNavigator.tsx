@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, Alert, DeviceEventEmitter, Pressable } from 'react-native';
+import { View, StyleSheet, Alert, DeviceEventEmitter, AppState, AppStateStatus } from 'react-native';
 import { Text } from 'react-native';
 import Animated, {
   useSharedValue,
@@ -8,10 +8,8 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
-  withDelay,
   Easing,
   cancelAnimation,
-  runOnJS,
 } from 'react-native-reanimated';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -27,7 +25,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import { auth } from '../services/firebase';
 import { useMobileData } from '../contexts/MobileDataContext';
-import { setupNetworkListener } from '../services/offlineSync';
 import { cacheAwareLazy, startPrefetching } from '../utils/ModulePrefetcher';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BRUTAL_QUOTES } from '../data/brutalQuotes';
@@ -37,7 +34,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { feedback } from '../utils/haptics';
 import ErrorBoundary from '../components/ErrorBoundary';
 
-// ─── Critical screens (synchronous imports — always ready) ────────────────────
+// ─── Critical screens (synchronous — always ready, zero load time) ─────────────
 import LandingScreen from '../screens/LandingScreen';
 import GuestDashboard from '../screens/GuestDashboard';
 import AuthScreen from '../screens/AuthScreen';
@@ -51,19 +48,19 @@ import GymStack from './GymStack';
 import SaraScreen from '../screens/SaraScreen';
 import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen';
 
-// ─── Lazy screens (prefetched after login) ────────────────────────────────────
-const HabitsScreen          = cacheAwareLazy('HabitsScreen',          () => import('../screens/HabitsScreen'));
-const NotesScreen           = cacheAwareLazy('NotesScreen',           () => import('../screens/NotesScreen'));
-const AttendanceScreen      = cacheAwareLazy('AttendanceScreen',      () => import('../screens/AttendanceScreen'));
-const WeeklyReviewScreen    = cacheAwareLazy('WeeklyReviewScreen',    () => import('../screens/WeeklyReviewScreen'));
-const StudyRoomScreen       = cacheAwareLazy('StudyRoomScreen',       () => import('../screens/StudyRoomScreen'));
-const AnalyticsScreen       = cacheAwareLazy('AnalyticsScreen',       () => import('../screens/AnalyticsScreen'));
-const AssignmentsScreen     = cacheAwareLazy('AssignmentsScreen',     () => import('../screens/AssignmentsScreen'));
-const GradesScreen          = cacheAwareLazy('GradesScreen',          () => import('../screens/GradesScreen'));
-const LearningScreen        = cacheAwareLazy('LearningScreen',        () => import('../screens/LearningScreen'));
-const StreakDetailScreen     = cacheAwareLazy('StreakDetailScreen',    () => import('../screens/StreakDetailScreen'));
-const AgentHistoryScreen     = cacheAwareLazy('AgentHistoryScreen',   () => import('../screens/AgentHistoryScreen'));
-const WellbeingDashboardScreen = cacheAwareLazy('WellbeingDashboardScreen', () => import('../screens/WellbeingDashboardScreen'));
+// ─── Lazy screens (background-prefetched after login) ─────────────────────────
+const HabitsScreen             = cacheAwareLazy('HabitsScreen',             () => import('../screens/HabitsScreen'));
+const NotesScreen              = cacheAwareLazy('NotesScreen',              () => import('../screens/NotesScreen'));
+const AttendanceScreen         = cacheAwareLazy('AttendanceScreen',         () => import('../screens/AttendanceScreen'));
+const WeeklyReviewScreen       = cacheAwareLazy('WeeklyReviewScreen',       () => import('../screens/WeeklyReviewScreen'));
+const StudyRoomScreen          = cacheAwareLazy('StudyRoomScreen',          () => import('../screens/StudyRoomScreen'));
+const AnalyticsScreen          = cacheAwareLazy('AnalyticsScreen',          () => import('../screens/AnalyticsScreen'));
+const AssignmentsScreen        = cacheAwareLazy('AssignmentsScreen',        () => import('../screens/AssignmentsScreen'));
+const GradesScreen             = cacheAwareLazy('GradesScreen',             () => import('../screens/GradesScreen'));
+const LearningScreen           = cacheAwareLazy('LearningScreen',           () => import('../screens/LearningScreen'));
+const StreakDetailScreen        = cacheAwareLazy('StreakDetailScreen',       () => import('../screens/StreakDetailScreen'));
+const AgentHistoryScreen        = cacheAwareLazy('AgentHistoryScreen',      () => import('../screens/AgentHistoryScreen'));
+const WellbeingDashboardScreen  = cacheAwareLazy('WellbeingDashboardScreen', () => import('../screens/WellbeingDashboardScreen'));
 
 // ─── Navigators ───────────────────────────────────────────────────────────────
 const Stack = createNativeStackNavigator();
@@ -72,20 +69,55 @@ const Tab   = createBottomTabNavigator();
 // Exported for imperative navigation from notification handlers in App.tsx
 export const navigationRef = createNavigationContainerRef<any>();
 
-// ─── Navigation Theme ─────────────────────────────────────────────────────────
+// ─── Per-screen ErrorBoundary HOC ─────────────────────────────────────────────
+//
+// Wraps each individual screen in its own ErrorBoundary so a crash in one
+// screen NEVER propagates to kill the tab navigator or any other screen.
+//
+// WhatsApp behaviour: if the Chat screen crashes, your Home tab still works.
+// Without per-screen boundaries, one crash would blank the entire app.
+
+function withErrorBoundary<T extends object>(
+  Component: React.ComponentType<T>,
+  screenName: string
+): React.ComponentType<T> {
+  const Wrapped = (props: T) => (
+    <ErrorBoundary screenName={screenName}>
+      <Component {...(props as any)} />
+    </ErrorBoundary>
+  );
+  Wrapped.displayName = `Protected(${screenName})`;
+  return Wrapped;
+}
+
+// ─── Navigation Theme — matches Android windowBackground exactly ───────────────
 const ZEN_DARK_THEME = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: '#080510',   // matches Android windowBackground in styles.xml
+    background: '#080510',
     card:        'transparent',
     border:      'transparent',
     text:        '#f2f2f7',
   },
 };
 
-// ─── Route persistence ────────────────────────────────────────────────────────
-const NAV_ROUTE_KEY = '@zentrack_last_route';
+// ─── AsyncStorage Keys ────────────────────────────────────────────────────────
+//
+// NAV_ROUTE_KEY:    persists the current tab so resume (background→foreground)
+//                   restores exactly where the user was. Cleared on kill.
+//
+// SESSION_ALIVE_KEY: a heartbeat flag. Written when app comes to foreground.
+//                    Cleared when app backgrounds. On cold boot (process killed),
+//                    this key is ABSENT — so we know to reset to Home.
+//                    On resume (process alive, just hidden), this key is PRESENT
+//                    — so we restore the saved tab.
+//
+// This is the exact mechanism WhatsApp uses: kill = Home, resume = last screen.
+
+const NAV_ROUTE_KEY    = '@zentrack_last_route';
+const SESSION_ALIVE_KEY = '@zentrack_session_alive';
+
 const ALLOWED_SAVE_ROUTES = new Set([
   'Home', 'Tasks', 'Gym', 'Calendar', 'Habits',
   'Attendance', 'Analytics', 'WeeklyReview',
@@ -95,9 +127,40 @@ const ALLOWED_SAVE_ROUTES = new Set([
 // ─── SARA FAB visibility ──────────────────────────────────────────────────────
 const SARA_VISIBLE_ROUTES = new Set(['Home', 'Tasks', 'Analytics']);
 
+// ─── Component map for tab screens ───────────────────────────────────────────
+//
+// EVERY screen is wrapped in its own ErrorBoundary via withErrorBoundary().
+// A crash in Tasks will never blank the Home tab. WhatsApp behaviour.
+
+const SafeDashboard    = withErrorBoundary(DashboardScreen,   'Dashboard');
+
+const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
+  Tasks:        withErrorBoundary(TasksScreen,        'Tasks'),
+  Sara:         withErrorBoundary(SaraScreen,         'Sara'),
+  Calendar:     withErrorBoundary(CalendarScreen,     'Calendar'),
+  Habits:       withErrorBoundary(HabitsScreen,       'Habits'),
+  Gym:          withErrorBoundary(GymStack,           'Gym'),
+  Attendance:   withErrorBoundary(AttendanceScreen,   'Attendance'),
+  Analytics:    withErrorBoundary(AnalyticsScreen,    'Analytics'),
+  WeeklyReview: withErrorBoundary(WeeklyReviewScreen, 'WeeklyReview'),
+  StudyRoom:    withErrorBoundary(StudyRoomScreen,    'StudyRoom'),
+  Notes:        withErrorBoundary(NotesScreen,        'Notes'),
+  Assignments:  withErrorBoundary(AssignmentsScreen,  'Assignments'),
+  Grades:       withErrorBoundary(GradesScreen,       'Grades'),
+  Learning:     withErrorBoundary(LearningScreen,     'Learning'),
+};
+
 // ─── SplashLoader ─────────────────────────────────────────────────────────────
-// Shown as a full-screen OVERLAY on top of the NavigationContainer while the
-// app is initialising. The NavigationContainer itself is always mounted.
+//
+// Rendered as a full-screen OVERLAY (absolute + zIndex 9999) on top of the
+// NavigationContainer while the app initialises. The container itself is always
+// mounted and painted — no early returns, no unmounts, no grey window.
+//
+// This is the key architectural decision: the native view tree NEVER goes away.
+// Android's window always has React content. When the OS brings the app to the
+// foreground after backgrounding, React re-attaches to an already-warm view,
+// so there is nothing to repaint — zero flash.
+
 export function SplashLoader() {
   const { colors } = useTheme();
   const pulseScale  = useSharedValue(0.9);
@@ -149,7 +212,7 @@ const splash = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 32,
-    zIndex: 9999,      // on top of NavigationContainer
+    zIndex: 9999,
   },
   inner: { alignItems: 'center', gap: 16 },
   quote: {
@@ -185,53 +248,39 @@ function NestedHeader({ title }: { title: string }) {
   );
 }
 
-// ─── Component map for tab screens ───────────────────────────────────────────
-const COMPONENT_MAP: Record<string, any> = {
-  Tasks:        TasksScreen,
-  Sara:         SaraScreen,
-  Calendar:     CalendarScreen,
-  Habits:       HabitsScreen,
-  Gym:          GymStack,
-  Attendance:   AttendanceScreen,
-  Analytics:    AnalyticsScreen,
-  WeeklyReview: WeeklyReviewScreen,
-  StudyRoom:    StudyRoomScreen,
-  Notes:        NotesScreen,
-  Assignments:  AssignmentsScreen,
-  Grades:       GradesScreen,
-  Learning:     LearningScreen,
-};
-
 // ─── Main Tab Navigator ───────────────────────────────────────────────────────
-// initialTab is a STABLE PROP passed at mount time from AsyncStorage.
-// It never changes after mount — this is the WhatsApp pattern.
+//
+// initialTab is a STABLE PROP passed at mount time from the boot read.
+// It never changes after mount — this is the WhatsApp/Instagram pattern.
+// Changing it would remount the entire tab navigator and lose all screen state.
+
 function MainTabNavigator({ initialTab }: { initialTab: string }) {
   const { colors }       = useTheme();
   const { pinnedModules } = useMobileData();
 
-  // Save current route to AsyncStorage on every tab focus
+  // Save the current route on every tab focus so resume can restore it
   const onTabFocus = useCallback((routeName: string) => {
     if (ALLOWED_SAVE_ROUTES.has(routeName)) {
       AsyncStorage.setItem(NAV_ROUTE_KEY, routeName).catch(() => {});
     }
   }, []);
 
-  // Prefetch lazy screens after initial render
+  // Background-prefetch lazy screens after initial render
   useEffect(() => { startPrefetching(pinnedModules); }, [pinnedModules]);
 
   return (
-    <ErrorBoundary screenName="Tab Navigator">
-      <Tab.Navigator
-        initialRouteName={initialTab}
-        screenListeners={({ route }) => ({
-          focus: () => onTabFocus(route.name),
-        })}
+    <Tab.Navigator
+      initialRouteName={initialTab}
+      screenListeners={({ route }) => ({
+        focus: () => onTabFocus(route.name),
+      })}
         screenOptions={({ route }) => ({
           headerShown: false,
-          // sceneStyle ensures every tab screen background is dark — no white flash
+          // sceneStyle background MUST match styles.xml windowBackground.
+          // cacheAwareLazy's loading stub is transparent — it correctly shows this colour.
           sceneStyle: { backgroundColor: '#080510' },
-          tabBarShowLabel:        true,
-          tabBarActiveTintColor:  colors.accentPrimary,
+          tabBarShowLabel:         true,
+          tabBarActiveTintColor:   colors.accentPrimary,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarLabelStyle: {
             fontSize:    10,
@@ -246,7 +295,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
           ),
           tabBarIcon: ({ color, size, focused }) => {
             const icons: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
-              Home:         { active: 'home',            inactive: 'home-outline' },
+              Home:         { active: 'home',             inactive: 'home-outline' },
               Tasks:        { active: 'checkmark-circle', inactive: 'checkmark-circle-outline' },
               Sara:         { active: 'planet',           inactive: 'planet-outline' },
               Calendar:     { active: 'calendar',         inactive: 'calendar-outline' },
@@ -278,7 +327,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
         })}
         backBehavior="history"
       >
-        <Tab.Screen name="Home" component={DashboardScreen} />
+        <Tab.Screen name="Home" component={SafeDashboard} />
         {Object.keys(COMPONENT_MAP).map((modId) => {
           const isPinned = pinnedModules.includes(modId);
           return (
@@ -290,9 +339,8 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
             />
           );
         })}
-        <Tab.Screen name="More" component={MoreScreen} />
+        <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} />
       </Tab.Navigator>
-    </ErrorBoundary>
   );
 }
 
@@ -300,41 +348,40 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
 function NestedScreens() {
   const { colors } = useTheme();
   return (
-    <ErrorBoundary screenName="Screen">
+    <ErrorBoundary screenName="Nested Screens">
       <Stack.Navigator
         screenOptions={{
-          header:          ({ route }) => <NestedHeader title={route.name} />,
-          contentStyle:    { backgroundColor: colors.background },
-          animation:       'slide_from_right',
+          header:            ({ route }) => <NestedHeader title={route.name} />,
+          contentStyle:      { backgroundColor: colors.background },
+          animation:         'slide_from_right',
           animationDuration: 180,
         }}
       >
-        <Stack.Screen name="Settings"              component={SettingsScreen} />
-        <Stack.Screen name="NotificationsSettings" component={NotificationsSettingsScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Sara"                  component={SaraScreen}     options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="StreakDetail"          component={StreakDetailScreen} />
-        <Stack.Screen name="SaraModal"             component={SaraScreen}     options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
-        <Stack.Screen name="AgentHistory"          component={AgentHistoryScreen} />
-        <Stack.Screen name="WellbeingDashboard"    component={WellbeingDashboardScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Settings"              component={withErrorBoundary(SettingsScreen,               'Settings')} />
+        <Stack.Screen name="NotificationsSettings" component={withErrorBoundary(NotificationsSettingsScreen,  'Notifications')} options={{ headerShown: false }} />
+        <Stack.Screen name="Sara"                  component={withErrorBoundary(SaraScreen,                   'Sara')} options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="StreakDetail"           component={withErrorBoundary(StreakDetailScreen,           'StreakDetail')} />
+        <Stack.Screen name="SaraModal"             component={withErrorBoundary(SaraScreen,                   'SaraModal')} options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="AgentHistory"          component={withErrorBoundary(AgentHistoryScreen,           'AgentHistory')} />
+        <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,     'Wellbeing')} options={{ headerShown: false }} />
       </Stack.Navigator>
     </ErrorBoundary>
   );
 }
 
 // ─── Root authenticated navigator + global SARA FAB ──────────────────────────
-// initialTab is frozen at mount via useCallback — never triggers re-render.
 function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
   const { colors }       = useTheme();
   const [saraVisible, setSaraVisible] = useState(false);
 
-  // Memoised component — prevents MainTabNavigator from re-mounting on any parent state change
+  // Memoised — prevents MainTabNavigator from remounting on any parent state change.
+  // The [] dependency is intentional: initialTab must be frozen at mount.
   const MainTabsScreen = useCallback(
     () => <MainTabNavigator initialTab={initialTab} />,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [] // intentionally stable — initialTab must never cause a re-mount
+    []
   );
 
-  // SARA FAB visibility driven by route changes from NavigationContainer.onStateChange
   const [showSara, setShowSara] = useState(SARA_VISIBLE_ROUTES.has(initialTab));
 
   useEffect(() => {
@@ -353,7 +400,6 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
         </Stack.Group>
       </Stack.Navigator>
 
-      {/* Global SARA FAB — only on Home, Tasks, Analytics */}
       {showSara && (
         <AnimatedPressable
           style={styles.globalSaraBtn}
@@ -364,7 +410,6 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
         </AnimatedPressable>
       )}
 
-      {/* Global SARA Modal */}
       <SaraScreen isGlobalModal={true} visible={saraVisible} onClose={() => setSaraVisible(false)} />
     </View>
   );
@@ -372,84 +417,101 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
 
 // ─── AppNavigator — Root ──────────────────────────────────────────────────────
 //
-// WHATSAPP-GRADE ARCHITECTURE:
+// WHATSAPP / INSTAGRAM LIFECYCLE ARCHITECTURE
+// ═══════════════════════════════════════════
 //
-// KEY INSIGHT: The NavigationContainer ALWAYS renders, even during the splash.
-// The splash is shown as a full-screen OVERLAY (absolute, zIndex: 9999) on top
-// of the container — NOT as an early return that unmounts the container.
+// GREY SCREEN FIX:
+//   The NavigationContainer ALWAYS renders — even during splash. The SplashLoader
+//   is an absolute overlay (zIndex 9999) on top of it, NOT an early return.
+//   This keeps React's view tree warm inside Android's window. When the OS
+//   brings the app to the foreground, React re-attaches to an already-painted
+//   view → zero flash, zero grey.
 //
-// This means:
-// 1. Android's native window always has React content — no grey flash on resume.
-// 2. The container's native view tree persists across auth state changes.
-// 3. Screens keep their state when you switch away — just like WhatsApp.
+// KILL vs. RESUME DETECTION:
+//   We use a session-alive heartbeat key in AsyncStorage:
+//   - App comes to foreground (active)  → write SESSION_ALIVE_KEY = '1'
+//   - App goes to background (inactive) → delete SESSION_ALIVE_KEY
+//   - Cold boot (process killed)        → SESSION_ALIVE_KEY is absent → boot to Home
+//   - Warm resume (process alive)       → SESSION_ALIVE_KEY is present → restore NAV_ROUTE_KEY
+//
+//   This is the exact mechanism that gives WhatsApp its feel:
+//   kill the app → always Home. Background → foreground → same screen, instantly.
 //
 // AUTH GUARD:
-// Firebase fires onAuthStateChanged(null) during token refresh (every ~1h).
-// We ignore nulls for 3 seconds after the first auth resolution to avoid
-// flashing the login screen during a routine token refresh.
-// Intentional logout (user.signOut()) sets a flag BEFORE the null fires.
+//   Firebase fires onAuthStateChanged(null) during token refresh (~every 1h).
+//   We ignore nulls for 3 seconds after the first auth resolution to avoid
+//   flashing the login screen during a routine token refresh.
+//   Intentional logout (user.signOut()) calls setUser(null) directly via a flag.
 
 export default function AppNavigator() {
-  // ── Startup state (never changes after boot) ────────────────────────────────
-  const [appReady,    setAppReady]    = useState(false);    // both auth + AsyncStorage resolved
-  const [user,        setUser]        = useState<User | null>(null);
-  const [onboarded,   setOnboarded]   = useState(true);
-  const [initialTab,  setInitialTab]  = useState('Home');   // stable after first read
+  const [appReady,   setAppReady]   = useState(false);
+  const [user,       setUser]       = useState<User | null>(null);
+  const [onboarded,  setOnboarded]  = useState(true);
+  const [initialTab, setInitialTab] = useState('Home'); // stable after boot
 
-  // ── Auth guards ─────────────────────────────────────────────────────────────
-  const firstAuthAt    = useRef<number>(0);                 // timestamp of first auth resolution
-  const hasResolved    = useRef(false);                     // true after first auth callback
+  const firstAuthAt = useRef<number>(0);
+  const hasResolved = useRef(false);
 
+  // ── Boot sequence ─────────────────────────────────────────────────────────
   useEffect(() => {
-    // Read saved tab + onboarding flag from AsyncStorage BEFORE rendering anything.
-    // This is the ONLY read — it never changes after boot.
-    const bootRead = AsyncStorage.multiGet([NAV_ROUTE_KEY, ONBOARDING_KEY])
-      .then(([[, savedTab], [, onboardedVal]]) => {
-        if (savedTab && ALLOWED_SAVE_ROUTES.has(savedTab)) setInitialTab(savedTab);
-        setOnboarded(onboardedVal === 'true');
-      })
-      .catch(() => {}); // safe fallback to defaults
+    const boot = async () => {
+      try {
+        // Read session-alive flag and last route simultaneously
+        const [[, sessionAlive], [, savedTab], [, onboardedVal]] =
+          await AsyncStorage.multiGet([SESSION_ALIVE_KEY, NAV_ROUTE_KEY, ONBOARDING_KEY]);
+
+        // ── Kill vs. Resume detection ──────────────────────────────────────
+        // SESSION_ALIVE_KEY is present only when the app process was NOT killed.
+        // If it's absent we're on a fresh cold boot → always start from Home.
+        const isWarmResume = sessionAlive === '1';
+
+        if (isWarmResume && savedTab && ALLOWED_SAVE_ROUTES.has(savedTab)) {
+          // Warm resume: restore exact screen the user was on
+          setInitialTab(savedTab);
+        } else {
+          // Cold boot (killed): always Home — WhatsApp/Instagram standard
+          setInitialTab('Home');
+        }
+
+        if (onboardedVal) setOnboarded(onboardedVal === 'true');
+      } catch {
+        // Safe fallback: Home, onboarded=true
+      }
+    };
+
+    const bootPromise = boot();
 
     // Firebase auth listener — one subscription, lives forever
     const unsubAuth = onAuthStateChanged(auth, async (usr) => {
       if (!hasResolved.current) {
-        // FIRST resolution — could be logged in or cold boot with no session
         hasResolved.current = true;
         firstAuthAt.current = Date.now();
         setUser(usr);
         if (usr) {
-          // Re-read onboarding in case it changed during this session
           const val = await AsyncStorage.getItem(ONBOARDING_KEY).catch(() => null);
           setOnboarded(val === 'true');
         }
-        // Mark app as ready ONLY after BOTH async reads are done
-        await bootRead;
+        // Mark ready only after BOTH boot read and first auth callback complete
+        await bootPromise;
         setAppReady(true);
         return;
       }
 
-      // Subsequent auth callbacks (token refresh OR real logout)
       if (!usr) {
-        // null callback within 3 seconds of first resolution = token refresh, NOT logout
-        // null callback after 3 seconds = real logout (user tapped sign out)
+        // Null within 3 s of first resolution = token refresh, NOT logout
         const msSinceFirst = Date.now() - firstAuthAt.current;
-        if (msSinceFirst < 3000) return; // ignore token-refresh null
+        if (msSinceFirst < 3000) return;
         setUser(null);
       } else {
-        // Token refresh restored the user — update silently
         setUser(usr);
       }
     });
 
-    // Backend warmup (prevents 60-second cold start on Render free tier)
-    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://zentrack-vibe2ship.onrender.com';
-    fetch(`${backendUrl}/health`).catch(() => {});
-
-    // OTA update check (rate-limited to once per hour to avoid network hits on every launch)
+    // OTA update check — rate-limited to once per hour
     if (!__DEV__) {
       (async () => {
         try {
-          const HOUR_MS  = 60 * 60 * 1000;
+          const HOUR_MS   = 60 * 60 * 1000;
           const lastCheck = await AsyncStorage.getItem('@zentrack_last_update_check').catch(() => null);
           if (lastCheck && Date.now() - parseInt(lastCheck, 10) < HOUR_MS) return;
           await AsyncStorage.setItem('@zentrack_last_update_check', String(Date.now()));
@@ -457,44 +519,42 @@ export default function AppNavigator() {
           if (update.isAvailable) {
             Alert.alert(
               'Update Available',
-              'A new version of ZenTrack is available. Download now?',
+              'A new version of ZenTrack is ready. Apply now?',
               [
                 { text: 'Later', style: 'cancel' },
                 {
-                  text: 'Update Now',
+                  text: 'Update',
                   onPress: async () => {
                     try {
                       await Updates.fetchUpdateAsync();
                       await Updates.reloadAsync();
                     } catch {
-                      Alert.alert('Error', 'Failed to apply update.');
+                      Alert.alert('Error', 'Could not apply update. Try again later.');
                     }
                   },
                 },
               ]
             );
           }
-        } catch { /* offline — silently skip */ }
+        } catch { /* offline — skip silently */ }
       })();
     }
 
-    const unsubNetwork = setupNetworkListener();
-
-    return () => {
-      unsubAuth();
-      unsubNetwork();
-    };
+    return () => { unsubAuth(); };
   }, []);
 
-  // ── Route tracking ──────────────────────────────────────────────────────────
+  // ── Route tracking — emit to SARA FAB visibility listener ─────────────────
   const onNavStateChange = useCallback(() => {
     const routeName = navigationRef.getCurrentRoute()?.name;
     if (routeName) DeviceEventEmitter.emit('route_changed', routeName);
   }, []);
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-  // CRITICAL: NavigationContainer ALWAYS renders. The splash is an overlay on top,
-  // never an early return. This is what prevents the grey screen on resume.
+  // ── Render ────────────────────────────────────────────────────────────────
+  //
+  // CRITICAL: NavigationContainer ALWAYS renders.
+  // SplashLoader is an overlay, never an early return.
+  // This is what keeps Android's native window warm — no grey flash ever.
+
   return (
     <View style={{ flex: 1, backgroundColor: '#080510' }}>
       <NavigationContainer
@@ -512,7 +572,7 @@ export default function AppNavigator() {
               </Stack.Navigator>
             </ErrorBoundary>
           ) : (
-            // No key prop — this must NEVER remount
+            // No key prop — must NEVER remount
             <RootNavigatorWithSara initialTab={initialTab} />
           )
         ) : (
@@ -524,8 +584,8 @@ export default function AppNavigator() {
         )}
       </NavigationContainer>
 
-      {/* Splash overlay — sits ABOVE the NavigationContainer until app is ready.
-          Fades out instead of unmounting, so the native view beneath stays warm. */}
+      {/* Splash overlay — sits ABOVE NavigationContainer during boot.
+          Fades away once appReady=true. The native view beneath stays warm. */}
       {!appReady && <SplashLoader />}
     </View>
   );
@@ -561,11 +621,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   header: {
-    flexDirection:   'row',
-    alignItems:      'center',
-    justifyContent:  'space-between',
+    flexDirection:     'row',
+    alignItems:        'center',
+    justifyContent:    'space-between',
     paddingHorizontal: SPACE.xl,
-    paddingBottom:   SPACE.md,
+    paddingBottom:     SPACE.md,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
   },

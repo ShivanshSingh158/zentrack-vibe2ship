@@ -1,130 +1,285 @@
 /**
- * ErrorBoundary — ZenTrack Mobile
+ * ErrorBoundary — ZenTrack Mobile (Production Grade)
  *
- * Wraps individual screens so a JS crash only kills that screen,
- * not the entire app. Shows a tasteful "Something went wrong" card
- * with a retry button.
+ * ARCHITECTURE: This component is the last line of defence against JS crashes.
+ * It is designed to NEVER let a crash propagate to the root and blank/grey the app.
+ *
+ * Three tiers of protection:
+ *   1. Screen-level: Wraps individual screens — crash kills only that screen.
+ *      The rest of the app (tab bar, other screens) stays fully alive.
+ *   2. Navigator-level: Wraps Tab/Stack navigators — catches crashes in
+ *      navigation structure itself.
+ *   3. Root-level: Wraps the entire app — absolute last resort.
+ *
+ * On error, renders a dark recovery card that matches the app's Obsidian Cosmos
+ * design — never a white screen, never a grey screen, never a crash dialog.
+ * User can tap "Try again" to reset the boundary and re-render the screen.
+ *
+ * Production behaviour:
+ *   - Logs full error + component stack to console (pick up with Logcat / Metro)
+ *   - Dev mode: shows error message inline for debugging
+ *   - Prod mode: shows only the friendly recovery card
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
   children: React.ReactNode;
+  /** Human-readable name shown in the recovery card and logs */
   screenName?: string;
+  /**
+   * Optional callback fired when the error boundary catches an error.
+   * Use this to send crash reports to your analytics/crash reporting service.
+   */
+  onError?: (error: Error, info: React.ErrorInfo) => void;
 }
+
 interface State {
   hasError: boolean;
   error?: Error;
+  errorInfo?: React.ErrorInfo;
+  retryCount: number;
 }
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+// These are hardcoded (not from ThemeContext) because:
+// - ErrorBoundary must render even if ThemeContext crashed
+// - ThemeContext being a parent of ErrorBoundary would be circular
+const BG        = '#000000';
+const SURFACE   = '#141416';
+const BORDER    = '#2c2c2e';
+const ACCENT    = '#a599ff';
+const RED       = '#ff6961';
+const WHITE     = '#ffffff';
+const MUTED     = '#8e8e93';
 
 export default class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, retryCount: 0 };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  // ── Error capture ──────────────────────────────────────────────────────────
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error(`[ErrorBoundary] Caught in ${this.props.screenName || 'unknown screen'}:`, error, info);
+    // Capture full component stack — available in Logcat on Android
+    console.error(
+      `\n╔══ [ErrorBoundary] Crash caught in: ${this.props.screenName ?? 'unknown'} ══╗\n` +
+      `Error: ${error.message}\n` +
+      `Stack: ${error.stack ?? 'N/A'}\n` +
+      `Component stack: ${info.componentStack ?? 'N/A'}\n` +
+      `╚══════════════════════════════════════════════════════════╝\n`
+    );
+
+    // Store errorInfo for dev display
+    this.setState({ errorInfo: info });
+
+    // Fire optional external crash reporter
+    try {
+      this.props.onError?.(error, info);
+    } catch {
+      // Never let the reporter crash the boundary itself
+    }
   }
 
+  // ── Recovery ───────────────────────────────────────────────────────────────
   handleRetry = () => {
-    this.setState({ hasError: false, error: undefined });
+    this.setState(prev => ({
+      hasError: false,
+      error: undefined,
+      errorInfo: undefined,
+      retryCount: prev.retryCount + 1,
+    }));
   };
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   render() {
-    if (!this.state.hasError) return this.props.children;
+    if (!this.state.hasError) {
+      // Key changes on retry — forces a full unmount/remount of children,
+      // which clears any stale state that caused the original crash.
+      return (
+        <React.Fragment key={`eb-${this.state.retryCount}`}>
+          {this.props.children}
+        </React.Fragment>
+      );
+    }
+
+    const { screenName } = this.props;
+    const { error, errorInfo, retryCount } = this.state;
+    const screenLabel = screenName ?? 'This screen';
 
     return (
       <View style={styles.root}>
-        <View style={styles.card}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Icon */}
           <View style={styles.iconCircle}>
-            <Ionicons name="alert-circle-outline" size={36} color="#ff6961" />
+            <Ionicons name="warning-outline" size={38} color={RED} />
           </View>
+
+          {/* Title */}
           <Text style={styles.title}>Something went wrong</Text>
+
+          {/* Subtitle */}
           <Text style={styles.subtitle}>
-            {this.props.screenName ? `The ${this.props.screenName} screen` : 'This screen'} encountered an unexpected error.
+            {screenLabel} ran into an unexpected error.{'\n'}
+            Your data is safe. Tap below to recover.
           </Text>
-          {__DEV__ && this.state.error && (
-            <Text style={styles.errorDetail} numberOfLines={4}>
-              {this.state.error.message}
+
+          {/* Dev-only error detail */}
+          {__DEV__ && error && (
+            <View style={styles.devCard}>
+              <Text style={styles.devLabel}>DEV — Error detail</Text>
+              <Text style={styles.devError} selectable>
+                {error.message}
+              </Text>
+              {errorInfo?.componentStack && (
+                <Text style={styles.devStack} selectable numberOfLines={8}>
+                  {errorInfo.componentStack.trim()}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Retry count hint */}
+          {retryCount > 0 && (
+            <Text style={styles.retryHint}>
+              Retry attempt {retryCount}
             </Text>
           )}
-          <TouchableOpacity style={styles.retryBtn} onPress={this.handleRetry} activeOpacity={0.8}>
-            <Ionicons name="refresh-outline" size={16} color="#000000" style={{ marginRight: 6 }} />
-            <Text style={styles.retryText}>Tap to retry</Text>
+
+          {/* Primary CTA — retry */}
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={this.handleRetry}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="refresh-outline" size={16} color={BG} style={{ marginRight: 6 }} />
+            <Text style={styles.retryText}>Try again</Text>
           </TouchableOpacity>
-        </View>
+
+          {/* If retrying hasn't worked, suggest restarting */}
+          {retryCount >= 2 && (
+            <Text style={styles.restartHint}>
+              Still broken? Force-close and reopen the app.
+            </Text>
+          )}
+        </ScrollView>
       </View>
     );
   }
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
+// All colours are hardcoded (never from ThemeContext) — see comment above.
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: BG,    // #000000 — matches windowBackground. NO grey. EVER.
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scroll: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
   },
-  card: {
-    backgroundColor: '#141416',
-    borderRadius: 20,
-    padding: 28,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#2c2c2e',
-    width: '100%',
-  },
   iconCircle: {
-    width: 68, height: 68, borderRadius: 34,
-    backgroundColor: 'rgba(255,105,97,0.1)',
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 16,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: 'rgba(255,105,97,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,105,97,0.20)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   title: {
     fontFamily: 'Inter_700Bold',
-    fontSize: 18,
-    color: '#ffffff',
-    marginBottom: 8,
+    fontSize: 20,
+    color: WHITE,
+    marginBottom: 10,
     textAlign: 'center',
   },
   subtitle: {
     fontFamily: 'Inter_400Regular',
-    fontSize: 13,
-    color: '#8e8e93',
+    fontSize: 14,
+    color: MUTED,
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 16,
+    lineHeight: 22,
+    marginBottom: 24,
   },
-  errorDetail: {
-    fontFamily: 'Inter_400Regular',
-    fontSize: 11,
-    color: '#ff6961',
-    backgroundColor: 'rgba(255,105,97,0.08)',
-    borderRadius: 8,
-    padding: 10,
+  devCard: {
     width: '100%',
-    marginBottom: 16,
+    backgroundColor: 'rgba(255,105,97,0.07)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,105,97,0.20)',
+    padding: 14,
+    marginBottom: 20,
+    gap: 6,
+  },
+  devLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 10,
+    color: RED,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  devError: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: RED,
+    lineHeight: 18,
+  },
+  devStack: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 10,
+    color: MUTED,
+    lineHeight: 16,
+    marginTop: 4,
+  },
+  retryHint: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: MUTED,
+    marginBottom: 12,
   },
   retryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#a599ff',
-    borderRadius: 12,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    marginTop: 4,
+    backgroundColor: ACCENT,
+    borderRadius: 14,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
   },
   retryText: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 14,
-    color: '#000000',
+    fontSize: 15,
+    color: BG,
+  },
+  restartHint: {
+    fontFamily: 'Inter_400Regular',
+    fontSize: 12,
+    color: MUTED,
+    textAlign: 'center',
+    marginTop: 20,
+    lineHeight: 18,
   },
 });

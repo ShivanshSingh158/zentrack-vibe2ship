@@ -43,8 +43,8 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
   let gradientColors = '#a855f7, #ec4899, #f97316';
   
   if (location.pathname.startsWith('/todo')) {
-    baseColor = '#60a5fa'; glowColor = '#3b82f6';
-    gradientColors = '#3b82f6, #60a5fa, #93c5fd';
+    baseColor = '#b8afff'; glowColor = '#a599ff';
+    gradientColors = '#a599ff, #b8afff, #93c5fd';
   } else if (location.pathname.startsWith('/gym')) {
     baseColor = '#f87171'; glowColor = '#ef4444';
     gradientColors = '#ef4444, #f87171, #fca5a5';
@@ -364,7 +364,7 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
         {showRadialMenu && (
           <div style={{ position: 'absolute', top: '50%', left: '50%', zIndex: 0, pointerEvents: 'auto' }}>
             {[
-              { icon: <CheckSquare size={20} />, label: 'Todo', color: '#3b82f6', route: '/todo' },
+              { icon: <CheckSquare size={20} />, label: 'Todo', color: '#a599ff', route: '/todo' },
               { icon: <Dumbbell size={20} />, label: 'Gym', color: '#ef4444', route: '/gym' },
               { icon: <GraduationCap size={20} />, label: 'Attendance', color: '#10b981', route: '/attendance' },
               { icon: <Moon size={20} />, label: 'Sleep', color: '#6366f1', route: '/log' },
@@ -434,8 +434,8 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
             height: '28px',
             borderRadius: '50%',
             background: 'rgba(20, 20, 25, 0.95)',
-            border: '1px solid #3b82f6',
-            color: '#60a5fa',
+            border: '1px solid #a599ff',
+            color: '#b8afff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -448,34 +448,7 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
           <Bot size={14} />
         </button>
         
-        {/* Quick Toggle for Wake Word */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setWakeWordEnabled(prev => !prev);
-          }}
-          style={{
-            position: 'absolute',
-            top: '-15px',
-            right: '-10px',
-            width: '28px',
-            height: '28px',
-            borderRadius: '50%',
-            background: wakeWordEnabled ? '#a855f7' : 'rgba(20, 20, 25, 0.95)',
-            border: `1px solid ${wakeWordEnabled ? '#d8b4fe' : '#4b5563'}`,
-            color: wakeWordEnabled ? '#fff' : '#9ca3af',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            zIndex: 10,
-            boxShadow: '0 2px 8px rgba(0,0,0,0.5)'
-          }}
-          title={wakeWordEnabled ? "Wake Word: ON" : "Wake Word: OFF"}
-        >
-          <Ear size={14} />
-        </button>
-
+        {/* Quick Toggle for Wake Word - Hidden per user request */}
         <button
           onClick={(e) => {
              if (showRadialMenu) {

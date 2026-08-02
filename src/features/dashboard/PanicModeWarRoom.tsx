@@ -97,7 +97,7 @@ export const PanicModeWarRoom = ({ task, onExit, onAgentCommand }: PanicModeWarR
       icon: <Mail size={18} />,
       label: 'Notify Stakeholders',
       sublabel: 'Draft honest status updates for affected people',
-      color: '#3b82f6',
+      color: '#a599ff',
       prompt: `PANIC_ACTION_3: For each overdue task, call read_gmail to find recent emails from stakeholders about that task. Then call draft_email for each stakeholder with an honest status update: "I wanted to proactively reach out — [task] is delayed. I've blocked time to complete it by [date]. Apologies for the delay." Show drafts for review before sending.`,
     },
     {
@@ -263,7 +263,7 @@ Execute all steps now. This is a user-approved emergency action.`;
                       ? 'rgba(16,185,129,0.12)'
                       : status === 'running'
                       ? `rgba(255,255,255,0.05)`
-                      : `rgba(${action.color === '#ef4444' ? '239,68,68' : action.color === '#f97316' ? '249,115,22' : action.color === '#3b82f6' ? '59,130,246' : '168,85,247'}, 0.1)`,
+                      : `rgba(${action.color === '#ef4444' ? '239,68,68' : action.color === '#f97316' ? '249,115,22' : action.color === '#a599ff' ? '165,153,255' : '168,85,247'}, 0.1)`,
                     border: `1px solid ${status === 'done' ? 'rgba(16,185,129,0.4)' : status === 'running' ? 'rgba(255,255,255,0.12)' : `${action.color}50`}`,
                     borderRadius: '12px',
                     padding: '0.875rem',

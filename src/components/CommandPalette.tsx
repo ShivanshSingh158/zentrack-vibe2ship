@@ -278,7 +278,7 @@ export const CommandPalette = () => {
       case 'todo': return '#7c3aed';
       case 'learning': return '#a855f7';
       case 'note': return '#a855f7';
-      case 'calendar': return '#3b82f6';
+      case 'calendar': return '#a599ff';
       case 'log': return '#10b981';
       case 'action': return '#ec4899';
       default: return '#f59e0b';
@@ -397,7 +397,7 @@ export const CommandPalette = () => {
                 </button>
                 <button 
                   onClick={() => { setIsOpen(false); navigate('/calendar'); }} 
-                  style={{ background: 'rgba(59,130,246,0.15)', color: '#3b82f6', border: '1px solid rgba(59,130,246,0.3)', padding: '0.5rem 1rem', borderRadius: '100px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}
+                  style={{ background: 'rgba(165,153,255,0.15)', color: '#a599ff', border: '1px solid rgba(165,153,255,0.3)', padding: '0.5rem 1rem', borderRadius: '100px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600 }}
                 >
                   🗓 Auto-Schedule
                 </button>

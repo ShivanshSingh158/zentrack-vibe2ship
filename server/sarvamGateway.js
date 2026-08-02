@@ -29,21 +29,21 @@ if (!admin.apps.length) {
 }
 
 // Dynamically import API functions so they load after Firebase init
-const geminiProxyStream = (await import('../api/gemini-proxy-stream.js')).default;
-const geminiProxy = (await import('../api/gemini-proxy.js')).default;
-const transcript = (await import('../api/transcript.js')).default;
-const youtube = (await import('../api/youtube.js')).default;
-const youtubeSearch = (await import('../api/youtube-search.js')).default;
+const geminiProxyStream = (await import('./routes/gemini-proxy-stream.js')).default;
+const geminiProxy = (await import('./routes/gemini-proxy.js')).default;
+const transcript = (await import('./routes/transcript.js')).default;
+const youtube = (await import('./routes/youtube.js')).default;
+const youtubeSearch = (await import('./routes/search.js')).default;
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // needed for Vercel functions
 
-app.all('/api/gemini-proxy-stream', async (req, res) => { try { await geminiProxyStream(req, res); } catch (e) { console.error(e); res.status(500).send('Error'); } });
-app.all('/api/gemini-proxy', async (req, res) => { try { await geminiProxy(req, res); } catch (e) { console.error(e); res.status(500).send('Error'); } });
-app.all('/api/transcript', async (req, res) => { try { await transcript(req, res); } catch (e) { console.error(e); res.status(500).send('Error'); } });
-app.all('/api/youtube', async (req, res) => { try { await youtube(req, res); } catch (e) { console.error(e); res.status(500).send('Error'); } });
-app.all('/api/youtube-search', async (req, res) => { try { await youtubeSearch(req, res); } catch (e) { console.error(e); res.status(500).send('Error'); } });
+app.use('/api/gemini-proxy-stream', geminiProxyStream);
+app.use('/api/gemini-proxy', geminiProxy);
+app.use('/api/transcript', transcript);
+app.use('/api/youtube', youtube);
+app.use('/api/youtube-search', youtubeSearch);
 
 app.post('/api/relay-command', async (req, res) => {
   try {

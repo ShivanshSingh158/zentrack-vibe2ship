@@ -7,7 +7,7 @@ interface MuscleHeatmapProps {
 }
 
 const MUSCLE_COLORS: Record<string, string> = {
-  'Chest': '#f97316', 'Back': '#3b82f6', 'Shoulders': '#8b5cf6',
+  'Chest': '#f97316', 'Back': '#a599ff', 'Shoulders': '#8b5cf6',
   'Side Delts': '#7c3aed', 'Rear Delts': '#6d28d9', 'Triceps': '#10b981',
   'Biceps': '#06b6d4', 'Brachialis': '#0284c7', 'Forearms': '#0891b2',
   'Quads': '#f59e0b', 'Hamstrings': '#d97706', 'Glutes/Hams': '#b45309',

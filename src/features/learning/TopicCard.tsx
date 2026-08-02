@@ -94,10 +94,10 @@ export const SubTaskItem = React.memo(({
             if (e.key === 'Enter') onSaveRename?.((e.target as HTMLInputElement).value);
             if (e.key === 'Escape') onCancelRename?.();
           }}
-          style={{ flex: 1, background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.35)', borderRadius: '7px', padding: '0.3rem 0.55rem', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
+          style={{ flex: 1, background: 'rgba(165,153,255,0.08)', border: '1px solid rgba(165,153,255,0.35)', borderRadius: '7px', padding: '0.3rem 0.55rem', color: '#fff', fontSize: '0.85rem', outline: 'none' }}
         />
         <button onClick={e => { const inp = (e.currentTarget.previousElementSibling as HTMLInputElement); onSaveRename?.(inp.value); }}
-          style={{ background: '#3b82f6', border: 'none', borderRadius: '6px', padding: '0.28rem 0.6rem', color: '#fff', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>Save</button>
+          style={{ background: '#a599ff', border: 'none', borderRadius: '6px', padding: '0.28rem 0.6rem', color: '#fff', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700 }}>Save</button>
         <button onClick={onCancelRename} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.35)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={13} /></button>
       </div>
     );
@@ -187,7 +187,7 @@ export const SubTaskItem = React.memo(({
             <>
               {videoId && (
                 <button onClick={() => onPlayVideo(videoId, subTask.id, topicId)}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', padding: '0.22rem 0.5rem', borderRadius: '7px', background: subTask.isCompleted || (subTask as any).status === 'completed' ? 'rgba(239,68,68,0.06)' : 'rgba(239,68,68,0.14)', border: '1px solid rgba(239,68,68,0.32)', color: subTask.isCompleted || (subTask as any).status === 'completed' ? 'rgba(239,68,68,0.45)' : '#ef4444', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, minHeight: '28px' }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.22rem', padding: '0.22rem 0.5rem', borderRadius: '7px', background: subTask.isCompleted || (subTask as any).status === 'completed' ? 'rgba(165,153,255,0.04)' : 'rgba(165,153,255,0.10)', border: '1px solid rgba(165,153,255,0.22)', color: subTask.isCompleted || (subTask as any).status === 'completed' ? 'rgba(165,153,255,0.35)' : '#a599ff', cursor: 'pointer', fontSize: '0.6rem', fontWeight: 700, minHeight: '28px' }}>
                   <Play size={10} fill="currentColor" /> Watch
                 </button>
               )}
@@ -207,12 +207,12 @@ export const SubTaskItem = React.memo(({
             <>
               {videoId && (
                 <button onClick={() => onPlayVideo(videoId, subTask.id, topicId)}
-                  style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.45rem', borderRadius: '6px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.28)', color: '#ef4444', cursor: 'pointer', minHeight: '28px' }}>
+                  style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.45rem', borderRadius: '6px', background: 'rgba(165,153,255,0.10)', border: '1px solid rgba(165,153,255,0.25)', color: '#a599ff', cursor: 'pointer', minHeight: '28px' }}>
                   <Play size={9} fill="currentColor" />
                 </button>
               )}
               <button onClick={() => onStartRename?.(topicId, subTask.id, subTask.title || (subTask as any).text)}
-                style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.4rem', borderRadius: '6px', background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa', cursor: 'pointer', minHeight: '28px' }}>
+                style={{ display: 'flex', alignItems: 'center', padding: '0.2rem 0.4rem', borderRadius: '6px', background: 'rgba(165,153,255,0.1)', border: '1px solid rgba(165,153,255,0.2)', color: '#b8afff', cursor: 'pointer', minHeight: '28px' }}>
                 <Edit3 size={11} />
               </button>
               <button onClick={() => instantDeleteSubTask(topicId, subTask.id)}
@@ -411,9 +411,9 @@ export const TopicBody = React.memo(({
   return (
     <div className="topic-card-body">
       {isEditMode && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', margin: '0 0 0.75rem', borderRadius: '10px', background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)' }}>
-          <span style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: 600 }}>✏️ Edit — drag to reorder · click red checkbox to select · ✏ to rename</span>
-          <button onClick={onToggleEdit} style={{ fontSize: '0.68rem', color: '#60a5fa', background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)', borderRadius: '6px', padding: '0.2rem 0.55rem', cursor: 'pointer', fontWeight: 600 }}>Done</button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0.75rem', margin: '0 0 0.75rem', borderRadius: '10px', background: 'rgba(165,153,255,0.08)', border: '1px solid rgba(165,153,255,0.2)' }}>
+          <span style={{ fontSize: '0.72rem', color: '#b8afff', fontWeight: 600 }}>✏️ Edit — drag to reorder · click red checkbox to select · ✏ to rename</span>
+          <button onClick={onToggleEdit} style={{ fontSize: '0.68rem', color: '#b8afff', background: 'rgba(165,153,255,0.15)', border: '1px solid rgba(165,153,255,0.3)', borderRadius: '6px', padding: '0.2rem 0.55rem', cursor: 'pointer', fontWeight: 600 }}>Done</button>
         </div>
       )}
 

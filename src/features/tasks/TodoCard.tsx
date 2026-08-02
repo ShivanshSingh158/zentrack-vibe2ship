@@ -41,6 +41,27 @@ export const TodoCard = React.memo(({
   const urgency = (todo.date && todo.status !== 'completed') ? getUrgencyLevel(todo.date) : 'normal';
   const escalation = { border: '', background: '', animation: '' }; // useEscalation(todo.status === 'completed' ? null : todo.date);
 
+  const computedMinutes = React.useMemo(() => {
+    if (todo.timeSlot) {
+      const parts = todo.timeSlot.split(/[-–]/);
+      if (parts.length === 2) {
+        const parseTime = (t: string) => {
+          const match = t.match(/(\d+):(\d+)/);
+          if (!match) return null;
+          return parseInt(match[1]) * 60 + parseInt(match[2]);
+        };
+        const sMins = parseTime(parts[0].trim());
+        const eMins = parseTime(parts[1].trim());
+        if (sMins !== null && eMins !== null) {
+          let diff = eMins - sMins;
+          if (diff < 0) diff += 24 * 60;
+          return diff;
+        }
+      }
+    }
+    return todo.estimatedMinutes;
+  }, [todo.timeSlot, todo.estimatedMinutes]);
+
   // ✅ FIX: Calculate real DeadlineDNA — was hardcoded to 100 (DEDUCTION 3.1)
   // Score = urgencyRatio × priorityWeight × (1 - subtaskCompletionBonus)
   // High score = task is urgent and needs attention
@@ -48,12 +69,12 @@ export const TodoCard = React.memo(({
     if (todo.status === 'completed' || !todo.date) return 0;
     const hoursLeft = (new Date(todo.date + 'T23:59:59').getTime() - Date.now()) / 3_600_000;
     if (hoursLeft < 0) return 100; // overdue = max urgency
-    const estimatedH = (todo.estimatedMinutes || 60) / 60;
+    const estimatedH = (computedMinutes || 60) / 60;
     const urgencyRatio = Math.max(0, Math.min(1, estimatedH / Math.max(0.1, hoursLeft)));
     const priorityMult = todo.priority === 'high' ? 1.5 : todo.priority === 'medium' ? 1.0 : 0.6;
     const subtaskCompletionBonus = subtasks.length > 0 ? (stDone / subtasks.length) * 0.3 : 0;
     return Math.round(Math.min(100, urgencyRatio * priorityMult * 100 * (1 - subtaskCompletionBonus)));
-  }, [todo.date, todo.estimatedMinutes, todo.priority, todo.status, subtasks.length, stDone]);
+  }, [todo.date, computedMinutes, todo.priority, todo.status, subtasks.length, stDone]);
 
   // --- Styling based on Urgency ---
   let containerStyle: React.CSSProperties = {
@@ -149,76 +170,70 @@ export const TodoCard = React.memo(({
             </div>
 
             {/* ── ROW 2: priority dot + meta (left) · action buttons (right) ── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: isBulkEdit ? '1.5rem' : '2.1rem', gap: '0.5rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
-                <span className={`todo-priority ${todo.priority}`} title={todo.priority} style={{ flexShrink: 0 }}>
-                  {todo.priority === 'high' ? 'P1 / High' : todo.priority === 'medium' ? 'P2 / Med' : 'P3 / Low'}
-                </span>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingLeft: isBulkEdit ? '1.5rem' : '2.1rem', gap: '0.5rem', marginTop: '0.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', minWidth: 0, flex: 1 }}>
+                
+                {/* Minimalist Glowing Priority Dot */}
+                <div 
+                  title={`Priority: ${todo.priority}`}
+                  style={{ 
+                    width: '8px', 
+                    height: '8px', 
+                    borderRadius: '50%', 
+                    background: todo.priority === 'high' ? '#ef4444' : todo.priority === 'medium' ? '#f59e0b' : '#10b981',
+                    boxShadow: `0 0 8px ${todo.priority === 'high' ? 'rgba(239,68,68,0.7)' : todo.priority === 'medium' ? 'rgba(245,158,11,0.7)' : 'rgba(16,185,129,0.5)'}`,
+                    flexShrink: 0 
+                  }} 
+                />
+
+                {subtasks.length > 0 && (
+                  <span style={{ fontSize: '0.75rem', color: '#a599ff', fontWeight: 600, flexShrink: 0 }}>
+                    ☑ {stDone}/{subtasks.length}
+                  </span>
+                )}
 
                 {todo.subject && (
-                  <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.45rem', borderRadius: '9999px', background: 'rgba(139,92,246,0.13)', color: '#a78bfa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
+                  <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '6px', background: 'rgba(165,153,255,0.1)', color: '#a599ff', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
                     {todo.subject}
                   </span>
                 )}
                 {urgency === 'overdue' && (
-                  <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', background: 'rgba(239,68,68,0.12)', color: '#f87171', fontWeight: 700, flexShrink: 0 }}>
+                  <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '6px', background: 'rgba(239,68,68,0.12)', color: '#f87171', fontWeight: 700, flexShrink: 0 }}>
                     🚨 OVERDUE
                   </span>
                 )}
-                {(urgency === 'urgent' || urgency === 'critical') && (
-                  <span style={{ fontSize: '0.65rem', color: urgency === 'critical' ? '#ef4444' : '#f97316', fontWeight: 700, flexShrink: 0 }}>
-                    ⏱ {getCountdownText(todo.date)}
-                  </span>
-                )}
-                {todo.commitmentTo && (
-                  <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', border: '1px solid rgba(236,72,153,0.3)', color: '#ec4899', display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}>
-                    🤝 Promised to: {todo.commitmentTo}
-                  </span>
-                )}
-                {isBlocked && (
-                  <span style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem', borderRadius: '9999px', background: 'rgba(107,114,128,0.2)', color: '#9ca3af', display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}>
-                    🔒 Blocked
-                  </span>
-                )}
-                {todo.energyRequirement && (
-                  <span style={{ fontSize: '0.65rem', color: todo.energyRequirement === 'high' ? '#ef4444' : todo.energyRequirement === 'medium' ? '#f59e0b' : '#3b82f6', flexShrink: 0 }}>
-                    ⚡ {todo.energyRequirement.toUpperCase()}
-                  </span>
-                )}
+                
                 {todo.isRecurring && (
-                  <span style={{ fontSize: '0.65rem', color: 'var(--accent-primary)', fontWeight: 600, flexShrink: 0 }}>↻</span>
+                  <span style={{ fontSize: '0.75rem', color: '#a599ff', fontWeight: 700, flexShrink: 0 }}>↻</span>
                 )}
+
+                {/* Simplified Time Slot & Estimate */}
                 {todo.timeSlot && (
-                  <span style={{ fontSize: '0.7rem', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '0.15rem', fontWeight: 600, flexShrink: 0 }}>
-                    <CalendarIcon size={11} />{todo.timeSlot}
+                  <span style={{ fontSize: '0.75rem', color: '#818cf8', display: 'flex', alignItems: 'center', gap: '0.2rem', fontWeight: 500, flexShrink: 0 }}>
+                    <CalendarIcon size={12} /> {todo.timeSlot}
                   </span>
                 )}
-                {todo.estimatedMinutes && (
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.15rem', flexShrink: 0 }}>
-                    <Timer size={11} />{formatHoursDisplay(todo.estimatedMinutes / 60)}
+                {computedMinutes ? (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.2rem', flexShrink: 0 }}>
+                    <Timer size={12} style={{ color: '#f59e0b' }} /> {formatHoursDisplay(computedMinutes / 60)}
                   </span>
-                )}
-                {subtasks.length > 0 && (
-                  <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', flexShrink: 0 }}>
-                    ☑ {stDone}/{subtasks.length}
-                  </span>
-                )}
+                ) : null}
               </div>
 
               {!isBulkEdit && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0', flexShrink: 0 }}>
-                  <button className="btn-icon" onClick={(e) => { e.stopPropagation(); setExpandedTaskId(isExpanded ? null : todo.id!); }} title="Subtasks" style={{ padding: '0.25rem 0.3rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.1rem', flexShrink: 0 }}>
+                  <button onClick={(e) => { e.stopPropagation(); setExpandedTaskId(isExpanded ? null : todo.id!); }} title="Subtasks" style={{ padding: '0.35rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
                     {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
                   </button>
-                  <button className="btn-icon" onClick={(e) => { e.stopPropagation(); onEdit(todo); }} title="Edit" style={{ padding: '0.25rem 0.3rem' }}>
+                  <button onClick={(e) => { e.stopPropagation(); onEdit(todo); }} title="Edit" style={{ padding: '0.35rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseEnter={e => { e.currentTarget.style.color = '#a599ff'; e.currentTarget.style.background = 'rgba(165,153,255,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
                     <Edit2 size={14} />
                   </button>
                   {todo.status !== 'completed' && (
-                    <button className="btn-icon" onClick={(e) => { e.stopPropagation(); startTimer(todo.id!, todo.title, undefined, undefined, todo.estimatedMinutes); }} title="Pomodoro" style={{ padding: '0.25rem 0.3rem', color: 'var(--accent-primary)' }}>
+                    <button onClick={(e) => { e.stopPropagation(); startTimer(todo.id!, todo.title, undefined, undefined, computedMinutes); }} title="Pomodoro" style={{ padding: '0.35rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseEnter={e => { e.currentTarget.style.color = '#10b981'; e.currentTarget.style.background = 'rgba(16,185,129,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
                       <Timer size={14} />
                     </button>
                   )}
-                  <button className="todo-delete" onClick={(e) => { e.stopPropagation(); handleDeleteTask(todo.id!); }} aria-label="Delete" style={{ padding: '0.25rem 0.3rem' }}>
+                  <button onClick={(e) => { e.stopPropagation(); handleDeleteTask(todo.id!); }} aria-label="Delete" style={{ padding: '0.35rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }} onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}>
                     <Trash2 size={14} />
                   </button>
                 </div>
@@ -280,7 +295,7 @@ export const TodoCard = React.memo(({
                   style={{ flex: 1, background: 'transparent', border: '1px solid var(--border-subtle)', padding: '0.4rem 0.6rem', borderRadius: '6px', fontSize: '0.85rem', color: 'var(--text-primary)' }}
                 />
                 {todo.status !== 'completed' && (
-                  <button type="button" onClick={() => startTimer(todo.id!, todo.title, undefined, undefined, todo.estimatedMinutes)} className="btn-secondary show-on-mobile-only" style={{ padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem' }} title="Start Pomodoro">
+                  <button type="button" onClick={() => startTimer(todo.id!, todo.title, undefined, undefined, computedMinutes)} className="btn-secondary show-on-mobile-only" style={{ padding: '0.4rem 0.6rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.78rem' }} title="Start Pomodoro">
                     <Timer size={13} /> Focus
                   </button>
                 )}
@@ -299,30 +314,84 @@ TodoCard.displayName = 'TodoCard';
 
 export const CompletedTodoItem = React.memo(({ todo, isSelected, isBulkEdit, toggleSelection, toggleTodoComplete, handleDeleteTask }: any) => {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      <div className={`todo-item completed ${isSelected ? 'selected-item' : ''}`} style={isSelected ? { background: 'rgba(99, 102, 241, 0.1)', borderColor: 'var(--accent-primary)' } : {}}>
-        <div style={{ padding: '0.2rem', width: '22px' }}></div>
-        
-        {isBulkEdit ? (
-          <button className={`todo-checkbox ${isSelected ? 'checked' : ''}`} onClick={() => toggleSelection(todo.id!)} style={{ borderRadius: '4px' }}>
-            {isSelected && <Check size={14} strokeWidth={3} />}
-          </button>
-        ) : (
-          <button className="todo-checkbox checked" onClick={() => toggleTodoComplete(todo)} aria-label="Mark incomplete" role="checkbox" aria-checked={true}>
-            <Check size={14} strokeWidth={3} />
-          </button>
-        )}
-        
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <span className="todo-text">{todo.title}</span>
-        </div>
-
-        {!isBulkEdit && (
-          <button className="todo-delete" onClick={() => handleDeleteTask(todo.id!)} aria-label="Delete task">
-            <Trash2 size={16} />
-          </button>
-        )}
+    <div 
+      style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '0.75rem', 
+        padding: '0.5rem 0.5rem', 
+        background: isSelected ? 'rgba(165, 153, 255, 0.1)' : 'transparent', 
+        borderBottom: '1px solid rgba(255,255,255,0.03)',
+        opacity: 0.6,
+        transition: 'all 0.2s'
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; e.currentTarget.style.background = isSelected ? 'rgba(165, 153, 255, 0.1)' : 'transparent'; }}
+    >
+      {isBulkEdit ? (
+        <button 
+          className={`todo-checkbox ${isSelected ? 'checked' : ''}`} 
+          onClick={() => toggleSelection(todo.id!)} 
+          style={{ borderRadius: '4px', flexShrink: 0, width: '18px', height: '18px', background: isSelected ? '#a599ff' : 'transparent', border: isSelected ? 'none' : '1px solid rgba(255,255,255,0.2)' }}
+        >
+          {isSelected && <Check size={12} strokeWidth={3} color="#000" />}
+        </button>
+      ) : (
+        <button 
+          onClick={() => toggleTodoComplete(todo)} 
+          aria-label="Mark incomplete" 
+          style={{ 
+            flexShrink: 0, 
+            width: '18px', 
+            height: '18px', 
+            borderRadius: '50%', 
+            background: 'var(--accent-primary)', 
+            border: 'none', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+        >
+          <Check size={12} strokeWidth={3} color="#000" />
+        </button>
+      )}
+      
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ 
+          fontSize: '0.9rem', 
+          color: 'var(--text-muted)', 
+          textDecoration: 'line-through',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          display: 'block'
+        }}>
+          {todo.title || todo.text}
+        </span>
       </div>
+
+      {!isBulkEdit && (
+        <button 
+          onClick={() => handleDeleteTask(todo.id!)} 
+          aria-label="Delete task"
+          style={{ 
+            background: 'transparent', 
+            border: 'none', 
+            color: 'var(--text-muted)', 
+            cursor: 'pointer', 
+            padding: '0.3rem',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'transparent'; }}
+        >
+          <Trash2 size={14} />
+        </button>
+      )}
     </div>
   );
 });

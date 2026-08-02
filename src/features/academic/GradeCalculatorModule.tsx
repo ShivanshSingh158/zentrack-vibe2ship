@@ -27,7 +27,7 @@ const GRADE_MAP: Record<string, number> = Object.fromEntries(
 const gradeColor = (gp: number | null | undefined) => {
   if (gp == null) return 'var(--text-muted)';
   if (gp >= 9) return '#10b981';
-  if (gp >= 7) return '#3b82f6';
+  if (gp >= 7) return '#a599ff';
   if (gp >= 5) return '#f59e0b';
   return '#ef4444';
 };
@@ -367,7 +367,7 @@ export const GradeCalculatorModule = () => {
             <ComposedChart data={cgpaData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="sgpaGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9} />
+                  <stop offset="0%" stopColor="#a599ff" stopOpacity={0.9} />
                   <stop offset="100%" stopColor="#2563eb" stopOpacity={0.1} />
                 </linearGradient>
                 <linearGradient id="cgpaGlow" x1="0" y1="0" x2="0" y2="1">
@@ -394,7 +394,7 @@ export const GradeCalculatorModule = () => {
           </ResponsiveContainer>
           {/* Legend */}
           <div style={{ display: 'flex', gap: '1.25rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 12, height: 12, background: '#3b82f6', borderRadius: 2, display: 'inline-block' }} /> SGPA (bars)</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 12, height: 12, background: '#a599ff', borderRadius: 2, display: 'inline-block' }} /> SGPA (bars)</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 12, height: 2, background: '#10b981', display: 'inline-block' }} /> CGPA (line)</span>
           </div>
         </div>

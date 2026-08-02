@@ -23,7 +23,7 @@ import {
   sanitize, uniqueId, extractPlaylistId, fetchYouTubePlaylist
 } from './learningHelpers';
 
-// ── VideoPlayerModal ──────────────────────────────────────────────────────────
+// â”€â”€ VideoPlayerModal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize, onMarkWatched, onNavigate, onSaveVideoNote, topicName, completedTopicNames, totalProgress }: {
   playing: any;
@@ -45,7 +45,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   const [speed, setSpeed] = useState<number>(() => {
     try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
   });
-  // (player state and effects removed because react-player handles playbackRate and onProgress intrinsically)
+  const playerRef = useRef<any>(null);
 
   const [showNotes, setShowNotes] = useState(false);
   const [showChat, setShowChat] = useState(false);
@@ -61,7 +61,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
   }, [onMarkWatched, playing.topicId, playing.subtaskId]);
 
   useEffect(() => {
-    // ✅ FIX: Add opt-out via localStorage + guard for short videos (< 15 min)
+    // âœ… FIX: Add opt-out via localStorage + guard for short videos (< 15 min)
     const checkinEnabled = localStorage.getItem('zen_video_checkin_enabled') !== 'false';
     const videoDurationMin = playing.videoDurationSeconds ? playing.videoDurationSeconds / 60 : 999;
     if (!checkinEnabled || videoDurationMin < 15) return; // skip check-in for short videos
@@ -83,10 +83,13 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
 
   const handleSpeedChange = (s: number) => {
     setSpeed(s);
+    if (playerRef.current?.setPlaybackRate) {
+      playerRef.current.setPlaybackRate(s);
+    }
     try { localStorage.setItem(SPEED_KEY, String(s)); } catch { }
   };
 
-  // ── Study time tracker ────────────────────────────────────────────────────
+  // â”€â”€ Study time tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const onFs = () => {
       if (document.fullscreenElement) screen.orientation?.lock?.('landscape').catch(() => { });
@@ -130,9 +133,9 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
 
   return createPortal(
     <div onClick={() => !focusMode && onMinimize()} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: focusMode ? '#000' : 'rgba(0,0,0,0.96)', backdropFilter: focusMode ? 'none' : 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: focusMode ? '0' : '0.75rem', transition: 'all 0.3s' }}>
-      {/* Playlist progress rail — always at very top */}
+      {/* Playlist progress rail â€” always at very top */}
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '3px', background: 'rgba(255,255,255,0.08)', zIndex: 100000 }}>
-        <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg,#3b82f6,#8b5cf6)', transition: 'width 0.5s ease', borderRadius: '0 2px 2px 0' }} />
+        <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg,#a599ff,#8b5cf6)', transition: 'width 0.5s ease', borderRadius: '0 2px 2px 0' }} />
       </div>
 
       <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: (showChat || showNotes) && !focusMode ? '1450px' : '1100px', display: 'flex', flexDirection: 'column', gap: focusMode ? '0' : '0.75rem', height: focusMode ? '100vh' : 'auto', transition: 'all 0.3s' }}>
@@ -142,7 +145,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, background: 'rgba(255,255,255,0.07)', padding: '0.1rem 0.45rem', borderRadius: '99px', flexShrink: 0 }}>#{idx + 1} of {total}</span>
-                {resumeTs && <span style={{ fontSize: '0.58rem', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.1rem 0.4rem', borderRadius: '99px', flexShrink: 0 }}>⏱ Resuming from {resumeTs}</span>}
+                {resumeTs && <span style={{ fontSize: '0.58rem', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.1rem 0.4rem', borderRadius: '99px', flexShrink: 0 }}>â± Resuming from {resumeTs}</span>}
               </div>
               <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.15rem' }}>{playing.title}</div>
             </div>
@@ -152,7 +155,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
               {SPEEDS.map(s => (
                 <button key={s} onClick={() => handleSpeedChange(s)}
                   style={{ padding: '0.18rem 0.4rem', borderRadius: '12px', border: 'none', background: speed === s ? '#ececec' : 'transparent', color: speed === s ? '#212121' : '#8e8e8e', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 600, transition: 'all 150ms ease' }}>
-                  {s}×
+                  {s}x
                 </button>
               ))}
             </div>
@@ -192,6 +195,10 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
             }}>
             <YouTube
               videoId={playing.videoId}
+              onReady={(e: any) => {
+                playerRef.current = e.target;
+                e.target.setPlaybackRate(speed);
+              }}
               opts={{
                 width: '100%',
                 height: '100%',
@@ -233,7 +240,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
           {showNotes && (
             <div style={{ width: focusMode ? '320px' : '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', height: focusMode ? '100%' : 'auto', maxHeight: focusMode ? '100%' : '280px', background: focusMode ? 'rgba(255,255,255,0.03)' : 'transparent', padding: focusMode ? '1.5rem 1rem' : '0', borderRadius: focusMode ? '12px' : '0', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>📝 Video Notes</div>
+                <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>ðŸ“ Video Notes</div>
                 {focusMode && (
                   <button onClick={() => setShowNotes(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <X size={14} />
@@ -253,7 +260,7 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
                   const sec = "00";
                   setNoteText(prev => prev + (prev && !prev.endsWith('\n') ? '\n' : '') + `[${min}:${sec}] `);
                 }} title="Insert current timestamp" style={{ padding: '0.45rem 0.6rem', borderRadius: '7px', border: '1px solid rgba(99,102,241,0.5)', background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  ⏱ Time
+                  â± Time
                 </button>
                 <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); }}
                   style={{ flex: 1, padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
@@ -288,8 +295,8 @@ const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize,
               </button>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)' }}>← → navigate · Enter mark watched · Esc close</div>
-              <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)' }}>{playing.watchedCount}/{total} watched · {Math.round(progressPct)}%</div>
+              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)' }}>â† â†’ navigate Â· Enter mark watched Â· Esc close</div>
+              <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)' }}>{playing.watchedCount}/{total} watched Â· {Math.round(progressPct)}%</div>
             </div>
           </>
         )}
@@ -321,7 +328,7 @@ VideoPlayerModal.displayName = 'VideoPlayerModal';
 
 
 
-// ── Main Module ───────────────────────────────────────────────────────────────
+// â”€â”€ Main Module â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export const LearningChecklistModule = () => {
   const [topics, setTopics] = useState<LearningTopic[]>([]);
@@ -356,7 +363,7 @@ export const LearningChecklistModule = () => {
   // Undo delete queue: { topicId, subtask, timer }
   const undoQueueRef = useRef<{ topicId: string; subtask: LearningSubTask; timerId: number } | null>(null);
 
-  // ── Custom Playlist Editor State ──────────────────────────────────────────
+  // â”€â”€ Custom Playlist Editor State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [editModeTopics, setEditModeTopics] = useState<Set<string>>(new Set());
   const [addVideoState, setAddVideoState] = useState<any>(null);
   const [mergePanelState, setMergePanelState] = useState<any>(null);
@@ -394,7 +401,7 @@ export const LearningChecklistModule = () => {
     return () => unsub();
   }, [user]);
 
-  // ── Video Handlers ────────────────────────────────────────────────────────
+  // â”€â”€ Video Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const handlePlayVideo = useCallback((videoId: string, subtaskId: string, topicId: string) => {
     const topic = topics.find(t => t.id === topicId);
@@ -425,7 +432,7 @@ export const LearningChecklistModule = () => {
     try { localStorage.setItem(CW_KEY, JSON.stringify(bookmark)); } catch { }
   }, [topics]);
 
-  // ── Agent-triggered lecture opening ───────────────────────────────────────
+  // â”€â”€ Agent-triggered lecture opening â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // in App.tsx when the user asks the AI to "open lecture X".
   useEffect(() => {
     const handler = (e: Event) => {
@@ -474,16 +481,16 @@ export const LearningChecklistModule = () => {
 
             if (videoId) {
               handlePlayVideo(videoId, matchingSubtask.id, targetTopic!.id!);
-              toast.success(`🎬 Opening: "${matchingSubtask.text || matchingSubtask.title}"`);
+              toast.success(`ðŸŽ¬ Opening: "${matchingSubtask.text || matchingSubtask.title}"`);
             } else {
               toast.info(`Found lecture but no video URL. Topic expanded.`);
             }
           }, 300);
         } else {
-          toast.info(`Topic found. Couldn't find lecture "${detail.lectureTitle}" — topic expanded for you.`);
+          toast.info(`Topic found. Couldn't find lecture "${detail.lectureTitle}" â€” topic expanded for you.`);
         }
       } else {
-        toast.success(`📚 Opened topic: "${targetTopic.title}"`);
+        toast.success(`ðŸ“š Opened topic: "${targetTopic.title}"`);
       }
     };
 
@@ -491,7 +498,7 @@ export const LearningChecklistModule = () => {
     return () => window.removeEventListener('agent-open-lecture', handler);
   }, [topics, handlePlayVideo]);
 
-  // ── Agent-triggered YouTube search & play (from search_and_play_youtube tool) ──
+  // â”€â”€ Agent-triggered YouTube search & play (from search_and_play_youtube tool) â”€â”€
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as {
@@ -502,7 +509,7 @@ export const LearningChecklistModule = () => {
       };
       if (!detail?.videoId) return;
 
-      // Immediately open the player with the video — no playlist context needed
+      // Immediately open the player with the video â€” no playlist context needed
       setPlaying({
         videoId: detail.videoId,
         subtaskId: '__agent_search__',
@@ -514,7 +521,7 @@ export const LearningChecklistModule = () => {
       });
       setIsPipMode(false);
 
-      toast.success(`🎬 Now playing: "${detail.title || detail.query}"`, { duration: 4000 });
+      toast.success(`ðŸŽ¬ Now playing: "${detail.title || detail.query}"`, { duration: 4000 });
     };
 
     window.addEventListener('agent-play-video', handler);
@@ -582,9 +589,9 @@ export const LearningChecklistModule = () => {
     catch { toast.error('Failed to mark watched'); }
   }, [topics]);
 
-  // ── Mark doubt (flag lecture for review) ────────────────────────────────
-  // ── Study time tracker: called by VideoPlayerModal on close ─────────────
-  // ── Save video note from player modal ────────────────────────────────────
+  // â”€â”€ Mark doubt (flag lecture for review) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â”€â”€ Study time tracker: called by VideoPlayerModal on close â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â”€â”€ Save video note from player modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleSaveVideoNote = useCallback(async (topicId: string, subtaskId: string, note: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
@@ -593,7 +600,7 @@ export const LearningChecklistModule = () => {
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); } catch (err) { console.error('[Learning] Failed to save video note to Firestore:', err); }
   }, [topics]);
 
-  // ── Pin / Unpin subtask ──────────────────────────────────────────────────
+  // â”€â”€ Pin / Unpin subtask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleTogglePin = useCallback(async (topicId: string, subtaskId: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
@@ -606,7 +613,7 @@ export const LearningChecklistModule = () => {
     try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(sorted) }); } catch (err) { console.error('[Learning] Failed to save pin state to Firestore:', err); }
   }, [topics]);
 
-  // ── Custom Playlist Handlers ──────────────────────────────────────────────
+  // â”€â”€ Custom Playlist Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const toggleEditMode = useCallback((topicId: string) => {
     setEditModeTopics(prev => {
@@ -674,7 +681,7 @@ export const LearningChecklistModule = () => {
     if (!playlistId) { toast.error('Invalid playlist URL'); return; }
     setMergePanelState((prev: any) => prev ? { ...prev, loading: true } : null);
     // Animated loading messages so users know it's working (not broken)
-    const loadingMsgs = ['Connecting to YouTube…', 'Fetching playlist pages…', 'Extracting videos…', 'Almost done…'];
+    const loadingMsgs = ['Connecting to YouTubeâ€¦', 'Fetching playlist pagesâ€¦', 'Extracting videosâ€¦', 'Almost doneâ€¦'];
     let msgIdx = 0;
     setMergePanelState((prev: any) => prev ? { ...prev, _loadingMsg: loadingMsgs[0] } : null);
     const msgInterval = window.setInterval(() => {
@@ -766,7 +773,7 @@ export const LearningChecklistModule = () => {
     // Show undo toast
     const toastId = toast(
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-        <span style={{ flex: 1, fontSize: '0.85rem' }}>🗑 <strong>{subtask.text.slice(0, 30)}{subtask.text.length > 30 ? '…' : ''}</strong> deleted</span>
+        <span style={{ flex: 1, fontSize: '0.85rem' }}>ðŸ—‘ <strong>{subtask.text.slice(0, 30)}{subtask.text.length > 30 ? 'â€¦' : ''}</strong> deleted</span>
         <button
           onClick={() => {
             // Undo: re-insert
@@ -776,7 +783,7 @@ export const LearningChecklistModule = () => {
             toast.dismiss(toastId);
             toast.success('Undo successful!');
           }}
-          style={{ padding: '0.25rem 0.6rem', borderRadius: '6px', background: '#3b82f6', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', flexShrink: 0 }}
+          style={{ padding: '0.25rem 0.6rem', borderRadius: '6px', background: '#a599ff', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', flexShrink: 0 }}
         >Undo</button>
       </div>,
       { duration: UNDO_DELAY, id: `del-${subTaskId}` }
@@ -812,7 +819,7 @@ export const LearningChecklistModule = () => {
 
 
 
-  // ── CRUD ──────────────────────────────────────────────────────────────────
+  // â”€â”€ CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const handleAddTopic = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -976,7 +983,7 @@ export const LearningChecklistModule = () => {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         isTopicMatch = topic.title.toLowerCase().includes(q);
-        // ✅ FIX: use (st.text || st.title || '') — imported playlists only have `title`, not `text`
+        // âœ… FIX: use (st.text || st.title || '') â€” imported playlists only have `title`, not `text`
         filtered = filtered.filter(st => (st.text || st.title || '').toLowerCase().includes(q) || st.category?.toLowerCase().includes(q) || st.notes?.toLowerCase().includes(q));
         if (isTopicMatch && filtered.length === 0) filtered = topic.subTasks;
       }
@@ -1000,89 +1007,115 @@ export const LearningChecklistModule = () => {
 
   return (
     <div className="learning-container">
-      {/* Header */}
-      <div className="page-header" style={{ marginBottom: '1.5rem' }}>
-        <div className="page-header-info">
-          <h1><BookOpen size={22} style={{ color: 'var(--accent-primary)' }} /> Learning Paths</h1>
-          <p className="subtitle">Build your own curriculum from any YouTube playlist.</p>
+
+      {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <div className="lp-header">
+        <div className="lp-header-left">
+          <h1 className="lp-title">Learning Paths</h1>
+          <p className="lp-subtitle">Build your curriculum from any YouTube playlist</p>
         </div>
-        <div className="page-header-actions">
-          <button className="btn-primary hide-on-mobile" onClick={() => setShowCurriculumBuilder(true)} style={{ background: 'linear-gradient(135deg,#8b5cf6,#6366f1)', border: 'none', boxShadow: '0 4px 15px rgba(99,102,241,0.3)' }}><BookOpen size={15} /> Curriculum Builder</button>
-          <button className="btn-secondary" onClick={() => setShowRoadmapHub(true)}><Plus size={15} /> Quick Import</button>
-          <button className={`btn-secondary ${showIncompleteOnly ? 'active' : ''}`} onClick={() => setShowIncompleteOnly(v => !v)} style={{ padding: '0.4rem' }} title={showIncompleteOnly ? 'Show all' : 'Incomplete only'}>
-            {showIncompleteOnly ? <EyeOff size={17} /> : <Eye size={17} />}
+        <div className="lp-header-right">
+          <button className="lp-btn-ghost hide-on-mobile" onClick={() => setShowCurriculumBuilder(true)}>
+            <BookOpen size={14} /> Curriculum Builder
           </button>
-          <div className="search-input-wrap" style={{ width: '190px', position: 'relative' }}>
-            <Search size={15} className="search-icon" />
-            <input ref={searchInputRef} type="text" placeholder="Search (⌘K)..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+          <button className="lp-btn-ghost" onClick={() => setShowRoadmapHub(true)}>
+            <Plus size={14} /> Quick Import
+          </button>
+          <button
+            className={`lp-btn-icon${showIncompleteOnly ? ' active' : ''}`}
+            onClick={() => setShowIncompleteOnly(v => !v)}
+            title={showIncompleteOnly ? 'Show all' : 'Incomplete only'}
+          >
+            {showIncompleteOnly ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+          <div className="lp-search-wrap">
+            <Search size={13} className="lp-search-icon" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search playlists..."
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="lp-search-input"
+            />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')}
-                style={{ position: 'absolute', right: '0.5rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', padding: '0.1rem' }}>
-                <X size={13} />
+              <button className="lp-search-clear" onClick={() => setSearchQuery('')}>
+                <X size={12} />
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Continue Watching */}
+      {/* â”€â”€ Continue Watching strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {validCW && !playing && (
-        <div style={{ padding: '0.8rem 1rem', borderRadius: '14px', marginBottom: '1.25rem', background: 'linear-gradient(135deg,rgba(239,68,68,0.12),rgba(239,68,68,0.05))', border: '1px solid rgba(239,68,68,0.25)', display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-          <div style={{ width: '34px', height: '34px', borderRadius: '50%', background: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <Play size={15} fill="#fff" color="#fff" />
+        <div className="lp-cw-strip">
+          <div className="lp-cw-icon">
+            <Play size={12} fill="currentColor" />
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Continue · {validCW.topicTitle}</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{validCW.title}</div>
-              {(() => {
-                try {
-                  const s = Number(localStorage.getItem(TS_KEY(validCW.videoId)) || '0');
-                  if (s > 5) {
-                    const m = Math.floor(s / 60);
-                    const sec = String(s % 60).padStart(2, '0');
-                    return <span style={{ fontSize: '0.62rem', color: '#f59e0b', background: 'rgba(245,158,11,0.12)', padding: '0.08rem 0.4rem', borderRadius: '5px', flexShrink: 0 }}>⏱ {m}:{sec}</span>;
-                  }
-                } catch { }
-                return null;
-              })()}
-            </div>
+          <div className="lp-cw-info">
+            <span className="lp-cw-label">Continue &middot; <span className="lp-cw-topic">{validCW.topicTitle}</span></span>
+            <span className="lp-cw-title">{validCW.title}</span>
           </div>
-          <button onClick={() => handlePlayVideo(validCW.videoId, validCW.subtaskId, validCW.topicId)}
-            style={{ padding: '0.48rem 0.9rem', borderRadius: '9px', background: '#ef4444', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.8rem', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.28rem' }}>
-            <Play size={12} fill="#fff" /> Resume
+          {(() => {
+            try {
+              const s = Number(localStorage.getItem(TS_KEY(validCW.videoId)) || '0');
+              if (s > 5) {
+                const m = Math.floor(s / 60);
+                const sec = String(s % 60).padStart(2, '0');
+                return <span className="lp-cw-ts">{m}:{sec}</span>;
+              }
+            } catch { }
+            return null;
+          })()}
+          <button
+            className="lp-cw-resume"
+            onClick={() => handlePlayVideo(validCW.videoId, validCW.subtaskId, validCW.topicId)}
+          >
+            <Play size={11} fill="currentColor" /> Resume
           </button>
-          <button onClick={() => { setContinueWatching(null); try { localStorage.removeItem(CW_KEY); } catch { } }}
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}>
-            <X size={13} />
+          <button className="lp-cw-dismiss" onClick={() => { setContinueWatching(null); try { localStorage.removeItem(CW_KEY); } catch { } }}>
+            <X size={12} />
           </button>
         </div>
       )}
 
-      {/* Add topic */}
-      <div className="add-topic-form" style={{ flexDirection: 'column', marginBottom: '1.5rem' }}>
-        <div className="add-topic-inputs" style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
-          <input type="text" placeholder="New topic (e.g. System Design, React 19...)" value={newTopicTitle} onChange={e => setNewTopicTitle(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleAddTopic(e)} className="todo-input" />
-          <button onClick={handleAddTopic} className="btn-primary" disabled={!newTopicTitle.trim()}><Plus size={15} /> Create</button>
-        </div>
+      {/* â”€â”€ Create topic row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      <div className="lp-create-row">
+        <input
+          type="text"
+          placeholder="New topic (e.g. System Design, React 19...)"
+          value={newTopicTitle}
+          onChange={e => setNewTopicTitle(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && handleAddTopic(e)}
+          className="lp-create-input"
+        />
+        <button
+          onClick={handleAddTopic}
+          disabled={!newTopicTitle.trim()}
+          className="lp-btn-create"
+        >
+          <Plus size={14} /> Create
+        </button>
       </div>
 
-      {/* Topic List */}
+      {/* â”€â”€ Topic list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {isLoading ? (
-        <div className="topics-list">
+        <div className="lp-list">
           {[1, 2, 3].map(i => (
-            <div key={i} className="skeleton" style={{ padding: '1.25rem 1.5rem', borderRadius: 'var(--radius-xl)' }}>
-              <div className="skeleton-line medium" /><div className="skeleton-line short" />
-              <div className="skeleton-line" style={{ height: '6px', marginTop: '0.5rem' }} />
+            <div key={i} className="lp-skeleton-row">
+              <div className="lp-skeleton-line wide" />
+              <div className="lp-skeleton-line narrow" />
             </div>
           ))}
         </div>
       ) : filteredTopics.length === 0 ? (
-        <div className="empty-state" style={{ marginTop: '2rem' }}>
-          {searchQuery || showIncompleteOnly ? 'No matching topics.' : 'No topics yet — import a YouTube playlist or create one!'}
+        <div className="lp-empty">
+          <BookOpen size={32} style={{ color: 'rgba(165,153,255,0.3)', marginBottom: '0.75rem' }} />
+          <p>{searchQuery || showIncompleteOnly ? 'No matching topics.' : 'No topics yet. Import a playlist or create one!'}</p>
         </div>
       ) : (
-        <div className="topics-list">
+        <div className="lp-list">
           {filteredTopics.map((topic) => {
             const isExpanded = searchQuery.trim() !== '' || expandedTopicId === topic.id;
             const orig = topics.find(t => t.id === topic.id);
@@ -1099,54 +1132,60 @@ export const LearningChecklistModule = () => {
             });
 
             return (
-              <div key={topic.id} className="topic-card">
-                <div className="topic-card-header" onClick={() => setAndPersistExpanded(isExpanded ? null : topic.id!)}>
-                  <div className="topic-title-section">
-                    <div style={{ width: '44px', height: '44px', borderRadius: '0.75rem', background: 'rgba(167,139,250,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#a78bfa' }}>
-                      <button className="topic-expand-btn" onClick={e => { e.stopPropagation(); setAndPersistExpanded(isExpanded ? null : topic.id!); }} aria-expanded={isExpanded} style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}>
-                        {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
-                      </button>
+              <div key={topic.id} className={`lp-row${isExpanded ? ' lp-row--open' : ''}${isEditMode ? ' lp-row--edit' : ''}`}>
+                <div
+                  className="lp-row-header"
+                  onClick={() => setAndPersistExpanded(isExpanded ? null : topic.id!)}
+                >
+                  <button
+                    className={`lp-chevron${isExpanded ? ' lp-chevron--open' : ''}`}
+                    onClick={e => { e.stopPropagation(); setAndPersistExpanded(isExpanded ? null : topic.id!); }}
+                    aria-expanded={isExpanded}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                  <div className="lp-row-info">
+                    <div className="lp-row-title-line">
+                      <span className="lp-row-title">{topic.title}</span>
+                      {needsReview && (
+                        <span className="lp-badge lp-badge--review"><Bell size={8} /> Review</span>
+                      )}
+                      {isEditMode && (
+                        <span className="lp-badge lp-badge--edit">Editing</span>
+                      )}
                     </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                        <div style={{ fontFamily: "'Inter', sans-serif", fontSize: '0.9rem', fontWeight: 500, color: 'rgba(255,255,255,0.88)' }}>{topic.title}</div>
-                        {needsReview && (
-                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.18rem', fontSize: '0.58rem', fontWeight: 700, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(245,158,11,0.22)' }}>
-                            <Bell size={8} /> Review
-                          </span>
-                        )}
-                        {isEditMode && (
-                          <span style={{ fontSize: '0.58rem', color: '#60a5fa', background: 'rgba(59,130,246,0.1)', padding: '0.08rem 0.38rem', borderRadius: '99px', border: '1px solid rgba(59,130,246,0.2)' }}>✏️ Editing</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '0.1rem' }}>
-                        {done}/{total} · {progress}%{topic.timeSpentMs && topic.timeSpentMs > 0 ? ` · ${formatDuration(topic.timeSpentMs)}` : ''}
-                      </div>
-                      <div style={{ marginTop: '0.38rem', height: '4px', borderRadius: '999px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                        <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg, #a78bfa, #60a5fa)', transition: 'width 0.8s cubic-bezier(0.16,1,0.3,1)' }} />
-                      </div>
+                    <div className="lp-row-meta">
+                      {done}/{total} &middot; {progress}%{topic.timeSpentMs && topic.timeSpentMs > 0 ? ` \u00b7 ${formatDuration(topic.timeSpentMs)}` : ''}
+                    </div>
+                    <div className="lp-row-progress-bg">
+                      <div className="lp-row-progress-fill" style={{ width: `${progress}%` }} />
                     </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }} className="topic-actions" onClick={e => e.stopPropagation()}>
+                  <div className="lp-row-actions" onClick={e => e.stopPropagation()}>
                     {hasUnwatchedVideos && !isEditMode && (
                       <button
+                        className="lp-act-btn lp-act-btn--primary"
                         onClick={e => { e.stopPropagation(); if (!isExpanded) setAndPersistExpanded(topic.id!); handleResumePlaylist(topic.id!); }}
                         title="Resume playlist"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.3rem 0.875rem', borderRadius: '999px', background: 'rgba(96,165,250,0.1)', border: '1px solid rgba(96,165,250,0.25)', color: '#60a5fa', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                      >
                         <Play size={10} fill="currentColor" /> Continue
                       </button>
                     )}
                     <button
+                      className={`lp-act-btn${isEditMode ? ' lp-act-btn--active' : ''}`}
                       onClick={() => { if (!isExpanded) setAndPersistExpanded(topic.id!); toggleEditMode(topic.id!); }}
                       title={isEditMode ? 'Exit Edit Mode' : 'Edit Playlist'}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.28rem 0.55rem', borderRadius: '7px', background: isEditMode ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.05)', border: `1px solid ${isEditMode ? 'rgba(59,130,246,0.35)' : 'rgba(255,255,255,0.1)'}`, color: isEditMode ? '#60a5fa' : 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: '0.65rem', fontWeight: 600 }}>
+                    >
                       <Edit3 size={11} /> {isEditMode ? 'Done' : 'Edit'}
                     </button>
-                    <button className="btn-icon" onClick={() => openNotesModal(topic.id!)} title="Notes"><FileText size={14} /></button>
-                    <button className="topic-delete-btn" onClick={e => handleDeleteTopic(topic.id!, e)}><Trash2 size={14} /></button>
+                    <button className="lp-act-icon" onClick={() => openNotesModal(topic.id!)} title="Notes">
+                      <FileText size={14} />
+                    </button>
+                    <button className="lp-act-icon lp-act-icon--danger" onClick={e => handleDeleteTopic(topic.id!, e)} title="Delete">
+                      <Trash2 size={13} />
+                    </button>
                   </div>
                 </div>
-
                 <div style={{ display: isExpanded ? 'block' : 'none', overflow: 'hidden' }}>
                   {isExpanded && (
                     <TopicBody
@@ -1188,7 +1227,7 @@ export const LearningChecklistModule = () => {
         </div>
       )}
 
-      {/* Notes Modal — lightweight plain textarea */}
+      {/* Notes Modal â€” lightweight plain textarea */}
       {editingContext && (
         <div className="notes-modal-overlay" onClick={() => setEditingContext(null)}>
           <div className="notes-modal-content" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
@@ -1200,7 +1239,7 @@ export const LearningChecklistModule = () => {
             </div>
             <div className="notes-modal-body">
               <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
-                {editingContext.type === 'topic' ? 'Notes (Markdown supported)' : 'Quick notes — timestamps, key concepts'}
+                {editingContext.type === 'topic' ? 'Notes (Markdown supported)' : 'Quick notes â€” timestamps, key concepts'}
               </label>
               <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)}
                 placeholder={editingContext.type === 'topic' ? 'Write notes, code snippets...' : 'e.g. 12:30 - important concept, 24:00 - demo'}

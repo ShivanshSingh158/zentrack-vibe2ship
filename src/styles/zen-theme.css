@@ -42,12 +42,12 @@ h1.title, h2.title {
 
 /* Date sidebar buttons */
 .date-btn:hover {
-  background: rgba(59, 130, 246, 0.07) !important;
+  background: rgba(165, 153, 255, 0.07) !important;
   color: var(--text-primary) !important;
 }
 .date-btn.selected {
-  background: rgba(59, 130, 246, 0.12) !important;
-  border-color: rgba(59, 130, 246, 0.28) !important;
+  background: rgba(165, 153, 255, 0.12) !important;
+  border-color: rgba(165, 153, 255, 0.28) !important;
   color: var(--zen-purple) !important;
 }
 .date-btn.selected .date-num { color: var(--zen-purple) !important; }
@@ -67,7 +67,7 @@ h1.title, h2.title {
   border-color: var(--zen-purple) !important;
 }
 .todo-checkbox:focus {
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18) !important;
+  box-shadow: 0 0 0 3px rgba(165, 153, 255, 0.18) !important;
 }
 
 /* Filter pills / tabs */
@@ -80,9 +80,9 @@ h1.title, h2.title {
 .filter-pill.active,
 .tab-pill.active,
 .filter-btn.active {
-  background: rgba(59, 130, 246, 0.14) !important;
+  background: rgba(165, 153, 255, 0.14) !important;
   color: var(--zen-purple) !important;
-  border-color: rgba(59, 130, 246, 0.30) !important;
+  border-color: rgba(165, 153, 255, 0.30) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -183,8 +183,8 @@ h1.title, h2.title {
 [class*="log-workout"],
 [class*="log-btn"],
 [class*="workout-log"] {
-  background: linear-gradient(135deg, #3b82f6, #60a5fa) !important;
-  color: #0a0814 !important;
+  background: linear-gradient(135deg, #a599ff, #b8afff) !important;
+  color: #000000 !important;
   font-weight: 700 !important;
   border: none !important;
   border-radius: var(--radius-pill) !important;
@@ -193,7 +193,7 @@ h1.title, h2.title {
 /* Gym progress bars — purple */
 [class*="gym-progress"],
 [class*="muscle-progress"] {
-  background: linear-gradient(90deg, #3b82f6, #60a5fa) !important;
+  background: linear-gradient(90deg, #a599ff, #b8afff) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -377,10 +377,10 @@ h1.title, h2.title {
 /* Command bar */
 .command-bar-container {
   background: rgba(10, 10, 11, 0.80) !important;
-  border: 1px solid rgba(59, 130, 246, 0.14) !important;
+  border: 1px solid rgba(165, 153, 255, 0.14) !important;
 }
 .command-bar-container:focus-within {
-  border-color: rgba(59, 130, 246, 0.36) !important;
+  border-color: rgba(165, 153, 255, 0.36) !important;
   background: rgba(14, 14, 16, 0.92) !important;
 }
 .agent-command-input { color: var(--text-primary) !important; }
@@ -397,8 +397,8 @@ h1.title, h2.title {
   box-shadow: 0 0 16px var(--zen-purple-glow) !important;
 }
 .fleet-node.orchestrator {
-  border-color: rgba(59, 130, 246, 0.40) !important;
-  box-shadow: 0 0 24px rgba(59, 130, 246, 0.20) !important;
+  border-color: rgba(165, 153, 255, 0.40) !important;
+  box-shadow: 0 0 24px rgba(165, 153, 255, 0.20) !important;
 }
 
 /* Terminal feed */
@@ -536,7 +536,7 @@ h1.title, h2.title {
 [class*="bottom-nav"] {
   background: rgba(0, 0, 0, 0.92) !important;
   backdrop-filter: blur(24px) saturate(180%) !important;
-  border-top: 1px solid rgba(59, 130, 246, 0.10) !important;
+  border-top: 1px solid rgba(165, 153, 255, 0.10) !important;
 }
 
 [class*="bottom-nav-item"].active,
@@ -567,12 +567,12 @@ h1.title, h2.title {
   color: var(--zen-purple) !important;
 }
 .sheet-icon {
-  background: rgba(59, 130, 246, 0.08) !important;
-  border: 1px solid rgba(59, 130, 246, 0.14) !important;
+  background: rgba(165, 153, 255, 0.08) !important;
+  border: 1px solid rgba(165, 153, 255, 0.14) !important;
 }
 .sheet-item.active .sheet-icon {
-  background: rgba(59, 130, 246, 0.15) !important;
-  border-color: rgba(59, 130, 246, 0.30) !important;
+  background: rgba(165, 153, 255, 0.15) !important;
+  border-color: rgba(165, 153, 255, 0.30) !important;
 }
 
 /* ══════════════════════════════════════════════════════════════
