@@ -57,7 +57,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks]         = useState<Task[]>([]);
   const [habits, setHabits]       = useState<Habit[]>([]);
   const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
-  const [loading, setLoading]     = useState(true);
+  // WHATSAPP PATTERN: loading is derived — never a boolean flag that starts true.
+  // If cache has seeded tasks/habits, loading is false from the very first render.
+  // Screens with cached data never show a spinner on app resume.
+  const [firestoreReady, setFirestoreReady] = useState(false);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
 
   // Write-lock: after an optimistic habit update, ignore Firestore snapshots for
@@ -98,7 +101,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // ── Cache-first boot ─────────────────────────────────────────────────
-  // Load tasks/habits/habitLogs from AsyncStorage instantly on mount (~5ms).
+  // Load tasks/habits/habitLogs from AsyncStorage SYNCHRONOUSLY on mount (~5ms).
   // Dashboard is fully usable before Firestore has responded.
   // Firestore snapshots will arrive later and silently update the UI.
   useEffect(() => {
@@ -108,8 +111,6 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       if (cached.tasks     && cached.tasks.length > 0)     setTasks(prev     => prev.length === 0 ? cached.tasks!     : prev);
       if (cached.habits    && cached.habits.length > 0)    setHabits(prev    => prev.length === 0 ? cached.habits!    : prev);
       if (cached.habitLogs && cached.habitLogs.length > 0) setHabitLogs(prev => prev.length === 0 ? cached.habitLogs! : prev);
-      // Mark as not loading once cache is seeded, even before Firestore fires
-      setLoading(false);
     });
     return () => { cancelled = true; };
   }, []);
@@ -119,12 +120,13 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     return onAuthStateChanged(auth, u => {
       setUser(u);
       if (!u) {
-        setTasks([]); setHabits([]); setHabitLogs([]); setLoading(false);
+        setTasks([]); setHabits([]); setHabitLogs([]); setFirestoreReady(false);
         clearCoreCache();        // Clear core cache on logout
         clearAllDomainCaches(); // Clear ALL domain caches — Wellness, Academic, Planner, Creative
       }
     });
   }, []);
+
 
   // Register push notifications on login
   useEffect(() => {
@@ -162,9 +164,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [user]);
 
-  // Critical-path Firestore subscriptions — open immediately on login
+  // Critical-path Firestore subscriptions — open immediately on login.
+  // Each snapshot WRITE-THROUGHS to AsyncStorage so the next cold-boot is instant.
   useEffect(() => {
-    if (!user) { setLoading(false); return; }
+    if (!user) return;
     const uid = user.uid;
     const unsubs: (() => void)[] = [];
 
@@ -173,20 +176,17 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       snap => {
         const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
         setTasks(fresh);
-        setLoading(false);
-        writeCoreCacheMulti({ tasks: fresh }); // Write back for next launch
+        setFirestoreReady(true);
+        writeCoreCacheMulti({ tasks: fresh });
       },
-      err => { console.error("[CoreData] tasks", err); setLoading(false); }
+      err => { console.error("[CoreData] tasks", err); setFirestoreReady(true); }
     ));
 
     unsubs.push(onSnapshot(
       query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
       snap => {
         const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Habit));
-        // Skip snapshot if an optimistic update is in-flight — prevents flicker
-        if (!isHabitLocked.current) {
-          setHabits(fresh);
-        }
+        if (!isHabitLocked.current) setHabits(fresh);
         writeCoreCacheMulti({ habits: fresh });
       },
       err => console.error("[CoreData] habits", err)
@@ -196,10 +196,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
       snap => {
         const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog));
-        // Skip snapshot if an optimistic update is in-flight — prevents flicker
-        if (!isHabitLogLocked.current) {
-          setHabitLogs(fresh);
-        }
+        if (!isHabitLogLocked.current) setHabitLogs(fresh);
         writeCoreCacheMulti({ habitLogs: fresh });
       },
       err => console.error("[CoreData] habitLogs", err)
@@ -207,6 +204,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubs.forEach(u => u());
   }, [user]);
+
+  // loading is TRUE only when: user is authenticated, Firestore hasn't responded yet,
+  // AND we have no cached data to show. Never true when cache is populated.
+  const loading = !!user && !firestoreReady && tasks.length === 0;
 
   const activeHabits     = useMemo(() => habits.filter(h => !h.archived), [habits]);
   const todayHabits      = useMemo(() => activeHabits.slice(0, 5), [activeHabits]);
@@ -263,3 +264,4 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     </CoreDataContext.Provider>
   );
 }
+

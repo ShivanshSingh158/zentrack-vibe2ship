@@ -52,7 +52,8 @@ export function WellnessProvider({
   user: { uid: string } | null;
 }) {
   const [gymLogs, setGymLogs]         = useState<GymLog[]>([]);
-  const [gymLogsReady, setGymLogsReady] = useState(false);
+  // WHATSAPP PATTERN: gymLogsReady is derived — never a boolean flag that starts false.
+  // Gym screens show cached data the instant the cache is seeded, with no spinner.
   const [userGymPlan, setUserGymPlan] = useState<UserGymPlanDoc | null>(null);
   const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
@@ -65,11 +66,11 @@ export function WellnessProvider({
     let cancelled = false;
     readWellnessCache().then(cached => {
       if (cancelled) return;
-      if (cached.gymLogs     && cached.gymLogs.length > 0)     { setGymLogs(prev     => prev.length === 0 ? cached.gymLogs!     : prev); setGymLogsReady(true); }
-      if (cached.userGymPlan)                                  setUserGymPlan(prev   => prev === null    ? cached.userGymPlan! : prev);
-      if (cached.waterLogs   && cached.waterLogs.length > 0)   setWaterLogs(prev   => prev.length === 0 ? cached.waterLogs!   : prev);
-      if (cached.sleepLogs   && cached.sleepLogs.length > 0)   setSleepLogs(prev   => prev.length === 0 ? cached.sleepLogs!   : prev);
-      if (cached.weightLogs  && cached.weightLogs.length > 0)  setWeightLogs(prev  => prev.length === 0 ? cached.weightLogs!  : prev);
+      if (cached.gymLogs    && cached.gymLogs.length > 0)    setGymLogs(prev    => prev.length === 0 ? cached.gymLogs!    : prev);
+      if (cached.userGymPlan)                               setUserGymPlan(prev => prev === null   ? cached.userGymPlan! : prev);
+      if (cached.waterLogs  && cached.waterLogs.length > 0) setWaterLogs(prev  => prev.length === 0 ? cached.waterLogs!  : prev);
+      if (cached.sleepLogs  && cached.sleepLogs.length > 0) setSleepLogs(prev  => prev.length === 0 ? cached.sleepLogs!  : prev);
+      if (cached.weightLogs && cached.weightLogs.length > 0) setWeightLogs(prev => prev.length === 0 ? cached.weightLogs! : prev);
     });
     return () => { cancelled = true; };
   }, []);
@@ -83,7 +84,6 @@ export function WellnessProvider({
       snap => {
         const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as GymLog));
         setGymLogs(fresh);
-        setGymLogsReady(true);
         writeWellnessCache({ gymLogs: fresh });
       },
       err => console.error("[Wellness] gymLogs", err)
@@ -137,7 +137,6 @@ export function WellnessProvider({
       unsubsRef.current = [];
       subscribedRef.current = false;
       setGymLogs([]);
-      setGymLogsReady(false);
       setUserGymPlan(null);
       setWaterLogs([]);
       setSleepLogs([]);
@@ -174,13 +173,11 @@ export function WellnessProvider({
 
   const optimisticAddGymLog = (log: GymLog) => {
     setGymLogs(prev => {
-      // Replace existing log for same date or prepend new
       const exists = prev.some(l => l.id === log.id || l.date === log.date);
       const next = exists ? prev.map(l => (l.id === log.id || l.date === log.date) ? log : l) : [log, ...prev];
       writeWellnessCache({ gymLogs: next });
       return next;
     });
-    setGymLogsReady(true);
   };
 
   const optimisticUpdateGymLog = (logId: string, partial: Partial<GymLog>) => {
@@ -190,6 +187,10 @@ export function WellnessProvider({
       return next;
     });
   };
+
+  // gymLogsReady: true if we have any gym logs (from cache OR Firestore).
+  // Gym screens use this to decide whether to show a skeleton vs real content.
+  const gymLogsReady = gymLogs.length > 0;
 
   return (
     <WellnessContext.Provider value={{ gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, applyMasterTemplate, waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog }}>

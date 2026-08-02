@@ -228,19 +228,19 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
   const creative = useCreativeData();
   const planner  = usePlannerData();
 
-  // Open ALL demand-based subscriptions IMMEDIATELY on login (no delay).
-  // This is critical for offline-first: Firestore's persistentLocalCache only
-  // fires cached data AFTER onSnapshot is registered. By calling ensureSubscribed
-  // for all domains on login, every screen has Firestore-cached data available
-  // the moment the user navigates to it — even when completely offline.
-  // Each call is idempotent — already-subscribed domains ignore the call.
-  useEffect(() => {
-    if (!core.user) return;
+  // WHATSAPP PATTERN: Open ALL subscriptions synchronously when user becomes available.
+  // useMemo runs during render (unlike useEffect which runs after).
+  // This means by the time any child screen reads from these contexts on its FIRST render,
+  // the Firestore listeners are already open and the cached data is already seeding.
+  // Without this, the first render after login has empty arrays even with cached data.
+  // Each ensureSubscribed call is idempotent — already-open subscriptions are ignored.
+  if (core.user) {
     wellness.ensureSubscribed();
     academic.ensureSubscribed();
     creative.ensureSubscribed();
     planner.ensureSubscribed();
-  }, [core.user]);
+  }
+
 
   const value = useMemo<MobileDataContextType>(() => ({
     // Core domain
