@@ -33,14 +33,27 @@ import { PlannerProvider, usePlannerData }   from "./domains/PlannerContext";
 
 // ─── Type Exports (all preserved — no consumer changes needed) ─────────────────
 
+export interface RecurrenceRule {
+  type: 'daily' | 'weekly' | 'monthly' | 'custom';
+  interval: number;
+  daysOfWeek?: number[];
+  endDate?: string;
+  exceptions?: string[];
+}
+
 export interface Task {
   id: string; title: string; status: "pending" | "completed";
   priority: "P1" | "P2" | "P3" | "high" | "medium" | "low";
   date?: string; tags?: string[]; userId: string; isRecurring?: boolean;
+  recurrenceRule?: RecurrenceRule; recurringSourceId?: string;
   timeSlot?: string; estimatedMinutes?: number; subject?: string;
   commitmentTo?: string; energyRequirement?: "low" | "medium" | "high";
   order?: number; subtasks?: { id: string; title: string; completed: boolean }[];
   completedAt?: string | null;
+  /** Actual minutes the user worked on this task (logged on completion) */
+  actualMinutes?: number;
+  /** The time the user actually sat down to work (e.g. "6:30 AM") */
+  actualStartTime?: string;
 }
 
 export interface TaskTemplate {
@@ -58,9 +71,13 @@ export interface TaskTemplate {
 export interface Habit {
   id: string; name: string; emoji: string; frequency: string;
   streak?: number; longestStreak?: number; color?: string; userId: string; archived?: boolean;
+  type?: 'positive' | 'negative';
+  startDate?: string;
+  costPerDay?: number;
+  targetCount?: number;
 }
 
-export interface HabitLog { id: string; habitId: string; userId: string; date: string; }
+export interface HabitLog { id: string; habitId: string; userId: string; date: string; count?: number; isFreeze?: boolean; }
 
 export interface StorageNode {
   id?: string; userId: string; type: "folder" | "file" | "note"; name: string;
@@ -92,6 +109,7 @@ export interface GymLog {
   id: string; date: string; userId: string; exercises?: any[]; cardio?: any[];
   workoutStartTime?: number; workoutDurationMinutes?: number;
   startTime?: string; endTime?: string; updatedAt?: number;
+  notes?: string;
 }
 
 export interface AttendanceSubject {
@@ -173,10 +191,28 @@ interface MobileDataContextType {
   pendingTaskCount: number; todayHabits: Habit[];
   pinnedModules: string[]; setPinnedModules: (modules: string[]) => void;
   updateMasterPlan: (dayIndex: number, planDay: GymPlanDay) => Promise<void>;
+  applyMasterTemplate: (templateId: 'arnold' | 'ppl') => Promise<void>;
+  optimisticAddTask: (task: Task) => void;
   optimisticUpdateTask: (taskId: string, partial: Partial<Task>) => void;
+  optimisticDeleteTask: (taskId: string) => void;
   optimisticUpdateHabit: (habitId: string, partial: Partial<Habit>) => void;
   optimisticAddHabitLog: (log: HabitLog) => void;
+  optimisticUpdateHabitLog: (logId: string, partial: Partial<HabitLog>) => void;
   optimisticRemoveHabitLog: (habitId: string, date: string) => void;
+  // Wellness
+  optimisticAddGymLog: (log: GymLog) => void;
+  optimisticUpdateGymLog: (logId: string, partial: Partial<GymLog>) => void;
+  // Academic
+  optimisticUpdateAttendance: (subjectId: string, partial: Partial<AttendanceSubject>) => void;
+  optimisticAddAssignment: (assignment: Assignment) => void;
+  optimisticUpdateAssignment: (assignmentId: string, partial: Partial<Assignment>) => void;
+  optimisticDeleteAssignment: (assignmentId: string) => void;
+  // Planner
+  optimisticAddEvent: (event: CustomEvent) => void;
+  optimisticUpdateEvent: (eventId: string, partial: Partial<CustomEvent>) => void;
+  optimisticDeleteEvent: (eventId: string) => void;
+  optimisticAddGoal: (goal: Goal) => void;
+  optimisticUpdateGoal: (goalId: string, partial: Partial<Goal>) => void;
 }
 
 const MobileDataShimContext = createContext<MobileDataContextType | null>(null);
@@ -192,19 +228,18 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
   const creative = useCreativeData();
   const planner  = usePlannerData();
 
-  // Open demand-based subscriptions after a short 250ms idle window.
-  // Previously 1200ms — now 250ms: still doesn't block the initial Dashboard
-  // render but means Gym/Academic/Creative data is ready 950ms sooner.
+  // Open ALL demand-based subscriptions IMMEDIATELY on login (no delay).
+  // This is critical for offline-first: Firestore's persistentLocalCache only
+  // fires cached data AFTER onSnapshot is registered. By calling ensureSubscribed
+  // for all domains on login, every screen has Firestore-cached data available
+  // the moment the user navigates to it — even when completely offline.
   // Each call is idempotent — already-subscribed domains ignore the call.
   useEffect(() => {
     if (!core.user) return;
-    const timer = setTimeout(() => {
-      wellness.ensureSubscribed();
-      academic.ensureSubscribed();
-      creative.ensureSubscribed();
-      planner.ensureSubscribed();
-    }, 250);
-    return () => clearTimeout(timer);
+    wellness.ensureSubscribed();
+    academic.ensureSubscribed();
+    creative.ensureSubscribed();
+    planner.ensureSubscribed();
   }, [core.user]);
 
   const value = useMemo<MobileDataContextType>(() => ({
@@ -226,6 +261,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     gymEnsureSubscribed:  wellness.ensureSubscribed,
     userGymPlan:          wellness.userGymPlan,
     updateMasterPlan:     wellness.updateMasterPlan,
+    applyMasterTemplate:  wellness.applyMasterTemplate,
     waterLogs:            wellness.waterLogs,
     sleepLogs:            wellness.sleepLogs,
     weightLogs:           wellness.weightLogs,
@@ -245,25 +281,46 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     goals:             planner.goals,
     weeklyReviews:     planner.weeklyReviews,
 
-    // Optimistic functions
+    // Optimistic functions — Core
+    optimisticAddTask: core.optimisticAddTask,
     optimisticUpdateTask: core.optimisticUpdateTask,
+    optimisticDeleteTask: core.optimisticDeleteTask,
     optimisticUpdateHabit: core.optimisticUpdateHabit,
     optimisticAddHabitLog: core.optimisticAddHabitLog,
+    optimisticUpdateHabitLog: core.optimisticUpdateHabitLog,
     optimisticRemoveHabitLog: core.optimisticRemoveHabitLog,
+    // Optimistic functions — Wellness
+    optimisticAddGymLog: wellness.optimisticAddGymLog,
+    optimisticUpdateGymLog: wellness.optimisticUpdateGymLog,
+    // Optimistic functions — Academic
+    optimisticUpdateAttendance: academic.optimisticUpdateAttendance,
+    optimisticAddAssignment: academic.optimisticAddAssignment,
+    optimisticUpdateAssignment: academic.optimisticUpdateAssignment,
+    optimisticDeleteAssignment: academic.optimisticDeleteAssignment,
+    // Optimistic functions — Planner
+    optimisticAddEvent: planner.optimisticAddEvent,
+    optimisticUpdateEvent: planner.optimisticUpdateEvent,
+    optimisticDeleteEvent: planner.optimisticDeleteEvent,
+    optimisticAddGoal: planner.optimisticAddGoal,
+    optimisticUpdateGoal: planner.optimisticUpdateGoal,
   }), [
     core.user, core.tasks, core.habits, core.allHabits, core.habitLogs,
     core.loading, core.pendingTaskCount, core.todayHabits,
     core.pinnedModules, core.setPinnedModules, core.googleAccessToken,
-    core.optimisticUpdateTask, core.optimisticUpdateHabit, core.optimisticAddHabitLog, core.optimisticRemoveHabitLog,
-    wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
+    core.optimisticAddTask, core.optimisticUpdateTask, core.optimisticDeleteTask,
+    core.optimisticUpdateHabit, core.optimisticAddHabitLog, core.optimisticUpdateHabitLog, core.optimisticRemoveHabitLog,
+    wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.applyMasterTemplate, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
+    wellness.optimisticAddGymLog, wellness.optimisticUpdateGymLog,
     academic.attendance, academic.attendanceLogs, academic.assignments, academic.semesters, academic.semesterSubjects,
+    academic.optimisticUpdateAttendance, academic.optimisticAddAssignment, academic.optimisticUpdateAssignment, academic.optimisticDeleteAssignment,
     creative.storageNodes, creative.notes, creative.learningTopics, creative.jobs,
     planner.customEvents, planner.goals, planner.weeklyReviews,
+    planner.optimisticAddEvent, planner.optimisticUpdateEvent, planner.optimisticDeleteEvent, planner.optimisticAddGoal, planner.optimisticUpdateGoal,
   ]);
 
   // Debounced notification scheduling — prevents burst reschedules
   // When Firestore fires 3 snapshots in 5s (common after writes), this ensures
-  // scheduleTaskReminders is only called ONCE, after the burst settles.
+  // scheduleAllNotifications is only called ONCE, after the burst settles.
   // Previously used a plain setTimeout which caused up to 3 overlapping
   // Notifications.cancelAllScheduledNotificationsAsync() calls per write.
   const notifTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -275,9 +332,19 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
         customEvents: planner.customEvents,
         gymLogs: wellness.gymLogs,
         attendance: academic.attendance,
+        // BUG-N2 FIX: Pass attendanceLogs so post-class log reminders can
+        // check whether the user already marked present/absent for each session.
+        // Previously this was omitted, causing log reminders to fire even
+        // after the user had already logged attendance mid-class.
+        attendanceLogs: academic.attendanceLogs,
         habitLogs: core.habitLogs,
         allHabits: core.allHabits,
-        assignments: academic.assignments
+        assignments: academic.assignments,
+        waterLogs: wellness.waterLogs,
+        sleepLogs: wellness.sleepLogs,
+        // BUG-N5 FIX: Pass userGymPlan so gym reminders respect the user's
+        // custom workout plan instead of always using the static PPL template.
+        userGymPlan: wellness.userGymPlan,
       }).catch(console.error);
     }, 3000); // 3s debounce window absorbs all burst snapshots
     return () => {
@@ -285,7 +352,13 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     };
   }, [
     core.tasks, planner.customEvents, wellness.gymLogs, academic.attendance,
-    core.habitLogs, core.allHabits, academic.assignments
+    // BUG-N2 FIX: Added attendanceLogs to dependency array so that logging
+    // attendance triggers a reschedule (which removes the now-stale reminder).
+    academic.attendanceLogs,
+    core.habitLogs, core.allHabits, academic.assignments,
+    wellness.waterLogs, wellness.sleepLogs,
+    // BUG-N5 FIX: Added userGymPlan to dependency array.
+    wellness.userGymPlan,
   ]);
 
   return <MobileDataShimContext.Provider value={value}>{children}</MobileDataShimContext.Provider>;
@@ -293,9 +366,66 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
+const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
+  user: null,
+  tasks: [],
+  habits: [],
+  allHabits: [],
+  habitLogs: [],
+  loading: false,
+  pendingTaskCount: 0,
+  todayHabits: [],
+  pinnedModules: [],
+  setPinnedModules: () => {},
+  googleAccessToken: null,
+  optimisticAddTask: () => {},
+  optimisticUpdateTask: () => {},
+  optimisticDeleteTask: () => {},
+  optimisticUpdateHabit: () => {},
+  optimisticAddHabitLog: () => {},
+  optimisticUpdateHabitLog: () => {},
+  optimisticRemoveHabitLog: () => {},
+  optimisticAddGymLog: () => {},
+  optimisticUpdateGymLog: () => {},
+  optimisticUpdateAttendance: () => {},
+  optimisticAddAssignment: () => {},
+  optimisticUpdateAssignment: () => {},
+  optimisticDeleteAssignment: () => {},
+  optimisticAddEvent: () => {},
+  optimisticUpdateEvent: () => {},
+  optimisticDeleteEvent: () => {},
+  optimisticAddGoal: () => {},
+  optimisticUpdateGoal: () => {},
+  gymLogs: [],
+  gymLogsReady: false,
+  gymEnsureSubscribed: () => {},
+  userGymPlan: null,
+  updateMasterPlan: async () => {},
+  applyMasterTemplate: async () => {},
+  waterLogs: [],
+  sleepLogs: [],
+  weightLogs: [],
+  attendance: [],
+  attendanceLogs: [],
+  assignments: [],
+  semesters: [],
+  semesterSubjects: [],
+  storageNodes: [],
+  notes: [],
+  learningTopics: [],
+  jobs: [],
+  customEvents: [],
+  goals: [],
+  weeklyReviews: [],
+};
+
 export function useMobileData(): MobileDataContextType {
   const ctx = useContext(MobileDataShimContext);
-  if (!ctx) throw new Error("useMobileData must be used inside MobileDataProvider");
+  if (!ctx) {
+    console.warn('[MobileData] useMobileData called outside MobileDataProvider — returning safe empty fallback.');
+    console.error(new Error().stack);
+    return DEFAULT_FALLBACK_CTX;
+  }
   return ctx;
 }
 

@@ -69,7 +69,8 @@ export type GymActionType =
   | 'removeExercise'
   | 'generateWorkoutPlan'
   | 'swapExercise'
-  | 'logWorkoutSet';
+  | 'logWorkoutSet'
+  | 'autoregulateDeload';
 
 export interface AgentAction {
   type: SaraActionType | GymActionType;
@@ -160,6 +161,7 @@ export async function processSaraChat(
     weeklyReviews?: any[];
     waterLogs?: any[];
     sleepLogs?: any[];
+    notifSettingsSummary?: string;
   } = {}
 ): Promise<{
   type: 'text' | 'function_call';
@@ -210,9 +212,9 @@ export async function processSaraChat(
     .filter(w => w.date === todayISO).reduce((sum, w) => sum + (w.amountMl || 0), 0);
   const lastSleep = (contextData.sleepLogs || []).slice(-1)[0];
 
-  const systemPrompt = `You are Sara, the warm, witty, and highly capable AI assistant inside ZenTrack. You manage the user's entire life — tasks, notes, habits, attendance, goals, calendar, assignments, gym, learning, jobs, and health.
+  const systemPrompt = `You are Sara, the warm, witty, and highly capable AI assistant inside ZenTrack. You manage the user's entire life — tasks, notes, habits, attendance, goals, calendar, assignments, gym, learning, jobs, health, and app settings.
 
-TODAY: ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+TODAY: ${((d) => { const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]; const mos=["January","February","March","April","May","June","July","August","September","October","November","December"]; return days[d.getDay()] + ", " + String(d.getDate()).padStart(2,"0") + " " + mos[d.getMonth()] + " " + d.getFullYear(); })(now)}
 TIME: ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
 TOMORROW: ${tomorrowISO}
 
@@ -248,6 +250,8 @@ ${JSON.stringify(recentJobs)}
 
 💧 Water today: ${todayWater}ml
 😴 Last sleep: ${lastSleep ? `${lastSleep.hours}h on ${lastSleep.date}` : 'no data'}
+
+${contextData.notifSettingsSummary ? `\n${contextData.notifSettingsSummary}\n` : ''}
 
 ═══ HOW TO RESPOND ═══
 
@@ -299,6 +303,11 @@ status: "present" | "absent"
 ADD CALENDAR EVENT:
 [[ACTION:{"type":"addCalendarEvent","title":"Event Title","date":"${tomorrowISO}","startTime":"14:00","type":"todo"}]]
 type: "todo" | "exam" | "assignment_due" | "holiday"
+
+UPDATE NOTIFICATION SETTING:
+[[ACTION:{"type":"updateNotificationSetting","settingKey":"morning_brief_time","value":"08:30","settingLabel":"Set Morning Briefing to 8:30 AM"}]]
+settingKey values: "morning_brief_time", "overdue_nudge_time", "habit_streak_time", "quiet_start", "quiet_end", "quiet_hours", "task_buffer", "mod_tasks", "mod_habits", "mod_gym", "mod_attendance", "mod_assignments", "morning_brief", "overdue_nudge", "habit_streak_risk", "attendance_warning", "gym_notification_time", "gym_notification_enabled"
+value: HH:MM string (e.g. "08:30") or boolean (true/false) or string minutes ("30").
 
 ═══ RULES ═══
 - For deleteTask/completeTask/logHabit/markAttendance: ALWAYS use the IDs from the context above, never make up IDs.
@@ -356,11 +365,31 @@ export async function processGymChat(
     exercises?: any[];
     workoutDayName?: string;
     userId?: string;
-    tasks?: any[];
+    tasks?: any[]
     habits?: any[];
     notes?: any[];
     googleAccessToken?: string;
     memorySummary?: string;
+    waterLogs?: any[];
+    sleepLogs?: any[];
+    /** User's full custom gym plan document (customDays keyed by dayIndex 1-7) */
+    userGymPlan?: { customDays?: Record<number, any> } | null;
+    /** Today's resolved plan day (already custom-plan-aware from useGymLog) */
+    gymPlanDay?: any | null;
+    /** Athlete profile from useGymProfile hook */
+    gymProfile?: {
+      heightCm?: number | null;
+      weightKg?: number | null;
+      age?: number | null;
+      gender?: string | null;
+      goal?: string | null;
+      experience?: string | null;
+      equipment?: string | null;
+      daysPerWeek?: number | null;
+      limitations?: string;
+      exercisesToAvoid?: string;
+      notes?: string;
+    } | null;
   } = {}
 ): Promise<{
   type: 'text' | 'function_call';
@@ -369,54 +398,298 @@ export async function processGymChat(
   args?: any;
 }> {
   const now = new Date();
+  // FIX: Use local date (not toISOString which is UTC — wrong in IST after midnight)
+  const todayY = now.getFullYear();
+  const todayMo = String(now.getMonth() + 1).padStart(2, '0');
+  const todayDa = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${todayY}-${todayMo}-${todayDa}`;
+  const todayDayOfWeek = now.getDay(); // 0=Sun..6=Sat
+
+  // ── Today's exercise list (detailed) ────────────────────────────────────────
   const exercisesList = (contextData.exercises || [])
-    .map((ex: any, i: number) => `[${i}] ${ex.name} — ${ex.targetSets}×${ex.targetReps}`)
+    .map((ex: any, i: number) => {
+      const setsLogged = (ex.setsLog || []).filter((s: any) => s.completed);
+      const logDetail = setsLogged.length > 0
+        ? ` | Done: ${setsLogged.map((s: any) => `${s.weight ?? '?'}kg×${s.reps ?? '?'}`).join(', ')}`
+        : '';
+      return `[${i}] ${ex.name} (${ex.muscle || 'N/A'}) — Target: ${ex.targetSets}×${ex.targetReps}${logDetail}`;
+    })
     .join('\n');
 
-  const recentLogs = (contextData.gymLogs || []).slice(0, 5).map((log: any) => ({
-    date: log.date,
-    exercises: (log.exercises || []).map((e: any) => `${e.name}: ${(e.setsLog || []).length} sets`),
-  }));
+  // ── Last 10 sessions with FULL setsLog ──────────────────────────────────────
+  const recentLogs = (contextData.gymLogs || [])
+    .filter((l: any) => l.date <= todayStr && (l.exercises?.length > 0))
+    .sort((a: any, b: any) => b.date.localeCompare(a.date))
+    .slice(0, 10)
+    .map((log: any) => ({
+      date: log.date,
+      durationMin: log.workoutDurationMinutes || null,
+      exercises: (log.exercises || []).map((ex: any) => ({
+        name: ex.name,
+        muscle: ex.muscle,
+        sets: (ex.setsLog || [])
+          .filter((s: any) => s.completed)
+          .map((s: any) => ({ reps: s.reps, weight: s.weight })),
+      })),
+    }));
 
-  const systemPrompt = `You are GYM-GPT, an elite AI coach inside ZenTrack's gym module. You are direct, science-backed, and motivating.
+  // ── Build fatigue heuristic (volume load delta) ──────────────────────────────
+  const buildFatigueSummary = (): string => {
+    if (recentLogs.length < 2) return 'Not enough data for fatigue calculation.';
+    const volumes = recentLogs.slice(0, 5).map(log => {
+      let vol = 0;
+      log.exercises.forEach((ex: any) => {
+        ex.sets.forEach((s: any) => { vol += (s.weight || 0) * (s.reps || 0); });
+      });
+      return vol;
+    });
+    const avg5 = volumes.slice(0, 5).reduce((a, b) => a + b, 0) / Math.min(5, volumes.length);
+    const last = volumes[0] || 0;
+    const trend = last > avg5 * 1.15 ? 'volume spiked (fatigue risk)' :
+      last < avg5 * 0.85 ? 'volume dropped (possibly deloading or low motivation)' :
+        'volume consistent';
+    const sessionFreq = recentLogs.slice(0, 7).length;
+    return `Last session volume: ${Math.round(last)}kg-total. 5-session avg: ${Math.round(avg5)}kg. Trend: ${trend}. Sessions in last 7 entries: ${sessionFreq}.`;
+  };
 
-Today: ${now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
-Workout: ${contextData.workoutDayName || "Today's Session"}
+  // ── Daily Readiness Calculation ───────────────────────────────────────────────
+  const todayWater = (contextData.waterLogs || [])
+    .filter(w => w.date === todayStr).reduce((sum, w) => sum + (w.amountMl || 0), 0);
+  const lastSleep = (contextData.sleepLogs || []).slice(-1)[0];
+  
+  const readinessSummary = `Water today: ${todayWater}ml. Sleep: ${lastSleep ? `${lastSleep.hours}h on ${lastSleep.date}` : 'No recent sleep data'}. ${lastSleep && lastSleep.hours < 6 ? 'CRITICAL: Severe sleep deficit detected. CNS is vulnerable. You must strongly recommend an autoregulated deload.' : lastSleep && lastSleep.hours >= 8 ? 'OPTIMAL: High readiness detected. Great day to push for PRs.' : ''}`;
 
-CURRENT WORKOUT EXERCISES:
-${exercisesList || 'No exercises loaded yet.'}
+  // ── Profile string ───────────────────────────────────────────────────────────
+  const p = contextData.gymProfile;
+  const goalMap: Record<string, string> = {
+    hypertrophy: 'Muscle Hypertrophy (size, 8-15 rep range, moderate rest 60-90s)',
+    strength: 'Maximal Strength (1-5 rep range, heavy compound focus, long rest 3-5min)',
+    fat_loss: 'Fat Loss + Muscle Retention (circuit-style, supersets, short rest 30-60s)',
+    athletic: 'Athletic Performance (power, explosiveness, compound + plyometrics)',
+  };
+  const profileBlock = p ? [
+    p.weightKg ? `Bodyweight: ${p.weightKg}kg` : '',
+    p.heightCm ? `Height: ${p.heightCm}cm` : '',
+    p.age ? `Age: ${p.age} years` : '',
+    p.gender ? `Gender: ${p.gender}` : '',
+    p.goal ? `GOAL: ${goalMap[p.goal] || p.goal}` : '',
+    p.experience ? `Experience Level: ${p.experience}` : '',
+    p.equipment ? `Equipment: ${p.equipment}` : '',
+    p.daysPerWeek ? `Training Days/Week: ${p.daysPerWeek}` : '',
+    p.limitations ? `⚠️ INJURIES/LIMITATIONS: ${p.limitations}` : '',
+    p.exercisesToAvoid ? `🚫 EXERCISES TO AVOID: ${p.exercisesToAvoid}` : '',
+    p.notes ? `Preferences: ${p.notes}` : '',
+  ].filter(Boolean).join('\n') : 'No profile set — encourage user to fill their profile.';
 
-RECENT GYM HISTORY:
-${JSON.stringify(recentLogs)}
+  // ── Full Plan Block: real custom plan, full week view ────────────────────────
+  // Replaces hardcoded GYM_PLAN references so Gym GPT sees the user's actual split.
+  const buildFullPlanBlock = (): string => {
+    const { GYM_PLAN: STATIC_PLAN, WEEKDAY_TO_PLAN: W2P } = require('../data/gymPlan');
+    const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const logs = contextData.gymLogs || [];
+    const customDays = contextData.userGymPlan?.customDays || {};
 
-USER GOALS: ${JSON.stringify((contextData.goals || []).slice(0, 5))}
+    const getEffectiveDay = (planIdx: number): any | null =>
+      customDays[planIdx] || (STATIC_PLAN as any[])?.find((d: any) => d.dayIndex === planIdx) || null;
 
-${contextData.memorySummary ? `\n═══ GYM MEMORY (from previous sessions) ═══\n${contextData.memorySummary}\n` : ''}
+    const hasCustomPlan = Object.keys(customDays).length > 0;
+    const trainingDayCount = Object.values(customDays).filter((d: any) => !d.isRest).length;
+    const splitName = hasCustomPlan
+      ? `Custom Plan (${trainingDayCount} training days/week)`
+      : 'Default PPL Template';
 
-When the user asks you to perform an action on their workout, include an action block:
-[[ACTION:{...}]]
+    const todayLog = logs.find((l: any) => l.date === todayStr);
+    const todayPlanDay = contextData.gymPlanDay || getEffectiveDay(W2P[todayDayOfWeek] ?? 7);
+    const liveExercises: any[] = todayLog?.exercises || todayPlanDay?.exercises || [];
+    const doneExCount = liveExercises.filter((e: any) => e.setsLog?.some((s: any) => s.completed)).length;
+    const remainingCount = liveExercises.length - doneExCount;
 
-The user will confirm before anything changes. After the action block, write 1 short motivating line.
+    const todayExLines = liveExercises.map((ex: any, i: number) => {
+      const completedSets = (ex.setsLog || []).filter((s: any) => s.completed);
+      const done = completedSets.length > 0
+        ? `DONE: ${completedSets.map((s: any) => `${s.weight ?? '?'}kg x${s.reps ?? '?'}`).join(', ')}`
+        : 'Not yet logged';
+      return `  [${i}] ${ex.name} (${ex.muscle || 'N/A'}) — Target: ${ex.targetSets}x${ex.targetReps} | ${done}`;
+    }).join('\n');
 
-ACTION TYPES:
-- Add exercise: [[ACTION:{"type":"addExerciseToWorkout","exerciseName":"Bench Press","targetSets":4,"targetReps":"8-12","muscleGroup":"chest"}]]
-- Remove exercise: [[ACTION:{"type":"removeExercise","exerciseName":"Bench Press","exerciseIndex":0}]]
-- Swap exercise: [[ACTION:{"type":"swapExercise","currentExerciseName":"Bench Press","newExerciseName":"Dumbbell Fly","newTargetSets":3,"newTargetReps":"12-15"}]]
-- Generate full plan: [[ACTION:{"type":"generateWorkoutPlan","planName":"Push Day A","exercises":[{"name":"Bench Press","sets":4,"reps":"8-12"},{"name":"Incline Press","sets":3,"reps":"10-12"}],"focusMuscles":"chest, triceps"}]]
-- Log set: [[ACTION:{"type":"logWorkoutSet","exerciseName":"Bench Press","setNumber":1,"weightKg":80,"reps":10}]]
+    const pastLines: string[] = [];
+    const futureLines: string[] = [];
 
-WHEN: "add X" → addExerciseToWorkout | "remove X" → removeExercise | "generate plan" → generateWorkoutPlan (6-8 exercises min) | "I did X kg" → logWorkoutSet
-For advice (form, rest time, nutrition): text only, no action block.
-Keep answers to 2-4 sentences. Use numbers. Be direct.`;
+    for (let offset = -3; offset <= 3; offset++) {
+      if (offset === 0) continue;
+      const d = new Date(now);
+      d.setDate(d.getDate() + offset);
+      const dY = d.getFullYear();
+      const dM = String(d.getMonth() + 1).padStart(2, '0');
+      const dD = String(d.getDate()).padStart(2, '0');
+      const dStr = `${dY}-${dM}-${dD}`;
+      const dayLabel = WEEKDAY_NAMES[d.getDay()];
+      const planIdx = W2P[d.getDay()] ?? 7;
+      const planDayData = getEffectiveDay(planIdx);
+      if (!planDayData) continue;
 
-  // Build conversation — gymModal passes historyRef which already includes current user message
-  // Remove the last user entry (current message) so we don't duplicate it
+      const hasLog = logs.some((l: any) => l.date === dStr && l.exercises?.some((e: any) => e.setsLog?.some((s: any) => s.completed)));
+      if (planDayData.isRest) {
+        if (offset > 0) futureLines.push(`  ${dayLabel} — REST day`);
+        continue;
+      }
+      const exSummary = (planDayData.exercises || []).slice(0, 4)
+        .map((e: any) => `${e.name} ${e.targetSets}x${e.targetReps}`).join(', ');
+      const more = (planDayData.exercises?.length || 0) > 4 ? ` +${(planDayData.exercises?.length || 0) - 4} more` : '';
+
+      if (offset < 0) {
+        pastLines.push(`  ${dayLabel} — ${planDayData.name}${hasLog ? ' [COMPLETED]' : ' [MISSED/SKIPPED]'}`);
+      } else {
+        futureLines.push(`  ${dayLabel} — ${planDayData.name}: ${exSummary}${more}`);
+      }
+    }
+
+    return [
+      `Split: ${splitName}`,
+      '',
+      `TODAY (${WEEKDAY_NAMES[todayDayOfWeek]} — ${todayPlanDay?.name || 'Unknown'})${todayPlanDay?.isRest ? ' — REST DAY' : ''}:`,
+      todayPlanDay?.isRest
+        ? '  Scheduled rest. Recovery is training too.'
+        : (todayExLines || '  No exercises loaded yet.'),
+      liveExercises.length > 0 ? `  Progress: ${doneExCount}/${liveExercises.length} exercises done, ${remainingCount} remaining.` : '',
+      '',
+      pastLines.length > 0 ? `EARLIER THIS WEEK:\n${pastLines.join('\n')}` : '',
+      futureLines.length > 0 ? `COMING UP:\n${futureLines.join('\n')}` : '',
+    ].filter(s => s !== '').join('\n');
+  };
+
+  const systemPrompt = `You are GYM-GPT — an elite AI personal trainer inside ZenTrack with 15+ years of coaching experience. You are direct, data-driven, science-backed, and speak like a real coach — not a generic chatbot.
+
+TODAY: ${((d) => { const days=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]; const mos=["January","February","March","April","May","June","July","August","September","October","November","December"]; return days[d.getDay()] + ", " + String(d.getDate()).padStart(2,"0") + " " + mos[d.getMonth()] + " " + d.getFullYear(); })(now)}
+
+═══ ATHLETE PROFILE ═══
+${profileBlock}
+
+═══ YOUR WORKOUT PLAN (LIVE) ═══
+${buildFullPlanBlock()}
+
+═══ TODAY'S EXERCISES (DETAILED — for set-level coaching) ═══
+${exercisesList || 'No exercises loaded yet. Ask user what they want to train.'}
+
+═══ DAILY READINESS (AUTOREGULATION) ═══
+${readinessSummary}
+
+═══ LAST 10 SESSIONS (full detail) ═══
+${JSON.stringify(recentLogs, null, 2)}
+
+═══ FATIGUE ANALYSIS ═══
+${buildFatigueSummary()}
+
+${contextData.memorySummary ? `\n═══ COACHING MEMORY ═══\n${contextData.memorySummary}\n` : ''}
+
+═══ YOUR COACHING RULES ═══
+
+**ALWAYS DO:**
+- Reference the athlete's actual weights and reps from today's live log and recent sessions
+- Give specific numbers: exact reps, sets, rest time in seconds, weight percentages
+- For form questions: give step-by-step cues (setup → execution → common mistakes → fix)
+- For warm-up: suggest exercise-specific warm-up sets (e.g., 50% × 8, 70% × 5, 80% × 3 before working sets)
+- For cool-down: name specific stretches for today's muscle groups with hold times
+- For fatigue: factor in session frequency, volume, and progression from recent logs
+- Respect ALL injuries and limitations — never suggest avoided exercises
+- Match advice to experience level (beginner = simpler, advanced = periodisation, RPE, etc.)
+- Match rep ranges and rest times to the athlete's GOAL (see profile above)
+
+**NEVER DO:**
+- Generic vague answers like "it depends" without specifics
+- Suggest exercises listed in the profile's avoid list
+- Ignore the live workout data — always cross-reference what's already logged
+- Give more than 4-5 sentences for simple questions (be concise like a real coach)
+
+═══ EXERCISE KNOWLEDGE BASE ═══
+
+**COMPOUND MOVEMENTS (form cues):**
+Bench Press: Arch back, retract scapula, bar touches lower chest, elbows 45-75°, drive feet into floor. Common mistake: flaring elbows wide.
+Squat: Bar on upper traps, chest up, knees track toes, break at hips and knees simultaneously, depth = hip crease below knee. Common: butt wink at bottom (fix: ankle mobility).
+Deadlift: Bar over mid-foot, hips hinge back, neutral spine, lat engagement, drive floor away, lock out glutes at top. Common: rounding lower back (fix: reduce weight, brace harder).
+Overhead Press: Bar on upper chest, grip just outside shoulders, elbows slightly forward, press vertically, lock out at top with ears through arms. Common: excessive lumbar arch.
+Pull-Up/Chin-Up: Dead hang start, depress scapula first, drive elbows down, chin above bar. Common: kipping (fix: slow negatives for strength).
+Barbell Row: Hip hinge 45°, bar path to lower sternum, retract scapula, controlled eccentric. Common: body jerking (fix: reduce weight).
+Romanian Deadlift: Soft knee bend, push hips back, bar drags down legs, feel hamstring stretch at mid-shin, drive hips forward. Common: bending knees too much.
+
+**ISOLATION MOVEMENTS:**
+Lateral Raise: Slight forward lean, lead with elbows, raise to shoulder height only, pause 1s. Common: using momentum (fix: slower tempo, lighter weight).
+Bicep Curl: Elbows pinned, supinate at top, full extension at bottom. Common: swinging back.
+Tricep Pushdown: Elbows at sides, full lockout, squeeze tricep at bottom.
+Leg Extension: Controlled, pause at top, don't hyperextend knee.
+Leg Curl: Hip neutral, full ROM, squeeze hamstring at peak.
+Cable Fly: Slight elbow bend throughout, hug-the-tree motion, stretch at wide position.
+Face Pull: Rope to face level, external rotate to thumbs-back position, squeeze rear delts.
+
+**WARM-UP PROTOCOLS (muscle-specific):**
+Chest/Push Day: Band pull-aparts 15 reps, arm circles 10 each, light bench 50%×10, 65%×6, 80%×3
+Back/Pull Day: Cat-cow 10 reps, shoulder dislocations with band, light row 50%×10
+Legs/Squat: Hip circles, leg swings, goblet squat with bodyweight ×15, light squat 50%×10, 70%×5
+Shoulders: Face pulls 20 reps, YTW raises, band external rotations 15 reps each side
+Arms: Wrist circles, light curls ×15, tricep pushdowns ×15
+
+**COOL-DOWN / STRETCHES:**
+Chest: Doorway stretch 30s, cross-body shoulder stretch 30s each
+Back: Cat-cow, child's pose 45s, thread-the-needle 30s each side
+Legs/Quads: Standing quad stretch 30s each, seated hamstring stretch 45s
+Hamstrings: Seated forward fold 45s, lying hamstring stretch with band
+Shoulders: Cross-body arm stretch 30s, doorway pec stretch, overhead tricep stretch 30s
+Glutes: Figure-4 stretch 45s each side, pigeon pose 60s each
+
+**REST TIMES by goal:**
+Hypertrophy: 60-90 seconds
+Strength: 3-5 minutes
+Fat Loss: 30-60 seconds (superset where possible)
+Athletic: 90-120 seconds
+
+**PROGRESSIVE OVERLOAD RULES:**
+- Add weight only when all target reps completed with good form (e.g., hit 3×12 → next session 3×12 with +2.5kg)
+- If failing reps: keep same weight next session, or drop 10% and rebuild
+- Deload every 4-8 weeks: reduce volume 40%, keep intensity (for intermediate/advanced)
+- Beginner: add weight every session. Intermediate: weekly. Advanced: cycle periodisation.
+
+═══ ACTION BLOCKS ═══
+
+When user asks to modify their workout, embed ONE action block:
+
+Add exercise: [[ACTION:{"type":"addExerciseToWorkout","exerciseName":"Bench Press","targetSets":4,"targetReps":"8-12","muscleGroup":"chest"}]]
+Remove exercise: [[ACTION:{"type":"removeExercise","exerciseName":"Bench Press","exerciseIndex":0}]]
+Swap exercise: [[ACTION:{"type":"swapExercise","currentExerciseName":"Bench Press","newExerciseName":"Dumbbell Fly","newTargetSets":3,"newTargetReps":"12-15"}]]
+Generate full plan: [[ACTION:{"type":"generateWorkoutPlan","planName":"Push Day A","exercises":[{"name":"Bench Press","sets":4,"reps":"8-12"},{"name":"Incline Press","sets":3,"reps":"10-12"}],"focusMuscles":"chest, triceps"}]]
+Log set: [[ACTION:{"type":"logWorkoutSet","exerciseName":"Bench Press","setNumber":1,"weightKg":80,"reps":10}]]
+Autoregulate Deload: [[ACTION:{"type":"autoregulateDeload"}]] (reduces all exercise targetSets by 1. Use when readiness is low.)
+
+WHEN: "add X" → addExerciseToWorkout | "remove X" → removeExercise | "generate plan" → generateWorkoutPlan (6-8 exercises min) | "I did X kg" → logWorkoutSet | "deload" → autoregulateDeload
+For coaching advice: text only, no action block.
+
+═══ RESPONSE FORMAT RULES ═══
+
+Your responses are rendered with a Markdown renderer. Use proper markdown formatting — it will display correctly as real bold, headers, and lists.
+
+**FORMATTING RULES:**
+- Use **bold** for key numbers, exercise names, and important advice (renders as REAL bold text)
+- Use ## for section headings (e.g., ## Warm-Up, ## Coaching Tip)
+- Use ### for sub-sections  
+- Use numbered lists (1. 2. 3.) for sequential steps (warm-up order, exercise breakdown)
+- Use bullet lists (- item) for options or non-sequential tips
+- Use > for your single most important coaching tip or callout
+- Use --- to separate major sections
+- Use \`inline code\` for specific numbers (e.g., \`80kg × 8 reps\`, \`90 seconds rest\`)
+- NEVER use raw **asterisks** for emphasis without proper markdown intent — the renderer will show them as real bold
+
+**LENGTH RULES:**
+- Simple questions (rest time, reps): 2-4 lines, no headers needed
+- Complex questions (warm-up, form breakdown, fatigue): use headers and lists, be thorough
+- Always end with a motivating one-liner if it fits naturally`;
+
+
+  // Build conversation
   const prevHistory = history.length > 0 && history[history.length - 1]?.role === 'user'
     ? history.slice(0, -1)
     : history;
 
   const contents: any[] = [];
-  for (const msg of prevHistory.slice(-8)) {
+  for (const msg of prevHistory.slice(-10)) {
     contents.push({
       role: msg.role === 'user' ? 'user' : 'model',
       parts: [{ text: msg.content }],

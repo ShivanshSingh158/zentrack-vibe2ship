@@ -11,13 +11,20 @@ import { OfflineIndicator } from './src/components/OfflineIndicator';
 import * as Notifications from 'expo-notifications';
 import { requestNotificationPermissions, registerBackgroundNotificationFetch } from './src/services/notifications';
 import * as SplashScreen from 'expo-splash-screen';
-import NetInfo from '@react-native-community/netinfo';
-import { setupNetworkListener, syncOfflineQueue } from './src/services/offlineSync';
+
+import { setupNetworkListener } from './src/services/offlineSync';
 import { PortalProvider } from './src/contexts/PortalContext';
 import { registerBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
 import { UpdateBanner } from './src/components/UpdateBanner';
 import { ThemeProvider } from './src/contexts/ThemeContext';
+import { MobileDataProvider } from './src/contexts/MobileDataContext';
+import { navigationRef } from './src/navigation/AppNavigator';
+import { db } from './src/services/firebase';
+import { doc, updateDoc, increment, addDoc, collection, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
+import { todayStr } from './src/hooks/useGymLog';
+import { COLLECTION } from './src/config/constants';
+import { awardXP } from './src/services/xpSystem';
 
 // Keep the native splash screen visible until fonts are loaded
 SplashScreen.preventAutoHideAsync();
@@ -50,15 +57,343 @@ export default function App() {
     registerWeeklyReviewTask();
   }, []);
 
-  // Drain any gym logs queued while offline as soon as connectivity is restored.
-  // Previously syncOfflineLogs() was never called — causing silent data loss.
+  // Drain ALL queued offline writes (tasks, habits, notes, goals, gym logs)
+  // as soon as connectivity is restored, and also on boot if already online.
   React.useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener(state => {
-      if (state.isConnected) {
-        syncOfflineQueue().catch(() => {});
+    const unsubscribe = setupNetworkListener();
+    return () => unsubscribe();
+  }, []);
+
+  // ─── Notification Response Handler ─────────────────────────────────────────
+  // Central listener for ALL actionable notification taps.
+  // Handles all 13 notification types → correct module navigation + Firestore writes.
+  // Uses navigationRef for imperative navigation that works even on cold-start.
+  React.useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
+      const { notification, actionIdentifier } = response;
+      const data = notification.request.content.data as any;
+      const notifType = data?.type as string | undefined;
+
+      // Helper: navigate imperatively, works before React tree mounts
+      const nav = (screen: string, params?: object) => {
+        if (!navigationRef.isReady()) return;
+        // All screens registered in MainTabNavigator (both pinned + hidden ones).
+        // React Navigation can navigate to any Tab.Screen even if display:none in the bar.
+        const tabScreens = [
+          'Home', 'Tasks', 'Calendar', 'Habits', 'Gym', 'Attendance',
+          'Analytics', 'Notes', 'Sara', 'Social', 'Assignments',
+          'Grades', 'Learning', 'WeeklyReview', 'StudyRoom',
+        ];
+        if (tabScreens.includes(screen)) {
+          navigationRef.navigate('MainTabs', { screen } as any);
+        } else {
+          // Screens inside MoreStack (Settings, NotificationsSettings, Sara, etc.)
+          navigationRef.navigate('MoreStack', { screen, params } as any);
+        }
+      };
+
+
+      // ── ACTION: "Start Workout" button on gym_reminder ─────────────────────
+      if (actionIdentifier === 'start_workout') {
+        nav('Gym');
+        return;
+      }
+
+      // ── ACTION: "Snooze 15m" button on gym_reminder ────────────────────────
+      if (actionIdentifier === 'snooze_15m') {
+        const snoozeTime = new Date(Date.now() + 15 * 60 * 1000);
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Gym day 🏋️',
+            body: 'Snoozed 15 min. Time to go now!',
+            data: { type: 'gym' },
+            categoryIdentifier: 'gym_reminder',
+            sound: 'default',
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: snoozeTime.getTime(),
+            channelId: 'default',
+          } as any,
+        });
+        return;
+      }
+
+      // ── ACTION: "Mark Done" button on task_reminder ────────────────────────
+      // FIX: Removed nav('Tasks') so the app stays in the background.
+      // A silent confirmation banner fires 1s later as feedback.
+      if (actionIdentifier === 'mark_task_done') {
+        const taskId   = data?.taskId    as string | undefined;
+        const taskTitle = data?.taskTitle as string | undefined;
+        let success = false;
+        if (taskId) {
+          try {
+            await updateDoc(doc(db, COLLECTION.TASKS, taskId), {
+              status: 'completed',
+              completedAt: new Date().toISOString().slice(0, 10),
+            });
+            success = true;
+          } catch (e) {
+            console.warn('[Notification] mark_task_done write failed:', e);
+          }
+        }
+        if (success) {
+          // Silent confirmation — app stays closed
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '✅ Task done!',
+              body: taskTitle ? `"${taskTitle}" marked complete.` : 'Task marked as complete.',
+              data: {},
+              sound: undefined,
+            },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+          }).catch(() => {});
+        } else {
+          // Write failed — open the app so user can act manually
+          nav('Tasks');
+        }
+        return;
+      }
+
+      // ── ACTION: "Open Tasks" button on task_reminder ───────────────────────
+      // This is an intentional "open app" secondary button — nav() stays.
+      if (actionIdentifier === 'open_tasks') {
+        nav('Tasks');
+        return;
+      }
+
+      // ── ACTION: "🔥 Log It" button on habit_reminder ──────────────────────
+      // FIX: Removed nav('Habits') so the app stays in the background.
+      // Added duplicate-log guard so double-tapping won't write two entries.
+      // A confirmation banner fires 1s later with streak info.
+      if (actionIdentifier === 'log_habit') {
+        const habitId = data?.habitId as string | undefined;
+        let success = false;
+        let confirmTitle = '🔥 Habit logged!';
+        let confirmBody  = 'Keep the momentum going.';
+        if (habitId) {
+          try {
+            const todayDate = todayStr();
+
+            // ── DUPLICATE GUARD ────────────────────────────────────────────────
+            // Prevent writing two logs if the user taps "Log It" twice or if
+            // they already logged via the app earlier today.
+            // Uses statically-imported getDocs/query/where (dynamic imports crash Metro).
+            const existingSnap = await getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where('habitId', '==', habitId), where('date', '==', todayDate)));
+            if (!existingSnap.empty) {
+              // Already logged today — show friendly info instead of duplicate write
+              await Notifications.scheduleNotificationAsync({
+                content: {
+                  title: '✅ Already logged!',
+                  body: 'You already completed this habit today. Great work!',
+                  data: {},
+                  sound: undefined,
+                },
+                trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+              }).catch(() => {});
+              return;
+            }
+
+            // 1. Write habit log entry
+            await addDoc(collection(db, COLLECTION.HABIT_LOGS), {
+              habitId,
+              date: todayDate,
+              completedAt: new Date().toISOString(),
+              timestamp: serverTimestamp(),
+            });
+            // 2. Award XP
+            await awardXP('HABIT_LOG').catch(() => {});
+            // 3. Update streak on the habit document + build confirmation message
+            const habitSnap = await getDoc(doc(db, COLLECTION.HABITS, habitId));
+            if (habitSnap.exists()) {
+              const habitData    = habitSnap.data();
+              const habitName    = (habitData?.name    ?? 'Habit')   as string;
+              const habitEmoji   = (habitData?.emoji   ?? '⭐')      as string;
+              const currentStreak = (habitData?.streak ?? 0)         as number;
+              const newStreak     = currentStreak + 1;
+              const longestStreak = (habitData?.longestStreak ?? 0)  as number;
+              await updateDoc(doc(db, COLLECTION.HABITS, habitId), {
+                streak: newStreak,
+                longestStreak: Math.max(newStreak, longestStreak),
+              });
+              confirmTitle = `${habitEmoji} ${habitName} — logged!`;
+              confirmBody  = newStreak >= 2
+                ? `🔥 ${newStreak}-day streak! Keep it up.`
+                : 'Day 1 — the streak begins. See you tomorrow.';
+            }
+            success = true;
+          } catch (e) {
+            console.warn('[Notification] log_habit write failed:', e);
+          }
+        }
+        if (success) {
+          // Silent confirmation — app stays closed
+          await Notifications.scheduleNotificationAsync({
+            content: { title: confirmTitle, body: confirmBody, data: {}, sound: undefined },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+          }).catch(() => {});
+        } else {
+          // Write failed — open app as fallback
+          nav('Habits');
+        }
+        return;
+      }
+
+      // ── ACTION: "View Habits" button on habit_reminder ─────────────────────
+      // Intentional "open app" secondary button — nav() stays.
+      if (actionIdentifier === 'open_habits') {
+        nav('Habits');
+        return;
+      }
+
+      // ── ACTION: "Present" button on class_reminder ─────────────────────────
+      // FIX: Removed nav('Attendance') — app stays in background after tapping.
+      // Confirmation banner fires 1s later. Only opens app on write failure.
+      if (actionIdentifier === 'mark_present') {
+        const subjectId   = data?.subjectId  as string | undefined;
+        const subjectName = data?.subject     as string | undefined;
+        let success = false;
+        if (subjectId) {
+          try {
+            await updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
+              classesAttended: increment(1),
+              classesTotal: increment(1),
+            });
+            success = true;
+          } catch (e) {
+            console.warn('[Notification] mark_present write failed:', e);
+          }
+        }
+        if (success) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '✅ Present — logged!',
+              body: subjectName ? `Attendance recorded for ${subjectName}.` : 'Attendance recorded.',
+              data: {},
+              sound: undefined,
+            },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+          }).catch(() => {});
+        } else {
+          nav('Attendance');
+        }
+        return;
+      }
+
+      // ── ACTION: "Bunking" button on class_reminder ─────────────────────────
+      // FIX: Removed nav('Attendance') — app stays in background after tapping.
+      if (actionIdentifier === 'mark_bunking') {
+        const subjectId   = data?.subjectId  as string | undefined;
+        const subjectName = data?.subject     as string | undefined;
+        let success = false;
+        if (subjectId) {
+          try {
+            await updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
+              classesTotal: increment(1),
+            });
+            success = true;
+          } catch (e) {
+            console.warn('[Notification] mark_bunking write failed:', e);
+          }
+        }
+        if (success) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '❌ Bunked — logged',
+              body: subjectName ? `${subjectName} marked as absent.` : 'Class marked as absent.',
+              data: {},
+              sound: undefined,
+            },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+          }).catch(() => {});
+        } else {
+          nav('Attendance');
+        }
+        return;
+      }
+
+      // ── BODY TAP: "Rest is over" notification ──────────────────────────────
+      // Navigates into the GymStack's ActiveLogging screen for today's workout.
+      if (
+        notifType === 'rest_over' ||
+        notification.request.content.title?.includes('Rest is over') ||
+        notification.request.content.title?.includes('⏱️')
+      ) {
+        if (navigationRef.isReady()) {
+          // Step 1: focus the Gym tab (mounts GymStack)
+          navigationRef.navigate('MainTabs', { screen: 'Gym' } as any);
+          // Step 2: navigate inside GymStack after it mounts
+          setTimeout(() => {
+            if (navigationRef.isReady()) {
+              navigationRef.navigate('ActiveLogging', { date: todayStr() } as any);
+            }
+          }, 400);
+        }
+        return;
+      }
+
+      // ── BODY TAP: Task reminder ("taskId" in data, or type = overdue_nudge) ─
+      if (data?.taskId || notifType === 'overdue_nudge') {
+        nav('Tasks');
+        return;
+      }
+
+      // ── BODY TAP: Habit streak at risk OR per-habit daily reminder ─────────
+      if (notifType === 'habit_streak' || notifType === 'habit_reminder') {
+        nav('Habits');
+        return;
+      }
+
+      // ── BODY TAP: Assignment deadline (48h or 24h) ─────────────────────────
+      if (notifType === 'assignment_48h' || notifType === 'assignment_24h') {
+        nav('Assignments');
+        return;
+      }
+
+      // ── BODY TAP: Attendance warning (low %) ───────────────────────────────
+      if (notifType === 'attendance_warning' || notifType === 'class') {
+        nav('Attendance');
+        return;
+      }
+
+      // ── BODY TAP: Gym reminder (workout day) ───────────────────────────────
+      if (notifType === 'gym') {
+        nav('Gym');
+        return;
+      }
+
+      // ── BODY TAP: Gym rest day ─────────────────────────────────────────────
+      if (notifType === 'gym_rest') {
+        nav('Gym');
+        return;
+      }
+
+      // ── BODY TAP: Calendar event reminder ──────────────────────────────────
+      if (data?.eventId) {
+        nav('Calendar');
+        return;
+      }
+
+      // ── BODY TAP: Morning briefing → Dashboard ─────────────────────────────
+      if (notifType === 'morning_brief') {
+        nav('Home');
+        return;
+      }
+
+      // ── BODY TAP: Weekly review → WeeklyReview screen ─────────────────────
+      if (notifType === 'weekly_review') {
+        nav('WeeklyReview');
+        return;
+      }
+
+      // ── BODY TAP: Inactivity nudge → Dashboard ─────────────────────────────
+      if (notifType === 'inactivity') {
+        nav('Home');
+        return;
       }
     });
-    return () => unsubscribe();
+
+    return () => sub.remove();
   }, []);
 
   // Auto-clear AI conversations when app is backgrounded/closed
@@ -102,9 +437,11 @@ export default function App() {
       <SafeAreaProvider style={{ flex: 1, backgroundColor: '#080510' }}>
         <ThemeProvider>
           <PortalProvider>
-            <AppNavigator />
-            <OfflineIndicator />
-            <UpdateBanner />
+            <MobileDataProvider>
+              <AppNavigator />
+              <OfflineIndicator />
+              <UpdateBanner />
+            </MobileDataProvider>
           </PortalProvider>
         </ThemeProvider>
       </SafeAreaProvider>

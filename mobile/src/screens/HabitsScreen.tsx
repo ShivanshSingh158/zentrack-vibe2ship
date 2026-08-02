@@ -4,16 +4,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
  * Full CRUD habits tracking matching web app HabitsModule.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet,
-  TextInput, Modal, KeyboardAvoidingView, Platform, Alert, Animated
+  TextInput, Modal, KeyboardAvoidingView, Platform, Alert, Animated, TouchableOpacity
 } from 'react-native';
 import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, FadeInDown } from 'react-native-reanimated';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useMobileData, Habit, HabitLog } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
@@ -22,7 +22,9 @@ import * as Haptics from 'expo-haptics';
 import { awardXP } from '../services/xpSystem';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import { COLLECTION } from '../config/constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from "../contexts/ThemeContext";
+import { HabitReminderModal } from '../components/Habits/HabitReminderModal';
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -45,24 +47,17 @@ function CreateHabitModal({ visible, userId, onClose }: {
 }) {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
+  const [type, setType] = useState<'positive' | 'negative'>('positive');
+  const [cost, setCost] = useState('');
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('⭐');
   const [frequency, setFrequency] = useState('daily');
   const [customDays, setCustomDays] = useState<string[]>([]);
   const [color, setColor] = useState(colors.accentPrimary);
+  const [targetCount, setTargetCount] = useState('');
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const HABIT_COLORS = [colors.accentPrimary, colors.accentGreen, colors.accentAmber, '#FF3B30', '#34C759', '#007AFF'];
   const [saving, setSaving] = useState(false);
-  const translateY = useSharedValue(300);
-  const modalAnimStyle = useAnimatedStyle(() => ({ transform: [{ translateY: translateY.value }] }));
-
-  useEffect(() => {
-    if (visible) {
-      translateY.value = withSpring(0, { damping: 18, stiffness: 150 });
-    } else {
-      translateY.value = 300;
-    }
-  }, [visible]);
 
   const handleSave = () => {
     if (!name.trim()) return;
@@ -72,6 +67,7 @@ function CreateHabitModal({ visible, userId, onClose }: {
     
     // Fire-and-forget network request, deferred to prevent animation frame drops
     setTimeout(() => {
+      const todayStr = new Date().toISOString().slice(0, 10);
       addDoc(collection(db, COLLECTION.HABITS), {
         userId,
         name: name.trim(),
@@ -80,6 +76,10 @@ function CreateHabitModal({ visible, userId, onClose }: {
         streak: 0,
         longestStreak: 0,
         color,
+        type,
+        startDate: todayStr,
+        costPerDay: type === 'negative' && cost.trim() ? parseFloat(cost.trim()) : 0,
+        targetCount: type === 'positive' && targetCount.trim() ? parseInt(targetCount.trim()) : null,
         createdAt: serverTimestamp(),
       }).catch(e => console.error('[Habits] create error', e));
     }, 150);
@@ -87,23 +87,63 @@ function CreateHabitModal({ visible, userId, onClose }: {
     setName('');
     setEmoji('⭐');
     setColor(colors.accentPrimary);
+    setType('positive');
+    setCost('');
+    setTargetCount('');
     onClose();
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <AnimatedPressable style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKAV}>
-          <Reanimated.View style={[styles.modalCard, modalAnimStyle]} onStartShouldSetResponder={() => true}>
+          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
             <Text style={styles.modalTitle}>New Habit</Text>
+            
+            <View style={{flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.lg}}>
+              <AnimatedPressable 
+                style={[styles.typeBtn, type === 'positive' && styles.typeBtnActivePos]}
+                onPress={() => setType('positive')}
+              >
+                <Text style={[styles.typeBtnText, type === 'positive' && styles.typeBtnTextActive]}>Building (Do)</Text>
+              </AnimatedPressable>
+              <AnimatedPressable 
+                style={[styles.typeBtn, type === 'negative' && styles.typeBtnActiveNeg]}
+                onPress={() => setType('negative')}
+              >
+                <Text style={[styles.typeBtnText, type === 'negative' && styles.typeBtnTextActive]}>Avoiding (Quit)</Text>
+              </AnimatedPressable>
+            </View>
             
             <TextInput
                 style={styles.modalInput}
-                placeholder="Name"
+                placeholder={type === 'positive' ? "Name (e.g. Meditate)" : "Name (e.g. Junk Food)"}
                 placeholderTextColor={colors.textMuted}
                 value={name}
                 onChangeText={setName}
             />
+
+            {type === 'positive' && (
+              <TextInput
+                  style={styles.modalInput}
+                  placeholder="Daily Target (optional, e.g. 8 for 8 glasses)"
+                  placeholderTextColor={colors.textMuted}
+                  value={targetCount}
+                  onChangeText={setTargetCount}
+                  keyboardType="numeric"
+              />
+            )}
+
+            {type === 'negative' && (
+              <TextInput
+                  style={styles.modalInput}
+                  placeholder="Cost per day (Optional, e.g. 10 for $10)"
+                  placeholderTextColor={colors.textMuted}
+                  value={cost}
+                  onChangeText={setCost}
+                  keyboardType="numeric"
+              />
+            )}
 
             <Text style={styles.sectionTitle}>Frequency</Text>
             <View style={styles.frequencyRow}>
@@ -132,7 +172,7 @@ function CreateHabitModal({ visible, userId, onClose }: {
                 <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Create Habit'}</Text>
               </AnimatedPressable>
             </View>
-          </Reanimated.View>
+          </View>
         </KeyboardAvoidingView>
       </AnimatedPressable>
     </Modal>
@@ -141,62 +181,111 @@ function CreateHabitModal({ visible, userId, onClose }: {
 
 // ─── Habit Card ───────────────────────────────────────────────────────────────
 
-const HabitCard = React.memo(function HabitCard({ habit, isCompleted, onToggle, onArchive, onDelete, habitLogs, onFireConfetti }: {
+const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, onToggle, onArchive, onDelete, habitLogs, onFireConfetti, freezesLeft }: {
   habit: Habit;
   isCompleted: boolean;
+  todayLog?: HabitLog;
   onToggle: () => void;
   onArchive: () => void;
   onDelete: () => void;
   habitLogs: HabitLog[];
   onFireConfetti: (x: number, y: number, color: string) => void;
+  freezesLeft?: number;
 }) {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors);
   const checkScale = useSharedValue(1);
-  const burstOpacity = useSharedValue(0);
-  const burstScale = useSharedValue(0);
-  const checkRef = useRef<View>(null);
+  const isNegative = habit.type === 'negative';
 
-  const pastDays = getPastDays(30);
-  const habitColor = habit.color || colors.accentPrimary;
-  const monthlyLogsCount = habitLogs.filter(l => l.date >= pastDays[0]).length;
+  let daysClean = 0;
+  let moneySaved = 0;
+  if (isNegative) {
+    if (habitLogs.length > 0) {
+      const mostRecentLog = habitLogs.reduce((latest, log) => log.date > latest.date ? log : latest, habitLogs[0]);
+      const msPerDay = 1000 * 60 * 60 * 24;
+      daysClean = Math.floor((new Date(today).getTime() - new Date(mostRecentLog.date).getTime()) / msPerDay);
+    } else if (habit.startDate) {
+      const msPerDay = 1000 * 60 * 60 * 24;
+      daysClean = Math.floor((new Date(today).getTime() - new Date(habit.startDate).getTime()) / msPerDay);
+    }
+    if (daysClean < 0) daysClean = 0;
+    if (habit.costPerDay) moneySaved = daysClean * habit.costPerDay;
+  }
+
+  // Calculate 15-day heatmap (for positive habits only)
+  const heatmapSquares = useMemo(() => {
+    if (isNegative) return null;
+    const squares = [];
+    const nowMs = new Date().getTime();
+    for (let i = 14; i >= 0; i--) {
+      const d = new Date(nowMs - i * 24 * 60 * 60 * 1000);
+      const dateStr = d.toISOString().split('T')[0];
+      const log = habitLogs.find(l => l.date === dateStr);
+      let status: 'completed' | 'missed' | 'freeze' | 'future' = 'missed';
+      
+      if (log) {
+        if (log.isFreeze) status = 'freeze';
+        else if (habit.targetCount && habit.targetCount > 0) {
+          status = (log.count || 0) >= habit.targetCount ? 'completed' : 'missed';
+        } else {
+          status = 'completed';
+        }
+      } else if (dateStr > today) {
+        status = 'future';
+      } else if (dateStr === today) {
+        status = 'future'; // Not completed today yet
+      } else {
+        // If before start date, show as missed or neutral? Let's treat as missed to keep it simple, or neutral if we track start date.
+        if (habit.startDate && dateStr < habit.startDate) {
+           status = 'future';
+        }
+      }
+      squares.push({ date: dateStr, status });
+    }
+    return squares;
+  }, [isNegative, habitLogs, habit.targetCount, habit.startDate]);
 
   const animatedCheckStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkScale.value }],
   }));
-  const animatedBurstStyle = useAnimatedStyle(() => ({
-    opacity: burstOpacity.value,
-    transform: [{ scale: burstScale.value }],
-  }));
 
   const handlePress = useCallback(() => {
-    // Fire instantly — no waiting for animation
+    if (isNegative) {
+      if (isCompleted) {
+        // Undo relapse
+        Alert.alert("Undo Relapse", "Remove the relapse logged for today?", [
+          { text: "Cancel", style: "cancel" },
+          { text: "Remove", onPress: onToggle }
+        ]);
+      } else {
+        Alert.alert(
+          "Relapse?",
+          `Did you slip up with ${habit.name}? Logging this will reset your Days Clean to 0.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { 
+              text: "Yes, I relapsed", 
+              style: "destructive",
+              onPress: () => {
+                onToggle();
+                import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning));
+              }
+            }
+          ]
+        );
+      }
+      return;
+    }
+
     onToggle();
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // Bounce on UI thread via Reanimated worklet
-    checkScale.value = withSpring(1.3, { damping: 5, stiffness: 400 }, () => {
+    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    checkScale.value = withSpring(1.2, { damping: 10, stiffness: 300 }, () => {
       checkScale.value = withSpring(1, { damping: 14, stiffness: 200 });
     });
-    if (!isCompleted) {
-      burstOpacity.value = 1;
-      burstScale.value = 0.5;
-      burstOpacity.value = withSpring(0, { damping: 5, stiffness: 80 });
-      burstScale.value = withSpring(2.2, { damping: 6, stiffness: 120 }, () => {
-        burstOpacity.value = 0;
-        burstScale.value = 0;
-      });
-
-      const newStreak = (habit.streak || 0) + 1;
-      if (newStreak > 0 && newStreak % 7 === 0) {
-        checkRef.current?.measureInWindow((x, y) => {
-          onFireConfetti(x, y, habitColor);
-        });
-      }
-    }
-  }, [onToggle, isCompleted, habit.streak, habitColor]);
+  }, [isNegative, isCompleted, onToggle, habit.name, checkScale]);
 
   const handleLongPress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
     Alert.alert(
       "Manage Habit",
       habit.name,
@@ -210,87 +299,93 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, onToggle, 
 
   return (
     <AnimatedPressable 
-      activeOpacity={0.9} 
+      activeOpacity={0.7} 
       onLongPress={handleLongPress} 
       delayLongPress={300}
-      style={[styles.habitCard, isCompleted && styles.habitCardCompleted]}
+      onPress={handlePress}
+      style={[
+        styles.habitCard, 
+        isCompleted && !isNegative && styles.habitCardCompleted,
+        isNegative && { borderColor: isCompleted ? 'rgba(255,105,97,0.3)' : 'transparent', backgroundColor: 'rgba(255,255,255,0.03)' },
+        !isNegative && { backgroundColor: 'rgba(255,255,255,0.03)' }
+      ]}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'flex-start', width: '100%' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
         
-        <AnimatedPressable onPress={handlePress} activeOpacity={0.8} style={{ paddingRight: SPACE.md, paddingTop: 4 }}>
-          <View ref={checkRef} style={{ position: 'relative' }}>
-            <Reanimated.View style={[
-              styles.burstEffect,
-              { backgroundColor: '#5eda9e' },
-              animatedBurstStyle,
-            ]} />
-            <Reanimated.View style={[
-              styles.checkCircle,
-              isCompleted && { backgroundColor: '#5eda9e', borderColor: '#5eda9e' },
-              animatedCheckStyle,
-            ]}>
-              {isCompleted && <Ionicons name="checkmark" size={12} color="#000000" />}
-            </Reanimated.View>
+        {!isNegative && (
+          <View style={{ paddingRight: SPACE.md }}>
+            {habit.targetCount && habit.targetCount > 0 ? (
+              <View style={[styles.checkCircle, { borderColor: isCompleted ? colors.accentPrimary : 'rgba(255,255,255,0.2)', backgroundColor: isCompleted ? 'rgba(94, 218, 158, 0.15)' : 'transparent' }]}>
+                <Text style={{ color: isCompleted ? colors.accentPrimary : colors.textPrimary, fontSize: 10, fontFamily: FONT_FAMILY.bold }}>
+                  {todayLog?.count || 0}/{habit.targetCount}
+                </Text>
+              </View>
+            ) : (
+              <Reanimated.View style={[
+                styles.checkCircle,
+                isCompleted && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+                animatedCheckStyle,
+              ]}>
+                {isCompleted && <Ionicons name="checkmark" size={12} color="#000000" />}
+              </Reanimated.View>
+            )}
           </View>
-        </AnimatedPressable>
+        )}
 
-        <View style={styles.avatar}>
+        <View style={[styles.avatar, isNegative && { backgroundColor: 'rgba(255,105,97,0.1)' }]}>
           <Text style={styles.avatarEmoji}>{habit.emoji}</Text>
         </View>
 
         <View style={{ flex: 1, marginLeft: 12, justifyContent: 'center' }}>
+          <Text style={[styles.habitName, isCompleted && !isNegative && styles.habitNameCompleted]} numberOfLines={1}>{habit.name}</Text>
           
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            <Text style={[styles.habitName, isCompleted && styles.habitNameCompleted]} numberOfLines={1}>{habit.name}</Text>
-            {habit.frequency && (
-              <View style={styles.freqBadge}>
-                <Text style={styles.freqBadgeText}>{habit.frequency}</Text>
-              </View>
-            )}
-          </View>
-
-          {isCompleted ? (
-            <Text style={styles.completedSub}>Completed today</Text>
-          ) : (
-            <>
-              {habit.streak === 0 ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                  <Ionicons name="flash" size={10} color="#5eda9e" />
-                  <Text style={[styles.habitStreak, { color: '#5eda9e' }]}>
-                    Recharge logged, 1 freeze left
-                  </Text>
-                </View>
+          {isNegative ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 }}>
+              {isCompleted ? (
+                <Text style={[styles.habitStreak, { color: '#ff6961' }]}>Relapsed today</Text>
               ) : (
-                <Text style={styles.habitStreak}>🔥 {habit.streak || 0} day streak</Text>
+                <Text style={[styles.habitStreak, { color: '#ff6961', fontFamily: FONT_FAMILY.bold }]}>{daysClean} days clean</Text>
               )}
-            </>
+              {moneySaved > 0 && !isCompleted && (
+                <Text style={[styles.habitStreak, { color: colors.accentGreen }]}>+${moneySaved.toFixed(0)} saved</Text>
+              )}
+            </View>
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
+              {isCompleted ? (
+                <Text style={styles.completedSub}>Completed today</Text>
+              ) : (
+                <Text style={styles.habitStreak}>
+                  {habitLogs.some(l => l.date === new Date(new Date().getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0] && l.isFreeze)
+                    ? `❄️ Streak saved! ${freezesLeft || 0} freeze(s) left`
+                    : `🔥 ${habit.streak || 0} day streak`
+                  }
+                </Text>
+              )}
+            </View>
           )}
 
+          {!isNegative && heatmapSquares && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 4 }}>
+              {heatmapSquares.map((sq, idx) => (
+                <View 
+                  key={idx}
+                  style={{
+                    width: 10, 
+                    height: 10, 
+                    borderRadius: 2,
+                    backgroundColor: sq.status === 'completed' ? colors.accentPrimary :
+                                     sq.status === 'freeze' ? '#00E5FF' :
+                                     sq.status === 'missed' ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    borderWidth: sq.status === 'future' ? 1 : 0,
+                    borderColor: 'rgba(255,255,255,0.1)'
+                  }} 
+                />
+              ))}
+            </View>
+          )}
         </View>
       </View>
-
-      {!isCompleted && (
-        <View style={{ width: '100%', marginTop: 20 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6, paddingHorizontal: 2 }}>
-            <Text style={styles.statSubText}>Longest streak: {habit.longestStreak || habit.streak || 0}</Text>
-            <Text style={styles.statSubText}>30-day: {monthlyLogsCount}/30</Text>
-          </View>
-
-          <View style={styles.heatMapContainer}>
-            {pastDays.map(date => {
-              const isDone = habitLogs.some(l => l.date === date);
-              let bg = '#1c1c1e';
-              if (isDone) bg = '#5eda9e';
-              return (
-                <View 
-                  key={date} 
-                  style={[styles.heatMapSquare, { backgroundColor: bg }]} 
-                />
-              );
-            })}
-          </View>
-        </View>
-      )}
     </AnimatedPressable>
   );
 });
@@ -300,13 +395,77 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, onToggle, 
 export default function HabitsScreen() {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
-  const { allHabits, habitLogs, user, optimisticUpdateHabit, optimisticAddHabitLog, optimisticRemoveHabitLog } = useMobileData();
+  const { allHabits, habitLogs, user, loading, optimisticUpdateHabit, optimisticAddHabitLog, optimisticRemoveHabitLog, optimisticUpdateHabitLog } = useMobileData();
   const [createVisible, setCreateVisible] = useState(false);
+  const [showReminderModal, setShowReminderModal] = useState(false);
   
   const [confettiOpts, setConfettiOpts] = useState<{ x: number, y: number, color: string } | null>(null);
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-10)).current;
+
+  // ── Streak Freeze Evaluator ──
+  const [freezes, setFreezes] = useState<number>(0);
+  const evaluatorRan = useRef(false);
+
+  useEffect(() => {
+    if (!user || loading || evaluatorRan.current) return;
+    evaluatorRan.current = true;
+
+    (async () => {
+      try {
+        const storedFreezes = await AsyncStorage.getItem('zentrack_habit_freezes');
+        const lastGrant = await AsyncStorage.getItem('zentrack_last_freeze_grant');
+        let currentFreezes = storedFreezes ? parseInt(storedFreezes, 10) : 1;
+
+        const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+        const nowMs = new Date().getTime();
+        const grantMs = lastGrant ? new Date(lastGrant).getTime() : 0;
+        let didGrant = false;
+        
+        if (nowMs - grantMs > msPerWeek) {
+          currentFreezes += 1;
+          didGrant = true;
+          await AsyncStorage.setItem('zentrack_last_freeze_grant', new Date().toISOString());
+        }
+
+        let updatedFreezes = currentFreezes;
+        const yesterday = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+        // Evaluate misses for active daily positive habits
+        for (const habit of allHabits) {
+          if (habit.type === 'negative' || habit.archived || habit.frequency !== 'daily') continue;
+          
+          const logs = habitLogs.filter(l => l.habitId === habit.id).sort((a, b) => b.date.localeCompare(a.date));
+          if (logs.length === 0) continue;
+
+          const latestLog = logs[0];
+          // Did we miss yesterday? (Latest log is older than yesterday)
+          if (latestLog.date < yesterday) {
+            if (updatedFreezes > 0) {
+              updatedFreezes -= 1;
+              const freezeDocId = `${habit.id}_${yesterday}`;
+              await setDoc(doc(db, COLLECTION.HABIT_LOGS, freezeDocId), {
+                habitId: habit.id, userId: user.uid,
+                date: yesterday, isFreeze: true, count: 1,
+                timestamp: serverTimestamp(),
+              });
+              // Streak is protected!
+            } else if ((habit.streak || 0) > 0) {
+              await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: 0 });
+            }
+          }
+        }
+
+        if (updatedFreezes !== currentFreezes || didGrant) {
+          await AsyncStorage.setItem('zentrack_habit_freezes', updatedFreezes.toString());
+        }
+        setFreezes(updatedFreezes);
+      } catch (e) {
+        console.error("[HabitsScreen] Evaluator error", e);
+      }
+    })();
+  }, [user, loading, allHabits, habitLogs]);
 
   useEffect(() => {
     animateFadeInUp(headerFade, headerSlide, 0).start();
@@ -316,21 +475,129 @@ export default function HabitsScreen() {
     () => habitLogs.filter(l => l.date === today),
     [habitLogs]
   );
-  const completedCount = todayLogs.length;
   
+  // Calculate completed count for the badge (positives only). For quantitative, count >= targetCount
+  const completedCount = todayLogs.filter(l => {
+    const h = allHabits.find(hx => hx.id === l.habitId);
+    if (!h || h.type === 'negative') return false;
+    if (h.targetCount && h.targetCount > 0) return (l.count || 1) >= h.targetCount;
+    return true;
+  }).length;
+  
+  const handleQuantitativeUndo = (habit: Habit, existingLog: HabitLog) => {
+    const newCount = (existingLog.count || 1) - 1;
+    const wasComplete = (existingLog.count || 1) >= habit.targetCount!;
+
+    // Optimistic UI update
+    if (newCount <= 0) {
+      optimisticRemoveHabitLog(habit.id, today);
+    } else {
+      optimisticUpdateHabitLog(existingLog.id, { count: newCount });
+    }
+    if (wasComplete && newCount < habit.targetCount!) {
+      optimisticUpdateHabit(habit.id, { streak: Math.max(0, (habit.streak || 1) - 1) });
+    }
+
+    (async () => {
+      try {
+        // Use deterministic doc ID: no stale-ID race conditions ever
+        const logDocId = `${habit.id}_${today}`;
+        if (newCount <= 0) {
+          await deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId));
+        } else {
+          await setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), {
+            habitId: habit.id, userId: user!.uid,
+            date: today, count: newCount,
+            timestamp: serverTimestamp(),
+          });
+        }
+        if (wasComplete && newCount < habit.targetCount!) {
+          await updateDoc(doc(db, COLLECTION.HABITS, habit.id), {
+            streak: Math.max(0, (habit.streak || 1) - 1)
+          });
+        }
+      } catch (e) { console.error('[Habits] Undo quantitative error', e); }
+    })();
+  };
+
   const toggleHabit = (habit: Habit) => {
     if (!user) return;
     const existingLog = todayLogs.find(l => l.habitId === habit.id);
+    const isQuantitative = typeof habit.targetCount === 'number' && habit.targetCount > 0;
+
+    if (isQuantitative) {
+       const currentCount = existingLog ? (existingLog.count || 1) : 0;
+       
+       if (currentCount >= habit.targetCount!) {
+          Alert.alert("Undo Completion", `Remove a logged action for ${habit.name}?`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Remove", style: "destructive", onPress: () => handleQuantitativeUndo(habit, existingLog!) }
+          ]);
+          return;
+       }
+       
+       const newCount = currentCount + 1;
+       const isNowComplete = newCount >= habit.targetCount!;
+       
+       if (isNowComplete) {
+         import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+       } else {
+         import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
+       }
+
+       // Optimistic UI: use deterministic doc id so snapshot replacement is seamless
+       const logDocId = `${habit.id}_${today}`;
+       if (existingLog) {
+          optimisticUpdateHabitLog(existingLog.id, { count: newCount });
+       } else {
+          // Use deterministic id for optimistic log — matches the Firestore doc id we'll create
+          optimisticAddHabitLog({ id: logDocId, habitId: habit.id, userId: user.uid, date: today, count: newCount });
+       }
+       if (isNowComplete) {
+          const newStreak = (habit.streak || 0) + 1;
+          optimisticUpdateHabit(habit.id, { 
+            streak: newStreak, 
+            longestStreak: Math.max(newStreak, habit.longestStreak || 0) 
+          });
+       }
+
+       (async () => {
+         try {
+           // ROOT FIX: Use setDoc with deterministic ID.
+           // This is a pure upsert — no delete+recreate, no stale IDs, no race conditions.
+           // On first tap: Firestore creates the doc (ownsNewDoc() passes).
+           // On subsequent taps: Firestore updates it (ownsDoc() passes because userId matches).
+           const isFirstTap = !existingLog;
+           if (isFirstTap) await awardXP('HABIT_LOG');
+           await setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), {
+             habitId: habit.id, userId: user.uid,
+             date: today, count: newCount,
+             timestamp: serverTimestamp(),
+           });
+           if (isNowComplete) {
+             const newStreak = (habit.streak || 0) + 1;
+             await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { 
+               streak: newStreak,
+               longestStreak: Math.max(newStreak, habit.longestStreak || 0)
+             });
+           }
+         } catch (e) {
+           console.error('[HabitsScreen] Error updating quantitative habit', e);
+         }
+       })();
+       
+       return;
+    }
     
-    // 1. Optimistic Update (Instant UI)
+    // 1. Optimistic Update (Instant UI) for binary habits
+    const logDocId = `${habit.id}_${today}`;
     if (existingLog) {
       import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
       optimisticRemoveHabitLog(habit.id, today);
       optimisticUpdateHabit(habit.id, { streak: Math.max(0, (habit.streak || 1) - 1) });
     } else {
       import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
-      const tempId = `temp_${Date.now()}`;
-      optimisticAddHabitLog({ id: tempId, habitId: habit.id, userId: user.uid, date: today });
+      optimisticAddHabitLog({ id: logDocId, habitId: habit.id, userId: user.uid, date: today, count: 1 });
       const newStreak = (habit.streak || 0) + 1;
       optimisticUpdateHabit(habit.id, { 
         streak: newStreak, 
@@ -342,14 +609,15 @@ export default function HabitsScreen() {
     (async () => {
       try {
         if (existingLog) {
-          await deleteDoc(doc(db, COLLECTION.HABIT_LOGS, existingLog.id));
+          await deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId));
           await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: Math.max(0, (habit.streak || 1) - 1) });
         } else {
           await awardXP('HABIT_LOG');
-          await addDoc(collection(db, COLLECTION.HABIT_LOGS), {
+          await setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), {
             habitId: habit.id,
             userId: user.uid,
             date: today,
+            count: 1,
             timestamp: serverTimestamp(),
           });
           const newStreak = (habit.streak || 0) + 1;
@@ -364,7 +632,7 @@ export default function HabitsScreen() {
     })();
   };
 
-  const archiveHabit = async (habitId: string) => {
+  const handleArchive = async (habitId: string) => {
     try {
       await updateDoc(doc(db, COLLECTION.HABITS, habitId), { archived: true });
     } catch (e) {
@@ -372,7 +640,7 @@ export default function HabitsScreen() {
     }
   };
 
-  const deleteHabit = async (habitId: string) => {
+  const handleDelete = async (habitId: string) => {
     try {
       await deleteDoc(doc(db, COLLECTION.HABITS, habitId));
     } catch (e) {
@@ -380,42 +648,68 @@ export default function HabitsScreen() {
     }
   };
 
-  const visibleHabits = allHabits.filter(h => !h.archived);
+  const activeHabits = allHabits.filter(h => !h.archived);
+  const positiveHabits = activeHabits.filter(h => h.type !== 'negative');
+  const negativeHabits = activeHabits.filter(h => h.type === 'negative');
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top']}>
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <Animated.View style={[styles.header, { opacity: headerFade, transform: [{ translateY: headerSlide }] }]}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eyebrow}>HABITS</Text>
-          <Text style={styles.headerTitle}>Daily check-in</Text>
+        <View>
+          <Text style={styles.eyebrow}>Today's Progress</Text>
+          <Text style={styles.headerTitle}>Habits</Text>
         </View>
-        <View style={styles.statBadge}>
-          <Text style={styles.statNum}>{completedCount}/{visibleHabits.length}</Text>
-          <Text style={styles.statLabel}>done today</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowReminderModal(true)}>
+            <Ionicons name="notifications-outline" size={18} color="#f2f2f7" />
+          </TouchableOpacity>
+          <View style={styles.statBadge}>
+            <Text style={styles.statNum}>{completedCount}/{positiveHabits.length}</Text>
+          </View>
         </View>
       </Animated.View>
 
+      {/* ── Main List ───────────────────────────────────────────────────────── */}
       <FlashList
-        data={visibleHabits}
-        keyExtractor={h => h.id}
-        extraData={todayLogs}
+        data={[{ type: 'header' }, ...positiveHabits, { type: 'divider' }, ...negativeHabits]}
+        keyExtractor={(item: any, i) => item.id || `type-${i}`}
+        renderItem={({ item, index }: any) => {
+          if (item.type === 'header' && positiveHabits.length > 0) {
+            return <Text style={styles.sectionHeader}>Building</Text>;
+          }
+          if (item.type === 'divider' && negativeHabits.length > 0) {
+            return <Text style={[styles.sectionHeader, { marginTop: SPACE.xl }]}>Avoiding</Text>;
+          }
+          if (item.type === 'header' || item.type === 'divider') return null;
+
+          const h = item as Habit;
+          const todayLog = todayLogs.find(l => l.habitId === h.id);
+          const isCompleted = h.targetCount && h.targetCount > 0 ? (todayLog?.count || 0) >= h.targetCount : !!todayLog;
+          const logsForHabit = habitLogs.filter(l => l.habitId === h.id);
+
+          return (
+            <Reanimated.View entering={FadeInDown.delay(index * 40).springify()}>
+              <HabitCard
+                habit={h}
+                isCompleted={isCompleted}
+                todayLog={todayLog}
+                habitLogs={logsForHabit}
+                onToggle={() => toggleHabit(h)}
+                onArchive={() => handleArchive(h.id)}
+                onDelete={() => handleDelete(h.id)}
+                onFireConfetti={(x, y, color) => setConfettiOpts({ x, y, color })}
+                freezesLeft={freezes} // Pass to habit card
+              />
+            </Reanimated.View>
+          );
+        }}
         contentContainerStyle={styles.list}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <HabitCard
-            habit={item}
-            isCompleted={todayLogs.some(l => l.habitId === item.id)}
-            onToggle={() => toggleHabit(item)}
-            onArchive={() => archiveHabit(item.id)}
-            onDelete={() => deleteHabit(item.id)}
-            habitLogs={habitLogs.filter(l => l.habitId === item.id)}
-            onFireConfetti={(x, y, color) => setConfettiOpts({ x, y, color })}
-          />
-        )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={{ fontSize: 40, marginBottom: 10 }}>🌱</Text>
-            <Text style={styles.emptyText}>No habits yet. Start small.</Text>
+            <Ionicons name="leaf-outline" size={48} color={colors.textMuted} style={{ marginBottom: 12 }} />
+            <Text style={styles.emptyText}>No habits found.</Text>
+            <Text style={[styles.emptyText, { fontSize: 13, marginTop: 4 }]}>Tap + to start building routines.</Text>
           </View>
         }
       />
@@ -431,6 +725,12 @@ export default function HabitsScreen() {
           onClose={() => setCreateVisible(false)}
         />
       )}
+
+      <HabitReminderModal
+        visible={showReminderModal}
+        onClose={() => setShowReminderModal(false)}
+        habits={activeHabits}
+      />
 
       {confettiOpts && (
         <ConfettiCannon
@@ -451,7 +751,14 @@ const makeStyles = (colors: any) => StyleSheet.create({
       root: { flex: 1, backgroundColor: '#000000' },
       header: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16,
+        paddingHorizontal: 8, paddingTop: 16, paddingBottom: 12,
+      },
+      headerIconBtn: {
+        width: 36, height: 36,
+        borderRadius: 18,
+        backgroundColor: '#1c1c1e',
+        alignItems: 'center',
+        justifyContent: 'center',
       },
       eyebrow: {
         fontFamily: FONT_FAMILY.bold,
@@ -471,50 +778,61 @@ const makeStyles = (colors: any) => StyleSheet.create({
       statNum: { color: '#5eda9e', fontSize: 15, fontFamily: FONT_FAMILY.bold },
       statLabel: { color: '#5eda9e', fontSize: 9, fontFamily: FONT_FAMILY.body, marginTop: 2 },
 
-      list: { padding: 20, paddingBottom: 100 },
+      list: { padding: 8, paddingBottom: 120 },
+
+      sectionHeader: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 12,
+        color: '#6e6e73',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 8,
+        marginTop: 12,
+        marginLeft: 4,
+      },
 
       habitCard: {
-        backgroundColor: '#141416',
-        padding: 15,
-        borderRadius: 18,
-        marginBottom: 16,
-        borderWidth: 1, borderColor: '#2c2c2e',
+        backgroundColor: 'rgba(255,255,255,0.07)',
+        padding: 16,
+        borderRadius: RADIUS.lg,
+        marginBottom: 8,
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
         flexDirection: 'column',
       },
       habitCardCompleted: {
-        padding: 15,
+        opacity: 0.7,
       },
       checkCircle: {
-        width: 20, height: 20, borderRadius: 10,
-        borderWidth: 2, borderColor: '#3a3a3c',
+        width: 22, height: 22, borderRadius: 11,
+        borderWidth: 1.5, borderColor: '#3a3a3c',
         alignItems: 'center', justifyContent: 'center',
+        backgroundColor: 'transparent',
       },
       burstEffect: {
         ...StyleSheet.absoluteFillObject,
         borderRadius: 10,
       },
       avatar: {
-        width: 34, height: 34, borderRadius: 17,
-        backgroundColor: 'rgba(165,153,255,0.15)',
+        width: 40, height: 40, borderRadius: 20,
+        backgroundColor: 'rgba(165,153,255,0.1)',
         alignItems: 'center', justifyContent: 'center',
       },
-      avatarEmoji: { fontSize: 16 },
-      habitName: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#f2f2f7' },
-      habitNameCompleted: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: '#8e8e93' },
-      freqBadge: {
-        backgroundColor: '#2c2c2e',
-        paddingHorizontal: 6, paddingVertical: 2,
-        borderRadius: 4,
+      avatarEmoji: { fontSize: 20 },
+      habitName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#f2f2f7' },
+      habitNameCompleted: { fontFamily: FONT_FAMILY.medium, fontSize: 15, color: '#8e8e93', textDecorationLine: 'line-through' },
+      habitStreak: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: FONT_SIZE.xs,
+        color: '#8e8e93',
+        marginTop: 2,
       },
-      freqBadgeText: { fontFamily: FONT_FAMILY.body, fontSize: 9, color: '#8e8e93' },
-      habitStreak: { fontFamily: FONT_FAMILY.body, fontSize: 10.5, color: '#636366', marginTop: 4 },
-      completedSub: { fontFamily: FONT_FAMILY.body, fontSize: 10.5, color: '#8e8e93', marginTop: 4 },
-
-      statSubText: { fontFamily: FONT_FAMILY.body, fontSize: 10.5, color: '#636366' },
-      
-      heatMapContainer: {
-        flexDirection: 'row', flexWrap: 'wrap', gap: 3,
-        justifyContent: 'flex-start',
+      completedSub: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: FONT_SIZE.xs,
+        color: '#5eda9e',
+        marginTop: 2,
+      },
+      freqBadge: {
       },
       heatMapSquare: {
         width: 10, height: 10,
@@ -524,6 +842,33 @@ const makeStyles = (colors: any) => StyleSheet.create({
       empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
       emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted },
 
+      typeBtn: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: RADIUS.md,
+        backgroundColor: 'transparent',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'transparent',
+      },
+      typeBtnActivePos: {
+        backgroundColor: '#1b2a22',
+        borderColor: '#5eda9e',
+      },
+      typeBtnActiveNeg: {
+        backgroundColor: '#2a1a1c',
+        borderColor: '#ff6961',
+      },
+      typeBtnText: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: FONT_SIZE.sm,
+        color: colors.textMuted,
+      },
+      typeBtnTextActive: {
+        color: colors.textPrimary,
+        fontFamily: FONT_FAMILY.bold,
+      },
+
       fab: {
         position: 'absolute', bottom: 100, right: 20,
         width: 52, height: 52, borderRadius: 26,
@@ -532,28 +877,103 @@ const makeStyles = (colors: any) => StyleSheet.create({
         ...SHADOW.md, zIndex: 100,
       },
 
-      modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-      modalKAV: { width: '100%' },
+      modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'flex-end',
+      },
+      modalKAV: {
+        width: '100%',
+        justifyContent: 'flex-end',
+      },
       modalCard: {
-        backgroundColor: colors.surface, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
-        padding: SPACE.xl, paddingBottom: 40,
+        backgroundColor: '#1c1c1e',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        padding: 24,
+        paddingBottom: 40,
+        width: '100%',
+        borderTopWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
       },
-      modalTitle: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.xl, color: colors.textPrimary, marginBottom: SPACE.lg },
+      modalTitle: {
+        fontFamily: 'PlayfairDisplay-SemiBold',
+        fontSize: 24,
+        color: '#ffffff',
+        marginBottom: 24,
+      },
       modalInput: {
-        backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border,
-        borderRadius: RADIUS.md, padding: SPACE.md,
-        fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textPrimary,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        borderRadius: RADIUS.md,
+        padding: 16,
+        color: '#ffffff',
+        fontFamily: FONT_FAMILY.body,
+        fontSize: 15,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+        marginBottom: 20,
       },
-      modalActions: { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.xs },
-      cancelBtn: { flex: 1, paddingVertical: SPACE.md, borderRadius: RADIUS.md, borderWidth: 1, borderColor: colors.border, alignItems: 'center' },
-      cancelBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.md, color: colors.textMuted },
-      saveBtn: { flex: 2, paddingVertical: SPACE.md, borderRadius: RADIUS.md, backgroundColor: colors.accentGreen, alignItems: 'center' },
-      saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.md, color: '#1a110a' },
-
-      sectionTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.textMuted, marginTop: SPACE.xs },
-      frequencyRow: { flexDirection: 'row', gap: SPACE.xs },
-      freqBtn: { flex: 1, paddingVertical: SPACE.sm, alignItems: 'center', borderRadius: RADIUS.sm, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
-      freqBtnActive: { backgroundColor: colors.accentPrimary + '20', borderColor: colors.accentPrimary },
-      freqBtnText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted },
-      freqBtnTextActive: { fontFamily: FONT_FAMILY.bold, color: colors.accentPrimary },
+      sectionTitle: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 12,
+        color: '#8e8e93',
+        marginBottom: 10,
+      },
+      frequencyRow: {
+        flexDirection: 'row',
+        gap: 8,
+        marginBottom: 24,
+      },
+      freqBtn: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        paddingVertical: 12,
+        borderRadius: RADIUS.sm,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'transparent',
+      },
+      freqBtnActive: {
+        backgroundColor: 'rgba(165,153,255,0.1)',
+        borderColor: '#a599ff',
+      },
+      freqBtnText: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 11,
+        color: '#8e8e93',
+      },
+      freqBtnTextActive: {
+        color: '#a599ff',
+        fontFamily: FONT_FAMILY.bold,
+      },
+      modalActions: {
+        flexDirection: 'row',
+        gap: 12,
+      },
+      cancelBtn: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        paddingVertical: 16,
+        borderRadius: RADIUS.md,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.05)',
+      },
+      cancelBtnText: {
+        color: '#8e8e93',
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 15,
+      },
+      saveBtn: {
+        flex: 2,
+        backgroundColor: '#5eda9e',
+        paddingVertical: 16,
+        borderRadius: RADIUS.md,
+        alignItems: 'center',
+      },
+      saveBtnText: {
+        color: '#000000',
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 15,
+      },
     });

@@ -53,7 +53,6 @@ router.all('/', async (req, res) => {
     console.error('[force-logout] Error:', err);
     return res.status(500).json({ error: 'Failed to force logout users', details: err.message });
   }
-}
-
+});
 
 export default router;

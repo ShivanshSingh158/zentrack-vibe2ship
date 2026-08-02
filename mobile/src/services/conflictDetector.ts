@@ -1,10 +1,10 @@
 /**
  * conflictDetector.ts — ZenTrack Mobile
  *
- * BUG-C5 FIX: Replaces the stub that only checked 8h task overload.
+ * Detects REAL scheduling conflicts — not vague "overload" warnings.
  *
  * Detects:
- *  1. Task overload (>8h estimated today)
+ *  1. Task vs Task time-slot overlap (two tasks at the same time)
  *  2. Task vs class time overlap on today's schedule
  *  3. Gym session + assignment due on same day (double cognitive load)
  *  4. Attendance risk per subject (<72% critical, <78% warning)
@@ -18,7 +18,7 @@ export type ConflictSeverity = 'warning' | 'critical' | 'info';
 export interface DetectedConflict {
   id: string;
   type:
-    | 'task_overload'
+    | 'task_task_overlap'
     | 'physical_double_load'
     | 'gym_timing'
     | 'assignment_overload'
@@ -47,9 +47,28 @@ function parseTimeToMinutes(timeStr?: string): number | null {
   return h * 60 + min;
 }
 
+/**
+ * Parses a timeSlot string like "2:00 PM–3:00 PM" or "14:00-15:00"
+ * and returns { startMin, endMin }.
+ */
+function parseTimeSlotToRange(timeSlot: string): { startMin: number; endMin: number } | null {
+  const parts = timeSlot.split(/[-–]/);
+  const startMin = parseTimeToMinutes(parts[0]?.trim());
+  let endMin = parts[1] ? parseTimeToMinutes(parts[1]?.trim()) : null;
+  if (startMin === null) return null;
+  // Default duration: 30 min if no end time parsed
+  if (endMin === null || endMin <= startMin) endMin = startMin + 30;
+  return { startMin, endMin };
+}
+
 /** Returns true if two events overlap given their starts (minutes) and durations (minutes). */
 function timesOverlap(startA: number, durationA: number, startB: number, durationB: number): boolean {
   return startA < startB + durationB && startA + durationA > startB;
+}
+
+/** Returns true if two {startMin, endMin} ranges overlap. */
+function rangesOverlap(a: { startMin: number; endMin: number }, b: { startMin: number; endMin: number }): boolean {
+  return a.startMin < b.endMin && a.endMin > b.startMin;
 }
 
 // ── Main Export ───────────────────────────────────────────────────────────────
@@ -62,18 +81,30 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
   const today          = now.toISOString().split('T')[0];
   const todayDayOfWeek = now.getDay().toString(); // "0"–"6"
 
-  // ── 1. Task overload ────────────────────────────────────────────────────────
-  const todayTasks    = tasks.filter((t: any) => t.date === today && t.status !== 'completed');
-  const estimatedMins = todayTasks.reduce((acc: number, t: any) => acc + (t.estimatedMinutes || 30), 0);
-  if (estimatedMins > 480) {
-    conflicts.push({
-      id: 'task_overload_today',
-      type: 'task_overload',
-      severity: 'warning',
-      message: `You have ~${Math.round(estimatedMins / 60)}h of tasks scheduled today.`,
-      suggestion: 'Move P2/P3 tasks to tomorrow to protect focus time.',
-      modules: ['tasks'],
-    });
+  const todayTasks = tasks.filter((t: any) => t.date === today && t.status !== 'completed');
+
+  // ── 1. Task vs Task time-slot overlap ──────────────────────────────────────
+  // Only fires when two tasks genuinely collide on the timeline.
+  const timedTasks = todayTasks
+    .filter((t: any) => t.timeSlot)
+    .map((t: any) => ({ task: t, range: parseTimeSlotToRange(t.timeSlot) }))
+    .filter((x: any) => x.range !== null) as { task: any; range: { startMin: number; endMin: number } }[];
+
+  for (let i = 0; i < timedTasks.length; i++) {
+    for (let j = i + 1; j < timedTasks.length; j++) {
+      const a = timedTasks[i];
+      const b = timedTasks[j];
+      if (rangesOverlap(a.range, b.range)) {
+        conflicts.push({
+          id: `task_task_overlap_${a.task.id}_${b.task.id}`,
+          type: 'task_task_overlap',
+          severity: 'critical',
+          message: `"${a.task.title}" and "${b.task.title}" overlap on the timeline.`,
+          suggestion: `Drag one task to a free time slot to resolve the conflict.`,
+          modules: ['tasks'],
+        });
+      }
+    }
   }
 
   // ── 2. Task vs class time overlap ──────────────────────────────────────────
@@ -111,8 +142,8 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
   });
 
   // ── 3. Gym + assignment due same day (double cognitive load) ───────────────
-  const gymToday             = gymLogs.some((g: any) => g.date === today);
-  const dueTodayAssignments  = assignments.filter((a: any) => a.dueDate === today && a.status !== 'submitted' && a.status !== 'graded');
+  const gymToday            = gymLogs.some((g: any) => g.date === today);
+  const dueTodayAssignments = assignments.filter((a: any) => a.dueDate === today && a.status !== 'submitted' && a.status !== 'graded');
   if (gymToday && dueTodayAssignments.length > 0) {
     conflicts.push({
       id: 'physical_double_load_today',
@@ -126,7 +157,8 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
 
   // ── 4. Attendance risk ─────────────────────────────────────────────────────
   attendance.forEach((subj: any) => {
-    if (!subj.classesTotal || subj.classesTotal === 0) return;
+    // Require at least 10 classes logged before flagging attendance risk
+    if (!subj.classesTotal || subj.classesTotal < 10) return;
     const pct = (subj.classesAttended / subj.classesTotal) * 100;
     if (pct < 72) {
       conflicts.push({
@@ -150,8 +182,10 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
   });
 
   // ── 5. Assignment overload (3+ due in 7 days) ──────────────────────────────
-  const sevenDaysLater      = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const urgentAssignments   = assignments.filter((a: any) => a.dueDate >= today && a.dueDate <= sevenDaysLater && a.status !== 'submitted' && a.status !== 'graded');
+  const sevenDaysLater    = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const urgentAssignments = assignments.filter(
+    (a: any) => a.dueDate >= today && a.dueDate <= sevenDaysLater && a.status !== 'submitted' && a.status !== 'graded'
+  );
   if (urgentAssignments.length >= 3) {
     conflicts.push({
       id: 'assignment_overload_week',
@@ -197,4 +231,3 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
     return true;
   });
 };
-

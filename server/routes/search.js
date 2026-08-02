@@ -323,7 +323,6 @@ router.all('/', async (req, res) => {
     results: [],
     error:   `All search providers exhausted for "${searchQuery}". Try rephrasing the query.`
   });
-}
-
+});
 
 export default router;

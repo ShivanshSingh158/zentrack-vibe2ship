@@ -185,9 +185,36 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ── Placement Hub Collections ─────────────────────────────────────────────
+    // dsa_logs / focus_sessions: standard userId-field pattern (one doc per problem/session)
+    match /dsa_logs/{docId} {
+      allow read, update, delete: if isSignedIn() && ownsDoc();
+      allow create: if isSignedIn() && ownsNewDoc() && notTooLarge();
+    }
+
+    match /focus_sessions/{docId} {
+      allow read, update, delete: if isSignedIn() && ownsDoc();
+      allow create: if isSignedIn() && ownsNewDoc() && notTooLarge();
+    }
+
+    // skill_ratings / project_milestones / placement_config:
+    // Document ID IS the userId (single doc per user, not a userId field inside).
+    match /skill_ratings/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    match /project_milestones/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
+    match /placement_config/{userId} {
+      allow read, write: if isSignedIn() && isOwner(userId);
+    }
+
     // ── Deny Everything Else ──────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
+

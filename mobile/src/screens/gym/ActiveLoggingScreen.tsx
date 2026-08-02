@@ -10,10 +10,12 @@ import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE, SHADOW } from '../../theme/tokens';
-import { useGymLog } from '../../hooks/useGymLog';
+import { useGymLog, todayStr } from '../../hooks/useGymLog';
 import { useMobileData } from '../../contexts/MobileDataContext';
 import { resolveMuscleColor, hexToRgba, calculateExerciseMaxWeight, calculateExerciseAvgReps, calculateHistorical1RM } from '../../utils/gymUtils';
 import { hapticLight, hapticMedium, hapticSuccess } from '../../utils/haptics';
+import { callProxy } from '../../services/geminiProxy';
+import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
 import AnimatedRestTimer from '../../components/Gym/AnimatedRestTimer';
 import { GYM_PLAN, EXERCISE_ALTERNATIVES } from '../../data/gymPlan';
 import { getOverloadSuggestion, getRestDuration } from '../../services/progressiveOverload';
@@ -42,7 +44,7 @@ export default function ActiveLoggingScreen() {
     updateExercise,
     startRestTimer,
     clearRestTimer,
-    updateRestTimerDuration,
+    setRestTimerDuration,
     restTimerStartTime,
     restTimerDurationSecs,
     restTimerInitial,
@@ -50,9 +52,14 @@ export default function ActiveLoggingScreen() {
     makeSwapPermanent,
     logSetAndStartTimer,
     endWorkout,
+    updateNotes,
   } = useGymLog(date);
 
   const [showPR, setShowPR] = useState(false);
+  // G8: Workout notes local state — synced to Firestore on blur
+  const [workoutNotes, setWorkoutNotes] = useState(log?.notes || '');
+  // G6: Superset
+  const [showSupersetPicker, setShowSupersetPicker] = useState(false);
 
   const [activeExIndex, setActiveExIndex] = useState(route.params?.initialIndex ?? 0);
 
@@ -70,22 +77,45 @@ export default function ActiveLoggingScreen() {
   }, [activeExIndex, showVideo]);
 
   const [showSwapModal, setShowSwapModal] = useState(false);
+  const [aiSwapList, setAiSwapList] = useState<any[]>([]);
+  const [isAiSwapLoading, setIsAiSwapLoading] = useState(false);
 
   const { gymLogs } = useMobileData();
 
   // BUG FIX #1: Local controlled input state per set — decoupled from log state.
   // Initialised from exercise data, but never overwritten during typing.
   const [setInputs, setSetInputs] = useState<SetInputState[]>([]);
+  const [isRefreshingVideo, setIsRefreshingVideo] = useState(false);
   const inputInitKey = useRef('');
 
-  // Synchronise local input state when we switch to a different exercise
-  // or when the exercise's set count changes (a set was added/removed).
-  // We DO NOT sync when weight/reps change from Firestore — local state wins.
+  const handleRefreshVideo = async () => {
+    if (!exercise || isRefreshingVideo) return;
+    hapticMedium();
+    setIsRefreshingVideo(true);
+
+    try {
+      let freshVideoId = await autoResolveExerciseVideoId(exercise.name, true);
+      if (!freshVideoId || freshVideoId === exercise.videoId) {
+        freshVideoId = await autoResolveExerciseVideoId(`${exercise.name} exercise form tutorial`, true);
+      }
+      if (freshVideoId) {
+        const updatedEx = { ...exercise, videoId: freshVideoId };
+        updateExercise(realExerciseIndex, updatedEx);
+        hapticSuccess();
+      }
+    } catch (e) {
+      console.warn('[Refresh Video] Error:', e);
+    } finally {
+      setIsRefreshingVideo(false);
+    }
+  };
+
+  const activeExercises = useMemo(() => log?.exercises?.filter(ex => !ex.skipped) || [], [log]);
+  const safeIdx = Math.min(activeExIndex, Math.max(0, activeExercises.length - 1));
+  const exercise = activeExercises[safeIdx];
+
+  // Initialize input state when exercise or set count changes
   useEffect(() => {
-    if (!log?.exercises) return;
-    const exercises = log.exercises.filter(ex => !ex.skipped);
-    const safeIdx = Math.min(activeExIndex, Math.max(0, exercises.length - 1));
-    const exercise = exercises[safeIdx];
     if (!exercise) return;
 
     // A key that uniquely identifies "which exercise and how many sets"
@@ -97,7 +127,134 @@ export default function ActiveLoggingScreen() {
       weight: s.weight !== null && s.weight !== undefined ? String(s.weight) : '',
       reps: s.reps !== null && s.reps !== undefined ? String(s.reps) : '',
     })));
-  }, [log, activeExIndex]);
+  }, [exercise, activeExIndex]);
+
+  // Real-time S.A.R.A AI Swap generator for ActiveLoggingScreen modal
+  useEffect(() => {
+    if (!showSwapModal || !exercise) return;
+    let isCancelled = false;
+
+    const origName = exercise.name || 'Exercise';
+    const rawMuscle = exercise.muscle || 'Chest';
+    const inferredMuscle = (rawMuscle === 'None' || !rawMuscle)
+      ? (origName.toLowerCase().includes('bicep') ? 'Biceps' : origName.toLowerCase().includes('tricep') ? 'Triceps' : origName.toLowerCase().includes('row') || origName.toLowerCase().includes('pull') ? 'Back' : origName.toLowerCase().includes('press') || origName.toLowerCase().includes('dip') ? 'Chest' : origName.toLowerCase().includes('squat') || origName.toLowerCase().includes('leg') ? 'Quads' : origName.toLowerCase().includes('shoulder') || origName.toLowerCase().includes('raise') ? 'Shoulders' : 'Chest')
+      : rawMuscle;
+
+    const muscleKey = Object.keys(EXERCISE_ALTERNATIVES).find(
+      k => k.toLowerCase() === inferredMuscle.toLowerCase()
+    ) || 'Chest';
+
+    const fallbackList = (EXERCISE_ALTERNATIVES[muscleKey as keyof typeof EXERCISE_ALTERNATIVES] || []).slice(0, 6).map((alt, idx) => {
+      const n = (alt.name || '').toLowerCase();
+      const m = inferredMuscle.toLowerCase();
+      let targetSets = 3;
+      let targetReps = '10–12';
+      let restTimeSecs = 75;
+
+      if (n.includes('farmer') || n.includes('hang') || n.includes('pinch') || n.includes('hold')) {
+        targetSets = 3; targetReps = '30–45s hold'; restTimeSecs = 45;
+      } else if (m.includes('forearm') || n.includes('wrist') || n.includes('reverse curl')) {
+        targetSets = 3; targetReps = '15–20'; restTimeSecs = 45;
+      } else if (m.includes('calf') || m.includes('calves') || n.includes('calf')) {
+        targetSets = 4; targetReps = '15–20'; restTimeSecs = 60;
+      } else if (m.includes('abs') || m.includes('core') || n.includes('crunch') || n.includes('plank')) {
+        targetSets = 3; targetReps = '15–20'; restTimeSecs = 45;
+      } else if (n.includes('deadlift') || n.includes('squat') || n.includes('barbell row') || n.includes('bench press') || n.includes('military press') || n.includes('t-bar') || n.includes('rdl')) {
+        targetSets = 4; targetReps = '6–8'; restTimeSecs = 120;
+      } else if (n.includes('press') || n.includes('pulldown') || n.includes('dips') || n.includes('row')) {
+        targetSets = 3; targetReps = '8–12'; restTimeSecs = 90;
+      } else if (n.includes('raise') || n.includes('fly') || n.includes('extension') || n.includes('curl')) {
+        targetSets = 3; targetReps = '12–15'; restTimeSecs = 60;
+      }
+
+      return {
+        name: alt.name,
+        muscle: inferredMuscle,
+        targetSets,
+        targetReps,
+        restTimeSecs,
+        videoId: alt.videoId,
+      };
+    });
+
+    setAiSwapList(fallbackList);
+    setIsAiSwapLoading(true);
+
+    async function fetchSaraSwaps() {
+      try {
+        const prompt = `Exercise to swap: "${origName}" (Target Muscle / Movement: ${inferredMuscle}).
+Read the exercise name "${origName}" carefully to understand its exact movement mechanics, equipment, angle, and target muscle group (${inferredMuscle}).
+Generate EXACTLY 6 non-repetitive, biomechanically equivalent exercise alternatives for "${origName}".
+For EACH alternative exercise, assign realistic specific targetSets (3 or 4), targetReps ('6-8' for heavy compound, '8-12' for press/pull, '12-15' for isolation, '15-20' or '30-45s' for forearms/grip/calves), and restTimeSecs (45, 60, 90, or 120) tailored to that specific exercise.
+
+Return ONLY a raw valid JSON array of 6 objects:
+[
+  {
+    "name": "Exercise Name",
+    "muscle": "${inferredMuscle}",
+    "targetSets": 3,
+    "targetReps": "8-12",
+    "restTimeSecs": 90
+  }
+]`;
+
+        const res = await callProxy({
+          contents: [{ parts: [{ text: prompt }] }],
+          systemInstruction: `You are S.A.R.A, ZenTrack's AI gym coach. Read custom exercise names carefully and output ONLY valid JSON arrays of 6 exercise recommendations with realistic sets, reps, and rest times. No markdown text.`,
+          generationConfig: {
+            temperature: 0.4,
+            maxOutputTokens: 600,
+          }
+        });
+
+        if (isCancelled) return;
+        const textResult = res?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (textResult) {
+          const cleanJsonStr = textResult.replace(/```json/g, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(cleanJsonStr);
+          if (Array.isArray(parsed) && parsed.length >= 4) {
+            const formattedPromises = parsed.slice(0, 6).map(async (item: any, i: number) => {
+              const exName = item.name || fallbackList[i]?.name || 'Alternative Exercise';
+              const vidId = (await autoResolveExerciseVideoId(exName)) || fallbackList[i]?.videoId || '';
+              return {
+                name: exName,
+                muscle: item.muscle || exercise.muscle,
+                targetSets: typeof item.targetSets === 'number' ? item.targetSets : fallbackList[i]?.targetSets || 3,
+                targetReps: item.targetReps || fallbackList[i]?.targetReps || '8-12',
+                restTimeSecs: typeof item.restTimeSecs === 'number' ? item.restTimeSecs : fallbackList[i]?.restTimeSecs || 60,
+                videoId: vidId,
+              };
+            });
+            const formatted = await Promise.all(formattedPromises);
+            setAiSwapList(formatted);
+          }
+        }
+      } catch (e) {
+        console.warn('[ActiveLogging SARA AI Swap] Error:', e);
+      } finally {
+        if (!isCancelled) setIsAiSwapLoading(false);
+      }
+    }
+
+    fetchSaraSwaps();
+    return () => { isCancelled = true; };
+  }, [showSwapModal, exercise]);
+
+  // S.A.R.A AI Auto-Form Video ID Resolver & Automatic Video Mismatch Auto-Healer
+  useEffect(() => {
+    if (!exercise) return;
+    let isCancelled = false;
+
+    autoResolveExerciseVideoId(exercise.name).then(resolvedId => {
+      if (isCancelled || !resolvedId) return;
+      if (exercise.videoId !== resolvedId) {
+        const updatedEx = { ...exercise, videoId: resolvedId };
+        updateExercise(realExerciseIndex, updatedEx);
+      }
+    });
+
+    return () => { isCancelled = true; };
+  }, [exercise?.name, exercise?.videoId]);
 
   // ─── Last-session banner ────────────────────────────────────────────────────
   // BUG FIX #4: Show lastSessionSets (pre-filled data) even before any set is
@@ -193,9 +350,7 @@ export default function ActiveLoggingScreen() {
   }
 
 
-  const exercises = log.exercises.filter(ex => !ex.skipped);
-  const safeIndex = Math.min(activeExIndex, Math.max(0, exercises.length - 1));
-  const exercise = exercises[safeIndex];
+  const exercises = activeExercises;
 
   if (!exercise) {
     return (
@@ -274,19 +429,12 @@ export default function ActiveLoggingScreen() {
       }),
     };
 
-    const smartRestSecs = getRestDuration(exercise);
+    // G6: If this exercise is in a superset, use 30s active rest; otherwise full smart rest
+    const nextEx = exercises[activeExIndex + 1];
+    const inSuperset = exercise.supersetGroup && nextEx?.supersetGroup === exercise.supersetGroup;
+    const restSecs = inSuperset ? 30 : getRestDuration(exercise);
 
-    if (weight !== null && reps !== null && weight > 0 && reps > 0) {
-      const currentSet1RM = weight * (1 + (reps / 30));
-      const historicalMax1RM = calculateHistorical1RM(gymLogs, exercise.exerciseId);
-      
-      if (currentSet1RM > historicalMax1RM && historicalMax1RM > 0) {
-        setShowPR(true);
-        setTimeout(() => setShowPR(false), 4500);
-      }
-    }
-
-    logSetAndStartTimer(realExerciseIndex, newEx, smartRestSecs, exercise.name);
+    logSetAndStartTimer(realExerciseIndex, newEx, restSecs, exercise.name);
   };
 
   const handleNextExercise = () => {
@@ -295,6 +443,7 @@ export default function ActiveLoggingScreen() {
       setActiveExIndex(activeExIndex + 1);
     } else {
       hapticSuccess();
+      clearRestTimer();
       endWorkout();
       navigation.replace('WorkoutSummary');
     }
@@ -355,7 +504,7 @@ export default function ActiveLoggingScreen() {
           <ScrollView contentContainerStyle={styles.scrollContent}>
 
             <View style={styles.titleArea}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
                 <View style={[styles.musclePill, { backgroundColor: hexToRgba(colors.accentPrimary, 0.15), marginBottom: 0 }]}>
                   <View style={[styles.muscleDot, { backgroundColor: colors.accentPrimary }]} />
                   <Text style={[styles.muscleText, { color: colors.accentPrimary }]}>{exercise.muscle}</Text>
@@ -367,15 +516,46 @@ export default function ActiveLoggingScreen() {
                   <Ionicons name="swap-horizontal" size={14} color={colors.textPrimary} />
                   <Text style={[styles.muscleText, { color: colors.textPrimary, marginLeft: 4 }]}>SWAP</Text>
                 </TouchableOpacity>
+                {/* G6: Superset badge/button */}
+                <TouchableOpacity
+                  onPress={() => { hapticMedium(); setShowSupersetPicker(true); }}
+                  style={[styles.musclePill, {
+                    backgroundColor: exercise.supersetGroup
+                      ? 'rgba(255,159,77,0.18)' : 'rgba(255,255,255,0.07)',
+                    marginBottom: 0, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center',
+                    borderColor: exercise.supersetGroup ? 'rgba(255,159,77,0.4)' : 'rgba(255,255,255,0.1)',
+                    borderWidth: 1,
+                  }]}
+                >
+                  <Ionicons name="git-merge-outline" size={13} color={exercise.supersetGroup ? '#ff9f4d' : colors.textMuted} />
+                  <Text style={[styles.muscleText, { color: exercise.supersetGroup ? '#ff9f4d' : colors.textMuted, marginLeft: 4 }]}>
+                    {exercise.supersetGroup ? `SUPER-${exercise.supersetGroup}` : 'SUPERSET'}
+                  </Text>
+                </TouchableOpacity>
               </View>
 
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                <Text style={styles.exerciseName}>{exercise.name}</Text>
-                {exercise.videoId && (
-                  <TouchableOpacity onPress={() => setShowVideo(!showVideo)} style={styles.videoBtn}>
-                    <Ionicons name="play-circle" size={28} color={colors.accentPrimary} />
-                  </TouchableOpacity>
-                )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16, width: '100%' }}>
+                <Text style={styles.exerciseName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}>
+                  {exercise.name}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    hapticMedium();
+                    if (!exercise.videoId) {
+                      setShowVideo(true);
+                      autoResolveExerciseVideoId(exercise.name).then(resolvedId => {
+                        if (resolvedId) {
+                          updateExercise(realExerciseIndex, { ...exercise, videoId: resolvedId });
+                        }
+                      });
+                    } else {
+                      setShowVideo(prev => !prev);
+                    }
+                  }}
+                  style={styles.videoBtn}
+                >
+                  <Ionicons name={showVideo ? "close-circle" : "play-circle"} size={26} color={colors.accentPrimary} />
+                </TouchableOpacity>
               </View>
 
               {/* BUG FIX #4: Shows last session data immediately, even before sets are completed */}
@@ -402,17 +582,64 @@ export default function ActiveLoggingScreen() {
               )}
             </View>
 
-            {showVideo && exercise.videoId && (
-              <Reanimated.View entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)} style={styles.videoContainer}>
-                <YoutubeIframe
-                  play={videoReady}
-                  onReady={() => setVideoReady(true)}
-                  forceAndroidAutoplay={true}
-                  height={200}
-                  videoId={exercise.videoId}
-                  initialPlayerParams={{ modestbranding: true, autoplay: 1 }}
-                />
-              </Reanimated.View>
+            {showVideo && (
+              <View style={[styles.videoContainer, { backgroundColor: '#161618', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', padding: 8, marginBottom: SPACE.xl }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="logo-youtube" size={16} color="#ff453a" />
+                    <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary }}>Form Guide Demonstration</Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <TouchableOpacity
+                      onPress={handleRefreshVideo}
+                      disabled={isRefreshingVideo}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}
+                    >
+                      {isRefreshingVideo ? (
+                        <ActivityIndicator size="small" color="#a599ff" />
+                      ) : (
+                        <Ionicons name="refresh" size={13} color="#a599ff" />
+                      )}
+                      <Text style={{ fontSize: 11, fontFamily: FONT_FAMILY.bold, color: '#a599ff' }}>
+                        {isRefreshingVideo ? 'Refreshing...' : 'Refresh'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity onPress={() => setShowVideo(false)}>
+                      <Ionicons name="close-circle" size={18} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                {exercise.videoId ? (
+                  <YoutubeIframe
+                    height={210}
+                    play={true}
+                    videoId={exercise.videoId}
+                    onError={async (err: any) => {
+                      console.warn('[YoutubeIframe Error] Video unavailable:', exercise.name, exercise.videoId, err);
+                      const freshId = await autoResolveExerciseVideoId(exercise.name, true);
+                      if (freshId && freshId !== exercise.videoId) {
+                        updateExercise(realExerciseIndex, { ...exercise, videoId: freshId });
+                      } else {
+                        updateExercise(realExerciseIndex, { ...exercise, videoId: '' });
+                        setShowVideo(false);
+                      }
+                    }}
+                    initialPlayerParams={{ modestbranding: true, rel: false }}
+                    webViewProps={{
+                      androidLayerType: 'hardware',
+                      domStorageEnabled: true,
+                      javaScriptEnabled: true,
+                    }}
+                  />
+                ) : (
+                  <View style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}>
+                    <ActivityIndicator size="small" color={colors.accentPrimary} />
+                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 8, fontFamily: FONT_FAMILY.medium }}>Finding form video for {exercise.name}...</Text>
+                  </View>
+                )}
+              </View>
             )}
 
             {exercise.setsLog.map((set, idx) => {
@@ -480,6 +707,31 @@ export default function ActiveLoggingScreen() {
               <Text style={styles.addSetBtnText}>+ Add Set</Text>
             </TouchableOpacity>
 
+            {/* G8: Workout Notes */}
+            <View style={{ marginTop: 20, marginBottom: 8 }}>
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Session Notes</Text>
+              <TextInput
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  borderRadius: RADIUS.md,
+                  borderWidth: 1,
+                  borderColor: workoutNotes ? 'rgba(165,153,255,0.3)' : 'rgba(255,255,255,0.08)',
+                  padding: 12,
+                  color: colors.textPrimary,
+                  fontFamily: FONT_FAMILY.body,
+                  fontSize: 14,
+                  minHeight: 80,
+                  textAlignVertical: 'top',
+                }}
+                placeholder="How did this session feel? Any notes on form, energy, or PRs..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                value={workoutNotes}
+                onChangeText={setWorkoutNotes}
+                onBlur={() => updateNotes(workoutNotes)}
+              />
+            </View>
+
             <TouchableOpacity
               style={styles.mainBtnWrapper}
               activeOpacity={0.8}
@@ -501,14 +753,14 @@ export default function ActiveLoggingScreen() {
           </ScrollView>
         </View>
 
-        {/* Sticky Rest Timer Overlay */}
+        {/* Sticky Rest Timer Overlay — Placed cleanly just a little above the bottom nav bar always */}
         {(restTimerStartTime && restTimerDurationSecs) ? (
-          <View style={{ position: 'absolute', bottom: 20, left: 16, right: 16, zIndex: 100 }}>
+          <View style={{ position: 'absolute', bottom: Platform.OS === 'ios' ? 112 : 98, left: 0, right: 0, alignItems: 'center', zIndex: 9999 }} pointerEvents="box-none">
             <AnimatedRestTimer
               startTime={restTimerStartTime}
               durationSecs={restTimerDurationSecs}
-              onAdd={() => updateRestTimerDuration(restTimerInitial + 30)}
-              onSubtract={() => updateRestTimerDuration(Math.max(10, restTimerInitial - 30))}
+              onAdd={() => setRestTimerDuration(restTimerInitial + 30)}
+              onSubtract={() => setRestTimerDuration(Math.max(10, restTimerInitial - 30))}
               onSkip={() => clearRestTimer()}
             />
           </View>
@@ -526,27 +778,157 @@ export default function ActiveLoggingScreen() {
           </View>
         )}
 
+        {/* G6: Superset Modal */}
+        {showSupersetPicker && (
+          <Modal transparent animationType="slide" onRequestClose={() => setShowSupersetPicker(false)}>
+            <View style={styles.modalOverlay}>
+              <View style={[styles.modalContent, { maxHeight: '75%' }]}>
+                <View style={styles.modalHeader}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="git-merge-outline" size={20} color="#ff9f4d" />
+                    <Text style={styles.modalTitle}>Superset Grouping</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setShowSupersetPicker(false)}>
+                    <Ionicons name="close" size={24} color={colors.textPrimary} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.modalSubtitle}>Pair this exercise with another to use a fast 30s active rest timer.</Text>
+
+                <ScrollView style={{ marginTop: 16 }} showsVerticalScrollIndicator={false}>
+                  {exercise.supersetGroup && (
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                        backgroundColor: 'rgba(255,69,58,0.1)', padding: 16, borderRadius: RADIUS.lg,
+                        borderWidth: 1, borderColor: 'rgba(255,69,58,0.3)', marginBottom: 12,
+                      }}
+                      onPress={() => {
+                        hapticLight();
+                        const newEx = { ...exercise, supersetGroup: undefined };
+                        updateExercise(realExerciseIndex, newEx);
+                        setShowSupersetPicker(false);
+                      }}
+                    >
+                      <Ionicons name="unlink-outline" size={16} color="#FF453A" style={{ marginRight: 8 }} />
+                      <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#FF453A' }}>Remove from Superset</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {exercises.filter(e => e.exerciseId !== exercise.exerciseId).map((altEx, idx) => {
+                    const isPartner = altEx.supersetGroup && altEx.supersetGroup === exercise.supersetGroup;
+                    return (
+                      <TouchableOpacity
+                        key={idx}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                          backgroundColor: isPartner ? 'rgba(255,159,77,0.1)' : '#161618',
+                          borderRadius: RADIUS.lg, padding: SPACE.md, marginBottom: SPACE.sm,
+                          borderWidth: 1, borderColor: isPartner ? '#ff9f4d' : 'rgba(255,255,255,0.06)',
+                        }}
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          hapticSuccess();
+                          // Assign a random letter group if one doesn't exist, else use existing
+                          const groupLetter = exercise.supersetGroup || altEx.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
+                          
+                          // Update current exercise
+                          updateExercise(realExerciseIndex, { ...exercise, supersetGroup: groupLetter });
+                          
+                          // Update partner exercise (we need its real index)
+                          const partnerRealIdx = log.exercises.findIndex(e => e.exerciseId === altEx.exerciseId);
+                          if (partnerRealIdx !== -1) {
+                            updateExercise(partnerRealIdx, { ...altEx, supersetGroup: groupLetter });
+                          }
+                          
+                          setShowSupersetPicker(false);
+                        }}
+                      >
+                        <View style={{ flex: 1, paddingRight: 8 }}>
+                          <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 15, color: isPartner ? '#ff9f4d' : '#ffffff', marginBottom: 4 }}>
+                            {altEx.name}
+                          </Text>
+                          <Text style={{ fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted }}>
+                            {altEx.muscle}  •  {altEx.targetSets} Sets
+                          </Text>
+                        </View>
+                        {isPartner && <Ionicons name="checkmark-circle" size={24} color="#ff9f4d" />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
+        )}
+
         {/* Swap Modal */}
         {showSwapModal && (
           <Modal transparent animationType="slide" onRequestClose={() => setShowSwapModal(false)}>
             <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
+              <View style={[styles.modalContent, { maxHeight: '85%' }]}>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Swap Exercise</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="sparkles" size={18} color="#a599ff" />
+                    <Text style={styles.modalTitle}>S.A.R.A AI Exercise Swap</Text>
+                  </View>
                   <TouchableOpacity onPress={() => setShowSwapModal(false)}>
                     <Ionicons name="close" size={24} color={colors.textPrimary} />
                   </TouchableOpacity>
                 </View>
-                <Text style={styles.modalSubtitle}>Alternatives for {exercise.muscle}</Text>
-                <ScrollView style={{ marginTop: 16 }}>
-                  {(EXERCISE_ALTERNATIVES[(exercise.muscle ?? '') as keyof typeof EXERCISE_ALTERNATIVES] || []).map((alt: any, idx: number) => (
+
+                <Text style={styles.modalSubtitle}>6 AI-Recommended Alternatives for {exercise.muscle}</Text>
+
+                {isAiSwapLoading && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 8, paddingHorizontal: 4 }}>
+                    <ActivityIndicator size="small" color="#a599ff" />
+                    <Text style={{ fontSize: 12, color: '#a599ff', fontFamily: FONT_FAMILY.bold }}>S.A.R.A AI Analyzing Biomechanics...</Text>
+                  </View>
+                )}
+
+                <ScrollView style={{ marginTop: 12 }} showsVerticalScrollIndicator={false}>
+                  {aiSwapList.map((alt: any, idx: number) => (
                     <TouchableOpacity
                       key={idx}
-                      style={styles.altRow}
-                      onPress={() => {
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        backgroundColor: '#161618',
+                        borderRadius: RADIUS.lg,
+                        padding: SPACE.md,
+                        marginBottom: SPACE.sm,
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.06)',
+                      }}
+                      activeOpacity={0.75}
+                      onPress={async () => {
                         const oldName = exercise.name;
                         hapticSuccess();
-                        swapExercise(realExerciseIndex, alt.name, alt.videoId);
+                        
+                        let resolvedVideoId = alt.videoId;
+                        if (!resolvedVideoId) {
+                          resolvedVideoId = (await autoResolveExerciseVideoId(alt.name)) || '';
+                        }
+
+                        const updatedEx = {
+                          ...exercise,
+                          exerciseId: `swap_${Date.now()}_${idx}`,
+                          name: alt.name,
+                          muscle: alt.muscle || exercise.muscle,
+                          targetSets: alt.targetSets || 3,
+                          targetReps: alt.targetReps || '8-12',
+                          restTimeSecs: alt.restTimeSecs || 90,
+                          videoId: resolvedVideoId,
+                          setsLog: Array.from({ length: alt.targetSets || 3 }, (_, i) => ({
+                            setNumber: i + 1,
+                            reps: null,
+                            weight: null,
+                            completed: false,
+                          })),
+                        };
+                        
+                        updateExercise(realExerciseIndex, updatedEx);
                         setShowSwapModal(false);
                         Alert.alert(
                           'Keep Swap Permanent?',
@@ -558,14 +940,18 @@ export default function ActiveLoggingScreen() {
                         );
                       }}
                     >
-                      <Ionicons name="barbell-outline" size={20} color={colors.textPrimary} />
-                      <Text style={styles.altText}>{alt.name}</Text>
-                      <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#ffffff', marginBottom: 4 }}>
+                          {alt.name}
+                        </Text>
+                        <Text style={{ fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted }}>
+                          {alt.targetSets} Sets × {alt.targetReps} Reps  •  {alt.restTimeSecs}s Rest
+                        </Text>
+                      </View>
+
+                      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
                     </TouchableOpacity>
                   ))}
-                  {(!EXERCISE_ALTERNATIVES[(exercise.muscle ?? '') as keyof typeof EXERCISE_ALTERNATIVES] || EXERCISE_ALTERNATIVES[(exercise.muscle ?? '') as keyof typeof EXERCISE_ALTERNATIVES].length === 0) && (
-                    <Text style={styles.modalSubtitle}>No curated alternatives found for this muscle group.</Text>
-                  )}
                 </ScrollView>
               </View>
             </View>
@@ -592,13 +978,13 @@ const makeStyles = (colors: any) => StyleSheet.create({
       backBtn: { padding: SPACE.xs },
       headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted, letterSpacing: 1 },
       content: { flex: 1 },
-      scrollContent: { padding: SPACE.xl, paddingBottom: 160 },
+      scrollContent: { padding: SPACE.xl, paddingBottom: 190 },
 
       titleArea: { marginBottom: SPACE.xl, alignItems: 'center' },
       musclePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginBottom: 12 },
       muscleDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
       muscleText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 },
-      exerciseName: { fontFamily: FONT_FAMILY.bold, fontSize: 22, color: colors.textPrimary, marginBottom: 4, textAlign: 'center' },
+      exerciseName: { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: colors.textPrimary, marginBottom: 4, textAlign: 'center', flexShrink: 1 },
       lastTimeText: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted, marginTop: 4 },
       overloadChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.md, marginTop: 12, gap: 6 },
       overloadChipText: { fontFamily: FONT_FAMILY.medium, fontSize: 12 },

@@ -38,6 +38,7 @@ export interface AppContext {
   googleAccessToken?: string;
   userId?: string;
   memorySummary?: string;
+  notifSettingsSummary?: string;
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -55,7 +56,8 @@ export type DataDomain =
   | 'jobs'
   | 'finance'
   | 'wellbeing'
-  | 'learning';
+  | 'learning'
+  | 'settings';
 
 export interface IntentProfile {
   primaryDomains: DataDomain[];    // Top 1-3 relevant domains
@@ -127,6 +129,11 @@ const DOMAIN_KEYWORDS: Record<DataDomain, string[]> = {
   learning: [
     'learn', 'learning', 'topic', 'lecture', 'study', 'course', 'module',
     'curriculum', 'roadmap', 'syllabus', 'revision', 'concept',
+  ],
+  settings: [
+    'notification', 'notifications', 'notify', 'quiet hours', 'briefing',
+    'briefing time', 'task buffer', 'reminder time', 'setting', 'settings',
+    'turn off', 'turn on', 'mute', 'nudge', 'alert', 'streak risk',
   ],
 };
 
@@ -341,6 +348,10 @@ export function buildSelectiveContext(
     lines.push(`\n🧠 LEARNING:\n${JSON.stringify(topics)}`);
   }
 
+  if (domains.has('settings') || ctx.notifSettingsSummary) {
+    if (ctx.notifSettingsSummary) lines.push(`\n${ctx.notifSettingsSummary}`);
+  }
+
   return lines.join('\n');
 }
 
@@ -361,6 +372,7 @@ export function domainToReasoningLabel(domain: DataDomain): string {
     finance: '💰 Checking financial data...',
     wellbeing: '❤️ Checking wellbeing logs...',
     learning: '🧠 Loading learning topics...',
+    settings: '⚙️ Reading notification settings...',
   };
   return map[domain] || `📂 Loading ${domain} data...`;
 }

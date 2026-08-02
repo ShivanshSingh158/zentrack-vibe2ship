@@ -22,7 +22,6 @@ import express from 'express';
  * endpoint, so CRON_SECRET is not needed here.
  */
 
-import type { express.Request, express.Response } from '@vercel/node';
 import twilio from 'twilio';
 import admin from 'firebase-admin';
 
@@ -56,6 +55,10 @@ router.all('/', async (req: express.Request, res: express.Response) => {
   const authHeader = req.headers['authorization'] || '';
   if (!authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Firebase ID token required' });
+  }
+
+  if (!admin.apps.length) {
+    return res.status(503).json({ error: 'Firebase Admin not configured' });
   }
 
   let decodedToken: admin.auth.DecodedIdToken;
@@ -131,7 +134,6 @@ router.all('/', async (req: express.Request, res: express.Response) => {
     console.error('[send-sms] Error:', error);
     return res.status(500).json({ error: 'Failed to send SMS', details: error.message });
   }
-}
-
+});
 
 export default router;

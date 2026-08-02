@@ -347,7 +347,7 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
           <body>
             <div class="doc-title">${escapeHtml(title || 'Untitled Note')}</div>
             <div class="note-body">${formatContent(content)}</div>
-            <div class="footer">Exported from ZenTrack Notes &nbsp;&bull;&nbsp; ${new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+            <div class="footer">Exported from ZenTrack Notes &nbsp;&bull;&nbsp; ${((d) => { const dd = String(d.getDate()).padStart(2,'0'); const mo = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]; return dd + ' ' + mo + ' ' + d.getFullYear(); })(new Date())}</div>
           </body>
         </html>
       `;
@@ -444,24 +444,18 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
                 <View style={styles.aiMsgSystem}>
                   <Text style={styles.aiMsgTextSystem}>I can help you write, summarize, explain, expand, rewrite, or extract insights from this note. What do you need?</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-                    <TouchableOpacity style={styles.aiQuickBtn} onPress={() => handleAiSubmit('Summarize this note in depth, covering all key ideas and their significance')}>
-                      <Text style={styles.aiQuickBtnText}>Deep Summary</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.aiQuickBtn} onPress={() => handleAiSubmit('Extract all action items and next steps from this note, structured by priority')}>
-                      <Text style={styles.aiQuickBtnText}>Action Items</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.aiQuickBtn} onPress={() => handleAiSubmit('Rewrite this note in a more professional, polished, and clear style without losing any information')}>
-                      <Text style={styles.aiQuickBtnText}>Polish</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.aiQuickBtn} onPress={() => handleAiSubmit('Expand this note with more detail, examples, context, and depth on every point mentioned')}>
-                      <Text style={styles.aiQuickBtnText}>Expand</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.aiQuickBtn} onPress={() => handleAiSubmit('Explain the key concepts in this note as if teaching a smart student who is new to this topic')}>
-                      <Text style={styles.aiQuickBtnText}>Explain</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.aiQuickBtn} onPress={() => handleAiSubmit('Create a detailed study guide or reference sheet from this note, structured by topic')}>
-                      <Text style={styles.aiQuickBtnText}>Study Guide</Text>
-                    </TouchableOpacity>
+
+                    {[{ label: '📚 Study Guide', prompt: 'Convert these notes into a structured study guide with headers and key definitions.' },
+                      { label: '❓ Practice Questions', prompt: 'Generate 10 exam-style questions from this content with answers.' },
+                      { label: '🧠 Mind Map', prompt: 'Create a hierarchical mind map outline from this content.' },
+                      { label: '📝 Summary Card', prompt: 'Create a 5-bullet flashcard summary of the key points.' },
+                      { label: '🔍 Gap Analysis', prompt: 'What important topics from this subject might be missing from these notes?' },
+                      { label: '🗣️ ELI5', prompt: 'Explain this content in the simplest possible language for a beginner.' }
+                    ].map(action => (
+                      <TouchableOpacity key={action.label} style={styles.aiQuickBtn} onPress={() => handleAiSubmit(action.prompt)}>
+                        <Text style={styles.aiQuickBtnText}>{action.label}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 </View>
                 {chatHistory.map((msg, idx) => (

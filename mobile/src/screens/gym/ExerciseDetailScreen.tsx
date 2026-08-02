@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Platform, TextInput, KeyboardAvoidingView, ScrollView, Switch, Alert } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { formatDateShort, parseLocalDate } from '../../utils/dateUtils';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Platform, TextInput, KeyboardAvoidingView, ScrollView, Switch, Alert, ActivityIndicator } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,10 +9,11 @@ import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
 import { useMobileData } from '../../contexts/MobileDataContext';
 import { useGymLog, planDayIndexForDate, getCustomPlanDay } from '../../hooks/useGymLog';
 import { GYM_PLAN } from '../../data/gymPlan';
-import { resolveMuscleColor, hexToRgba } from '../../utils/gymUtils';
+import { resolveMuscleColor, hexToRgba, MUSCLE_CANONICAL } from '../../utils/gymUtils';
 import { GymExerciseLog, GymNavigationParamList } from '../../types/gym.types';
-import { hapticMedium, hapticLight } from '../../utils/haptics';
+import { hapticMedium, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useTheme } from "../../contexts/ThemeContext";
+import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
 
 const extractVideoId = (urlOrId: string) => {
   if (!urlOrId) return '';
@@ -42,12 +44,26 @@ export default function ExerciseDetailScreen() {
   const [videoLink, setVideoLink] = useState('');
   const [showVideo, setShowVideo] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [showMuscleDropdown, setShowMuscleDropdown] = useState(false);
   
+  const muscleSuggestions = useMemo(() => {
+    if (!muscle || !showMuscleDropdown) return [];
+    const txt = muscle.toLowerCase();
+    const suggestions: string[] = [];
+    Object.keys(MUSCLE_CANONICAL).forEach(k => {
+      if (k.includes(txt) || MUSCLE_CANONICAL[k].toLowerCase().includes(txt)) {
+        if (!suggestions.includes(k)) suggestions.push(k);
+      }
+    });
+    return suggestions.map(s => s.replace(/\b\w/g, c => c.toUpperCase()));
+  }, [muscle, showMuscleDropdown]);
+
   useEffect(() => {
     setVideoReady(false);
   }, [showVideo]);
 
   const [saveGlobal, setSaveGlobal] = useState(false);
+  const [isRefreshingVideo, setIsRefreshingVideo] = useState(false);
 
   // Initialize form
   useEffect(() => {
@@ -80,6 +96,19 @@ export default function ExerciseDetailScreen() {
     }
   }, [currentExercise, exerciseId]);
 
+  // Auto-resolve form video link if missing
+  useEffect(() => {
+    if (!name || videoLink) return;
+    let isCancelled = false;
+
+    autoResolveExerciseVideoId(name).then(resolvedId => {
+      if (isCancelled || !resolvedId) return;
+      setVideoLink(`https://youtube.com/watch?v=${resolvedId}`);
+    });
+
+    return () => { isCancelled = true; };
+  }, [name, videoLink]);
+
   // Find history
   const history = gymLogs
     .map(l => ({
@@ -92,18 +121,18 @@ export default function ExerciseDetailScreen() {
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return formatDateShort(d.toISOString().slice(0,10)) + ' ' + d.getFullYear();
   };
 
   const handleDelete = () => {
+    const exName = name || currentExercise?.name || 'this exercise';
     Alert.alert(
       "Remove Exercise",
-      `Are you sure you want to remove ${name || 'this exercise'} from today's workout?`,
+      `How would you like to remove "${exName}"?`,
       [
         { text: "Cancel", style: "cancel" },
         { 
-          text: "Remove", 
-          style: "destructive", 
+          text: "Today Only", 
           onPress: () => {
             if (!log) return;
             const index = log.exercises.findIndex(e => e.exerciseId === exerciseId);
@@ -113,6 +142,33 @@ export default function ExerciseDetailScreen() {
               navigation.goBack();
             }
           } 
+        },
+        {
+          text: "Today & All Future Days",
+          style: "destructive",
+          onPress: async () => {
+            if (!log) return;
+            const index = log.exercises.findIndex(e => e.exerciseId === exerciseId);
+            if (index !== -1) {
+              hapticMedium();
+              deleteExercise(index);
+              
+              if (date) {
+                const planIdx = planDayIndexForDate(date);
+                const currentMasterDay = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
+                if (currentMasterDay) {
+                  const targetName = (exName || '').toLowerCase().trim();
+                  const updatedExercises = currentMasterDay.exercises.filter((e: any) => {
+                    const isIdMatch = (e.id && e.id === exerciseId) || (e.exerciseId && e.exerciseId === exerciseId);
+                    const isNameMatch = targetName && (e.name || '').toLowerCase().trim() === targetName;
+                    return !(isIdMatch || isNameMatch);
+                  });
+                  await updateMasterPlan(planIdx, { ...currentMasterDay, exercises: updatedExercises });
+                }
+              }
+              navigation.goBack();
+            }
+          }
         }
       ]
     );
@@ -219,18 +275,36 @@ export default function ExerciseDetailScreen() {
           </View>
 
           <View style={styles.rowForm}>
-            <View style={[styles.formGroup, { flex: 1 }]}>
+            <View style={[styles.formGroup, { flex: 1, zIndex: 10 }]}>
               <Text style={styles.label}>Muscle Focus</Text>
               <TextInput
                 style={styles.input}
                 value={muscle}
-                onChangeText={setMuscle}
+                onChangeText={(t) => { setMuscle(t); setShowMuscleDropdown(true); }}
+                onFocus={() => setShowMuscleDropdown(true)}
+                onBlur={() => setTimeout(() => setShowMuscleDropdown(false), 200)} // Delay so tap registers
                 placeholder="e.g. Quads"
                 placeholderTextColor={colors.textMuted}
               />
+              {showMuscleDropdown && muscleSuggestions.length > 0 && (
+                <View style={styles.dropdown}>
+                  {muscleSuggestions.slice(0, 5).map(sug => (
+                    <TouchableOpacity 
+                      key={sug} 
+                      style={styles.dropdownItem}
+                      onPress={() => {
+                        setMuscle(sug);
+                        setShowMuscleDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownText}>{sug}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
             <View style={{ width: 16 }} />
-            <View style={[styles.formGroup, { flex: 1 }]}>
+            <View style={[styles.formGroup, { flex: 1, zIndex: 1 }]}>
               <Text style={styles.label}>Rest Time (sec)</Text>
               <TextInput
                 style={styles.input}
@@ -292,13 +366,60 @@ export default function ExerciseDetailScreen() {
 
           {showVideo && extractVideoId(videoLink) && (
             <View style={styles.videoContainer}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 4 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="logo-youtube" size={16} color="#ff453a" />
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary }}>Form Guide Demonstration</Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={async () => {
+                    if (isRefreshingVideo || !name) return;
+                    hapticMedium();
+                    setIsRefreshingVideo(true);
+                    try {
+                      const freshId = await autoResolveExerciseVideoId(name, true);
+                      if (freshId) {
+                        setVideoLink(`https://youtube.com/watch?v=${freshId}`);
+                        hapticSuccess();
+                      }
+                    } catch (e) {
+                      console.warn('[Refresh Video Detail] Error:', e);
+                    } finally {
+                      setIsRefreshingVideo(false);
+                    }
+                  }}
+                  disabled={isRefreshingVideo}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}
+                >
+                  {isRefreshingVideo ? (
+                    <ActivityIndicator size="small" color="#a599ff" />
+                  ) : (
+                    <Ionicons name="refresh" size={13} color="#a599ff" />
+                  )}
+                  <Text style={{ fontSize: 11, fontFamily: FONT_FAMILY.bold, color: '#a599ff' }}>
+                    {isRefreshingVideo ? 'Refreshing...' : 'Refresh'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               <YoutubeIframe 
-                play={videoReady} 
-                onReady={() => setVideoReady(true)}
-                forceAndroidAutoplay={true} 
+                play={true} 
                 height={200} 
                 videoId={extractVideoId(videoLink)} 
-                initialPlayerParams={{ modestbranding: true, autoplay: 1 }} 
+                onError={async (err: any) => {
+                  console.warn('[ExerciseDetail Error] Video unavailable:', name, err);
+                  const freshId = await autoResolveExerciseVideoId(name, true);
+                  if (freshId) {
+                    setVideoLink(`https://youtube.com/watch?v=${freshId}`);
+                  }
+                }}
+                initialPlayerParams={{ modestbranding: true, rel: false }} 
+                webViewProps={{
+                  androidLayerType: 'hardware',
+                  domStorageEnabled: true,
+                  javaScriptEnabled: true,
+                }}
               />
             </View>
           )}
@@ -383,8 +504,31 @@ const makeStyles = (colors: any) => StyleSheet.create({
       musclePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
       muscleDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
       muscleText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 },
-
       formGroup: { marginBottom: SPACE.lg },
+  dropdown: {
+    position: 'absolute',
+    top: 60,
+    left: 0,
+    right: 0,
+    backgroundColor: '#2C2C2E',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: '#3A3A3C',
+    zIndex: 999,
+    elevation: 5,
+    maxHeight: 180,
+  },
+  dropdownItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3A3A3C',
+  },
+  dropdownText: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.medium,
+  },
+  inputGroup: { marginBottom: SPACE.lg },
       rowForm: { flexDirection: 'row', justifyContent: 'space-between' },
       label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 },
       input: {

@@ -6,13 +6,118 @@ export const MUSCLE_COLORS: Record<string, string> = {
   'Quads/Glutes': '#FFA94D', 'Calves': '#A9E34B', 'Soleus': '#8CE99A',
   'Abs': '#FF8787', 'Core': '#FA5252', 'Obliques': '#E64980',
   'Upper Back / Rear Delts': '#AE3EC9', 'Serratus / Pec Minor': '#F08C00',
+  'Upper Chest': '#FF6B6B', 'Mid Chest': '#FF6B6B', 'Lower Chest': '#FF6B6B',
+  'Lat Width': '#4DABF7', 'Mid-Back': '#4DABF7',
+  'Front Delts': '#9775FA', 'Upper Traps': '#AE3EC9',
+  'Long Tricep': '#38D9A9', 'Lat/Med Tricep': '#38D9A9',
+  'Short Bicep': '#3BC9DB', 'Long Bicep': '#3BC9DB',
+  'Quad Teardrop': '#FF922B', 'Glutes/Abductors': '#FF8787',
+  'Gastrocnemius': '#A9E34B',
+  'Upper Abs': '#FF8787', 'Lower Abs': '#FF8787', 'Transverse Abs': '#FF8787',
+  'Forearm Flexors': '#15AABF', 'Forearm Extensors': '#15AABF', 'Brachioradialis': '#15AABF'
 };
+
+export const MUSCLE_CANONICAL: Record<string, string> = {
+  chest: 'Chest',
+  back: 'Back',
+  shoulders: 'Shoulders',
+  'side delts': 'Shoulders',
+  triceps: 'Triceps',
+  biceps: 'Biceps',
+  brachialis: 'Biceps',
+  quads: 'Quads',
+  hamstrings: 'Hamstrings',
+  calves: 'Calves',
+  abs: 'Abs',
+  forearms: 'Forearms',
+  glutes: 'Glutes',
+  traps: 'Traps',
+  mixed: 'Mixed',
+  // Micro-targets
+  'upper chest': 'Chest',
+  'mid chest': 'Chest',
+  'lower chest': 'Chest',
+  'lat width': 'Back',
+  'mid-back': 'Back',
+  'front delts': 'Shoulders',
+  'rear delts': 'Shoulders',
+  'upper traps': 'Traps',
+  'long tricep': 'Triceps',
+  'lat/med tricep': 'Triceps',
+  'short bicep': 'Biceps',
+  'long bicep': 'Biceps',
+  'quad teardrop': 'Quads',
+  'glutes/quads': 'Quads',
+  'glutes/abductors': 'Glutes',
+  'gastrocnemius': 'Calves',
+  'soleus': 'Calves',
+  'upper abs': 'Abs',
+  'lower abs': 'Abs',
+  'transverse abs': 'Abs',
+  'obliques': 'Abs',
+  'forearm flexors': 'Forearms',
+  'forearm extensors': 'Forearms',
+  'brachioradialis': 'Forearms'
+};
+
+export function canonicalizeMuscle(muscle?: string): string {
+  if (!muscle) return 'Mixed';
+  return MUSCLE_CANONICAL[muscle.toLowerCase()] ?? muscle;
+}
 
 export const resolveMuscleColor = (m: string | undefined | null) => {
   if (!m) return '#a855f7';
   const found = Object.keys(MUSCLE_COLORS).find(k => k.toLowerCase() === m.toLowerCase());
   return found ? MUSCLE_COLORS[found] : '#a855f7';
 };
+
+/**
+ * Formats date into Indian Standard Date format: 'DD/MM/YYYY'
+ * Example: '2026-07-22' -> '22/07/2026'
+ */
+export function formatIndianDate(dateInput?: string | number | Date | null): string {
+  if (!dateInput) return '';
+  if (typeof dateInput === 'string') {
+    const parts = dateInput.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      const [y, m, d] = parts;
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    }
+  }
+  const dateObj = new Date(dateInput);
+  if (isNaN(dateObj.getTime())) return String(dateInput);
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const y = dateObj.getFullYear();
+  return `${d}/${m}/${y}`;
+}
+
+/**
+ * Formats date into Pretty Indian Date format: '22 Jul 2026'
+ */
+export function formatIndianDatePretty(dateInput?: string | number | Date | null, fullMonth: boolean = false): string {
+  if (!dateInput) return '';
+  let y: number, m: number, d: number;
+  if (typeof dateInput === 'string' && dateInput.includes('-')) {
+    const parts = dateInput.split('-').map(Number);
+    if (parts.length === 3 && parts[0] > 1000) {
+      [y, m, d] = parts;
+    } else {
+      const dateObj = new Date(dateInput);
+      if (isNaN(dateObj.getTime())) return String(dateInput);
+      y = dateObj.getFullYear(); m = dateObj.getMonth() + 1; d = dateObj.getDate();
+    }
+  } else {
+    const dateObj = new Date(dateInput);
+    if (isNaN(dateObj.getTime())) return String(dateInput);
+    y = dateObj.getFullYear(); m = dateObj.getMonth() + 1; d = dateObj.getDate();
+  }
+
+  const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthsFull = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const monthName = fullMonth ? monthsFull[m - 1] : monthsShort[m - 1];
+  return `${d} ${monthName} ${y}`;
+}
 
 export const hexToRgba = (hex: string, alpha: number = 1): string => {
   let r = 0, g = 0, b = 0;

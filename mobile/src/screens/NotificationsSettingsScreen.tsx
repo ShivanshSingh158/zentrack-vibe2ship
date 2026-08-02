@@ -25,7 +25,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
-import { scheduleAllNotifications, sendTestNotification } from '../services/notifications';
+import { scheduleAllNotifications, clearScheduleCache, sendTestNotification } from '../services/notifications';
 import { useMobileData } from '../contexts/MobileDataContext';
 
 
@@ -33,7 +33,9 @@ type TimePickerTarget =
   | 'morningBriefTime'
   | 'quietStart'
   | 'quietEnd'
-  | 'overdueNudgeTime';
+  | 'overdueNudgeTime'
+  | 'sleepNight'
+  | 'sleepMorning';
 
 // Storage key helpers
 const KEY = (k: string) => `zentrack_notif_${k}`;
@@ -70,7 +72,9 @@ function displayTime(hm: string) {
 
 export default function NotificationsSettingsScreen() {
   const navigation = useNavigation<any>();
-  const { tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, user } = useMobileData();
+  // BUG-2 FIX: Destructure waterLogs and sleepLogs so they can be passed to
+  // scheduleAllNotifications() in all call sites below.
+  const { tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, waterLogs, sleepLogs, user } = useMobileData();
 
   // Module toggles
   const [modTasks,      setModTasks]      = useState(true);
@@ -107,6 +111,13 @@ export default function NotificationsSettingsScreen() {
   const [inactivityDays,     setInactivityDays]     = useState('3');
   const [habitStreakTime,    setHabitStreakTime]     = useState('20:00'); // 8pm
 
+  // Wellness — Sleep
+  const [sleepRemindersEnabled, setSleepRemindersEnabled] = useState(false);
+  const [sleepNightTime,        setSleepNightTime]        = useState('22:00');
+  const [sleepMorningTime,      setSleepMorningTime]      = useState('07:00');
+  // Wellness — Water
+  const [waterFreq,             setWaterFreq]             = useState('0'); // 0 = disabled
+
   // Time picker state
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<TimePickerTarget>('morningBriefTime');
@@ -117,19 +128,28 @@ export default function NotificationsSettingsScreen() {
     const task = InteractionManager.runAfterInteractions(() => {
       (async () => {
         try {
-          const keys = [
+          const zentrackKeys = [
             'mod_tasks', 'mod_habits', 'mod_gym', 'mod_attendance', 'mod_focus',
             'habit_streak_risk', 'overdue_nudge', 'assignment_48h', 'assignment_24h', 'gym_rest_day',
             'weekly_review', 'attendance_warning', 'morning_brief', 'inactivity_nudge', 'xp_milestone',
             'quiet_hours', 'weekend_mode', 'sara_escalation', 'actionable_notifs', 'habit_stacking',
             'morning_brief_time', 'overdue_nudge_time', 'quiet_start', 'quiet_end', 'task_buffer', 'inactivity_days', 'habit_streak_time'
           ].map(KEY);
+          // BUG-1 FIX: Load wellness keys (sleep + water) alongside other prefs.
+          // Previously these keys were never loaded or displayed in the UI.
+          const wellnessKeys = [
+            '@zentrack_sleep_reminders_enabled',
+            '@zentrack_sleep_reminder_night',
+            '@zentrack_sleep_reminder_morning',
+            '@zentrack_water_reminder_freq',
+          ];
 
-          const results = await AsyncStorage.multiGet(keys);
+          const results = await AsyncStorage.multiGet([...zentrackKeys, ...wellnessKeys]);
           const dict = Object.fromEntries(results);
 
           const getB = (k: string, def = true) => dict[KEY(k)] === null || dict[KEY(k)] === undefined ? def : dict[KEY(k)] === 'true';
           const getS = (k: string, def: string) => dict[KEY(k)] ?? def;
+          const rawGet = (k: string, def: string) => dict[k] ?? def;
 
           setModTasks(      getB('mod_tasks'));
           setModHabits(     getB('mod_habits'));
@@ -161,21 +181,37 @@ export default function NotificationsSettingsScreen() {
           setTaskBuffer(        getS('task_buffer', '60'));
           setInactivityDays(    getS('inactivity_days', '3'));
           setHabitStreakTime(   getS('habit_streak_time', '20:00'));
+
+          // BUG-1 FIX: Load wellness notification prefs
+          setSleepRemindersEnabled(rawGet('@zentrack_sleep_reminders_enabled', 'false') === 'true');
+          setSleepNightTime(        rawGet('@zentrack_sleep_reminder_night',    '22:00'));
+          setSleepMorningTime(      rawGet('@zentrack_sleep_reminder_morning',  '07:00'));
+          setWaterFreq(             rawGet('@zentrack_water_reminder_freq',     '0'));
         } catch {}
       })();
     });
     return () => task.cancel();
   }, []);
 
+  // BUG-2 FIX: Helper that passes the full data set (incl. waterLogs + sleepLogs)
+  // to scheduleAllNotifications so wellness notifications are not dropped.
+  // BUG-4 FIX: clearScheduleCache() ensures the fingerprint cache doesn't
+  // short-circuit the reschedule when only a pref changed (not data).
+  const reschedule = useCallback(() => {
+    clearScheduleCache();
+    scheduleAllNotifications({
+      tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
+      waterLogs, sleepLogs,
+    }).catch(console.error);
+  }, [tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, waterLogs, sleepLogs]);
+
   // Toggle helper — saves + reschedules
   const toggle = useCallback(async (key: string, val: boolean, setter: (v: boolean) => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setter(val);
     await saveBool(key, val);
-    scheduleAllNotifications({
-      tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
-    }).catch(console.error);
-  }, [tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments]);
+    reschedule();
+  }, [reschedule]);
 
   // Time picker helpers
   const openPicker = (target: TimePickerTarget, current: string) => {
@@ -193,8 +229,12 @@ export default function NotificationsSettingsScreen() {
       case 'quietStart':         setQuietStart(hm);         await saveString('quiet_start', hm);          break;
       case 'quietEnd':           setQuietEnd(hm);           await saveString('quiet_end', hm);            break;
       case 'overdueNudgeTime':   setOverdueNudgeTime(hm);  await saveString('overdue_nudge_time', hm);   break;
+      // BUG-1 FIX: handle wellness time targets
+      case 'sleepNight':   setSleepNightTime(hm);   await AsyncStorage.setItem('@zentrack_sleep_reminder_night',   hm); break;
+      case 'sleepMorning': setSleepMorningTime(hm); await AsyncStorage.setItem('@zentrack_sleep_reminder_morning', hm); break;
     }
-    scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.error);
+    // BUG-2 + BUG-4 FIX: use reschedule() so all data (incl. wellness) is passed and cache is cleared
+    reschedule();
   };
 
   const closePicker = () => setPickerVisible(false);
@@ -443,7 +483,8 @@ export default function NotificationsSettingsScreen() {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setTaskBuffer(o.val);
                   await saveString('task_buffer', o.val);
-                  scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.error);
+                  // BUG-2 + BUG-4 FIX: use reschedule() helper
+                  reschedule();
                 }}
               >
                 <Text style={[s.chipText, taskBuffer === o.val && s.chipTextActive]}>{o.label}</Text>
@@ -508,6 +549,90 @@ export default function NotificationsSettingsScreen() {
             onToggle={v => toggle('weekend_mode', v, setWeekendMode)}
             iconColor="#ff9f4d"
           />
+        </View>
+
+        {/* ── WELLNESS REMINDERS ─────────────────────────────────────────────
+             BUG-1 FIX: These sections were missing entirely. The AsyncStorage
+             keys for water/sleep were never written so notifications.ts always
+             saw waterReminderFreq=0 (skips water) and sleepRemindersEnabled=false
+             (skips sleep). Now users can actually configure these features.
+        ── */}
+        <SectionHeader label="WELLNESS REMINDERS" />
+
+        {/* Sleep Reminders */}
+        <View style={s.card}>
+          <ToggleRow
+            icon="moon-outline"
+            label="Sleep reminders"
+            subtitle="Wind-down at night + log-sleep in morning"
+            value={sleepRemindersEnabled}
+            iconColor="#89dceb"
+            onToggle={async (v) => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setSleepRemindersEnabled(v);
+              await AsyncStorage.setItem('@zentrack_sleep_reminders_enabled', v.toString());
+              reschedule();
+            }}
+          />
+          {sleepRemindersEnabled && (
+            <>
+              <Hairline />
+              <View style={s.row}>
+                <View style={[s.iconBox, { backgroundColor: 'rgba(137,220,235,0.12)' }]}>
+                  <Ionicons name="bed-outline" size={15} color="#89dceb" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.rowTitle}>Bedtime reminder</Text>
+                  <Text style={s.rowSub}>"Wind down and log your sleep"</Text>
+                </View>
+                <TouchableOpacity style={s.timeChip} onPress={() => openPicker('sleepNight', sleepNightTime)}>
+                  <Text style={s.timeChipText}>{displayTime(sleepNightTime)}</Text>
+                </TouchableOpacity>
+              </View>
+              <Hairline />
+              <View style={s.row}>
+                <View style={[s.iconBox, { backgroundColor: 'rgba(137,220,235,0.12)' }]}>
+                  <Ionicons name="sunny-outline" size={15} color="#89dceb" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.rowTitle}>Morning sleep log</Text>
+                  <Text style={s.rowSub}>"How did you sleep last night?"</Text>
+                </View>
+                <TouchableOpacity style={s.timeChip} onPress={() => openPicker('sleepMorning', sleepMorningTime)}>
+                  <Text style={s.timeChipText}>{displayTime(sleepMorningTime)}</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Water Reminders */}
+        <View style={[s.card, { marginTop: 8 }]}>
+          <View style={s.row}>
+            <View style={[s.iconBox, { backgroundColor: 'rgba(94,218,158,0.12)' }]}>
+              <Ionicons name="water-outline" size={15} color="#5eda9e" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowTitle}>Water reminder frequency</Text>
+              <Text style={s.rowSub}>Reminders from 9 AM – 9 PM</Text>
+            </View>
+          </View>
+          <View style={s.chipRow}>
+            {([{ label: 'Off', val: '0' }, { label: 'Every 1h', val: '1' }, { label: 'Every 2h', val: '2' }, { label: 'Every 3h', val: '3' }] as const).map(o => (
+              <TouchableOpacity
+                key={o.val}
+                style={[s.chip, waterFreq === o.val && s.chipActive]}
+                onPress={async () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setWaterFreq(o.val);
+                  await AsyncStorage.setItem('@zentrack_water_reminder_freq', o.val);
+                  reschedule();
+                }}
+              >
+                <Text style={[s.chipText, waterFreq === o.val && s.chipTextActive]}>{o.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         <View style={{ height: 40 }} />

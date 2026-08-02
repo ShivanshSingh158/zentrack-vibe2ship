@@ -97,6 +97,23 @@ function buildScreenContext(screen: string, ctx: AppContext): string | null {
       return `User opened Goals. ${stalled.length} active goal(s) with < 10% progress.`;
     }
 
+    case 'AssignmentsScreen':
+    case 'Assignments': {
+      if (!ctx.assignments?.length) return null;
+      const now = new Date();
+      const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+      const urgent = ctx.assignments.filter(a => {
+        if (a.status === 'submitted' || a.status === 'graded') return false;
+        if (!a.dueDate) return false;
+        const due = new Date(a.dueDate + 'T23:59:00');
+        return due >= now && due <= in48h;
+      });
+      if (urgent.length === 0) return null;
+      const top = urgent[0];
+      const hoursLeft = Math.round((new Date(top.dueDate + 'T23:59:00').getTime() - now.getTime()) / 3600000);
+      return `User opened Assignments. "${top.title}" (${top.subjectName ?? 'unknown subject'}) is due in ${hoursLeft}h.`;
+    }
+
     default:
       return null;
   }
@@ -159,6 +176,31 @@ export function useSaraSurface(
           setSurfaceMessage(`"${stalledGoals[0].title}" hasn't moved in 2 weeks. Should we break it down?`);
           setSurfaceActionLabel('Open Goal');
           setIsLoading(false);
+          return; // Short-circuit Gemini
+        }
+      }
+
+      // Gate 4b: Assignments — urgent deadline within 48h (short-circuit, no Gemini call)
+      if ((screenName === 'AssignmentsScreen' || screenName === 'Assignments') && appContext.assignments?.length) {
+        const now = new Date();
+        const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+        const urgent = (appContext.assignments as any[]).filter(a => {
+          if (a.status === 'submitted' || a.status === 'graded') return false;
+          if (!a.dueDate) return false;
+          const due = new Date(a.dueDate + 'T23:59:00');
+          return due >= now && due <= in48h;
+        });
+        if (urgent.length > 0) {
+          const top = urgent[0];
+          const hoursLeft = Math.round((new Date(top.dueDate + 'T23:59:00').getTime() - now.getTime()) / 3600000);
+          const label = top.subjectName ? `${top.subjectName}` : '';
+          const msg = hoursLeft <= 12
+            ? `🚨 Due in ${hoursLeft}h: "${top.title}"${label ? ` — ${label}` : ''}. Submit now!`
+            : `⏰ "${top.title}" is due in ${hoursLeft}h${label ? ` (${label})` : ''}. Don't miss it.`;
+          setSurfaceMessage(msg);
+          setSurfaceActionLabel('View Assignment');
+          setIsLoading(false);
+          lastInjectionRef.current = Date.now();
           return; // Short-circuit Gemini
         }
       }

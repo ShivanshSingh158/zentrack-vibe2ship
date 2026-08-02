@@ -25,15 +25,23 @@ export interface GymExerciseLog {
 
 export interface GymCardioLog {
   id: string;
-  type: string;         // e.g. Treadmill, Stairmaster, Cycling
+  type: string;             // e.g. Treadmill, Stairmaster, Cycling
   durationMinutes: number | null;
   distanceKm: number | null;
   speedKmh: number | null;
-  incline: number | null;
+  incline: number | null;   // Treadmill incline %
   calories: number | null;
   completed: boolean;
-  isPermanent?: boolean; // true for the always-present treadmill entry
+  isPermanent?: boolean;
+  // ── Type-specific metrics ────────────────
+  floors?: number | null;    // Stairmaster — floors climbed
+  level?: number | null;     // Stairmaster / Elliptical — machine resistance level
+  laps?: number | null;      // Swimming — pool laps
+  rounds?: number | null;    // Jump Rope — rounds / sets
+  spm?: number | null;       // Rowing — strokes per minute
+  pace?: number | null;      // Outdoor Run — pace in min/km
 }
+
 
 export interface GymDayLog {
   id?: string;

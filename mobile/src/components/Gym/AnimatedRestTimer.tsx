@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
-import Reanimated, { LinearTransition, FadeIn, FadeOut, useSharedValue, useFrameCallback, runOnJS, useAnimatedProps } from 'react-native-reanimated';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  PanResponder,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { useTheme } from "../../contexts/ThemeContext";
-
-const AnimatedTextInput = Reanimated.createAnimatedComponent(TextInput);
+import { FONT_FAMILY } from '../../theme/tokens';
 
 interface AnimatedRestTimerProps {
   startTime: number;
@@ -15,202 +20,241 @@ interface AnimatedRestTimerProps {
   onSkip: () => void;
 }
 
-export default function AnimatedRestTimer({ 
+export default function AnimatedRestTimer({
   startTime,
   durationSecs,
-  onAdd, 
-  onSubtract, 
-  onSkip 
+  onAdd,
+  onSubtract,
+  onSkip,
 }: AnimatedRestTimerProps) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors } = useTheme();
   const [isExpanded, setIsExpanded] = useState(false);
-  const remaining = useSharedValue(durationSecs);
-  const hasFinished = useSharedValue(false);
-  
+
+  // Draggable position state (PanResponder)
+  const pan = useRef(new Animated.ValueXY()).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) =>
+        Math.abs(gestureState.dx) > 3 || Math.abs(gestureState.dy) > 3,
+      onPanResponderGrant: () => {
+        pan.setOffset({
+          x: (pan.x as any)._value || 0,
+          y: (pan.y as any)._value || 0,
+        });
+        pan.setValue({ x: 0, y: 0 });
+      },
+      onPanResponderMove: Animated.event(
+        [null, { dx: pan.x, dy: pan.y }],
+        { useNativeDriver: false }
+      ),
+      onPanResponderRelease: () => {
+        pan.flattenOffset();
+      },
+    })
+  ).current;
+
+  const [remSecs, setRemSecs] = useState(() => {
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    return Math.max(0, durationSecs - elapsed);
+  });
+
+  useEffect(() => {
+    const updateTimer = () => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const rem = Math.max(0, durationSecs - elapsed);
+      setRemSecs(rem);
+
+      if (rem <= 0) {
+        onSkip();
+      }
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 500);
+    return () => clearInterval(interval);
+  }, [startTime, durationSecs]);
+
+  const m = Math.floor(remSecs / 60);
+  const s = remSecs % 60;
+  const timeDisplay = `${m}:${s.toString().padStart(2, '0')}`;
+
   const toggleExpand = () => {
     hapticLight();
-    setIsExpanded(!isExpanded);
+    setIsExpanded(prev => !prev);
   };
 
-  const frameCallback = useFrameCallback((frameInfo) => {
-    if (hasFinished.value) return;
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    const rem = Math.max(0, durationSecs - elapsed);
-    if (rem !== remaining.value) {
-      remaining.value = rem;
-    }
-    if (rem <= 0 && !hasFinished.value) {
-      hasFinished.value = true;
-      frameCallback.setActive(false); // Fix memory leak: pause callback
-      runOnJS(onSkip)();
-    }
-  });
-
-  const animatedProps = useAnimatedProps(() => {
-    const m = Math.floor(remaining.value / 60);
-    const s = remaining.value % 60;
-    const text = `${m}:${s.toString().padStart(2, '0')}`;
-    return {
-      text,
-      value: text,
-    };
-  });
-
   return (
-    <Reanimated.View style={styles.wrapper} entering={FadeIn.duration(300)} exiting={FadeOut.duration(200)}>
-      <Reanimated.View 
-        layout={LinearTransition.springify().damping(20).stiffness(200)}
-        style={[styles.container, isExpanded ? styles.expandedContainer : styles.collapsedContainer]}
-      >
-        
-        {!isExpanded ? (
-          <TouchableOpacity style={styles.collapsedPill} onPress={toggleExpand} activeOpacity={0.8}>
-            <Ionicons name="timer-outline" size={16} color="#a599ff" style={{ marginRight: 6 }} />
-            <AnimatedTextInput 
-              editable={false} 
-              animatedProps={animatedProps} 
-              style={styles.collapsedTime} 
-            />
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        styles.wrapper,
+        {
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y },
+          ],
+        },
+      ]}
+    >
+      {!isExpanded ? (
+        /* Collapsed State: Sleek circular/pill badge showing ⏱ 2:52 */
+        <TouchableOpacity
+          onPress={toggleExpand}
+          activeOpacity={0.8}
+          style={styles.collapsedBadge}
+        >
+          <Ionicons name="timer-outline" size={15} color="#a599ff" style={{ marginRight: 5 }} />
+          <Text style={styles.collapsedTimeText}>{timeDisplay}</Text>
+        </TouchableOpacity>
+      ) : (
+        /* Expanded State: Horizontal control capsule = - ⏱ 2:52 + | Skip */
+        <View style={styles.expandedCapsule}>
+          {/* Drag handle / collapse icon */}
+          <TouchableOpacity onPress={toggleExpand} style={styles.dragGrip} activeOpacity={0.7}>
+            <Ionicons name="reorder-two" size={16} color="rgba(255,255,255,0.35)" />
           </TouchableOpacity>
-        ) : (
-          <Reanimated.View entering={FadeIn.duration(200).delay(100)} exiting={FadeOut.duration(100)} style={styles.expandedContent}>
-            <View style={styles.dragHandle} />
-            
-            <View style={styles.pillLayout}>
-              <TouchableOpacity 
-                onPress={() => { hapticLight(); onSubtract(); }} 
-                style={styles.btn} 
-                hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
-              >
-                <Ionicons name="remove-circle-outline" size={24} color={colors.textMuted} />
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.centerPill} onPress={toggleExpand} activeOpacity={0.8}>
-                <Text style={styles.label}>RESTING</Text>
-                <AnimatedTextInput 
-                  editable={false} 
-                  animatedProps={animatedProps} 
-                  style={styles.time} 
-                />
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                onPress={() => { hapticLight(); onAdd(); }} 
-                style={styles.btn} 
-                hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
-              >
-                <Ionicons name="add-circle-outline" size={24} color={colors.textPrimary} />
-              </TouchableOpacity>
 
-              <View style={styles.divider} />
+          {/* Minus 30s */}
+          <TouchableOpacity
+            onPress={() => {
+              hapticLight();
+              onSubtract();
+            }}
+            style={styles.actionBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="remove-circle-outline" size={18} color="#8e8e93" />
+          </TouchableOpacity>
 
-              <TouchableOpacity 
-                style={styles.skipBtn} 
-                onPress={() => { hapticMedium(); onSkip(); }} 
-                hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
-              >
-                <Text style={styles.skipText}>Skip</Text>
-              </TouchableOpacity>
-            </View>
-          </Reanimated.View>
-        )}
-      </Reanimated.View>
-    </Reanimated.View>
+          {/* Timer Display button (tap to collapse) */}
+          <TouchableOpacity
+            onPress={toggleExpand}
+            style={styles.timeContainer}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="timer-outline" size={13} color="#a599ff" style={{ marginRight: 4 }} />
+            <Text style={styles.timeText}>{timeDisplay}</Text>
+          </TouchableOpacity>
+
+          {/* Plus 30s */}
+          <TouchableOpacity
+            onPress={() => {
+              hapticLight();
+              onAdd();
+            }}
+            style={styles.actionBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="add-circle-outline" size={18} color="#a599ff" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          {/* Skip button */}
+          <TouchableOpacity
+            onPress={() => {
+              hapticMedium();
+              onSkip();
+            }}
+            style={styles.skipBtn}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </Animated.View>
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      wrapper: {
-        alignSelf: 'center',
-        zIndex: 9999,
-      },
-      container: {
-        backgroundColor: '#1C1C1E',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20,
-        elevation: 10,
-        overflow: 'hidden',
-      },
-      collapsedContainer: {
-        borderRadius: 30,
-      },
-      expandedContainer: {
-        borderRadius: 24,
-        width: '90%',
-        minWidth: 320,
-      },
-      collapsedPill: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 10,
-        paddingHorizontal: 16,
-      },
-      collapsedTime: {
-        fontFamily: 'Courier',
-        fontSize: 16,
-        color: '#a599ff',
-        fontWeight: 'bold',
-        padding: 0,
-        margin: 0,
-      },
-      expandedContent: {
-        padding: 16,
-        paddingTop: 12,
-      },
-      dragHandle: {
-        width: 36,
-        height: 4,
-        borderRadius: 2,
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        alignSelf: 'center',
-        marginBottom: 16,
-      },
-      pillLayout: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      },
-      btn: {
-        padding: 8,
-        borderRadius: 12,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-      },
-      centerPill: {
-        alignItems: 'center',
-        paddingHorizontal: 16,
-      },
-      label: {
-        fontSize: 10,
-        fontWeight: 'bold',
-        color: '#a599ff',
-        letterSpacing: 1,
-        marginBottom: 4,
-      },
-      time: {
-        fontFamily: 'Courier',
-        fontSize: 32,
-        color: colors.textPrimary,
-        fontWeight: 'bold',
-        padding: 0,
-        margin: 0,
-      },
-      divider: {
-        width: 1,
-        height: 30,
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        marginHorizontal: 8,
-      },
-      skipBtn: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: 14,
-        backgroundColor: 'rgba(165,153,255,0.15)',
-      },
-      skipText: {
-        fontSize: 14,
-        fontWeight: 'bold',
-        color: '#a599ff',
-      }
-    });
+const styles = StyleSheet.create({
+  wrapper: {
+    zIndex: 9999,
+    alignSelf: 'center',
+  },
+  collapsedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#141416',
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: 'rgba(165,153,255,0.35)',
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  collapsedTimeText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 14,
+    color: '#a599ff',
+    letterSpacing: 0.5,
+  },
+  expandedCapsule: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#141416',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.3)',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    gap: 6,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  dragGrip: {
+    paddingRight: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  actionBtn: {
+    padding: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(165,153,255,0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.2)',
+  },
+  timeText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 14,
+    color: '#a599ff',
+    letterSpacing: 0.5,
+  },
+  divider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginHorizontal: 2,
+  },
+  skipBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  skipText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 11,
+    color: '#8e8e93',
+  },
+});

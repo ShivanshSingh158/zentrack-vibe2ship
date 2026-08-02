@@ -20,13 +20,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Animated, TextInput, Modal, Platform, KeyboardAvoidingView,
-  Pressable, StatusBar, Keyboard, FlatList, PanResponder
+  Pressable, StatusBar, Keyboard, FlatList, PanResponder, Alert
 } from 'react-native';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
+import { getAppNotificationSettings, scheduleAllNotifications } from '../services/notifications';
 
 import VoiceOrb from '../components/SARA/VoiceOrb';
 import VoiceMicButton from '../components/SARA/VoiceMicButton';
@@ -35,7 +37,7 @@ import StreamingText from '../components/SARA/StreamingText';
 import { useSaraNavigation } from '../hooks/useSaraNavigation';
 import { parseActionFromText, compressMemoryToSummary } from '../agent/saraAgent';
 import BatchActionCard, { parseBatchActions, BatchAction } from '../components/SARA/BatchActionCard';
-import { orchestrateAgent } from '../agent/orchestrator';
+import { orchestrateAgent, generateInitialGreeting } from '../agent/orchestrator';
 
 import { callGeminiProxy } from '../services/geminiProxy';
 import { COLLECTION } from '../config/constants';
@@ -65,14 +67,46 @@ import {
   getInlinePillText,
 } from '../config/saraActionPolicy';
 import { updateFingerprint } from '../services/saraMemory';
+import { logAgentAction } from '../services/agentHistory';
 
 // ── Design tokens ─────────────────────────────────────────────────────────
 
-// ── Starter prompts ───────────────────────────────────────────────────────
+// ── Starter prompts (empty state) ────────────────────────────────────────
 const STARTER_PROMPTS = [
   { label: 'Plan my day',         icon: 'sunny-outline' as const },
   { label: "Log today's workout", icon: 'barbell-outline' as const },
   { label: "What's due this week",icon: 'calendar-outline' as const },
+];
+
+// ── Quick Commands (input bar shortcut row) ───────────────────────────────
+// One-tap dispatch for the most common morning interactions.
+// Reduces friction from ~12 sec (type) → ~1 sec (tap).
+const QUICK_COMMANDS = [
+  {
+    label: "Today's Plan",
+    icon: 'today-outline' as const,
+    command: "What are my priorities for today? Give me a quick overview of tasks, habits and any gym session.",
+  },
+  {
+    label: 'Log Workout',
+    icon: 'barbell-outline' as const,
+    command: "Open gym and start today's workout — tell me what exercises I have planned.",
+  },
+  {
+    label: 'Attendance Risk',
+    icon: 'school-outline' as const,
+    command: "Which of my subjects am I at risk of failing attendance in? Show the percentages.",
+  },
+  {
+    label: 'Quick Task',
+    icon: 'add-circle-outline' as const,
+    command: "Create a high priority task for today — ask me for the title.",
+  },
+  {
+    label: 'Habits Check',
+    icon: 'checkmark-circle-outline' as const,
+    command: "How are my habits tracking this week? Which ones am I falling behind on?",
+  },
 ];
 
 // ── Message type ──────────────────────────────────────────────────────────
@@ -186,6 +220,8 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
   const [isLoaded, setIsLoaded] = useState(false);
   // Memory: persisted cross-session summary injected into Sara's system prompt
   const [memorySummary, setMemorySummary] = useState<string | null>(null);
+  // Live Notification & App Settings Summary for Sara
+  const [notifSettingsSummary, setNotifSettingsSummary] = useState<string | null>(null);
   // Cap 4 — Reasoning Transparency
   const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
   const [showReasoningFeed, setShowReasoningFeed] = useState(false);
@@ -193,8 +229,143 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
   const [hudToast, setHudToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
   // Cap 3 — Inline pill states per message id
   const [pillStates, setPillStates] = useState<Record<string, 'pending' | 'confirmed' | 'rejected'>>({});
+  
+  const [dynamicGreeting, setDynamicGreeting] = useState("What do you need to get done?");
+  const greetingGeneratedRef = useRef(false);
 
-  // Load chat history + memory summary from storage
+  // Dynamic personalized starter prompts based on live user data
+  const starterPrompts = React.useMemo(() => {
+    const list: { title: string; subtitle: string; command: string; icon: string; accent: string }[] = [];
+    const now = new Date();
+    const hour = now.getHours();
+    const todayISO = now.toISOString().split('T')[0];
+
+    // 1. Task/Planning Prompt
+    const pendingTasks = (tasks || []).filter((t: any) => t.status !== 'completed');
+    const overdueTasks = pendingTasks.filter((t: any) => t.date && t.date < todayISO);
+
+    if (overdueTasks.length > 0) {
+      list.push({
+        title: `Clear ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}`,
+        subtitle: `Reschedule or complete past due items`,
+        command: `Show my ${overdueTasks.length} overdue tasks and help me reschedule or finish them.`,
+        icon: 'warning-outline',
+        accent: '#FF6B6B',
+      });
+    } else if (hour >= 5 && hour < 12) {
+      list.push({
+        title: 'Plan my day & morning priorities',
+        subtitle: `${pendingTasks.length} tasks scheduled for today`,
+        command: `What are my top priorities for today? Help me structure my morning and set my focus areas.`,
+        icon: 'sunny-outline',
+        accent: '#FF9F0A',
+      });
+    } else if (hour >= 17) {
+      list.push({
+        title: 'Evening review & tomorrow prep',
+        subtitle: 'Review accomplishments & prep for tomorrow',
+        command: `Give me an evening summary of what I accomplished today and prep my schedule for tomorrow.`,
+        icon: 'moon-outline',
+        accent: '#a599ff',
+      });
+    } else {
+      list.push({
+        title: 'Plan my day & focus areas',
+        subtitle: `${pendingTasks.length} pending tasks · Optimize workflow`,
+        command: `Analyze my tasks and schedule for today. What should I tackle next?`,
+        icon: 'sparkles-outline',
+        accent: '#a599ff',
+      });
+    }
+
+    // 2. Gym Workout Prompt
+    const todayLog = (gymLogs || []).find((l: any) => l.date === todayISO);
+    const dayOfWeek = now.getDay();
+    const todayPlanIndex = WEEKDAY_TO_PLAN[dayOfWeek] || 7;
+    const todayPlan = GYM_PLAN.find((p: any) => p.dayIndex === todayPlanIndex);
+
+    if (todayLog && todayLog.exercises?.some((e: any) => e.setsLog?.some((s: any) => s.completed))) {
+      list.push({
+        title: `Analyze today's ${(todayLog as any).dayName || 'workout'}`,
+        subtitle: `${todayLog.exercises.length} exercises logged · Performance check`,
+        command: `Analyze my performance in today's workout. Check my loads, sets, and give coaching feedback.`,
+        icon: 'analytics-outline',
+        accent: '#34C759',
+      });
+    } else if (todayPlan) {
+      list.push({
+        title: `Log today's ${todayPlan.name}`,
+        subtitle: `Focus: ${todayPlan.focus} · Start live session`,
+        command: `Guide me through today's ${todayPlan.name} workout. What exercises and warm-up do I have?`,
+        icon: 'barbell-outline',
+        accent: '#34C759',
+      });
+    } else {
+      list.push({
+        title: "Log today's workout",
+        subtitle: 'Track sets, weights & progressive overload',
+        command: "Open gym and help me log today's workout session.",
+        icon: 'barbell-outline',
+        accent: '#34C759',
+      });
+    }
+
+    // 3. Academic / Assignments / Attendance Prompt
+    const atRiskSubject = (attendance || []).find((s: any) => {
+      const pct = s.classesTotal > 0 ? (s.classesAttended / s.classesTotal) * 100 : 100;
+      return pct < (s.targetPercentage || 75);
+    });
+    const upcomingAssignment = (assignments || [])
+      .filter((a: any) => a.status !== 'submitted' && a.status !== 'graded' && a.dueDate >= todayISO)
+      .sort((a: any, b: any) => a.dueDate.localeCompare(b.dueDate))[0];
+
+    if (atRiskSubject) {
+      const pct = Math.round((atRiskSubject.classesAttended / atRiskSubject.classesTotal) * 100);
+      list.push({
+        title: `Fix ${atRiskSubject.name} attendance (${pct}%)`,
+        subtitle: `Target: ${atRiskSubject.targetPercentage || 75}% · Calculate target classes`,
+        command: `How many consecutive classes of ${atRiskSubject.name} do I need to attend to reach ${atRiskSubject.targetPercentage || 75}%?`,
+        icon: 'school-outline',
+        accent: '#FF9F0A',
+      });
+    } else if (upcomingAssignment) {
+      list.push({
+        title: `Review assignment: ${upcomingAssignment.title}`,
+        subtitle: `Due: ${upcomingAssignment.dueDate} · ${upcomingAssignment.subjectName || 'Academic'}`,
+        command: `Give me a study & execution plan for my upcoming assignment "${upcomingAssignment.title}" due on ${upcomingAssignment.dueDate}.`,
+        icon: 'document-text-outline',
+        accent: '#64D2FF',
+      });
+    } else {
+      list.push({
+        title: "What's due this week",
+        subtitle: 'Check upcoming assignments, exams & deadlines',
+        command: "What assignments, exams, and key deadlines do I have coming up this week?",
+        icon: 'calendar-outline',
+        accent: '#64D2FF',
+      });
+    }
+
+    // 4. Habits Prompt
+    const uncompletedHabits = (habits || []).filter((h: any) => {
+      const done = (habitLogs || []).some((l: any) => l.habitId === h.id && l.date === todayISO);
+      return !done;
+    });
+
+    if (uncompletedHabits.length > 0) {
+      list.push({
+        title: `Check off ${uncompletedHabits.length} pending habit${uncompletedHabits.length > 1 ? 's' : ''}`,
+        subtitle: `Next up: ${uncompletedHabits[0].name} · Protect your streak`,
+        command: `Which of my habits are pending for today? Help me log them to keep my streak alive.`,
+        icon: 'checkmark-circle-outline',
+        accent: '#a599ff',
+      });
+    }
+
+    return list.slice(0, 4);
+  }, [tasks, gymLogs, attendance, assignments, habits, habitLogs]);
+
+  // Load chat history + memory summary + notification settings from storage
   useEffect(() => {
     AsyncStorage.multiGet(['sara_chat_history', 'sara_memory_summary']).then(pairs => {
       const [histEntry, memEntry] = pairs;
@@ -214,7 +385,25 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
       if (memEntry[1]) setMemorySummary(memEntry[1]);
       setIsLoaded(true);
     });
+
+    getAppNotificationSettings().then(res => setNotifSettingsSummary(res.summary));
   }, []);
+
+  // Generate dynamic greeting if history is empty
+  useEffect(() => {
+    if (isLoaded && messages.length === 0 && !greetingGeneratedRef.current && !initialRoutePrompt) {
+      greetingGeneratedRef.current = true;
+      let isMounted = true;
+      generateInitialGreeting({
+        tasks, habits, habitLogs, notes, goals, gymLogs,
+        attendance, assignments, customEvents, learningTopics,
+        jobs, weeklyReviews, userId: user?.uid, memorySummary: memorySummary ?? undefined
+      }).then(greeting => {
+        if (isMounted && greeting) setDynamicGreeting(greeting);
+      }).catch(() => {});
+      return () => { isMounted = false; };
+    }
+  }, [isLoaded, messages.length, initialRoutePrompt, tasks, habits, user, memorySummary]);
 
   // FIX #14 + PERF: Save chat history only when a full response is received (isRunning: true→false).
   useEffect(() => {
@@ -372,6 +561,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           jobs, weeklyReviews,
           googleAccessToken: googleAccessToken ?? undefined, userId: user?.uid,
           memorySummary: memorySummary ?? undefined,
+          notifSettingsSummary: notifSettingsSummary ?? undefined,
         },
         (step) => {
           if (step.type === 'thinking') {
@@ -444,11 +634,25 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
               } else {
                 await updateDoc(subRef, { classesTotal: increment(1) });
               }
+            } else if (step.action.type === 'updateNotificationSetting' && step.action.settingKey) {
+              const settingKey = step.action.settingKey;
+              const isGymSetting = settingKey.startsWith('@gym_');
+              const fullKey = isGymSetting ? settingKey : `zentrack_notif_${settingKey}`;
+              await AsyncStorage.setItem(fullKey, String(step.action.value));
+              scheduleAllNotifications({ tasks: tasks || [], customEvents: customEvents || [], gymLogs: gymLogs || [], attendance: attendance || [], habitLogs: habitLogs || [], allHabits: habits || [], assignments: assignments || [] });
+              getAppNotificationSettings().then(res => setNotifSettingsSummary(res.summary));
             } else {
               // Tier 1 failed (unknown type) — demote to Tier 3
               setIsRunning(false);
               // Fall through to normal action handling
             }
+            // ✅ Tier 1 committed: persist to action history
+            logAgentAction({
+              type: step.action.type,
+              tier: 1,
+              description: toastText,
+              entityLabel: step.action.habitName || step.action.taskTitle || step.action.subjectName || '',
+            });
             // Show HUD toast on success
             setHudToast({ message: toastText, visible: true });
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
@@ -482,6 +686,13 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
                     onConfirm: async () => {
                       // Execute on confirm
                       setPillStates(prev => ({ ...prev, [pillMsgId]: 'confirmed' }));
+                      // ✅ Tier 2 committed: persist to action history
+                      logAgentAction({
+                        type: step.action.type,
+                        tier: 2,
+                        description: pillText,
+                        entityLabel: step.action.taskTitle || step.action.habitName || '',
+                      });
                       // The existing full handler in the action block below will handle execution
                     },
                   } as any }
@@ -530,6 +741,13 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
                   order: 0,
                   subtasks: [],
                 });
+                // ✅ Tier 3 committed: persist to action history
+                logAgentAction({
+                  type: 'createTask',
+                  tier: 3,
+                  description: `Created task: "${args.title}"`,
+                  entityLabel: args.title,
+                });
                 setMessages(prev => prev.map(m =>
                   m.id === saraMsgId
                     ? { ...m, actionCard: { ...m.actionCard!, onConfirm: undefined, subtitle: '✓ Task created' } }
@@ -551,6 +769,13 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
               try {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                 await deleteDoc(doc(db, COLLECTION.TASKS, args.taskId));
+                // ✅ Tier 3 committed: persist to action history
+                logAgentAction({
+                  type: 'deleteTask',
+                  tier: 3,
+                  description: `Deleted task: "${args.taskTitle}"`,
+                  entityLabel: args.taskTitle,
+                });
                 setMessages(prev => prev.map(m =>
                   m.id === saraMsgId
                     ? { ...m, actionCard: { ...m.actionCard!, onConfirm: undefined, subtitle: '✓ Task deleted' } }
@@ -818,6 +1043,68 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
               } catch (e: any) { alert('Failed to create subject: ' + e.message); }
             },
           };
+        } else if (name === 'createWeeklyReview') {
+          actionCard = {
+            icon: 'analytics-outline',
+            title: 'Weekly Review',
+            subtitle: `Log review for ${args.weekStart} to ${args.weekEnd}`,
+            onConfirm: async () => {
+              try {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                await addDoc(collection(db, COLLECTION.WEEKLY_REVIEWS), {
+                  userId: user!.uid,
+                  weekStart: args.weekStart,
+                  weekEnd: args.weekEnd,
+                  wentWell: args.wentWell || '',
+                  toImprove: args.toImprove || '',
+                  nextWeekPriorities: args.nextWeekPriorities || '',
+                  gratitude: args.gratitude || '',
+                  createdAt: serverTimestamp(),
+                });
+                setMessages(prev => prev.map(m => m.id === saraMsgId ? { ...m, actionCard: { ...m.actionCard!, onConfirm: undefined, subtitle: '✓ Review saved' } } : m));
+              } catch (e: any) { alert('Failed to save review: ' + e.message); }
+            },
+          };
+        } else if (name === 'updateNotificationSetting') {
+          const settingKey = args.settingKey || args.key;
+          const val = args.value;
+          const displayLabel = args.settingLabel || args.label || `Setting: ${settingKey}`;
+          const isGymSetting = settingKey.startsWith('@gym_');
+          const fullStorageKey = isGymSetting ? settingKey : `zentrack_notif_${settingKey}`;
+
+          actionCard = {
+            icon: 'notifications-outline',
+            title: 'Update Notification Setting',
+            subtitle: `${displayLabel} → ${String(val)}`,
+            onConfirm: async () => {
+              try {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                await AsyncStorage.setItem(fullStorageKey, String(val));
+                
+                // Reschedule notifications in real time
+                scheduleAllNotifications({
+                  tasks: tasks || [],
+                  customEvents: customEvents || [],
+                  gymLogs: gymLogs || [],
+                  attendance: attendance || [],
+                  habitLogs: habitLogs || [],
+                  allHabits: habits || [],
+                  assignments: assignments || [],
+                });
+
+                // Refresh live settings summary in Sara's memory
+                getAppNotificationSettings().then(res => setNotifSettingsSummary(res.summary));
+
+                setMessages(prev => prev.map(m =>
+                  m.id === saraMsgId
+                    ? { ...m, actionCard: { ...m.actionCard!, onConfirm: undefined, subtitle: `✓ Updated: ${displayLabel}` } }
+                    : m
+                ));
+              } catch (e: any) {
+                alert('Failed to update notification setting: ' + e.message);
+              }
+            },
+          };
         }
       } else {
         // Fallback to extraction if no function call
@@ -1034,15 +1321,23 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           <Text style={[s.modeSegmentText, !isVoiceMode && s.modeSegmentTextActive]}>Text</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[s.modeSegmentBtn, isVoiceMode && s.modeSegmentBtnActive]}
-          onPress={() => { if (!isVoiceMode) setIsVoiceMode(true); }}
+          style={[s.modeSegmentBtn, { opacity: 0.9 }]}
+          activeOpacity={0.7}
+          onPress={() => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            Alert.alert(
+              'Voice Mode Coming Soon 🔒',
+              'Dual-stream ambient AI voice mode is under final calibration. Stay tuned for the upcoming update!',
+              [{ text: 'Got it' }]
+            );
+          }}
         >
           <Ionicons
-            name="mic-outline" size={13}
-            color={isVoiceMode ? colors.background : colors.textMuted}
+            name="lock-closed-outline" size={12}
+            color="#FF9F0A"
             style={{ marginRight: 4 }}
           />
-          <Text style={[s.modeSegmentText, isVoiceMode && s.modeSegmentTextActive]}>Voice</Text>
+          <Text style={[s.modeSegmentText, { color: '#FF9F0A', fontFamily: FONT_FAMILY.bold }]}>Voice</Text>
         </TouchableOpacity>
       </View>
 
@@ -1059,18 +1354,27 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
             {!isKeyboardVisible && (
               <>
                 <VoiceOrb size="small" isActive={isRunning} />
-                <Text style={s.emptyGreeting}>Hey, what's on your mind?</Text>
-                <Text style={s.emptySub}>I can plan your day, log things, or just talk it through</Text>
+                <Text style={s.emptyGreeting}>{dynamicGreeting}</Text>
+                <Text style={s.emptySub}>No fluff. Just tell me what needs to happen.</Text>
                 
                 <View style={[s.starterList, { marginTop: 10 }]}>
-                  {STARTER_PROMPTS.map((p, i) => (
+                  {starterPrompts.map((p, i) => (
                     <TouchableOpacity
                       key={i}
                       style={s.starterChip}
-                      onPress={() => sendMessage(p.label)}
-                      activeOpacity={0.72}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        sendMessage(p.command);
+                      }}
+                      activeOpacity={0.75}
                     >
-                      <Text style={s.starterChipText}>{p.label}</Text>
+                      <View style={[s.starterIconBadge, { backgroundColor: p.accent + '12' }]}>
+                        <Ionicons name={p.icon as any} size={14} color={p.accent} />
+                      </View>
+                      <View style={{ flex: 1, justifyContent: 'center' }}>
+                        <Text style={s.starterChipTitle}>{p.title}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textMuted} style={{ opacity: 0.4 }} />
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -1113,36 +1417,62 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
 
         {/* ── Input bar ── */}
         <View style={[s.inputBar, { paddingBottom: isKeyboardVisible ? 10 : 16 }]}>
-          <TouchableOpacity style={s.inputWrap} activeOpacity={1} onPress={() => inputRef.current?.focus()}>
-            <TextInput
-              ref={inputRef}
-              style={s.textInput}
-              placeholder="Message Sara"
-              placeholderTextColor={colors.textTertiary}
-              value={input}
-              onChangeText={setInput}
-              onSubmitEditing={() => sendMessage(input)}
-              returnKeyType="send"
-              editable={!isRunning}
-              multiline={false}
-            />
-          </TouchableOpacity>
-          {input.trim().length > 0 ? (
-            <TouchableOpacity 
-              style={[s.sendBtn, isRunning && { opacity: 0.5 }]}
-              onPress={() => sendMessage(input)}
-              disabled={isRunning}
+          {/* Quick Command chips — hidden during processing and when keyboard is up */}
+          {!isRunning && !isKeyboardVisible && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={s.quickChipsContainer}
+              contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingBottom: 10 }}
+              keyboardShouldPersistTaps="handled"
             >
-              <Ionicons name="send" size={18} color="#fff" style={{ marginLeft: 2 }} />
-            </TouchableOpacity>
-          ) : (
-            <VoiceMicButton
-              onToggleRecord={inlineDictationToggle}
-              isRecording={isVoiceRecording}
-              isProcessing={isRunning}
-              disabled={isRunning}
-            />
+              {QUICK_COMMANDS.map((cmd) => (
+                <AnimatedPressable
+                  key={cmd.label}
+                  style={s.quickChip}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    sendMessage(cmd.command);
+                  }}
+                >
+                  <Ionicons name={cmd.icon} size={13} color={colors.accentPrimary} style={s.quickChipIcon} />
+                  <Text style={s.quickChipLabel}>{cmd.label}</Text>
+                </AnimatedPressable>
+              ))}
+            </ScrollView>
           )}
+          <View style={[s.inputRow, { paddingHorizontal: 16 }]}>
+            <TouchableOpacity style={s.inputWrap} activeOpacity={1} onPress={() => inputRef.current?.focus()}>
+              <TextInput
+                ref={inputRef}
+                style={s.textInput}
+                placeholder="Message Sara"
+                placeholderTextColor={colors.textTertiary}
+                value={input}
+                onChangeText={setInput}
+                onSubmitEditing={() => sendMessage(input)}
+                returnKeyType="send"
+                editable={!isRunning}
+                multiline={false}
+              />
+            </TouchableOpacity>
+            {input.trim().length > 0 ? (
+              <TouchableOpacity 
+                style={[s.sendBtn, isRunning && { opacity: 0.5 }]}
+                onPress={() => sendMessage(input)}
+                disabled={isRunning}
+              >
+                <Ionicons name="send" size={18} color="#fff" style={{ marginLeft: 2 }} />
+              </TouchableOpacity>
+            ) : (
+              <VoiceMicButton
+                onToggleRecord={inlineDictationToggle}
+                isRecording={isVoiceRecording}
+                isProcessing={isRunning}
+                disabled={isRunning}
+              />
+            )}
+          </View>
         </View>
 
         {/* Cap 3: Tier-1 silent auto-execute HUD toast */}
@@ -1236,34 +1566,126 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
       <Modal visible={aboutModalOpen} transparent animationType="fade">
         <View style={s.aboutOverlay}>
           <View style={s.aboutCard}>
+            {/* Header */}
             <View style={s.aboutHeader}>
-              <View style={s.aboutIconBadge}>
-                <Ionicons name="planet" size={24} color={colors.textPrimary} />
+              <View style={s.aboutOrbBadge}>
+                <Ionicons name="planet" size={26} color={colors.accentPrimary} />
               </View>
               <Text style={s.aboutTitle}>S.A.R.A.</Text>
-              <Text style={s.aboutSubtitle}>Systematic AI Resource Agent</Text>
+              <Text style={s.aboutSubtitle}>Systematic AI Resource Agent · Engine v2</Text>
             </View>
 
             <ScrollView style={s.aboutScroll} showsVerticalScrollIndicator={false}>
-              <Text style={s.aboutSectionTitle}>What I can do</Text>
-              <Text style={s.aboutBody}>
-                I am a deeply integrated AI assistant built directly into ZenTrack. I manage your entire life context seamlessly. You can ask me to:
-                {'\n'}• Plan your day and restructure timelines.
-                {'\n'}• Create, update, or delete tasks and events.
-                {'\n'}• Track your habits and streak patterns.
-                {'\n'}• Mark your university attendance.
-                {'\n'}• Log your gym workouts, water, and sleep.
-              </Text>
 
-              <Text style={s.aboutSectionTitle}>Efficiency & Privacy</Text>
-              <Text style={s.aboutBody}>
-                I run via a direct, high-speed pipeline. Your data is analyzed instantly in-memory to generate context-aware responses, meaning I know your schedule before you even type a word. Everything stays securely within your ZenTrack ecosystem.
-              </Text>
+              {/* ── Live Capabilities ── */}
+              <Text style={s.aboutSectionTitle}>What I can do right now</Text>
+              {[
+                { icon: 'calendar-outline', color: '#89dceb', label: 'Bulk scheduling', desc: 'Create 5+ tasks or events in one command via parallel DAG execution' },
+                { icon: 'flash-outline', color: colors.accentPrimary, label: 'Instant actions', desc: 'Log habits, mark attendance, complete tasks — confirmed with a single tap' },
+                { icon: 'analytics-outline', color: '#5eda9e', label: 'Cross-module insights', desc: 'Connects your tasks, attendance, gym & goals into one daily picture' },
+                { icon: 'navigate-outline', color: '#ff9f4d', label: 'Deep navigation', desc: 'Navigate and pre-fill any screen in the app with [NAVIGATE:X] tokens' },
+                { icon: 'search-outline', color: '#64D2FF', label: 'Live web search', desc: 'Searches the internet and uses results to answer or create context' },
+                { icon: 'mic-outline', color: '#a599ff', label: 'Voice capture', desc: 'Tap mic in chat — speak, transcribe, send. No manual typing needed' },
+                { icon: 'notifications-outline', color: '#ff9f4d', label: 'Notification control', desc: 'Ask Sara to adjust any reminder or schedule setting by name' },
+              ].map((cap, i) => (
+                <View key={i} style={s.aboutCapRow}>
+                  <View style={[s.aboutCapIcon, { backgroundColor: cap.color + '1A' }]}>
+                    <Ionicons name={cap.icon as any} size={16} color={cap.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.aboutCapLabel}>{cap.label}</Text>
+                    <Text style={s.aboutCapDesc}>{cap.desc}</Text>
+                  </View>
+                </View>
+              ))}
 
-              <Text style={s.aboutSectionTitle}>Future Capabilities</Text>
-              <Text style={s.aboutBody}>
-                Soon, I will be capable of proactive nudging, voice-first ambient intelligence, autonomous habit correction, and deep predictive analytics to optimize your workflow before you even realize you're falling behind.
-              </Text>
+              {/* ── Engine v2 Intelligence ── */}
+              <Text style={s.aboutSectionTitle}>Intelligence Architecture</Text>
+              {[
+                { icon: 'git-branch-outline', color: '#a599ff', label: 'Cap 1 · Contextual Memory Graph', desc: 'Remembers patterns, stress markers, and preferences across sessions via on-device graph' },
+                { icon: 'filter-outline', color: '#5eda9e', label: 'Cap 2 · Intent-Ranked Context', desc: 'Detects your intent in <5ms and injects only the relevant data — zero wasted tokens' },
+                { icon: 'shield-checkmark-outline', color: '#89dceb', label: 'Cap 3 · Confidence-Gated Actions', desc: '3-tier gateway: silent auto-execute (Tier 1), 1-tap pill (Tier 2), full card (Tier 3)' },
+                { icon: 'eye-outline', color: '#ff9f4d', label: 'Cap 4 · Reasoning Transparency', desc: 'Live step-by-step reasoning feed shows you exactly what Sara is thinking' },
+                { icon: 'bulb-outline', color: '#a599ff', label: 'Cap 5 · Predictive Surface Injection', desc: 'Proactively surfaces banners on each screen before you even open Sara' },
+                { icon: 'pulse-outline', color: '#5eda9e', label: 'Cap 6 · Dual-Stream Voice', desc: 'VAD auto-detects speech end; sentence-level TTS starts speaking before response finishes' },
+                { icon: 'person-outline', color: '#64D2FF', label: 'Cap 7 · Behavioral Fingerprint', desc: 'Silently adapts tone, module order, and quote style based on your real usage patterns' },
+              ].map((eng, i) => (
+                <View key={i} style={s.aboutCapRow}>
+                  <View style={[s.aboutCapIcon, { backgroundColor: eng.color + '1A' }]}>
+                    <Ionicons name={eng.icon as any} size={16} color={eng.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.aboutCapLabel}>{eng.label}</Text>
+                    <Text style={s.aboutCapDesc}>{eng.desc}</Text>
+                  </View>
+                </View>
+              ))}
+
+              {/* ── Ecosystem Reach ── */}
+              <Text style={s.aboutSectionTitle}>Ecosystem reach — 12 modules</Text>
+              <View style={s.aboutModuleGrid}>
+                {[
+                  { icon: 'checkmark-done-outline', label: 'Tasks' },
+                  { icon: 'flame-outline', label: 'Habits' },
+                  { icon: 'calendar-outline', label: 'Calendar' },
+                  { icon: 'document-text-outline', label: 'Notes' },
+                  { icon: 'trophy-outline', label: 'Goals' },
+                  { icon: 'barbell-outline', label: 'Gym' },
+                  { icon: 'school-outline', label: 'Attendance' },
+                  { icon: 'reader-outline', label: 'Assignments' },
+                  { icon: 'book-outline', label: 'Learning' },
+                  { icon: 'briefcase-outline', label: 'Jobs' },
+                  { icon: 'analytics-outline', label: 'Analytics' },
+                  { icon: 'notifications-outline', label: 'Notifications' },
+                ].map((mod, i) => (
+                  <View key={i} style={s.aboutModuleChip}>
+                    <Ionicons name={mod.icon as any} size={12} color={colors.accentPrimary} />
+                    <Text style={s.aboutModuleLabel}>{mod.label}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* ── Future Roadmap ── */}
+              <Text style={s.aboutSectionTitle}>Coming next</Text>
+              {[
+                { icon: 'radio-outline', color: '#ff9f4d', label: 'Ambient voice mode', desc: 'Always-on wake-word detection — talk hands-free anywhere in the app' },
+                { icon: 'git-merge-outline', color: '#a599ff', label: 'Proactive mission planner', desc: 'Sara autonomously plans your entire week based on deadlines, energy, and goals' },
+                { icon: 'trending-up-outline', color: '#5eda9e', label: 'Predictive habit correction', desc: 'Detects streak-break risk 48h ahead and intervenes with a micro-challenge' },
+                { icon: 'globe-outline', color: '#89dceb', label: 'Google Workspace sync', desc: 'Read/write Gmail, Calendar, Drive and Docs directly from Sara chat' },
+                { icon: 'aperture-outline', color: '#64D2FF', label: 'Gemini Live real-time', desc: 'Sub-200ms conversational AI with vision — Sara sees your screen and reacts' },
+              ].map((fut, i) => (
+                <View key={i} style={s.aboutCapRow}>
+                  <View style={[s.aboutCapIcon, { backgroundColor: fut.color + '1A' }]}>
+                    <Ionicons name={fut.icon as any} size={16} color={fut.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.aboutCapLabel}>{fut.label}</Text>
+                    <Text style={s.aboutCapDesc}>{fut.desc}</Text>
+                  </View>
+                </View>
+              ))}
+
+              {/* ── Live Stats ── */}
+              <Text style={s.aboutSectionTitle}>Sara's current view of your world</Text>
+              <View style={s.aboutStatsRow}>
+                <View style={s.aboutStatChip}>
+                  <Text style={s.aboutStatNum}>{(tasks || []).length}</Text>
+                  <Text style={s.aboutStatLabel}>Tasks</Text>
+                </View>
+                <View style={s.aboutStatChip}>
+                  <Text style={s.aboutStatNum}>{(habits || []).length}</Text>
+                  <Text style={s.aboutStatLabel}>Habits</Text>
+                </View>
+                <View style={s.aboutStatChip}>
+                  <Text style={s.aboutStatNum}>{(goals || []).length}</Text>
+                  <Text style={s.aboutStatLabel}>Goals</Text>
+                </View>
+                <View style={s.aboutStatChip}>
+                  <Text style={s.aboutStatNum}>{(gymLogs || []).length}</Text>
+                  <Text style={s.aboutStatLabel}>Gym logs</Text>
+                </View>
+              </View>
+              <View style={{ height: 8 }} />
             </ScrollView>
 
             <TouchableOpacity style={s.aboutCloseBtn} activeOpacity={0.8} onPress={() => setAboutModalOpen(false)}>
@@ -1393,14 +1815,24 @@ const makeStyles = (colors: any) => StyleSheet.create({
       },
       starterList: { width: '100%', gap: 10 },
       starterChip: {
-        backgroundColor: colors.surface,
-        borderRadius: 14,
-        paddingVertical: 14,
-        paddingHorizontal: 18,
-        borderWidth: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.surface2,
+        borderRadius: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderWidth: StyleSheet.hairlineWidth,
         borderColor: colors.border,
+        gap: 10,
       },
-      starterChipText: { fontSize: 15, fontWeight: '500', color: colors.textSecondary },
+      starterIconBadge: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
+      starterChipTitle: { fontSize: 13, fontWeight: '500', color: colors.textPrimary },
 
       // Thread
       thread: { flex: 1 },
@@ -1408,13 +1840,41 @@ const makeStyles = (colors: any) => StyleSheet.create({
 
       // Input bar
       inputBar: {
+        flexDirection: 'column',
+        paddingTop: 6,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: colors.border,
+      },
+      // Row within input bar (TextInput + send/mic button)
+      inputRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: colors.border,
+        paddingVertical: 6,
+      },
+      // Quick command chips scroller
+      quickChipsContainer: {
+        flexGrow: 0,
+      },
+      quickChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.surface2,
+        borderRadius: RADIUS.full,
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+        gap: 5,
+      },
+      quickChipIcon: {
+        // Inline with label
+      },
+      quickChipLabel: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 12,
+        color: colors.textSecondary,
+        letterSpacing: 0.1,
       },
       inputWrap: {
         flex: 1,
@@ -1540,29 +2000,30 @@ const makeStyles = (colors: any) => StyleSheet.create({
       // ── About Modal ─────────────────────────────────────────────────────────
       aboutOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.7)',
+        backgroundColor: 'rgba(0,0,0,0.75)',
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 24,
+        paddingHorizontal: 20,
       },
       aboutCard: {
         width: '100%',
-        maxHeight: '80%',
-        backgroundColor: '#1C1C1E', // Obsidian dark gray
-        borderRadius: 20,
-        padding: 24,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(255,255,255,0.08)',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.8,
-        shadowRadius: 20,
-        elevation: 12,
+        maxHeight: '88%',
+        backgroundColor: '#141416',
+        borderRadius: 24,
+        padding: 22,
+        borderWidth: 1,
+        borderColor: 'rgba(165,153,255,0.15)',
+        shadowColor: '#a599ff',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 24,
+        elevation: 14,
       },
       aboutHeader: {
         alignItems: 'center',
-        marginBottom: 24,
+        marginBottom: 20,
       },
+      // Old badge kept for compat — use aboutOrbBadge for the new design
       aboutIconBadge: {
         width: 48,
         height: 48,
@@ -1574,37 +2035,131 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: 'rgba(255,255,255,0.1)',
       },
+      aboutOrbBadge: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: 'rgba(165,153,255,0.10)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(165,153,255,0.30)',
+        shadowColor: '#a599ff',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+      },
       aboutTitle: {
-        fontSize: 20,
-        fontWeight: '600',
+        fontSize: 22,
+        fontFamily: FONT_FAMILY.bold,
         color: colors.textPrimary,
         letterSpacing: 0.5,
       },
       aboutSubtitle: {
         fontSize: 11,
-        fontWeight: '500',
-        color: colors.textMuted,
+        fontFamily: FONT_FAMILY.medium,
+        color: colors.accentPrimary,
         marginTop: 4,
         textTransform: 'uppercase',
-        letterSpacing: 1.5,
+        letterSpacing: 1.2,
+        opacity: 0.8,
       },
       aboutScroll: {
-        marginBottom: 20,
+        marginBottom: 16,
       },
       aboutSectionTitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: colors.textPrimary,
+        fontSize: 11,
+        fontFamily: FONT_FAMILY.bold,
+        color: colors.textMuted,
         marginTop: 20,
-        marginBottom: 8,
+        marginBottom: 10,
         textTransform: 'uppercase',
-        letterSpacing: 1,
+        letterSpacing: 1.2,
       },
+      // Legacy text style
       aboutBody: {
         fontSize: 14,
-        fontWeight: '400',
+        fontFamily: FONT_FAMILY.body,
         color: '#A0A0A5',
         lineHeight: 22,
+      },
+      // Capability row (icon badge + label + desc)
+      aboutCapRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+        marginBottom: 10,
+      },
+      aboutCapIcon: {
+        width: 32,
+        height: 32,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+      },
+      aboutCapLabel: {
+        fontSize: 13,
+        fontFamily: FONT_FAMILY.bold,
+        color: colors.textPrimary,
+        marginBottom: 2,
+      },
+      aboutCapDesc: {
+        fontSize: 12,
+        fontFamily: FONT_FAMILY.body,
+        color: colors.textMuted,
+        lineHeight: 17,
+      },
+      // Module grid (3-column chip wrap)
+      aboutModuleGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+      },
+      aboutModuleChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        backgroundColor: 'rgba(165,153,255,0.08)',
+        borderRadius: 20,
+        paddingVertical: 5,
+        paddingHorizontal: 10,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(165,153,255,0.2)',
+      },
+      aboutModuleLabel: {
+        fontSize: 11,
+        fontFamily: FONT_FAMILY.medium,
+        color: colors.accentPrimary,
+        opacity: 0.9,
+      },
+      // Live stats row
+      aboutStatsRow: {
+        flexDirection: 'row',
+        gap: 8,
+      },
+      aboutStatChip: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: 12,
+        paddingVertical: 10,
+        alignItems: 'center',
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: 'rgba(255,255,255,0.08)',
+      },
+      aboutStatNum: {
+        fontSize: 20,
+        fontFamily: FONT_FAMILY.bold,
+        color: colors.accentPrimary,
+      },
+      aboutStatLabel: {
+        fontSize: 10,
+        fontFamily: FONT_FAMILY.medium,
+        color: colors.textMuted,
+        marginTop: 2,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
       },
       aboutCloseBtn: {
         backgroundColor: 'transparent',
@@ -1612,11 +2167,11 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderRadius: 12,
         alignItems: 'center',
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderColor: 'rgba(255,255,255,0.12)',
       },
       aboutCloseBtnText: {
         color: colors.textPrimary,
         fontSize: 15,
-        fontWeight: '500',
+        fontFamily: FONT_FAMILY.medium,
       },
     });

@@ -84,13 +84,14 @@ export async function registerBackgroundProactiveAgent() {
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_AI_NUDGE);
     if (!isRegistered) {
       await BackgroundFetch.registerTaskAsync(BACKGROUND_AI_NUDGE, {
-        minimumInterval: 60 * 60, // Minimum 1 hour between checks
-        stopOnTerminate: false,   // Continue running if app is closed (Android)
-        startOnBoot: true,        // Run on device boot (Android)
+        minimumInterval: 60 * 60,
+        stopOnTerminate: false,
+        startOnBoot: true,
       });
       console.log('[ProactiveAgent] Background AI registered successfully.');
     }
   } catch (err) {
-    console.warn('[ProactiveAgent] Failed to register background task:', err);
+    // Silently suppress — BackgroundFetch setup errors should not crash the app
+    console.warn('[ProactiveAgent] Background task registration failed:', err);
   }
 }

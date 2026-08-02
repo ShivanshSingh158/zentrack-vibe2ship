@@ -12,7 +12,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, ScrollView } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../../theme/tokens';
 
@@ -74,6 +74,8 @@ function StepRow({ step, index, colors }: StepRowProps) {
 export default function ReasoningFeed({ steps, visible }: ReasoningFeedProps) {
   const { colors } = useTheme();
   const containerOpacity = useRef(new Animated.Value(0)).current;
+  // Scroll ref for auto-scroll-to-end as new reasoning steps arrive
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     Animated.timing(containerOpacity, {
@@ -90,14 +92,28 @@ export default function ReasoningFeed({ steps, visible }: ReasoningFeedProps) {
 
   return (
     <Animated.View style={[styles.container, { opacity: containerOpacity }]}>
-      {visibleSteps.map((step, idx) => (
-        <StepRow
-          key={step.id}
-          step={step}
-          index={idx}
-          colors={colors}
-        />
-      ))}
+      {/* maxHeight: 180 ≈ 3 visible steps on any device.
+          Older steps scroll up automatically as new ones appear,
+          maintaining the "live terminal" feel without pushing the
+          input bar off-screen on iPhone SE / budget Android. */}
+      <View style={styles.scrollConstraint}>
+        <ScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() =>
+            scrollRef.current?.scrollToEnd({ animated: true })
+          }
+        >
+          {visibleSteps.map((step, idx) => (
+            <StepRow
+              key={step.id}
+              step={step}
+              index={idx}
+              colors={colors}
+            />
+          ))}
+        </ScrollView>
+      </View>
       <PulsingDot colors={colors} />
     </Animated.View>
   );
@@ -146,6 +162,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACE.xs,
     paddingVertical: SPACE.xs,
     gap: 4,
+  },
+  // Constrain height so ReasoningFeed never pushes the input bar off-screen.
+  // 180dp ≈ 3 visible reasoning steps on any screen size.
+  scrollConstraint: {
+    maxHeight: 180,
+    overflow: 'hidden',
   },
   stepRow: {
     flexDirection: 'row',

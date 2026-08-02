@@ -113,3 +113,86 @@ export function getOverloadSuggestion(
 
   return { type: "maintain", weightDelta: 0, reason: "Keep current weight", recommended: currentWeight };
 }
+
+// ─── 1RM Calculator ──────────────────────────────────────────────────────────
+// Epley formula: 1RM = weight × (1 + reps/30)
+// Most accurate for reps 1–10. Clamp reps to max 30 to avoid absurd estimates.
+
+export function calculate1RM(weight: number, reps: number): number {
+  if (weight <= 0 || reps <= 0) return 0;
+  const clampedReps = Math.min(reps, 30);
+  return Math.round(weight * (1 + clampedReps / 30));
+}
+
+// ─── PR Storage ──────────────────────────────────────────────────────────────
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const PR_STORAGE_KEY = 'zentrack_exercise_prs_v1';
+
+export interface ExercisePR {
+  best1RM: number;        // estimated 1RM kg
+  heaviestWeight: number; // actual heaviest set weight logged
+  bestReps: number;       // reps at heaviest weight
+  achievedAt: string;     // ISO date string
+}
+
+export type PRRecord = Record<string, ExercisePR>; // keyed by lowercase exercise name
+
+async function readPRs(): Promise<PRRecord> {
+  try {
+    const raw = await AsyncStorage.getItem(PR_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writePRs(record: PRRecord): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PR_STORAGE_KEY, JSON.stringify(record));
+  } catch { /* ignore */ }
+}
+
+/** 
+ * Check if a completed set is a new Personal Record for this exercise.
+ * Returns the previous and new 1RM so the UI can show the celebration.
+ */
+export async function detectPR(
+  exerciseName: string,
+  weight: number,
+  reps: number,
+): Promise<{ isNewPR: boolean; previous1RM: number; new1RM: number }> {
+  if (weight <= 0 || reps <= 0) return { isNewPR: false, previous1RM: 0, new1RM: 0 };
+
+  const key = exerciseName.toLowerCase().trim();
+  const new1RM = calculate1RM(weight, reps);
+  const prs = await readPRs();
+  const existing = prs[key];
+
+  const previous1RM = existing?.best1RM ?? 0;
+
+  if (!existing || new1RM > existing.best1RM) {
+    prs[key] = {
+      best1RM: new1RM,
+      heaviestWeight: weight,
+      bestReps: reps,
+      achievedAt: new Date().toISOString().slice(0, 10),
+    };
+    await writePRs(prs);
+    return { isNewPR: true, previous1RM, new1RM };
+  }
+
+  return { isNewPR: false, previous1RM, new1RM };
+}
+
+/** Get all stored PRs — used by PR Hall of Fame sheet */
+export async function getAllPRs(): Promise<PRRecord> {
+  return readPRs();
+}
+
+/** Clear all PRs (for testing / account reset) */
+export async function clearAllPRs(): Promise<void> {
+  await AsyncStorage.removeItem(PR_STORAGE_KEY);
+}
+

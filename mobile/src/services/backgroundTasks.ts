@@ -160,12 +160,16 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
 
 export const registerWeeklyReviewTask = async () => {
   try {
-    await BackgroundFetch.registerTaskAsync(WEEKLY_REVIEW_TASK, {
-      minimumInterval: 60 * 60, // Check every hour
-      stopOnTerminate: false, 
-      startOnBoot: true,
-    });
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(WEEKLY_REVIEW_TASK);
+    if (!isRegistered) {
+      await BackgroundFetch.registerTaskAsync(WEEKLY_REVIEW_TASK, {
+        minimumInterval: 60 * 60,
+        stopOnTerminate: false,
+        startOnBoot: true,
+      });
+    }
   } catch (err) {
-    console.error('Failed to register task:', err);
+    // Silently suppress — BackgroundFetch setup errors should not crash the app
+    console.warn('[WeeklyReview] Background task registration failed:', err);
   }
 };

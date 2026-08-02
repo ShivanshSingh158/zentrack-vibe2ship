@@ -33,8 +33,9 @@ import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import {
   Task, CustomEvent, GymLog, AttendanceSubject,
-  HabitLog, Habit, Assignment,
+  HabitLog, Habit, Assignment, WaterLog, SleepLog, AttendanceLog,
 } from '../contexts/MobileDataContext';
+import { UserGymPlanDoc } from '../types/gym.types';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 import { COLLECTION } from '../config/constants';
 
@@ -94,12 +95,20 @@ export async function requestNotificationPermissions() {
 
     // Actionable Notification Categories
     await Notifications.setNotificationCategoryAsync('class_reminder', [
-      { identifier: 'mark_present', buttonTitle: 'Present' },
-      { identifier: 'mark_bunking', buttonTitle: 'Bunking', options: { isDestructive: true } },
+      { identifier: 'mark_present', buttonTitle: '✅ Present' },
+      { identifier: 'mark_bunking', buttonTitle: '❌ Bunking', options: { isDestructive: true } },
     ]);
     await Notifications.setNotificationCategoryAsync('gym_reminder', [
-      { identifier: 'start_workout', buttonTitle: 'Start Workout' },
-      { identifier: 'snooze_15m', buttonTitle: 'Snooze 15m' },
+      { identifier: 'start_workout', buttonTitle: '🏋️ Start Workout' },
+      { identifier: 'snooze_15m', buttonTitle: '⏰ Snooze 15m' },
+    ]);
+    await Notifications.setNotificationCategoryAsync('task_reminder', [
+      { identifier: 'mark_task_done', buttonTitle: '✅ Mark Done' },
+      { identifier: 'open_tasks', buttonTitle: '📋 Open Tasks' },
+    ]);
+    await Notifications.setNotificationCategoryAsync('habit_reminder', [
+      { identifier: 'log_habit', buttonTitle: '🔥 Log It' },
+      { identifier: 'open_habits', buttonTitle: '📊 View Habits' },
     ]);
 
     return true;
@@ -153,6 +162,13 @@ export interface ScheduleParams {
   habitLogs?: HabitLog[];
   allHabits?: Habit[];
   assignments?: Assignment[];
+  waterLogs?: WaterLog[];
+  sleepLogs?: SleepLog[];
+  // BUG-N1/N2 FIX: attendanceLogs lets us skip post-class log reminders for
+  // sessions the user already marked present/absent/cancelled.
+  attendanceLogs?: AttendanceLog[];
+  // BUG-N5 FIX: userGymPlan lets gym reminders respect custom workout plans.
+  userGymPlan?: UserGymPlanDoc | null;
 }
 
 // ── O1/M10: Data Fingerprint Cache ───────────────────────────────────────────
@@ -162,36 +178,65 @@ export interface ScheduleParams {
 // same as last run, skip entirely. Estimated savings: 50-100 cycles per session.
 let _lastScheduleFingerprint: string | null = null;
 
+/**
+ * BUG-4 FIX: Call this before invoking scheduleAllNotifications() directly
+ * from a settings screen. Without this, changing a notification preference
+ * (e.g., enabling sleep reminders) while data counts are unchanged causes
+ * the fingerprint check to short-circuit and skip the reschedule entirely.
+ */
+export function clearScheduleCache() {
+  _lastScheduleFingerprint = null;
+}
+
 function _buildFingerprint(params: ScheduleParams): string {
   return [
     params.tasks.length,
     (params.habitLogs || []).length,
     (params.gymLogs || []).length,
     (params.assignments || []).length,
+    (params.waterLogs || []).length,
+    (params.sleepLogs || []).length,
+    // BUG-N2 FIX: Include attendanceLogs count so logging attendance triggers
+    // a fresh reschedule (removing the now-stale post-class log reminder).
+    (params.attendanceLogs || []).length,
     // Include today's date so midnight always triggers a fresh schedule
     new Date().toISOString().slice(0, 10),
   ].join('|');
 }
 
-export async function scheduleAllNotifications(params: ScheduleParams) {
-  const { tasks = [], customEvents = [], gymLogs = [], attendance = [], habitLogs = [], allHabits = [], assignments = [] } = params;
+let _isScheduling = false;
+let _latestParams: ScheduleParams | null = null;
 
-  // O1/M10 FIX: Skip full reschedule if data fingerprint hasn't changed.
-  const fingerprint = _buildFingerprint({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments });
-  if (fingerprint === _lastScheduleFingerprint) {
-    console.log('[Notifications] Data unchanged — skipping reschedule.');
+export async function scheduleAllNotifications(params: ScheduleParams) {
+  _latestParams = params;
+  if (_isScheduling) {
     return;
   }
-  _lastScheduleFingerprint = fingerprint;
+  
+  _isScheduling = true;
+  
+  while (_latestParams) {
+    const currentParams = _latestParams;
+    _latestParams = null;
+    
+    const { tasks = [], customEvents = [], gymLogs = [], attendance = [], habitLogs = [], allHabits = [], assignments = [], waterLogs = [], sleepLogs = [], attendanceLogs = [], userGymPlan } = currentParams;
 
-  await Notifications.cancelAllScheduledNotificationsAsync();
+    // O1/M10 FIX: Skip full reschedule if data fingerprint hasn't changed.
+    const fingerprint = _buildFingerprint({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, waterLogs, sleepLogs, attendanceLogs, userGymPlan });
+    if (fingerprint === _lastScheduleFingerprint) {
+      console.log('[Notifications] Data unchanged — skipping reschedule.');
+      continue;
+    }
+    _lastScheduleFingerprint = fingerprint;
 
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const dStr = String(now.getDate()).padStart(2, '0');
-  const todayStr = `${y}-${m}-${dStr}`;
-  const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+    await Notifications.cancelAllScheduledNotificationsAsync();
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const dStr = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${m}-${dStr}`;
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
 
   // ── Load ALL user preferences in ONE batched AsyncStorage read ───────────────
   // Previously these were 25+ individual await calls = 25 bridge round-trips.
@@ -211,8 +256,21 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
   const STR_KEYS = [
     'zentrack_notif_morning_brief_time', 'zentrack_notif_overdue_nudge_time', 'zentrack_notif_quiet_start',
     'zentrack_notif_quiet_end', 'zentrack_notif_task_buffer', 'zentrack_notif_inactivity_days',
+    'zentrack_notif_quiet_end', 'zentrack_notif_task_buffer', 'zentrack_notif_inactivity_days',
     'zentrack_notif_habit_streak_time', 'zentrack_default_notif_time',
     '@gym_notification_time', '@gym_notification_enabled',
+    '@zentrack_water_reminder_freq', '@zentrack_sleep_reminders_enabled',
+    '@zentrack_sleep_reminder_night', '@zentrack_sleep_reminder_morning',
+    // Per-subject class notification prefs — read once and stored in kv
+    ...attendance.flatMap(s => [
+      `@class_notif_enabled_${s.id}`,
+      `@class_notif_offset_${s.id}`,       // legacy single offset (kept for compat)
+      `@class_notif_pre_offsets_${s.id}`,  // JSON e.g. "[-90,-60,-30]" — pre-class alerts
+      `@class_notif_log_delay_${s.id}`,    // minutes after class END before log reminder (default 0)
+      `@class_notif_first_pre_${s.id}`,    // 'true'/'false' — send 3× pre-warnings for first session
+      `@class_notif_lab_mid_${s.id}`,      // 'true'/'false' — send mid-lab (60 min) reminder
+      `@class_notif_lab_end_delay_${s.id}`,// minutes after lab END before log reminder (default 0)
+    ]),
   ];
 
   const allPairs = await AsyncStorage.multiGet([...BOOL_KEYS, ...STR_KEYS]);
@@ -344,17 +402,36 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
       if (saraEscalation && modGym) {
         const yesterday = new Date(now);
         yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().slice(0, 10);
+        // BUG-N8 FIX: Use local date components instead of .toISOString() (UTC).
+        // toISOString() returns UTC, so at 12:30 AM IST (7 PM UTC previous day)
+        // it would report the wrong date.
+        const yyLocal = yesterday.getFullYear();
+        const ymLocal = String(yesterday.getMonth() + 1).padStart(2, '0');
+        const ydLocal = String(yesterday.getDate()).padStart(2, '0');
+        const yesterdayStr = `${yyLocal}-${ymLocal}-${ydLocal}`;
         // BUG-M7 FIX: Only complain about missed gym if yesterday was a SCHEDULED gym day.
-        // Previously this fired on ANY day where gymLogs existed but yesterday had none —
-        // which includes rest days and weekends when no workout was planned.
         const yesterdayDayIndex = WEEKDAY_TO_PLAN[yesterday.getDay()];
-        const yesterdayPlan = GYM_PLAN.find(p => p.dayIndex === yesterdayDayIndex);
-        const wasScheduledGymDay = yesterdayPlan && !yesterdayPlan.isRest;
+        // BUG-N5 FIX: Respect userGymPlan when available.
+        const effectivePlanForYesterday = userGymPlan?.customDays?.[yesterdayDayIndex] ||
+          GYM_PLAN.find(p => p.dayIndex === yesterdayDayIndex);
+        const wasScheduledGymDay = effectivePlanForYesterday && !effectivePlanForYesterday.isRest;
         const missedGym = wasScheduledGymDay && !gymLogs.some(g => g.date === yesterdayStr);
         if (missedGym) {
           title = 'S.A.R.A Here 🤖';
           body = `I didn't see a workout logged yesterday. Are we skipping two days in a row? Let's go. Today: ${summary}.`;
+        }
+
+        // I8 IMPROVEMENT: Include the most at-risk subject name in the morning brief.
+        if (modAttendance && attendance.length > 0) {
+          const THRESHOLD = 75;
+          const atRisk = attendance
+            .filter(s => s.classesTotal > 0 && ((s.classesAttended / s.classesTotal) * 100) < THRESHOLD)
+            .sort((a, b) => (a.classesAttended / a.classesTotal) - (b.classesAttended / b.classesTotal));
+          if (atRisk.length > 0) {
+            const worst = atRisk[0];
+            const pct = ((worst.classesAttended / worst.classesTotal) * 100).toFixed(0);
+            body += ` ⚠️ ${worst.name} attendance: ${pct}%.`;
+          }
         }
       }
 
@@ -389,14 +466,14 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
       if (parsedTime) {
         base.setHours(parsedTime.hours, parsedTime.minutes, 0, 0);
         const t1 = new Date(base.getTime() - taskBufferMin * 60 * 1000);
-        await schedule('Mission window 🎯', `Your mission opens in ${taskBufferMin} min: "${task.title}"`, t1, { taskId: task.id }, 'reminders');
+        await schedule('Mission window 🎯', `Your mission opens in ${taskBufferMin} min: "${task.title}"`, t1, { taskId: task.id, taskTitle: task.title }, 'reminders', actionableNotifs ? 'task_reminder' : undefined);
         const t15 = new Date(base.getTime() - 15 * 60 * 1000);
         if (taskBufferMin > 15) {
-          await schedule('T-15 minutes ⚡', `Almost time: ${task.title}`, t15, { taskId: task.id }, 'reminders');
+          await schedule('T-15 minutes ⚡', `Almost time: ${task.title}`, t15, { taskId: task.id, taskTitle: task.title }, 'reminders', actionableNotifs ? 'task_reminder' : undefined);
         }
       } else {
         base.setHours(defaultTime.hours, defaultTime.minutes, 0, 0);
-        await schedule('Daily target 📋', `Pending today: "${task.title}"`, base, { taskId: task.id });
+        await schedule('Daily target 📋', `Pending today: "${task.title}"`, base, { taskId: task.id, taskTitle: task.title }, 'default', actionableNotifs ? 'task_reminder' : undefined);
       }
     }
   }
@@ -428,15 +505,87 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
       .sort((a, b) => (b.streak || 0) - (a.streak || 0))
       .slice(0, 6);
     for (const habit of prioritizedHabits) {
-      const title = saraEscalation ? 'S.A.R.A Warning ⚠️' : 'Streak at risk 🔥';
+      const streakCount = habit.streak || 0;
+      const title = saraEscalation ? 'S.A.R.A Warning ⚠️' : `${habit.emoji || '🔥'} Streak at risk!`;
+      // BUG-N7 FIX: Personalised body text per habit instead of generic message.
       const body = saraEscalation
-        ? `Your ${habit.streak}-day streak for "${habit.name}" is about to break. Don't ruin your momentum now.`
-        : `"${habit.name}" — ${habit.streak} day streak ends at midnight if you skip today.`;
-      await schedule(title, body, trigger, { type: 'habit_streak', habitId: habit.id }, saraEscalation ? 'sara_critical' : 'habits');
+        ? `Your ${streakCount}-day streak for "${habit.name}" is about to break. Don't ruin your momentum now.`
+        : `${streakCount} days of "${habit.name}" — don't let midnight reset you. One tap to keep it alive.`;
+      await schedule(title, body, trigger, { type: 'habit_streak', habitId: habit.id }, saraEscalation ? 'sara_critical' : 'habits', actionableNotifs && !saraEscalation ? 'habit_reminder' : undefined);
     }
   }
 
-  // ── 5 & 6. Assignment due alerts ─────────────────────────────────────────────
+  // ── 3b. Per-habit daily reminders (user-configurable per habit) ───────────────
+  // Reads @habit_notif_enabled_{id} and @habit_notif_time_{id} for each habit.
+  // Schedules for the next 7 days so reminders persist across app opens.
+  // Notification has the 'habit_reminder' category → 🔥 Log It logs to Firestore.
+  if (modHabits && (allHabits?.length ?? 0) > 0) {
+    const habitsWithReminders = allHabits ?? [];
+
+    // Batch-read ALL AsyncStorage keys in one call (1 bridge round-trip)
+    const notifKeys = habitsWithReminders.flatMap(h => [
+      `@habit_notif_enabled_${h.id}`,
+      `@habit_notif_time_${h.id}`,
+    ]);
+    const notifPairs = notifKeys.length > 0
+      ? await AsyncStorage.multiGet(notifKeys)
+      : [];
+    const notifKV: Record<string, string | null> = {};
+    notifPairs.forEach(([k, v]) => { notifKV[k] = v; });
+
+    for (const habit of habitsWithReminders) {
+      const isEnabled = notifKV[`@habit_notif_enabled_${habit.id}`] === 'true';
+      if (!isEnabled) continue;
+
+      const timeStr = notifKV[`@habit_notif_time_${habit.id}`];
+      let rH = 20, rM = 0; // default 8 PM
+      if (timeStr) {
+        const [h, m] = timeStr.split(':').map(Number);
+        if (!isNaN(h) && !isNaN(m)) { rH = h; rM = m; }
+      }
+
+      // Schedule for next 7 days (ensures daily coverage between reschedule cycles)
+      for (let dayOffset = 0; dayOffset <= 6; dayOffset++) {
+        const fireDate = new Date(now);
+        fireDate.setDate(fireDate.getDate() + dayOffset);
+        fireDate.setHours(rH, rM, 0, 0);
+        if (fireDate <= now) continue; // already passed
+
+        // Use local date string (not UTC) to match how logs are stored
+        const fdY = fireDate.getFullYear();
+        const fdM = String(fireDate.getMonth() + 1).padStart(2, '0');
+        const fdD = String(fireDate.getDate()).padStart(2, '0');
+        const dateStr = `${fdY}-${fdM}-${fdD}`;
+        // Don't remind if already logged for that day
+        const alreadyLogged = (habitLogs ?? []).some(
+          l => l.habitId === habit.id && l.date === dateStr
+        );
+        if (alreadyLogged) continue;
+
+        const streakVal = habit.streak ?? 0;
+        // BUG-N7 FIX: Personalised, action-oriented body text per habit.
+        let habitBody: string;
+        if (streakVal >= 30) {
+          habitBody = `${streakVal}-day streak! Keep the legend alive. 🏆`;
+        } else if (streakVal >= 7) {
+          habitBody = `${streakVal} days strong — don't break the chain now! 🔥`;
+        } else if (streakVal >= 1) {
+          habitBody = `${streakVal}-day streak at stake. Tap to log and keep going.`;
+        } else {
+          habitBody = `Start your streak today — every journey begins with one tap.`;
+        }
+        await schedule(
+          `${habit.emoji || '⭐'} ${habit.name}`,
+          habitBody,
+          fireDate,
+          { type: 'habit_reminder', habitId: habit.id },
+          'habits',
+          actionableNotifs ? 'habit_reminder' : undefined,
+        );
+      }
+    }
+  }
+
   // BUG-M3 FIX: Now gated by modAssignments (not modAttendance).
   // BUG-M1 FIX: Assignment notifications now use user's defaultNotifTime instead of hardcoded 09:00.
   if (modAssignments) {
@@ -465,13 +614,19 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
     const THRESHOLD = 75;
     for (const subj of attendance) {
       if (!subj.classesTotal) continue;
-      const pct = (subj.classesAttended / subj.classesTotal) * 100;
+      const totalAtt = (subj.classesAttended || 0) + (subj.labsAttended || 0);
+      const totalTotal = (subj.classesTotal || 0) + (subj.labsTotal || 0);
+      if (!totalTotal) continue;
+      const pct = (totalAtt / totalTotal) * 100;
       if (pct < THRESHOLD) {
-        const trigger = dateAtHM(now, 9, 0);
+        // BUG-N6 FIX: Use user's configured default notification time instead
+        // of hardcoded 9:00 AM. This respects the user's morning preferences.
+        const trigger = dateAtHM(now, defaultTime.hours, defaultTime.minutes);
         const title = saraEscalation ? 'S.A.R.A Critical Alert 🚨' : 'Attendance warning 📉';
+        const needed = Math.ceil((THRESHOLD / 100 * totalTotal - totalAtt) / (1 - THRESHOLD / 100));
         const body = saraEscalation 
-          ? `Your attendance in ${subj.name} is slipping to ${pct.toFixed(0)}%. You absolutely cannot afford to miss this lecture.`
-          : `${subj.name}: ${pct.toFixed(0)}% — below ${THRESHOLD}% threshold. Missing more classes could fail you.`;
+          ? `${subj.name} attendance is at ${pct.toFixed(0)}%. You need to attend ${needed} more class${needed !== 1 ? 'es' : ''} to get back above ${THRESHOLD}%.`
+          : `${subj.name}: ${pct.toFixed(0)}% (need ${needed} more to reach ${THRESHOLD}%). Don't fall further behind.`;
         
         await schedule(title, body, trigger, { type: 'attendance_warning', subjectId: subj.id }, saraEscalation ? 'sara_critical' : 'default');
       }
@@ -522,16 +677,22 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
 
     // ── 7. Gym workout reminder ──────────────────────────────────────────────
     const planIndex = WEEKDAY_TO_PLAN[dayOfWeek] || 7;
-    const plan = GYM_PLAN.find(p => p.dayIndex === planIndex);
+    // BUG-N5 FIX: Prefer userGymPlan's custom day over the static template.
+    // If the user has customised day 3 (e.g. changed Legs to Deadlifts), use that.
+    const plan = userGymPlan?.customDays?.[planIndex] ||
+      GYM_PLAN.find(p => p.dayIndex === planIndex);
 
     if (plan && !plan.isRest && gymNotifEnabled) {
       const hasLogged = gymLogs.some(g => g.date === dateStr);
       if (!hasLogged) {
+        // I2 IMPROVEMENT: Include workout name + exercise count in message.
+        const exerciseCount = plan.exercises?.length || 0;
+        const countSuffix = exerciseCount > 0 ? ` · ${exerciseCount} exercises` : '';
         await schedule(
-          'Gym day 🏋️',
-          `Time for ${plan.name}. One workout closer to your goal.`,
+          `Gym day 🏋️ — ${plan.name}`,
+          `${plan.focus || plan.name}${countSuffix}. One workout closer to your goal.`,
           dateAtHM(d, gymNotifHours, gymNotifMinutes),
-          { type: 'gym' },
+          { type: 'gym', planName: plan.name },
           'default',
           actionableNotifs ? 'gym_reminder' : undefined
         );
@@ -548,39 +709,162 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
       );
     }
 
-    // ── 13. Class reminders ──────────────────────────────────────────────────
+    // ── 13. Class + Lab reminders (smart multi-trigger) ────────────────────────
     if (!modAttendance) continue;
-    const dayClasses: { subject: string; subjectId: string; time: string }[] = [];
+
+    // ── Build flat session list for this day ─────────────────────────────────
+    interface DaySession {
+      subject: string;
+      subjectId: string;
+      time: string;           // raw time string e.g. "10:00 AM"
+      isLab: boolean;
+      startMs: number;        // absolute ms
+    }
+    const daySessions: DaySession[] = [];
+
     attendance.forEach(subj => {
-      const sch = subj.schedule?.[dayOfWeek.toString()];
+      const enabledRaw = kv[`@class_notif_enabled_${subj.id}`];
+      if (enabledRaw === 'false') return;
+
+      const sch = subj.schedule?.[dayOfWeek.toString()]
+        || subj.schedule?.[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayOfWeek]]
+        || subj.schedule?.[['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dayOfWeek].toLowerCase()];
       if (!sch) return;
-      (sch.classes || []).forEach((c: any) => c.time && dayClasses.push({ subject: subj.name, subjectId: subj.id, time: c.time }));
-      (sch.labs    || []).forEach((l: any) => l.time && dayClasses.push({ subject: `${subj.name} Lab`, subjectId: subj.id, time: l.time }));
+
+      const classes  = (sch.classes  || []) as any[];
+      const labs     = (sch.labs     || []) as any[];
+      const classCnt = (sch.classCount || 0) as number;
+      const labCnt   = (sch.labCount   || 0) as number;
+
+      // Class slots
+      if (classes.length > 0) {
+        classes.forEach((c: any) => {
+          const parsed = parseTimeString(c?.time ?? '');
+          const startMs = parsed
+            ? dateAtHM(d, parsed.hours, parsed.minutes).getTime()
+            : dateAtHM(d, 9, 0).getTime();
+          daySessions.push({ subject: subj.name, subjectId: subj.id!, time: c?.time ?? '', isLab: false, startMs });
+        });
+      } else {
+        for (let ci = 0; ci < classCnt; ci++) {
+          daySessions.push({ subject: subj.name, subjectId: subj.id!, time: '', isLab: false, startMs: dateAtHM(d, 9, 0).getTime() + ci * 60 * 60 * 1000 });
+        }
+      }
+
+      // Lab slots
+      if (labs.length > 0) {
+        labs.forEach((l: any) => {
+          const parsed = parseTimeString(l?.time ?? '');
+          const startMs = parsed
+            ? dateAtHM(d, parsed.hours, parsed.minutes).getTime()
+            : dateAtHM(d, 14, 0).getTime();
+          daySessions.push({ subject: `${subj.name} Lab`, subjectId: subj.id!, time: l?.time ?? '', isLab: true, startMs });
+        });
+      } else {
+        for (let li = 0; li < labCnt; li++) {
+          daySessions.push({ subject: `${subj.name} Lab`, subjectId: subj.id!, time: '', isLab: true, startMs: dateAtHM(d, 14, 0).getTime() + li * 2 * 60 * 60 * 1000 });
+        }
+      }
     });
 
-    const parsedClasses = dayClasses
-      .map(c => ({ ...c, parsed: parseTimeString(c.time) }))
-      .filter(c => c.parsed !== null)
-      .sort((a, b) => (a.parsed!.hours * 60 + a.parsed!.minutes) - (b.parsed!.hours * 60 + b.parsed!.minutes));
+    // Sort ascending by start time to know which is "first session of the day"
+    daySessions.sort((a, b) => a.startMs - b.startMs);
+    const firstSessionMs = daySessions[0]?.startMs ?? null;
 
-    for (let ci = 0; ci < parsedClasses.length; ci++) {
-      const cls = parsedClasses[ci];
-      const classTime = dateAtHM(d, cls.parsed!.hours, cls.parsed!.minutes);
-      
-      // BUG-H3 FIX: Was firing 1h after class START (while user is still in class).
-      // Now fires 15 min after a standard 60-min class ends = 75 min after start.
-      const triggerTime = new Date(classTime.getTime() + 75 * 60 * 1000);
+    // ── Schedule each session's notifications ────────────────────────────────
+    for (const sess of daySessions) {
+      const sid = sess.subjectId;
+      const CLASS_DURATION_MS = 60 * 60 * 1000;   // 1 hour
+      const LAB_DURATION_MS   = 2 * 60 * 60 * 1000; // 2 hours
 
-      await schedule(
-        'Log Attendance 📝',
-        `Were you present for ${cls.subject}?`,
-        triggerTime,
-        { type: 'class', subject: cls.subject, subjectId: cls.subjectId, time: cls.time },
-        'default',
-        actionableNotifs ? 'class_reminder' : undefined
-      );
+      // ── Pre-class early warnings (FIRST session of day only) ────────────────
+      const isFirstSession = sess.startMs === firstSessionMs;
+      const firstPreEnabled = kv[`@class_notif_first_pre_${sid}`] !== 'false'; // default true
+
+      if (isFirstSession && firstPreEnabled) {
+        // Read user-customised pre-offsets (default: 90, 60, 30 minutes before)
+        let preOffsets: number[] = [-90, -60, -30];
+        const preRaw = kv[`@class_notif_pre_offsets_${sid}`];
+        if (preRaw) {
+          try { const parsed = JSON.parse(preRaw); if (Array.isArray(parsed)) preOffsets = parsed; } catch {}
+        }
+
+        for (const offsetMin of preOffsets) {
+          const triggerMs = sess.startMs + offsetMin * 60 * 1000;
+          const absMin = Math.abs(offsetMin);
+          const timeStr = absMin >= 60 ? `${absMin / 60}h` : `${absMin} min`;
+          await schedule(
+            `📚 ${sess.subject} in ${timeStr}`,
+            `${sess.isLab ? 'Lab' : 'Class'} starts at ${sess.time || 'scheduled time'} — get ready!`,
+            new Date(triggerMs),
+            { type: 'class_pre', subject: sess.subject, subjectId: sid },
+            'reminders',
+            actionableNotifs ? 'class_reminder' : undefined,
+          );
+        }
+      }
+
+      if (!sess.isLab) {
+        // ── Regular class: 1 notification at end (post-class log reminder) ────
+        const logDelayMs = parseInt(kv[`@class_notif_log_delay_${sid}`] || '0', 10) * 60 * 1000;
+        const endTrigger = new Date(sess.startMs + CLASS_DURATION_MS + logDelayMs);
+        // BUG-N1 FIX: Skip the post-class log reminder if the user already logged
+        // attendance for this subject on this date. Previously this always fired
+        // even if the user had already marked present mid-class.
+        const alreadyLoggedClass = attendanceLogs.some(
+          l => l.subjectId === sid && l.date === dateStr && (l.type === 'class' || !l.type) && !l.isExtra
+        );
+        if (!alreadyLoggedClass) {
+          await schedule(
+            `📝 Log attendance — ${sess.subject}`,
+            `Class just ended. Were you present? Tap to mark it now.`,
+            endTrigger,
+            { type: 'class_log', subject: sess.subject, subjectId: sid, time: sess.time },
+            'default',
+            actionableNotifs ? 'class_reminder' : undefined,
+          );
+        }
+      } else {
+        // ── Lab: notification at 60 min mark (mid-lab) ───────────────────────
+        const labMidEnabled = kv[`@class_notif_lab_mid_${sid}`] !== 'false'; // default true
+        if (labMidEnabled) {
+          const midTrigger = new Date(sess.startMs + 60 * 60 * 1000);
+          // Only fire mid-lab reminder if lab not already logged
+          const alreadyLoggedLabMid = attendanceLogs.some(
+            l => l.subjectId === sid && l.date === dateStr && l.type === 'lab' && !l.isExtra
+          );
+          if (!alreadyLoggedLabMid) {
+            await schedule(
+              `🧪 ${sess.subject} — 1st hour done`,
+              `Log attendance for hour 1 of lab if your system requires it.`,
+              midTrigger,
+              { type: 'lab_mid', subject: sess.subject, subjectId: sid, time: sess.time },
+              'default',
+              actionableNotifs ? 'class_reminder' : undefined,
+            );
+          }
+        }
+
+        // ── Lab: notification at end (2hr mark + optional delay) ──────────────
+        const labEndDelayMs = parseInt(kv[`@class_notif_lab_end_delay_${sid}`] || '0', 10) * 60 * 1000;
+        const labEndTrigger = new Date(sess.startMs + LAB_DURATION_MS + labEndDelayMs);
+        // BUG-N1 FIX: Skip lab-end log reminder if lab already logged.
+        const alreadyLoggedLabEnd = attendanceLogs.some(
+          l => l.subjectId === sid && l.date === dateStr && l.type === 'lab' && !l.isExtra
+        );
+        if (!alreadyLoggedLabEnd) {
+          await schedule(
+            `📝 Log attendance — ${sess.subject}`,
+            `Lab session done! Were you present? Tap to mark it now.`,
+            labEndTrigger,
+            { type: 'lab_log', subject: sess.subject, subjectId: sid, time: sess.time },
+            'default',
+            actionableNotifs ? 'class_reminder' : undefined,
+          );
+        }
+      }
     }
-  }
+  } // end for (let i = 0; i < 7; i++)
 
   // ── 12. Inactivity nudge ─────────────────────────────────────────────────────
   if (inactivityNudge) {
@@ -602,7 +886,97 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
     }
   }
 
+  // ── 14. Sleep Reminders ────────────────────────────────────────────────────────
+  const sleepRemindersEnabled = kv['@zentrack_sleep_reminders_enabled'] === 'true';
+  if (sleepRemindersEnabled) {
+    const nightTime = parseHM(kv['@zentrack_sleep_reminder_night'] || '22:00');
+    const morningTime = parseHM(kv['@zentrack_sleep_reminder_morning'] || '07:00');
+    
+    const nightTrigger = dateAtHM(now, nightTime.hours, nightTime.minutes);
+    const morningTrigger = dateAtHM(now, morningTime.hours, morningTime.minutes);
+
+    // Night reminder: don't fire if already logged sleep today
+    const hasLoggedSleepToday = sleepLogs.some(s => s.date === todayStr);
+    if (!hasLoggedSleepToday && nightTrigger > now) {
+      await schedule(
+        'Time to wind down 🌙',
+        'Ready for bed soon? Log your sleep to maintain your health streak.',
+        nightTrigger, { type: 'sleep_night' }
+      );
+    }
+
+    // BUG-N4 FIX: Morning reminder asks "how did you sleep last night?"
+    // so it should check YESTERDAY's sleep log, not today's.
+    // If the user logged sleep last night, this reminder is unnecessary.
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const ysY = yesterday.getFullYear();
+    const ysM = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const ysD = String(yesterday.getDate()).padStart(2, '0');
+    const yesterdayStr = `${ysY}-${ysM}-${ysD}`;
+    const hasLoggedSleepYesterday = sleepLogs.some(s => s.date === yesterdayStr);
+    if (!hasLoggedSleepYesterday && morningTrigger > now) {
+      await schedule(
+        'Good Morning ☀️',
+        'How did you sleep last night? Log your hours to track your recovery.',
+        morningTrigger, { type: 'sleep_morning' }
+      );
+    }
+  }
+
+  // ── 15. Water Reminders ────────────────────────────────────────────────────────
+  const waterReminderFreq = parseInt(kv['@zentrack_water_reminder_freq'] || '0', 10);
+  if (waterReminderFreq > 0) {
+    // BUG-N3 / I1 FIX: Check how much water has already been logged today.
+    // If user has reached 2000ml (standard daily goal), skip ALL water reminders for today.
+    // This prevents nagging the user who has already stayed well-hydrated.
+    const DAILY_WATER_GOAL_ML = 2000;
+    const waterLoggedTodayMl = waterLogs
+      .filter(w => w.date === todayStr)
+      .reduce((sum, w) => sum + (w.amountMl || 0), 0);
+    const waterGoalMet = waterLoggedTodayMl >= DAILY_WATER_GOAL_ML;
+
+    const startHour = 8;
+    const endHour = 21;
+    // I5 IMPROVEMENT: Schedule for the next 3 days to ensure coverage
+    // even if the app isn't opened for 2 days.
+    for (let dayOffset = 0; dayOffset <= 2; dayOffset++) {
+      const isToday = dayOffset === 0;
+      // On today only: skip if daily goal is already met
+      if (isToday && waterGoalMet) continue;
+
+      for (let h = startHour; h <= endHour; h += waterReminderFreq) {
+        // Build the trigger date properly by starting from a clean base date
+        const baseDay = new Date(now);
+        baseDay.setDate(baseDay.getDate() + dayOffset);
+        const waterTrigger = dateAtHM(baseDay, h, 0);
+        
+        // Prevent "5-minute gap" issue: only schedule if >30 mins in the future
+        const minGap = 30 * 60 * 1000;
+        if (waterTrigger.getTime() <= now.getTime() + minGap) continue;
+
+        // Dynamic body text based on how much user has logged today
+        let waterBody: string;
+        if (isToday && waterLoggedTodayMl > 0) {
+          const remaining = DAILY_WATER_GOAL_ML - waterLoggedTodayMl;
+          const remainingL = (remaining / 1000).toFixed(1);
+          waterBody = `${waterLoggedTodayMl}ml logged today — ${remainingL}L to hit your 2L goal! 💧`;
+        } else {
+          waterBody = 'Time to drink some water and stay hydrated! 💧';
+        }
+
+        await schedule(
+          'Hydration Check 💧',
+          waterBody,
+          waterTrigger, { type: 'water_reminder' }
+        );
+      }
+    }
+  }
+
   console.log('[Notifications] All notifications scheduled ✅');
+  } // end of while(_latestParams) loop
+  _isScheduling = false;
 }
 
 // ── Test Notification ────────────────────────────────────────────────────────
@@ -680,25 +1054,33 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
     // BUG-C2 FIX: Was querying where('completed', '==', false) — the Task schema
     // uses a 'status' string field, NOT a 'completed' boolean. This caused the
     // background fetch to always return 0 tasks, making all night notifications stale.
-    const [tasksSnap, eventsSnap, gymSnap, attendanceSnap, habitsSnap, habitLogsSnap, assignmentsSnap] = await Promise.all([
+    // I3 FIX: Added attendance_logs query so BUG-N1 fix (skip already-logged sessions)
+    // works correctly in the background, not just when the app is open.
+    const [tasksSnap, eventsSnap, gymSnap, attendanceSnap, attendanceLogsSnap, habitsSnap, habitLogsSnap, assignmentsSnap, waterSnap, sleepSnap] = await Promise.all([
       getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', userId), where('status', 'in', ['pending', 'in_progress']))),
       getDocs(query(collection(db, COLLECTION.CALENDAR_EVENTS), where('userId', '==', userId))),
       getDocs(query(collection(db, COLLECTION.GYM_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
       getDocs(query(collection(db, COLLECTION.ATTENDANCE), where('userId', '==', userId))),
+      getDocs(query(collection(db, COLLECTION.ATTENDANCE_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
       getDocs(query(collection(db, COLLECTION.HABITS), where('userId', '==', userId))),
       getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
-      getDocs(query(collection(db, COLLECTION.ASSIGNMENTS), where('userId', '==', userId)))
+      getDocs(query(collection(db, COLLECTION.ASSIGNMENTS), where('userId', '==', userId))),
+      getDocs(query(collection(db, COLLECTION.WATER_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
+      getDocs(query(collection(db, COLLECTION.SLEEP_LOGS), where('userId', '==', userId), where('date', '>=', todayStr)))
     ]);
 
     const tasks = tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
     const customEvents = eventsSnap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent));
     const gymLogs = gymSnap.docs.map(d => ({ id: d.id, ...d.data() } as GymLog));
     const attendance = attendanceSnap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceSubject));
+    const attendanceLogs = attendanceLogsSnap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceLog));
     const allHabits = habitsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Habit));
     const habitLogs = habitLogsSnap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog));
     const assignments = assignmentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment));
+    const waterLogs = waterSnap.docs.map(d => ({ id: d.id, ...d.data() } as WaterLog));
+    const sleepLogs = sleepSnap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog));
 
-    await scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, allHabits, habitLogs, assignments });
+    await scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, attendanceLogs, allHabits, habitLogs, assignments, waterLogs, sleepLogs });
     
     return BackgroundFetch.BackgroundFetchResult.NewData;
   } catch (error) {
@@ -769,3 +1151,122 @@ export async function registerForPushNotificationsAsync(): Promise<string | unde
 
   return token;
 }
+
+// ── App Notification Settings Reader for Sara ─────────────────────────────────
+
+export interface AppNotificationSettings {
+  modTasks: boolean;
+  modHabits: boolean;
+  modGym: boolean;
+  modAttendance: boolean;
+  modAssignments: boolean;
+  modFocus: boolean;
+  habitStreakAtRisk: boolean;
+  overdueNudge: boolean;
+  assignmentAlert48h: boolean;
+  assignmentAlert24h: boolean;
+  gymRestDay: boolean;
+  weeklyReview: boolean;
+  attendanceWarning: boolean;
+  morningBrief: boolean;
+  inactivityNudge: boolean;
+  xpMilestone: boolean;
+  quietHours: boolean;
+  quietStart: string;
+  quietEnd: string;
+  morningBriefTime: string;
+  overdueNudgeTime: string;
+  habitStreakTime: string;
+  taskBuffer: string;
+  weekendMode: boolean;
+  saraEscalation: boolean;
+  actionableNotifs: boolean;
+  gymNotificationTime: string;
+  gymNotificationEnabled: boolean;
+}
+
+export async function getAppNotificationSettings(): Promise<{ settings: AppNotificationSettings; summary: string }> {
+  const keys = [
+    'zentrack_notif_mod_tasks', 'zentrack_notif_mod_habits', 'zentrack_notif_mod_gym',
+    'zentrack_notif_mod_attendance', 'zentrack_notif_mod_assignments', 'zentrack_notif_mod_focus',
+    'zentrack_notif_habit_streak_risk', 'zentrack_notif_overdue_nudge',
+    'zentrack_notif_assignment_48h', 'zentrack_notif_assignment_24h', 'zentrack_notif_gym_rest_day',
+    'zentrack_notif_weekly_review', 'zentrack_notif_attendance_warning', 'zentrack_notif_morning_brief',
+    'zentrack_notif_inactivity_nudge', 'zentrack_notif_xp_milestone', 'zentrack_notif_quiet_hours',
+    'zentrack_notif_quiet_start', 'zentrack_notif_quiet_end', 'zentrack_notif_morning_brief_time',
+    'zentrack_notif_overdue_nudge_time', 'zentrack_notif_habit_streak_time', 'zentrack_notif_task_buffer',
+    'zentrack_notif_weekend_mode', 'zentrack_notif_sara_escalation', 'zentrack_notif_actionable_notifs',
+    '@gym_notification_time', '@gym_notification_enabled',
+  ];
+
+  try {
+    const results = await AsyncStorage.multiGet(keys);
+    const dict: Record<string, string | null> = Object.fromEntries(results);
+
+    const getB = (k: string, def = true) => {
+      const fullK = k.startsWith('@') ? k : `zentrack_notif_${k}`;
+      const v = dict[fullK];
+      return v === null || v === undefined ? def : v === 'true';
+    };
+    const getS = (k: string, def: string) => {
+      const fullK = k.startsWith('@') ? k : `zentrack_notif_${k}`;
+      return dict[fullK] ?? def;
+    };
+
+    const settings: AppNotificationSettings = {
+      modTasks: getB('mod_tasks'),
+      modHabits: getB('mod_habits'),
+      modGym: getB('mod_gym'),
+      modAttendance: getB('mod_attendance'),
+      modAssignments: getB('mod_assignments'),
+      modFocus: getB('mod_focus'),
+      habitStreakAtRisk: getB('habit_streak_risk'),
+      overdueNudge: getB('overdue_nudge'),
+      assignmentAlert48h: getB('assignment_48h'),
+      assignmentAlert24h: getB('assignment_24h'),
+      gymRestDay: getB('gym_rest_day', false),
+      weeklyReview: getB('weekly_review'),
+      attendanceWarning: getB('attendance_warning'),
+      morningBrief: getB('morning_brief'),
+      inactivityNudge: getB('inactivity_nudge'),
+      xpMilestone: getB('xp_milestone'),
+      quietHours: getB('quiet_hours'),
+      quietStart: getS('quiet_start', '23:00'),
+      quietEnd: getS('quiet_end', '07:00'),
+      morningBriefTime: getS('morning_brief_time', '07:30'),
+      overdueNudgeTime: getS('overdue_nudge_time', '08:00'),
+      habitStreakTime: getS('habit_streak_time', '20:00'),
+      taskBuffer: getS('task_buffer', '60'),
+      weekendMode: getB('weekend_mode', false),
+      saraEscalation: getB('sara_escalation'),
+      actionableNotifs: getB('actionable_notifs'),
+      gymNotificationTime: getS('@gym_notification_time', '18:00'),
+      gymNotificationEnabled: getB('@gym_notification_enabled'),
+    };
+
+    const summary = `═══ NOTIFICATION & APP SETTINGS (LIVE REALTIME READ ACCESS) ═══
+- Morning Briefing: ${settings.morningBrief ? 'ENABLED' : 'DISABLED'} at ${settings.morningBriefTime}
+- Overdue Task Nudge: ${settings.overdueNudge ? 'ENABLED' : 'DISABLED'} at ${settings.overdueNudgeTime}
+- Habit Streak Risk Reminder: ${settings.habitStreakAtRisk ? 'ENABLED' : 'DISABLED'} at ${settings.habitStreakTime}
+- Quiet Hours: ${settings.quietHours ? 'ENABLED' : 'DISABLED'} (${settings.quietStart} to ${settings.quietEnd})
+- Pre-Task Warning Buffer: ${settings.taskBuffer} minutes before due time
+- Gym Reminder: ${settings.gymNotificationEnabled ? 'ENABLED' : 'DISABLED'} at ${settings.gymNotificationTime}
+- Module Toggles: Tasks (${settings.modTasks ? 'ON' : 'OFF'}), Habits (${settings.modHabits ? 'ON' : 'OFF'}), Gym (${settings.modGym ? 'ON' : 'OFF'}), Attendance (${settings.modAttendance ? 'ON' : 'OFF'}), Assignments (${settings.modAssignments ? 'ON' : 'OFF'})
+- Smart Alerts: Attendance Warning (${settings.attendanceWarning ? 'ON' : 'OFF'}), 48h Assignment Alert (${settings.assignmentAlert48h ? 'ON' : 'OFF'}), 24h Assignment Alert (${settings.assignmentAlert24h ? 'ON' : 'OFF'})`;
+
+    return { settings, summary };
+  } catch (err: any) {
+    return {
+      settings: {
+        modTasks: true, modHabits: true, modGym: true, modAttendance: true, modAssignments: true, modFocus: true,
+        habitStreakAtRisk: true, overdueNudge: true, assignmentAlert48h: true, assignmentAlert24h: true, gymRestDay: false,
+        weeklyReview: true, attendanceWarning: true, morningBrief: true, inactivityNudge: true, xpMilestone: true,
+        quietHours: true, quietStart: '23:00', quietEnd: '07:00', morningBriefTime: '07:30', overdueNudgeTime: '08:00',
+        habitStreakTime: '20:00', taskBuffer: '60', weekendMode: false, saraEscalation: true, actionableNotifs: true,
+        gymNotificationTime: '18:00', gymNotificationEnabled: true,
+      },
+      summary: '═══ NOTIFICATION & APP SETTINGS ═══\nDefaults active (Morning brief: 07:30, Quiet hours: 23:00-07:00, Task buffer: 60m)',
+    };
+  }
+}
+

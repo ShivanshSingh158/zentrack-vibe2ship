@@ -3,6 +3,7 @@
  */
 
 import React from 'react';
+import { formatDateShort } from '../../utils/dateUtils';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
@@ -38,8 +39,11 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
 
   return (
     <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
-        <View style={styles.sheet}>
+      <View style={styles.modalBg}>
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+          style={styles.sheet}
+        >
           <View style={styles.header}>
             <Text style={styles.title} numberOfLines={1}>{exerciseName} History</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -57,7 +61,7 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
                 const duration = log.workoutDurationMinutes ? `${log.workoutDurationMinutes} mins` : 'Completed';
                 return (
                   <View style={styles.item}>
-                    <Text style={styles.dateText}>{new Date(item.date).toLocaleDateString()}</Text>
+                    <Text style={styles.dateText}>{formatDateShort(item.date)}</Text>
                     <View style={styles.statsRow}>
                       <Text style={styles.stat}>{totalExercises} Exercises</Text>
                       <Text style={styles.stat}>{duration}</Text>
@@ -69,24 +73,40 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
               const ex = (item as any).ex!;
               const completedSets = ex.setsLog.filter((s: any) => s.completed);
               const maxWeight = Math.max(0, ...completedSets.filter((s:any) => s.weight).map((s: any) => s.weight as number));
-              const setsStr = completedSets.map((s: any) => `${s.reps || 0}x${s.weight || 0}kg`).join(', ');
+              const setsStr = completedSets.map((s: any) => `${s.reps || 0}×${s.weight || 0}kg`).join(', ');
+              
+              // Estimated 1RM using Epley formula on heaviest completed set
+              const best1RMSet = completedSets.reduce((best: any, s: any) => {
+                const rm = s.weight && s.reps ? s.weight * (1 + s.reps / 30) : 0;
+                const bestRm = best?.weight && best?.reps ? best.weight * (1 + best.reps / 30) : 0;
+                return rm > bestRm ? s : best;
+              }, null);
+              const est1RM = best1RMSet?.weight && best1RMSet?.reps
+                ? Math.round(best1RMSet.weight * (1 + best1RMSet.reps / 30))
+                : null;
               
               return (
                 <View style={styles.item}>
-                  <Text style={styles.dateText}>{new Date(item.date).toLocaleDateString()}</Text>
+                  <Text style={styles.dateText}>{formatDateShort(item.date)}</Text>
                   <View style={styles.statsRow}>
                     <Text style={styles.stat}>Max: {maxWeight > 0 ? maxWeight + 'kg' : '-'}</Text>
+                    {est1RM && (
+                      <View style={styles.oneRMBadge}>
+                        <Text style={styles.oneRMText}>~{est1RM}kg 1RM</Text>
+                      </View>
+                    )}
                     <Text style={styles.stat} numberOfLines={1}>Sets: {setsStr || 'None'}</Text>
                   </View>
                 </View>
               );
+
             }}
             ListEmptyComponent={
               <Text style={styles.emptyText}>No history found.</Text>
             }
           />
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -99,7 +119,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
       closeBtn: { padding: SPACE.sm, backgroundColor: colors.surface, borderRadius: RADIUS.full },
       item: { paddingVertical: SPACE.md, borderBottomWidth: 1, borderBottomColor: colors.surface2 },
       dateText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary, marginBottom: 4 },
-      statsRow: { flexDirection: 'row', gap: SPACE.lg },
+      statsRow: { flexDirection: 'row', gap: SPACE.sm, alignItems: 'center', flexWrap: 'wrap' },
       stat: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted },
+      oneRMBadge: { backgroundColor: '#f59e0b20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12 },
+      oneRMText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: '#f59e0b' },
       emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted, textAlign: 'center', marginTop: SPACE.xxl },
     });

@@ -14,11 +14,13 @@ export interface VoiceEngineCallbacks {
 
 // ── State ───────────────────────────────────────────────────────────────────────
 
+const g = globalThis as any;
 let _callbacks: VoiceEngineCallbacks | null = null;
-let _recording: Audio.Recording | null = null;
+let _recording: Audio.Recording | null = g.__expo_audio_recording || null;
 // BUG-H1 FIX: Track when recording started so we can reject sub-600ms clips
 // that Gemini cannot transcribe, instead of failing silently.
 let _recordingStartTime: number = 0;
+let _isPreparing: boolean = false;
 
 // ─── VAD State (Capability 6) ─────────────────────────────────────────────────
 let _vadPollInterval: NodeJS.Timeout | null = null;
@@ -41,7 +43,18 @@ export async function requestMicPermission(): Promise<boolean> {
 export async function startVoiceRecording(
   callbacks: VoiceEngineCallbacks
 ): Promise<void> {
+  if (_isPreparing) {
+    console.log('[Voice] Already preparing, skipping startVoiceRecording.');
+    return;
+  }
+  _isPreparing = true;
+
   try {
+    if (_recording) {
+      try { await _recording.stopAndUnloadAsync(); } catch (e) {}
+      _recording = null;
+      g.__expo_audio_recording = null;
+    }
     _callbacks = callbacks;
     const hasPermission = await requestMicPermission();
     if (!hasPermission) {
@@ -54,16 +67,21 @@ export async function startVoiceRecording(
       playsInSilentModeIOS: true,
     });
 
-    const { recording } = await Audio.Recording.createAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY
-    );
+    const recording = new Audio.Recording();
     _recording = recording;
+    g.__expo_audio_recording = recording;
+    
+    await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+    await recording.startAsync();
+
     _recordingStartTime = Date.now(); // BUG-H1 FIX: track start time
     callbacks.onStateChange('recording');
   } catch (err: any) {
     console.error('[Voice] Failed to start recording:', err);
     callbacks.onError(`Failed to start microphone: ${err.message}`);
     callbacks.onStateChange('idle');
+  } finally {
+    _isPreparing = false;
   }
 }
 
@@ -82,10 +100,21 @@ export async function startVADRecording(
   callbacks: VoiceEngineCallbacks,
   onVoiceDetected?: () => void  // Optional: fires when user starts speaking
 ): Promise<void> {
+  if (_isPreparing) {
+    console.log('[Voice] Already preparing, skipping startVADRecording.');
+    return;
+  }
+  _isPreparing = true;
+
   // Clean up any existing VAD session
   _stopVAD();
 
   try {
+    if (_recording) {
+      try { await _recording.stopAndUnloadAsync(); } catch (e) {}
+      _recording = null;
+      g.__expo_audio_recording = null;
+    }
     _callbacks = callbacks;
     const hasPermission = await requestMicPermission();
     if (!hasPermission) {
@@ -115,8 +144,13 @@ export async function startVADRecording(
         bitsPerSecond: 128000,
       },
     };
-    const { recording } = await Audio.Recording.createAsync(recordingOptions);
+    const recording = new Audio.Recording();
     _recording = recording;
+    g.__expo_audio_recording = recording;
+
+    await recording.prepareToRecordAsync(recordingOptions);
+    await recording.startAsync();
+
     _recordingStartTime = Date.now(); // BUG-H1 FIX: track start time for VAD mode too
     _vadActive = true;
     callbacks.onStateChange('recording');
@@ -169,6 +203,8 @@ export async function startVADRecording(
     callbacks.onError(`Failed to start microphone: ${err.message}`);
     callbacks.onStateChange('idle');
     _stopVAD();
+  } finally {
+    _isPreparing = false;
   }
 }
 
@@ -207,6 +243,7 @@ export async function stopAndTranscribe(
         const shortUri = _recording.getURI();
         if (shortUri) FileSystem.deleteAsync(shortUri, { idempotent: true }).catch(() => {});
         _recording = null;
+        g.__expo_audio_recording = null;
         callbacks.onError('Recording too short — hold the button and speak for at least 1 second.');
         callbacks.onStateChange('idle');
         return;
@@ -216,6 +253,7 @@ export async function stopAndTranscribe(
       audioUri = _recording.getURI() ?? null;
       console.log('[Voice] Recorded audio to:', audioUri);
       _recording = null;
+      g.__expo_audio_recording = null;
     }
 
     if (!audioUri) {
@@ -263,6 +301,7 @@ export async function cancelVoiceRecording(): Promise<void> {
       const uri = _recording.getURI();
       if (uri) FileSystem.deleteAsync(uri, { idempotent: true }).catch(() => {});
       _recording = null;
+      g.__expo_audio_recording = null;
     }
     _callbacks?.onStateChange('idle');
   } catch (e) {

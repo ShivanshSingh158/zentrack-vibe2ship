@@ -21,7 +21,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE } from '../../theme/tokens';
 import { GymExerciseLog, GymNavigationParamList } from '../../types/gym.types';
-import { calculateExerciseMaxWeight } from '../../utils/gymUtils';
+import { calculateExerciseMaxWeight, formatIndianDatePretty } from '../../utils/gymUtils';
 import { springs } from '../../theme/motion';
 import { feedback } from '../../utils/haptics';
 import { useMobileData } from '../../contexts/MobileDataContext';
@@ -92,6 +92,15 @@ export default function WorkoutSummaryScreen() {
 
   // useMemo: calculateGymStreak sorts+iterates all logs — only rerun when gymLogs changes.
   const currentStreak = useMemo(() => calculateGymStreak(gymLogs), [gymLogs]);
+
+  // G8: Fetch session notes from the log
+  const sessionNotes = useMemo(() => {
+    let logDate = targetDate;
+    if (!logDate && gymLogs.length > 0) {
+      logDate = [...gymLogs].sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
+    }
+    return gymLogs.find(l => l.date === logDate)?.notes || '';
+  }, [gymLogs, targetDate]);
 
   // P5 — Bouncy entrance animations
   const prScale = useSharedValue(0.6);
@@ -169,7 +178,7 @@ export default function WorkoutSummaryScreen() {
         <Text style={styles.title}>
           {readOnly
             ? targetDate
-              ? new Date(targetDate).toLocaleDateString()
+              ? formatIndianDatePretty(targetDate)
               : 'Session Summary'
             : 'Workout Complete!'}
         </Text>
@@ -230,6 +239,17 @@ export default function WorkoutSummaryScreen() {
             <Text style={styles.doneBtnText}>Done</Text>
           </TouchableOpacity>
         )}
+
+        {/* G8: Session Notes display */}
+        {sessionNotes ? (
+          <View style={styles.notesCard}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Ionicons name="create-outline" size={14} color={colors.textMuted} />
+              <Text style={styles.notesLabel}>Session Notes</Text>
+            </View>
+            <Text style={styles.notesText}>{sessionNotes}</Text>
+          </View>
+        ) : null}
       </View>
     </SafeAreaView>
   );
@@ -274,4 +294,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderRadius: RADIUS.md, alignItems: 'center',
       },
       doneBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.background },
+      notesCard: {
+        width: '100%', marginTop: SPACE.md,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: RADIUS.lg, padding: SPACE.md,
+        borderWidth: 1, borderColor: 'rgba(165,153,255,0.2)',
+      },
+      notesLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+      notesText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
     });

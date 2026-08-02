@@ -79,8 +79,7 @@ const s = StyleSheet.create({
     overflow: 'hidden',
   },
   touch: {
-    width: SIZE,
-    height: SIZE,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },

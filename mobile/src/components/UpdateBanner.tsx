@@ -32,16 +32,24 @@ const PURPLE_GLOW = 'rgba(165,153,255,0.3)';
 
 // ─── Parse human-readable changelog from the EAS update message ───────────────
 function parseChangelog(message: string): string[] {
-  if (!message) return ['Improvements and bug fixes.'];
+  if (!message) return ['System performance and stability improvements.'];
 
-  // Split on common delimiters
-  const raw = message
-    .replace(/^(fix|feat|chore|update|add|improve):/gi, '')
-    .split(/[,;\n|·•]+/)
-    .map(s => s.trim())
+  // Clean up prefix tags
+  const cleaned = message
+    .replace(/^(fix|feat|chore|update|add|improve|ZEN-GPT):\s*/gi, '')
+    .trim();
+
+  // Split on common delimiters (dashes, bullets, semicolons, or sentence periods)
+  const items = cleaned
+    .split(/(?:\s*[-•|;\n]+\s*|\.\s+)/)
+    .map(s => s.trim().replace(/\.$/, ''))
     .filter(s => s.length > 3);
 
-  return raw.length > 0 ? raw.slice(0, 6) : [message.trim()];
+  if (items.length > 0) {
+    return items.slice(0, 5).map(item => item.charAt(0).toUpperCase() + item.slice(1));
+  }
+
+  return [cleaned];
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -62,29 +70,35 @@ export function UpdateBanner() {
   }, []);
 
   const checkForUpdate = async () => {
-    // Only runs in production builds — silently skips in Expo Go / dev
-    if (__DEV__) return;
+    if (__DEV__ || !Updates.isEnabled) {
+      console.log('[Updates] Development mode or updates disabled. Skipping OTA check.');
+      return;
+    }
 
     try {
+      console.log('[Updates] Checking for OTA updates...');
       const check = await Updates.checkForUpdateAsync();
-      if (!check.isAvailable) return;
+      if (!check.isAvailable) {
+        console.log('[Updates] App is already up to date.');
+        return;
+      }
 
-      // Download silently in background while user uses the app
-      await Updates.fetchUpdateAsync();
+      console.log('[Updates] New update found. Downloading...');
+      const fetchedUpdate = await Updates.fetchUpdateAsync();
 
       // Read the --message string passed during `eas update --message "..."`
-      // expo-updates v29: message lives at Updates.manifest.metadata.message
-      const manifest = Updates.manifest as any;
+      const manifest = (fetchedUpdate as any)?.manifest || (Updates.manifest as any);
       const message: string =
         manifest?.metadata?.message ||
         manifest?.extra?.expoClient?.description ||
         manifest?.description ||
-        'Improvements and bug fixes.';
+        'System performance and stability improvements.';
 
+      console.log('[Updates] Downloaded update message:', message);
       setChangelog(parseChangelog(message));
       showBanner();
-    } catch {
-      // Never block the user — silently skip if any step fails
+    } catch (err: any) {
+      console.warn('[Updates] Failed to check/fetch update:', err?.message || err);
     }
   };
 
@@ -131,11 +145,25 @@ export function UpdateBanner() {
   const applyUpdate = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setIsReloading(true);
-    try {
-      await Updates.reloadAsync();
-    } catch {
-      setIsReloading(false);
-    }
+
+    // FIX: On Android, calling reloadAsync() while a <Modal> is open can cause a 
+    // grey screen / crash because the native window manager fails to destroy the surface.
+    // We must animate out and unmount the Modal FIRST.
+    Animated.parallel([
+      Animated.timing(opacityAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(slideAnim, { toValue: 80, duration: 200, useNativeDriver: true }),
+    ]).start(() => {
+      setVisible(false); // Unmounts the Modal
+
+      // Give React Native a moment to detach the Modal from the native hierarchy
+      setTimeout(async () => {
+        try {
+          await Updates.reloadAsync();
+        } catch {
+          setIsReloading(false);
+        }
+      }, 200);
+    });
   };
 
   const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.8] });
@@ -201,123 +229,116 @@ export function UpdateBanner() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(6,5,9,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: Platform.OS === 'ios' ? 48 : 32,
-    paddingHorizontal: 16,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
   },
   card: {
     width: '100%',
-    backgroundColor: '#0f0d1a',
-    borderRadius: 24,
-    padding: 28,
+    maxWidth: 380,
+    backgroundColor: '#121214',
+    borderRadius: 22,
+    padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.2)',
-    shadowColor: PURPLE,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 32,
-    elevation: 20,
+    borderColor: '#26262a',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 15,
     overflow: 'hidden',
   },
   glowOrb: {
     position: 'absolute',
-    top: -40,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: PURPLE_GLOW,
+    top: -50,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(165,153,255,0.15)',
   },
   iconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: PURPLE,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: 'rgba(165,153,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
-    shadowColor: PURPLE,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 12,
+    marginBottom: 16,
   },
   title: {
-    fontSize: 22,
-    fontFamily: 'Inter_700Bold',
-    color: '#fff',
-    marginBottom: 8,
+    fontSize: 20,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#ffffff',
+    marginBottom: 6,
     textAlign: 'center',
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   subtitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: 'Inter_400Regular',
-    color: 'rgba(255,255,255,0.55)',
+    color: '#8e8e93',
     textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24,
-    paddingHorizontal: 8,
+    lineHeight: 18,
+    marginBottom: 20,
+    paddingHorizontal: 6,
   },
   changelogBox: {
     width: '100%',
-    backgroundColor: PURPLE_DIM,
+    backgroundColor: '#1a1a1e',
     borderRadius: 14,
-    padding: 16,
-    marginBottom: 24,
+    padding: 14,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.15)',
+    borderColor: '#26262a',
   },
   changelogTitle: {
     fontSize: 10,
-    fontFamily: 'Inter_700Bold',
-    color: PURPLE,
-    letterSpacing: 1.5,
-    marginBottom: 12,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#a599ff',
+    letterSpacing: 1.2,
+    marginBottom: 10,
+    textTransform: 'uppercase',
   },
   changelogRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   changelogText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: 'Inter_400Regular',
-    color: 'rgba(255,255,255,0.82)',
-    lineHeight: 20,
+    color: '#e5e5ea',
+    lineHeight: 18,
   },
   updateBtn: {
     width: '100%',
-    height: 52,
+    height: 48,
     borderRadius: 14,
-    backgroundColor: PURPLE,
+    backgroundColor: '#a599ff',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    shadowColor: PURPLE,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    elevation: 10,
   },
   updateBtnText: {
-    fontSize: 16,
-    fontFamily: 'Inter_700Bold',
-    color: '#fff',
-    letterSpacing: 0.2,
+    fontSize: 15,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#000000',
+    letterSpacing: 0.1,
   },
   laterBtn: {
-    marginTop: 16,
-    paddingVertical: 8,
+    marginTop: 14,
+    paddingVertical: 6,
   },
   laterText: {
     fontSize: 13,
     fontFamily: 'Inter_400Regular',
-    color: 'rgba(255,255,255,0.35)',
+    color: '#8e8e93',
   },
 });

@@ -91,7 +91,6 @@ router.all('/', async (req: any, res: any) => {
     console.error('Failed to exchange code:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
-}
-
+});
 
 export default router;

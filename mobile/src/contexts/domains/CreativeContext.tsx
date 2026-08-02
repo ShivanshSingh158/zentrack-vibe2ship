@@ -1,16 +1,19 @@
-﻿/**
+/**
  * CreativeContext — ZenTrack Mobile
  *
  * Owns: storageNodes, notes (derived), learningTopics, jobs.
  *
- * Subscription strategy: DEMAND-BASED.
- * Opens when the user first visits Notes, Learning, or Jobs screen.
+ * Subscription strategy: DEMAND-BASED + OFFLINE-FIRST.
+ * On mount: reads all creative data from AsyncStorage instantly (~5ms).
+ * Notes, Learning, and Jobs screens show real data immediately, even when offline.
+ * Firestore snapshots silently update the cache when online.
  */
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { StorageNode, Note, LearningTopic, JobApplication } from "../MobileDataContext";
+import { readCreativeCache, writeCreativeCache } from "../../utils/domainCache";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface CreativeContextType {
@@ -43,23 +46,35 @@ export function CreativeProvider({
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
 
+  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  useEffect(() => {
+    let cancelled = false;
+    readCreativeCache().then(cached => {
+      if (cancelled) return;
+      if (cached.storageNodes   && cached.storageNodes.length > 0)   setStorageNodes(prev   => prev.length === 0 ? cached.storageNodes!   : prev);
+      if (cached.learningTopics && cached.learningTopics.length > 0) setLearningTopics(prev => prev.length === 0 ? cached.learningTopics! : prev);
+      if (cached.jobs           && cached.jobs.length > 0)           setJobs(prev           => prev.length === 0 ? cached.jobs!           : prev);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const openSubscriptions = (uid: string) => {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.STORAGE_NODES), where("userId", "==", uid)),
-      snap => setStorageNodes(snap.docs.map(d => ({ id: d.id, ...d.data() } as StorageNode))),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as StorageNode)); setStorageNodes(fresh); writeCreativeCache({ storageNodes: fresh }); },
       err => console.error("[Creative] storageNodes", err)
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.LEARNING_TOPICS), where("userId", "==", uid)),
-      snap => setLearningTopics(snap.docs.map(d => ({ id: d.id, ...d.data() } as LearningTopic))),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearningTopic)); setLearningTopics(fresh); writeCreativeCache({ learningTopics: fresh }); },
       err => console.error("[Creative] learningTopics", err)
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.JOBS), where("userId", "==", uid)),
-      snap => setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication))),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)); setJobs(fresh); writeCreativeCache({ jobs: fresh }); },
       err => console.error("[Creative] jobs", err)
     ));
   };

@@ -1,12 +1,22 @@
 /**
  * AddCardioModal — ZenTrack Mobile
+ * Redesigned to match Gym screen's dark minimalist aesthetic.
  */
 
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Modal,
+  TouchableOpacity,
+  Platform,
+  Animated,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE } from '../../theme/tokens';
-import { useTheme } from "../../contexts/ThemeContext";
+import { FONT_FAMILY, SPACE, RADIUS } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
+import * as Haptics from 'expo-haptics';
 
 interface Props {
   visible: boolean;
@@ -14,154 +24,236 @@ interface Props {
   onAdd: (type: string) => void;
 }
 
-const CARDIO_TYPES = [
-  'Cycling', 'Stairmaster', 'Elliptical', 'Rowing',
-  'Outdoor Run', 'Jump Rope', 'Swimming', 'Other'
+const CARDIO_TYPES: { label: string; icon: string }[] = [
+  { label: 'Treadmill',    icon: 'walk-outline' },
+  { label: 'Cycling',      icon: 'bicycle-outline' },
+  { label: 'Rowing',       icon: 'boat-outline' },
+  { label: 'Stairmaster',  icon: 'trending-up-outline' },
+  { label: 'Elliptical',   icon: 'sync-outline' },
+  { label: 'Outdoor Run',  icon: 'footsteps-outline' },
+  { label: 'Jump Rope',    icon: 'infinite-outline' },
+  { label: 'Swimming',     icon: 'water-outline' },
+  { label: 'Other',        icon: 'fitness-outline' },
 ];
 
 export function AddCardioModal({ visible, onClose, onAdd }: Props) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors } = useTheme();
   const [selectedType, setSelectedType] = useState<string | null>(null);
+  const slideAnim = useRef(new Animated.Value(500)).current;
+
+  useEffect(() => {
+    if (visible) {
+      setSelectedType(null);
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        damping: 22,
+        stiffness: 220,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      slideAnim.setValue(500);
+    }
+  }, [visible]);
+
+  const handleClose = () => {
+    Animated.timing(slideAnim, {
+      toValue: 500,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => onClose());
+  };
 
   const handleAdd = () => {
-    if (selectedType) {
-      onAdd(selectedType);
-      setSelectedType(null);
-      onClose();
-    }
+    if (!selectedType) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onAdd(selectedType);
+    setSelectedType(null);
+    handleClose();
+  };
+
+  const handleSelect = (label: string) => {
+    Haptics.selectionAsync();
+    setSelectedType(label);
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
-        <View style={styles.sheet}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Add Extra Cardio</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={24} color={colors.textPrimary} />
+    <Modal visible={visible} animationType="none" transparent statusBarTranslucent>
+      <View style={s.backdrop}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handleClose} />
+
+        <Animated.View style={[s.sheet, { transform: [{ translateY: slideAnim }] }]}>
+          {/* Drag Handle */}
+          <View style={s.handle} />
+
+          {/* Header */}
+          <View style={s.header}>
+            <Text style={s.title}>Add Cardio</Text>
+            <TouchableOpacity style={s.closeBtn} onPress={handleClose} activeOpacity={0.7}>
+              <Ionicons name="close" size={16} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.infoBox}>
-            <Ionicons name="walk" size={16} color={colors.textMuted} />
-            <Text style={styles.infoText}>Treadmill is always included. Add any extra cardio here.</Text>
+          {/* Cardio Type Grid */}
+          <View style={s.grid}>
+            {CARDIO_TYPES.map(({ label, icon }, index) => {
+              const isSelected = selectedType === label;
+              const isFullWidth = label === 'Other';
+
+              return (
+                <TouchableOpacity
+                  key={label}
+                  style={[
+                    s.chip,
+                    isFullWidth && s.chipFullWidth,
+                    isSelected && s.chipSelected,
+                  ]}
+                  onPress={() => handleSelect(label)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[s.chipIcon, isSelected && s.chipIconSelected]}>
+                    <Ionicons
+                      name={icon as any}
+                      size={18}
+                      color={isSelected ? '#000000' : '#a599ff'}
+                    />
+                  </View>
+                  <Text style={[s.chipLabel, isSelected && s.chipLabelSelected]} numberOfLines={1}>
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          <ScrollView contentContainerStyle={styles.pillsContainer}>
-            {CARDIO_TYPES.map(type => (
-              <TouchableOpacity
-                key={type}
-                style={[styles.pill, selectedType === type && styles.pillSelected]}
-                onPress={() => setSelectedType(type)}
-              >
-                <Text style={[styles.pillText, selectedType === type && styles.pillTextSelected]}>
-                  {type}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
+          {/* CTA */}
           <TouchableOpacity
-            style={[styles.addBtn, !selectedType && styles.addBtnDisabled]}
+            style={[s.addBtn, !selectedType && s.addBtnDisabled]}
             disabled={!selectedType}
             onPress={handleAdd}
+            activeOpacity={0.85}
           >
-            <Text style={styles.addBtnText}>Add Cardio Session</Text>
+            <Text style={[s.addBtnText, !selectedType && s.addBtnTextDisabled]}>
+              {selectedType ? `Add ${selectedType}` : 'Select a type above'}
+            </Text>
           </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      modalBg: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
-        justifyContent: 'flex-end',
-      },
-      sheet: {
-        backgroundColor: colors.background,
-        borderTopLeftRadius: RADIUS.xl,
-        borderTopRightRadius: RADIUS.xl,
-        padding: SPACE.lg,
-        paddingBottom: Platform.OS === 'ios' ? 40 : SPACE.xl,
-        minHeight: 400,
-      },
-      header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: SPACE.md,
-      },
-      title: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 20,
-        color: colors.textPrimary,
-      },
-      closeBtn: {
-        padding: SPACE.xs,
-        backgroundColor: colors.surface,
-        borderRadius: 20,
-      },
-      infoBox: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: 'rgba(196, 144, 255, 0.05)',
-        borderWidth: 1,
-        borderColor: 'rgba(196, 144, 255, 0.3)',
-        borderRadius: RADIUS.md,
-        padding: SPACE.sm,
-        marginBottom: SPACE.lg,
-        gap: SPACE.sm,
-      },
-      infoText: {
-        flex: 1,
-        fontFamily: FONT_FAMILY.body,
-        fontSize: 12,
-        color: colors.textMuted,
-      },
-      pillsContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: SPACE.sm,
-        paddingBottom: SPACE.lg,
-      },
-      pill: {
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderRadius: RADIUS.sm,
-        backgroundColor: '#1C1C1E',
-        borderWidth: 1,
-        borderColor: colors.border,
-      },
-      pillSelected: {
-        backgroundColor: 'rgba(255, 69, 58, 0.1)',
-        borderColor: 'rgba(255, 69, 58, 0.3)',
-      },
-      pillText: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: 14,
-        color: colors.textMuted,
-      },
-      pillTextSelected: {
-        fontFamily: FONT_FAMILY.bold,
-        color: '#FF453A',
-      },
-      addBtn: {
-        backgroundColor: '#C490FF',
-        borderRadius: RADIUS.md,
-        paddingVertical: 16,
-        alignItems: 'center',
-        marginTop: SPACE.sm,
-      },
-      addBtnDisabled: {
-        backgroundColor: '#3C3C3E',
-      },
-      addBtnText: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 16,
-        color: colors.background,
-      },
-    });
+const ACCENT = '#a599ff'; // ZenTrack purple accent
+
+const s = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#000000',
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    borderWidth: 1,
+    borderColor: '#27272A',
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignSelf: 'center',
+    marginBottom: 18,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+    paddingHorizontal: 4,
+  },
+  title: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 22,
+    color: '#ffffff',
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1C1C1E',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+    marginBottom: 20,
+  },
+  chip: {
+    width: '48.5%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#141416',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+    borderRadius: RADIUS.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  chipFullWidth: {
+    width: '100%',
+  },
+  chipSelected: {
+    backgroundColor: 'rgba(165,153,255,0.12)',
+    borderColor: 'rgba(165,153,255,0.4)',
+  },
+  chipIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: 'rgba(165,153,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipIconSelected: {
+    backgroundColor: ACCENT,
+  },
+  chipLabel: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 13,
+    color: '#8E8E93',
+    flex: 1,
+  },
+  chipLabelSelected: {
+    color: '#ffffff',
+  },
+  addBtn: {
+    backgroundColor: ACCENT,
+    borderRadius: RADIUS.lg,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  addBtnDisabled: {
+    backgroundColor: '#141416',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.07)',
+  },
+  addBtnText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 15,
+    color: '#000000',
+  },
+  addBtnTextDisabled: {
+    color: '#636366',
+  },
+});
+

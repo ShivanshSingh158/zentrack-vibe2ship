@@ -1,26 +1,45 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, Platform, TouchableOpacity, Text, Image, AppState, Alert } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, Easing, cancelAnimation } from 'react-native-reanimated';
+import 'react-native-gesture-handler';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, StyleSheet, AppState, Alert, DeviceEventEmitter } from 'react-native';
+import { Text } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withSequence,
+  withTiming,
+  Easing,
+  cancelAnimation,
+} from 'react-native-reanimated';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { NavigationContainer, DarkTheme, useNavigation } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  DarkTheme,
+  useNavigation,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import { auth } from '../services/firebase';
-import { MobileDataProvider, useMobileData } from '../contexts/MobileDataContext';
+import { useMobileData } from '../contexts/MobileDataContext';
 import { setupNetworkListener } from '../services/offlineSync';
 import { cacheAwareLazy, startPrefetching } from '../utils/ModulePrefetcher';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BRUTAL_QUOTES } from '../data/brutalQuotes';
+import { RADIUS, FONT_FAMILY, SPACE, FONT_SIZE } from '../theme/tokens';
+import AnimatedPressable from '../components/AnimatedPressable';
+import { useTheme } from '../contexts/ThemeContext';
+import { feedback } from '../utils/haptics';
+import ErrorBoundary from '../components/ErrorBoundary';
 
-// ─── Critical screens (always loaded at startup) ─────────────────────────────
+// ─── Critical screens ─────────────────────────────────────────────────────────
 import LandingScreen from '../screens/LandingScreen';
 import GuestDashboard from '../screens/GuestDashboard';
 import AuthScreen from '../screens/AuthScreen';
 import OnboardingScreen, { ONBOARDING_KEY } from '../screens/OnboardingScreen';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BRUTAL_QUOTES } from '../data/brutalQuotes';
 import DashboardScreen from '../screens/DashboardScreen';
 import TasksScreen from '../screens/TasksScreen';
 import CalendarScreen from '../screens/CalendarScreen';
@@ -29,35 +48,27 @@ import SettingsScreen from '../screens/SettingsScreen';
 import GymStack from './GymStack';
 import SaraScreen from '../screens/SaraScreen';
 import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen';
-import ErrorBoundary from '../components/ErrorBoundary';
-import { feedback } from '../utils/haptics';
 
-// ─── Secondary screens — lazy loaded on first navigation ─────────────────────
-// These are NOT needed at startup. Using React.lazy() means their JS is only
-// parsed when the user actually navigates to them for the first time, cutting
-// cold-start parse time by ~40%.
+// ─── Lazy screens ─────────────────────────────────────────────────────────────
 const HabitsScreen = cacheAwareLazy('HabitsScreen', () => import('../screens/HabitsScreen'));
 const NotesScreen = cacheAwareLazy('NotesScreen', () => import('../screens/NotesScreen'));
 const AttendanceScreen = cacheAwareLazy('AttendanceScreen', () => import('../screens/AttendanceScreen'));
 const WeeklyReviewScreen = cacheAwareLazy('WeeklyReviewScreen', () => import('../screens/WeeklyReviewScreen'));
 const StudyRoomScreen = cacheAwareLazy('StudyRoomScreen', () => import('../screens/StudyRoomScreen'));
 const AnalyticsScreen = cacheAwareLazy('AnalyticsScreen', () => import('../screens/AnalyticsScreen'));
-const SocialScreen = cacheAwareLazy('SocialScreen', () => import('../screens/SocialScreen'));
 const AssignmentsScreen = cacheAwareLazy('AssignmentsScreen', () => import('../screens/AssignmentsScreen'));
 const GradesScreen = cacheAwareLazy('GradesScreen', () => import('../screens/GradesScreen'));
 const LearningScreen = cacheAwareLazy('LearningScreen', () => import('../screens/LearningScreen'));
-const GoalsScreen = cacheAwareLazy('GoalsScreen', () => import('../screens/GoalsScreen'));
-const GoalDetailScreen = cacheAwareLazy('GoalDetailScreen', () => import('../screens/GoalDetailScreen'));
-const JobsScreen = cacheAwareLazy('JobsScreen', () => import('../screens/JobsScreen'));
 const StreakDetailScreen = cacheAwareLazy('StreakDetailScreen', () => import('../screens/StreakDetailScreen'));
+const AgentHistoryScreen = cacheAwareLazy('AgentHistoryScreen', () => import('../screens/AgentHistoryScreen'));
+const WellbeingDashboardScreen = cacheAwareLazy('WellbeingDashboardScreen', () => import('../screens/WellbeingDashboardScreen'));
 
-// Theme
-import { RADIUS, FONT_FAMILY, SPACE, FONT_SIZE } from '../theme/tokens';
-import AnimatedPressable from '../components/AnimatedPressable';
-import { useTheme } from "../contexts/ThemeContext";
-
+// ─── Navigators ───────────────────────────────────────────────────────────────
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Exported for imperative navigation from notification handlers in App.tsx
+export const navigationRef = createNavigationContainerRef<any>();
 
 const ZEN_DARK_THEME = {
   ...DarkTheme,
@@ -70,67 +81,51 @@ const ZEN_DARK_THEME = {
   },
 };
 
+// ─── AsyncStorage key for saved route ────────────────────────────────────────
+const NAV_ROUTE_KEY = '@zentrack_last_route';
+const ALLOWED_SAVE_ROUTES = new Set([
+  'Home', 'Tasks', 'Gym', 'Calendar', 'Habits',
+  'Attendance', 'Analytics', 'WeeklyReview',
+  'StudyRoom', 'Notes', 'Assignments', 'Grades', 'Learning',
+]);
 
-// ─── Splash Loader — shown during Firebase auth check AND font loading ────────
+// ─── SplashLoader ─────────────────────────────────────────────────────────────
 export function SplashLoader() {
-  const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
-  const pulseScale = useSharedValue(0.85);
+  const { colors } = useTheme();
+  const pulseScale = useSharedValue(0.9);
   const fadeOpacity = useSharedValue(0);
-  const [quote, setQuote] = useState(BRUTAL_QUOTES[0]);
+  const [quote] = useState(
+    () => BRUTAL_QUOTES[Math.floor(Math.random() * BRUTAL_QUOTES.length)]
+  );
 
   useEffect(() => {
-    setQuote(BRUTAL_QUOTES[Math.floor(Math.random() * BRUTAL_QUOTES.length)]);
-
-    // Fade in — runs on UI thread
-    fadeOpacity.value = withTiming(1, { duration: 800 });
-
-    // Slow cinematic pulse — runs on UI thread
+    fadeOpacity.value = withTiming(1, { duration: 600 });
     pulseScale.value = withRepeat(
       withSequence(
         withTiming(1.02, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
         withTiming(0.98, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
       ),
       -1,
-      false
+      false,
     );
-
     return () => {
       cancelAnimation(pulseScale);
       cancelAnimation(fadeOpacity);
     };
   }, []);
 
-  const splashAnimStyle = useAnimatedStyle(() => ({
+  const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }],
     opacity: fadeOpacity.value,
   }));
 
   return (
-    <View style={[styles.splashRoot, { paddingHorizontal: 32 }]}>
-      <Animated.View style={[{
-        alignItems: 'center',
-        gap: 16
-      }, splashAnimStyle]}>
-        <Text style={{
-          fontFamily: FONT_FAMILY.serif,
-          color: colors.textPrimary,
-          fontSize: 22,
-          lineHeight: 32,
-          textAlign: 'center',
-          fontStyle: 'italic',
-        }}>
+    <View style={{ flex: 1, backgroundColor: '#080510', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+      <Animated.View style={[{ alignItems: 'center', gap: 16 }, animStyle]}>
+        <Text style={{ fontFamily: FONT_FAMILY.serif, color: colors.textPrimary, fontSize: 22, lineHeight: 32, textAlign: 'center', fontStyle: 'italic' }}>
           "{quote.text}"
         </Text>
-        <Text style={{
-          fontFamily: FONT_FAMILY.mono,
-          color: colors.textSecondary,
-          fontSize: 12,
-          textAlign: 'center',
-          letterSpacing: 2,
-          marginTop: 8,
-          textTransform: 'uppercase'
-        }}>
+        <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.textSecondary, fontSize: 12, textAlign: 'center', letterSpacing: 2, marginTop: 8, textTransform: 'uppercase' }}>
           — {quote.author}
         </Text>
       </Animated.View>
@@ -138,11 +133,9 @@ export function SplashLoader() {
   );
 }
 
-// ─── Header component for nested screens ───────────────────────────────────────
-
+// ─── Nested screen header ─────────────────────────────────────────────────────
 function NestedHeader({ title }: { title: string }) {
-  const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors } = useTheme();
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   return (
@@ -150,16 +143,16 @@ function NestedHeader({ title }: { title: string }) {
       <AnimatedPressable onPress={() => navigation.goBack()} style={styles.backBtn} haptic="light">
         <Ionicons name="chevron-back" size={24} color={colors.accentPrimary} />
       </AnimatedPressable>
-      <Text style={styles.headerTitle}>{title}</Text>
+      <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{title}</Text>
       <View style={{ width: 24 }} />
     </View>
   );
 }
 
-// ─── Authenticated Tab Navigator ─────────────────────────────────────────────
-
+// ─── Component map for tab screens ───────────────────────────────────────────
 const COMPONENT_MAP: Record<string, any> = {
   Tasks: TasksScreen,
+  Sara: SaraScreen,
   Calendar: CalendarScreen,
   Habits: HabitsScreen,
   Gym: GymStack,
@@ -168,19 +161,24 @@ const COMPONENT_MAP: Record<string, any> = {
   WeeklyReview: WeeklyReviewScreen,
   StudyRoom: StudyRoomScreen,
   Notes: NotesScreen,
-  Social: SocialScreen,
   Assignments: AssignmentsScreen,
   Grades: GradesScreen,
   Learning: LearningScreen,
-  Goals: GoalsScreen,
-  GoalDetail: GoalDetailScreen,
-  Jobs: JobsScreen,
 };
 
-function MainTabNavigator() {
-  const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+// ─── Main Tab Navigator ───────────────────────────────────────────────────────
+// Props: initialTab is passed directly at render time after we've read AsyncStorage.
+// This is the ONLY safe way to restore a tab — via initialRouteName at mount time.
+function MainTabNavigator({ initialTab }: { initialTab: string }) {
+  const { colors } = useTheme();
   const { pinnedModules } = useMobileData();
+
+  // Save current route on tab change
+  const handleTabPress = useCallback((routeName: string) => {
+    if (ALLOWED_SAVE_ROUTES.has(routeName)) {
+      AsyncStorage.setItem(NAV_ROUTE_KEY, routeName).catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     startPrefetching(pinnedModules);
@@ -189,24 +187,14 @@ function MainTabNavigator() {
   return (
     <ErrorBoundary screenName="Tab Navigator">
       <Tab.Navigator
-        screenListeners={({ navigation, route }) => ({
-          tabPress: (e) => {
-            // Intercept More tab press BEFORE focus changes to prevent the flicker.
-            // If More is already focused, prevent default (which would re-render it)
-            // and navigate to the previous screen instead.
-            if (route.name === 'More' && navigation.isFocused()) {
-              e.preventDefault();
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.navigate('Home');
-              }
-            }
+        initialRouteName={initialTab}
+        screenListeners={({ route }) => ({
+          focus: () => {
+            handleTabPress(route.name);
           },
         })}
         screenOptions={({ route }) => ({
           headerShown: false,
-          detachInactiveScreens: false,
           sceneStyle: { backgroundColor: colors.background },
           tabBarShowLabel: true,
           tabBarActiveTintColor: colors.accentPrimary,
@@ -217,14 +205,10 @@ function MainTabNavigator() {
             marginTop: 4,
             marginBottom: 0,
           },
-          tabBarItemStyle: {
-            paddingVertical: 10,
-          },
+          tabBarItemStyle: { paddingVertical: 10 },
           tabBarStyle: styles.tabBar,
           tabBarBackground: () => (
-            <View
-              style={[styles.tabBarBackground, { backgroundColor: 'rgba(10, 10, 10, 0.95)' }]}
-            />
+            <View style={[styles.tabBarBackground, { backgroundColor: 'rgba(10, 10, 10, 0.95)' }]} />
           ),
           tabBarIcon: ({ color, size, focused }) => {
             const icons: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
@@ -236,9 +220,7 @@ function MainTabNavigator() {
               Gym: { active: 'barbell', inactive: 'barbell-outline' },
               Attendance: { active: 'clipboard', inactive: 'clipboard-outline' },
               Analytics: { active: 'bar-chart', inactive: 'bar-chart-outline' },
-              Goals: { active: 'trophy', inactive: 'trophy-outline' },
               Notes: { active: 'document-text', inactive: 'document-text-outline' },
-              Social: { active: 'people', inactive: 'people-outline' },
               Assignments: { active: 'book', inactive: 'book-outline' },
               Grades: { active: 'calculator', inactive: 'calculator-outline' },
               Learning: { active: 'library', inactive: 'library-outline' },
@@ -246,8 +228,6 @@ function MainTabNavigator() {
             };
             const iconSet = icons[route.name] || { active: 'ellipse', inactive: 'ellipse-outline' };
             const iconName = focused ? iconSet.active : iconSet.inactive;
-
-            // Special Sara orb tab
             if (route.name === 'Sara') {
               return (
                 <View style={[styles.saraTab, { borderColor: focused ? colors.textPrimary : 'transparent', backgroundColor: focused ? colors.surface2 : 'transparent' }]}>
@@ -255,14 +235,13 @@ function MainTabNavigator() {
                 </View>
               );
             }
-
             return <Ionicons name={iconName} size={size} color={color} />;
           },
         })}
         backBehavior="history"
       >
         <Tab.Screen name="Home" component={DashboardScreen} />
-        {Object.keys(COMPONENT_MAP).map((modId: string) => {
+        {Object.keys(COMPONENT_MAP).map((modId) => {
           const isPinned = pinnedModules.includes(modId);
           return (
             <Tab.Screen
@@ -270,11 +249,7 @@ function MainTabNavigator() {
               name={modId}
               component={COMPONENT_MAP[modId]}
               options={{
-                tabBarShowLabel: true,
-                tabBarItemStyle: [
-                  { paddingVertical: 10 },
-                  !isPinned && { display: 'none' }
-                ]
+                tabBarItemStyle: !isPinned ? { display: 'none' } : { paddingVertical: 10 },
               }}
             />
           );
@@ -285,200 +260,239 @@ function MainTabNavigator() {
   );
 }
 
-// ─── Root Navigator ───────────────────────────────────────────────────────────
-
-export default function AppNavigator() {
-  const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const appState = useRef(AppState.currentState);
-  const [currentRoute, setCurrentRoute] = useState<string>('Home');
-
-  const [onboarded, setOnboarded] = useState<boolean>(true);
-
-  useEffect(() => {
-    const checkOnboarding = async () => {
-      try {
-        const val = await AsyncStorage.getItem(ONBOARDING_KEY);
-        setOnboarded(val === 'true');
-      } catch (e) {
-        setOnboarded(false);
-      }
-    };
-    checkOnboarding();
-
-    // Prevent the 60-second Render cold start delay
-    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://zentrack-vibe2ship.onrender.com';
-    fetch(`${backendUrl}/health`).catch(() => { });
-
-    // Check for OTA Updates automatically
-    const checkForUpdates = async () => {
-      try {
-        if (__DEV__) return; // Skip in local development
-        // Rate-limit: only check once per hour to avoid a network hit on every launch
-        const HOUR_MS = 60 * 60 * 1000;
-        const lastCheck = await AsyncStorage.getItem('@zentrack_last_update_check');
-        if (lastCheck && Date.now() - parseInt(lastCheck, 10) < HOUR_MS) return;
-        await AsyncStorage.setItem('@zentrack_last_update_check', String(Date.now()));
-
-        const update = await Updates.checkForUpdateAsync();
-        if (update.isAvailable) {
-          Alert.alert(
-            'Update Available',
-            'A new version of ZenTrack is available! Do you want to download it now?',
-            [
-              { text: 'Later', style: 'cancel' },
-              {
-                text: 'Update Now',
-                onPress: async () => {
-                  try {
-                    await Updates.fetchUpdateAsync();
-                    await Updates.reloadAsync();
-                  } catch (e) {
-                    Alert.alert('Error', 'Failed to apply the update.');
-                  }
-                }
-              }
-            ]
-          );
-        }
-      } catch (e) {
-        // Silently fail if offline or update check fails so it doesn't bother the user
-        console.log('Update check failed', e);
-      }
-    };
-    checkForUpdates();
-
-    const unsubscribe = onAuthStateChanged(auth, async (usr) => {
-      if (usr) {
-        await checkOnboarding();
-      }
-      setUser(usr);
-      setLoading(false);
-    });
-
-    const unsubscribeNetwork = setupNetworkListener();
-
-    return () => {
-      unsubscribe();
-      unsubscribeNetwork();
-    };
-  }, []);
-
-  if (loading) {
-    return <SplashLoader />;
-  }
-
-  return (
-    <NavigationContainer
-      theme={ZEN_DARK_THEME}
-      onStateChange={(state) => {
-        if (!state) return;
-        let current = state;
-        while (current.routes[current.index].state) {
-          current = current.routes[current.index].state as any;
-        }
-        setCurrentRoute(current.routes[current.index].name);
-      }}
-    >
-      {user ? (
-        !onboarded ? (
-          // FIX #5: Wrap in ErrorBoundary — OnboardingScreen is outside all Stack.Navigators.
-          // Any useNavigation() call inside it would throw without this guard.
-          <ErrorBoundary screenName="Onboarding">
-            <OnboardingScreen onComplete={() => setOnboarded(true)} />
-          </ErrorBoundary>
-        ) : (
-          <MobileDataProvider>
-            <RootNavigatorWithSara currentRoute={currentRoute} />
-          </MobileDataProvider>
-        )
-      ) : (
-        <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>
-          <Stack.Screen name="Landing" component={LandingScreen} />
-          <Stack.Screen name="GuestDashboard" component={GuestDashboard} />
-          <Stack.Screen name="Auth" component={AuthScreen} />
-        </Stack.Navigator>
-      )}
-    </NavigationContainer>
-  );
-}
-
-// ─── Root Navigator with Global Sara Button ───────────────────────────────────
-
-function RootNavigatorWithSara({ currentRoute }: { currentRoute: string }) {
-  const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
-  const navigation = useNavigation<any>();
-  const [saraVisible, setSaraVisible] = useState(false);
-
-  const visibleRoutes = ['Home', 'Tasks'];
-  const hideSaraBtn = !visibleRoutes.includes(currentRoute);
-
-  return (
-    <View style={{ flex: 1 }}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="MainTabs" component={MainTabNavigator} />
-        <Stack.Group screenOptions={{ presentation: 'card' }}>
-          <Stack.Screen name="MoreStack" component={NestedScreens} />
-        </Stack.Group>
-      </Stack.Navigator>
-
-      {/* Global SARA Floating Orb - Positioned above tabs */}
-      {!hideSaraBtn && (
-        <AnimatedPressable
-          style={styles.globalSaraBtn}
-          onPress={() => {
-            feedback.commit();
-            setSaraVisible(true);
-          }}
-          haptic="heavy"
-        >
-
-          <Ionicons name="planet" size={26} color={colors.accentPrimary} style={{ opacity: 1 }} />
-        </AnimatedPressable>
-      )}
-
-      {/* Global SARA Modal */}
-      <SaraScreen
-        isGlobalModal={true}
-        visible={saraVisible}
-        onClose={() => setSaraVisible(false)}
-      />
-    </View>
-  );
-}
-
-// Wrapper for nested screens so they share the common back button header
+// ─── Nested screens stack (Settings, Sara modal, etc.) ────────────────────────
 function NestedScreens() {
-  const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors } = useTheme();
   return (
     <ErrorBoundary screenName="Screen">
-      <Stack.Navigator screenOptions={{
-        header: ({ route }) => <NestedHeader title={route.name} />,
-        contentStyle: { backgroundColor: colors.background },
-        animation: 'slide_from_right',
-        animationDuration: 180,           // Was 250 — matches Instagram's native feel
-        // detachInactiveScreens: false,     // Keep visited screens in memory: no remount on back
-      }}>
+      <Stack.Navigator
+        screenOptions={{
+          header: ({ route }) => <NestedHeader title={route.name} />,
+          contentStyle: { backgroundColor: colors.background },
+          animation: 'slide_from_right',
+          animationDuration: 180,
+        }}
+      >
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="NotificationsSettings" component={NotificationsSettingsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Sara" component={SaraScreen} options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="StreakDetail" component={StreakDetailScreen} />
-        {/* SaraModal alias — allows navigation.navigate('MoreStack', { screen: 'SaraModal' }) */}
         <Stack.Screen name="SaraModal" component={SaraScreen} options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="AgentHistory" component={AgentHistoryScreen} />
+        <Stack.Screen name="WellbeingDashboard" component={WellbeingDashboardScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </ErrorBoundary>
   );
 }
 
+// ─── Root authenticated navigator with SARA FAB ───────────────────────────────
+function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
+  const { colors } = useTheme();
+  const [saraVisible, setSaraVisible] = useState(false);
 
+  // Pass initialTab down as a prop — stable, no hooks needed for route tracking here
+  const MainTabsScreen = useCallback(
+    () => <MainTabNavigator initialTab={initialTab} />,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [], // intentionally empty — initialTab must never change after mount
+  );
+
+  // Read active route to only show SARA on Home, Tasks, and Analytics
+  const ALLOWED_SARA_ROUTES = ['Home', 'Tasks', 'Analytics'];
+  const [hideSara, setHideSara] = useState(!ALLOWED_SARA_ROUTES.includes(initialTab));
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('route_changed', (routeName: string) => {
+      setHideSara(!ALLOWED_SARA_ROUTES.includes(routeName));
+    });
+    return () => sub.remove();
+  }, []);
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="MainTabs" component={MainTabsScreen} />
+        <Stack.Group screenOptions={{ presentation: 'card' }}>
+          <Stack.Screen name="MoreStack" component={NestedScreens} />
+        </Stack.Group>
+      </Stack.Navigator>
+
+      {/* Global SARA FAB */}
+      {!hideSara && (
+        <AnimatedPressable
+          style={styles.globalSaraBtn}
+          onPress={() => { feedback.commit(); setSaraVisible(true); }}
+          haptic="heavy"
+        >
+          <Ionicons name="planet" size={26} color={colors.accentPrimary} />
+        </AnimatedPressable>
+      )}
+
+      {/* Global SARA Modal */}
+      <SaraScreen isGlobalModal={true} visible={saraVisible} onClose={() => setSaraVisible(false)} />
+    </View>
+  );
+}
+
+// ─── Root AppNavigator ────────────────────────────────────────────────────────
+//
+// ARCHITECTURE — how this works like WhatsApp:
+//
+// 1. On cold start, we read the saved tab from AsyncStorage BEFORE mounting the
+//    NavigationContainer. This means the Tab.Navigator boots with the correct
+//    initialRouteName natively — no navigation after mount, no race conditions.
+//
+// 2. The NavigationContainer is NEVER unmounted after mount. Auth state changes
+//    swap the children inside, but the container itself lives forever. This is
+//    what prevents the grey screen — the native window never goes blank.
+//
+// 3. Firebase's onAuthStateChanged(null) during token refresh is ignored after
+//    the first auth resolution. The user is never flashed to the login screen.
+//
+// 4. The AppState listener only exists to save the route on background — it never
+//    triggers any state changes that could cause a remount.
+
+export default function AppNavigator() {
+  const { colors } = useTheme();
+
+  // Phase 1: startup — read AsyncStorage and wait for Firebase auth.
+  // Both must resolve before we show anything.
+  const [authResolved, setAuthResolved] = useState(false);
+  const [startupResolved, setStartupResolved] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [onboarded, setOnboarded] = useState(true);
+  const [initialTab, setInitialTab] = useState('Home');
+
+  // Never set authResolved back to false after first resolution
+  const hasResolvedOnce = useRef(false);
+
+  useEffect(() => {
+    // Load saved tab + onboarding status in parallel
+    const loadStartup = async () => {
+      const [savedTab, onboardedVal] = await Promise.all([
+        AsyncStorage.getItem(NAV_ROUTE_KEY).catch(() => null),
+        AsyncStorage.getItem(ONBOARDING_KEY).catch(() => null),
+      ]);
+      if (savedTab && ALLOWED_SAVE_ROUTES.has(savedTab)) {
+        setInitialTab(savedTab);
+      }
+      setOnboarded(onboardedVal === 'true');
+      setStartupResolved(true);
+    };
+    loadStartup();
+
+    // Firebase auth — resolves once, then ignores null (token refresh)
+    const unsubscribeAuth = onAuthStateChanged(auth, async (usr) => {
+      if (hasResolvedOnce.current) {
+        // Only update user if they log in/out explicitly — NOT on token refresh nulls
+        if (usr) setUser(usr);
+        return;
+      }
+      hasResolvedOnce.current = true;
+      setUser(usr || null);
+      // Re-read onboarding after auth in case it was set during this session
+      if (usr) {
+        const val = await AsyncStorage.getItem(ONBOARDING_KEY).catch(() => null);
+        setOnboarded(val === 'true');
+      }
+      setAuthResolved(true);
+    });
+
+    // Backend warmup (prevents 60s cold start on Render free tier)
+    const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL || 'https://zentrack-vibe2ship.onrender.com';
+    fetch(`${backendUrl}/health`).catch(() => {});
+
+    // OTA update check (rate-limited to once per hour)
+    if (!__DEV__) {
+      (async () => {
+        try {
+          const HOUR_MS = 60 * 60 * 1000;
+          const lastCheck = await AsyncStorage.getItem('@zentrack_last_update_check').catch(() => null);
+          if (lastCheck && Date.now() - parseInt(lastCheck, 10) < HOUR_MS) return;
+          await AsyncStorage.setItem('@zentrack_last_update_check', String(Date.now()));
+          const update = await Updates.checkForUpdateAsync();
+          if (update.isAvailable) {
+            Alert.alert(
+              'Update Available',
+              'A new version of ZenTrack is available. Download now?',
+              [
+                { text: 'Later', style: 'cancel' },
+                {
+                  text: 'Update Now',
+                  onPress: async () => {
+                    try {
+                      await Updates.fetchUpdateAsync();
+                      await Updates.reloadAsync();
+                    } catch {
+                      Alert.alert('Error', 'Failed to apply update.');
+                    }
+                  },
+                },
+              ]
+            );
+          }
+        } catch { /* offline — ignore */ }
+      })();
+    }
+
+    const unsubscribeNetwork = setupNetworkListener();
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeNetwork();
+    };
+  }, []);
+
+  // Show splash until both Firebase auth AND AsyncStorage setup resolves
+  if (!authResolved || !startupResolved) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#080510' }}>
+        <SplashLoader />
+      </View>
+    );
+  }
+
+  return (
+    // Permanent dark background. If any React layer briefly unmounts, user
+    // sees this #080510 instead of Android's grey window background.
+    <View style={{ flex: 1, backgroundColor: '#080510' }}>
+      <NavigationContainer 
+        ref={navigationRef} 
+        theme={ZEN_DARK_THEME}
+        onStateChange={() => {
+          const currentRouteName = navigationRef.getCurrentRoute()?.name;
+          if (currentRouteName) {
+            DeviceEventEmitter.emit('route_changed', currentRouteName);
+          }
+        }}
+      >
+        {user ? (
+          !onboarded ? (
+            <ErrorBoundary screenName="Onboarding">
+              <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>
+                <Stack.Screen name="Onboarding">
+                  {() => <OnboardingScreen onComplete={() => setOnboarded(true)} />}
+                </Stack.Screen>
+              </Stack.Navigator>
+            </ErrorBoundary>
+          ) : (
+            // Key is intentionally NOT set here — we never want this to remount
+            <RootNavigatorWithSara initialTab={initialTab} />
+          )
+        ) : (
+          <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>
+            <Stack.Screen name="Landing" component={LandingScreen} />
+            <Stack.Screen name="GuestDashboard" component={GuestDashboard} />
+            <Stack.Screen name="Auth" component={AuthScreen} />
+          </Stack.Navigator>
+        )}
+      </NavigationContainer>
+    </View>
+  );
+}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-
-const makeStyles = (colors: any) => StyleSheet.create({
+const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
     bottom: 20,
@@ -486,7 +500,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     right: 20,
     borderRadius: RADIUS.xxl,
     borderWidth: 1,
-    borderColor: colors.borderHover,
+    borderColor: 'rgba(255,255,255,0.08)',
     elevation: 20,
     height: 70,
     overflow: 'hidden',
@@ -495,7 +509,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   tabBarBackground: {
     flex: 1,
-    backgroundColor: 'rgba(10, 8, 15, 0.35)', // Slightly darker base for the blur
     borderRadius: RADIUS.xxl,
     overflow: 'hidden',
   },
@@ -517,23 +530,14 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.05)',
   },
   backBtn: { padding: SPACE.xs },
-  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
-  splashRoot: {
-    flex: 1,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  splashBrand: {
+  headerTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.xs,
-    color: colors.textMuted,
-    letterSpacing: 6,
+    fontSize: FONT_SIZE.lg,
   },
   globalSaraBtn: {
     position: 'absolute',
-    bottom: 110, // Adjusted to match other FABs above bottom nav
-    right: 24, // Pulled slightly more inwards to avoid edge clipping
+    bottom: 110,
+    right: 24,
     width: 48,
     height: 48,
     borderRadius: 24,
@@ -548,5 +552,5 @@ const makeStyles = (colors: any) => StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-  }
+  },
 });

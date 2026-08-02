@@ -360,6 +360,27 @@ export default function SettingsScreen() {
 
 
 
+        {/* ── S.A.R.A ── */}
+        <SectionLabel text="S.A.R.A" />
+
+        <View style={s.groupCard}>
+          {/* Sara Proactive Nudges — surfaced from GENERAL group for better discoverability */}
+          <AnimatedPressable
+            style={s.settingRow}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('MoreStack', { screen: 'AgentHistory' })}
+          >
+            <View style={[s.iconBox, { backgroundColor: 'rgba(165,153,255,0.12)' }]}>
+              <Ionicons name="time-outline" size={15} color={COLORS.accentPrimary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.settingTitle}>Action History</Text>
+              <Text style={s.settingSubtitle}>See every action Sara took on your behalf</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={COLORS.textTertiary} />
+          </AnimatedPressable>
+        </View>
+
         {/* ── DATA & ACCOUNT ── */}
         <SectionLabel text="DATA & ACCOUNT" />
 

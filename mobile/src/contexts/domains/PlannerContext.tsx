@@ -3,22 +3,30 @@
  *
  * Owns: customEvents (calendar), goals, weeklyReviews.
  *
- * Subscription strategy: DEMAND-BASED.
- * Opens when user first visits Calendar, Goals, or Analytics screen.
+ * Subscription strategy: DEMAND-BASED + OFFLINE-FIRST.
+ * On mount: reads all planner data from AsyncStorage instantly (~5ms).
+ * Calendar and Goals screens show real data immediately, even when offline.
+ * Firestore snapshots silently update the cache when online.
  */
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { CustomEvent, Goal, WeeklyReview } from "../MobileDataContext";
+import { readPlannerCache, writePlannerCache } from "../../utils/domainCache";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface PlannerContextType {
   customEvents: CustomEvent[];
   goals: Goal[];
   weeklyReviews: WeeklyReview[];
-
   ensureSubscribed: () => void;
+  // Optimistic write helpers — WhatsApp pattern: show instantly, Firestore syncs in background.
+  optimisticAddEvent: (event: CustomEvent) => void;
+  optimisticUpdateEvent: (eventId: string, partial: Partial<CustomEvent>) => void;
+  optimisticDeleteEvent: (eventId: string) => void;
+  optimisticAddGoal: (goal: Goal) => void;
+  optimisticUpdateGoal: (goalId: string, partial: Partial<Goal>) => void;
 }
 
 const PlannerContext = createContext<PlannerContextType | null>(null);
@@ -44,6 +52,18 @@ export function PlannerProvider({
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
 
+  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  useEffect(() => {
+    let cancelled = false;
+    readPlannerCache().then(cached => {
+      if (cancelled) return;
+      if (cached.customEvents  && cached.customEvents.length > 0)  setCustomEvents(prev  => prev.length === 0 ? cached.customEvents!  : prev);
+      if (cached.goals         && cached.goals.length > 0)         setGoals(prev         => prev.length === 0 ? cached.goals!         : prev);
+      if (cached.weeklyReviews && cached.weeklyReviews.length > 0) setWeeklyReviews(prev => prev.length === 0 ? cached.weeklyReviews! : prev);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const openSubscriptions = (uid: string) => {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
@@ -52,17 +72,17 @@ export function PlannerProvider({
 
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
-      snap => setCustomEvents(snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent))),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent)); setCustomEvents(fresh); writePlannerCache({ customEvents: fresh }); },
       err => console.error("[Planner] customEvents", err)
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
-      snap => setGoals(snap.docs.map(d => ({ id: d.id, ...d.data() } as Goal))),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Goal)); setGoals(fresh); writePlannerCache({ goals: fresh }); },
       err => console.error("[Planner] goals", err)
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
-      snap => setWeeklyReviews(snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview))),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)); setWeeklyReviews(fresh); writePlannerCache({ weeklyReviews: fresh }); },
       err => console.error("[Planner] weeklyReviews", err)
     ));
 
@@ -83,8 +103,49 @@ export function PlannerProvider({
     if (user && !subscribedRef.current) openSubscriptions(user.uid);
   };
 
+  // Optimistic write helpers
+  const optimisticAddEvent = (event: CustomEvent) => {
+    setCustomEvents(prev => {
+      const next = [event, ...prev];
+      writePlannerCache({ customEvents: next });
+      return next;
+    });
+  };
+
+  const optimisticUpdateEvent = (eventId: string, partial: Partial<CustomEvent>) => {
+    setCustomEvents(prev => {
+      const next = prev.map(e => e.id === eventId ? { ...e, ...partial } : e);
+      writePlannerCache({ customEvents: next });
+      return next;
+    });
+  };
+
+  const optimisticDeleteEvent = (eventId: string) => {
+    setCustomEvents(prev => {
+      const next = prev.filter(e => e.id !== eventId);
+      writePlannerCache({ customEvents: next });
+      return next;
+    });
+  };
+
+  const optimisticAddGoal = (goal: Goal) => {
+    setGoals(prev => {
+      const next = [goal, ...prev];
+      writePlannerCache({ goals: next });
+      return next;
+    });
+  };
+
+  const optimisticUpdateGoal = (goalId: string, partial: Partial<Goal>) => {
+    setGoals(prev => {
+      const next = prev.map(g => g.id === goalId ? { ...g, ...partial } : g);
+      writePlannerCache({ goals: next });
+      return next;
+    });
+  };
+
   return (
-    <PlannerContext.Provider value={{ customEvents, goals, weeklyReviews, ensureSubscribed }}>
+    <PlannerContext.Provider value={{ customEvents, goals, weeklyReviews, ensureSubscribed, optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent, optimisticAddGoal, optimisticUpdateGoal }}>
       {children}
     </PlannerContext.Provider>
   );

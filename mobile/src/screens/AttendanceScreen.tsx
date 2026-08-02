@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, writeBatch, limit as firestoreLimit, getDocs } from 'firebase/firestore';
+import { formatDateWithDay, formatDateShort, formatDateNumeric } from '../utils/dateUtils';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { db } from '../services/firebase';
@@ -21,6 +22,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import { AddSubjectModal } from '../components/Academic/AddSubjectModal';
 import { TimetableModal } from '../components/Academic/TimetableModal';
+import ClassNotifSettingsModal from '../components/Academic/ClassNotifSettingsModal';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { callProxy, parseProxyResponse } from '../services/geminiProxy';
@@ -61,8 +63,7 @@ function getLocalDateString(d: Date): string {
 }
 function formatDisplayDate(dateStr: string) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  return formatDateWithDay(dateStr);
 }
 function getWeekDates(dateStr: string): string[] {
   const d = new Date(dateStr + 'T00:00:00');
@@ -100,6 +101,26 @@ const calculateStatus = (attended: number, total: number, target: number) => {
 };
 const getProgressColor = (urgency: string) => urgency === 'danger' ? '#ef4444' : urgency === 'warning' ? '#f59e0b' : '#10b981';
 
+/**
+ * Converts a time string (12h or 24h) to total minutes from midnight for sorting.
+ * Handles: "10:00 AM", "2:00 PM", "10:00", "14:00", "9:00 AM"
+ */
+function parseTimeToMinutes(timeStr: string | undefined): number {
+  if (!timeStr) return 0;
+  const upper = timeStr.trim().toUpperCase();
+  const isPM = upper.includes('PM');
+  const isAM = upper.includes('AM');
+  const cleaned = upper.replace(/[APM\s]+$/i, '').trim();
+  const parts = cleaned.split(':');
+  let h = parseInt(parts[0], 10) || 0;
+  const m = parts.length >= 2 ? (parseInt(parts[1], 10) || 0) : 0;
+  if (isPM || isAM) {
+    if (isPM && h !== 12) h += 12;
+    if (isAM && h === 12) h = 0;
+  }
+  return h * 60 + m;
+}
+
 // ─── Component ──────────────────────────────────────────────────────────────
 export default function AttendanceScreen() {
     const { colors, isDark } = useTheme();
@@ -118,6 +139,7 @@ export default function AttendanceScreen() {
   
   // Modals
   const [isTimetableOpen, setIsTimetableOpen] = useState(false);
+  const [showClassNotifModal, setShowClassNotifModal] = useState(false);
   const [selectedHistorySubject, setSelectedHistorySubject] = useState<AttendanceSubject | null>(null);
   const [isExtraOpen, setIsExtraOpen] = useState(false);
   
@@ -181,8 +203,8 @@ export default function AttendanceScreen() {
   const today = getLocalDateString(new Date());
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
 
-  const todayScheduledSubjects = useMemo(() => 
-    subjects.filter(s => {
+  const todayScheduledSubjects = useMemo(() => {
+    const filtered = subjects.filter(s => {
       const sch = s.schedule?.[selectedDayOfWeek] || s.schedule?.[Number(selectedDayOfWeek)] || s.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || s.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
       return sch && (
         (sch.classes && sch.classes.length > 0) || 
@@ -190,18 +212,98 @@ export default function AttendanceScreen() {
         sch.classCount > 0 || 
         sch.labCount > 0
       );
-    }), [subjects, selectedDayOfWeek]
-  );
+    });
+    // Sort subjects by their earliest class/lab time for the selected day
+    return filtered.sort((a, b) => {
+      const schA = a.schedule?.[selectedDayOfWeek] || a.schedule?.[Number(selectedDayOfWeek)] || a.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || a.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
+      const schB = b.schedule?.[selectedDayOfWeek] || b.schedule?.[Number(selectedDayOfWeek)] || b.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || b.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
+      const getEarliestTime = (sch: any): number => {
+        const times: number[] = [];
+        if (sch?.classes && Array.isArray(sch.classes)) {
+          sch.classes.forEach((c: any) => c.time && times.push(parseTimeToMinutes(c.time)));
+        }
+        if (sch?.labs && Array.isArray(sch.labs)) {
+          sch.labs.forEach((l: any) => l.time && times.push(parseTimeToMinutes(l.time)));
+        }
+        return times.length > 0 ? Math.min(...times) : 9999;
+      };
+      return getEarliestTime(schA) - getEarliestTime(schB);
+    });
+  }, [subjects, selectedDayOfWeek, selectedDate]);
 
   const warningSubjects = useMemo(() => 
     subjects.filter(s => {
       const totalAtt = (s.classesAttended || 0) + (s.labsAttended || 0);
       const totalCls = (s.classesTotal || 0) + (s.labsTotal || 0);
-      if (totalCls === 0) return false;
+      // Don't warn until at least 10 combined classes+labs are logged
+      // (percentage is unreliable with fewer data points)
+      if (totalCls < 10) return false;
       return (totalAtt / totalCls) * 100 < (s.targetPercentage || 75);
     }).filter(s => !dismissedWarnings.has(s.id!)),
     [subjects, dismissedWarnings]
   );
+
+
+  /**
+   * Flatten ALL sessions (classes + labs) across ALL subjects for the selected day
+   * into one globally time-sorted list. This ensures 10 AM always appears before
+   * 12 PM and 2 PM, regardless of which subject they belong to.
+   */
+  const todayFlatSessions = useMemo(() => {
+    if (isSelectedHoliday) return [];
+    const sessions: Array<{
+      id: string;
+      subject: AttendanceSubject;
+      type: 'class' | 'lab';
+      idx: number;
+      timeMins: number;
+      timeStr: string;
+    }> = [];
+
+    todayScheduledSubjects.forEach(subject => {
+      const sch =
+        subject.schedule?.[selectedDayOfWeek] ||
+        subject.schedule?.[Number(selectedDayOfWeek) as any] ||
+        subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] ||
+        subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()] ||
+        { classCount: 0, labCount: 0, classes: [], labs: [] };
+
+      const classCount = sch.classes?.length || sch.classCount || 0;
+      const labCount = sch.labs?.length || sch.labCount || 0;
+
+      for (let i = 0; i < classCount; i++) {
+        const session = sch.classes?.[i];
+        const timeStr = session?.time
+          ? [session.time, session.room].filter(Boolean).join(' • ')
+          : `Class #${i + 1}`;
+        sessions.push({
+          id: `${subject.id!}-class-${i}`,
+          subject,
+          type: 'class',
+          idx: i,
+          timeMins: parseTimeToMinutes(session?.time),
+          timeStr,
+        });
+      }
+
+      for (let i = 0; i < labCount; i++) {
+        const session = sch.labs?.[i];
+        const timeStr = session?.time
+          ? [session.time, session.room].filter(Boolean).join(' • ')
+          : `Lab #${i + 1}`;
+        sessions.push({
+          id: `${subject.id!}-lab-${i}`,
+          subject,
+          type: 'lab',
+          idx: i,
+          timeMins: parseTimeToMinutes(session?.time),
+          timeStr,
+        });
+      }
+    });
+
+    return sessions.sort((a, b) => a.timeMins - b.timeMins);
+  }, [todayScheduledSubjects, selectedDayOfWeek, selectedDate, isSelectedHoliday]);
 
   const globalAttended = subjects.reduce((s, x) => s + (x.classesAttended || 0) + (x.labsAttended || 0), 0);
   const globalTotal = subjects.reduce((s, x) => s + (x.classesTotal || 0) + (x.labsTotal || 0), 0);
@@ -311,14 +413,49 @@ Guess or summarize subject names logically if they are codes.`;
     if (!user) return;
     try {
       if (isSelectedHoliday) {
+        // Remove holiday marker
         const q = query(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), where('userId', '==', user.uid), where('date', '==', selectedDate));
-        // We still need to await getDocs to know what to delete, but it's fast
         const snap = await getDocs(q);
         const batch = writeBatch(db);
         snap.docs.forEach(d => batch.delete(d.ref));
-        batch.commit().catch(console.error);
+        await batch.commit();
       } else {
-        addDoc(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), { userId: user.uid, date: selectedDate }).catch(console.error);
+        // Mark as holiday AND auto-cancel all unlogged scheduled sessions for the day
+        await addDoc(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), { userId: user.uid, date: selectedDate });
+
+        // Auto-cancel every unlogged session scheduled today
+        const dayKey = new Date(selectedDate + 'T00:00:00').getDay().toString();
+        const cancelPromises: Promise<any>[] = [];
+
+        subjects.forEach(subject => {
+          const sch =
+            subject.schedule?.[dayKey] ||
+            subject.schedule?.[Number(dayKey) as any] ||
+            subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] ||
+            subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
+          if (!sch) return;
+
+          const subLogs = (logsBySubjectId[subject.id!] || []).filter((l: any) => l.date === selectedDate && !l.isExtra);
+          const classLogs = subLogs.filter((l: any) => l.type === 'class' || !l.type);
+          const labLogs = subLogs.filter((l: any) => l.type === 'lab');
+
+          const classCount = sch.classes?.length || sch.classCount || 0;
+          const labCount = sch.labs?.length || sch.labCount || 0;
+
+          for (let i = 0; i < classCount; i++) {
+            if (!classLogs[i]) {
+              cancelPromises.push(handleLog(subject, 'class', 'cancelled', selectedDate));
+            }
+          }
+          for (let i = 0; i < labCount; i++) {
+            if (!labLogs[i]) {
+              cancelPromises.push(handleLog(subject, 'lab', 'cancelled', selectedDate));
+            }
+          }
+        });
+
+        await Promise.all(cancelPromises);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err) { console.error(err); }
   };
@@ -388,23 +525,109 @@ Guess or summarize subject names logically if they are codes.`;
 
   const handleExportCSV = async () => {
     try {
-      let csv = 'Date,Type,Subject,Action\n';
-      logs.forEach(l => {
-        csv += `${l.date},${l.type||'class'},${l.subjectName},${l.action}\n`;
+      // 1. Collect all unique dates from logs + holidays
+      const allDatesSet = new Set<string>();
+      logs.forEach((l: any) => allDatesSet.add(l.date));
+      holidays.forEach((d: string) => allDatesSet.add(d));
+      const allDates = Array.from(allDatesSet).sort();
+
+      if (allDates.length === 0 && subjects.length === 0) {
+        Alert.alert('Nothing to export', 'No attendance data found yet.');
+        return;
+      }
+
+      // 2. Index logs: key = date__subjectId__type -> action
+      const logIndex: Record<string, string> = {};
+      logs.forEach((l: any) => {
+        const type = l.type === 'lab' ? 'lab' : 'class';
+        const key = `${l.date}__${l.subjectId}__${type}`;
+        logIndex[key] = l.action;
       });
-      const filename = `attendance_export_${new Date().toISOString().split('T')[0]}.csv`;
+
+      // 3. Cell value helper
+      const cellValue = (date: string, subjectId: string, type: 'class' | 'lab'): string => {
+        if (holidays.includes(date)) return 'Hol';
+        const action = logIndex[`${date}__${subjectId}__${type}`];
+        if (!action) return '-';
+        if (action === 'attended')  return 'P';
+        if (action === 'missed')    return 'A';
+        if (action === 'cancelled') return 'Can';
+        return action.charAt(0).toUpperCase();
+      };
+
+      // 4. Check if subject has labs
+      const hasLab = (subj: any): boolean =>
+        Object.values(subj.schedule ?? {}).some(
+          (sch: any) => (sch?.labs?.length > 0) || (sch?.labCount > 0)
+        );
+
+      // 5. Build column definitions
+      interface Col { subjectId: string; subjectName: string; type: 'class' | 'lab'; }
+      const cols: Col[] = [];
+      subjects.forEach((s: any) => {
+        cols.push({ subjectId: s.id, subjectName: s.name, type: 'class' });
+        if (hasLab(s)) cols.push({ subjectId: s.id, subjectName: s.name, type: 'lab' });
+      });
+
+      // 6. Build CSV
+      const esc = (v: string) => v.includes(',') ? `"${v}"` : v;
+      const rows: string[] = [];
+      const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const exportDate = formatDateNumeric(new Date().toISOString().slice(0, 10));
+
+      rows.push(`ZenTrack Attendance Report,Generated: ${exportDate}`);
+      rows.push('');
+      // Subject name header row
+      rows.push(['Date', ...cols.map(c => esc(c.subjectName))].join(','));
+      // Class/Lab sub-header row
+      rows.push(['', ...cols.map(c => c.type === 'lab' ? 'LAB' : 'CLASS')].join(','));
+      rows.push('');
+
+      // Data rows: one per date
+      allDates.forEach(date => {
+        const [y, mo, dy] = date.split('-');
+        const prettyDate = `${dy}-${monthNames[parseInt(mo,10)-1]}-${y}`;
+        const cells = cols.map(c => cellValue(date, c.subjectId, c.type));
+        rows.push([prettyDate, ...cells].join(','));
+      });
+
+      rows.push('');
+      rows.push('--- SUMMARY ---');
+      subjects.forEach((s: any) => {
+        const classAtt = s.classesAttended || 0;
+        const classTot = s.classesTotal || 0;
+        const labAtt   = s.labsAttended  || 0;
+        const labTot   = s.labsTotal     || 0;
+        const totalAtt = classAtt + labAtt;
+        const totalTot = classTot + labTot;
+        const pct = totalTot > 0 ? ((totalAtt / totalTot) * 100).toFixed(1) : '--';
+        rows.push(`${esc(s.name)},Classes: ${classAtt}/${classTot},Labs: ${labAtt}/${labTot},Combined: ${totalAtt}/${totalTot},${pct}%`);
+      });
+
+      rows.push('');
+      rows.push('Legend: P = Present | A = Absent | Can = Cancelled | Hol = Holiday | - = No class');
+
+      const csvContent = rows.join('\n');
+
+      // 7. Write & share
+      const filename = `ZenTrack_Attendance_${new Date().toISOString().split('T')[0]}.csv`;
       const fs = FileSystem as any;
       const fileUri = `${fs.cacheDirectory}${filename}`;
-      await fs.writeAsStringAsync(fileUri, csv, { encoding: fs.EncodingType.UTF8 });
+      await fs.writeAsStringAsync(fileUri, csvContent, { encoding: fs.EncodingType.UTF8 });
+
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(fileUri);
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: 'Export Attendance Report',
+          UTI: 'public.comma-separated-values-text',
+        });
       } else {
         Alert.alert('Error', 'Sharing is not available on this device');
       }
     } catch (err) {
-      console.error(err);
-      Alert.alert('Error', 'Failed to export CSV');
+      console.error('[ExportCSV]', err);
+      Alert.alert('Error', 'Failed to export attendance data');
     }
   };
 
@@ -447,6 +670,22 @@ Guess or summarize subject names logically if they are codes.`;
           <TouchableOpacity onPress={() => setShowDatePicker(true)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center' }}>
             <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
           </TouchableOpacity>
+          {/* Holiday Toggle — fixed icon button, amber when active */}
+          <TouchableOpacity
+            onPress={handleToggleHoliday}
+            style={{
+              width: 36, height: 36, borderRadius: 18,
+              backgroundColor: isSelectedHoliday ? 'rgba(251,191,36,0.18)' : colors.surface,
+              borderWidth: isSelectedHoliday ? 1.5 : 0,
+              borderColor: isSelectedHoliday ? '#fbbf24' : 'transparent',
+              justifyContent: 'center', alignItems: 'center',
+            }}
+          >
+            <Text style={{ fontSize: 15 }}>🌴</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowClassNotifModal(true)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center' }}>
+            <Ionicons name="notifications-outline" size={16} color={colors.accentPrimary} />
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => setIsTimetableOpen(true)} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surface, justifyContent: 'center', alignItems: 'center' }}>
             <Ionicons name="settings-outline" size={16} color={colors.textMuted} />
           </TouchableOpacity>
@@ -465,79 +704,83 @@ Guess or summarize subject names logically if they are codes.`;
         />
       )}
 
-      {/* ── Semester Overview ── */}
-      <View style={{ paddingHorizontal: 16 }}>
-        <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 16, marginHorizontal: 8, marginBottom: 8 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ fontSize: 13, color: colors.textMuted }}>Semester overview</Text>
-            <Text style={{ fontSize: 12, color: colors.textTertiary }}>{globalAttended}/{globalTotal} classes</Text>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-            <Text style={{ fontSize: 32, fontWeight: '700', color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.priorityHigh)) : colors.textMuted }}>
-              {globalPct !== null ? `${Math.round(globalPct)}%` : '--%'}
-            </Text>
-            <View style={{ flex: 1, height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' }}>
-              <View style={{ height: '100%', borderRadius: 3, width: `${Math.min(100, globalPct || 0)}%`, backgroundColor: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.priorityHigh)) : colors.border }} />
-            </View>
-          </View>
-        </View>
-      </View>
-
-      {/* ── Warnings ── */}
-      {warningSubjects.length > 0 && (
-        <View style={styles.warningBanner}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="warning" size={16} color="#f59e0b" />
-              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#fca5a5' }}>Low Attendance</Text>
-            </View>
-            <TouchableOpacity onPress={() => setDismissedWarnings(new Set(warningSubjects.map(s => s.id!)))}>
-              <Ionicons name="close" size={16} color="rgba(255,255,255,0.5)" />
-            </TouchableOpacity>
-          </View>
-          <View style={{ marginTop: 4, gap: 4 }}>
-            {warningSubjects.map(s => {
-              const att = (s.classesAttended || 0) + (s.labsAttended || 0);
-              const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
-              const pct = tot > 0 ? Math.round((att/tot)*100) : 0;
-              const need = Math.ceil((s.targetPercentage * tot - 100 * att) / (100 - s.targetPercentage));
-              return (
-                <Text key={s.id} style={{ fontSize: 11, color: '#fca5a5' }}>
-                  • <Text style={{ fontWeight: 'bold' }}>{s.name}</Text>: {pct}% — attend {need} more to recover
-                </Text>
-              )
-            })}
-          </View>
-        </View>
-      )}
-
-      {/* ── Week Strip ── */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, marginBottom: 18 }}>
-        {weekDates.map((date, i) => {
-          const isHol = holidays.includes(date);
-          const isSel = date === selectedDate;
-          return (
-            <TouchableOpacity key={date} onPress={() => setSelectedDate(date)} style={[{ alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 }, isSel && { backgroundColor: colors.accentPrimary, borderRadius: 10 }]}>
-              <Text style={{ fontSize: 11, color: isSel ? '#000000' : colors.textTertiary, marginBottom: 2, fontWeight: isSel ? '600' : '400' }}>{DAY_SHORT[i]}</Text>
-              <Text style={{ fontSize: 13, color: isSel ? '#000000' : colors.textTertiary, fontWeight: isSel ? '600' : '400' }}>{isHol ? '🌴' : date.split('-')[2]}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {/* ── Daily Schedule ── */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8 }}>
-        <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Today's Classes</Text>
-        <TouchableOpacity onPress={() => setIsExtraOpen(true)}>
-          <Ionicons name="add" size={20} color={colors.textPrimary} />
-        </TouchableOpacity>
-      </View>
-
       <View style={{ flex: 1 }}>
       <FlatList
-        data={isSelectedHoliday ? [] : todayScheduledSubjects}
-        keyExtractor={s => s.id!}
-        contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
+        data={isSelectedHoliday ? [] : todayFlatSessions}
+        keyExtractor={item => item.id}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 120 }}
+        ListHeaderComponent={
+          <>
+            {/* ── Semester Overview ── */}
+            <View style={{ paddingHorizontal: 8, marginBottom: 8 }}>
+              <View style={{ backgroundColor: colors.surface, borderRadius: 20, padding: 16 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontSize: 13, color: colors.textMuted }}>Semester overview</Text>
+                  <Text style={{ fontSize: 12, color: colors.textTertiary }}>{globalAttended}/{globalTotal} classes</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                  <Text style={{ fontSize: 32, fontWeight: '700', color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.priorityHigh)) : colors.textMuted }}>
+                    {globalPct !== null ? `${Math.round(globalPct)}%` : '--%'}
+                  </Text>
+                  <View style={{ flex: 1, height: 6, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' }}>
+                    <View style={{ height: '100%', borderRadius: 3, width: `${Math.min(100, globalPct || 0)}%`, backgroundColor: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.priorityHigh)) : colors.border }} />
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* ── Warnings ── */}
+            {warningSubjects.length > 0 && (
+              <View style={styles.warningBanner}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Ionicons name="warning" size={16} color="#f59e0b" />
+                    <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#fca5a5' }}>Low Attendance</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setDismissedWarnings(new Set(warningSubjects.map(s => s.id!)))}>
+                    <Ionicons name="close" size={16} color="rgba(255,255,255,0.5)" />
+                  </TouchableOpacity>
+                </View>
+                <View style={{ marginTop: 4, gap: 4 }}>
+                  {warningSubjects.map(s => {
+                    const att = (s.classesAttended || 0) + (s.labsAttended || 0);
+                    const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
+                    const pct = tot > 0 ? Math.round((att/tot)*100) : 0;
+                    const need = Math.ceil((s.targetPercentage * tot - 100 * att) / (100 - s.targetPercentage));
+                    return (
+                      <Text key={s.id} style={{ fontSize: 11, color: '#fca5a5' }}>
+                        • <Text style={{ fontWeight: 'bold' }}>{s.name}</Text>: {pct}% — attend {need} more to recover
+                      </Text>
+                    )
+                  })}
+                </View>
+              </View>
+            )}
+
+            {/* ── Week Strip ── */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, marginBottom: 18 }}>
+              {weekDates.map((date, i) => {
+                const isHol = holidays.includes(date);
+                const isSel = date === selectedDate;
+                return (
+                  <TouchableOpacity key={date} onPress={() => setSelectedDate(date)} style={[{ alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 }, isSel && { backgroundColor: colors.accentPrimary, borderRadius: 10 }]}>
+                    <Text style={{ fontSize: 11, color: isSel ? '#000000' : colors.textTertiary, marginBottom: 2, fontWeight: isSel ? '600' : '400' }}>{DAY_SHORT[i]}</Text>
+                    <Text style={{ fontSize: 13, color: isSel ? '#000000' : colors.textTertiary, fontWeight: isSel ? '600' : '400' }}>{isHol ? '🌴' : date.split('-')[2]}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* ── Daily Schedule ── */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, marginBottom: 8 }}>
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Today's Classes</Text>
+              <TouchableOpacity onPress={() => setIsExtraOpen(true)}>
+                <Ionicons name="add" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+          </>
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="calendar-clear-outline" size={48} color={colors.textMuted} />
@@ -550,54 +793,73 @@ Guess or summarize subject names logically if they are codes.`;
             )}
           </View>
         }
-        renderItem={({ item: subject }) => {
-          const sch = subject.schedule?.[selectedDayOfWeek] || subject.schedule?.[Number(selectedDayOfWeek)] || subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()] || { classCount: 0, labCount: 0, classes: [], labs: [] };
+        renderItem={({ item: session }) => {
+          const { subject, type, idx } = session;
           const subLogs = logsBySubjectId[subject.id!] || [];
-          const classLogs = subLogs.filter(l => l.date === selectedDate && !l.isExtra && (l.type === 'class' || !l.type));
-          const labLogs = subLogs.filter(l => l.date === selectedDate && !l.isExtra && l.type === 'lab');
-
-          const renderSessionRow = (type: 'class' | 'lab', idx: number, log: any) => {
-            const sessionsArray = type === 'class' ? sch.classes : sch.labs;
-            const session = sessionsArray && sessionsArray[idx] ? sessionsArray[idx] : null;
-            let timeStr = type === 'class' ? 'Class' : 'Lab';
-            if ((sch.classCount || 0) + (sch.labCount || 0) > 1) timeStr += ` #${idx + 1}`;
-            if (session && (session.time || session.room)) {
-              timeStr = [session.time, session.room].filter(Boolean).join(', ');
-            }
-
-            return (
-              <View key={`${type}-${idx}`} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.surface }}>
-                <View>
-                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '500' }}>{subject.name}</Text>
-                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }}>{timeStr}</Text>
-                </View>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {log ? (
-                    <TouchableOpacity onPress={() => handleUndo(log.id)} style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }}>
-                      <Text style={{ color: log.action === 'attended' ? colors.priorityLow : (log.action === 'cancelled' ? colors.textMuted : colors.error), fontSize: 12, fontWeight: '600' }}>{log.action === 'attended' ? 'Present' : (log.action === 'cancelled' ? 'Cancelled' : 'Absent')} (Undo)</Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <>
-                      <TouchableOpacity style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleLog(subject, type, 'attended'); }}>
-                        <Text style={{ color: colors.priorityLow, fontSize: 12, fontWeight: '600' }}>Present</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={{ paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleLog(subject, type, 'missed'); }}>
-                        <Text style={{ color: colors.error, fontSize: 12, fontWeight: '600' }}>Absent</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#2c2c2e', alignItems: 'center', justifyContent: 'center' }} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleLog(subject, type, 'cancelled'); }}>
-                        <Ionicons name="close" size={18} color={colors.textMuted} />
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              </View>
-            );
-          };
+          const sessionLogs = subLogs.filter((l: any) =>
+            l.date === selectedDate && !l.isExtra &&
+            (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type))
+          );
+          const log = sessionLogs[idx];
+          const isLab = type === 'lab';
 
           return (
-            <View>
-              {Array.from({ length: sch.classes?.length || sch.classCount || 0 }).map((_, idx) => renderSessionRow('class', idx, classLogs[idx]))}
-              {Array.from({ length: sch.labs?.length || sch.labCount || 0 }).map((_, idx) => renderSessionRow('lab', idx, labLogs[idx]))}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.surface }}>
+              {/* Left: subject name + time + type badge */}
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '500' }}>{subject.name}</Text>
+                {/* Time + inline badge */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
+                  <Text style={{ color: colors.textMuted, fontSize: 12 }}>{session.timeStr}</Text>
+                  <View style={{
+                    paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4,
+                    backgroundColor: isLab ? 'rgba(250,215,161,0.15)' : 'rgba(137,220,235,0.12)',
+                  }}>
+                    <Text style={{
+                      fontSize: 8, fontWeight: '700', letterSpacing: 0.4,
+                      color: isLab ? '#FAD7A1' : '#89dceb',
+                    }}>{isLab ? 'LAB' : 'CLASS'}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Right: action buttons */}
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {log ? (
+                  <TouchableOpacity
+                    onPress={() => handleUndo(log.id)}
+                    style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }}
+                  >
+                    <Text style={{
+                      color: log.action === 'attended' ? colors.priorityLow : (log.action === 'cancelled' ? colors.textMuted : colors.error),
+                      fontSize: 12, fontWeight: '600'
+                    }}>
+                      {log.action === 'attended' ? 'Present' : log.action === 'cancelled' ? 'Cancelled' : 'Absent'} ↩
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <>
+                    <TouchableOpacity
+                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }}
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleLog(subject, type, 'attended'); }}
+                    >
+                      <Text style={{ color: colors.priorityLow, fontSize: 12, fontWeight: '600' }}>Present</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }}
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleLog(subject, type, 'missed'); }}
+                    >
+                      <Text style={{ color: colors.error, fontSize: 12, fontWeight: '600' }}>Absent</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#2c2c2e', alignItems: 'center', justifyContent: 'center' }}
+                      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleLog(subject, type, 'cancelled'); }}
+                    >
+                      <Ionicons name="close" size={18} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
             </View>
           );
         }}
@@ -606,20 +868,117 @@ Guess or summarize subject names logically if they are codes.`;
             <View style={{ marginTop: 24, marginBottom: 56 }}>
               <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>By Subject</Text>
               {todayScheduledSubjects.map(subject => {
+                const hasLabs = (subject.labsTotal || 0) > 0 || (subject.labsAttended || 0) > 0;
+                const hasClasses = (subject.classesTotal || 0) > 0 || (subject.classesAttended || 0) > 0;
+
+                // Class-only stats
+                const classStatus = calculateStatus(
+                  subject.classesAttended || 0,
+                  subject.classesTotal || 0,
+                  subject.targetPercentage
+                );
+                // Lab-only stats
+                const labStatus = calculateStatus(
+                  subject.labsAttended || 0,
+                  subject.labsTotal || 0,
+                  subject.targetPercentage
+                );
+                // Combined (for bunk math and overall)
                 const totalAtt = (subject.classesAttended || 0) + (subject.labsAttended || 0);
                 const totalCls = (subject.classesTotal || 0) + (subject.labsTotal || 0);
-                const status = calculateStatus(totalAtt, totalCls, subject.targetPercentage);
-                const pColor = getProgressColor(status.urgency);
+                const combinedStatus = calculateStatus(totalAtt, totalCls, subject.targetPercentage);
+                const pColor = getProgressColor(combinedStatus.urgency);
 
                 return (
-                  <TouchableOpacity key={subject.id} onPress={() => setSelectedHistorySubject(subject)} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }}>
-                    <View style={{ flex: 1, paddingRight: 8 }}>
-                      <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '500' }}>{subject.name}</Text>
-                      <Text style={{ color: pColor, fontSize: 12, marginTop: 6 }}>{status.bunkInfo.replace('✓ ', '').replace('⚠️ ', '')}</Text>
-                    </View>
-                    <Text style={{ color: pColor, fontSize: 16, fontWeight: '600' }}>{status.pct !== null ? `${Math.round(status.pct)}%` : '--%'}</Text>
-                  </TouchableOpacity>
+                  <View key={subject.id}>
+                    <TouchableOpacity onPress={() => setSelectedHistorySubject(subject)} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border }}>
+                      {/* Left: name + bunk info */}
+                      <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '500' }}>{subject.name}</Text>
+                        {/* Separate class/lab attendance rows if both exist */}
+                        {hasLabs ? (
+                          <View style={{ marginTop: 6, gap: 4 }}>
+                            {hasClasses && (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <View style={{ backgroundColor: 'rgba(165,153,255,0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                                  <Text style={{ color: colors.accentPrimary, fontSize: 11, fontWeight: '600' }}>Class</Text>
+                                </View>
+                                <Text style={{ color: classStatus.pct !== null ? getProgressColor(classStatus.urgency) : colors.textMuted, fontSize: 12, fontWeight: '600' }}>
+                                  {classStatus.pct !== null ? `${Math.round(classStatus.pct)}%` : '--%'}
+                                </Text>
+                                <Text style={{ color: colors.textTertiary, fontSize: 11 }}>
+                                  {subject.classesAttended || 0}/{subject.classesTotal || 0}
+                                </Text>
+                              </View>
+                            )}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <View style={{ backgroundColor: 'rgba(250,215,161,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 }}>
+                                <Text style={{ color: '#FAD7A1', fontSize: 11, fontWeight: '600' }}>Lab</Text>
+                              </View>
+                              <Text style={{ color: labStatus.pct !== null ? getProgressColor(labStatus.urgency) : colors.textMuted, fontSize: 12, fontWeight: '600' }}>
+                                {labStatus.pct !== null ? `${Math.round(labStatus.pct)}%` : '--%'}
+                              </Text>
+                              <Text style={{ color: colors.textTertiary, fontSize: 11 }}>
+                                {subject.labsAttended || 0}/{subject.labsTotal || 0}
+                              </Text>
+                            </View>
+                          </View>
+                        ) : (
+                          // No labs — show bunk budget pill
+                          (() => {
+                            const bunk = calculateBunkMath(
+                              subject.classesAttended || 0,
+                              subject.classesTotal || 0,
+                              subject.targetPercentage || 75
+                            );
+                            const budgetColor = bunk.status === 'safe' && bunk.count > 0
+                              ? '#34C759'
+                              : bunk.status === 'warning'
+                              ? '#f59e0b'
+                              : '#ef4444';
+                            const budgetBg = bunk.status === 'safe' && bunk.count > 0
+                              ? 'rgba(52,199,89,0.12)'
+                              : bunk.status === 'warning'
+                              ? 'rgba(245,158,11,0.12)'
+                              : 'rgba(239,68,68,0.12)';
+                            const budgetLabel = bunk.status === 'safe' && bunk.count > 0
+                              ? `✓ Can miss ${bunk.count} more`
+                              : bunk.status === 'warning'
+                              ? `⚠ 0 misses left`
+                              : `↑ Attend ${bunk.count} to recover`;
+                            return (
+                              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5, gap: 6 }}>
+                                <View style={{ backgroundColor: budgetBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 }}>
+                                  <Text style={{ color: budgetColor, fontSize: 11, fontWeight: '600', letterSpacing: 0.2 }}>{budgetLabel}</Text>
+                                </View>
+                              </View>
+                            );
+                          })()
+                        )}
+                      </View>
+                      {/* Right: combined percentage */}
+                      <Text style={{ color: pColor, fontSize: 16, fontWeight: '600', marginTop: hasLabs ? 2 : 0 }}>
+                        {combinedStatus.pct !== null ? `${Math.round(combinedStatus.pct)}%` : '--%'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Inline recovery hint — no formula, no box */}
+                    {(() => {
+                      const pct = totalCls > 0 ? (totalAtt / totalCls) * 100 : 100;
+                      const target = subject.targetPercentage || 75;
+                      if (pct < target) {
+                        const needed = Math.ceil(((target / 100) * totalCls - totalAtt) / (1 - (target / 100)));
+                        return (
+                          <Text style={{ color: '#ef4444', fontSize: 11, marginTop: 6, marginBottom: 4, fontFamily: FONT_FAMILY.medium }}>
+                            Attend {needed} more {needed === 1 ? 'class' : 'classes'} to reach {target}%
+                          </Text>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </View>
                 );
+
               })}
             </View>
           ) : null
@@ -675,39 +1034,59 @@ Guess or summarize subject names logically if they are codes.`;
       </Modal>
 
       {/* Extra Class Modal */}
-      <Modal visible={isExtraOpen} transparent animationType="fade">
+      <Modal visible={isExtraOpen} transparent animationType="slide">
         <KeyboardAvoidingView style={styles.overlayBg} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.sheet}>
+            {/* Handle bar */}
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', alignSelf: 'center', marginBottom: 20 }} />
+
             <Text style={styles.sheetTitle}>Log Extra Class</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+
+            {/* Subject selector — vertical full-width pills */}
+            <ScrollView style={{ maxHeight: 180, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
               {subjects.map(s => (
-                <TouchableOpacity key={s.id} onPress={() => setExtraSubjectId(s.id!)} style={[styles.chip, extraSubjectId === s.id && styles.chipActive]}>
-                  <Text style={[styles.chipText, extraSubjectId === s.id && { color: '#fff' }]}>{s.name}</Text>
+                <TouchableOpacity
+                  key={s.id}
+                  onPress={() => setExtraSubjectId(s.id!)}
+                  style={[
+                    styles.subjectSelectRow,
+                    extraSubjectId === s.id && styles.subjectSelectRowActive,
+                  ]}
+                >
+                  <View style={[styles.subjectSelectDot, extraSubjectId === s.id && { backgroundColor: '#a599ff' }]} />
+                  <Text style={[styles.subjectSelectText, extraSubjectId === s.id && { color: '#ffffff' }]}>{s.name}</Text>
+                  {extraSubjectId === s.id && <Ionicons name="checkmark" size={14} color="#a599ff" />}
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'center' }}>
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 12, textAlign: 'center', color: colors.textMuted }}>CLASS</Text>
-                <TouchableOpacity style={[styles.extraBtn, { borderColor: '#10b981' }]} disabled={!extraSubjectId} onPress={() => { handleLog(subjects.find(s=>s.id===extraSubjectId)!, 'class', 'attended', selectedDate, true); setIsExtraOpen(false); }}>
-                  <Ionicons name="checkmark" size={20} color="#10b981" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.extraBtn, { borderColor: '#ef4444' }]} disabled={!extraSubjectId} onPress={() => { handleLog(subjects.find(s=>s.id===extraSubjectId)!, 'class', 'missed', selectedDate, true); setIsExtraOpen(false); }}>
-                  <Ionicons name="close" size={20} color="#ef4444" />
-                </TouchableOpacity>
+
+            {/* Action rows — CLASS and LAB */}
+            {(['class', 'lab'] as const).map(type => (
+              <View key={type} style={styles.extraTypeRow}>
+                <Text style={styles.extraTypeLabel}>{type === 'class' ? 'Class' : 'Lab'}</Text>
+                <View style={styles.extraTypeActions}>
+                  <TouchableOpacity
+                    style={[styles.extraActionBtn, styles.extraActionAttended, !extraSubjectId && { opacity: 0.3 }]}
+                    disabled={!extraSubjectId}
+                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'attended', selectedDate, true); setIsExtraOpen(false); }}
+                  >
+                    <Ionicons name="checkmark" size={15} color="#5eda9e" />
+                    <Text style={styles.extraActionAttendedText}>Attended</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.extraActionBtn, styles.extraActionMissed, !extraSubjectId && { opacity: 0.3 }]}
+                    disabled={!extraSubjectId}
+                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'missed', selectedDate, true); setIsExtraOpen(false); }}
+                  >
+                    <Ionicons name="close" size={15} color="#ff6961" />
+                    <Text style={styles.extraActionMissedText}>Missed</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={{ gap: 8 }}>
-                <Text style={{ fontSize: 12, textAlign: 'center', color: colors.textMuted }}>LAB</Text>
-                <TouchableOpacity style={[styles.extraBtn, { borderColor: '#10b981' }]} disabled={!extraSubjectId} onPress={() => { handleLog(subjects.find(s=>s.id===extraSubjectId)!, 'lab', 'attended', selectedDate, true); setIsExtraOpen(false); }}>
-                  <Ionicons name="checkmark" size={20} color="#10b981" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.extraBtn, { borderColor: '#ef4444' }]} disabled={!extraSubjectId} onPress={() => { handleLog(subjects.find(s=>s.id===extraSubjectId)!, 'lab', 'missed', selectedDate, true); setIsExtraOpen(false); }}>
-                  <Ionicons name="close" size={20} color="#ef4444" />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <TouchableOpacity style={{ marginTop: 20, alignItems: 'center' }} onPress={() => setIsExtraOpen(false)}>
-              <Text style={{ color: colors.textMuted, padding: 8 }}>Cancel</Text>
+            ))}
+
+            <TouchableOpacity style={styles.extraCancelBtn} onPress={() => setIsExtraOpen(false)}>
+              <Text style={styles.extraCancelText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -735,6 +1114,12 @@ Guess or summarize subject names logically if they are codes.`;
         visible={showAddModal} 
         onClose={() => setShowAddModal(false)} 
         existingSubject={editSubject} 
+      />
+
+      {/* Class Notification Preferences Modal */}
+      <ClassNotifSettingsModal
+        visible={showClassNotifModal}
+        onClose={() => setShowClassNotifModal(false)}
       />
 
     </SafeAreaView>
@@ -810,5 +1195,90 @@ const makeStyles = (colors: any) => StyleSheet.create({
       chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border, marginRight: 8 },
       chipActive: { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
       chipText: { fontSize: 12, color: colors.textPrimary },
-      extraBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)' }
+      extraBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)' },
+
+      // Extra Class Modal — redesigned
+      subjectSelectRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 11,
+        paddingHorizontal: 14,
+        borderRadius: 12,
+        marginBottom: 6,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+      },
+      subjectSelectRowActive: {
+        backgroundColor: 'rgba(165,153,255,0.08)',
+        borderColor: 'rgba(165,153,255,0.25)',
+      },
+      subjectSelectDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+      },
+      subjectSelectText: {
+        flex: 1,
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 14,
+        color: '#8e8e93',
+      },
+      extraTypeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 10,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.06)',
+      },
+      extraTypeLabel: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 13,
+        color: '#ffffff',
+        letterSpacing: 0.3,
+      },
+      extraTypeActions: {
+        flexDirection: 'row',
+        gap: 8,
+      },
+      extraActionBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingVertical: 7,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        borderWidth: 1,
+      },
+      extraActionAttended: {
+        backgroundColor: 'rgba(94,218,158,0.08)',
+        borderColor: 'rgba(94,218,158,0.2)',
+      },
+      extraActionAttendedText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 13,
+        color: '#5eda9e',
+      },
+      extraActionMissed: {
+        backgroundColor: 'rgba(255,105,97,0.08)',
+        borderColor: 'rgba(255,105,97,0.2)',
+      },
+      extraActionMissedText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 13,
+        color: '#ff6961',
+      },
+      extraCancelBtn: {
+        marginTop: 16,
+        alignItems: 'center',
+        paddingVertical: 12,
+      },
+      extraCancelText: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 14,
+        color: '#636366',
+      },
     });

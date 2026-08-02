@@ -1,5 +1,6 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
 import React from 'react';
+import { formatDateWithDay } from '../utils/dateUtils';
 import { View, Text, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useFonts, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -19,7 +20,7 @@ export default function LandingScreen() {
   }
 
   const today = new Date();
-  const dateStr = today.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  const dateStr = formatDateWithDay(today.toISOString().slice(0, 10));
 
   return (
     <SafeAreaView style={styles.container}>

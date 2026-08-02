@@ -41,6 +41,7 @@ export interface MemoryNode {
   relevanceScore: number;     // 0-1, decays over time
   createdAt: number;          // Unix timestamp ms
   lastAccessedAt: number;     // Updated on every read
+  accessCount?: number;       // How many times this node has been accessed (for high-freq retention)
   linkedEntityIds: string[];  // Firebase doc IDs this relates to
 }
 
@@ -53,9 +54,22 @@ export interface ContextualMemoryGraph {
 export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
 export type StreakPersonality = 'momentum-builder' | 'binge-worker' | 'consistent';
 
+export interface UserPersonaCard {
+  name: string;
+  degree: string;
+  year: number;
+  examPeriodStart?: string;
+  peakProductivityHour: number;
+  currentStressLevel: 'low' | 'moderate' | 'high';
+  primaryGoal: string;
+  motivationStyle: 'competition' | 'progress' | 'habit';
+}
+
 export interface BehavioralFingerprint {
   userId: string;
   updatedAt: number;
+
+  persona?: UserPersonaCard;
 
   // Temporal patterns
   mostProductiveHour: number;           // 21 = 9 PM (derived from task completion times)
@@ -94,6 +108,11 @@ const FINGERPRINT_KEY = STORAGE_KEYS.SARA_FINGERPRINT;
 const MAX_NODES = 50;
 const DECAY_RATE_PER_DAY = 0.02; // relevance drops 2% per day
 
+// CMG Pruning constants (Feature 2.2)
+const MEMORY_MAX_ENTRIES = 20;                         // Hard cap after pruning
+const MEMORY_TTL_MS = 7 * 24 * 60 * 60 * 1000;        // 7 days
+const MEMORY_HIGH_FREQ_THRESHOLD = 3;                  // accessCount >= 3 = keep regardless of age
+
 // ─── In-memory cache ─────────────────────────────────────────────────────────
 
 let _fingerprintCache: BehavioralFingerprint | null = null;
@@ -109,9 +128,11 @@ export async function loadCMG(userId: string): Promise<ContextualMemoryGraph> {
     if (raw) {
       const parsed: ContextualMemoryGraph = JSON.parse(raw);
       if (parsed.userId === userId) {
+        // Apply decay first, then prune with TTL + freq strategy
         const decayed = decayMemoryNodes(parsed);
-        _cmgCache = decayed;
-        return decayed;
+        const pruned = pruneMemoryGraph(decayed);
+        _cmgCache = pruned;
+        return pruned;
       }
     }
   } catch (e) {
@@ -152,6 +173,38 @@ export function decayMemoryNodes(graph: ContextualMemoryGraph): ContextualMemory
   return { ...graph, nodes: pruned };
 }
 
+// ─── CMG: TTL + Frequency Pruning (Feature 2.2) ──────────────────────────────
+
+/**
+ * Prune the memory graph using a two-pass strategy:
+ *  Pass 1 — Keep any node that is RECENT (accessed in last 7 days) or HIGH-FREQ
+ *            (accessCount >= 3). Everything else is evicted.
+ *  Pass 2 — Sort survivors by recency (newest lastAccessedAt first),
+ *            hard-cap at MEMORY_MAX_ENTRIES (20).
+ *
+ * This keeps context injection under ~800 tokens for typical users, freeing
+ * 2,200+ tokens for the actual conversation.
+ *
+ * Called inside loadCMG() and appendMemoryNode().
+ */
+export function pruneMemoryGraph(graph: ContextualMemoryGraph): ContextualMemoryGraph {
+  const cutoff = Date.now() - MEMORY_TTL_MS;
+
+  // Pass 1: relevance + TTL + high-frequency filter
+  const survivors = graph.nodes.filter(node => {
+    const isRecent = node.lastAccessedAt >= cutoff;
+    const isHighFreq = (node.accessCount ?? 0) >= MEMORY_HIGH_FREQ_THRESHOLD;
+    return isRecent || isHighFreq;
+  });
+
+  // Pass 2: sort by recency, cap at MEMORY_MAX_ENTRIES
+  const capped = survivors
+    .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
+    .slice(0, MEMORY_MAX_ENTRIES);
+
+  return { ...graph, nodes: capped, updatedAt: Date.now() };
+}
+
 // ─── CMG: Append Node ─────────────────────────────────────────────────────────
 
 export async function appendMemoryNode(
@@ -169,6 +222,8 @@ export async function appendMemoryNode(
   if (existing) {
     existing.relevanceScore = Math.min(1.0, existing.relevanceScore + 0.15);
     existing.lastAccessedAt = Date.now();
+    // Increment access counter — used by pruneMemoryGraph() high-freq retention
+    existing.accessCount = (existing.accessCount ?? 0) + 1;
     await saveCMG(graph);
     return;
   }
@@ -178,6 +233,7 @@ export async function appendMemoryNode(
     id: `cmg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     createdAt: Date.now(),
     lastAccessedAt: Date.now(),
+    accessCount: 1,
   };
 
   const updated: ContextualMemoryGraph = {
@@ -186,7 +242,8 @@ export async function appendMemoryNode(
     updatedAt: Date.now(),
   };
 
-  await saveCMG(decayMemoryNodes(updated));
+  // Apply decay → prune (TTL + freq) → cap at MEMORY_MAX_ENTRIES
+  await saveCMG(pruneMemoryGraph(decayMemoryNodes(updated)));
 }
 
 // ─── CMG: Extract & Store (async post-interaction, never blocks UI) ───────────
@@ -465,6 +522,28 @@ function _refreshFingerprintFromData(fp: BehavioralFingerprint, data: FingerPrin
     const recentLogs = (data.habitLogs as any[]).filter((l: any) => l.date >= thirtyDaysAgo);
     fp.habitConsistencyScore = Math.min(1.0, recentLogs.length / 30); // 30 logs = perfect
   }
+
+  // Populate Persona Card derived fields
+  if (!fp.persona) {
+    fp.persona = {
+      name: '',
+      degree: '',
+      year: 1,
+      peakProductivityHour: fp.peakProductivityHour,
+      currentStressLevel: 'low',
+      primaryGoal: '',
+      motivationStyle: 'progress'
+    };
+  }
+  fp.persona.peakProductivityHour = fp.peakProductivityHour;
+  fp.persona.currentStressLevel = fp.upcomingDeadlineStress ? 'high' : (fp.subjectsAtRisk.length > 0 ? 'moderate' : 'low');
+  fp.persona.motivationStyle = fp.streakPersonality === 'momentum-builder' ? 'progress' : (fp.streakPersonality === 'binge-worker' ? 'competition' : 'habit');
+  
+  if (data.customEvents) {
+    const nextExam = data.customEvents.filter(e => e.type === 'exam' && e.date >= todayISO)
+      .sort((a,b) => a.date.localeCompare(b.date))[0];
+    if (nextExam) fp.persona.examPeriodStart = nextExam.date;
+  }
 }
 
 function _deriveStreakPersonality(fp: BehavioralFingerprint): StreakPersonality {
@@ -484,22 +563,21 @@ function _deriveStreakPersonality(fp: BehavioralFingerprint): StreakPersonality 
  * Zero API calls — pure computation from cached fingerprint.
  */
 export function getSaraToneDirective(fp: BehavioralFingerprint): string {
+  // All branches maintain the Kunal Shah base: blunt, first-principles, no sugarcoating.
+  // Personality type only shifts the ANGLE of directness, not the core honesty.
   if (fp.dominantStressPattern === 'deadline-driven') {
-    return 'Tone: direct, punchy, no fluff. This user is deadline-driven — get to the point fast.';
+    return 'Tone: urgency-first. Name the exact deadline and exactly what\'s at risk. No filler. If they\'re cutting it close, say so plainly.';
   }
-  // BUG-M8 FIX: Removed 'anxiety-prone' branch — this value is NEVER set in
-  // _refreshFingerprintFromData(). Only 'deadline-driven' and 'structured' are set.
-  // Added 'binge-worker' branch which IS derived by _deriveStreakPersonality().
   if (fp.streakPersonality === 'binge-worker') {
-    return 'Tone: direct and challenging, slightly provocative. This user needs a push, not reassurance.';
+    return 'Tone: pattern-exposure mode. This user works in bursts and rationalizes gaps. Call out the inconsistency. Make them uncomfortable enough to change, not enough to quit.';
   }
   if (fp.streakPersonality === 'momentum-builder') {
-    return 'Tone: energetic, motivating, emphasize progress. Celebrate wins briefly.';
+    return 'Tone: raise the bar. This user is performing well — which means you hold them to a higher standard, not a lower one. Progress is expected, not celebrated. Push for the next level.';
   }
   if (fp.streakPersonality === 'consistent') {
-    return 'Tone: calm, analytical, Stoic. Provide clear structure. Minimal encouragement needed.';
+    return 'Tone: analytical precision. This user is consistent — give them data and patterns, not encouragement. They want insight, not applause.';
   }
-  return 'Tone: balanced, warm, helpful.';
+  return 'Tone: blunt, honest, zero sugarcoating. Call it as it is. Respect their intelligence.';
 }
 
 /**

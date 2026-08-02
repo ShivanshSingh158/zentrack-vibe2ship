@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatDateShort } from '../../utils/dateUtils';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,7 +81,7 @@ Output just the 2 sentences. No bold formatting, no markdown.`;
         </View>
         {lastUpdated && (
           <Text style={s.timestamp}>
-            Updated {new Date(lastUpdated).toLocaleDateString()}
+            Updated {formatDateShort(new Date(lastUpdated).toISOString().slice(0,10))}
           </Text>
         )}
       </View>

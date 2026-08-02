@@ -8,6 +8,10 @@ import { addDoc, collection, setDoc, doc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import * as Haptics from 'expo-haptics';
+import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { scheduleAllNotifications } from '../../services/notifications';
+import { Switch } from 'react-native';
 
 interface Props {
   visible: boolean;
@@ -38,9 +42,46 @@ const WAKE_TIMES = [
 export default function SleepLogSheet({ visible, onClose, userId }: Props) {
   const { colors, isDark } = useTheme();
   const s = makeStyles(colors);
+  const navigation = useNavigation<any>();
 
   const [bedTime, setBedTime] = useState(23);
   const [wakeTime, setWakeTime] = useState(7);
+  const [remindersEnabled, setRemindersEnabled] = useState(false);
+
+  React.useEffect(() => {
+    AsyncStorage.getItem('@zentrack_sleep_reminders_enabled').then(val => {
+      if (val === 'true') setRemindersEnabled(true);
+    });
+    AsyncStorage.getItem('@zentrack_sleep_reminder_night').then(val => {
+      if (val) setBedTime(parseInt(val, 10));
+    });
+    AsyncStorage.getItem('@zentrack_sleep_reminder_morning').then(val => {
+      if (val) setWakeTime(parseInt(val, 10));
+    });
+  }, []);
+
+  const handleToggleReminders = async (val: boolean) => {
+    setRemindersEnabled(val);
+    await AsyncStorage.setItem('@zentrack_sleep_reminders_enabled', val.toString());
+    await AsyncStorage.setItem('@zentrack_sleep_reminder_night', bedTime.toString());
+    await AsyncStorage.setItem('@zentrack_sleep_reminder_morning', wakeTime.toString());
+    // Pass empty arrays — the purpose here is just to flush the fingerprint cache
+    // so the next context-driven reschedule picks up the new sleep prefs.
+    // clearScheduleCache() is not imported here, but passing empty params forces
+    // a cache miss and a full reschedule on the next real data update.
+    scheduleAllNotifications({ tasks: [], customEvents: [], gymLogs: [], attendance: [] });
+  };
+
+  const updateTimes = async (type: 'bed' | 'wake', val: number) => {
+    if (type === 'bed') setBedTime(val);
+    else setWakeTime(val);
+    
+    if (remindersEnabled) {
+      await AsyncStorage.setItem('@zentrack_sleep_reminder_night', type === 'bed' ? val.toString() : bedTime.toString());
+      await AsyncStorage.setItem('@zentrack_sleep_reminder_morning', type === 'wake' ? val.toString() : wakeTime.toString());
+      scheduleAllNotifications({ tasks: [], customEvents: [], gymLogs: [], attendance: [] });
+    }
+  };
 
   const hours = useMemo(() => {
     // Both mapped to a 24 hour period from noon to noon essentially.
@@ -89,7 +130,7 @@ export default function SleepLogSheet({ visible, onClose, userId }: Props) {
               <TouchableOpacity
                 key={item.val}
                 style={[s.pill, bedTime === item.val && { backgroundColor: '#5E5CE6', borderColor: '#5E5CE6' }]}
-                onPress={() => setBedTime(item.val)}
+                onPress={() => updateTimes('bed', item.val)}
               >
                 <Text style={[s.pillText, bedTime === item.val && { color: '#fff' }]}>{item.label}</Text>
               </TouchableOpacity>
@@ -103,12 +144,24 @@ export default function SleepLogSheet({ visible, onClose, userId }: Props) {
               <TouchableOpacity
                 key={item.val}
                 style={[s.pill, wakeTime === item.val && { backgroundColor: '#5E5CE6', borderColor: '#5E5CE6' }]}
-                onPress={() => setWakeTime(item.val)}
+                onPress={() => updateTimes('wake', item.val)}
               >
                 <Text style={[s.pillText, wakeTime === item.val && { color: '#fff' }]}>{item.label}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
+
+          <View style={s.reminderRow}>
+            <View>
+              <Text style={s.reminderTitle}>Daily Sleep Reminders</Text>
+              <Text style={s.reminderSubtitle}>Get notified at bedtime and wake time.</Text>
+            </View>
+            <Switch
+              value={remindersEnabled}
+              onValueChange={handleToggleReminders}
+              trackColor={{ false: 'rgba(255,255,255,0.1)', true: '#5E5CE6' }}
+            />
+          </View>
 
           {/* Result & Submit */}
           <View style={s.footer}>
@@ -119,6 +172,19 @@ export default function SleepLogSheet({ visible, onClose, userId }: Props) {
             
             <TouchableOpacity style={s.saveBtn} onPress={handleLog}>
               <Text style={s.saveBtnText}>Log Sleep</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ paddingHorizontal: SPACE.xl }}>
+            <TouchableOpacity
+              style={s.dashboardBtn}
+              onPress={() => {
+                onClose();
+                navigation.navigate('MoreStack', { screen: 'WellbeingDashboard' });
+              }}
+            >
+              <Ionicons name="bar-chart-outline" size={20} color={colors.accentPrimary} />
+              <Text style={s.dashboardBtnText}>View Wellbeing Dashboard</Text>
             </TouchableOpacity>
           </View>
 
@@ -206,6 +272,46 @@ const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.xl,
     color: '#5E5CE6',
+  },
+  dashboardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(165,153,255,0.1)',
+    borderRadius: RADIUS.lg,
+    paddingVertical: SPACE.md,
+    marginTop: SPACE.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.3)',
+  },
+  dashboardBtnText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: FONT_SIZE.md,
+    color: colors.textPrimary,
+    marginLeft: SPACE.sm,
+  },
+  reminderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACE.xl,
+    paddingVertical: SPACE.md,
+    marginTop: -SPACE.md,
+    marginBottom: SPACE.md,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: RADIUS.lg,
+    marginHorizontal: SPACE.xl,
+  },
+  reminderTitle: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: FONT_SIZE.md,
+    color: colors.textPrimary,
+  },
+  reminderSubtitle: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: FONT_SIZE.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   saveBtn: {
     backgroundColor: colors.textPrimary,

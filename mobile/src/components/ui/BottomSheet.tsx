@@ -97,7 +97,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         bottom: 0,
         left: 0,
         right: 0,
-        backgroundColor: colors.background,
+        backgroundColor: '#000000',
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
         padding: 20,
@@ -106,6 +106,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
         shadowOffset: { width: 0, height: -2 },
         shadowOpacity: 0.1,
         shadowRadius: 10,
+        borderWidth: 1,
+        borderColor: '#27272A',
       },
       fullHeight: {
         height: '90%',

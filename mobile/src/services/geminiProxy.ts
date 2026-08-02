@@ -254,3 +254,80 @@ export async function callGeminiProxy(
   if (!text) throw new Error('Empty response from Gemini');
   return text;
 }
+
+// ─── AI Exercise Resolver ────────────────────────────────────────────────────
+// Accepts any user-typed name (abbreviation, typo, colloquial name, etc.)
+// and returns canonical exercise metadata auto-filled by Gemini.
+
+export interface AIExerciseInfo {
+  canonicalName: string;   // Properly capitalised exercise name
+  muscle: string;          // Primary muscle group
+  targetSets: number;      // Recommended working sets
+  targetReps: string;      // Rep range e.g. "8–12"
+  restTimeSecs: number;    // Rest in seconds
+  youtubeSearchQuery: string; // Best YouTube search query for a form video
+}
+
+const VALID_MUSCLES = [
+  'Chest', 'Back', 'Shoulders', 'Side Delts', 'Rear Delts',
+  'Triceps', 'Biceps', 'Brachialis', 'Quads', 'Hamstrings',
+  'Glutes', 'Calves', 'Abs', 'Obliques', 'Forearms', 'Traps', 'Mixed',
+];
+
+export async function aiResolveExercise(userInput: string): Promise<AIExerciseInfo | null> {
+  if (!userInput.trim()) return null;
+
+  const prompt = `You are an exercise science expert. The user typed: "${userInput.trim()}"
+
+Identify this as a gym exercise and respond with ONLY a valid JSON object — no markdown, no explanation.
+
+Return this exact schema:
+{
+  "canonicalName": "Full proper exercise name",
+  "muscle": "Primary muscle group (must be exactly one of: Chest, Back, Shoulders, Side Delts, Rear Delts, Triceps, Biceps, Brachialis, Quads, Hamstrings, Glutes, Calves, Abs, Obliques, Forearms, Traps, Mixed)",
+  "targetSets": 3,
+  "targetReps": "8–12",
+  "restTimeSecs": 90,
+  "youtubeSearchQuery": "best form tutorial search query"
+}
+
+Rules:
+- canonicalName: correct spelling and full name even if user typed abbreviation/typo
+- muscle: choose the single best primary muscle from the allowed list only
+- targetSets: integer 2–5 based on typical programming for this exercise
+- targetReps: use em-dash (–) not hyphen, e.g. "8–12", "12–15", "5–8"
+- restTimeSecs: 45–180 based on exercise intensity (compound = more, isolation = less)
+- youtubeSearchQuery: concise search like "cable lateral raise form tutorial" or "bench press proper form"`;
+
+  try {
+    const data = await callProxy({
+      model: 'gemini-2.5-flash',
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0,
+        maxOutputTokens: 300,
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const raw = parseProxyResponse(data).text;
+    if (!raw) return null;
+
+    // Strip any markdown fences in case the model adds them despite instructions
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    const parsed = JSON.parse(cleaned) as AIExerciseInfo;
+
+    // Validate muscle is from allowed list
+    if (!VALID_MUSCLES.includes(parsed.muscle)) {
+      parsed.muscle = 'Mixed';
+    }
+    // Clamp sets/rest to sane ranges
+    parsed.targetSets = Math.max(2, Math.min(6, parsed.targetSets || 3));
+    parsed.restTimeSecs = Math.max(30, Math.min(300, parsed.restTimeSecs || 60));
+
+    return parsed;
+  } catch (err) {
+    console.warn('[GeminiProxy] aiResolveExercise failed:', err);
+    return null;
+  }
+}

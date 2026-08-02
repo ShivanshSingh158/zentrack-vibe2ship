@@ -94,8 +94,22 @@ const ACTION_POLICIES: Record<string, ActionPolicy> = {
     isDestructive: false,
     tier1Eligible: false,
   },
+  updateNotificationSetting: {
+    tier1Threshold: 0.92,
+    tier2Threshold: 0.70,
+    isReversible: true,
+    isDestructive: false,
+    tier1Eligible: true,
+  },
 
   // ── HIGH RISK — destructive, always Tier 3 ────────────────────────────
+  createWeeklyReview: {
+    tier1Threshold: 0.96,
+    tier2Threshold: 0.70,
+    isReversible: true,
+    isDestructive: false,
+    tier1Eligible: false,
+  },
   deleteTask: {
     tier1Threshold: 1.1,    // Impossible threshold — always Tier 3
     tier2Threshold: 1.1,    // Always Tier 3
@@ -161,6 +175,8 @@ export function getAutoExecuteToastText(actionType: string, args: any): string {
       return `✓ "${args.taskTitle || 'Task'}" complete`;
     case 'markAttendance':
       return `✓ ${args.subjectName || 'Class'} marked ${args.status || 'present'}`;
+    case 'updateNotificationSetting':
+      return `✓ Notification setting updated`;
     default:
       return `✓ Done`;
   }
@@ -188,6 +204,8 @@ export function getInlinePillText(actionType: string, args: any): string {
       return `Complete "${args.taskTitle}"?`;
     case 'markAttendance':
       return `Mark ${args.subjectName} as ${args.status}?`;
+    case 'updateNotificationSetting':
+      return `Set ${args.settingLabel || args.settingKey || 'notification'} to ${args.value}?`;
     default:
       return `Confirm action?`;
   }

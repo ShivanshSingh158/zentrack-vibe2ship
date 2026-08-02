@@ -24,12 +24,16 @@ export default function CardioLogScreen() {
 
   const [duration, setDuration] = useState('');
   const [distance, setDistance] = useState('');
+  const [speed, setSpeed] = useState('');
+  const [incline, setIncline] = useState('');
   const [calories, setCalories] = useState('');
 
   useEffect(() => {
     if (cardioItem) {
       setDuration(cardioItem.durationMinutes ? String(cardioItem.durationMinutes) : '');
       setDistance(cardioItem.distanceKm ? String(cardioItem.distanceKm) : '');
+      setSpeed(cardioItem.speedKmh ? String(cardioItem.speedKmh) : '');
+      setIncline(cardioItem.incline ? String(cardioItem.incline) : '');
       setCalories(cardioItem.calories ? String(cardioItem.calories) : '');
     }
   }, [cardioItem]);
@@ -41,12 +45,16 @@ export default function CardioLogScreen() {
     
     const parsedDuration = parseInt(duration, 10);
     const parsedDistance = parseFloat(distance);
+    const parsedSpeed = parseFloat(speed);
+    const parsedIncline = parseFloat(incline);
     const parsedCalories = parseInt(calories, 10);
     
     const updated = {
       ...cardioItem,
       durationMinutes: isNaN(parsedDuration) ? undefined : parsedDuration,
       distanceKm: isNaN(parsedDistance) ? undefined : parsedDistance,
+      speedKmh: isNaN(parsedSpeed) ? undefined : parsedSpeed,
+      incline: isNaN(parsedIncline) ? undefined : parsedIncline,
       calories: isNaN(parsedCalories) ? undefined : parsedCalories,
       completed: true,
     };
@@ -100,7 +108,7 @@ export default function CardioLogScreen() {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Distance (km/mi)</Text>
+              <Text style={styles.label}>Distance (km)</Text>
               <TextInput
                 style={styles.input}
                 value={distance}
@@ -109,6 +117,31 @@ export default function CardioLogScreen() {
                 placeholder="e.g. 5.2"
                 placeholderTextColor={colors.textMuted}
               />
+            </View>
+
+            <View style={styles.row}>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.label}>Speed (km/h)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={speed}
+                  onChangeText={setSpeed}
+                  keyboardType="numeric"
+                  placeholder="e.g. 8.5"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.label}>Incline (%)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={incline}
+                  onChangeText={setIncline}
+                  keyboardType="numeric"
+                  placeholder="e.g. 2"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
             </View>
 
             <View style={styles.inputGroup}>
@@ -167,6 +200,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       title: { fontFamily: FONT_FAMILY.bold, fontSize: 24, color: colors.textPrimary },
       
       form: { width: '100%', gap: SPACE.lg },
+      row: { flexDirection: 'row', gap: SPACE.md },
       inputGroup: { gap: SPACE.xs },
       label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
       input: {

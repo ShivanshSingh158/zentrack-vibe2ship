@@ -28,11 +28,27 @@ import BottomSheet from '../components/ui/BottomSheet';
 import UniversalCalendarModal from '../components/UniversalCalendarModal';
 import TaskRow from '../components/Tasks/TaskRow';
 import TimelineView from '../components/Tasks/TimelineView';
+import MatrixView from '../components/Tasks/MatrixView';
 import TaskTemplatesSheet from '../components/Tasks/TaskTemplatesSheet';
+import RecurrencePickerModal from '../components/Tasks/RecurrencePickerModal';
 import { TaskDateStrip } from '../components/Tasks/TaskDateStrip';
 import { BlurView } from 'expo-blur';
 import { COLLECTION } from '../config/constants';
 import { useTheme } from "../contexts/ThemeContext";
+import NLPTaskInput from '../components/Tasks/NLPTaskInput';
+import { parseNLTask, ParsedTask, NLPToken, formatDateWithDay } from '../utils/dateUtils';
+import KanbanView from '../components/Tasks/KanbanView';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import TaskTimeLogSheet from '../components/Tasks/TaskTimeLogSheet';
+import TimeSpentSheet from '../components/Tasks/TimeSpentSheet';
+import BulkRescheduleSheet from '../components/Tasks/BulkRescheduleSheet';
+
+const TAG_STORAGE_KEY = 'zentrack_task_tags_v1';
+const TAG_PALETTE = ['#a599ff','#60a5fa','#34d399','#f87171','#fb923c','#e879f9','#facc15','#38bdf8'];
+function tagColorFor(tag: string): string {
+  let h = 0; for (let i = 0; i < tag.length; i++) h = tag.charCodeAt(i) + ((h << 5) - h);
+  return TAG_PALETTE[Math.abs(h) % TAG_PALETTE.length];
+}
 
 const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
 
@@ -50,11 +66,17 @@ const PRIORITY_COLORS: Record<string, string> = {
   P3: '#5eda9e',
 };
 
+const formatDisplayDate = (d: string) => {
+  if (!d || d.length !== 10) return d;
+  const [year, month, day] = d.split('-');
+  return `${day}-${month}-${year.slice(2)}`;
+};
 
 
-// â”€â”€â”€ TaskCard component removed to clean up code â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// â”€â”€â”€ New Task Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ——— TaskCard component removed to clean up code ————————————————————————————————
+
+// ——— New Task Modal ——————————————————————————————————————————————————————————————
 
 export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose, userId, selectedDate, listCount }: { visible: boolean, onClose: () => void, userId: string, selectedDate: string, listCount: number }) {
   const { colors, isDark } = useTheme();
@@ -63,14 +85,50 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
   const [saving, setSaving] = useState(false);
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('low');
 
+  // NLP parsed result (live, updated on every keystroke)
+  const [nlpParsed, setNlpParsed] = useState<ParsedTask | null>(null);
+
+  // Tags
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagLibrary, setTagLibrary] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState('');
+  const [showTagInput, setShowTagInput] = useState(false);
+
+  // Load tag library on open
+  useEffect(() => {
+    AsyncStorage.getItem(TAG_STORAGE_KEY).then(raw => {
+      if (raw) setTagLibrary(JSON.parse(raw));
+    });
+  }, [visible]);
+
+  const addTag = useCallback((tag: string) => {
+    const clean = tag.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!clean) return;
+    setSelectedTags(prev => prev.includes(clean) ? prev : [...prev, clean]);
+    setTagLibrary(prev => {
+      const next = prev.includes(clean) ? prev : [clean, ...prev];
+      AsyncStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+    setNewTagInput('');
+    setShowTagInput(false);
+  }, []);
+
+  const removeSelectedTag = useCallback((tag: string) => {
+    setSelectedTags(prev => prev.filter(t => t !== tag));
+  }, []);
+
+
   // Time pickers
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
+
   // Recurrence
-  const [recurrence, setRecurrence] = useState<'once' | 'daily'>('once');
+  const [recurrenceRule, setRecurrenceRule] = useState<any>(null);
+  const [showRecurrenceModal, setShowRecurrenceModal] = useState(false);
 
   // Subtasks
   const [subtasks, setSubtasks] = useState<string[]>([]);
@@ -84,6 +142,50 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
   // Reset taskDate when modal opens for a new date
   useEffect(() => { setTaskDate(selectedDate); }, [selectedDate, visible]);
 
+  // ── NLP handler: parse on every keystroke, auto-apply detected fields ────
+  const handleTitleChange = useCallback((text: string) => {
+    setTitle(text);
+    if (text.length < 3) { setNlpParsed(null); return; }
+    const parsed = parseNLTask(text);
+    setNlpParsed(parsed.tokens.length > 0 ? parsed : null);
+    // Auto-apply detected values to fields
+    if (parsed.date && parsed.tokens.some(t => t.type === 'date')) {
+      setTaskDate(parsed.date);
+    }
+    if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
+      setStartTime(parsed.timeSlot);
+      if (parsed.endTimeSlot) {
+        setEndTime(parsed.endTimeSlot);
+      }
+    }
+    if (parsed.tokens.some(t => t.type === 'priority') && parsed.priority !== priority) {
+      setPriority(parsed.priority);
+    }
+    if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) {
+      setRecurrenceRule(parsed.recurrenceRule);
+    }
+  }, [priority]);
+
+  // ── Dismiss a token type (user taps chip × to remove it) ────────────────
+  const handleDismissToken = useCallback((type: NLPToken['type']) => {
+    if (type === 'date')       { setTaskDate(selectedDate); }
+    if (type === 'time')       { setStartTime(''); setEndTime(''); }
+    if (type === 'priority')   { setPriority('low'); }
+    if (type === 'recurrence') { setRecurrenceRule(null); }
+    // Remove the token text from title
+    if (nlpParsed) {
+      const tok = nlpParsed.tokens.find(t => t.type === type);
+      if (tok) {
+        const cleaned = (title.slice(0, tok.start) + title.slice(tok.end))
+          .replace(/\s{2,}/g, ' ').trim();
+        setTitle(cleaned);
+        // Re-parse without the dismissed token
+        const reparsed = parseNLTask(cleaned);
+        setNlpParsed(reparsed.tokens.length > 0 ? reparsed : null);
+      }
+    }
+  }, [nlpParsed, title, selectedDate]);
+
   const formatTimeDisplay = (t: string) => {
     if (!t) return '';
     const [h, m] = t.split(':').map(Number);
@@ -93,10 +195,12 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
   };
 
   const timeLabel = startTime
-    ? (endTime ? `${formatTimeDisplay(startTime)} â€“ ${formatTimeDisplay(endTime)}` : formatTimeDisplay(startTime))
+    ? formatTimeDisplay(startTime)
     : 'Time';
 
-  const dateLabel = taskDate === today ? 'Today' : taskDate === (() => { const d = new Date(today); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })() ? 'Tomorrow' : taskDate;
+
+
+  const dateLabel = taskDate === today ? 'Today' : taskDate === (() => { const d = new Date(today); d.setDate(d.getDate() + 1); return d.toISOString().slice(0, 10); })() ? 'Tomorrow' : formatDisplayDate(taskDate);
 
   const calcEstMinutes = (s: string, e: string) => {
     if (!s || !e) return 0;
@@ -139,41 +243,122 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
     setPriority('low');
     setStartTime('');
     setEndTime('');
-    setRecurrence('once');
+    setRecurrenceRule(null);
     setSubtasks([]);
     setSubtaskInput('');
     setShowSubtasks(false);
     setIsCalendarOpen(false);
+    setNlpParsed(null);
+    setSelectedTags([]);
+    setNewTagInput('');
+    setShowTagInput(false);
     onClose();
   };
 
-  const handleSave = () => {
-    if (!title.trim()) return;
+
+  const handleSave = (overrideTitle?: string) => {
+    const isOverride = typeof overrideTitle === 'string';
+    const rawText = isOverride ? overrideTitle : title;
+    if (!rawText.trim()) return;
 
     // Optimistic UI update: instantly close modal and trigger haptic
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 
-    const ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
-    const est = calcEstMinutes(startTime, endTime);
+    let finalTitle = nlpParsed?.title?.trim() || title.trim();
+    let ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
+    let est = calcEstMinutes(startTime, endTime);
+    let finalPriority = priority;
+    let finalDate = taskDate;
+    let finalRecurrence = recurrenceRule;
+
+    if (isOverride) {
+      const p = parseNLTask(rawText);
+      finalTitle = p.title.trim() || rawText.trim();
+      if (p.timeSlot) ts = p.endTimeSlot ? `${p.timeSlot} - ${p.endTimeSlot}` : p.timeSlot;
+      if (p.priority !== 'low') finalPriority = p.priority;
+      if (p.date) finalDate = p.date;
+      if (p.recurrenceRule) finalRecurrence = p.recurrenceRule;
+    }
+
     const subtaskObjects = subtasks.map((s, i) => ({ id: `st-${i}`, title: s, completed: false }));
 
     // Fire-and-forget network request, deferred to prevent animation frame drops
-    setTimeout(() => {
-      addDoc(collection(db, COLLECTION.TASKS), {
-        userId,
-        title: title.trim(),
-        text: title.trim(),
-        status: 'pending',
-        priority,
-        date: taskDate,
-        timeSlot: ts,
-        estimatedMinutes: est,
-        isRecurring: recurrence === 'daily',
-        subject: null,
-        createdAt: serverTimestamp(),
-        order: listCount,
-        subtasks: subtaskObjects,
-      }).catch(console.error);
+    setTimeout(async () => {
+      try {
+        if (finalRecurrence) {
+          const batch = writeBatch(db);
+          let current = new Date(finalDate);
+          // If endDate provided, use it, else default to 90 days from taskDate
+          const end = finalRecurrence.endDate 
+            ? new Date(finalRecurrence.endDate) 
+            : new Date(current.getTime() + 90 * 24 * 60 * 60 * 1000);
+          
+          let count = 0;
+          const MAX_INSTANCES = 90; // safeguard to avoid firestore limits
+          const sourceId = `rec_${Date.now()}`;
+          
+          while (current <= end && count < MAX_INSTANCES) {
+            const dateStr = current.toISOString().slice(0, 10);
+            const docRef = doc(collection(db, COLLECTION.TASKS));
+            batch.set(docRef, {
+              userId,
+              title: finalTitle,
+              text: finalTitle,
+              status: 'pending',
+              priority: finalPriority,
+              date: dateStr,
+              timeSlot: ts,
+              estimatedMinutes: est,
+              isRecurring: true,
+              recurrenceRule: finalRecurrence,
+              recurringSourceId: sourceId,
+              subject: null,
+              createdAt: serverTimestamp(),
+              order: listCount,
+              subtasks: subtaskObjects,
+            });
+            count++;
+            
+            if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') {
+              current.setDate(current.getDate() + (finalRecurrence.interval || 1));
+            } else if (finalRecurrence.type === 'weekly') {
+              if (finalRecurrence.daysOfWeek && finalRecurrence.daysOfWeek.length > 0) {
+                do {
+                  current.setDate(current.getDate() + 1);
+                } while (current <= end && !finalRecurrence.daysOfWeek.includes(current.getDay()));
+              } else {
+                current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1));
+              }
+            } else if (finalRecurrence.type === 'monthly') {
+              current.setMonth(current.getMonth() + (finalRecurrence.interval || 1));
+            } else {
+              break;
+            }
+          }
+          await batch.commit();
+        } else {
+          await addDoc(collection(db, COLLECTION.TASKS), {
+            userId,
+            title: finalTitle,
+            text: finalTitle,
+            status: 'pending',
+            priority: finalPriority,
+            date: finalDate,
+            timeSlot: ts,
+            estimatedMinutes: est,
+            isRecurring: false,
+            recurrenceRule: null,
+            recurringSourceId: null,
+            subject: null,
+            tags: selectedTags,
+            createdAt: serverTimestamp(),
+            order: listCount,
+            subtasks: subtaskObjects,
+          });
+        }
+      } catch (e) {
+        console.error('Error creating task(s):', e);
+      }
     }, 150);
 
     resetAndClose();
@@ -185,17 +370,22 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
     <BottomSheet visible={visible} onClose={resetAndClose}>
       <View>
 
-        {/* Task title input */}
-        <TextInput
-          style={styles.newTaskInputLarge}
-          placeholder="Add a task..."
-          placeholderTextColor="#636366"
-          value={title}
-          onChangeText={setTitle}
-          autoFocus={visible}
-          returnKeyType="done"
-          onSubmitEditing={handleSave}
-        />
+        {/* ── NLP-powered task title input ── */}
+        <View style={[
+          styles.newTaskInputLarge,
+          { paddingHorizontal: 0, paddingVertical: 0, height: 'auto', backgroundColor: 'transparent', borderWidth: 0 }
+        ]}>
+          <NLPTaskInput
+            value={title}
+            onChangeText={handleTitleChange}
+            parsed={nlpParsed ?? { title, date: null, timeSlot: null, priority: 'low', isRecurring: false, recurrenceRule: null, tokens: [] }}
+            onDismissToken={handleDismissToken}
+            autoFocus={visible}
+            placeholder="Add a task... try 'report friday 3pm high'"
+            onSubmitEditing={() => handleSave()}
+            onAutoSubmit={(t) => handleSave(t)}
+          />
+        </View>
 
         {/* Quick chips row */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.autoStyle1}>
@@ -258,19 +448,77 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
               </Text>
             </AnimatedPressable>
 
-            {/* Once / Daily chip */}
+            {/* Repeat chip */}
             <AnimatedPressable
-              style={[styles.quickChip, recurrence === 'daily' && { borderColor: '#a599ff' }]}
-              onPress={() => setRecurrence(r => r === 'once' ? 'daily' : 'once')}
+              style={[styles.quickChip, recurrenceRule && { borderColor: '#a599ff' }]}
+              onPress={() => setShowRecurrenceModal(true)}
             >
-              <Ionicons name={recurrence === 'daily' ? 'repeat' : 'radio-button-off-outline'} size={13} color={recurrence === 'daily' ? '#a599ff' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, recurrence === 'daily' && { color: '#a599ff' }]}>
-                {recurrence === 'daily' ? 'Daily' : 'Once'}
+              <Ionicons name={recurrenceRule ? 'repeat' : 'radio-button-off-outline'} size={13} color={recurrenceRule ? '#a599ff' : '#8e8e93'} />
+              <Text style={[styles.quickChipText, recurrenceRule && { color: '#a599ff' }]}>
+                {recurrenceRule 
+                  ? (recurrenceRule.type === 'custom' ? `Every ${recurrenceRule.interval} days` : recurrenceRule.type.charAt(0).toUpperCase() + recurrenceRule.type.slice(1)) 
+                  : 'Repeat'}
+              </Text>
+            </AnimatedPressable>
+
+            {/* Tag chip */}
+            <AnimatedPressable
+              style={[styles.quickChip, selectedTags.length > 0 && { borderColor: '#60a5fa' }]}
+              onPress={() => setShowTagInput(v => !v)}
+            >
+              <Ionicons name="pricetag-outline" size={13} color={selectedTags.length > 0 ? '#60a5fa' : '#8e8e93'} />
+              <Text style={[styles.quickChipText, selectedTags.length > 0 && { color: '#60a5fa' }]}>
+                {selectedTags.length > 0 ? `${selectedTags.length} tag${selectedTags.length > 1 ? 's' : ''}` : 'Labels'}
               </Text>
             </AnimatedPressable>
 
           </View>
         </ScrollView>
+
+        {/* Tags panel */}
+        {showTagInput && (
+          <View style={styles.tagsPanel}>
+            {/* Selected tags */}
+            {selectedTags.length > 0 && (
+              <View style={styles.tagPillsRow}>
+                {selectedTags.map(tag => (
+                  <TouchableOpacity key={tag} style={[styles.tagChip, { backgroundColor: tagColorFor(tag) + '22', borderColor: tagColorFor(tag) + '55' }]} onPress={() => removeSelectedTag(tag)}>
+                    <Text style={[styles.tagChipText, { color: tagColorFor(tag) }]}>{tag}</Text>
+                    <Ionicons name="close" size={10} color={tagColorFor(tag)} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+            {/* Tag library suggestions */}
+            {tagLibrary.length > 0 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {tagLibrary.filter(t => !selectedTags.includes(t)).slice(0, 8).map(tag => (
+                    <TouchableOpacity key={tag} style={styles.tagSuggestion} onPress={() => addTag(tag)}>
+                      <Text style={[styles.tagSuggestionText, { color: tagColorFor(tag) }]}>#{tag}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+            {/* New tag input */}
+            <View style={styles.tagInputRow}>
+              <TextInput
+                style={[styles.tagInput, { color: '#fff', borderColor: '#2c2c2e', backgroundColor: '#1c1c1e' }]}
+                placeholder="New label..."
+                placeholderTextColor="#636366"
+                value={newTagInput}
+                onChangeText={setNewTagInput}
+                onSubmitEditing={() => addTag(newTagInput)}
+                returnKeyType="done"
+                autoCapitalize="none"
+              />
+              <TouchableOpacity style={styles.tagAddBtn} onPress={() => addTag(newTagInput)}>
+                <Ionicons name="add" size={18} color="#60a5fa" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Subtasks panel */}
         {showSubtasks && (
@@ -331,7 +579,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
         {/* Add task button */}
         <AnimatedPressable
           style={[styles.addTaskBtnFull, !title.trim() && styles.addTaskBtnDisabled]}
-          onPress={handleSave}
+          onPress={() => handleSave()}
           disabled={!title.trim() || saving}
         >
           <Text style={[styles.addTaskBtnFullText, !title.trim() && styles.addTaskBtnDisabledText]}>
@@ -339,6 +587,12 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
           </Text>
         </AnimatedPressable>
       </View>
+      <RecurrencePickerModal 
+        visible={showRecurrenceModal}
+        onClose={() => setShowRecurrenceModal(false)}
+        initialRule={recurrenceRule}
+        onSave={setRecurrenceRule}
+      />
     </BottomSheet>
   );
 });
@@ -352,7 +606,8 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
   const [taskDate, setTaskDate] = useState(today);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
-  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceRule, setRecurrenceRule] = useState<any>(null);
+  const [showRecurrenceModal, setShowRecurrenceModal] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -364,11 +619,11 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
     setTitle(task.title || '');
     setPriority((task.priority as any) === 'P1' ? 'high' : (task.priority as any) === 'P2' ? 'medium' : (task.priority as any) === 'P3' ? 'low' : (task.priority as 'low' | 'medium' | 'high') || 'medium');
     setTaskDate(task.date || today);
-    setIsRecurring(task.isRecurring || false);
+    setRecurrenceRule(task.recurrenceRule || null);
     setSubtasks(task.subtasks || []);
     // Parse existing timeSlot
     if (task.timeSlot) {
-      const parts = task.timeSlot.split(/[-â€“]/).map((s: string) => s.trim());
+      const parts = task.timeSlot.split(/[-–]/).map((s: string) => s.trim());
       setStartTime(parts[0] || '');
       setEndTime(parts[1] || '');
     } else {
@@ -397,15 +652,93 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
   };
 
   const handleDelete = async () => {
-    Alert.alert('Delete task', 'Are you sure?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive', onPress: async () => {
-          await deleteDoc(doc(db, COLLECTION.TASKS, task.id)).catch(console.error);
-          onClose();
-        }
-      },
-    ]);
+    if (task.isRecurring) {
+      Alert.alert(
+        'Delete Recurring Task',
+        'Do you want to delete only this instance, or this and all future instances?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'This instance only',
+            style: 'destructive',
+            onPress: async () => {
+              onClose(); // close instantly
+              try {
+                await deleteDoc(doc(db, COLLECTION.TASKS, task.id));
+              } catch (e) { console.error(e); }
+            }
+          },
+          {
+            text: 'All future instances',
+            style: 'destructive',
+            onPress: async () => {
+              onClose(); // close instantly
+              try {
+                const q = query(
+                  collection(db, COLLECTION.TASKS),
+                  where('userId', '==', task.userId)
+                );
+                const snap = await getDocs(q);
+
+                const deleteBatch = writeBatch(db);
+                snap.docs.forEach(d => {
+                  const data = d.data();
+                  const inSameGroup = task.recurringSourceId
+                    ? data.recurringSourceId === task.recurringSourceId
+                    : (data.title === task.title && data.isRecurring === true);
+
+                  if (inSameGroup && data.date && task.date && data.date >= task.date) {
+                    deleteBatch.delete(d.ref);
+                  }
+                });
+                await deleteBatch.commit();
+              } catch (e) { console.error(e); }
+            }
+          }
+        ]
+      );
+    } else {
+      // Close the sheet instantly, THEN show the choice dialog.
+      // All Firestore writes happen in the background after the UI is already gone.
+      onClose();
+      setTimeout(() => {
+        Alert.alert(
+          'Delete Task',
+          `"${task.title}"`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Today only',
+              style: 'destructive',
+              onPress: () => {
+                deleteDoc(doc(db, COLLECTION.TASKS, task.id)).catch((e) => console.error(e));
+              },
+            },
+            {
+              text: 'All tasks',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  // Batch-delete all tasks with same title for this user (any date)
+                  const q = query(
+                    collection(db, COLLECTION.TASKS),
+                    where('userId', '==', task.userId)
+                  );
+                  const snap = await getDocs(q);
+                  const batch = writeBatch(db);
+                  snap.docs.forEach(d => {
+                    if (d.data().title === task.title) {
+                      batch.delete(d.ref);
+                    }
+                  });
+                  await batch.commit();
+                } catch (e) { console.error(e); }
+              },
+            },
+          ]
+        );
+      }, 300); // small delay so the sheet finishes its close animation first
+    }
   };
 
   const handleSave = async () => {
@@ -418,14 +751,15 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
       priority,
       date: taskDate,
       timeSlot: ts,
-      isRecurring,
+      isRecurring: !!recurrenceRule,
+      recurrenceRule: recurrenceRule || null,
       subtasks,
     };
 
-    if (task.isRecurring) {
+    if (task.isRecurring || recurrenceRule) {
       Alert.alert(
-        'Edit Recurring Task',
-        'Do you want to apply these changes to this task only, or all future instances?',
+        'Edit Task',
+        'Do you want to apply these changes to this instance only, or recreate all future instances?',
         [
           { text: 'Cancel', style: 'cancel' },
           { 
@@ -444,30 +778,87 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
                 // Update this one
                 await updateDoc(doc(db, COLLECTION.TASKS, task.id), updatePayload);
                 
-                // Find all future tasks with the same title and isRecurring=true
+                // Find and delete all future tasks with the same title and isRecurring=true
+                // We only query by userId to avoid Firestore composite index errors
                 const q = query(
                   collection(db, COLLECTION.TASKS),
-                  where('userId', '==', task.userId),
-                  where('title', '==', task.title),
-                  where('isRecurring', '==', true)
+                  where('userId', '==', task.userId)
                 );
                 const snap = await getDocs(q);
                 
-                const batch = writeBatch(db);
+                const deleteBatch = writeBatch(db);
                 snap.docs.forEach(d => {
                   const data = d.data();
-                  // Only update if the date is >= this task's original date
-                  if (data.date && task.date && data.date > task.date) {
-                     batch.update(d.ref, {
-                       title: updatePayload.title,
-                       text: updatePayload.text,
-                       priority: updatePayload.priority,
-                       timeSlot: updatePayload.timeSlot,
-                       subtasks: updatePayload.subtasks
-                     });
+                  if (data.title === task.title && data.isRecurring === true) {
+                    // Only delete if the date is strictly > this task's original date
+                    if (data.date && task.date && data.date > task.date) {
+                       deleteBatch.delete(d.ref);
+                    }
                   }
                 });
-                await batch.commit();
+                await deleteBatch.commit();
+
+                // Re-generate new future instances based on the new recurrence rule
+                if (recurrenceRule) {
+                  const createBatch = writeBatch(db);
+                  let current = new Date(taskDate);
+                  
+                  // Move to the next instance date before creating
+                  if (recurrenceRule.type === 'daily' || recurrenceRule.type === 'custom') {
+                    current.setDate(current.getDate() + (recurrenceRule.interval || 1));
+                  } else if (recurrenceRule.type === 'weekly') {
+                    if (recurrenceRule.daysOfWeek && recurrenceRule.daysOfWeek.length > 0) {
+                      do {
+                        current.setDate(current.getDate() + 1);
+                      } while (!recurrenceRule.daysOfWeek.includes(current.getDay()));
+                    } else {
+                      current.setDate(current.getDate() + 7 * (recurrenceRule.interval || 1));
+                    }
+                  } else if (recurrenceRule.type === 'monthly') {
+                    current.setMonth(current.getMonth() + (recurrenceRule.interval || 1));
+                  }
+
+                  const end = recurrenceRule.endDate 
+                    ? new Date(recurrenceRule.endDate) 
+                    : new Date(new Date(taskDate).getTime() + 90 * 24 * 60 * 60 * 1000);
+                  
+                  let count = 0;
+                  const MAX_INSTANCES = 90;
+                  const sourceId = task.recurringSourceId || `rec_${Date.now()}`;
+                  
+                  while (current <= end && count < MAX_INSTANCES) {
+                    const dateStr = current.toISOString().slice(0, 10);
+                    const docRef = doc(collection(db, COLLECTION.TASKS));
+                    createBatch.set(docRef, {
+                      ...updatePayload,
+                      userId: task.userId,
+                      date: dateStr,
+                      recurringSourceId: sourceId,
+                      createdAt: serverTimestamp(),
+                      status: 'pending',
+                      order: task.order || 0
+                    });
+                    count++;
+                    
+                    if (recurrenceRule.type === 'daily' || recurrenceRule.type === 'custom') {
+                      current.setDate(current.getDate() + (recurrenceRule.interval || 1));
+                    } else if (recurrenceRule.type === 'weekly') {
+                      if (recurrenceRule.daysOfWeek && recurrenceRule.daysOfWeek.length > 0) {
+                        do {
+                          current.setDate(current.getDate() + 1);
+                        } while (current <= end && !recurrenceRule.daysOfWeek.includes(current.getDay()));
+                      } else {
+                        current.setDate(current.getDate() + 7 * (recurrenceRule.interval || 1));
+                      }
+                    } else if (recurrenceRule.type === 'monthly') {
+                      current.setMonth(current.getMonth() + (recurrenceRule.interval || 1));
+                    } else {
+                      break;
+                    }
+                  }
+                  await createBatch.commit();
+                }
+                
                 onClose();
               } catch (e) { console.error(e); }
             } 
@@ -475,10 +866,9 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
         ]
       );
     } else {
-      try {
-        await updateDoc(doc(db, COLLECTION.TASKS, task.id), updatePayload);
-        onClose();
-      } catch (e) { console.error(e); }
+      // Non-recurring: close instantly (optimistic) then write in background
+      onClose();
+      updateDoc(doc(db, COLLECTION.TASKS, task.id), updatePayload).catch((e) => console.error(e));
     }
   };
 
@@ -493,16 +883,16 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
       <View>
 
         {/* Title + delete */}
-        <View style={styles.autoStyle13}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACE.md, paddingHorizontal: SPACE.lg }}>
           <TextInput
-            style={[styles.newTaskInputLarge, { flex: 1, marginBottom: 0 }]}
+            style={[styles.newTaskInputLarge, { flex: 1, marginBottom: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent' }]}
             value={title}
             onChangeText={setTitle}
             placeholder="Task title"
             placeholderTextColor="#636366"
           />
-          <AnimatedPressable onPress={handleDelete} style={styles.autoStyle113}>
-            <Ionicons name="trash-outline" size={18} color="#ff6961" />
+          <AnimatedPressable onPress={handleDelete} style={{ padding: SPACE.sm, marginLeft: 'auto' }}>
+            <Ionicons name="trash-outline" size={20} color="#ff6961" />
           </AnimatedPressable>
         </View>
 
@@ -511,7 +901,7 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
           <View style={styles.quickOptionsRow}>
             <AnimatedPressable style={styles.quickChip} onPress={() => setShowCalendar(true)}>
               <Ionicons name="calendar-outline" size={13} color="#8e8e93" />
-              <Text style={styles.quickChipText}>{taskDate === today ? 'Today' : taskDate}</Text>
+              <Text style={styles.quickChipText}>{taskDate === today ? 'Today' : formatDisplayDate(taskDate)}</Text>
             </AnimatedPressable>
             <AnimatedPressable style={[styles.quickChip, startTime ? { borderColor: '#c9c2ff' } : {}]} onPress={() => setShowStartPicker(true)}>
               <Ionicons name="time-outline" size={13} color={startTime ? '#c9c2ff' : '#5a5a5f'} />
@@ -523,9 +913,13 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
                 <Text style={[styles.quickChipText, endTime ? { color: '#c9c2ff' } : {}]}>{endTime ? formatTimeDisplay(endTime) : 'End'}</Text>
               </AnimatedPressable>
             )}
-            <AnimatedPressable style={[styles.quickChip, isRecurring && { borderColor: '#a599ff' }]} onPress={() => setIsRecurring(v => !v)}>
-              <Ionicons name={isRecurring ? 'repeat' : 'radio-button-off-outline'} size={13} color={isRecurring ? '#a599ff' : '#8e8e93'} />
-              <Text style={[styles.quickChipText, isRecurring && { color: '#a599ff' }]}>{isRecurring ? 'Daily' : 'Once'}</Text>
+            <AnimatedPressable style={[styles.quickChip, recurrenceRule && { borderColor: '#a599ff' }]} onPress={() => setShowRecurrenceModal(true)}>
+              <Ionicons name={recurrenceRule ? 'repeat' : 'radio-button-off-outline'} size={13} color={recurrenceRule ? '#a599ff' : '#8e8e93'} />
+              <Text style={[styles.quickChipText, recurrenceRule && { color: '#a599ff' }]}>
+                {recurrenceRule 
+                  ? (recurrenceRule.type === 'custom' ? `Every ${recurrenceRule.interval} days` : recurrenceRule.type.charAt(0).toUpperCase() + recurrenceRule.type.slice(1)) 
+                  : 'Repeat'}
+              </Text>
             </AnimatedPressable>
           </View>
         </ScrollView>
@@ -589,6 +983,12 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
           <Text style={styles.addTaskBtnFullText}>Save Changes</Text>
         </AnimatedPressable>
       </View>
+      <RecurrencePickerModal 
+        visible={showRecurrenceModal}
+        onClose={() => setShowRecurrenceModal(false)}
+        initialRule={recurrenceRule}
+        onSave={setRecurrenceRule}
+      />
     </BottomSheet>
   );
 }
@@ -599,9 +999,10 @@ const EditTaskModal = React.memo(EditTaskModalComponent);
 export default function TasksScreen() {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors);
-  const { tasks, user, optimisticUpdateTask } = useMobileData();
+  const { tasks, user, optimisticUpdateTask, attendance } = useMobileData();
   const [selectedDate, setSelectedDate] = useState(today);
-  const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'timeline' | 'kanban'>('list');
+  const [filterTag, setFilterTag] = useState<string | null>(null);
 
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isTemplatesSheetOpen, setIsTemplatesSheetOpen] = useState(false);
@@ -617,6 +1018,10 @@ export default function TasksScreen() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [sortBy, setSortBy] = useState<'default' | 'priority'>('default');
 
+  // Time logging state
+  const [timeLogTask, setTimeLogTask] = useState<Task | null>(null);
+  const [isTimeSpentOpen, setIsTimeSpentOpen] = useState(false);
+
   // Memoized handlers
   const handleCloseNewTask = useCallback(() => setIsNewTaskOpen(false), []);
   const handleCloseEditTask = useCallback(() => setEditingTask(null), []);
@@ -631,6 +1036,52 @@ export default function TasksScreen() {
 
   // Proactive Intelligence
   const { conflicts } = useProactiveAgent();
+
+  // Daily Recurrence Auto-Spawn Logic
+  useEffect(() => {
+    if (!user || tasks.length === 0) return;
+
+    const spawnRecurringTasks = async () => {
+      const recurringTasks = tasks.filter(t => 
+        t.isRecurring && 
+        t.status !== 'completed' &&
+        (!t.recurrenceRule || t.recurrenceRule.type === 'daily') &&
+        (!t.recurrenceRule?.endDate || t.recurrenceRule.endDate >= today)
+      );
+
+      const batch = writeBatch(db);
+      let spawns = 0;
+
+      for (const src of recurringTasks) {
+        const sourceId = src.recurringSourceId || src.id!;
+        
+        const existsForToday = tasks.some(t => 
+          t.date === today && 
+          (t.recurringSourceId === sourceId || t.id === sourceId)
+        );
+
+        if (!existsForToday && src.date !== today) {
+          const newRef = doc(collection(db, COLLECTION.TASKS));
+          batch.set(newRef, {
+            ...src,
+            id: undefined,
+            date: today,
+            recurringSourceId: sourceId,
+            status: 'pending',
+            completedAt: null,
+            createdAt: serverTimestamp(),
+          });
+          spawns++;
+        }
+      }
+
+      if (spawns > 0) {
+        await batch.commit().catch(console.error);
+      }
+    };
+
+    spawnRecurringTasks();
+  }, [user, tasks.length]);
 
   useEffect(() => {
     animHeader.value = withTiming(1, { duration: 300 });
@@ -654,17 +1105,31 @@ export default function TasksScreen() {
     flex: 1
   }));
 
-  const todaysTasks = React.useMemo(() => {
-    const list = tasks.filter(t => t.date === selectedDate || t.status === 'pending');
-    return list.sort((a, b) => (a.order || 0) - (b.order || 0));
-  }, [tasks, selectedDate]);
-
   // Data Grouping
   const overdueTasks = React.useMemo(() => tasks.filter(t => t.date && t.date < today && t.status !== 'completed').sort((a, b) => (a.order || 0) - (b.order || 0)), [tasks]);
   const inboxTasks = React.useMemo(() => tasks.filter(t => !t.date && t.status !== 'completed').sort((a, b) => (a.order || 0) - (b.order || 0)), [tasks]);
+
+  /** Parse a time string like "5:30 AM", "7:30 PM", "08:00", "14:30" → float hour (5.5, 19.5, 8, 14.5) */
+  const parseTimeFloat = (timeStr?: string | null): number => {
+    if (!timeStr) return Infinity;
+    const t = timeStr.trim().toUpperCase();
+    const isPM = t.includes('PM');
+    const isAM = t.includes('AM');
+    const cleaned = t.replace(/[\sAPM]+$/i, '').trim();
+    const parts = cleaned.split(':');
+    let h = parseInt(parts[0], 10);
+    if (isNaN(h)) return Infinity;
+    const m = parts.length >= 2 ? (parseInt(parts[1], 10) || 0) : 0;
+    if (isPM || isAM) {
+      if (isPM && h !== 12) h += 12;
+      if (isAM && h === 12) h = 0;
+    }
+    return h + m / 60;
+  };
+
   const selectedDateTasks = React.useMemo(() => {
     return tasks.filter(t => t.date === selectedDate).sort((a, b) => {
-      // completed tasks at the bottom
+      // completed tasks always at the bottom
       if (a.status === 'completed' && b.status !== 'completed') return 1;
       if (a.status !== 'completed' && b.status === 'completed') return -1;
 
@@ -674,6 +1139,13 @@ export default function TasksScreen() {
         const scoreB = priorityScore(b.priority);
         if (scoreA !== scoreB) return scoreB - scoreA;
       }
+
+      // Default: sort by time ascending (5:30 AM → 8:00 AM → 7:30 PM → no-time tasks last)
+      const startA = a.timeSlot?.split(/[-\u2013]/)[0].trim() ?? null;
+      const startB = b.timeSlot?.split(/[-\u2013]/)[0].trim() ?? null;
+      const timeA = parseTimeFloat(startA);
+      const timeB = parseTimeFloat(startB);
+      if (timeA !== timeB) return timeA - timeB;
 
       return (a.order || 0) - (b.order || 0);
     });
@@ -699,7 +1171,7 @@ export default function TasksScreen() {
   const estimatedTotal = selectedDateTasks.reduce((acc, t) => acc + (t.estimatedMinutes || 0), 0);
   const estimatedHours = Math.round(estimatedTotal / 60 * 10) / 10;
 
-  const completeTask = useCallback((task: Task) => {
+  const completeTask = useCallback((task: Task, fromSwipe?: boolean) => {
     if (!task.id) return;
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
     const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
@@ -710,7 +1182,14 @@ export default function TasksScreen() {
       import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
     }
 
-    // 2. Background Sync
+    // 2. If marking complete via checkbox (not swipe), show time log sheet instead of immediate Firestore write.
+    //    The sheet's onSave/onSkip callbacks do the actual Firestore write.
+    if (newStatus === 'completed' && !fromSwipe) {
+      setTimeLogTask(task);
+      return;
+    }
+
+    // 3. Background Sync (for un-complete, or swipe-to-complete)
     (async () => {
       try {
         if (newStatus === 'completed') {
@@ -741,13 +1220,15 @@ export default function TasksScreen() {
     }
   };
 
-  const handleBulkReschedule = async (newDate: string) => {
+  const handleBulkReschedule = async (newDate: string, newTimeSlot?: string) => {
     if (selectedTaskIds.size === 0) return;
     try {
       const batch = writeBatch(db);
       selectedTaskIds.forEach(id => {
         const ref = doc(db, COLLECTION.TASKS, id);
-        batch.update(ref, { date: newDate });
+        const updates: any = { date: newDate };
+        if (newTimeSlot) updates.timeSlot = newTimeSlot;
+        batch.update(ref, updates);
       });
       await batch.commit();
       setIsBulkEdit(false);
@@ -799,26 +1280,36 @@ export default function TasksScreen() {
         isBulkEdit={isBulkEdit}
         isSelected={selectedTaskIds.has(item.id)}
         onToggleSelect={() => toggleTaskSelection(item.id)}
+        onUpdateTask={(id, updates) => {
+          optimisticUpdateTask(id, updates);
+          updateDoc(doc(db, COLLECTION.TASKS, id), updates);
+        }}
+        onAddSubtask={() => setEditingTask(item)}
       />
     );
-  }, [completeTask, isBulkEdit, selectedTaskIds, toggleTaskSelection]);
+  }, [completeTask, isBulkEdit, selectedTaskIds, toggleTaskSelection, optimisticUpdateTask]);
 
 
   // Section data
   const sections = React.useMemo(() => {
     const arr = [];
     if (overdueTasks.length > 0) arr.push({ title: 'OVERDUE', data: overdueTasks });
-    if (selectedDateTasks.length > 0 || isNewTaskOpen) arr.push({ title: selectedDate === today ? 'TODAY' : new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase(), data: selectedDateTasks, isSelectedDate: true });
+    if (selectedDateTasks.length > 0 || isNewTaskOpen) arr.push({ title: selectedDate === today ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(), data: selectedDateTasks, isSelectedDate: true });
     if (upcomingTasks.length > 0) arr.push({ title: 'UPCOMING', data: upcomingTasks });
     return arr;
   }, [overdueTasks, selectedDateTasks, upcomingTasks, selectedDate, isNewTaskOpen]);
 
+  const sectionListExtraData = React.useMemo(
+    () => ({ isBulkEdit, selectedTaskIds }),
+    [isBulkEdit, selectedTaskIds]
+  );
+
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: '#000000' }]}>
-      {/* ─── PROACTIVE WIDGET ─── */}
-      {conflicts.length > 0 && (
+      {/* ─── PROACTIVE WIDGET (tasks-only conflicts) ─── */}
+      {conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic')).length > 0 && (
         <Animated.View style={[{ paddingHorizontal: SPACE.xl, marginBottom: SPACE.md, marginTop: SPACE.sm }, headerStyle]}>
-          {conflicts.map(c => (
+          {conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic')).map(c => (
             <View key={c.id} style={styles.autoStyle8}>
               <View style={styles.autoStyle9}>
                 <Ionicons name="warning" size={16} color="#ef4444" />
@@ -835,25 +1326,54 @@ export default function TasksScreen() {
         <Text style={styles.topHeaderTitle}>{isBulkEdit ? `${selectedTaskIds.size} Selected` : 'Tasks'}</Text>
         <View style={styles.topHeaderIcons}>
           {isBulkEdit ? (
-            <AnimatedPressable style={styles.iconBtn} onPress={() => { setIsBulkEdit(false); setSelectedTaskIds(new Set()); }}>
-              <Text style={{ color: '#A599FF', fontFamily: 'Inter_600SemiBold', fontSize: 16 }}>Cancel</Text>
+            <AnimatedPressable 
+              style={[
+                styles.iconBtn,
+                {
+                  width: 34, height: 34,
+                  borderRadius: 17,
+                  backgroundColor: 'rgba(165,153,255,0.15)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }
+              ]} 
+              onPress={() => { setIsBulkEdit(false); setSelectedTaskIds(new Set()); }}
+            >
+              <Ionicons name="close" size={18} color="#A599FF" />
             </AnimatedPressable>
           ) : (
             <>
-              <AnimatedPressable style={styles.iconBtn} onPress={() => setIsInboxModalOpen(true)}>
+              {/* Inbox button */}
+              <AnimatedPressable
+                style={styles.iconBtn}
+                onPress={() => {
+                  if (overdueTasks.length > 0) {
+                    setIsOverdueModalOpen(true);
+                  } else {
+                    setIsInboxModalOpen(true);
+                  }
+                }}
+              >
                 <Ionicons name="file-tray-outline" size={20} color="#FFFFFF" />
-                {inboxTasks.length > 0 && (
-                  <View style={styles.badge}><Text style={styles.badgeText}>{inboxTasks.length}</Text></View>
-                )}
+                {overdueTasks.length > 0 ? (
+                  <View style={[styles.badge, { backgroundColor: '#FF6961' }]}>
+                    <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{overdueTasks.length}</Text>
+                  </View>
+                ) : inboxTasks.length > 0 ? (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{inboxTasks.length}</Text>
+                  </View>
+                ) : null}
               </AnimatedPressable>
-              <AnimatedPressable style={styles.iconBtn} onPress={() => setViewMode(v => v === 'list' ? 'timeline' : 'list')}>
-                <Ionicons name={viewMode === 'list' ? 'time-outline' : 'list'} size={20} color="#FFFFFF" />
+              {/* ⏱ Time Spent button */}
+              <AnimatedPressable style={styles.iconBtn} onPress={() => setIsTimeSpentOpen(true)}>
+                <Ionicons name="timer-outline" size={20} color="#FFFFFF" />
+              </AnimatedPressable>
+              <AnimatedPressable style={styles.iconBtn} onPress={() => setViewMode(v => v === 'list' ? 'timeline' : v === 'timeline' ? 'kanban' : 'list')}>
+                <Ionicons name={viewMode === 'list' ? 'time-outline' : viewMode === 'timeline' ? 'git-branch-outline' : 'list'} size={20} color="#FFFFFF" />
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsNewTaskOpen(true)}>
                 <Ionicons name="add" size={24} color="#FFFFFF" />
-              </AnimatedPressable>
-              <AnimatedPressable style={styles.iconBtn} onPress={() => setIsTemplatesSheetOpen(true)}>
-                <Ionicons name="copy-outline" size={20} color="#FFFFFF" />
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsMenuOpen(true)}>
                 <Ionicons name="ellipsis-horizontal" size={20} color="#FFFFFF" />
@@ -862,17 +1382,6 @@ export default function TasksScreen() {
           )}
         </View>
       </View>
-
-      {/* OVERDUE BANNER */}
-      {overdueTasks.length > 0 && (
-        <AnimatedPressable style={styles.overdueBanner} onPress={() => setIsOverdueModalOpen(true)}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="warning" size={16} color="#FF6961" style={{ marginRight: 8 }} />
-            <Text style={styles.overdueText}>{overdueTasks.length} overdue tasks</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={16} color="#FF6961" />
-        </AnimatedPressable>
-      )}
 
       {/* Date Selector */}
       <Animated.View style={[styles.dateSelectorContainer, dateStripStyle]}>
@@ -883,22 +1392,22 @@ export default function TasksScreen() {
         />
       </Animated.View>
 
-      {/* Calendar Modal */}
+      {/* Standard Calendar Modal for Date Strip navigation */}
       <UniversalCalendarModal
-        visible={isCalendarOpen || bulkRescheduleModal}
-        onClose={() => {
-          if (bulkRescheduleModal) handleCloseBulkReschedule();
-          else handleCloseCalendar();
-        }}
+        visible={isCalendarOpen}
+        onClose={handleCloseCalendar}
         selectedDate={selectedDate}
-        onDateSelect={(d) => {
-          if (bulkRescheduleModal) {
-            handleBulkReschedule(d);
-          } else {
-            setSelectedDate(d);
-          }
-        }}
-        title={bulkRescheduleModal ? 'Select new date' : 'Jump to date'}
+        onDateSelect={setSelectedDate}
+        title="Jump to date"
+      />
+
+      {/* Advanced Reschedule Sheet for Bulk Edit */}
+      <BulkRescheduleSheet
+        visible={bulkRescheduleModal}
+        onClose={handleCloseBulkReschedule}
+        selectedTaskIds={selectedTaskIds}
+        allTasks={tasks}
+        onConfirm={handleBulkReschedule}
       />
 
       <EditTaskModal visible={!!editingTask} onClose={handleCloseEditTask} task={editingTask} />
@@ -910,7 +1419,17 @@ export default function TasksScreen() {
           <TimelineView 
             tasks={selectedDateTasks} 
             onTaskPress={(t) => setEditingTask(t)} 
-            colors={colors} 
+            colors={colors}
+            attendance={attendance}
+            selectedDate={selectedDate}
+          />
+        </Animated.View>
+      ) : viewMode === 'kanban' ? (
+        <Animated.View style={[{ flex: 1 }, listStyle]}>
+          <KanbanView
+            tasks={tasks.filter(t => !filterTag || (t.tags ?? []).includes(filterTag))}
+            onTaskPress={(t) => setEditingTask(t)}
+            colors={colors}
           />
         </Animated.View>
       ) : (
@@ -918,13 +1437,20 @@ export default function TasksScreen() {
         style={listStyle}
         contentContainerStyle={[styles.listContent, { paddingBottom: 100 }]}
         showsVerticalScrollIndicator={false}
-        sections={[{ title: selectedDate === today ? `Today${selectedDateTasks.length > 0 ? ` ${selectedDateTasks.length}` : ''}` : `${new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}${selectedDateTasks.length > 0 ? ` ${selectedDateTasks.length}` : ''}`, data: selectedDateTasks } as any]}
+        sections={[{ title: selectedDate === today ? `Today${selectedDateTasks.length > 0 ? ` ${selectedDateTasks.length}` : ''}` : `${formatDateWithDay(selectedDate)}${selectedDateTasks.length > 0 ? ` ${selectedDateTasks.length}` : ''}`, data: selectedDateTasks } as any]}
         keyExtractor={(item: any) => item.id}
-        removeClippedSubviews={true}
+        // ── FlashList optimization pattern (2026-07-17) ──────────────────────
+        // Memoized extraData prevents full re-renders when only completion/editing state changes
+        extraData={sectionListExtraData}
+        // Provide consistent item height for scroll position prediction
+        getItemLayout={(_: any, index: number) => ({ length: 72, offset: 72 * index, index })}
+        // removeClippedSubviews=false prevents the "blank scroll" flash on fast flings
+        removeClippedSubviews={false}
         initialNumToRender={15}
         maxToRenderPerBatch={10}
         windowSize={5}
         updateCellsBatchingPeriod={50}
+        // ────────────────────────────────────────────────────────────────────
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="checkmark-done-outline" size={40} color={'#8E8E93'} />
@@ -938,21 +1464,7 @@ export default function TasksScreen() {
             </Text>
           </View>
         )}
-        renderItem={({ item }: any) => (
-          <TaskRow
-            task={item}
-            isOverdue={item.date ? item.date < today : false}
-            onComplete={() => completeTask(item)}
-            onReschedule={() => {
-              setSelectedTaskIds(new Set([item.id]));
-              setBulkRescheduleModal(true);
-            }}
-            onPress={() => setEditingTask(item)}
-            onLongPress={() => {
-              setEditingTask(item);
-            }}
-          />
-        )}
+        renderItem={renderItem}
       />
       )}
 
@@ -985,6 +1497,14 @@ export default function TasksScreen() {
                 }}
                 onPress={() => { setIsOverdueModalOpen(false); setEditingTask(t); }}
                 onLongPress={() => { setIsOverdueModalOpen(false); setEditingTask(t); }}
+                onUpdateTask={(id, updates) => {
+                  optimisticUpdateTask(id, updates);
+                  updateDoc(doc(db, COLLECTION.TASKS, id), updates);
+                }}
+                onAddSubtask={() => {
+                  setIsOverdueModalOpen(false);
+                  setEditingTask(t);
+                }}
               />
             ))}
           </ScrollView>
@@ -1018,6 +1538,14 @@ export default function TasksScreen() {
                   isBulkEdit={isBulkEdit}
                   isSelected={selectedTaskIds.has(t.id!)}
                   onToggleSelect={() => toggleTaskSelection(t.id!)}
+                  onUpdateTask={(id, updates) => {
+                    optimisticUpdateTask(id, updates);
+                    updateDoc(doc(db, COLLECTION.TASKS, id), updates);
+                  }}
+                  onAddSubtask={() => {
+                    setIsInboxModalOpen(false);
+                    setEditingTask(t);
+                  }}
                 />
               ))}
             </ScrollView>
@@ -1037,6 +1565,13 @@ export default function TasksScreen() {
 
             <View style={styles.menuDivider} />
 
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setIsTemplatesSheetOpen(true); setIsMenuOpen(false); }}>
+              <Ionicons name="copy-outline" size={18} color="#FFFFFF" style={{ marginRight: 12 }} />
+              <Text style={styles.menuItemText}>Task Templates</Text>
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
             <TouchableOpacity style={styles.menuItem} onPress={() => { setIsBulkEdit(true); setIsMenuOpen(false); }}>
               <Ionicons name="checkbox-outline" size={18} color="#FFFFFF" style={{ marginRight: 12 }} />
               <Text style={styles.menuItemText}>Select Multiple</Text>
@@ -1052,11 +1587,18 @@ export default function TasksScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* BULK ACTION BAR */}
+      {/* BULK ACTION BAR — icon-only circular buttons */}
       {isBulkEdit && (
-        <Animated.View entering={FadeInUp} style={styles.bulkActionBar}>
-          <TouchableOpacity 
-            style={[styles.bulkActionBtn, { opacity: selectedTaskIds.size === 0 ? 0.5 : 1 }]} 
+        <Animated.View entering={FadeInUp} style={[
+          styles.bulkActionBar,
+          { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 20, paddingVertical: 16, paddingHorizontal: 24 }
+        ]}>
+          {/* Complete */}
+          <AnimatedPressable
+            style={[
+              styles.bulkActionCircle,
+              { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: 'rgba(94,218,158,0.15)', borderColor: 'rgba(94,218,158,0.4)' }
+            ]}
             disabled={selectedTaskIds.size === 0}
             onPress={async () => {
               if (selectedTaskIds.size === 0) return;
@@ -1075,16 +1617,34 @@ export default function TasksScreen() {
               }
             }}
           >
-            <Ionicons name="checkmark-circle-outline" size={24} color="#A599FF" />
-            <Text style={styles.bulkActionText}>Complete</Text>
-          </TouchableOpacity>
-          <View style={styles.bulkActionDivider} />
-          <TouchableOpacity 
-            style={[styles.bulkActionBtn, { opacity: selectedTaskIds.size === 0 ? 0.5 : 1 }]}
+            <Ionicons name="checkmark" size={22} color="#5eda9e" />
+          </AnimatedPressable>
+
+          {/* Reschedule */}
+          <AnimatedPressable
+            style={[
+              styles.bulkActionCircle,
+              { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: 'rgba(165,153,255,0.15)', borderColor: 'rgba(165,153,255,0.4)' }
+            ]}
             disabled={selectedTaskIds.size === 0}
             onPress={() => {
               if (selectedTaskIds.size === 0) return;
-              Alert.alert('Delete Tasks', `Are you sure you want to delete ${selectedTaskIds.size} tasks?`, [
+              setBulkRescheduleModal(true);
+            }}
+          >
+            <Ionicons name="calendar-outline" size={22} color="#A599FF" />
+          </AnimatedPressable>
+
+          {/* Delete */}
+          <AnimatedPressable
+            style={[
+              styles.bulkActionCircle,
+              { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: 'rgba(255,105,97,0.15)', borderColor: 'rgba(255,105,97,0.4)' }
+            ]}
+            disabled={selectedTaskIds.size === 0}
+            onPress={() => {
+              if (selectedTaskIds.size === 0) return;
+              Alert.alert('Delete Tasks', `Delete ${selectedTaskIds.size} task${selectedTaskIds.size === 1 ? '' : 's'}?`, [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Delete', style: 'destructive', onPress: async () => {
                   const batch = writeBatch(db);
@@ -1099,9 +1659,8 @@ export default function TasksScreen() {
               ]);
             }}
           >
-            <Ionicons name="trash-outline" size={24} color="#FF6961" />
-            <Text style={[styles.bulkActionText, { color: '#FF6961' }]}>Delete</Text>
-          </TouchableOpacity>
+            <Ionicons name="trash-outline" size={22} color="#ff6961" />
+          </AnimatedPressable>
         </Animated.View>
       )}
       <TaskTemplatesSheet 
@@ -1127,6 +1686,57 @@ export default function TasksScreen() {
           });
         }}
       />
+
+      {/* TIME LOG SHEET — appears after checkbox completion */}
+      <TaskTimeLogSheet
+        task={timeLogTask}
+        visible={!!timeLogTask}
+        onSkip={() => {
+          // Complete without logging time
+          if (timeLogTask?.id) {
+            const completedAt = new Date().toISOString();
+            (async () => {
+              try {
+                await awardXP('TASK_COMPLETE');
+                await updateDoc(doc(db, COLLECTION.TASKS, timeLogTask.id), {
+                  status: 'completed',
+                  completedAt,
+                });
+              } catch (e) {
+                console.error('[TimeLogSheet] skip write failed', e);
+              }
+            })();
+          }
+          setTimeLogTask(null);
+        }}
+        onSave={(taskId, actualMinutes, actualStartTime) => {
+          const completedAt = new Date().toISOString();
+          optimisticUpdateTask(taskId, { status: 'completed', completedAt, actualMinutes, actualStartTime });
+          (async () => {
+            try {
+              await awardXP('TASK_COMPLETE');
+              await updateDoc(doc(db, COLLECTION.TASKS, taskId), {
+                status: 'completed',
+                completedAt,
+                actualMinutes,
+                actualStartTime,
+              });
+            } catch (e) {
+              console.error('[TimeLogSheet] save write failed', e);
+            }
+          })();
+          setTimeLogTask(null);
+        }}
+      />
+
+      {/* TIME SPENT ANALYTICS SHEET */}
+      <TimeSpentSheet
+        visible={isTimeSpentOpen}
+        onClose={() => setIsTimeSpentOpen(false)}
+        tasks={tasks}
+        selectedDate={selectedDate}
+      />
+
     </SafeAreaView>
   );
 }
@@ -1321,9 +1931,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   bulkActionBar: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
+    bottom: 90,
+    left: 16,
+    right: 16,
     backgroundColor: '#1c1c1e',
     borderRadius: RADIUS.lg,
     flexDirection: 'row',
@@ -1331,7 +1941,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
     paddingVertical: SPACE.md,
     ...SHADOW.lg,
     borderWidth: 1,
-    borderColor: '#2c2c2e'
+    borderColor: '#2c2c2e',
+    zIndex: 100,
   },
   bulkActionBtn: {
     flex: 1,
@@ -1339,6 +1950,14 @@ const makeStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 8
+  },
+  bulkActionCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
   },
   bulkActionText: {
     fontFamily: FONT_FAMILY.medium,
@@ -1918,5 +2537,57 @@ const makeStyles = (colors: any) => StyleSheet.create({
   autoStyle11: { fontFamily: FONT_FAMILY.body, color: '#991b1b', fontSize: FONT_SIZE.xs },
   autoStyle12: { paddingHorizontal: 24, marginTop: 12 },
   autoStyle13: { paddingHorizontal: 24 },
+  tagsPanel: {
+    paddingHorizontal: SPACE.md,
+    paddingVertical: SPACE.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#1c1c1e',
+    gap: SPACE.sm,
+  },
+  tagPillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: SPACE.sm,
+    paddingVertical: 4,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  tagChipText: { fontFamily: 'Inter_500Medium', fontSize: 12 },
+  tagSuggestion: {
+    paddingHorizontal: SPACE.sm,
+    paddingVertical: 4,
+    backgroundColor: '#1c1c1e',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#2c2c2e',
+  },
+  tagSuggestionText: { fontFamily: 'Inter_500Medium', fontSize: 12 },
+  tagInputRow: {
+    flexDirection: 'row',
+    gap: SPACE.sm,
+    alignItems: 'center',
+  },
+  tagInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACE.md,
+    paddingVertical: 8,
+    fontFamily: 'Inter_400Regular',
+    fontSize: FONT_SIZE.sm,
+  },
+  tagAddBtn: {
+    width: 36, height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1c1c1e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 

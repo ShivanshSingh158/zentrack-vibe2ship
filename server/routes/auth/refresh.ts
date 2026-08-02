@@ -93,7 +93,6 @@ router.all('/', async (req: any, res: any) => {
     console.error('Failed to refresh token:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
-}
-
+});
 
 export default router;

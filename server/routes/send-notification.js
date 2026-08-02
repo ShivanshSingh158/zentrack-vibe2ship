@@ -26,8 +26,13 @@ if (!admin.apps.length) {
   }
 }
 
-const db = admin.firestore();
-const messaging = admin.messaging();
+// ✅ CRITICAL FIX: Do NOT call admin.firestore() or admin.messaging() at module level.
+// If Firebase Admin init failed (bad/missing FIREBASE_SERVICE_ACCOUNT_JSON), those throw
+// at module load time and crash the entire Lambda → FUNCTION_INVOCATION_FAILED on ALL endpoints.
+// Use lazy getters inside the request handler instead.
+let db;
+let messaging;
+
 
 const router = express.Router();
 router.all('/', async (req, res) => {
@@ -90,6 +95,15 @@ router.all('/', async (req, res) => {
   }
   if (!title || !body) {
     return res.status(400).json({ error: 'title and body are required' });
+  }
+
+  // ✅ Lazy-initialize db and messaging (only when actually needed inside a request)
+  if (!db || !messaging) {
+    if (!admin.apps.length) {
+      return res.status(503).json({ error: 'Notification service unavailable (Firebase Admin not configured).' });
+    }
+    db = admin.firestore();
+    messaging = admin.messaging();
   }
 
   // Fetch FCM tokens for the given user IDs
@@ -162,7 +176,8 @@ router.all('/', async (req, res) => {
     console.error('[send-notification] Error:', err);
     return res.status(500).json({ error: 'Failed to send notification', details: err.message });
   }
-}
+});
+
 
 
 export default router;

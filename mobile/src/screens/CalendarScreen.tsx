@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { formatDateFull, formatDateWithDay } from '../utils/dateUtils';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Modal, Platform, Image, LayoutAnimation, UIManager, ActivityIndicator, FlatList, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Calendar } from 'react-native-calendars';
+import { Calendar, CalendarProvider, ExpandableCalendar } from 'react-native-calendars';
 import { useMobileData, CustomEvent } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { AddEventModal } from '../components/Calendar/AddEventModal';
@@ -53,6 +54,68 @@ const format12Hour = (time24: string | undefined): string => {
   const ampm = h >= 12 ? 'PM' : 'AM';
   const hr = h % 12 || 12;
   return `${hr}:${m} ${ampm}`;
+};
+
+/**
+ * Parses both 12-hour ("2:00 PM", "10:00 AM") and 24-hour ("14:00", "09:00")
+ * time strings into { hour, min } in 24-hour terms.
+ * This is the critical fix for calendar events appearing at the wrong time.
+ */
+const parseTimeTo24h = (timeStr: string | undefined): { hour: number; min: number } => {
+  if (!timeStr) return { hour: 9, min: 0 };
+  const upper = timeStr.trim().toUpperCase();
+  const isPM = upper.includes('PM');
+  const isAM = upper.includes('AM');
+  // Strip AM/PM suffix and any trailing space
+  const cleaned = upper.replace(/[APM\s]+$/i, '').trim();
+  const colonParts = cleaned.split(':');
+  let h = parseInt(colonParts[0], 10) || 0;
+  const m = colonParts.length >= 2 ? (parseInt(colonParts[1], 10) || 0) : 0;
+  if (isPM || isAM) {
+    // 12-hour format: convert to 24h
+    if (isPM && h !== 12) h += 12;
+    if (isAM && h === 12) h = 0;
+  }
+  // Clamp to valid range
+  h = Math.max(0, Math.min(23, h));
+  return { hour: h, min: Math.max(0, Math.min(59, m)) };
+};
+
+/**
+ * Parses a task timeSlot string into { startTime, endTime } 24h-compatible strings.
+ * Handles ALL separator variants:
+ *   "5:30 AM - 6:30 AM"   (hyphen, 12h)
+ *   "5:30 AM – 6:30 AM"   (en-dash, 12h)
+ *   "17:30 - 18:30"       (hyphen, 24h)
+ *   "09:00"               (start only, no end)
+ */
+const parseTaskTimeSlot = (timeSlot: string | null | undefined): { startTime: string; endTime: string } => {
+  if (!timeSlot) return { startTime: '09:00', endTime: '10:00' };
+
+  // Split on en-dash or " - " pattern; be careful not to split inside "5:30 AM"
+  // Strategy: replace en-dash with a rare sentinel, then split on " - " or " – "
+  const normalized = timeSlot.replace(/\u2013|\u2014/g, '-');
+  // Only split on " - " (with spaces) to avoid splitting on the colon-minutes dash
+  const sepIdx = normalized.indexOf(' - ');
+
+  if (sepIdx !== -1) {
+    const rawStart = normalized.slice(0, sepIdx).trim();
+    const rawEnd = normalized.slice(sepIdx + 3).trim();
+    const { hour: sh, min: sm } = parseTimeTo24h(rawStart);
+    const { hour: eh, min: em } = parseTimeTo24h(rawEnd);
+    return {
+      startTime: `${sh.toString().padStart(2,'0')}:${sm.toString().padStart(2,'0')}`,
+      endTime:   `${eh.toString().padStart(2,'0')}:${em.toString().padStart(2,'0')}`,
+    };
+  }
+
+  // Single time — no range
+  const { hour: sh, min: sm } = parseTimeTo24h(normalized.trim());
+  const endH = Math.min(23, sh + 1);
+  return {
+    startTime: `${sh.toString().padStart(2,'0')}:${sm.toString().padStart(2,'0')}`,
+    endTime:   `${endH.toString().padStart(2,'0')}:${sm.toString().padStart(2,'0')}`,
+  };
 };
 
 export default function CalendarScreen() {
@@ -149,54 +212,63 @@ export default function CalendarScreen() {
   }, [googleAccessToken, selectedDate]);
 
   // Combine custom events, tasks, and gcal events for the day
-  const dayEvents = useMemo(() => {
+  // Split into TIMED (has startTime) and UNSCHEDULED (no time set)
+  const { timedDayEvents, unscheduledDayEvents } = useMemo(() => {
     const events = customEvents.filter(e => e.date === selectedDate);
-    
-    const dayTasks = tasks.filter(t => t.date === selectedDate).map(t => {
-      let startTime = '09:00';
-      let endTime = '10:00';
-      if (t.timeSlot) {
-        if (t.timeSlot.includes('-')) {
-          const parts = t.timeSlot.split('-');
-          startTime = parts[0].trim();
-          endTime = parts[1].trim();
-        } else {
-          startTime = t.timeSlot.trim();
-          const parts = startTime.split(':');
-          if (parts.length === 2) {
-            endTime = `${(parseInt(parts[0], 10) + 1).toString().padStart(2, '0')}:${parts[1]}`;
-          }
-        }
+
+    // Tasks — split by whether they have a real timeSlot
+    const timedTasks: any[] = [];
+    const unscheduledTasks: any[] = [];
+    tasks.filter(t => t.date === selectedDate).forEach(t => {
+      if (t.timeSlot && t.timeSlot.trim() !== '') {
+        const { startTime, endTime } = parseTaskTimeSlot(t.timeSlot);
+        timedTasks.push({
+          id: t.id, title: t.title, type: 'todo' as const,
+          date: t.date, startTime, endTime,
+          isCompleted: t.status === 'completed'
+        });
+      } else {
+        unscheduledTasks.push({
+          id: t.id, title: t.title, type: 'todo' as const,
+          date: t.date, startTime: '', endTime: '',
+          isCompleted: t.status === 'completed'
+        });
       }
-      return {
-        id: t.id, 
-        title: t.title, 
-        type: 'todo' as const, 
-        date: t.date, 
-        startTime,
-        endTime,
-        isCompleted: t.status === 'completed'
-      };
     });
 
+    // Attendance classes/labs — split by whether they have a time
     const dayOfWeek = new Date(selectedDate + 'T00:00:00').getDay().toString();
     const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const classEvents = attendance?.flatMap(subj => {
-      const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[Number(dayOfWeek)] || subj.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || subj.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
-      if (!sch) return [];
-      
-      const evtList: any[] = [];
+    const timedClasses: any[] = [];
+    const unscheduledClasses: any[] = [];
+
+    attendance?.forEach(subj => {
+      const sch = subj.schedule?.[dayOfWeek] ||
+        subj.schedule?.[Number(dayOfWeek)] ||
+        subj.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] ||
+        subj.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
+      if (!sch) return;
+
       if (sch.classes && Array.isArray(sch.classes)) {
         sch.classes.forEach((c: any, i: number) => {
-          if (c.time) {
-            const parts = c.time.split(':');
-            evtList.push({
+          if (c.time && c.time.trim() !== '') {
+            const { hour: sh, min: sm } = parseTimeTo24h(c.time);
+            const endH = Math.min(23, sh + 1);
+            timedClasses.push({
               id: `${subj.id}-class-${i}`,
               title: `${subj.name} (Class)`,
-              type: 'class',
-              date: selectedDate,
+              type: 'class', date: selectedDate,
               startTime: c.time,
-              endTime: parts.length === 2 ? `${(parseInt(parts[0], 10)+1).toString().padStart(2, '0')}:${parts[1]}` : c.time,
+              endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`,
+              location: c.room || '',
+            });
+          } else {
+            // Class exists but no time entered — show as unscheduled chip
+            unscheduledClasses.push({
+              id: `${subj.id}-class-${i}`,
+              title: `${subj.name} (Class)`,
+              type: 'class', date: selectedDate,
+              startTime: '', endTime: '',
               location: c.room || '',
             });
           }
@@ -204,61 +276,72 @@ export default function CalendarScreen() {
       }
       if (sch.labs && Array.isArray(sch.labs)) {
         sch.labs.forEach((l: any, i: number) => {
-          if (l.time) {
-             const parts = l.time.split(':');
-             evtList.push({
+          if (l.time && l.time.trim() !== '') {
+            const { hour: sh, min: sm } = parseTimeTo24h(l.time);
+            const endH = Math.min(23, sh + 2);
+            timedClasses.push({
               id: `${subj.id}-lab-${i}`,
               title: `${subj.name} (Lab)`,
-              type: 'lab', 
-              date: selectedDate,
+              type: 'lab', date: selectedDate,
               startTime: l.time,
-              endTime: parts.length === 2 ? `${(parseInt(parts[0], 10)+2).toString().padStart(2, '0')}:${parts[1]}` : l.time,
+              endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`,
+              location: l.room || '',
+            });
+          } else {
+            unscheduledClasses.push({
+              id: `${subj.id}-lab-${i}`,
+              title: `${subj.name} (Lab)`,
+              type: 'lab', date: selectedDate,
+              startTime: '', endTime: '',
               location: l.room || '',
             });
           }
         });
       }
-      return evtList;
-    }) || [];
+    });
 
     const gymEvts = (gymLogs || []).filter(g => g.date === selectedDate).map(g => ({
-        id: g.id, 
-        title: 'Gym Workout', 
-        type: 'gym', 
-        date: g.date, 
-        startTime: g.startTime || '10:00', 
-        endTime: g.endTime || '11:00', 
-        location: 'Gym'
-      }));
-      return [...events, ...dayTasks, ...classEvents, ...gymEvts, ...gcalEvents] as CustomEvent[];
+      id: g.id, title: 'Gym Workout', type: 'gym' as any, date: g.date,
+      startTime: g.startTime || '10:00',
+      endTime: g.endTime || '11:00',
+      location: 'Gym'
+    }));
+
+    return {
+      timedDayEvents: [...events, ...timedTasks, ...timedClasses, ...gymEvts, ...gcalEvents] as CustomEvent[],
+      unscheduledDayEvents: [...unscheduledTasks, ...unscheduledClasses] as CustomEvent[],
+    };
   }, [customEvents, tasks, attendance, gymLogs, gcalEvents, selectedDate]);
 
-  // Math for overlapping events layout
+  // Keep dayEvents as the full set for month-view list and other consumers
+  const dayEvents = useMemo(
+    () => [...timedDayEvents, ...unscheduledDayEvents],
+    [timedDayEvents, unscheduledDayEvents]
+  );
+
+  // Math for overlapping events layout — uses ONLY timed events
   const processedEvents = useMemo(() => {
-    const rawEvents = dayEvents;
+    const rawEvents = timedDayEvents;
 
     const timedEvents = rawEvents.map((event, index) => {
+      // Use parseTimeTo24h to correctly handle both "2:00 PM" (12h) and "14:00" (24h)
       let startHour = 9;
       let startMin = 0;
       let endHour = 10;
       let endMin = 0;
-      
+
       if (event.startTime) {
-        const parts = event.startTime.split(':');
-        if (parts.length === 2) {
-          startHour = parseInt(parts[0], 10);
-          startMin = parseInt(parts[1], 10);
-        }
+        const parsed = parseTimeTo24h(event.startTime);
+        startHour = parsed.hour;
+        startMin = parsed.min;
       } else {
         startHour = 9 + (index % 5);
       }
 
       if (event.endTime && event.startTime) {
-        const parts = event.endTime.split(':');
-        if (parts.length === 2) {
-          endHour = parseInt(parts[0], 10);
-          endMin = parseInt(parts[1], 10);
-        }
+        const parsed = parseTimeTo24h(event.endTime);
+        endHour = parsed.hour;
+        endMin = parsed.min;
       } else {
         endHour = startHour + 1;
         endMin = startMin;
@@ -318,19 +401,7 @@ export default function CalendarScreen() {
       
       const events = customEvents.filter(e => e.date === dateStr);
       const dayTasks = tasks.filter(t => t.date === dateStr).map(t => {
-        let startTime = '09:00'; let endTime = '10:00';
-        if (t.timeSlot) {
-          if (t.timeSlot.includes('-')) {
-            const parts = t.timeSlot.split('-');
-            startTime = parts[0].trim(); endTime = parts[1].trim();
-          } else {
-            startTime = t.timeSlot.trim();
-            const parts = startTime.split(':');
-            if (parts.length === 2) {
-              endTime = `${(parseInt(parts[0], 10) + 1).toString().padStart(2, '0')}:${parts[1]}`;
-            }
-          }
-        }
+        const { startTime, endTime } = parseTaskTimeSlot(t.timeSlot);
         return { id: t.id, title: t.title, type: 'todo', date: dateStr, startTime, endTime };
       });
       
@@ -343,10 +414,12 @@ export default function CalendarScreen() {
         if (sch.classes && Array.isArray(sch.classes)) {
           sch.classes.forEach((c: any, idx: number) => {
             if (c.time) {
-              const parts = c.time.split(':');
+              const { hour: sh, min: sm } = parseTimeTo24h(c.time);
+              const endH = Math.min(23, sh + 1);
               evtList.push({
                 id: `${subj.id}-class-${dateStr}-${idx}`, title: `${subj.name} (Class)`, type: 'class', date: dateStr,
-                startTime: c.time, endTime: parts.length === 2 ? `${(parseInt(parts[0], 10)+1).toString().padStart(2, '0')}:${parts[1]}` : c.time
+                startTime: c.time,
+                endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`
               });
             }
           });
@@ -354,10 +427,12 @@ export default function CalendarScreen() {
         if (sch.labs && Array.isArray(sch.labs)) {
           sch.labs.forEach((l: any, idx: number) => {
             if (l.time) {
-               const parts = l.time.split(':');
-               evtList.push({
+              const { hour: sh, min: sm } = parseTimeTo24h(l.time);
+              const endH = Math.min(23, sh + 2);
+              evtList.push({
                 id: `${subj.id}-lab-${dateStr}-${idx}`, title: `${subj.name} (Lab)`, type: 'lab', date: dateStr,
-                startTime: l.time, endTime: parts.length === 2 ? `${(parseInt(parts[0], 10)+2).toString().padStart(2, '0')}:${parts[1]}` : l.time
+                startTime: l.time,
+                endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`
               });
             }
           });
@@ -373,14 +448,17 @@ export default function CalendarScreen() {
       const dayCombined = [...events, ...dayTasks, ...classEvents, ...gymEvts, ...gcals];
       
       dayCombined.forEach(event => {
+        // Use parseTimeTo24h to correctly handle both 12h ("2:00 PM") and 24h ("14:00") formats
         let startHour = 9; let startMin = 0; let endHour = 10; let endMin = 0;
         if (event.startTime) {
-          const parts = event.startTime.split(':');
-          if (parts.length === 2) { startHour = parseInt(parts[0], 10); startMin = parseInt(parts[1], 10); }
+          const parsed = parseTimeTo24h(event.startTime);
+          startHour = parsed.hour;
+          startMin = parsed.min;
         }
         if (event.endTime && event.startTime) {
-          const parts = event.endTime.split(':');
-          if (parts.length === 2) { endHour = parseInt(parts[0], 10); endMin = parseInt(parts[1], 10); }
+          const parsed = parseTimeTo24h(event.endTime);
+          endHour = parsed.hour;
+          endMin = parsed.min;
         } else {
           endHour = startHour + 1; endMin = startMin;
         }
@@ -639,6 +717,29 @@ export default function CalendarScreen() {
 
       {/* 3. TIMELINE GRID (DAY VIEW) */}
       {currentView === 'Day' && (
+      <>
+        {/* Unscheduled strip — tasks/classes with no time set */}
+        {unscheduledDayEvents.length > 0 && (
+          <View style={styles.unscheduledStrip}>
+            <Text style={styles.unscheduledLabel}>UNSCHEDULED</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+              {unscheduledDayEvents.map(evt => {
+                const typeColor = getEventColors(colors)[evt.type]?.bg || '#a599ff';
+                return (
+                  <View
+                    key={evt.id}
+                    style={[styles.unscheduledChip, { backgroundColor: `${typeColor}30`, borderColor: typeColor }]}
+                  >
+                    <View style={[styles.unscheduledDot, { backgroundColor: typeColor }]} />
+                    <Text style={[styles.unscheduledChipText, { color: typeColor }]} numberOfLines={1}>
+                      {evt.title}
+                    </Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
       <ScrollView ref={scrollViewRef} style={styles.timelineScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.timelineInner}>
           {/* Hour Grid Lines */}
@@ -717,6 +818,7 @@ export default function CalendarScreen() {
           <View style={{ height: 100, top: 24 * HOUR_HEIGHT }} />
         </View>
       </ScrollView>
+      </>
       )}
 
       {/* 4. WEEK VIEW GRID */}
@@ -771,58 +873,66 @@ export default function CalendarScreen() {
       {/* 5. MONTH VIEW */}
       {currentView === 'Month' && (
         <View style={styles.monthViewContainer}>
-          <Calendar
-            current={selectedDate}
-            onDayPress={(day: any) => setSelectedDate(day.dateString)}
-            markingType={'custom'}
-            markedDates={
-              Object.keys(markedDates).reduce((acc: any, date) => {
-                const hasEvents = markedDates[date].dots && markedDates[date].dots.length > 0;
-                acc[date] = {
-                  customStyles: {
-                    container: {
-                      backgroundColor: date === selectedDate ? colors.accentPrimary : 'transparent',
-                      borderRadius: 16
-                    },
-                    text: {
-                      color: date === selectedDate ? '#000' : colors.textPrimary,
-                      fontWeight: date === selectedDate ? 'bold' : 'normal'
-                    }
-                  }
-                };
-                if (hasEvents) {
-                  // Single purple dot for any event
-                  acc[date].marked = true;
-                  acc[date].dotColor = date === selectedDate ? '#000' : colors.accentPrimary;
-                }
-                return acc;
-              }, {})
-            }
+          <CalendarProvider
+            date={selectedDate}
+            onDateChanged={(date: string) => setSelectedDate(date)}
+            showTodayButton
             theme={{
-              backgroundColor: 'transparent',
-              calendarBackground: 'transparent',
-              textSectionTitleColor: colors.textMuted,
-              dayTextColor: colors.textPrimary,
-              textDisabledColor: colors.border,
-              monthTextColor: colors.textPrimary,
-              arrowColor: colors.accentPrimary,
-              textDayFontFamily: FONT_FAMILY.body,
-              textDayHeaderFontFamily: FONT_FAMILY.medium,
-              textDayFontSize: 16,
-              textDayHeaderFontSize: 12,
-            } as any}
-          />
-          <View style={styles.monthEventListContainer}>
-            <Text style={styles.monthEventListHeader}>{new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()}</Text>
-            <FlatList
-              data={dayEvents}
-              keyExtractor={item => item.id}
-              renderItem={renderMonthEventItem}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 100 }}
-              ListEmptyComponent={<Text style={styles.emptyText}>No events on this day.</Text>}
+              todayButtonTextColor: colors.accentPrimary,
+            }}
+          >
+            <ExpandableCalendar
+              firstDay={1}
+              markingType={'custom'}
+              markedDates={
+                Object.keys(markedDates).reduce((acc: any, date) => {
+                  const hasEvents = markedDates[date].dots && markedDates[date].dots.length > 0;
+                  acc[date] = {
+                    customStyles: {
+                      container: {
+                        backgroundColor: date === selectedDate ? colors.accentPrimary : 'transparent',
+                        borderRadius: 16
+                      },
+                      text: {
+                        color: date === selectedDate ? '#000' : colors.textPrimary,
+                        fontWeight: date === selectedDate ? 'bold' : 'normal'
+                      }
+                    }
+                  };
+                  if (hasEvents) {
+                    // Single purple dot for any event
+                    acc[date].marked = true;
+                    acc[date].dotColor = date === selectedDate ? '#000' : colors.accentPrimary;
+                  }
+                  return acc;
+                }, {})
+              }
+              theme={{
+                backgroundColor: colors.background,
+                calendarBackground: colors.background,
+                textSectionTitleColor: colors.textMuted,
+                dayTextColor: colors.textPrimary,
+                textDisabledColor: colors.border,
+                monthTextColor: colors.textPrimary,
+                arrowColor: colors.accentPrimary,
+                textDayFontFamily: FONT_FAMILY.body,
+                textDayHeaderFontFamily: FONT_FAMILY.medium,
+                textDayFontSize: 16,
+                textDayHeaderFontSize: 12,
+              } as any}
             />
-          </View>
+            <View style={styles.monthEventListContainer}>
+              <Text style={styles.monthEventListHeader}>{formatDateFull(selectedDate).toUpperCase()}</Text>
+              <FlatList
+                data={dayEvents}
+                keyExtractor={item => item.id}
+                renderItem={renderMonthEventItem}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 100 }}
+                ListEmptyComponent={<Text style={styles.emptyText}>No events on this day.</Text>}
+              />
+            </View>
+          </CalendarProvider>
         </View>
       )}
 
@@ -1271,4 +1381,39 @@ const makeStyles = (colors: any) => StyleSheet.create({
       monthEventTitle: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
       monthEventTime: { fontSize: 12, color: colors.textSecondary },
       emptyText: { color: colors.textMuted, fontSize: 14, marginTop: 16, textAlign: 'center' },
+
+      /* Unscheduled Strip Styles */
+      unscheduledStrip: {
+        paddingHorizontal: SPACE.xl,
+        paddingVertical: SPACE.sm,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.surface,
+      },
+      unscheduledLabel: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 9,
+        color: colors.textMuted,
+        letterSpacing: 1.2,
+        marginBottom: 6,
+      },
+      unscheduledChip: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: RADIUS.full,
+        borderWidth: 1,
+      },
+      unscheduledDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+      },
+      unscheduledChipText: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 11,
+        maxWidth: 140,
+      },
     });

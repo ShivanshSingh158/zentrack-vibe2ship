@@ -1,12 +1,8 @@
 /**
  * ZenGymAiModal — ZenTrack Mobile
  *
- * AI Gym Coach powered by the full GAINS agent fleet via Socket.IO backend.
- * Replaces the previous single-key direct Gemini call with:
- *   orchestrateAgent() → Render backend → GAINS agent (full gym system prompt)
- *   → 10-key rotation → Gemini → streamed steps → TTS
- *
- * GAINS reads: todayGym plan, sets completed, overtraining check, PR history.
+ * Elite GYM-GPT coaching modal.
+ * Passes full athlete profile + last 10 sessions + live workout to the AI.
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -20,11 +16,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  ActivityIndicator,
   Animated,
   Image,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Speech from 'expo-speech';
@@ -33,9 +27,14 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/token
 import { processGymChat, compressMemoryToSummary } from '../../agent/saraAgent';
 import { useMobileData } from '../../contexts/MobileDataContext';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../../data/gymPlan';
+import { getCustomPlanDay } from '../../hooks/useGymLog';
+import { UserGymPlanDoc, GymPlanDay } from '../../types/gym.types';
 import { feedback } from '../../utils/haptics';
 import ActionConfirmationCard from '../SARA/ActionConfirmationCard';
-import { useTheme } from "../../contexts/ThemeContext";
+import { useTheme } from '../../contexts/ThemeContext';
+import { useGymProfile } from '../../hooks/useGymProfile';
+import { GymProfileModal } from './GymProfileModal';
+import Markdown from 'react-native-markdown-display';
 
 interface Props {
   visible: boolean;
@@ -51,6 +50,11 @@ interface Props {
   onDeleteExercise?: (exerciseIndex: number) => void;
   onLogSet?: (exerciseIndex: number, setIndex: number, weightKg: number, reps: number) => void;
   onGenerateWorkoutPlan?: (planName: string, exercises: { name: string, sets: number, reps: string }[]) => void;
+  onAutoregulateDeload?: () => void;
+  /** User's full custom gym plan — used to feed real plan data to GYM-GPT */
+  userGymPlan?: UserGymPlanDoc | null;
+  /** Today's resolved plan day from useGymLog (already custom-plan-aware) */
+  currentPlanDay?: GymPlanDay | null;
 }
 
 interface ChatMessage {
@@ -61,11 +65,12 @@ interface ChatMessage {
 }
 
 const QUICK_PROMPTS = [
-  "How many more sets should I do?",
-  "What muscles am I targeting?",
+  "Give me a warm-up routine 🔥",
   "Should I increase weight today?",
+  "Cool-down stretches for today 🧘",
   "Am I overtraining?",
-  "Best rest time between sets?",
+  "Break down my next exercise",
+  "Today's fatigue score?",
 ];
 
 function TypingDots() {
@@ -107,62 +112,44 @@ export function ZenGymAiModal({
   onAddExercise,
   onDeleteExercise,
   onLogSet,
-  onGenerateWorkoutPlan
+  onGenerateWorkoutPlan,
+  onAutoregulateDeload,
+  userGymPlan,
+  currentPlanDay,
 }: Props) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
-  const { tasks, habits, gymLogs, user, notes, goals, googleAccessToken } = useMobileData();
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors);
+  const { tasks, habits, gymLogs, waterLogs, sleepLogs, user, notes, goals, googleAccessToken } = useMobileData();
+  const { gymProfile } = useGymProfile();
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const historyRef = useRef<{ role: string; content: string }[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
   const [memorySummary, setMemorySummary] = useState<string | null>(null);
-  const buildGymContext = (): string => {
-    const today = new Date().toISOString().split('T')[0];
-    const todayLog = gymLogs?.find(l => l.date === today);
-    const dayOfWeek = new Date().getDay();
-    const todayPlanIndex = WEEKDAY_TO_PLAN[dayOfWeek] || 7;
-    const todayPlan = GYM_PLAN.find(p => p.dayIndex === todayPlanIndex);
 
-    let context = 'SYSTEM INSTRUCTIONS: You are GYM-GPT, a world-class bodybuilding AI coach. Answer concisely. ';
-    
-    // Provide weekly overview
-    let weeklySummary = 'Weekly Program: ';
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    days.forEach((d, i) => {
-      const pIdx = WEEKDAY_TO_PLAN[i] || 7;
-      const p = GYM_PLAN.find(x => x.dayIndex === pIdx);
-      weeklySummary += `${d}=${p ? p.name : 'Rest'}, `;
-    });
-    context += weeklySummary + '. ';
+  // Load memory summary on mount
+  useEffect(() => {
+    AsyncStorage.getItem('gym_memory_summary').then(s => { if (s) setMemorySummary(s); });
+  }, []);
 
-    // Provide detailed today info
-    context += `Today is ${days[dayOfWeek]}. Scheduled workout: ${todayPlan ? todayPlan.name : 'Rest Day'}. `;
-    if (todayPlan) {
-      context += `Focus: ${todayPlan.focus}. `;
+  // Auto-send session overview when modal first opens (visible becomes true)
+  const hasAutoGreetedRef = useRef(false);
+  useEffect(() => {
+    if (visible && !hasAutoGreetedRef.current && gymLogs && gymLogs.length > 0) {
+      hasAutoGreetedRef.current = true;
+      const today = new Date().toISOString().split('T')[0];
+      const todayLog = gymLogs.find((l: any) => l.date === today);
+      const sessionsDone = todayLog?.exercises?.filter((e: any) => e.setsLog?.some((s: any) => s.completed))?.length || 0;
+      const greet = sessionsDone > 0
+        ? `Give me a quick personalised session overview: what I've done so far today and your top recommendation for the rest of this workout.`
+        : `Give me a personalised pre-workout briefing for today: fatigue assessment based on my recent sessions, top coaching tip, and recommended warm-up.`;
+      setTimeout(() => handleAsk(greet), 500);
     }
+  }, [visible]);
 
-    let liveLog = 'Live Progress Today: ';
-    if (todayLog && todayLog.exercises && todayLog.exercises.length > 0) {
-      todayLog.exercises.forEach((ex: any) => {
-        const setsStr = ex.setsLog.map((s: any) => s.completed ? `[${s.weight}kg x ${s.reps}]` : `(pending ${s.weight}kg)`).join(', ');
-        liveLog += `${ex.name}: ${setsStr}. `;
-      });
-    } else {
-      liveLog += 'Workout not started yet.';
-    }
-    context += liveLog;
-
-    const recentLogs = gymLogs?.slice(-3) ?? [];
-    if (recentLogs.length > 0) {
-      context += ` Past 3 sessions logged.`;
-    }
-
-    return context;
-  };
 
   const handleAsk = async (overridePrompt?: string) => {
     const question = (overridePrompt || prompt).trim();
@@ -190,9 +177,21 @@ export function ZenGymAiModal({
       { role: 'user', content: question },
     ];
 
-    // Build context for the GAINS agent
-    const gymContext = buildGymContext();
-    const gymFocusedPrompt = `[GYM CONTEXT: ${gymContext}]\n\n${question}`;
+    // Build rich context including gym profile and last 10 sessions
+    // Use local date (not UTC) to avoid IST midnight off-by-one
+    const nowLocal = new Date();
+    const todayY = nowLocal.getFullYear();
+    const todayM = String(nowLocal.getMonth() + 1).padStart(2, '0');
+    const todayD = String(nowLocal.getDate()).padStart(2, '0');
+    const today = `${todayY}-${todayM}-${todayD}`;
+    const todayLog = gymLogs?.find((l: any) => l.date === today);
+    const dayOfWeek = nowLocal.getDay();
+    const todayPlanIndex = WEEKDAY_TO_PLAN[dayOfWeek] || 7;
+    // FIX: Use currentPlanDay (from useGymLog — already custom-plan-aware) first,
+    // then fallback to getCustomPlanDay, then fallback to static template.
+    const todayPlan = currentPlanDay ||
+      getCustomPlanDay(userGymPlan?.customDays, todayPlanIndex) ||
+      GYM_PLAN.find(p => p.dayIndex === todayPlanIndex);
 
     try {
       const appContext = {
@@ -201,13 +200,22 @@ export function ZenGymAiModal({
         notes: notes ?? [],
         goals: goals ?? [],
         gymLogs: gymLogs ?? [],
+        waterLogs: waterLogs ?? [],
+        sleepLogs: sleepLogs ?? [],
+        // FIX: Use live log exercises first; fallback to today's CUSTOM plan (not static)
+        exercises: todayLog?.exercises ?? (todayPlan?.exercises ?? []),
+        workoutDayName: (todayLog as any)?.dayName || todayPlan?.name || "Today's Session",
         googleAccessToken: googleAccessToken ?? '',
         userId: user?.uid ?? '',
         memorySummary: memorySummary ?? undefined,
+        gymProfile: gymProfile ?? null,
+        // NEW: Pass full custom plan and today's resolved plan day
+        userGymPlan: userGymPlan ?? null,
+        gymPlanDay: todayPlan ?? null,
       };
 
       const result = await processGymChat(
-        gymFocusedPrompt,
+        question,
         historyRef.current,
         appContext
       );
@@ -248,6 +256,9 @@ export function ZenGymAiModal({
         } else if (actionType === 'swapExercise' && onAddExercise) {
           onAddExercise(args.newExerciseName, args.newTargetSets, args.newTargetReps);
           responseText = `✅ Swapped to ${args.newExerciseName} — ${args.newTargetSets}×${args.newTargetReps}`;
+        } else if (actionType === 'autoregulateDeload' && onAutoregulateDeload) {
+          onAutoregulateDeload();
+          responseText = `✅ Autoregulated Deload applied: Dropped volume to protect your CNS today.`;
         } else {
           responseText = result.text || "I tried to update your workout but something went wrong.";
         }
@@ -312,14 +323,14 @@ export function ZenGymAiModal({
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose}>
         <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)' }]} />
       </TouchableOpacity>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
-      >
-        <View style={styles.sheet}>
+      <View style={styles.overlay}>
+        <KeyboardAvoidingView 
+          style={styles.sheet}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           {/* Header */}
           <LinearGradient
-            colors={['#1E0D3A', '#0D0B1A']}
+            colors={['#1c1c1e', '#121214']}
             style={styles.header}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
@@ -332,9 +343,17 @@ export function ZenGymAiModal({
                 <Text style={styles.headerTitle}>GYM-GPT</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={22} color={colors.textMuted} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TouchableOpacity
+                onPress={() => { feedback.tap(); setShowProfileModal(true); }}
+                style={styles.profileBtn}
+              >
+                <Ionicons name="person" size={16} color="#a599ff" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
           </LinearGradient>
 
           {/* Quick Prompts */}
@@ -370,20 +389,23 @@ export function ZenGymAiModal({
                   styles.bubble,
                   msg.role === 'user' && styles.userBubble,
                   msg.role === 'thinking' && styles.thinkingBubble,
+                  msg.role === 'gains' && styles.gainsBubble,
                 ]}
               >
-                {msg.role === 'thinking' && (
-                  <TypingDots />
+                {/* Thinking indicator */}
+                {msg.role === 'thinking' && <TypingDots />}
+
+                {/* Coach response — rendered as Markdown */}
+                {msg.role === 'gains' && (
+                  <Markdown style={mdStyles}>{msg.text}</Markdown>
                 )}
-                <Text
-                  style={[
-                    styles.bubbleText,
-                    msg.role === 'user' && styles.userBubbleText,
-                    msg.role === 'thinking' && styles.thinkingText,
-                  ]}
-                >
-                  {msg.text}
-                </Text>
+
+                {/* User message — plain text */}
+                {msg.role === 'user' && (
+                  <Text style={styles.userBubbleText}>{msg.text}</Text>
+                )}
+
+                {/* Speak button for coach messages */}
                 {msg.role === 'gains' && (
                   <TouchableOpacity
                     onPress={() => toggleSpeak(msg.text)}
@@ -396,6 +418,7 @@ export function ZenGymAiModal({
                     />
                   </TouchableOpacity>
                 )}
+
                 {msg.actionCard && (
                   <View style={{ marginTop: 12, width: '100%' }}>
                     <ActionConfirmationCard 
@@ -428,8 +451,10 @@ export function ZenGymAiModal({
               <Ionicons name="send" size={18} color="#000" style={{ marginLeft: 2 }} />
             </TouchableOpacity>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
+      {/* Gym Profile Modal */}
+      <GymProfileModal visible={showProfileModal} onClose={() => setShowProfileModal(false)} />
     </Modal>
   );
 }
@@ -470,6 +495,14 @@ const makeStyles = (colors: any) => StyleSheet.create({
       headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 17, color: colors.textPrimary },
       headerSub: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },
       closeBtn: { padding: SPACE.xs },
+      profileBtn: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: 'rgba(165,153,255,0.1)',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
 
       quickPrompts: { paddingHorizontal: SPACE.lg, paddingVertical: 12, gap: 8, alignItems: 'center' },
       quickPill: {
@@ -484,10 +517,21 @@ const makeStyles = (colors: any) => StyleSheet.create({
       quickPillText: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: '#f2f2f7' },
 
       chatArea: { flex: 1 },
-      chatContent: { padding: SPACE.lg, gap: SPACE.md, paddingBottom: 24 },
+      chatContent: { paddingHorizontal: 14, paddingVertical: 12, gap: 10, paddingBottom: 24 },
+
+      /* Coach bubble — full width, no right margin */
+      gainsBubble: {
+        alignSelf: 'stretch',
+        maxWidth: '100%',
+        backgroundColor: '#1a1a1f',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: 'rgba(165,153,255,0.12)',
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+      },
       bubble: {
         backgroundColor: '#1c1c1e',
-        borderBottomLeftRadius: 4,
         borderRadius: 18,
         paddingVertical: 10,
         paddingHorizontal: 14,
@@ -548,3 +592,144 @@ const makeStyles = (colors: any) => StyleSheet.create({
         justifyContent: 'center',
       },
     });
+
+// ─── Markdown styles for GYM-GPT responses ────────────────────────────────────
+const mdStyles = StyleSheet.create({
+  body: {
+    color: '#f2f2f7',
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14.5,
+    lineHeight: 22,
+  },
+  // Headings
+  heading1: {
+    color: '#a599ff',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 17,
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 6,
+    letterSpacing: 0.3,
+  },
+  heading2: {
+    color: '#f2f2f7',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 10,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(165,153,255,0.2)',
+    paddingBottom: 4,
+  },
+  heading3: {
+    color: '#a599ff',
+    fontFamily: 'Inter_500Medium',
+    fontSize: 13.5,
+    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 2,
+  },
+  // Inline styles
+  strong: {
+    fontFamily: 'Inter_600SemiBold',
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  em: {
+    fontStyle: 'italic',
+    color: '#c8c4f0',
+  },
+  // Lists
+  bullet_list: {
+    marginVertical: 4,
+  },
+  ordered_list: {
+    marginVertical: 4,
+  },
+  list_item: {
+    flexDirection: 'row',
+    marginBottom: 5,
+  },
+  bullet_list_icon: {
+    color: '#a599ff',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    lineHeight: 22,
+    marginRight: 8,
+    marginTop: 0,
+  },
+  ordered_list_icon: {
+    color: '#a599ff',
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 14,
+    lineHeight: 22,
+    marginRight: 8,
+    minWidth: 20,
+  },
+  bullet_list_content: {
+    flex: 1,
+    color: '#f2f2f7',
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  ordered_list_content: {
+    flex: 1,
+    color: '#f2f2f7',
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14,
+    lineHeight: 21,
+  },
+  // Divider
+  hr: {
+    backgroundColor: 'rgba(165,153,255,0.2)',
+    height: 1,
+    marginVertical: 10,
+  },
+  // Code
+  code_inline: {
+    fontFamily: 'Courier',
+    fontSize: 13,
+    color: '#FF9F0A',
+    backgroundColor: 'rgba(255,159,10,0.1)',
+    paddingHorizontal: 4,
+    borderRadius: 4,
+  },
+  fence: {
+    backgroundColor: '#0d0d10',
+    borderRadius: 10,
+    padding: 12,
+    marginVertical: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  // Blockquote (used for tips/callouts)
+  blockquote: {
+    backgroundColor: 'rgba(165,153,255,0.06)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#a599ff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 4,
+    marginVertical: 6,
+  },
+  // Paragraph spacing
+  paragraph: {
+    marginTop: 0,
+    marginBottom: 6,
+    color: '#f2f2f7',
+    fontFamily: 'Inter_400Regular',
+    fontSize: 14.5,
+    lineHeight: 22,
+  },
+  // Links
+  link: {
+    color: '#a599ff',
+    textDecorationLine: 'underline',
+  },
+  text: {
+    color: '#f2f2f7',
+  },
+});
+

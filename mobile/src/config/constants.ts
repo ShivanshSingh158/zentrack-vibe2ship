@@ -55,6 +55,7 @@ export const STORAGE_KEYS = {
   SARA_FINGERPRINT: '@sara_fingerprint_v1', // Behavioral Fingerprint JSON
   SARA_SURFACE_LAST: '@sara_surface_last_v1',      // Last PSI injection timestamp per screen (JSON)
   SARA_SURFACE_DISMISSED: '@sara_surface_dismissed_v1', // Dismissed PSI banners (JSON array)
+  SARA_ACTION_HISTORY: '@sara_action_history_v1',  // [4.15] Committed action log (last 50, JSON)
   DASHBOARD_LAYOUT: '@zentrack_dashboard_layout', // Custom dashboard widget order
 } as const;
 
@@ -80,8 +81,15 @@ export const COLLECTION = {
   POMODORO_SESSIONS: 'pomodoro_sessions',
   WEEKLY_REVIEWS: 'weekly_reviews',
   WATER_LOGS: 'water_logs',
+  WEIGHT_LOGS: 'weight_logs',
   SLEEP_LOGS: 'sleep_logs',
   USER_PROFILES: 'user_profiles',
+  // Placement Hub
+  DSA_LOGS: 'dsa_logs',
+  FOCUS_SESSIONS: 'focus_sessions',
+  SKILL_RATINGS: 'skill_ratings',
+  PROJECT_MILESTONES: 'project_milestones',
+  PLACEMENT_CONFIG: 'placement_config',
 } as const;
 
 // ── Navigation Screen Names ───────────────────────────────────────────────────
@@ -113,6 +121,7 @@ export const SCREENS = {
   GRADES: 'Grades',
   LEARNING: 'Learning',
   JOBS: 'Jobs',
+  PLACEMENT_HUB: 'PlacementHub',
   // Gym sub-stack
   GYM_HOME: 'GymHome',
   ACTIVE_LOGGING: 'ActiveLogging',
@@ -123,6 +132,7 @@ export const SCREENS = {
   EXERCISE_SWAP: 'ExerciseSwap',
   CARDIO_LOG: 'CardioLog',
 } as const;
+
 
 // ── Data Limits ───────────────────────────────────────────────────────────────
 /** Max tasks passed to agent context (keeps payload small) */
@@ -137,6 +147,8 @@ export const AGENT_MAX_GOALS = 20;
 export const AGENT_MAX_GYM_LOGS = 30;
 /** Max conversation history turns passed to Sara */
 export const SARA_MAX_HISTORY_TURNS = 12;
+/** Max committed actions kept in Sara action history log */
+export const AGENT_HISTORY_MAX_ENTRIES = 50;
 
 // ── XP System ─────────────────────────────────────────────────────────────────
 export const XP_LEVELS = [

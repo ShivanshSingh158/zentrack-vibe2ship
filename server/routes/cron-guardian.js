@@ -10,7 +10,9 @@ if (!admin.apps.length) {
   }
 }
 
-const db = admin.firestore();
+// ✅ CRITICAL FIX: Do NOT call admin.firestore() at module level.
+// If Firebase Admin init failed, this throws at module load time → FUNCTION_INVOCATION_FAILED.
+let db;
 
 // The system prompt that gives Sara her proactive personality
 const GUARDIAN_PROMPT = `You are Sara, a highly intelligent and proactive personal assistant.
@@ -79,6 +81,11 @@ router.all('/', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  if (!admin.apps.length) {
+    return res.status(503).json({ error: 'Guardian unavailable (Firebase Admin not configured).' });
+  }
+  if (!db) db = admin.firestore();
+
   try {
     const usersSnap = await db.collection('users').get();
     let nudgesSent = 0;
@@ -120,7 +127,8 @@ router.all('/', async (req, res) => {
     console.error('[Guardian] Error:', err);
     return res.status(500).json({ error: err.message });
   }
-}
+});
+
 
 
 export default router;

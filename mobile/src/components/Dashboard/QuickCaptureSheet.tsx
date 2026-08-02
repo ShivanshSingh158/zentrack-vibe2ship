@@ -30,11 +30,12 @@ import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/fire
 import { db } from '../../services/firebase';
 import { queueWrite } from '../../services/offlineSync';
 import { useMobileData } from '../../contexts/MobileDataContext';
-import { parseNLDate } from '../../utils/dateUtils';
+import { parseNLTask } from '../../utils/dateUtils';
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from "../../contexts/ThemeContext";
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
+import { startVADRecording, stopAndTranscribe, cancelVoiceRecording, VoiceState } from '../../services/voiceEngine';
 
 // ─── NL Date Parser ──────────────────────────────────────────────────────────
 
@@ -64,17 +65,19 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [voiceState, setVoiceState] = useState<VoiceState>('idle');
   const translateY = useRef(new Animated.Value(400)).current;
   const inputRef = useRef<TextInput>(null);
 
-  // Parsed date preview (live, for tasks only)
-  const parsed = type === 'task' && text.length > 2 ? parseNLDate(text) : null;
-  const hasDateHint = parsed && (parsed.date || parsed.timeSlot);
+  // Parsed result (live, for tasks only)
+  const parsed = type === 'task' && text.length > 2 ? parseNLTask(text) : null;
+  const hasChips = parsed && parsed.tokens.length > 0;
 
   useEffect(() => {
     if (visible) {
       setSaved(false);
       setText('');
+      setVoiceState('idle');
       Animated.spring(translateY, {
         toValue: 0,
         stiffness: 280,
@@ -85,6 +88,7 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
         setTimeout(() => inputRef.current?.focus(), 100);
       });
     } else {
+      cancelVoiceRecording();
       Animated.timing(translateY, {
         toValue: 400,
         duration: 200,
@@ -93,14 +97,42 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
     }
   }, [visible]);
 
-  const handleSave = async () => {
-    if (!text.trim() || !user || saving) return;
+  const handleToggleVoice = async () => {
+    if (voiceState === 'recording') {
+      await stopAndTranscribe({
+        onStateChange: setVoiceState,
+        onTranscript: (t) => {
+          setText(t);
+        },
+        onError: (err) => console.log('Voice error', err)
+      });
+      return;
+    }
+    
+    await startVADRecording({
+      onStateChange: setVoiceState,
+      onTranscript: async (t) => {
+        setText(t);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        await handleSave(t);
+      },
+      onError: (err) => {
+        console.log('Voice error', err);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
+    });
+  };
+
+  const handleSave = async (overrideText?: string) => {
+    const textToSave = typeof overrideText === 'string' ? overrideText : text;
+    if (!textToSave.trim() || !user || saving) return;
     setSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
       if (type === 'task') {
-        const prompt = `Parse this task description into JSON: "${text.trim()}"
+        const prompt = `Parse this task description into JSON: "${textToSave.trim()}"
+IMPORTANT: Extract ONLY the core task name for 'title', removing any time, date, priority, or recurrence words (e.g., "dsa at 6 30 am" -> "dsa").
 The user might ask for multiple tasks (e.g., "for next 5 days", "every day this week").
 If it implies multiple tasks, return an array of tasks. If it's a single task, return an array of 1 task.
 Return ONLY a JSON array: [{"title": str, "date": "YYYY-MM-DD", "timeSlot": "HH:MM or null", "priority": "P1|P2|P3", "isRecurring": bool, "frequency": "daily|weekly|monthly or null"}]
@@ -139,7 +171,7 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
         for (const t of parsedData) {
           await queueWrite(COLLECTION.TASKS, 'add', {
             userId: user.uid,
-            title: t.title || text.trim(),
+            title: t.title || textToSave.trim(),
             status: 'pending',
             priority: t.priority || 'P2',
             date: t.date || new Date().toISOString().slice(0, 10),
@@ -152,8 +184,8 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
       } else if (type === 'note') {
         await queueWrite(COLLECTION.STORAGE_NODES, 'add', {
           type: 'note',
-          title: text.trim().substring(0, 40) + (text.length > 40 ? '...' : ''),
-          content: text.trim(),
+          title: textToSave.trim().substring(0, 40) + (textToSave.length > 40 ? '...' : ''),
+          content: textToSave.trim(),
           userId: user.uid,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -161,7 +193,7 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
       } else if (type === 'habit') {
         await queueWrite(COLLECTION.HABITS, 'add', {
           userId: user.uid,
-          title: text.trim(),
+          title: textToSave.trim(),
           frequency: 'daily',
           createdAt: serverTimestamp(),
           streak: 0,
@@ -196,7 +228,7 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
 
       {/* Sheet */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior="padding"
         style={s.kavWrapper}
         pointerEvents="box-none"
       >
@@ -250,26 +282,46 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
               keyboardAppearance={isDark ? 'dark' : 'light'}
             />
             
-            {/* Natural language hint for tasks */}
-            {type === 'task' && hasDateHint && (
+            {/* NLP chips for tasks */}
+            {type === 'task' && hasChips && (
               <View style={s.nlHintRow}>
-                <Ionicons name="calendar" size={12} color={colors.accentPrimary} />
-                <Text style={s.nlHintText}>
-                  {parsed?.multiDays ? `Next ${parsed.multiDays} days` : (parsed?.date || 'Today')}
-                  {parsed?.timeSlot ? ` at ${parsed.timeSlot}` : ''}
-                </Text>
+                {parsed!.tokens.map((tok, i) => {
+                  const COLOR_MAP: Record<string, { bg: string; text: string }> = {
+                    date:       { bg: '#1a2e4a', text: '#60a5fa' },
+                    time:       { bg: '#1a3a2a', text: '#34d399' },
+                    priority:   { bg: '#3a1a1a', text: '#f87171' },
+                    recurrence: { bg: '#2a1a3a', text: '#c084fc' },
+                  };
+                  const c = COLOR_MAP[tok.type] ?? { bg: '#1e1e2e', text: '#a599ff' };
+                  return (
+                    <View key={i} style={[s.nlChip, { backgroundColor: c.bg }]}>
+                      <Text style={[s.nlChipText, { color: c.text }]}>{tok.display}</Text>
+                    </View>
+                  );
+                })}
               </View>
             )}
 
               {/* Quick Actions (e.g. mic, save) */}
               <View style={s.actionsRow}>
-                <TouchableOpacity style={s.iconBtn}>
-                  <Ionicons name="mic" size={20} color={colors.textSecondary} />
+                <TouchableOpacity 
+                  style={[s.iconBtn, voiceState === 'recording' && s.iconBtnRecording]} 
+                  onPress={handleToggleVoice}
+                >
+                  {voiceState === 'processing' ? (
+                    <ActivityIndicator size="small" color={colors.accentPrimary} />
+                  ) : (
+                    <Ionicons 
+                      name={voiceState === 'recording' ? "stop" : "mic"} 
+                      size={20} 
+                      color={voiceState === 'recording' ? '#ff6961' : colors.textSecondary} 
+                    />
+                  )}
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   style={[s.saveBtn, (!text.trim() || saving) && s.saveBtnDisabled]}
-                  onPress={handleSave}
+                  onPress={() => handleSave()}
                   disabled={!text.trim() || saving}
                 >
                   {saving ? (
@@ -424,11 +476,16 @@ const makeStyles = (colors: any) => StyleSheet.create({
         backgroundColor: colors.surface2,
         alignItems: 'center', justifyContent: 'center',
       },
+      iconBtnRecording: {
+        backgroundColor: 'rgba(255, 105, 97, 0.15)',
+      },
       nlHintRow: {
         flexDirection: 'row',
+        flexWrap: 'wrap',
         alignItems: 'center',
         paddingHorizontal: SPACE.xs,
         marginBottom: SPACE.sm,
+        gap: SPACE.xs,
       },
       nlHintText: {
         marginLeft: SPACE.xs,
@@ -436,6 +493,16 @@ const makeStyles = (colors: any) => StyleSheet.create({
         color: colors.accentPrimary,
         fontFamily: FONT_FAMILY.medium,
       },
+      nlChip: {
+        paddingHorizontal: SPACE.sm,
+        paddingVertical: 4,
+        borderRadius: RADIUS.full,
+      },
+      nlChipText: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 12,
+      },
+
       saveBtn: {
         width: 44, height: 44, borderRadius: 22,
         alignItems: 'center',

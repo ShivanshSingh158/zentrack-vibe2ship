@@ -44,8 +44,10 @@ export const XP_SOURCES = {
   GOAL_MILESTONE:   { base: 200, range: 0 },  // Goal marked complete
   PERFECT_DAY:      { base: 500, range: 0 },  // All tasks + habits done
   GYM_SESSION:      { base: 40, range: 20  },  // 40–60 XP
+  GYM_PR:           { base: 150, range: 50 },  // 150–200 XP for a new PR 🏆
   ONBOARDING:       { base: 100, range: 0 },  // First-run bonus
 };
+
 
 // Surprise bonus: 10% chance, adds 50–200 XP on top of base reward
 const SURPRISE_CHANCE   = 0.10;

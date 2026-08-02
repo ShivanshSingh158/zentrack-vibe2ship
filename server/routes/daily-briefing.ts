@@ -15,7 +15,6 @@ import express from 'express';
  * Auth: CRON_SECRET in Authorization header (server-to-server only).
  */
 
-import type { express.Request, express.Response } from '@vercel/node';
 import admin from 'firebase-admin';
 
 // ── Firebase Admin Init (singleton) ──────────────────────────────────────────
@@ -56,6 +55,9 @@ router.all('/', async (req: express.Request, res: express.Response) => {
     }
 
     // Fetch today's summary data from Firestore
+    if (!admin.apps.length) {
+      return res.status(503).json({ error: 'Firebase Admin not configured' });
+    }
     const db = admin.firestore();
     const today = new Date().toISOString().split('T')[0];
 
@@ -103,7 +105,6 @@ router.all('/', async (req: express.Request, res: express.Response) => {
     console.error('[daily-briefing] Error:', error);
     return res.status(500).json({ error: 'Failed to process daily briefing', details: error.message });
   }
-}
-
+});
 
 export default router;

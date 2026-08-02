@@ -158,6 +158,9 @@ mobile/
     │   ├── Notes/                         Reserved for future NotesScreen splits
     │   ├── Tasks/
     │   │   ├── TaskRow.tsx                Task list row with swipe actions
+    │   │   ├── TimelineView.tsx           24-hour timeline rendering of tasks
+    │   │   ├── MatrixView.tsx             Eisenhower Matrix 4-quadrant rendering
+    │   │   ├── RecurrencePickerModal.tsx  Modal for configuring custom task recurrence
     │   │   └── Modals/                    Reserved for future TasksScreen modal extraction
     │   └── ui/
     │       ├── FloatingActionButton.tsx   Reusable FAB component
@@ -221,7 +224,7 @@ mobile/
     │       ├── ExerciseSwapScreen.tsx     Exercise swap with permanent override (6KB)
     │       └── CardioLogScreen.tsx        Cardio session logging (6KB)
     ├── services/
-    │   ├── firebase.ts                    Firebase init with AsyncStorage persistence
+    │   ├── firebase.ts                    Firebase init with AsyncStorage persistence + Firestore persistentLocalCache()
     │   ├── geminiProxy.ts                 CRITICAL: Direct Gemini REST + 9-key rotation + transcription
     │   ├── sarvamProxy.ts                 Sarvam AI TTS via Vercel voice-proxy (500-char chunk limit)
     │   ├── voiceEngine.ts                 VAD (startVADRecording) + manual (startVoiceRecording)
@@ -233,7 +236,7 @@ mobile/
     │   ├── backgroundTasks.ts             Expo TaskManager background task registration
     │   ├── backgroundProactiveAgent.ts    Background AI proactive check (registered in App.tsx)
     │   ├── webScraper.ts                  Web search via DuckDuckGo (used by dagExecutor)
-    │   ├── offlineSync.ts                 Offline queue drain for gym logs
+    │   ├── offlineSync.ts                 OFFLINE WRITE QUEUE: queueWrite(), syncOfflineQueue(), setupNetworkListener(), subscribeToQueueChanges()
     │   └── progressiveOverload.ts         Progressive overload calculator for gym coaching
     ├── theme/
     │   ├── tokens.ts                      COLORS, RADIUS, SPACE, FONT_FAMILY, SHADOW (design system)
@@ -242,7 +245,9 @@ mobile/
     ├── types/
     │   └── gym.types.ts                   GymPlanDay, GymExercise TypeScript interfaces
     └── utils/
-        └── haptics.ts                     feedback.tap/commit/success/warning
+        ├── haptics.ts                     feedback.tap/commit/success/warning
+        ├── coreCache.ts                   AsyncStorage cache for tasks/habits/habitLogs (stale-while-revalidate boot)
+        └── domainCache.ts                 AsyncStorage cache for ALL 4 domain contexts — Wellness/Academic/Planner/Creative
 ```
 
 ## 3a. SARA Engine v2 — Capability Map (2026-07-19)
@@ -519,7 +524,7 @@ All in `MobileDataContext.tsx`. All queries: `where('userId', '==', uid)`.
 
 | Collection (Firestore) | State var | TypeScript Interface | Key Fields |
 |---|---|---|---|
-| `tasks` | `tasks` | `Task` | title, status, priority('P1'/'P2'/'P3'), date(YYYY-MM-DD), timeSlot, subtasks[], isRecurring, completedAt |
+| `tasks` | `tasks` | `Task` | title, status, priority('P1'/'P2'/'P3'), date(YYYY-MM-DD), timeSlot, subtasks[], isRecurring, recurrenceRule{}, recurringSourceId, completedAt |
 | `habits` | `habits`/`allHabits` | `Habit` | name, emoji, frequency, streak, archived |
 | `habitLogs` | `habitLogs` | `HabitLog` | habitId, date |
 | `notes` | `notes` | `Note` | title, content, tags[], createdAt |
@@ -707,12 +712,13 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 |---|---|---|
 | `sarvaProxy.ts` | **HIGH** | 500-char chunk limit NOT yet implemented on mobile (web app chunks correctly). Long Sara responses silently fail TTS. Add chunking before `speakWithSarvam()`. |
 | `MobileDataContext.tsx:scheduleTaskReminders` | **MEDIUM** | Fires on every data change with 3s debounce (previously no debounce — fixed 2026-07-14). |
-| `MobileDataContext.tsx` | **MEDIUM** | `waterLogs` and `sleepLogs` have context types and useState but ZERO Firestore subscriptions — always return empty arrays. |
+| `MobileDataContext.tsx` | ~~MEDIUM~~ **FIXED 2026-07-23** | `waterLogs` and `sleepLogs` now have active Firestore subscriptions in `WellnessContext`. |
 | `voiceEngine.ts` | **MEDIUM** | Transcription fails silently on recordings under ~0.5s — Gemini rejects near-empty audio. |
 | `AppNavigator.tsx` | **HIGH** | `OnboardingScreen` renders OUTSIDE all Stack/Tab navigators. Any `useNavigation()` inside OnboardingScreen will throw. Pass navigation callbacks via props only. |
 | `conflictDetector.ts` | LOW | Simplified placeholder. Web app has a more sophisticated conflict engine. |
 | `DashboardScreen.tsx:49-60` | LOW | Streak logic breaks on any day with no tasks AND no gym — penalizes rest days and weekends unfairly. |
 | `notifications.ts` | MEDIUM | FCM remote push (for killed-app delivery) needs a dev build — fails in Expo Go SDK 53+. Local scheduling works fine. |
+| `notifications.ts` | ~~HIGH~~ **FIXED 2026-07-23** | Water/sleep reminders had no UI controls (keys never written) → always silently skipped. Fixed: `NotificationsSettingsScreen` now has a WELLNESS REMINDERS section. Export `clearScheduleCache()` added so pref changes always force a full reschedule past the fingerprint cache. `GymNotificationModal` now calls `onSaved` callback for immediate reschedule after save. |
 
 ---
 
@@ -745,7 +751,50 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 
 ## 16. Changelog
 
-### 2026-07-21 — Full Codebase Restructure (Professional Cleanup)
+### 2026-07-26 — AddExerciseModal v2: Search-as-you-type + Auto-fill
+- **REWRITTEN** `src/components/Gym/AddExerciseModal.tsx` — Completely replaced the old UX (full plan-day list dumped upfront) with a search-driven experience:
+  1. **No upfront list** — input field is focused immediately, no exercise dump visible.
+  2. **Search-as-you-type** — builds a `EXERCISE_CATALOGUE` (100+ exercises) by deduplicating `GYM_PLAN` + `EXERCISE_ALTERNATIVES` entries at module load time. As the user types, a compact inline `FlatList` dropdown appears (max 5 rows, scrollable) filtered by substring match.
+  3. **Auto-fill on tap** — tapping any suggestion populates sets, reps, rest timer, muscle group, and videoId from the catalogue entry's metadata.
+  4. **Last-session pre-load** — after a suggestion is selected, `gymLogs` is scanned (newest-first) to find the last completed session for that `exerciseId`/name; the found `setsLog` is fed into the new exercise's `setsLog` as default weight/reps values AND stored in `lastSessionSets`.
+  5. **Compact layout** — sets/reps/rest are now a single 3-column row. YouTube link field moved to bottom. Muscle pills unchanged. "Save to Master Split" toggle preserved.
+
+### 2026-07-26 — Sunday Weekly Gym Report
+- **ADDED** `src/components/Gym/WeeklyGymReport.tsx` — New component shown on Sundays (rest day). Displays: global session/sets/volume stats with week-over-week delta badges; a 7-column daily volume bar chart (Mon–Sun); muscle-group donut rings (SVG, colour-coded by `MUSCLE_COLORS` map); a sets-by-muscle bar breakdown; an "untrained muscles" amber warning card with chips; and a vs-last-week comparison table. Pure computed stats from existing `gymLogs` Firestore data — zero new API calls.
+- **MODIFIED** `src/screens/gym/GymHomeScreen.tsx` — Imported `WeeklyGymReport`. Added `isSundaySelected` memo using LOCAL date components (avoids UTC midnight → wrong day bug in IST). Conditionally renders `<WeeklyGymReport>` on Sunday in place of the normal START WORKOUT UI.
+- **FIXED** `src/hooks/useGymLog.ts` — Removed both hardcoded Treadmill cardio insertions (lines 214–226, 265–275). Cardio now starts empty; users add it explicitly via AddCardioModal.
+- **FIXED** `src/components/Gym/AddCardioModal.tsx` — Updated title from "Add Extra Cardio" → "Add Cardio" and replaced "Treadmill is always included" hint with a generic prompt.
+
+### 2026-07-26 — AttendanceScreen Scroll Fix
+- **FIXED** `src/screens/AttendanceScreen.tsx` — Eliminated the "sidebar" effect during scroll. Root cause: semester overview, warning banner, week strip, and section header were rendered as fixed siblings above a `flex:1` `FlatList`, causing the content above to appear as a static block while only the list scrolled — making the UI feel broken and split. Fix: moved all those elements into `ListHeaderComponent` so the entire screen scrolls as one unified flow. Added `showsVerticalScrollIndicator={false}` to hide the native Android scroll indicator bar on the right edge. Increased `paddingBottom` from 100→120 to clear the floating tab bar.
+
+### 2026-07-22 — Section 5 UI Improvements & Fixes
+- **OPTIMIZED** `src/screens/TasksScreen.tsx` — AnimatedSectionList performance: added `extraData={useMemo(() => ({ isBulkEdit, selectedTaskIds }), [...])}` to prevent full re-renders on unrelated state changes; added `getItemLayout` for 72px rows to allow scroll position prediction; set `removeClippedSubviews={false}` to eliminate "blank scroll" flash on fast flings; wired the existing memoized `renderItem` callback instead of an inline closure.
+- **FIXED** `src/screens/DashboardScreen.tsx` — WaterRing hardcoded colors: replaced `#0A84FF` (iOS system blue, outside Obsidian Cosmos palette) and `#5E5CE6` (outside palette) with `colors.accentBlue` (#89dceb — semantically water = blue, completed state) and `colors.accentPrimary` (#a599ff — in-progress state). Fixes high-contrast clash in light mode.
+- **FIXED** `src/components/SARA/ReasoningFeed.tsx` — Added `ScrollView` import and `scrollRef`. Wrapped the step map in a `maxHeight: 180` constrained `View + ScrollView` with `onContentSizeChange → scrollToEnd({ animated: true })`. Prevents ReasoningFeed from pushing the input bar off-screen on iPhone SE / budget Android when 5+ reasoning steps accumulate.
+- **ADDED** `src/screens/gym/GymHomeScreen.tsx` — Dynamic muscle heatmap replacing the static placeholder. Uses `react-native-svg` `Path` + `Ellipse` elements for 12 muscle groups (Chest, Back, Shoulders, Biceps, Triceps, Abs, Forearms, Traps, Glutes, Quads, Hamstrings, Calves). Color intensity maps weekly session counts: 0→`COLORS.surface2`, 1→`accentPrimary` at 25%, 2→60%, 3+→full. Computed via `useMemo` from `gymLogs` (current week Mon–Sun, completed sets only). Renders above the workout banner with a 4-item legend.
+
+### 2026-07-25 — Recurring Task Permanent Delete Fix
+- **FIXED** `src/screens/TasksScreen.tsx:handleDelete` — Two bugs in the recurring task deletion dialog:
+  1. **"All future instances"** was using `data.date > task.date` (strictly greater), so the clicked task's date was never included in the batch delete — it only deleted the one doc individually then skipped that date in the batch. Changed to `>= task.date` so the selected day AND all future dates are cleaned up together in a single batch commit.
+  2. **Group matching** was using `data.title === task.title` which is fragile (matches any recurring task with the same title). Now uses `data.recurringSourceId === task.recurringSourceId` when `recurringSourceId` is present (all tasks created post-implementation), with title+isRecurring as a fallback for older docs.
+  3. Removed the redundant separate `deleteDoc(task.id)` before the batch — the current task is now included in the batch via the `>= task.date` predicate, reducing Firestore round-trips by 1.
+
+### 2026-07-24 — SARA Engine v2 Upgrade: Bulk Actions, Session Memory, App Scan, About Modal
+- **UPGRADED** `src/agent/orchestrator.ts` — `buildActionRules()`: rewrote the DAG trigger from a soft suggestion to a hard rule. Any request with **2+ items, a number word, multiple dates, or list words ("each", "all", "both")** now mandates a `[[DAG:...]]` block instead of individual `[[ACTION:...]]` blocks. Added day-sequence date map (today→day5), typed DAG node reference, and 7 concrete bulk examples Gemini can pattern-match against.
+- **ADDED** `src/agent/orchestrator.ts` — `buildSessionAwareness(history)`: scans the last 12 history turns (6 pairs), extracts confirmed `[[ACTION:...]]` and `[[DAG:...]]` blocks, and injects a "What I did this session" block into every system prompt. Sara now remembers created tasks, logged habits, marked attendance, etc. from earlier in the same conversation.
+
+### 2026-07-24 — Tasks Module Complete Overhaul
+- **FIXED** `src/screens/TasksScreen.tsx` — Delete button inside EditTaskModal is now properly aligned to the far right next to the title input, improving layout and touch targets.
+- **FIXED** `src/screens/TasksScreen.tsx` — Implemented proper daily recurrence. Added a `useEffect` that auto-spawns daily clones of `isRecurring` tasks for `today`, using `recurringSourceId` as a deduplication key to prevent duplicates. Client-side only, no backend cron needed.
+- **ADDED** `src/contexts/MobileDataContext.tsx` — Extended the Task schema with `recurrenceRule?: RecurrenceRule` and `recurringSourceId?: string` to support flexible custom recurrences.
+- **ADDED** `src/components/Tasks/RecurrencePickerModal.tsx` — A full-featured bottom sheet to configure task repeat settings (Once, Daily, Weekly, Monthly, Custom) with day-of-week and end-date selectors. Integrated into NewTaskModal and EditTaskModal, replacing the simple "Once/Daily" toggle.
+- **ADDED** `src/components/Tasks/MatrixView.tsx` — Implemented a 4-quadrant Eisenhower Matrix view, separating tasks by Urgent vs. Important axes. Added a 3-way toggle in the TasksScreen header (`list` → `timeline` → `matrix`).
+- **ADDED** `src/agent/orchestrator.ts` — `buildProactiveScan(ctx)`: runs a full cross-module analysis on every orchestrator call. Surfaces overdue tasks, habits not yet logged, at-risk/critical attendance subjects, assignments due in 3 days, upcoming exams, no gym session today, stalled goals, and active job applications as a "PROACTIVE SCAN" block injected before the action rules.
+- **REFACTORED** `src/agent/orchestrator.ts` — `buildSystemPrompt()`: split into a cached `basePrompt` (data-fingerprint TTL) and a freshly-computed `dynamicSuffix` (session awareness + proactive scan injected before action rules on every call). Both `buildSelectiveSystemPrompt()` and fallback `buildSystemPrompt()` paths now receive `history[]` parameter for session awareness.
+- **REDESIGNED** `src/screens/SaraScreen.tsx` — About Sara modal: complete rewrite from 3 generic paragraphs to a rich multi-section layout with: "What I can do right now" (7 capability rows with color-tinted icon badges), "Intelligence Architecture" (all 7 SARA Engine v2 capabilities), "Ecosystem reach" (12-module chip grid), "Coming next" (5-item future roadmap), and "Sara's current view of your world" (live stat strip with task/habit/goal/gym-log counts). Card now uses a purple glow border + `aboutOrbBadge` with accent shadow instead of plain gray.
+
+
 - **RENAMED** `src/services/sarvaProxy.ts` → `src/services/sarvamProxy.ts` — fixed the typo in the filename. Updated import in `SaraScreen.tsx`. All references in this doc updated.
 - **DELETED** `mobile/src/hooks/useSpotify.ts` — Spotify integration hook (9.4KB), not an active feature
 - **DELETED** `mobile/src/components/Gym/SpotifyMiniPlayer.tsx` — Spotify mini player component dependent on deleted hook
@@ -814,4 +863,34 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 - **FIXED** `src/hooks/useGymLog.ts` — `hasInitialised` ref was assigned but never read as a guard. Any Firestore snapshot finding 0 results for today replaced the in-progress workout with a blank template. Added `if (hasInitialised.current) return;` guard to `else if (gymLogsReady)` branch.
 - **FIXED** `src/hooks/useGymLog.ts` — `hasInitialised.current` never reset when `dateStr` changes. Switching dates got stuck because the guard blocked exercise initialization for the new day. Added `hasInitialised.current = false` to the dateStr-change effect.
 
+### 2026-08-01 — Timeline Start Hour Fix + Matrix View Removed
 
+- **FIXED** `src/components/Tasks/TimelineView.tsx` — `START_HOUR` was hardcoded to `6`, causing tasks before 6 AM (e.g. 5:30 AM) to be silently dropped and never rendered. Changed to a `useMemo`-computed value: scans all task `timeSlot` values and class/lab schedule times for the selected day, floors the earliest to the nearest hour, and clamps between `5` and `6`. The timeline now starts at 5 AM if any item falls before 6 AM.
+- **REMOVED** Matrix (Eisenhower Matrix) view from `src/screens/TasksScreen.tsx` — was the 3rd of 4 view modes (`list → timeline → matrix → kanban`). View cycle is now 3 modes: `list → timeline → kanban → list`. Updated: `viewMode` type union, toggle `onPress` ternary chain, icon expression, and render branch.
+
+### 2026-08-01 — Grey Screen on Resume Fix (AppNavigator)
+
+- **ROOT CAUSE**: `AppNavigator` had an early `return <SplashLoader />` when `loading === true`. This rendered *outside* the `NavigationContainer`, so every time Firebase's `onAuthStateChanged` re-fired (on token refresh, on app resume from lock screen, or on any background-to-foreground transition), the `NavigationContainer` was **completely unmounted and remounted** — producing the grey OS window background for 200–500ms.
+- **FIX 1** — `hasInitialisedAuth` ref (`src/navigation/AppNavigator.tsx`): `setLoading(false)` now only fires **once** (cold start). Subsequent `onAuthStateChanged` callbacks update `user` state but never touch `loading`. The `NavigationContainer` tree never unmounts again.
+- **FIX 2** — `AppState → forceUpdate` (`src/navigation/AppNavigator.tsx`): An `AppState` listener calls `forceUpdate(n => n + 1)` whenever the app transitions to `'active'`. This kicks React's reconciler and Reanimated's UI thread awake immediately on screen unlock, eliminating residual grey frames.
+- **FIX 3** — `SplashLoader` moved inside `NavigationContainer`: The splash screen now renders as a named `Stack.Screen` ('Splash') inside the nav tree. Previously the early return placed it *outside* the `NavigationContainer`, forcing a full tree tear-down when auth resolved.
+- **FIX 4** — Permanent `#000000` base layer: A `<View style={{ flex:1, backgroundColor: '#000000' }}>` wraps the `NavigationContainer`. Any brief transparency in any layer above now shows true black instead of the grey OS window.
+
+### 2026-08-01 — Notification System Full Audit & Bug Fix Sprint
+
+- **FIXED** `src/services/notifications.ts` — **BUG-N1**: Post-class and post-lab "Log attendance" reminders now skip scheduling if the user already marked present/absent/cancelled for that session. Previously fired regardless, even mid-class.
+- **FIXED** `src/contexts/MobileDataContext.tsx` — **BUG-N2 (root cause of N1)**: `attendanceLogs` was never passed to `scheduleAllNotifications()`. Now passed and added to the dependency array so logging attendance triggers a reschedule that removes the stale reminder.
+- **FIXED** `src/services/notifications.ts` — **BUG-N4**: Sleep morning reminder now checks **yesterday's** sleep log, not today's. Previously always fired even if user logged sleep last night.
+- **FIXED** `src/services/notifications.ts` — **BUG-N5**: Gym reminders now respect `userGymPlan.customDays` before falling back to the static PPL template.
+- **FIXED** `src/contexts/MobileDataContext.tsx` — Passes `userGymPlan` to `scheduleAllNotifications()` for BUG-N5.
+- **FIXED** `src/services/notifications.ts` — **BUG-N6**: Attendance warning now fires at user's configured `defaultTime` instead of hardcoded 9 AM.
+- **FIXED** `src/services/notifications.ts` — **BUG-N7**: Habit reminders now have personalised body text based on streak length (30+/7+/1+/0 days).
+- **FIXED** `src/services/notifications.ts` — **BUG-N8**: Morning brief "missed gym yesterday" check now uses local date (not `.toISOString()` UTC) — fixes IST midnight off-by-one.
+- **FIXED** `src/services/notifications.ts` — **BUG-N3**: Water reminders now check daily water total. If 2000ml goal is already met, all today's reminders are skipped. Shows remaining goal in body text.
+- **IMPROVED** `src/services/notifications.ts` — Attendance warning body now shows exact classes needed to recover above 75%.
+- **IMPROVED** `src/services/notifications.ts` — Morning brief appends worst-performing attendance subject name and percentage.
+- **IMPROVED** `src/services/notifications.ts` — Gym reminder title includes workout name + exercise count.
+- **IMPROVED** `src/services/notifications.ts` — Water reminders extended to 3-day coverage, start hour moved to 8 AM, fixed base-date mutation bug.
+- **IMPROVED** `src/services/notifications.ts` — Background fetch now queries `attendance_logs` so BUG-N1 fix works even when app is killed.
+- **MODIFIED** `src/services/notifications.ts:ScheduleParams` — Added `attendanceLogs?: AttendanceLog[]` and `userGymPlan?: UserGymPlanDoc | null`.
+- **MODIFIED** `src/services/notifications.ts:_buildFingerprint()` — Added `attendanceLogs.length` so attendance log changes bypass the fingerprint cache.

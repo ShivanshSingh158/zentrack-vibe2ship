@@ -16,6 +16,7 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { formatDateShort } from '../utils/dateUtils';
 import {
   View, Text, StyleSheet, Animated, ScrollView,
   TouchableOpacity, Dimensions,
@@ -461,7 +462,7 @@ export default function AnalyticsScreen() {
           });
         }
       });
-      return { label: log.date.slice(5), value: maxW };
+      return { label: formatDateShort(log.date), value: maxW };
     }).filter(d => d.value > 0);
   }, [gymLogs, period]);
 
@@ -510,7 +511,7 @@ export default function AnalyticsScreen() {
     for (let i = n - 1; i >= 0; i -= step) {
       const d = daysAgoStr(i);
       const done = habitLogs.filter(l => l.date === d).length;
-      result.push({ label: d.slice(5), value: Math.round((done / activeCount) * 100) });
+      result.push({ label: formatDateShort(d), value: Math.round((done / activeCount) * 100) });
     }
     return result;
   }, [habitLogs, allHabits, period]);

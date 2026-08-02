@@ -70,7 +70,7 @@ function getModuleCategories(colors: any) {
       icon: 'people-outline',
       color: colors.accentSecondary,
       modules: [
-        { id: 'Social', name: 'Social', icon: 'people', color: '#AF52DE' },
+
       ],
     },
     {
@@ -95,7 +95,7 @@ const ALL_MODULES: ModuleDef[] = [
   { id: 'Grades',       name: 'Grades',       icon: 'calculator',  color: '#8E8E93' },
   { id: 'Learning',     name: 'Learning',     icon: 'library',     color: '#00C7BE' },
   { id: 'Gym',      name: 'Gym Log',   icon: 'barbell', color: '#32ADE6' },
-  { id: 'Social', name: 'Social', icon: 'people', color: '#AF52DE' },
+
   { id: 'Analytics', name: 'Analytics', icon: 'bar-chart', color: '#007AFF' },
 ];
 
@@ -133,47 +133,7 @@ export default function MoreScreen() {
     setIsEditing(!isEditing);
   }, [isEditing, pinnedModules, selected, setPinnedModules]);
 
-  // Cap 7: BFE module reordering on screen focus
-  useFocusEffect(
-    useCallback(() => {
-      const applyBFEOrdering = async () => {
-        try {
-          if (!user?.uid || pinnedModules.length === 0) {
-            setBfeOrderedPins(pinnedModules);
-            return;
-          }
-          const fp = await getFingerprint(user.uid);
-          const boostMap: Record<string, number> = {};
-
-          // Gym user boost: promote Gym to top
-          if (fp.gymConsistencyScore > 0.4 || fp.consistentGymDays.length >= 2) {
-            boostMap['Gym'] = 10;
-          }
-          // Deadline stress: promote Assignments to top
-          if (fp.upcomingDeadlineStress) {
-            boostMap['Assignments'] = 8;
-            boostMap['Attendance'] = 5;
-          }
-          // High task completion: promote Tasks
-          if (fp.avgTaskCompletionRate > 0.7) {
-            boostMap['Tasks'] = 6;
-          }
-          // Habit consistency: promote Habits
-          if (fp.habitConsistencyScore > 0.6) {
-            boostMap['Habits'] = 4;
-          }
-
-          const ordered = [...pinnedModules].sort((a, b) =>
-            (boostMap[b] || 0) - (boostMap[a] || 0)
-          );
-          setBfeOrderedPins(ordered);
-        } catch {
-          setBfeOrderedPins(pinnedModules);
-        }
-      };
-      applyBFEOrdering();
-    }, [pinnedModules, user?.uid])
-  );
+  // Cap 7 BFE logic removed as user requested not to show pinned modules in MoreScreen
 
   const navigateWithClose = useCallback((screenName: string) => {
     if (screenName === 'Settings') {
@@ -251,42 +211,7 @@ export default function MoreScreen() {
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
 
-          {/* Cap 7: BFE Quick Access — pinned modules sorted by behavioral fingerprint */}
-          {!isEditing && bfeOrderedPins.length > 0 && (
-            <>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <Text style={styles.sectionLabel}>Pinned</Text>
-                {/* Subtle BFE indicator */}
-                {bfeOrderedPins[0] !== pinnedModules[0] && (
-                  <Text style={styles.bfeHint}>✦ SARA sorted</Text>
-                )}
-              </View>
-              <View style={[styles.grid, { marginBottom: 16 }]}>
-                {bfeOrderedPins.map((modId, index) => {
-                  const mod = ALL_MODULES.find(m => m.id === modId);
-                  if (!mod) return null;
-                  return (
-                    <AnimatedPressable
-                      entering={FadeIn.delay(index * 30).duration(200)}
-                      key={`pinned-${mod.id}`}
-                      style={styles.gridItem}
-                      activeOpacity={0.7}
-                      haptic="none"
-                      onPress={() => navigateWithClose(mod.id)}
-                    >
-                      <View style={[styles.gridIconBox, { borderColor: mod.color + '44', borderWidth: 1.5 }]}>
-                        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: mod.color, opacity: 0.18 }]} />
-                        <Ionicons name={mod.icon as any} size={26} color={mod.color} />
-                      </View>
-                      <Text style={styles.gridItemText}>{mod.name}</Text>
-                    </AnimatedPressable>
-                  );
-                })}
-              </View>
-              <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.07)', marginBottom: 14 }} />
-              <Text style={[styles.sectionLabel, { marginBottom: 8 }]}>All Modules</Text>
-            </>
-          )}
+          {/* Removed Pinned Section */}
 
           {/* Unified Grid */}
           <View style={styles.grid}>

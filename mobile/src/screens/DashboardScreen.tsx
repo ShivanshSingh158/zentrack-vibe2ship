@@ -12,6 +12,7 @@ import { useMobileData } from '../contexts/MobileDataContext';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { BRUTAL_QUOTES, getDailyQuote, QuotePersonality } from '../data/brutalQuotes';
 import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../data/gymPlan';
+import { getCustomPlanDay } from '../hooks/useGymLog';
 import QuickCaptureSheet from '../components/Dashboard/QuickCaptureSheet';
 import DashboardLayoutSheet, { LayoutItem } from '../components/Dashboard/DashboardLayoutSheet';
 import WaterLogSheet from '../components/Dashboard/WaterLogSheet';
@@ -20,6 +21,8 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
 import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import { getFingerprint } from '../services/saraMemory';
+import BlockCalendar from '../components/PlacementHub/BlockCalendar';
+import { usePlacementData } from '../hooks/usePlacementData';
 
 // ─── XP Level thresholds ─────────────────────────────────────────────────────
 
@@ -106,12 +109,15 @@ function WaterRing({ completed, total }: { completed: number; total: number }) {
         <Circle cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_RADIUS} strokeWidth={RING_STROKE} stroke={colors.border} fill="none" />
         <Circle
           cx={RING_SIZE / 2} cy={RING_SIZE / 2} r={RING_RADIUS}
-          strokeWidth={RING_STROKE} stroke={progress >= 1 ? '#0A84FF' : '#5E5CE6'}
+          strokeWidth={RING_STROKE}
+          // accentBlue (#89dceb) = water completion (semantically: blue = water)
+          // accentPrimary (#a599ff) = in-progress Sara violet
+          stroke={progress >= 1 ? colors.accentBlue : colors.accentPrimary}
           fill="none" strokeLinecap="round" strokeDasharray={`${RING_CIRCUMFERENCE} ${RING_CIRCUMFERENCE}`}
           strokeDashoffset={strokeDash} rotation="-90" origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
         />
       </Svg>
-      <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 9, color: progress >= 1 ? '#0A84FF' : colors.textMuted, lineHeight: 11 }}>
+      <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 9, color: progress >= 1 ? colors.accentBlue : colors.textMuted, lineHeight: 11 }}>
         {Math.round(completed/1000 * 10)/10}L
       </Text>
     </View>
@@ -156,7 +162,7 @@ export default function DashboardScreen() {
     const { colors, isDark } = useTheme();
     const s = makeStyles(colors);
   const insets = useSafeAreaInsets();
-  const { user, tasks, gymLogs, habitLogs, allHabits, attendance, assignments, waterLogs, sleepLogs } = useMobileData();
+  const { user, tasks, gymLogs, userGymPlan, habitLogs, allHabits, attendance, attendanceLogs, assignments, waterLogs, sleepLogs } = useMobileData();
   const navigation = useNavigation<any>();
 
   const [quote, setQuote] = useState(BRUTAL_QUOTES[0]);
@@ -197,8 +203,14 @@ export default function DashboardScreen() {
         }
       }
     });
-    AsyncStorage.getItem('@zentrack_water_target').then(val => {
-      if (val) setWaterTotal(parseInt(val, 10));
+    AsyncStorage.getItem('zentrack_water_goal_ml').then(val => {
+      if (val) {
+        setWaterTotal(parseInt(val, 10));
+      } else {
+        AsyncStorage.getItem('@zentrack_water_target').then(legacy => {
+          if (legacy) setWaterTotal(parseInt(legacy, 10));
+        });
+      }
     });
   }, []);
 
@@ -241,17 +253,22 @@ export default function DashboardScreen() {
   const [nowDate, setNowDate] = useState(new Date());
 
   useEffect(() => {
-    // O7 FIX: Force re-render every hour to update greetings and time-sensitive stats
-    const interval = setInterval(() => setNowDate(new Date()), 60 * 60 * 1000);
+    // O7 FIX: Force re-render every minute to update next class and time-sensitive stats
+    const interval = setInterval(() => setNowDate(new Date()), 60 * 1000);
     return () => clearInterval(interval);
   }, []);
 
   const today        = nowDate;
-  const todayStr     = today.toISOString().slice(0, 10);
   const hour         = today.getHours();
-  let timeGreeting   = 'evening.';
-  if (hour < 12)      timeGreeting = 'morning.';
-  else if (hour < 17) timeGreeting = 'afternoon.';
+  // Day resets at 2 AM local time: before 2 AM is still treated as previous day
+  const effectiveDate = new Date(today);
+  if (hour < 2) effectiveDate.setDate(effectiveDate.getDate() - 1);
+  const todayStr = [effectiveDate.getFullYear(), String(effectiveDate.getMonth()+1).padStart(2,'0'), String(effectiveDate.getDate()).padStart(2,'0')].join('-');
+  // Greeting: 0-1 AM = night, 2-11 = morning, 12-16 = afternoon, 17-20 = evening, 21+ = night
+  let timeGreeting = 'evening.';
+  if (hour >= 21 || hour < 2) timeGreeting = 'night.';
+  else if (hour < 12)         timeGreeting = 'morning.';
+  else if (hour < 17)         timeGreeting = 'afternoon.';
   const avatarLetter = user?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'A';
 
   // ── Stats Memoization ──
@@ -295,8 +312,14 @@ export default function DashboardScreen() {
 
     const activeHabits     = allHabits.filter(h => !h.archived);
     const todayHabitLogs   = habitLogs.filter(l => l.date === todayStr);
-    const habitsCompleted  = todayHabitLogs.length;
-    const habitsTotal      = activeHabits.length;
+    const positiveActiveHabits = activeHabits.filter(h => h.type !== 'negative');
+    const habitsCompleted = positiveActiveHabits.filter(h => {
+      const log = todayHabitLogs.find(l => l.habitId === h.id && !l.isFreeze);
+      if (!log) return false;
+      if (h.targetCount && h.targetCount > 0) return (log.count || 0) >= h.targetCount;
+      return true;
+    }).length;
+    const habitsTotal = positiveActiveHabits.length;
 
     const waterCompleted = (waterLogs || []).filter(w => w.date === todayStr).reduce((sum, log) => sum + log.amountMl, 0);
     // waterTotal is now from state
@@ -337,16 +360,42 @@ export default function DashboardScreen() {
         || subj.schedule?.[DAY_NAMES[today.getDay()].toLowerCase()];
       if (!sch) return [];
       const cls: any[] = [];
-      if (sch.classes) sch.classes.forEach((c: any) => c.time && cls.push({ id: `${subj.id}-class-${c.time}`, title: `${subj.name} Class`, time: c.time, type: 'class' }));
-      if (sch.labs)    sch.labs.forEach((l: any)    => l.time && cls.push({ id: `${subj.id}-lab-${l.time}`,   title: `${subj.name} Lab`,   time: l.time, type: 'lab' }));
+      if (sch.classes) sch.classes.forEach((c: any) => c.time && cls.push({ id: `${subj.id}-class-${c.time}`, title: `${subj.name} Class`, time: c.time, type: 'class', subjectId: subj.id }));
+      if (sch.labs)    sch.labs.forEach((l: any)    => l.time && cls.push({ id: `${subj.id}-lab-${l.time}`,   title: `${subj.name} Lab`,   time: l.time, type: 'lab', subjectId: subj.id }));
       return cls;
     }) || [];
-    todayClasses.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+    todayClasses.forEach(c => {
+      const hasLog = (attendanceLogs || []).some(l => l.date === todayStr && l.subjectId === c.subjectId && l.type === c.type);
+      c.isCompleted = hasLog;
+    });
+
+    const parseTimeToMins = (tStr: string): number => {
+      if (!tStr) return 0;
+      const startStr = tStr.split('-')[0].trim().toLowerCase();
+      let h = 0;
+      let m = 0;
+      const isPM = startStr.includes('pm');
+      const isAM = startStr.includes('am');
+      const cleanStr = startStr.replace(/[a-z\s]/g, '');
+      const parts = cleanStr.split(':');
+      if (parts.length >= 2) {
+        h = parseInt(parts[0], 10) || 0;
+        m = parseInt(parts[1], 10) || 0;
+      } else {
+        h = parseInt(parts[0], 10) || 0;
+      }
+      if (isPM && h < 12) h += 12;
+      if (isAM && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    todayClasses.sort((a, b) => parseTimeToMins(a.time) - parseTimeToMins(b.time));
 
     let nextClass = null;
-    const nowTimeStr = `${hour.toString().padStart(2, '0')}:${today.getMinutes().toString().padStart(2, '0')}`;
+    const currentMins = hour * 60 + today.getMinutes();
     for (const c of todayClasses) {
-      if (c.time && c.time >= nowTimeStr) {
+      if (c.time && parseTimeToMins(c.time) > currentMins) {
         nextClass = c;
         break;
       }
@@ -354,7 +403,11 @@ export default function DashboardScreen() {
 
     const todayGym      = gymLogs?.find(g => g.date === todayStr);
     const planDayIndex  = WEEKDAY_TO_PLAN[today.getDay()];
-    const plannedDay    = GYM_PLAN.find(p => p.dayIndex === planDayIndex);
+    // FIX: Use the user's custom plan day if they have one customised,
+    // falling back to the static template. This is the same pattern used
+    // everywhere else in the gym module (useGymLog, ExerciseDetailScreen, etc.).
+    const plannedDay    = getCustomPlanDay(userGymPlan?.customDays, planDayIndex) ||
+                          GYM_PLAN.find(p => p.dayIndex === planDayIndex);
     const isGymScheduled = plannedDay && !plannedDay.isRest;
     const hasAgenda     = todayGym || isGymScheduled || todayClasses.length > 0 || todayTasks.length > 0;
 
@@ -365,7 +418,7 @@ export default function DashboardScreen() {
       todayClasses, todayGym, plannedDay, isGymScheduled, hasAgenda, formatTimeStr
     };
   // O7 FIX: Removed 'hour' from dependencies, relying on 'todayStr' instead which updates via the new interval
-  }, [tasks, gymLogs, habitLogs, waterLogs, sleepLogs, allHabits, xp, assignments, attendance, todayStr]);
+  }, [tasks, gymLogs, userGymPlan, habitLogs, waterLogs, sleepLogs, allHabits, xp, assignments, attendance, attendanceLogs, todayStr]);
 
   const {
     todayTasks, doneTasksCount, currentStreak, streakAtRisk,
@@ -378,6 +431,9 @@ export default function DashboardScreen() {
   const in3days = new Date();
   in3days.setDate(in3days.getDate() + 3);
   const in3daysStr = in3days.toISOString().slice(0, 10);
+
+  // ── Placement Hub — Block Calendar data ──
+  const { config: placementConfig } = usePlacementData();
 
   // ── Safe area bottom ──
   const paddingBottom = insets.bottom + 80;
@@ -623,12 +679,12 @@ export default function DashboardScreen() {
                 {todayClasses.map(c => (
                   <AnimatedPressable key={c.id} style={s.agendaRow} activeOpacity={0.7} onPress={() => navigation.navigate('Attendance')}>
                     <Ionicons
-                      name={c.type === 'lab' ? 'flask-outline' : 'library-outline'}
+                      name={c.isCompleted ? 'checkmark-circle' : (c.type === 'lab' ? 'flask-outline' : 'library-outline')}
                       size={16}
-                      color={colors.accentAmber}
+                      color={c.isCompleted ? colors.accentGreen : colors.accentAmber}
                       style={{ marginRight: 12 }}
                     />
-                    <Text style={[s.agendaRowText, { flex: 1 }]}>{c.title}</Text>
+                    <Text style={[s.agendaRowText, c.isCompleted && { color: colors.textTertiary, textDecorationLine: 'line-through' }, { flex: 1 }]}>{c.title}</Text>
                     <Text style={s.agendaRowTime}>{formatTimeStr(c.time)}</Text>
                   </AnimatedPressable>
                 ))}

@@ -38,7 +38,23 @@ export default function WeeklyReviewScreen() {
             <View style={s.emptyState}>
               <Ionicons name="sparkles-outline" size={48} color={colors.accentPrimary} />
               <Text style={s.emptyTitle}>No Reviews Yet</Text>
-              <Text style={s.emptyDesc}>SARA will automatically generate your first weekly review this Sunday at 20:00.</Text>
+              <Text style={s.emptyDesc}>SARA will conduct your weekly review based on the 4 key progress tracking questions.</Text>
+              
+              <TouchableOpacity 
+                style={[s.interviewBtn, { backgroundColor: colors.accentPrimary, marginTop: SPACE.xl }]}
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  navigation.navigate('SaraModal', {
+                    screen: 'Sara',
+                    params: {
+                      initialPrompt: "It's time for my weekly review! Please interview me one by one on the 4 tracking questions: 1) Could I solve this week's DSA problems without hints? 2) Can I explain this week's dev concept? 3) Did I code for at least 4 days? 4) What is one new thing I understood this week? After we finish, use the createWeeklyReview action to save it."
+                    }
+                  });
+                }}
+              >
+                <Ionicons name="mic-outline" size={18} color="#fff" />
+                <Text style={s.interviewBtnText}>Start Weekly Interview</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <>
@@ -48,6 +64,22 @@ export default function WeeklyReviewScreen() {
                   {latestReview.weekStart} to {latestReview.weekEnd}
                 </Text>
               </View>
+
+              <TouchableOpacity 
+                style={[s.interviewBtn, { backgroundColor: colors.surface2, borderColor: colors.border, borderWidth: 1, marginBottom: SPACE.lg }]}
+                onPress={() => {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                  navigation.navigate('SaraModal', {
+                    screen: 'Sara',
+                    params: {
+                      initialPrompt: "It's time for my weekly review! Please interview me one by one on the 4 tracking questions: 1) Could I solve this week's DSA problems without hints? 2) Can I explain this week's dev concept? 3) Did I code for at least 4 days? 4) What is one new thing I understood this week? After we finish, use the createWeeklyReview action to save it."
+                    }
+                  });
+                }}
+              >
+                <Ionicons name="mic-outline" size={18} color={colors.textPrimary} />
+                <Text style={[s.interviewBtnText, { color: colors.textPrimary }]}>Start New Interview</Text>
+              </TouchableOpacity>
 
               <GlassCard style={s.card}>
                 <View style={s.sectionHeader}>
@@ -107,10 +139,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
   sectionTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginLeft: 8 },
   sectionText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textSecondary, lineHeight: 22 },
 
-  gratitudeBox: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    padding: SPACE.md, backgroundColor: 'rgba(165,153,255,0.1)', borderRadius: RADIUS.lg,
-    marginTop: SPACE.md,
-  },
-  gratitudeText: { fontFamily: FONT_FAMILY.medium, fontSize: 14, color: colors.accentPrimary },
+  gratitudeBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: SPACE.lg, padding: SPACE.md, backgroundColor: `${colors.accentPrimary}10`, borderRadius: RADIUS.lg },
+  gratitudeText: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: colors.accentPrimary, fontStyle: 'italic' },
+  
+  interviewBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: SPACE.md, borderRadius: RADIUS.xl, gap: 8 },
+  interviewBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#fff' },
 });

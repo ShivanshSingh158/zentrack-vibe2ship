@@ -47,8 +47,11 @@ if (!admin.apps.length) {
   }
 }
 
-const db = admin.firestore();
-const messaging = admin.messaging();
+// ✅ CRITICAL FIX: Do NOT call admin.firestore() or admin.messaging() at module level.
+// If Firebase Admin init failed (bad FIREBASE_SERVICE_ACCOUNT_JSON), these throw at module load
+// time and crash the entire Lambda → FUNCTION_INVOCATION_FAILED on ALL api/* endpoints.
+let db;
+let messaging;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const pad = (n) => n.toString().padStart(2, '0');
@@ -167,8 +170,17 @@ router.all('/', async (req, res) => {
 
   let stats = { smsSent: 0, pushSent: 0, usersProcessed: 0 };
 
+  // ✅ Lazy-initialize db and messaging inside the handler (never at module level)
+  if (!db || !messaging) {
+    if (!admin.apps.length) {
+      return res.status(503).json({ error: 'Watchdog unavailable (Firebase Admin not configured).' });
+    }
+    db = admin.firestore();
+    messaging = admin.messaging();
+  }
+
   try {
-    // ── Fetch all users with FCM tokens ────────────────────────────────────────
+    // ── Fetch all users with FCM tokens ──────────────────────────────────────────
     const tokenDocs = await db.collection('fcm_tokens').get();
     const userIds = tokenDocs.docs.map(d => d.id);
     console.log(`[watchdog] Processing ${userIds.length} users at ${now.toISOString()}`);
@@ -434,7 +446,8 @@ router.all('/', async (req, res) => {
     console.error('[watchdog] Fatal error:', err);
     return res.status(500).json({ error: err.message });
   }
-}
+});
+
 
 
 export default router;

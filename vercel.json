@@ -56,6 +56,10 @@
     {
       "source": "/__/firebase/:path*",
       "destination": "https://job-tracker-6b672.firebaseapp.com/__/firebase/:path*"
+    },
+    {
+      "source": "/((?!api/|assets/|.*\\..*).*)",
+      "destination": "/index.html"
     }
   ]
 }

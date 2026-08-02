@@ -12,6 +12,8 @@ import { db } from '../services/firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLLECTION } from '../config/constants';
 import { useTheme } from "../contexts/ThemeContext";
+import { useSaraSurface } from '../hooks/useSaraSurface';
+import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 
 const STATUS_CONFIG = {
   not_started: { label: 'Not Started', color: '#6b7280', bg: 'rgba(107,114,128,0.1)', icon: 'time-outline' as const },
@@ -31,6 +33,11 @@ export default function AssignmentsScreen() {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
   const { assignments, user } = useMobileData();
+
+  // Cap 5: PSI surface injection — 48h deadline alert
+  const psiCtx = useMemo(() => ({ assignments: assignments as any[] }), [assignments]);
+  const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface('Assignments', psiCtx as any, user?.uid);
+
   const [filter, setFilter] = useState<'all' | 'not_started' | 'in_progress' | 'submitted' | 'graded'>('all');
   
   const [modalVisible, setModalVisible] = useState(false);
@@ -111,6 +118,13 @@ export default function AssignmentsScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      {/* Cap 5: PSI surface banner — fires when any assignment is due within 48h */}
+      <SaraHUDBanner
+        message={surfaceMessage || ''}
+        visible={!!surfaceMessage}
+        onDismiss={dismissBanner}
+        actionLabel={surfaceActionLabel || undefined}
+      />
       {/* Header */}
       <View style={styles.header}>
         <View>

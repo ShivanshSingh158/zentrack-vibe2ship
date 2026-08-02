@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, Switch, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, Switch, Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -10,9 +10,13 @@ import { useTheme } from "../../contexts/ThemeContext";
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /** BUG-3 FIX: Called after settings are saved so the parent can trigger
+   * clearScheduleCache() + scheduleAllNotifications() immediately without
+   * waiting for the next app open or Firestore data change. */
+  onSaved?: () => void;
 }
 
-export function GymNotificationModal({ visible, onClose }: Props) {
+export function GymNotificationModal({ visible, onClose, onSaved }: Props) {
     const { colors, isDark } = useTheme();
     const s = makeStyles(colors);
   const [enabled, setEnabled] = useState(true);
@@ -46,10 +50,13 @@ export function GymNotificationModal({ visible, onClose }: Props) {
     hapticMedium();
     await AsyncStorage.setItem('@gym_notification_enabled', enabled.toString());
     const hours = time.getHours();
-    const minutes = time.getMinutes();
+    // BUG-3 FIX: Zero-pad minutes for consistent storage format ("18:05" not "18:5")
+    const minutes = time.getMinutes().toString().padStart(2, '0');
     await AsyncStorage.setItem('@gym_notification_time', `${hours}:${minutes}`);
-    
-    Alert.alert('Saved', 'Gym notification settings updated. They will take effect on your next app launch or data change.');
+    // BUG-3 FIX: Call onSaved() so the parent can trigger an immediate reschedule.
+    // Previously only Alert.alert was shown, so changes required an app restart.
+    onSaved?.();
+    Alert.alert('Saved', 'Gym reminder updated.');
     onClose();
   };
 
@@ -63,9 +70,8 @@ export function GymNotificationModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={s.overlay}>
-        <View style={s.card}>
-          
+      <Pressable style={s.overlay} onPress={onClose}>
+        <Pressable style={s.card} onPress={(e) => e.stopPropagation()}>
           <View style={s.header}>
             <Text style={s.title}>Workout Reminders</Text>
             <TouchableOpacity onPress={onClose} style={s.closeBtn}>
@@ -81,8 +87,8 @@ export function GymNotificationModal({ visible, onClose }: Props) {
             <Switch
               value={enabled}
               onValueChange={(val) => { hapticSelection(); setEnabled(val); }}
-              trackColor={{ false: colors.border, true: colors.accentPrimary }}
-              thumbColor={Platform.OS === 'android' ? colors.textPrimary : undefined}
+              trackColor={{ false: colors.border, true: '#FFFFFF' }}
+              thumbColor={Platform.OS === 'android' ? '#000000' : undefined}
             />
           </View>
 
@@ -100,8 +106,7 @@ export function GymNotificationModal({ visible, onClose }: Props) {
           <TouchableOpacity style={s.saveBtn} onPress={handleSave}>
             <Text style={s.saveBtnText}>Save Settings</Text>
           </TouchableOpacity>
-          
-        </View>
+        </Pressable>
 
         {showPicker && (
           <DateTimePicker
@@ -116,7 +121,7 @@ export function GymNotificationModal({ visible, onClose }: Props) {
             }}
           />
         )}
-      </View>
+      </Pressable>
     </Modal>
   );
 }
@@ -128,11 +133,13 @@ const makeStyles = (colors: any) => StyleSheet.create({
         justifyContent: 'flex-end',
       },
       card: {
-        backgroundColor: '#141416',
+        backgroundColor: '#000000',
         borderTopLeftRadius: RADIUS.xxl,
         borderTopRightRadius: RADIUS.xxl,
         padding: SPACE.xl,
-        paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+        paddingBottom: SPACE.xxl,
+        borderWidth: 1,
+        borderColor: '#27272A',
       },
       header: {
         flexDirection: 'row',

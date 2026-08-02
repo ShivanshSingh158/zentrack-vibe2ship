@@ -16,6 +16,7 @@ import { auth, db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { Task, Habit, HabitLog } from "../MobileDataContext";
 import { readCoreCacheMulti, writeCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
+import { clearAllDomainCaches } from "../../utils/domainCache";
 import { registerForPushNotificationsAsync } from "../../services/notifications";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -31,9 +32,14 @@ export interface CoreDataContextType {
   pinnedModules: string[];
   setPinnedModules: (modules: string[]) => void;
   googleAccessToken: string | null;
+  // Optimistic write helpers — update local state immediately, Firestore syncs in background.
+  // This is the WhatsApp pattern: show the result instantly, sync later.
+  optimisticAddTask: (task: Task) => void;
   optimisticUpdateTask: (taskId: string, partial: Partial<Task>) => void;
+  optimisticDeleteTask: (taskId: string) => void;
   optimisticUpdateHabit: (habitId: string, partial: Partial<Habit>) => void;
   optimisticAddHabitLog: (log: HabitLog) => void;
+  optimisticUpdateHabitLog: (logId: string, partial: Partial<HabitLog>) => void;
   optimisticRemoveHabitLog: (habitId: string, date: string) => void;
 }
 
@@ -114,7 +120,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       setUser(u);
       if (!u) {
         setTasks([]); setHabits([]); setHabitLogs([]); setLoading(false);
-        clearCoreCache(); // Clear stale cache on logout (security + correctness)
+        clearCoreCache();        // Clear core cache on logout
+        clearAllDomainCaches(); // Clear ALL domain caches — Wellness, Academic, Planner, Creative
       }
     });
   }, []);
@@ -205,8 +212,27 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const todayHabits      = useMemo(() => activeHabits.slice(0, 5), [activeHabits]);
   const pendingTaskCount = useMemo(() => tasks.filter(t => t.status === "pending").length, [tasks]);
 
+  const optimisticAddTask = (task: Task) => {
+    setTasks(prev => {
+      const next = [task, ...prev];
+      writeCoreCacheMulti({ tasks: next });
+      return next;
+    });
+  };
   const optimisticUpdateTask = (taskId: string, partial: Partial<Task>) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...partial } : t));
+    setTasks(prev => {
+      const next = prev.map(t => t.id === taskId ? { ...t, ...partial } : t);
+      // Write-through to AsyncStorage: survives offline app kill+restart
+      writeCoreCacheMulti({ tasks: next });
+      return next;
+    });
+  };
+  const optimisticDeleteTask = (taskId: string) => {
+    setTasks(prev => {
+      const next = prev.filter(t => t.id !== taskId);
+      writeCoreCacheMulti({ tasks: next });
+      return next;
+    });
   };
   const optimisticUpdateHabit = (habitId: string, partial: Partial<Habit>) => {
     lockHabits();
@@ -215,6 +241,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const optimisticAddHabitLog = (log: HabitLog) => {
     lockHabitLogs();
     setHabitLogs(prev => [...prev, log]);
+  };
+  const optimisticUpdateHabitLog = (logId: string, partial: Partial<HabitLog>) => {
+    lockHabitLogs();
+    setHabitLogs(prev => prev.map(l => l.id === logId ? { ...l, ...partial } : l));
   };
   const optimisticRemoveHabitLog = (habitId: string, date: string) => {
     lockHabitLogs();
@@ -226,7 +256,8 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       user, tasks, habits: activeHabits, allHabits: habits, habitLogs,
       loading, pendingTaskCount, todayHabits,
       pinnedModules, setPinnedModules, googleAccessToken,
-      optimisticUpdateTask, optimisticUpdateHabit, optimisticAddHabitLog, optimisticRemoveHabitLog
+      optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
+      optimisticUpdateHabit, optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
     }}>
       {children}
     </CoreDataContext.Provider>
