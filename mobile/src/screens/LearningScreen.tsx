@@ -35,23 +35,48 @@ import { COLLECTION, GEMINI_PROXY_BASE } from '../config/constants';
 const fetchYouTubeTimedTextDirect = async (videoId: string): Promise<{ transcript: string; error: string | null }> => {
   try {
     const parseXmlTranscript = (xml: string): string => {
-      const textMatches = [...xml.matchAll(new RegExp('<text\\s+start="([\\d.]+)"[^>]*>(.*?)</text>', 'gi'))];
-      if (textMatches.length === 0) return '';
-      const lines = textMatches.map(m => {
-        const startSec = Math.floor(parseFloat(m[1]));
-        const mm = Math.floor(startSec / 60);
-        const ss = String(startSec % 60).padStart(2, '0');
-        const cleanText = m[2]
-          .replace(/&amp;/g, '&')
-          .replace(/&#39;/g, "'")
-          .replace(/&quot;/g, '"')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(new RegExp('<[^>]*>', 'g'), '')
-          .replace(/\n/g, ' ')
-          .trim();
-        return `[${mm}:${ss}] ${cleanText}`;
-      }).filter(line => line.length > 5);
+      let lines: string[] = [];
+      
+      // 1. Try srv3 format (<p t="ms" d="ms">)
+      const pRegex = /<p\s+t="(\d+)"[^>]*>([\s\S]*?)<\/p>/gi;
+      let pMatches = [...xml.matchAll(pRegex)];
+      
+      if (pMatches.length > 0) {
+        lines = pMatches.map(m => {
+          const startSec = Math.floor(parseInt(m[1]) / 1000);
+          const mm = Math.floor(startSec / 60);
+          const ss = String(startSec % 60).padStart(2, '0');
+          // clean inner tags like <s>
+          let inner = m[2].replace(/<[^>]+>/g, '');
+          const cleanText = inner
+            .replace(/&amp;/g, '&')
+            .replace(/&#39;/g, "'")
+            .replace(/&quot;/g, '"')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/\n/g, ' ')
+            .trim();
+          return `[${mm}:${ss}] ${cleanText}`;
+        }).filter(line => line.length > 5);
+      } else {
+        // 2. Fallback to srv1 / classic format (<text start="s" dur="s">)
+        const textMatches = [...xml.matchAll(new RegExp('<text\\s+start="([\\d.]+)"[^>]*>(.*?)</text>', 'gi'))];
+        lines = textMatches.map(m => {
+          const startSec = Math.floor(parseFloat(m[1]));
+          const mm = Math.floor(startSec / 60);
+          const ss = String(startSec % 60).padStart(2, '0');
+          const cleanText = m[2]
+            .replace(/&amp;/g, '&')
+            .replace(/&#39;/g, "'")
+            .replace(/&quot;/g, '"')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(new RegExp('<[^>]*>', 'g'), '')
+            .replace(/\n/g, ' ')
+            .trim();
+          return `[${mm}:${ss}] ${cleanText}`;
+        }).filter(line => line.length > 5);
+      }
       return lines.join('\n');
     };
 
@@ -65,7 +90,7 @@ const fetchYouTubeTimedTextDirect = async (videoId: string): Promise<{ transcrip
           if (xml && xml.includes('<text')) {
             const formatted = parseXmlTranscript(xml);
             if (formatted.length > 50) {
-              return { transcript: formatted.slice(0, 14000), error: null };
+              return { transcript: formatted, error: null };
             }
           }
         }
@@ -85,7 +110,7 @@ const fetchYouTubeTimedTextDirect = async (videoId: string): Promise<{ transcrip
             const xml = await trackRes.text();
             const formatted = parseXmlTranscript(xml);
             if (formatted.length > 50) {
-              return { transcript: formatted.slice(0, 14000), error: null };
+              return { transcript: formatted, error: null };
             }
           }
         }
@@ -111,13 +136,17 @@ const fetchYouTubeTimedTextDirect = async (videoId: string): Promise<{ transcrip
         let selectedTrack = captionTracks.find((t: any) => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode?.startsWith('en'));
         if (!selectedTrack) selectedTrack = captionTracks[0];
         if (selectedTrack && selectedTrack.baseUrl) {
-          let fetchUrl = selectedTrack.baseUrl.replace(/&fmt=[^&]+/, '');
-          fetchUrl += (fetchUrl.includes('?') ? '&' : '?') + 'fmt=srv1';
-          const xmlRes = await fetch(fetchUrl);
+          // Natively fetch the URL WITHOUT appending anything, to preserve signature!
+          const xmlRes = await fetch(selectedTrack.baseUrl, {
+            headers: {
+              'Accept-Language': selectedTrack.languageCode,
+              'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)',
+            }
+          });
           const xmlText = await xmlRes.text();
-          if (xmlText && xmlText.includes('<' + 'text')) {
+          if (xmlText && (xmlText.includes('<text') || xmlText.includes('<p'))) {
             const formatted = parseXmlTranscript(xmlText);
-            if (formatted.length > 50) return { transcript: formatted.slice(0, 14000), error: null };
+            if (formatted.length > 50) return { transcript: formatted, error: null };
           }
         }
       }
@@ -150,13 +179,17 @@ const fetchYouTubeTimedTextDirect = async (videoId: string): Promise<{ transcrip
           let selectedTrack = captionTracks.find((t: any) => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode?.startsWith('en'));
           if (!selectedTrack) selectedTrack = captionTracks[0];
           if (selectedTrack && selectedTrack.baseUrl) {
-            let fetchUrl = selectedTrack.baseUrl.replace(/&fmt=[^&]+/, '');
-            fetchUrl += (fetchUrl.includes('?') ? '&' : '?') + 'fmt=srv1';
-            const xmlRes = await fetch(fetchUrl);
+            // Natively fetch the URL WITHOUT appending anything, to preserve signature!
+            const xmlRes = await fetch(selectedTrack.baseUrl, {
+              headers: {
+                'Accept-Language': selectedTrack.languageCode,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+              }
+            });
             const xmlText = await xmlRes.text();
-            if (xmlText && xmlText.includes('<' + 'text')) {
+            if (xmlText && (xmlText.includes('<text') || xmlText.includes('<p'))) {
               const formatted = parseXmlTranscript(xmlText);
-              if (formatted.length > 50) return { transcript: formatted.slice(0, 14000), error: null };
+              if (formatted.length > 50) return { transcript: formatted, error: null };
             }
           }
         }
@@ -201,7 +234,7 @@ const fetchYouTubeCaptions = async (videoId: string): Promise<{ transcript: stri
     }
     const data = await res.json();
     if (data.transcript && data.transcript.length > 50) {
-      return { transcript: data.transcript.slice(0, 14000), error: null };
+      return { transcript: data.transcript, error: null };
     }
     return { transcript: '', error: 'No captions on this video' };
   } catch (e: any) {
@@ -456,7 +489,6 @@ export default function LearningScreen() {
       elevation: 20,
       height: 70,
       overflow: 'hidden' as const,
-      backgroundColor: 'transparent',
       paddingBottom: 0,
     };
 
@@ -738,6 +770,7 @@ export default function LearningScreen() {
         ListHeaderComponent={renderListHeader}
         renderItem={renderTopicCard}
         onDragEnd={onDragEnd}
+        showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={s.empty}>
             <Text style={s.emptyText}>No learning topics yet.</Text>

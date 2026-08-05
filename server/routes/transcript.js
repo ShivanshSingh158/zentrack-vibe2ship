@@ -28,7 +28,7 @@ if (!admin.apps.length) {
 // ─── Direct YouTube Page Fallback Scraper ─────────────────────────────────────
 // When youtube-transcript npm library fails (e.g. YouTube consent page, User-Agent requirement,
 // auto-generated caption track format changes), directly parse ytInitialPlayerResponse from the HTML page.
-async function fetchDirectYouTubeCaptions(videoId) {
+async function fetchDirectYouTubeCaptions(videoId, lang) {
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   const response = await fetch(url, {
     headers: {
@@ -60,8 +60,13 @@ async function fetchDirectYouTubeCaptions(videoId) {
     throw new Error('Transcript unavailable (no captions found on YouTube for this video)');
   }
 
-  // Prefer English (manual or auto-generated), otherwise first track
-  let selectedTrack = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode?.startsWith('en'));
+  let selectedTrack;
+  if (lang) {
+    selectedTrack = captionTracks.find(t => t.languageCode === lang || t.languageCode?.startsWith(lang));
+  }
+  if (!selectedTrack) {
+    selectedTrack = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode?.startsWith('en'));
+  }
   if (!selectedTrack) {
     selectedTrack = captionTracks[0];
   }
@@ -79,28 +84,50 @@ async function fetchDirectYouTubeCaptions(videoId) {
 
   const xmlText = await xmlResponse.text();
 
-  // Parse XML text tags <text start="12.34" dur="5.67">Hello world</text>
-  const textMatches = [...xmlText.matchAll(/<text\s+start="([\d.]+)"[^>]*>(.*?)<\/text>/gi)];
-  if (textMatches.length === 0) {
-    throw new Error('Empty transcript XML');
+  // Parse XML text tags <text start="12.34" dur="5.67">Hello world</text> or <p t="ms" d="ms">
+  let formattedLines = [];
+  const pRegex = /<p\s+t="(\d+)"[^>]*>([\s\S]*?)<\/p>/gi;
+  let pMatches = [...xmlText.matchAll(pRegex)];
+  
+  if (pMatches.length > 0) {
+    formattedLines = pMatches.map(m => {
+      const startSec = Math.floor(parseInt(m[1]) / 1000);
+      const mm = Math.floor(startSec / 60);
+      const ss = String(startSec % 60).padStart(2, '0');
+      let inner = m[2].replace(/<[^>]+>/g, '');
+      const cleanText = inner
+        .replace(/&amp;/g, '&')
+        .replace(/&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/\n/g, ' ')
+        .trim();
+      return `[${mm}:${ss}] ${cleanText}`;
+    });
+  } else {
+    const textMatches = [...xmlText.matchAll(/<text\s+start="([\d.]+)"[^>]*>(.*?)<\/text>/gi)];
+    if (textMatches.length === 0) {
+      throw new Error('Empty transcript XML');
+    }
+    formattedLines = textMatches.map(m => {
+      const startSec = Math.floor(parseFloat(m[1]));
+      const mm = Math.floor(startSec / 60);
+      const ss = String(startSec % 60).padStart(2, '0');
+      const cleanText = m[2]
+        .replace(/&amp;/g, '&')
+        .replace(/&#39;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(new RegExp('<[^>]*>', 'g'), '')
+        .replace(/\n/g, ' ')
+        .trim();
+      return `[${mm}:${ss}] ${cleanText}`;
+    });
   }
 
-  const formattedLines = textMatches.map(m => {
-    const startSec = Math.floor(parseFloat(m[1]));
-    const mm = Math.floor(startSec / 60);
-    const ss = String(startSec % 60).padStart(2, '0');
-    const cleanText = m[2]
-      .replace(/&amp;/g, '&')
-      .replace(/&#39;/g, "'")
-      .replace(/&quot;/g, '"')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/\n/g, ' ')
-      .trim();
-    return `[${mm}:${ss}] ${cleanText}`;
-  }).filter(line => line.length > 8);
-
-  return formattedLines.join('\n');
+  return formattedLines.filter(line => line.length > 8).join('\n');
 }
 
 const router = express.Router();
@@ -131,14 +158,14 @@ router.all('/', async (req, res) => {
   }
 
   // ── Fetch Transcript ──────────────────────────────────────────────────────
-  const { videoId } = req.query;
+  const { videoId, lang } = req.query;
   if (!videoId || typeof videoId !== 'string') {
     return res.status(400).json({ error: 'Missing or invalid videoId' });
   }
 
   // Primary: Direct YouTube page scraper (fastest, supports auto-generated + manual captions)
   try {
-    const text = await fetchDirectYouTubeCaptions(videoId);
+    const text = await fetchDirectYouTubeCaptions(videoId, lang);
     console.log(`[transcript] Direct scraper succeeded for ${videoId} (${text.length} chars)`);
     return res.status(200).json({ transcript: text });
   } catch (e1) {
@@ -146,7 +173,8 @@ router.all('/', async (req, res) => {
 
     // Fallback: YoutubeTranscript library
     try {
-      const transcript = await YoutubeTranscript.fetchTranscript(videoId);
+      const config = lang ? { lang } : {};
+      const transcript = await YoutubeTranscript.fetchTranscript(videoId, config);
       const firstOffset = transcript[0]?.offset ?? 0;
       const isMilliseconds = firstOffset > 10000 || (transcript.length > 1 && transcript[1]?.offset > 10000);
       const text = transcript

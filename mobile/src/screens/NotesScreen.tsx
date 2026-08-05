@@ -26,6 +26,8 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from "../contexts/ThemeContext";
 import { timeAgo } from '../utils/dateUtils';
+import { handleSyncError } from '../utils/errorUtils';
+
 
 const UploadProgressRing = ({ progress }: { progress: number }) => {
   const radius = 12;
@@ -160,7 +162,7 @@ function NoteEditorModal({ note, userId, parentId, onClose }: {
           parentId,
           createdAt: Date.now(),
           updatedAt: Date.now(),
-        }).catch(console.error);
+        }).catch(handleSyncError);
       } else {
         const parsedTags = tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
 
@@ -170,7 +172,7 @@ function NoteEditorModal({ note, userId, parentId, onClose }: {
           tags: parsedTags,
           content: content.trim(),
           updatedAt: Date.now(),
-        }).catch(console.error);
+        }).catch(handleSyncError);
       }
     }, 150);
     
@@ -698,7 +700,7 @@ export default function NotesScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
-        onPress: () => deleteDoc(doc(db, 'storage_nodes', id)).catch(console.error)
+        onPress: () => deleteDoc(doc(db, 'storage_nodes', id)).catch(handleSyncError)
       }
     ]);
   };
@@ -846,7 +848,7 @@ export default function NotesScreen() {
             <Text style={styles.emptyText}>This folder is empty.</Text>
           </View>
         }
-        renderItem={({ item }) => {
+        renderItem={({ item }: any) => {
           const isSelected = selectedIds.has(item.id!);
           return (
             <TouchableOpacity

@@ -30,6 +30,8 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Updates from 'expo-updates';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Props {
   children: React.ReactNode;
@@ -47,6 +49,7 @@ interface State {
   error?: Error;
   errorInfo?: React.ErrorInfo;
   retryCount: number;
+  isRestarting?: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -91,6 +94,36 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     } catch {
       // Never let the reporter crash the boundary itself
     }
+
+    // ── Auto-Restart Failsafe ────────────────────────────────────────────────
+    // The user prefers the app to automatically reboot rather than showing a
+    // crash screen. We do this in production, but use a timestamp guard to 
+    // prevent an infinite crash-loop if the error is persistent on boot.
+    if (!__DEV__) {
+      this.setState({ isRestarting: true });
+      setTimeout(async () => {
+        try {
+          const lastCrashStr = await AsyncStorage.getItem('@zentrack_last_crash');
+          const lastCrash = lastCrashStr ? parseInt(lastCrashStr, 10) : 0;
+          
+          if (Date.now() - lastCrash > 10000) {
+            await AsyncStorage.setItem('@zentrack_last_crash', String(Date.now()));
+            
+            // Failsafe: if Updates.reloadAsync() hangs (e.g. in Expo Go / Dev Clients),
+            // we timeout after 1.5s and fallback to the recovery card!
+            await Promise.race([
+              Updates.reloadAsync(),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+            ]);
+            return;
+          }
+        } catch { }
+        
+        // If we reach here, it means we are in a crash loop OR reloadAsync failed/hung.
+        // Revert to showing the recovery card.
+        this.setState({ isRestarting: false });
+      }, 0);
+    }
   }
 
   // ── Recovery ───────────────────────────────────────────────────────────────
@@ -113,6 +146,11 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           {this.props.children}
         </React.Fragment>
       );
+    }
+
+    if (this.state.isRestarting) {
+      // Show nothing but a clean background while the app reboots seamlessly
+      return <View style={styles.root} />;
     }
 
     const { screenName } = this.props;

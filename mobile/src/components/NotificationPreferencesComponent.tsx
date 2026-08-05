@@ -28,6 +28,8 @@ import { Audio } from 'expo-av';
 import { scheduleAllNotifications } from '../services/notifications';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { useTheme } from "../contexts/ThemeContext";
+import { handleSyncError } from '../utils/errorUtils';
+
 
 type TimePickerTarget =
   | 'morningBriefTime'
@@ -163,7 +165,7 @@ export default function NotificationPreferencesComponent() {
     await saveBool(key, val);
     scheduleAllNotifications({
       tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
-    }).catch(console.error);
+    }).catch(console.warn);
   }, [tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments]);
 
   // Time picker helpers
@@ -183,7 +185,7 @@ export default function NotificationPreferencesComponent() {
       case 'quietEnd':           setQuietEnd(hm);           await saveString('quiet_end', hm);            break;
       case 'overdueNudgeTime':   setOverdueNudgeTime(hm);  await saveString('overdue_nudge_time', hm);   break;
     }
-    scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.error);
+    scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.warn);
   };
 
   const closePicker = () => setPickerVisible(false);
@@ -403,7 +405,7 @@ export default function NotificationPreferencesComponent() {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   setTaskBuffer(o.val);
                   await saveString('task_buffer', o.val);
-                  scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.error);
+                  scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.warn);
                 }}
               >
                 <Text style={[s.chipText, taskBuffer === o.val && s.chipTextActive]}>{o.label}</Text>

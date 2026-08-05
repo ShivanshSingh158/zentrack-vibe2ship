@@ -14,6 +14,8 @@ import { BlurView } from 'expo-blur';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { COLLECTION } from '../config/constants';
+import { GYM_PLAN } from '../data/gymPlan';
+import { getCustomPlanDay, planDayIndexForDate } from '../hooks/useGymLog';
 import { useTheme } from "../contexts/ThemeContext";
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -23,7 +25,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const { width } = Dimensions.get('window');
 
 // Google Calendar standard hours (24-hour format like the screenshot)
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const HOUR_HEIGHT = 60; // Pixels per hour
 
 const getEventColors = (colors: any): Record<string, { bg: string, text: string }> => ({
@@ -121,7 +122,7 @@ const parseTaskTimeSlot = (timeSlot: string | null | undefined): { startTime: st
 export default function CalendarScreen() {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
-  const { customEvents, tasks, attendance, user, googleAccessToken, gymLogs } = useMobileData();
+  const { customEvents, tasks, attendance, user, googleAccessToken, gymLogs, userGymPlan } = useMobileData();
   const navigation = useNavigation<any>();
   
   // Base date
@@ -170,7 +171,7 @@ export default function CalendarScreen() {
     if (selectedDate === now.toISOString().slice(0, 10) && scrollViewRef.current) {
       const currentHour = now.getHours();
       setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: Math.max(0, (currentHour - 1) * HOUR_HEIGHT), animated: false });
+        scrollViewRef.current?.scrollTo({ y: Math.max(0, (currentHour - minHour - 1) * HOUR_HEIGHT), animated: false });
       }, 100);
     }
   }, [selectedDate]);
@@ -300,24 +301,38 @@ export default function CalendarScreen() {
       }
     });
 
-    const gymEvts = (gymLogs || []).filter(g => g.date === selectedDate).map(g => ({
-      id: g.id, title: 'Gym Workout', type: 'gym' as any, date: g.date,
-      startTime: g.startTime || '10:00',
-      endTime: g.endTime || '11:00',
-      location: 'Gym'
-    }));
+    const gLog = (gymLogs || []).find(g => g.date === selectedDate);
+    const planIdx = planDayIndexForDate(selectedDate);
+    const gPlan = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
+    
+    const startTimeStr = gLog?.startTime || gPlan?.startTime;
+    const endTimeStr = gLog?.endTime || gPlan?.endTime;
+    
+    const gymEvts = [];
+    if (startTimeStr && (gLog?.startTime || !gPlan?.isRest)) {
+      gymEvts.push({
+        id: `gym-${selectedDate}`, title: gPlan?.focus ? `Workout: ${gPlan.focus}` : 'Gym Workout', type: 'gym' as any, date: selectedDate,
+        startTime: startTimeStr,
+        endTime: endTimeStr || '18:00',
+        location: 'Gym'
+      });
+    }
 
     return {
       timedDayEvents: [...events, ...timedTasks, ...timedClasses, ...gymEvts, ...gcalEvents] as CustomEvent[],
       unscheduledDayEvents: [...unscheduledTasks, ...unscheduledClasses] as CustomEvent[],
     };
-  }, [customEvents, tasks, attendance, gymLogs, gcalEvents, selectedDate]);
+  }, [customEvents, tasks, attendance, gymLogs, userGymPlan, gcalEvents, selectedDate]);
 
-  // Keep dayEvents as the full set for month-view list and other consumers
-  const dayEvents = useMemo(
-    () => [...timedDayEvents, ...unscheduledDayEvents],
-    [timedDayEvents, unscheduledDayEvents]
-  );
+  // Keep dayEvents as the full set for month-view list and other consumers, sorted chronologically
+  const dayEvents = useMemo(() => {
+    const sortedTimed = [...timedDayEvents].sort((a, b) => {
+      const aStart = parseTimeTo24h(a.startTime);
+      const bStart = parseTimeTo24h(b.startTime);
+      return (aStart.hour * 60 + aStart.min) - (bStart.hour * 60 + bStart.min);
+    });
+    return [...sortedTimed, ...unscheduledDayEvents];
+  }, [timedDayEvents, unscheduledDayEvents]);
 
   // Math for overlapping events layout — uses ONLY timed events
   const processedEvents = useMemo(() => {
@@ -442,9 +457,22 @@ export default function CalendarScreen() {
 
       const gcals = gcalEvents.filter(e => e.date === dateStr);
       
-      const gymEvts = (gymLogs || []).filter(g => g.date === dateStr).map(g => ({
-        id: g.id, title: 'Gym Workout', type: 'gym', date: g.date, startTime: '', endTime: '', location: 'Gym'
-      }));
+      const gLog = (gymLogs || []).find(g => g.date === dateStr);
+      const planIdx = planDayIndexForDate(dateStr);
+      const gPlan = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
+      
+      const startTimeStr = gLog?.startTime || gPlan?.startTime;
+      const endTimeStr = gLog?.endTime || gPlan?.endTime;
+      
+      const gymEvts = [];
+      if (startTimeStr && (gLog?.startTime || !gPlan?.isRest)) {
+        gymEvts.push({
+          id: `gym-${dateStr}`, title: gPlan?.focus ? `Workout: ${gPlan.focus}` : 'Gym Workout', type: 'gym' as any, date: dateStr,
+          startTime: startTimeStr,
+          endTime: endTimeStr || '18:00',
+          location: 'Gym'
+        });
+      }
       const dayCombined = [...events, ...dayTasks, ...classEvents, ...gymEvts, ...gcals];
       
       dayCombined.forEach(event => {
@@ -470,7 +498,40 @@ export default function CalendarScreen() {
       });
     }
     return allWeekEvents;
-  }, [selectedDate, customEvents, tasks, attendance, gymLogs, gcalEvents]);
+  }, [selectedDate, customEvents, tasks, attendance, gymLogs, userGymPlan, gcalEvents]);
+
+  const { minHour, maxHour } = useMemo(() => {
+    let min = 5; // Default start 5 AM
+    let max = 22; // Default end 10 PM (22)
+
+    const allEvents = currentView === 'Week' ? weekEvents : timedDayEvents;
+    if (allEvents && allEvents.length > 0) {
+      allEvents.forEach((ev: any) => {
+        if (ev.startTime) {
+          const parsedStart = parseTimeTo24h(ev.startTime);
+          if (parsedStart.hour < min) min = parsedStart.hour;
+        }
+        if (ev.endTime) {
+          const parsedEnd = parseTimeTo24h(ev.endTime);
+          if (parsedEnd.hour > max) max = parsedEnd.hour;
+        }
+      });
+    }
+    
+    // Ensure 0 <= min <= max <= 23
+    min = Math.max(0, Math.min(23, min));
+    max = Math.max(0, Math.min(23, max));
+    
+    return { minHour: min, maxHour: max };
+  }, [weekEvents, timedDayEvents, currentView]);
+
+  const DYNAMIC_HOURS = useMemo(() => {
+    const hours = [];
+    for (let i = minHour; i <= maxHour; i++) {
+      hours.push(i);
+    }
+    return hours;
+  }, [minHour, maxHour]);
 
   // --- MONTH VIEW LOGIC ---
   const renderMonthEventItem = ({ item }: { item: any }) => {
@@ -584,26 +645,6 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
-      {/* 1. TOP HEADER BAR */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.iconBtn} onPress={() => navigation.goBack()}>
-            <Ionicons name="chevron-back" size={24} color={colors.accentPrimary} />
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.headerTitle}>Calendar</Text>
-        <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.profileBtn}>
-            <View style={styles.profileCircle}>
-              {user?.photoURL ? (
-                <Image source={{ uri: user.photoURL }} style={styles.profileImage} />
-              ) : (
-                <Text style={styles.profileInitials}>{user?.displayName?.charAt(0)?.toUpperCase() || 'Z'}</Text>
-              )}
-            </View>
-          </TouchableOpacity>
-        </View>
-      </View>
 
       {/* 1.5. SUB HEADER (Month + View Selector) */}
       <View style={styles.subHeader}>
@@ -688,8 +729,7 @@ export default function CalendarScreen() {
       )}
 
       {/* 2. DATE SELECTOR (Week Strip) */}
-      {!isMonthDropdownOpen && currentView !== 'Month' && (
-        <View style={styles.weekStrip}>
+      <View style={[styles.weekStrip, { display: (!isMonthDropdownOpen && currentView !== 'Month') ? 'flex' : 'none' }]}>
           {Array.from({length: 7}).map((_, i) => {
             const dateObj = new Date(now);
             // Quick hack to show current week: start from Sunday of current week
@@ -713,11 +753,9 @@ export default function CalendarScreen() {
             );
           })}
         </View>
-      )}
 
       {/* 3. TIMELINE GRID (DAY VIEW) */}
-      {currentView === 'Day' && (
-      <>
+      <View style={{ flex: 1, display: currentView === 'Day' ? 'flex' : 'none' }}>
         {/* Unscheduled strip — tasks/classes with no time set */}
         {unscheduledDayEvents.length > 0 && (
           <View style={styles.unscheduledStrip}>
@@ -741,12 +779,12 @@ export default function CalendarScreen() {
           </View>
         )}
       <ScrollView ref={scrollViewRef} style={styles.timelineScroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.timelineInner}>
+        <View style={[styles.timelineInner, { height: (maxHour - minHour + 1) * HOUR_HEIGHT + 100, marginTop: 20 }]}>
           {/* Hour Grid Lines */}
-          {HOURS.map(hour => (
+          {DYNAMIC_HOURS.map(hour => (
             <TouchableOpacity 
               key={hour} 
-              style={[styles.hourRow, { top: hour * HOUR_HEIGHT }]}
+              style={[styles.hourRow, { top: (hour - minHour) * HOUR_HEIGHT }]}
               onPress={() => {
                 setInitialTime(`${hour.toString().padStart(2, '0')}:00`);
                 setSelectedEvent(null);
@@ -772,7 +810,7 @@ export default function CalendarScreen() {
                   style={[
                     styles.eventBlock, 
                     { 
-                      top: event.top, 
+                      top: event.top - (minHour * HOUR_HEIGHT), 
                       height: event.height, 
                       left: event.left as any, 
                       width: event.width as any,
@@ -808,27 +846,26 @@ export default function CalendarScreen() {
 
           {/* Current Time Indicator Line */}
           {isToday && (
-            <View style={[styles.currentTimeIndicator, { top: indicatorTop }]}>
+            <View style={[styles.currentTimeIndicator, { top: indicatorTop - (minHour * HOUR_HEIGHT) }]}>
               <View style={styles.currentTimeDot} />
               <View style={styles.currentTimeLine} />
             </View>
           )}
 
           {/* Bottom padding so we can scroll past midnight */}
-          <View style={{ height: 100, top: 24 * HOUR_HEIGHT }} />
+          <View style={{ height: 100, top: (maxHour - minHour + 1) * HOUR_HEIGHT }} />
         </View>
       </ScrollView>
-      </>
-      )}
+      </View>
 
       {/* 4. WEEK VIEW GRID */}
-      {currentView === 'Week' && (
+      <View style={{ flex: 1, display: currentView === 'Week' ? 'flex' : 'none' }}>
         <ScrollView style={styles.timelineScroll} showsVerticalScrollIndicator={false}>
-          <View style={[styles.timelineInner, { flexDirection: 'row' }]}>
+          <View style={[styles.timelineInner, { flexDirection: 'row', height: (maxHour - minHour + 1) * HOUR_HEIGHT + 100, marginTop: 20 }]}>
             {/* Hour Axis */}
             <View style={styles.weekHourAxis}>
-              {HOURS.map(hour => (
-                <View key={hour} style={[styles.hourRow, { top: hour * HOUR_HEIGHT }]}>
+              {DYNAMIC_HOURS.map(hour => (
+                <View key={hour} style={[styles.hourRow, { top: (hour - minHour) * HOUR_HEIGHT }]}>
                   <Text style={styles.weekHourText}>{format12Hour(hour + ':00').replace(' AM','a').replace(' PM','p')}</Text>
                 </View>
               ))}
@@ -840,12 +877,12 @@ export default function CalendarScreen() {
                 return (
                   <View key={i} style={[styles.weekCol, isTodayCol && styles.weekColToday]}>
                     {/* Hour Lines */}
-                    {HOURS.map(hour => (
-                      <View key={`hl-${hour}`} style={[styles.weekHourLine, { top: hour * HOUR_HEIGHT }]} />
+                    {DYNAMIC_HOURS.map(hour => (
+                      <View key={`hl-${hour}`} style={[styles.weekHourLine, { top: (hour - minHour) * HOUR_HEIGHT }]} />
                     ))}
                     {/* Current Time Tick */}
                     {isTodayCol && (
-                      <View style={[styles.weekCurrentTimeTick, { top: indicatorTop }]} />
+                      <View style={[styles.weekCurrentTimeTick, { top: indicatorTop - (minHour * HOUR_HEIGHT) }]} />
                     )}
                     {/* Events */}
                     {weekEvents.filter((e: any) => e.dayIndex === i).map((event: any) => {
@@ -853,7 +890,7 @@ export default function CalendarScreen() {
                       return (
                         <TouchableOpacity
                           key={event.id}
-                          style={[styles.weekEventBlock, { top: event.top, height: event.height, backgroundColor: `${typeColor}40`, borderLeftColor: typeColor }]}
+                          style={[styles.weekEventBlock, { top: event.top - (minHour * HOUR_HEIGHT), height: event.height, backgroundColor: `${typeColor}40`, borderLeftColor: typeColor }]}
                           onPress={() => { setSelectedDate(event.dateStr); setCurrentView('Day'); }}
                           activeOpacity={0.8}
                         >
@@ -865,76 +902,74 @@ export default function CalendarScreen() {
                 );
               })}
             </View>
-            <View style={{ height: 100, top: 24 * HOUR_HEIGHT, width: '100%', position: 'absolute' }} />
+            <View style={{ height: 100, top: (maxHour - minHour + 1) * HOUR_HEIGHT, width: '100%', position: 'absolute' }} />
           </View>
         </ScrollView>
-      )}
+      </View>
 
       {/* 5. MONTH VIEW */}
-      {currentView === 'Month' && (
-        <View style={styles.monthViewContainer}>
-          <CalendarProvider
-            date={selectedDate}
-            onDateChanged={(date: string) => setSelectedDate(date)}
-            showTodayButton
-            theme={{
-              todayButtonTextColor: colors.accentPrimary,
-            }}
-          >
-            <ExpandableCalendar
-              firstDay={1}
-              markingType={'custom'}
-              markedDates={
-                Object.keys(markedDates).reduce((acc: any, date) => {
-                  const hasEvents = markedDates[date].dots && markedDates[date].dots.length > 0;
-                  acc[date] = {
-                    customStyles: {
-                      container: {
-                        backgroundColor: date === selectedDate ? colors.accentPrimary : 'transparent',
-                        borderRadius: 16
-                      },
-                      text: {
-                        color: date === selectedDate ? '#000' : colors.textPrimary,
-                        fontWeight: date === selectedDate ? 'bold' : 'normal'
-                      }
+      <View style={[styles.monthViewContainer, currentView !== 'Month' && { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, opacity: 0, zIndex: -10, pointerEvents: 'none' }]}>
+        <CalendarProvider
+          date={selectedDate}
+          onDateChanged={(date: string) => setSelectedDate(date)}
+          showTodayButton
+          theme={{
+            todayButtonTextColor: colors.accentPrimary,
+          }}
+        >
+          <ExpandableCalendar
+            firstDay={1}
+            markingType={'custom'}
+            markedDates={
+              Object.keys(markedDates).reduce((acc: any, date) => {
+                const hasEvents = markedDates[date].dots && markedDates[date].dots.length > 0;
+                acc[date] = {
+                  customStyles: {
+                    container: {
+                      backgroundColor: date === selectedDate ? colors.accentPrimary : 'transparent',
+                      borderRadius: 16
+                    },
+                    text: {
+                      color: date === selectedDate ? '#000' : colors.textPrimary,
+                      fontWeight: date === selectedDate ? 'bold' : 'normal'
                     }
-                  };
-                  if (hasEvents) {
-                    // Single purple dot for any event
-                    acc[date].marked = true;
-                    acc[date].dotColor = date === selectedDate ? '#000' : colors.accentPrimary;
                   }
-                  return acc;
-                }, {})
-              }
-              theme={{
-                backgroundColor: colors.background,
-                calendarBackground: colors.background,
-                textSectionTitleColor: colors.textMuted,
-                dayTextColor: colors.textPrimary,
-                textDisabledColor: colors.border,
-                monthTextColor: colors.textPrimary,
-                arrowColor: colors.accentPrimary,
-                textDayFontFamily: FONT_FAMILY.body,
-                textDayHeaderFontFamily: FONT_FAMILY.medium,
-                textDayFontSize: 16,
-                textDayHeaderFontSize: 12,
-              } as any}
+                };
+                if (hasEvents) {
+                  // Single purple dot for any event
+                  acc[date].marked = true;
+                  acc[date].dotColor = date === selectedDate ? '#000' : colors.accentPrimary;
+                }
+                return acc;
+              }, {})
+            }
+            theme={{
+              backgroundColor: colors.background,
+              calendarBackground: colors.background,
+              textSectionTitleColor: colors.textMuted,
+              dayTextColor: colors.textPrimary,
+              textDisabledColor: colors.border,
+              monthTextColor: colors.textPrimary,
+              arrowColor: colors.accentPrimary,
+              textDayFontFamily: FONT_FAMILY.body,
+              textDayHeaderFontFamily: FONT_FAMILY.medium,
+              textDayFontSize: 16,
+              textDayHeaderFontSize: 12,
+            } as any}
+          />
+          <View style={styles.monthEventListContainer}>
+            <Text style={styles.monthEventListHeader}>{formatDateFull(selectedDate).toUpperCase()}</Text>
+            <FlatList
+              data={dayEvents}
+              keyExtractor={item => item.id}
+              renderItem={renderMonthEventItem}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 100 }}
+              ListEmptyComponent={<Text style={styles.emptyText}>No events on this day.</Text>}
             />
-            <View style={styles.monthEventListContainer}>
-              <Text style={styles.monthEventListHeader}>{formatDateFull(selectedDate).toUpperCase()}</Text>
-              <FlatList
-                data={dayEvents}
-                keyExtractor={item => item.id}
-                renderItem={renderMonthEventItem}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 100 }}
-                ListEmptyComponent={<Text style={styles.emptyText}>No events on this day.</Text>}
-              />
-            </View>
-          </CalendarProvider>
-        </View>
-      )}
+          </View>
+        </CalendarProvider>
+      </View>
 
       {/* 4. FLOATING ACTION BUTTON (FAB) */}
       <TouchableOpacity 
@@ -1059,7 +1094,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: 8,
         paddingTop: 12,
         paddingBottom: 8,
         backgroundColor: colors.background,
@@ -1109,7 +1144,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 20,
+        paddingHorizontal: 8,
         paddingVertical: 12,
         backgroundColor: colors.background,
       },
@@ -1161,7 +1196,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       },
       monthChipsContainer: {
         flexDirection: 'row',
-        paddingHorizontal: 16,
+        paddingHorizontal: 8,
         paddingTop: 12,
         gap: 8,
       },
@@ -1187,7 +1222,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       weekStrip: { 
         flexDirection: 'row', 
         justifyContent: 'space-between', 
-        paddingHorizontal: 24, 
+        paddingHorizontal: 8, 
         marginBottom: 16,
         paddingTop: 8,
         backgroundColor: colors.background,
@@ -1234,7 +1269,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         backgroundColor: colors.background,
       },
       timelineInner: {
-        height: 24 * HOUR_HEIGHT + 100, // 24 hours + padding
+        // height removed, set dynamically inline
         position: 'relative',
       },
       hourRow: {
@@ -1261,7 +1296,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         position: 'absolute',
         top: 0,
         left: 60, // Right of the hour text
-        right: 12,
+        right: 8,
         bottom: 0,
       },
       eventBlock: {
@@ -1375,7 +1410,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       
       /* Month View Styles */
       monthViewContainer: { flex: 1 },
-      monthEventListContainer: { flex: 1, paddingHorizontal: 24, paddingTop: 16 },
+      monthEventListContainer: { flex: 1, paddingHorizontal: 8, paddingTop: 16 },
       monthEventListHeader: { fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 12, letterSpacing: 1 },
       monthEventRow: { backgroundColor: '#1c1c1e', padding: 12, borderRadius: 12, marginBottom: 8, borderLeftWidth: 3 },
       monthEventTitle: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
@@ -1384,7 +1419,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
 
       /* Unscheduled Strip Styles */
       unscheduledStrip: {
-        paddingHorizontal: SPACE.xl,
+        paddingHorizontal: 8,
         paddingVertical: SPACE.sm,
         borderBottomWidth: 1,
         borderBottomColor: colors.border,

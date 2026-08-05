@@ -7,7 +7,9 @@
  *  - readOnly mode: no confetti, no Done button, shows historical date
  */
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { LineChart } from 'react-native-chart-kit';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -150,6 +152,86 @@ export default function WorkoutSummaryScreen() {
     opacity: streakOpacity.value,
   }));
 
+  const screenWidth = Dimensions.get('window').width;
+  const [selectedLift, setSelectedLift] = useState<string>('');
+  const [selectedMetric, setSelectedMetric] = useState<'1RM' | 'Volume'>('1RM');
+
+  // Compute performed lifts for today
+  const performedLifts = useMemo(() => {
+    let logDate = targetDate;
+    if (!logDate && gymLogs && gymLogs.length > 0) {
+      logDate = [...gymLogs].sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
+    }
+    const todayLog = gymLogs?.find(l => l.date === logDate);
+    if (todayLog?.exercises && todayLog.exercises.length > 0) {
+      const activeEx = todayLog.exercises.filter((e: any) => !e.skipped).map((e: any) => e.name);
+      return Array.from(new Set(activeEx));
+    }
+    return ['Bench Press', 'Squat', 'Deadlift'];
+  }, [gymLogs, targetDate]);
+
+  useEffect(() => {
+    if (performedLifts.length > 0 && (!selectedLift || !performedLifts.includes(selectedLift))) {
+      setSelectedLift(performedLifts[0]);
+    }
+  }, [performedLifts, selectedLift]);
+
+  const chartData = useMemo(() => {
+    if (!gymLogs || gymLogs.length === 0) return null;
+
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
+
+    const logsInRange = gymLogs
+      .filter(l => l.date >= ninetyDaysAgoStr)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const labels: string[] = [];
+    const dataPoints: number[] = [];
+
+    logsInRange.forEach(log => {
+      if (!log.exercises) return;
+      const liftEx = log.exercises.find(e => e.name.toLowerCase() === selectedLift.toLowerCase() || e.name.toLowerCase().includes(selectedLift.toLowerCase()));
+      if (liftEx && liftEx.setsLog) {
+        let max1RM = 0;
+        let totalVolume = 0;
+        
+        liftEx.setsLog.forEach((set: any) => {
+          if ((set.completed || (log as any).completed || (set.weight && set.reps)) && set.weight && set.reps) {
+            const est1RM = set.weight * (1 + set.reps / 30);
+            if (est1RM > max1RM) max1RM = est1RM;
+            totalVolume += set.weight * set.reps;
+          }
+        });
+
+        const value = selectedMetric === '1RM' ? max1RM : totalVolume;
+        if (value > 0) {
+          const dateObj = new Date(log.date);
+          const formattedDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          labels.push(formattedDate);
+          dataPoints.push(Math.round(value));
+        }
+      }
+    });
+
+    if (dataPoints.length < 2) return null; // Need at least 2 points for a line chart
+
+    // Thin out labels if there are too many (e.g., > 6)
+    const step = Math.ceil(labels.length / 6);
+    const displayLabels = labels.map((l, i) => i % step === 0 ? l : '');
+
+    return {
+      labels: displayLabels,
+      datasets: [{
+        data: dataPoints,
+        color: (opacity = 1) => `rgba(165, 153, 255, ${opacity})`,
+        strokeWidth: 3,
+      }],
+      legend: [`${selectedLift} - ${selectedMetric === '1RM' ? 'Est. 1RM (kg)' : 'Volume (kg)'}`]
+    };
+  }, [gymLogs, selectedLift, selectedMetric]);
+
   return (
     <SafeAreaView style={styles.root}>
       {!readOnly && isPR && showConfetti && (
@@ -171,20 +253,24 @@ export default function WorkoutSummaryScreen() {
         </View>
       )}
 
-      <View style={[styles.content, readOnly && { paddingTop: 20 }]}>
-        <View style={styles.iconContainer}>
-          <Ionicons name="trophy" size={64} color="#eab308" />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.content, readOnly && { paddingTop: 20 }, { paddingBottom: 100 }]} showsVerticalScrollIndicator={false}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30, width: '100%' }}>
+          <View style={{ ...styles.iconContainer, marginBottom: 0, marginRight: SPACE.lg }}>
+            <Ionicons name="trophy" size={56} color="#eab308" />
+          </View>
+          <View style={{ flex: 1, alignItems: 'flex-start' }}>
+            <Text style={{ ...styles.title, fontSize: 28, marginBottom: 2, textAlign: 'left' }} adjustsFontSizeToFit numberOfLines={1}>
+              {readOnly
+                ? targetDate
+                  ? formatIndianDatePretty(targetDate)
+                  : 'Session Summary'
+                : 'Workout Complete!'}
+            </Text>
+            <Text style={{ ...styles.subtitle, marginBottom: 0, textAlign: 'left' }}>
+              {readOnly ? 'You crushed it on this day.' : 'You crushed it today.'}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.title}>
-          {readOnly
-            ? targetDate
-              ? formatIndianDatePretty(targetDate)
-              : 'Session Summary'
-            : 'Workout Complete!'}
-        </Text>
-        <Text style={styles.subtitle}>
-          {readOnly ? 'You crushed it on this day.' : 'You crushed it today.'}
-        </Text>
 
         {/* P5 — PR Badge with bouncy entrance */}
         {isPR && newPR && (
@@ -204,41 +290,7 @@ export default function WorkoutSummaryScreen() {
           </Animated.View>
         )}
 
-        {/* P5 — Streak card with bouncy entrance */}
-        <Animated.View style={[styles.streakCard, streakStyle]}>
-          <TouchableOpacity
-            style={styles.streakInner}
-            onPress={() => {
-              feedback.tap();
-              navigation.navigate('GymProgress');
-            }}
-          >
-            <View style={styles.streakLeft}>
-              <Ionicons name="calendar" size={24} color="#C490FF" />
-              <View>
-                <Text style={styles.streakTitle}>
-                  {readOnly ? 'Consistency' : `${currentStreak} Day Streak!`}
-                </Text>
-                <Text style={styles.streakSubtitle}>
-                  {readOnly ? 'Way to keep showing up.' : 'Keep the momentum going.'}
-                </Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-        </Animated.View>
 
-        {!readOnly && (
-          <TouchableOpacity
-            style={styles.doneBtn}
-            onPress={() => {
-              feedback.success();
-              navigation.goBack();
-            }}
-          >
-            <Text style={styles.doneBtnText}>Done</Text>
-          </TouchableOpacity>
-        )}
 
         {/* G8: Session Notes display */}
         {sessionNotes ? (
@@ -250,7 +302,89 @@ export default function WorkoutSummaryScreen() {
             <Text style={styles.notesText}>{sessionNotes}</Text>
           </View>
         ) : null}
-      </View>
+
+        {/* 90-Day Progression Dashboard */}
+        <Animated.View style={[styles.streakCard, streakStyle, { marginTop: SPACE.lg, flex: 1 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16 }}>
+            <Ionicons name="stats-chart" size={18} color={colors.accentPrimary} />
+            <Text style={styles.notesLabel}>90-Day Progression</Text>
+          </View>
+
+          {/* Lift Selector */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <View style={{ flexDirection: 'row', gap: 8, paddingRight: 16 }}>
+              {performedLifts.map(lift => (
+                <TouchableOpacity
+                  key={lift}
+                  style={[
+                    styles.toggleBtn,
+                    selectedLift === lift && { backgroundColor: 'rgba(165,153,255,0.15)', borderColor: colors.accentPrimary }
+                  ]}
+                  onPress={() => { feedback.tap(); setSelectedLift(lift); }}
+                >
+                  <Text style={[styles.toggleBtnText, selectedLift === lift && { color: colors.accentPrimary }]}>{lift}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+
+          {/* Metric Selector */}
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+            {['1RM', 'Volume'].map(metric => (
+              <TouchableOpacity
+                key={metric}
+                style={[
+                  styles.toggleBtn,
+                  selectedMetric === metric && { backgroundColor: 'rgba(165,153,255,0.15)', borderColor: colors.accentPrimary }
+                ]}
+                onPress={() => { feedback.tap(); setSelectedMetric(metric as any); }}
+              >
+                <Text style={[styles.toggleBtnText, selectedMetric === metric && { color: colors.accentPrimary }]}>{metric === '1RM' ? 'Est. 1RM' : 'Total Volume'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Chart Display */}
+          {chartData ? (
+            <LineChart
+              data={chartData}
+              width={screenWidth - SPACE.xl * 2 - 32} // padding adjustments
+              height={320}
+              chartConfig={{
+                backgroundColor: '#1C1C1E',
+                backgroundGradientFrom: '#1C1C1E',
+                backgroundGradientTo: '#1C1C1E',
+                decimalPlaces: 0,
+                color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(161, 161, 170, ${opacity})`, // colors.textMuted
+                style: { borderRadius: 16 },
+                propsForDots: { r: '4', strokeWidth: '2', stroke: colors.accentPrimary }
+              }}
+              bezier
+              style={{ marginVertical: 8, borderRadius: 16, marginLeft: -16 }} // shift slightly left to align axis
+            />
+          ) : (
+            <View style={{ height: 320, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12 }}>
+              <Text style={{ color: colors.textMuted, fontFamily: FONT_FAMILY.medium, textAlign: 'center', paddingHorizontal: 20 }}>Not enough {selectedLift} data in last 90 days.</Text>
+            </View>
+          )}
+        </Animated.View>
+
+      </ScrollView>
+
+      {!readOnly && (
+        <View style={{ paddingHorizontal: SPACE.xl, paddingTop: SPACE.md, paddingBottom: 100 }}>
+          <TouchableOpacity
+            style={styles.doneBtn}
+            onPress={() => {
+              feedback.success();
+              navigation.goBack();
+            }}
+          >
+            <Text style={styles.doneBtnText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -259,7 +393,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       root: { flex: 1, backgroundColor: colors.background },
       header: { paddingHorizontal: SPACE.xl, paddingTop: 10, alignItems: 'flex-start' },
       backBtn: { padding: SPACE.sm, backgroundColor: colors.surface, borderRadius: RADIUS.full },
-      content: { flex: 1, padding: SPACE.xl, alignItems: 'center', justifyContent: 'center' },
+      content: { flexGrow: 1, padding: SPACE.xl, alignItems: 'center', justifyContent: 'flex-start' },
       iconContainer: { alignItems: 'center', marginBottom: SPACE.xl },
       title: {
         fontFamily: FONT_FAMILY.bold, fontSize: 32, color: colors.textPrimary,
@@ -290,16 +424,30 @@ const makeStyles = (colors: any) => StyleSheet.create({
       streakSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted },
 
       doneBtn: {
-        backgroundColor: '#C490FF', paddingVertical: 18, width: '100%',
+        backgroundColor: '#C490FF', paddingVertical: 14, width: '100%',
         borderRadius: RADIUS.md, alignItems: 'center',
       },
-      doneBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.background },
+      doneBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.background },
       notesCard: {
         width: '100%', marginTop: SPACE.md,
         backgroundColor: 'rgba(255,255,255,0.05)',
         borderRadius: RADIUS.lg, padding: SPACE.md,
         borderWidth: 1, borderColor: 'rgba(165,153,255,0.2)',
       },
-      notesLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-      notesText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textSecondary, lineHeight: 20 },
+      notesLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+      notesText: { fontFamily: FONT_FAMILY.body, fontSize: 15, color: colors.textPrimary, lineHeight: 22 },
+
+      toggleBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: RADIUS.full,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+      },
+      toggleBtnText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 12,
+        color: colors.textMuted,
+      },
     });

@@ -30,6 +30,8 @@ import { COLLECTION } from '../config/constants';
 import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
 import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
+import { handleSyncError } from '../utils/errorUtils';
+
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -167,7 +169,7 @@ export default function AttendanceScreen() {
         needsCommit = true;
       }
     });
-    if (needsCommit) batch.commit().catch(console.error);
+    if (needsCommit) batch.commit().catch(handleSyncError);
   }, [user, subjects]);
 
   // ── Load Logs & Holidays ──
@@ -474,7 +476,7 @@ Guess or summarize subject names logically if they are codes.`;
         userId: user.uid, subjectId: subject.id, subjectName: subject.name,
         type, action, date: logDate, isExtra, timestamp: Date.now(),
       });
-      batch.commit().catch(console.error);
+      batch.commit().catch(handleSyncError);
 
       const oldPct = (subject.classesTotal || 0) + (subject.labsTotal || 0) === 0 ? 100 : (((subject.classesAttended || 0) + (subject.labsAttended || 0)) / ((subject.classesTotal || 0) + (subject.labsTotal || 0))) * 100;
       const combinedAttended = (subject.classesAttended || 0) + (subject.labsAttended || 0) + (action === 'attended' ? 1 : 0);
@@ -512,7 +514,7 @@ Guess or summarize subject names logically if they are codes.`;
       const batch = writeBatch(db);
       batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), { [attendedKey]: newAttended, [totalKey]: newTotal });
       batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, logId));
-      batch.commit().catch(console.error);
+      batch.commit().catch(handleSyncError);
     } catch (err) { Alert.alert('Error', 'Undo failed'); }
   };
 
@@ -647,7 +649,7 @@ Guess or summarize subject names logically if they are codes.`;
           subjects.forEach(s => {
             batch.update(doc(db, COLLECTION.ATTENDANCE, s.id!), { classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 });
           });
-          batch.commit().catch(console.error);
+          batch.commit().catch(handleSyncError);
           setConfirmConfig(p => ({ ...p, visible: false }));
         } catch (err) { console.error(err); }
       }
@@ -799,7 +801,7 @@ Guess or summarize subject names logically if they are codes.`;
           const sessionLogs = subLogs.filter((l: any) =>
             l.date === selectedDate && !l.isExtra &&
             (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type))
-          );
+          ).sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0));
           const log = sessionLogs[idx];
           const isLab = type === 'lab';
 

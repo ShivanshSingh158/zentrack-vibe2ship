@@ -94,12 +94,18 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
     const key = getNextKey();
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30-second strict timeout
+
     try {
       const resp = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (resp.ok) {
         return resp.json();
@@ -122,6 +128,17 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
       throw new Error(msg);
 
     } catch (fetchErr: any) {
+      clearTimeout(timeoutId);
+      
+      if (fetchErr.name === 'AbortError') {
+        console.warn('[GeminiProxy] Request timed out (30s limit). Returning offline fallback.');
+        return {
+          candidates: [{
+            content: { parts: [{ text: "Network is too weak right now." }] }
+          }]
+        };
+      }
+
       if (fetchErr.message && !fetchErr.message.includes('API Error')) {
         // Real error (not rate limit) — propagate immediately
         throw fetchErr;

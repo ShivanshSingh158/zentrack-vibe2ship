@@ -105,18 +105,13 @@ const ZEN_DARK_THEME = {
 // ─── AsyncStorage Keys ────────────────────────────────────────────────────────
 //
 // NAV_ROUTE_KEY:    persists the current tab so resume (background→foreground)
-//                   restores exactly where the user was. Cleared on kill.
-//
-// SESSION_ALIVE_KEY: a heartbeat flag. Written when app comes to foreground.
-//                    Cleared when app backgrounds. On cold boot (process killed),
-//                    this key is ABSENT — so we know to reset to Home.
-//                    On resume (process alive, just hidden), this key is PRESENT
-//                    — so we restore the saved tab.
-//
-// This is the exact mechanism WhatsApp uses: kill = Home, resume = last screen.
+//                   restores exactly where the user was.
 
 const NAV_ROUTE_KEY    = '@zentrack_last_route';
-const SESSION_ALIVE_KEY = '@zentrack_session_alive';
+
+// ─── Synchronous Memory Cache ─────────────────────────────────────────────────
+// Replaces async storage for instant 0ms background/foreground tracking
+let lastBackgroundTimestamp: number | null = null;
 
 const ALLOWED_SAVE_ROUTES = new Set([
   'Home', 'Tasks', 'Gym', 'Calendar', 'Habits',
@@ -248,11 +243,15 @@ function NestedHeader({ title }: { title: string }) {
   );
 }
 
+import { TelegramTabBar } from '../components/Navigation/TelegramTabBar';
+
 // ─── Main Tab Navigator ───────────────────────────────────────────────────────
 //
 // initialTab is a STABLE PROP passed at mount time from the boot read.
 // It never changes after mount — this is the WhatsApp/Instagram pattern.
 // Changing it would remount the entire tab navigator and lose all screen state.
+
+const TabBarNullButton = () => null;
 
 function MainTabNavigator({ initialTab }: { initialTab: string }) {
   const { colors }       = useTheme();
@@ -268,66 +267,36 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
   // Background-prefetch lazy screens after initial render
   useEffect(() => { startPrefetching(pinnedModules); }, [pinnedModules]);
 
+  // Delayed eager loading: start lazy to prevent startup freeze, 
+  // then silently mount pinned tabs in the background once the CPU is idle.
+  const [eagerLoadPinned, setEagerLoadPinned] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setEagerLoadPinned(true);
+    }, 1500); // Wait 1.5s for initial Home screen to settle
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Memoize custom tab bar to prevent re-renders when MainTabNavigator re-renders
+  const renderTabBar = useCallback((props: any) => <TelegramTabBar {...props} />, []);
+
   return (
     <Tab.Navigator
       initialRouteName={initialTab}
+      tabBar={renderTabBar}
       screenListeners={({ route }) => ({
         focus: () => onTabFocus(route.name),
       })}
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          // sceneStyle background MUST match styles.xml windowBackground.
-          // cacheAwareLazy's loading stub is transparent — it correctly shows this colour.
-          sceneStyle: { backgroundColor: '#080510' },
-          tabBarShowLabel:         true,
-          tabBarActiveTintColor:   colors.accentPrimary,
-          tabBarInactiveTintColor: colors.textMuted,
-          tabBarLabelStyle: {
-            fontSize:    10,
-            fontFamily:  FONT_FAMILY.body,
-            marginTop:   4,
-            marginBottom: 0,
-          },
-          tabBarItemStyle:  { paddingVertical: 10 },
-          tabBarStyle:      styles.tabBar,
-          tabBarBackground: () => (
-            <View style={[styles.tabBarBackground, { backgroundColor: 'rgba(10, 10, 10, 0.95)' }]} />
-          ),
-          tabBarIcon: ({ color, size, focused }) => {
-            const icons: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap }> = {
-              Home:         { active: 'home',             inactive: 'home-outline' },
-              Tasks:        { active: 'checkmark-circle', inactive: 'checkmark-circle-outline' },
-              Sara:         { active: 'planet',           inactive: 'planet-outline' },
-              Calendar:     { active: 'calendar',         inactive: 'calendar-outline' },
-              Habits:       { active: 'flame',            inactive: 'flame-outline' },
-              Gym:          { active: 'barbell',          inactive: 'barbell-outline' },
-              Attendance:   { active: 'clipboard',        inactive: 'clipboard-outline' },
-              Analytics:    { active: 'bar-chart',        inactive: 'bar-chart-outline' },
-              Notes:        { active: 'document-text',    inactive: 'document-text-outline' },
-              Assignments:  { active: 'book',             inactive: 'book-outline' },
-              Grades:       { active: 'calculator',       inactive: 'calculator-outline' },
-              Learning:     { active: 'library',          inactive: 'library-outline' },
-              More:         { active: 'grid',             inactive: 'grid-outline' },
-            };
-            const iconSet  = icons[route.name] || { active: 'ellipse', inactive: 'ellipse-outline' };
-            const iconName = focused ? iconSet.active : iconSet.inactive;
-
-            if (route.name === 'Sara') {
-              return (
-                <View style={[styles.saraTab, {
-                  borderColor:     focused ? colors.textPrimary : 'transparent',
-                  backgroundColor: focused ? colors.surface2    : 'transparent',
-                }]}>
-                  <Ionicons name={iconName} size={size + 4} color={focused ? colors.textPrimary : colors.textMuted} />
-                </View>
-              );
-            }
-            return <Ionicons name={iconName} size={size} color={color} />;
-          },
-        })}
-        backBehavior="history"
-      >
-        <Tab.Screen name="Home" component={SafeDashboard} />
+      detachInactiveScreens={false}
+      screenOptions={{
+        headerShown: false,
+        sceneStyle: { backgroundColor: '#080510' },
+        lazy: true, // Default to lazy for hidden tabs
+        animation: 'shift',
+      }}
+      backBehavior="history"
+    >
+        <Tab.Screen name="Home" component={SafeDashboard} options={{ lazy: false }} />
         {Object.keys(COMPONENT_MAP).map((modId) => {
           const isPinned = pinnedModules.includes(modId);
           return (
@@ -335,11 +304,18 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
               key={modId}
               name={modId}
               component={COMPONENT_MAP[modId]}
-              options={{ tabBarItemStyle: !isPinned ? { display: 'none' } : { paddingVertical: 10 } }}
+              options={!isPinned ? {
+                tabBarItemStyle: { display: 'none' },
+                tabBarButton: TabBarNullButton,
+                lazy: true,
+              } : {
+                tabBarItemStyle: { paddingVertical: 10 },
+                lazy: true,
+              }}
             />
           );
         })}
-        <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} />
+        <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} options={{ lazy: false }} />
       </Tab.Navigator>
   );
 }
@@ -350,6 +326,7 @@ function NestedScreens() {
   return (
     <ErrorBoundary screenName="Nested Screens">
       <Stack.Navigator
+        detachInactiveScreens={false}
         screenOptions={{
           header:            ({ route }) => <NestedHeader title={route.name} />,
           contentStyle:      { backgroundColor: colors.background },
@@ -393,7 +370,7 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#080510' }}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Navigator screenOptions={{ headerShown: false }} detachInactiveScreens={false}>
         <Stack.Screen name="MainTabs" component={MainTabsScreen} />
         <Stack.Group screenOptions={{ presentation: 'card' }}>
           <Stack.Screen name="MoreStack" component={NestedScreens} />
@@ -456,22 +433,13 @@ export default function AppNavigator() {
   useEffect(() => {
     const boot = async () => {
       try {
-        // Read session-alive flag and last route simultaneously
-        const [[, sessionAlive], [, savedTab], [, onboardedVal]] =
-          await AsyncStorage.multiGet([SESSION_ALIVE_KEY, NAV_ROUTE_KEY, ONBOARDING_KEY]);
+        // Read last route and onboarding flag
+        const [[, savedTab], [, onboardedVal]] =
+          await AsyncStorage.multiGet([NAV_ROUTE_KEY, ONBOARDING_KEY]);
 
-        // ── Kill vs. Resume detection ──────────────────────────────────────
-        // SESSION_ALIVE_KEY is present only when the app process was NOT killed.
-        // If it's absent we're on a fresh cold boot → always start from Home.
-        const isWarmResume = sessionAlive === '1';
-
-        if (isWarmResume && savedTab && ALLOWED_SAVE_ROUTES.has(savedTab)) {
-          // Warm resume: restore exact screen the user was on
-          setInitialTab(savedTab);
-        } else {
-          // Cold boot (killed): always Home — WhatsApp/Instagram standard
-          setInitialTab('Home');
-        }
+        // Cold boot (process killed/started): always Home — WhatsApp/Instagram standard.
+        // Warm resume is handled directly by the navigator since it never unmounts.
+        setInitialTab('Home');
 
         if (onboardedVal) setOnboarded(onboardedVal === 'true');
       } catch {
@@ -540,7 +508,53 @@ export default function AppNavigator() {
       })();
     }
 
-    return () => { unsubAuth(); };
+    // ── AppState heartbeat & Lifecycle ───────────────────────────────────────
+    //
+    // STALE SESSION TIMEOUT:
+    //   If the app remains in the background for > 30 minutes, we reset the user
+    //   to the Home tab upon resume to keep the experience fresh.
+    //
+    // CHAT HISTORY CLEAR:
+    //   Sara and Gym AI conversations are cleared on background so every
+    //   foreground session starts fresh — privacy & context reset.
+    //
+    const handleAppStateChange = async (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        // Synchronous (0ms) check for stale session (> 30 mins)
+        // If the JS engine is still alive, we read instantly from memory.
+        if (lastBackgroundTimestamp) {
+          if (Date.now() - lastBackgroundTimestamp > 30 * 60 * 1000) {
+            if (navigationRef.isReady()) {
+              // @ts-ignore
+              navigationRef.navigate('MainTabs', { screen: 'Home' });
+            }
+          }
+        }
+        
+        // 3. Clear in-memory background timestamp
+        lastBackgroundTimestamp = null;
+        
+      } else if (nextState === 'background' || nextState === 'inactive') {
+        // Going to background:
+        // 1. Mark timestamp synchronously in memory
+        lastBackgroundTimestamp = Date.now();
+        
+        // 2. Clear AI chat histories (this can be safely async)
+        AsyncStorage.multiRemove([
+          'sara_chat_history',
+          'sara_memory_summary',
+          'gym_chat_history',
+          'gym_memory_summary',
+        ]).catch(() => {});
+      }
+    };
+
+    const appStateSub = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      unsubAuth();
+      appStateSub.remove();
+    };
   }, []);
 
   // ── Route tracking — emit to SARA FAB visibility listener ─────────────────
@@ -565,7 +579,7 @@ export default function AppNavigator() {
         {user ? (
           !onboarded ? (
             <ErrorBoundary screenName="Onboarding">
-              <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }}>
+              <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }} detachInactiveScreens={false}>
                 <Stack.Screen name="Onboarding">
                   {() => <OnboardingScreen onComplete={() => setOnboarded(true)} />}
                 </Stack.Screen>
@@ -576,7 +590,7 @@ export default function AppNavigator() {
             <RootNavigatorWithSara initialTab={initialTab} />
           )
         ) : (
-          <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }}>
+          <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }} detachInactiveScreens={false}>
             <Stack.Screen name="Landing"       component={LandingScreen} />
             <Stack.Screen name="GuestDashboard" component={GuestDashboard} />
             <Stack.Screen name="Auth"           component={AuthScreen} />

@@ -30,6 +30,8 @@ import { WellnessProvider, useWellnessData } from "./domains/WellnessContext";
 import { AcademicProvider, useAcademicData } from "./domains/AcademicContext";
 import { CreativeProvider, useCreativeData } from "./domains/CreativeContext";
 import { PlannerProvider, usePlannerData }   from "./domains/PlannerContext";
+import { handleSyncError } from '../utils/errorUtils';
+
 
 // ─── Type Exports (all preserved — no consumer changes needed) ─────────────────
 
@@ -191,6 +193,7 @@ interface MobileDataContextType {
   pendingTaskCount: number; todayHabits: Habit[];
   pinnedModules: string[]; setPinnedModules: (modules: string[]) => void;
   updateMasterPlan: (dayIndex: number, planDay: GymPlanDay) => Promise<void>;
+  updateFullMasterPlan: (newCustomDays: Record<number, GymPlanDay>) => Promise<void>;
   applyMasterTemplate: (templateId: 'arnold' | 'ppl') => Promise<void>;
   optimisticAddTask: (task: Task) => void;
   optimisticUpdateTask: (taskId: string, partial: Partial<Task>) => void;
@@ -261,6 +264,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     gymEnsureSubscribed:  wellness.ensureSubscribed,
     userGymPlan:          wellness.userGymPlan,
     updateMasterPlan:     wellness.updateMasterPlan,
+    updateFullMasterPlan: wellness.updateFullMasterPlan,
     applyMasterTemplate:  wellness.applyMasterTemplate,
     waterLogs:            wellness.waterLogs,
     sleepLogs:            wellness.sleepLogs,
@@ -309,7 +313,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     core.pinnedModules, core.setPinnedModules, core.googleAccessToken,
     core.optimisticAddTask, core.optimisticUpdateTask, core.optimisticDeleteTask,
     core.optimisticUpdateHabit, core.optimisticAddHabitLog, core.optimisticUpdateHabitLog, core.optimisticRemoveHabitLog,
-    wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.applyMasterTemplate, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
+    wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.updateFullMasterPlan, wellness.applyMasterTemplate, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
     wellness.optimisticAddGymLog, wellness.optimisticUpdateGymLog,
     academic.attendance, academic.attendanceLogs, academic.assignments, academic.semesters, academic.semesterSubjects,
     academic.optimisticUpdateAttendance, academic.optimisticAddAssignment, academic.optimisticUpdateAssignment, academic.optimisticDeleteAssignment,
@@ -345,7 +349,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
         // BUG-N5 FIX: Pass userGymPlan so gym reminders respect the user's
         // custom workout plan instead of always using the static PPL template.
         userGymPlan: wellness.userGymPlan,
-      }).catch(console.error);
+      }).catch(console.warn);
     }, 3000); // 3s debounce window absorbs all burst snapshots
     return () => {
       if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
@@ -401,6 +405,7 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   gymEnsureSubscribed: () => {},
   userGymPlan: null,
   updateMasterPlan: async () => {},
+  updateFullMasterPlan: async () => {},
   applyMasterTemplate: async () => {},
   waterLogs: [],
   sleepLogs: [],
@@ -423,7 +428,6 @@ export function useMobileData(): MobileDataContextType {
   const ctx = useContext(MobileDataShimContext);
   if (!ctx) {
     console.warn('[MobileData] useMobileData called outside MobileDataProvider — returning safe empty fallback.');
-    console.error(new Error().stack);
     return DEFAULT_FALLBACK_CTX;
   }
   return ctx;

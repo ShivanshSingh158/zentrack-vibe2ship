@@ -92,7 +92,7 @@ const fetchYouTubeTranscript = async (videoId: string): Promise<string> => {
     if (res.ok) {
       const data = await res.json();
       if (data.transcript && data.transcript.length > 50) {
-        return data.transcript.slice(0, 14000);
+        return data.transcript;
       }
     }
   } catch { /* Fail silently */ }

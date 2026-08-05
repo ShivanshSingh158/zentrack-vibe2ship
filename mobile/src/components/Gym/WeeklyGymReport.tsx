@@ -50,7 +50,8 @@ function localDateStr(d: Date): string {
 
 /** Returns all 7 YYYY-MM-DD strings for the week containing anchorDate (Mon–Sun). */
 function getWeekRange(anchor: string): string[] {
-  const d = new Date(anchor + 'T00:00:00'); // parse as local midnight
+  const [y, m, day] = anchor.split('-').map(Number);
+  const d = new Date(y, m - 1, day); // safe local date parsing
   const dow = d.getDay(); // 0=Sun
   const monday = new Date(d);
   monday.setDate(d.getDate() - ((dow + 6) % 7));
@@ -63,7 +64,8 @@ function getWeekRange(anchor: string): string[] {
 
 /** Returns the previous week's date range. */
 function getPrevWeekRange(anchor: string): string[] {
-  const d = new Date(anchor + 'T00:00:00');
+  const [y, m, day] = anchor.split('-').map(Number);
+  const d = new Date(y, m - 1, day);
   d.setDate(d.getDate() - 7);
   return getWeekRange(localDateStr(d));
 }
@@ -199,8 +201,8 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
   const prevTotalVolume = useMemo(() =>
     Object.values(prevWeekMuscle).reduce((s, m) => s + m.totalKg, 0), [prevWeekMuscle]);
 
-  const workoutDays = weekLogs.filter(l => (l.exercises?.length ?? 0) > 0).length;
-  const prevWorkoutDays = prevLogs.filter(l => (l.exercises?.length ?? 0) > 0).length;
+  const workoutDays = weekLogs.filter(l => (l.exercises?.length ?? 0) > 0 || ((l as any).cardio?.length ?? 0) > 0).length;
+  const prevWorkoutDays = prevLogs.filter(l => (l.exercises?.length ?? 0) > 0 || ((l as any).cardio?.length ?? 0) > 0).length;
 
   // ── Muscle breakdown sorted by sets ─────────────────────────────────────
 

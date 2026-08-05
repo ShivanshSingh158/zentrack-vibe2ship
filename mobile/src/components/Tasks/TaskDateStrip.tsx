@@ -92,17 +92,18 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, o
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 16,
+    paddingTop: 8,
     paddingBottom: 16,
     backgroundColor: '#000000',
-    alignItems: 'center', // Centers everything
+    width: '100%',
   },
   headerRow: {
-    width: 316, // 7*40 + 6*6 = 316
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'baseline',
-    marginBottom: 16,
+    marginBottom: 12,
+    paddingHorizontal: 8,
   },
   dayFullText: {
     fontFamily: 'Inter_600SemiBold',
@@ -115,14 +116,16 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
   },
   dateRow: {
-    width: 316,
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    gap: 6,
+    paddingHorizontal: 8,
   },
   dateItem: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 40,
     height: 56,
     borderRadius: 12,
     backgroundColor: '#141416',

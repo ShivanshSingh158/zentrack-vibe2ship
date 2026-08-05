@@ -27,6 +27,7 @@ export interface WellnessContextType {
   weightLogs: WeightLog[];
   userGymPlan: UserGymPlanDoc | null;
   updateMasterPlan: (dayIndex: number, planDay: GymPlanDay) => Promise<void>;
+  updateFullMasterPlan: (newCustomDays: Record<number, GymPlanDay>) => Promise<void>;
   applyMasterTemplate: (templateId: 'arnold' | 'ppl') => Promise<void>;
   /** Call this from any Gym screen to ensure the subscription is open. */
   ensureSubscribed: () => void;
@@ -158,6 +159,12 @@ export function WellnessProvider({
     await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: Date.now() }, { merge: true });
   };
 
+  const updateFullMasterPlan = async (newCustomDays: Record<number, GymPlanDay>) => {
+    if (!user) return;
+    const docRef = doc(db, "user_gym_plans", user.uid);
+    await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: Date.now() }, { merge: true });
+  };
+
   const applyMasterTemplate = async (templateId: 'arnold' | 'ppl') => {
     if (!user) return;
     const docRef = doc(db, "user_gym_plans", user.uid);
@@ -193,7 +200,7 @@ export function WellnessProvider({
   const gymLogsReady = gymLogs.length > 0;
 
   return (
-    <WellnessContext.Provider value={{ gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, applyMasterTemplate, waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog }}>
+    <WellnessContext.Provider value={{ gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate, waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog }}>
       {children}
     </WellnessContext.Provider>
   );

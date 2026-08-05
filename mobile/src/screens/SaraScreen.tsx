@@ -15,7 +15,8 @@
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FONT_FAMILY, FONT_SIZE, RADIUS } from '../theme/tokens';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useSafeTimeout } from '../hooks/useSafeTimeout';
 
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
@@ -201,8 +202,9 @@ interface SaraInnerProps extends SaraProps {
 }
 
 function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRoutePrompt }: SaraInnerProps) {
-    const { colors, isDark } = useTheme();
-    const s = makeStyles(colors);
+  const safeSetTimeout = useSafeTimeout();
+  const { colors, isDark } = useTheme();
+  const s = makeStyles(colors);
   const {
     tasks, habits, habitLogs, notes, goals, gymLogs,
     attendance, assignments, customEvents, learningTopics,
@@ -384,6 +386,9 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
       }
       if (memEntry[1]) setMemorySummary(memEntry[1]);
       setIsLoaded(true);
+    }).catch(err => {
+      console.error('Failed to load Sara storage data:', err);
+      setIsLoaded(true); // Ensure we don't get stuck on the grey loading screen
     });
 
     getAppNotificationSettings().then(res => setNotifSettingsSummary(res.summary));
@@ -511,7 +516,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const scrollToBottom = () => {
-    setTimeout(() => scrollRef.current?.scrollToOffset({ offset: 0, animated: true }), 80);
+    safeSetTimeout(() => scrollRef.current?.scrollToOffset({ offset: 0, animated: true }), 80);
   };
 
   // ── Send a message ──────────────────────────────────────────────────────
@@ -1206,7 +1211,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
         },
         onError: (msg) => {
           setVoiceCaption(msg);
-          setTimeout(() => setVoiceStatus('listening'), 2000);
+          safeSetTimeout(() => setVoiceStatus('listening'), 2000);
         }
       },
       () => {
@@ -1228,13 +1233,13 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           setIsRunning(false);
           setInput(prev => prev ? prev + ' ' + text : text);
           // Small delay to ensure state updates before focusing
-          setTimeout(() => inputRef.current?.focus(), 100);
+          safeSetTimeout(() => inputRef.current?.focus(), 100);
         },
         onError: (msg) => {
           setIsRunning(false);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
           setInput(`[Error: ${msg}]`);
-          setTimeout(() => setInput(''), 2000);
+          safeSetTimeout(() => setInput(''), 2000);
         }
       });
     } else {
@@ -1533,7 +1538,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
               style={s.voiceControlBtn}
               onPress={() => {
                 closeVoiceMode();
-                setTimeout(() => inputRef.current?.focus(), 300);
+                safeSetTimeout(() => inputRef.current?.focus(), 300);
               }}
             >
               <Ionicons name="keypad-outline" size={22} color={colors.textMuted} />

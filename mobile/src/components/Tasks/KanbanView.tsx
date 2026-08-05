@@ -22,6 +22,8 @@ import { db } from "../../services/firebase";
 import { Task } from "../../contexts/MobileDataContext";
 import { COLLECTION } from "../../config/constants";
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from "../../theme/tokens";
+import { handleSyncError } from '../../utils/errorUtils';
+
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const COLUMN_WIDTH = SCREEN_WIDTH * 0.78;
@@ -83,7 +85,7 @@ export default function KanbanView({ tasks, onTaskPress, colors }: Props) {
       updates = { date: d.toISOString().slice(0, 10), status: "pending" };
     }
     if (task.id) {
-      await updateDoc(doc(db, COLLECTION.TASKS, task.id), updates as any).catch(console.error);
+      await updateDoc(doc(db, COLLECTION.TASKS, task.id), updates as any).catch(handleSyncError);
     }
   }, []);
 

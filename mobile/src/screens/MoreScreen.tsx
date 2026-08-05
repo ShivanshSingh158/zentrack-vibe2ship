@@ -16,6 +16,8 @@ import { BlurView } from 'expo-blur';
 import { useTheme } from "../contexts/ThemeContext";
 // Cap 7: BFE module ordering
 import { getFingerprint } from '../services/saraMemory';
+import { handleSyncError } from '../utils/errorUtils';
+
 
 // ─── Module Categories ────────────────────────────────────────────────────────
 
@@ -163,7 +165,7 @@ export default function MoreScreen() {
   }, [isEditing, selected, navigateWithClose]);
 
   const handleLogout = useCallback(() => {
-    auth.signOut().catch(console.error);
+    auth.signOut().catch(console.warn);
   }, []);
 
   return (

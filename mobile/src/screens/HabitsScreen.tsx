@@ -25,6 +25,8 @@ import { COLLECTION } from '../config/constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from "../contexts/ThemeContext";
 import { HabitReminderModal } from '../components/Habits/HabitReminderModal';
+import { handleSyncError } from '../utils/errorUtils';
+
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -81,7 +83,7 @@ function CreateHabitModal({ visible, userId, onClose }: {
         costPerDay: type === 'negative' && cost.trim() ? parseFloat(cost.trim()) : 0,
         targetCount: type === 'positive' && targetCount.trim() ? parseInt(targetCount.trim()) : null,
         createdAt: serverTimestamp(),
-      }).catch(e => console.error('[Habits] create error', e));
+      }).catch(handleSyncError);
     }, 150);
 
     setName('');

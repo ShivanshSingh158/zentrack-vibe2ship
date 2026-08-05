@@ -14,6 +14,8 @@ import { COLLECTION } from '../config/constants';
 import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
 import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
+import { handleSyncError } from '../utils/errorUtils';
+
 
 const STATUS_CONFIG = {
   not_started: { label: 'Not Started', color: '#6b7280', bg: 'rgba(107,114,128,0.1)', icon: 'time-outline' as const },
@@ -75,9 +77,9 @@ export default function AssignmentsScreen() {
 
     setTimeout(() => {
       if (editingId) {
-        updateDoc(doc(db, COLLECTION.ASSIGNMENTS, editingId), data).catch(console.error);
+        updateDoc(doc(db, COLLECTION.ASSIGNMENTS, editingId), data).catch(handleSyncError);
       } else {
-        addDoc(collection(db, COLLECTION.ASSIGNMENTS), { ...data, createdAt: Date.now() }).catch(console.error);
+        addDoc(collection(db, COLLECTION.ASSIGNMENTS), { ...data, createdAt: Date.now() }).catch(handleSyncError);
       }
     }, 150);
     

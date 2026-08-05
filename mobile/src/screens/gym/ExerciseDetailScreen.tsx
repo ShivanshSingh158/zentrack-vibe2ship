@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatDateShort, parseLocalDate } from '../../utils/dateUtils';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Platform, TextInput, KeyboardAvoidingView, ScrollView, Switch, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Platform, TextInput, KeyboardAvoidingView, ScrollView, Switch, Alert, ActivityIndicator, AppState } from 'react-native';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,6 +46,13 @@ export default function ExerciseDetailScreen() {
   const [videoReady, setVideoReady] = useState(false);
   const [showMuscleDropdown, setShowMuscleDropdown] = useState(false);
   
+  const [appState, setAppState] = useState(AppState.currentState);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', nextState => setAppState(nextState));
+    return () => sub.remove();
+  }, []);
+
   const muscleSuggestions = useMemo(() => {
     if (!muscle || !showMuscleDropdown) return [];
     const txt = muscle.toLowerCase();
@@ -416,7 +423,7 @@ export default function ExerciseDetailScreen() {
                 }}
                 initialPlayerParams={{ modestbranding: true, rel: false }} 
                 webViewProps={{
-                  androidLayerType: 'hardware',
+                  androidLayerType: appState === 'active' ? 'hardware' : 'software',
                   domStorageEnabled: true,
                   javaScriptEnabled: true,
                 }}

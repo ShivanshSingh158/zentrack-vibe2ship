@@ -18,6 +18,8 @@ import type { Task, Habit, HabitLog } from "../MobileDataContext";
 import { readCoreCacheMulti, writeCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
 import { clearAllDomainCaches } from "../../utils/domainCache";
 import { registerForPushNotificationsAsync } from "../../services/notifications";
+import { handleSyncError } from '../../utils/errorUtils';
+
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface CoreDataContextType {
@@ -86,12 +88,12 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     AsyncStorage.getItem("@zentrack_pinned_modules")
       .then(val => { if (val) setPinnedModulesState(JSON.parse(val)); })
-      .catch(console.error);
+      .catch(handleSyncError);
   }, []);
 
   const setPinnedModules = (mods: string[]) => {
     setPinnedModulesState(mods);
-    AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(mods)).catch(console.error);
+    AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(mods)).catch(console.warn);
   };
 
   // Google Workspace token
@@ -133,7 +135,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     if (user) {
       registerForPushNotificationsAsync().then((token) => {
         if (token) {
-          setDoc(doc(db, COLLECTION.USER_PROFILES, user.uid), { pushToken: token }, { merge: true }).catch(console.error);
+          setDoc(doc(db, COLLECTION.USER_PROFILES, user.uid), { pushToken: token }, { merge: true }).catch(handleSyncError);
         }
       });
     }

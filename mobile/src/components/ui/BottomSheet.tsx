@@ -48,11 +48,11 @@ export default function BottomSheet({
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      translateY.value = withTiming(0, { duration: 300 });
-      backdropOpacity.value = withTiming(1, { duration: 250 });
+      translateY.value = withSpring(0, { damping: 20, stiffness: 250, mass: 0.8 });
+      backdropOpacity.value = withTiming(1, { duration: 150 });
     } else if (mounted) {
-      translateY.value = withTiming(1000, { duration: 250 });
-      backdropOpacity.value = withTiming(0, { duration: 200 }, (finished) => {
+      translateY.value = withTiming(1000, { duration: 150 });
+      backdropOpacity.value = withTiming(0, { duration: 150 }, (finished) => {
         if (finished) {
           runOnJS(setMounted)(false);
         }

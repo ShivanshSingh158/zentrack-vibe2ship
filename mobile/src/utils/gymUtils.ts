@@ -171,20 +171,20 @@ import { GymExerciseLog, GymDayLog } from '../types/gym.types';
 
 export const calculateExerciseMaxWeight = (exercise: GymExerciseLog | undefined | null): number => {
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
-  const completedSets = exercise.setsLog.filter(s => s.completed && s.weight && s.weight > 0);
-  if (completedSets.length === 0) return 0;
-  return Math.max(...completedSets.map(s => s.weight as number));
+  const validSets = exercise.setsLog.filter(s => (s.completed || (s.weight && s.reps)) && s.weight && Number(s.weight) > 0);
+  if (validSets.length === 0) return 0;
+  return Math.max(...validSets.map(s => Number(s.weight)));
 };
 
 export const calculateEstimated1RM = (exercise: GymExerciseLog | undefined | null): number => {
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
-  const completedSets = exercise.setsLog.filter(s => s.completed && s.weight && s.weight > 0 && s.reps && s.reps > 0);
-  if (completedSets.length === 0) return 0;
+  const validSets = exercise.setsLog.filter(s => (s.completed || (s.weight && s.reps)) && s.weight && Number(s.weight) > 0 && s.reps && Number(s.reps) > 0);
+  if (validSets.length === 0) return 0;
   
   // Epley Formula: 1RM = Weight * (1 + (Reps / 30))
-  const oneRepMaxes = completedSets.map(s => {
-    const w = s.weight as number;
-    const r = s.reps as number;
+  const oneRepMaxes = validSets.map(s => {
+    const w = Number(s.weight);
+    const r = Number(s.reps);
     return w * (1 + (r / 30));
   });
   
@@ -208,10 +208,10 @@ export const calculateHistorical1RM = (gymLogs: any[], exerciseId: string): numb
 
 export const calculateExerciseAvgReps = (exercise: GymExerciseLog | undefined | null): number => {
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
-  const completedSets = exercise.setsLog.filter(s => s.completed && s.reps && s.reps > 0);
-  if (completedSets.length === 0) return 0;
-  const totalReps = completedSets.reduce((sum, s) => sum + (s.reps as number), 0);
-  return Math.round(totalReps / completedSets.length);
+  const validSets = exercise.setsLog.filter(s => (s.completed || (s.weight && s.reps)) && s.reps && Number(s.reps) > 0);
+  if (validSets.length === 0) return 0;
+  const totalReps = validSets.reduce((sum, s) => sum + Number(s.reps), 0);
+  return Math.round(totalReps / validSets.length);
 };
 
 export const calculateWorkoutMaxWeight = (log: GymDayLog | undefined | null): number => {

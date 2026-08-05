@@ -41,10 +41,9 @@ import { AddCardioModal } from '../../components/Gym/AddCardioModal';
 import { ExerciseHistoryDrawer } from '../../components/Gym/ExerciseHistoryDrawer';
 import { ZenGymAiModal } from '../../components/Gym/ZenGymAiModal';
 import { LogCardioModal } from '../../components/Gym/LogCardioModal';
-import { GymNotificationModal } from '../../components/Gym/GymNotificationModal';
-import { GymScheduleModal } from '../../components/Gym/GymScheduleModal';
 import { SwapRoutineModal } from '../../components/Gym/SwapRoutineModal';
 import { GymTemplateModal } from '../../components/Gym/GymTemplateModal';
+import { GymScheduleSettingsModal } from '../../components/Gym/GymScheduleSettingsModal';
 import { WorkoutInsightCard } from '../../components/Gym/WorkoutInsightCard';
 import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
 import { GymCardioLog } from '../../types/gym.types';
@@ -52,6 +51,8 @@ import { useGymProfile } from '../../hooks/useGymProfile';
 import { generateWorkoutInsight, hasInsightFiredToday, markInsightFiredToday, WorkoutInsight } from '../../services/gymInsightEngine';
 import BodyMetricsSheet from '../../components/Gym/BodyMetricsSheet';
 import PRHallOfFameSheet from '../../components/Gym/PRHallOfFameSheet';
+import { handleSyncError } from '../../utils/errorUtils';
+
 
 // ── Design Tokens ────────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ export default function GymHomeScreen() {
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [weekOffset, setWeekOffset] = useState(0);
 
-  const { gymLogs, waterLogs, sleepLogs, tasks, customEvents, attendance, habitLogs, allHabits, assignments, applyMasterTemplate, userGymPlan, user } = useMobileData();
+  const { gymLogs, waterLogs, sleepLogs, tasks, customEvents, attendance, habitLogs, allHabits, assignments, applyMasterTemplate, userGymPlan, updateFullMasterPlan, user } = useMobileData();
   const currentStreak = useMemo(() => calculateGymStreak(gymLogs), [gymLogs]);
 
   // BUG-3 FIX: Callback passed to GymNotificationModal so gym reminder time
@@ -70,7 +71,7 @@ export default function GymHomeScreen() {
     scheduleAllNotifications({
       tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
       waterLogs, sleepLogs,
-    }).catch(console.error);
+    }).catch(console.warn);
   };
 
   const { log, startWorkout, resumeWorkout, endWorkout, addExercise, deleteExercise, updateSet, saveLog, addCardio, updateCardio, deleteCardio, planDay, swapDayRoutine, reorderExercise, triggerDeload } = useGymLog(selectedDate);
@@ -79,8 +80,7 @@ export default function GymHomeScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCardioModal, setShowCardioModal] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
-  const [showNotifPicker, setShowNotifPicker] = useState(false);
-  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showScheduleSettingsModal, setShowScheduleSettingsModal] = useState(false);
   const [showSwapRoutineModal, setShowSwapRoutineModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [historyFor, setHistoryFor] = useState<{ id: string; name: string } | null>(null);
@@ -493,6 +493,10 @@ export default function GymHomeScreen() {
             subText = `${totalSets} sets, ${ex.targetReps || '0'} reps`;
           }
 
+          const activePrevExercises = log.exercises.slice(0, i).filter(e => !e.skipped);
+          const prevEx = activePrevExercises.length > 0 ? activePrevExercises[activePrevExercises.length - 1] : null;
+          const isPartnerWithPrevious = ex.supersetGroup && prevEx && prevEx.supersetGroup === ex.supersetGroup;
+
           return (
             <Animated.View
               key={ex.id || i}
@@ -508,9 +512,25 @@ export default function GymHomeScreen() {
                 }
               ]}
             >
+              {isPartnerWithPrevious && (
+                <View style={{
+                  position: 'absolute',
+                  top: -8,
+                  left: 25,
+                  width: 2,
+                  height: 8,
+                  backgroundColor: 'rgba(255,159,77,0.6)',
+                  zIndex: -1,
+                }} />
+              )}
               <TouchableOpacity
                 style={[
                   s.row,
+                  ex.supersetGroup && { 
+                    backgroundColor: 'rgba(255,159,77,0.05)', 
+                    borderColor: 'rgba(255,159,77,0.25)',
+                    borderWidth: 1
+                  },
                   isDragging && {
                     borderColor: '#a599ff',
                     borderWidth: 1.5,
@@ -537,9 +557,26 @@ export default function GymHomeScreen() {
                 </View>
 
                 <View style={s.rowTextCol}>
-                  <Text style={[s.rowTitle, isDone && s.textStrikethrough, isDragging && { color: '#a599ff', fontWeight: '700' }]}>
-                    {ex.name}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, paddingRight: 4 }}>
+                    <Text style={[s.rowTitle, isDone && s.textStrikethrough, isDragging && { color: '#a599ff', fontWeight: '700' }]}>
+                      {ex.name}
+                    </Text>
+                    {ex.supersetGroup && (
+                      <View style={{
+                        backgroundColor: 'rgba(255,159,77,0.12)',
+                        paddingHorizontal: 8,
+                        paddingVertical: 3,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,159,77,0.25)',
+                        marginBottom: 4,
+                      }}>
+                        <Text style={{ fontSize: 9, fontFamily: 'Inter-Bold', color: '#ff9f4d', letterSpacing: 0.5 }}>
+                          SUPER-{ex.supersetGroup}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={s.rowSubtitle}>{subText}</Text>
                 </View>
 
@@ -594,11 +631,8 @@ export default function GymHomeScreen() {
               <TouchableOpacity onPress={() => { hapticMedium(); setShowTemplateModal(true); }} style={s.headerBtn} activeOpacity={0.7}>
                 <Ionicons name="document-text-outline" size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { hapticMedium(); setShowScheduleModal(true); }} style={s.headerBtn} activeOpacity={0.7}>
-                <Ionicons name="time-outline" size={18} color={COLORS.textMuted} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { hapticMedium(); setShowNotifPicker(true); }} style={s.headerBtn} activeOpacity={0.7}>
-                <Ionicons name="notifications-outline" size={18} color={COLORS.textMuted} />
+              <TouchableOpacity onPress={() => { hapticMedium(); setShowScheduleSettingsModal(true); }} style={s.headerBtn} activeOpacity={0.7}>
+                <Ionicons name="calendar-outline" size={18} color={COLORS.textMuted} />
               </TouchableOpacity>
               <TouchableOpacity onPress={() => { hapticMedium(); setShowBodyMetrics(true); }} style={s.headerBtn} activeOpacity={0.7}>
                 <Ionicons name="body-outline" size={18} color={COLORS.textMuted} />
@@ -714,18 +748,14 @@ export default function GymHomeScreen() {
           currentPlanDay={planDay}
         />
 
-        <GymNotificationModal
-          visible={showNotifPicker}
-          onClose={() => setShowNotifPicker(false)}
-          onSaved={handleGymNotifSaved}
-        />
-
-        <GymScheduleModal
-          visible={showScheduleModal}
-          onClose={() => setShowScheduleModal(false)}
+        <GymScheduleSettingsModal
+          visible={showScheduleSettingsModal}
+          onClose={() => setShowScheduleSettingsModal(false)}
+          userGymPlan={userGymPlan}
+          onSaveWeekly={updateFullMasterPlan}
           currentStartTime={log?.startTime}
           currentEndTime={log?.endTime}
-          onSave={(start, end) => {
+          onSaveOverride={(start, end) => {
             saveLog({
               ...(log || {
                 id: `gym_${selectedDate}`,
@@ -742,8 +772,8 @@ export default function GymHomeScreen() {
               endTime: end,
               updatedAt: Date.now(),
             } as any);
-            Alert.alert('Scheduled', `Workout scheduled from ${start} to ${end}. It will now block time in your Calendar and Timeline.`);
           }}
+          onNotifSaved={handleGymNotifSaved}
         />
         
         <SwapRoutineModal

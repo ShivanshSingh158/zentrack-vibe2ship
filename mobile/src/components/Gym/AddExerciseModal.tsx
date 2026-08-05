@@ -20,6 +20,8 @@ import { getCustomPlanDay } from '../../hooks/useGymLog';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
 import { aiResolveExercise, AIExerciseInfo } from '../../services/geminiProxy';
 import { GYM_PLAN, EXERCISE_ALTERNATIVES } from '../../data/gymPlan';
+import { handleSyncError } from '../../utils/errorUtils';
+
 
 // ── All exercises: flatten GYM_PLAN + EXERCISE_ALTERNATIVES into a deduplicated catalogue ──
 
@@ -288,7 +290,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
           videoId: newEx.videoId,
           restTimeSecs: newEx.restTimeSecs,
         });
-        updateMasterPlan(planDay.dayIndex, { ...currentMasterDay, exercises: updatedExercises }).catch(console.error);
+        updateMasterPlan(planDay.dayIndex, { ...currentMasterDay, exercises: updatedExercises }).catch(handleSyncError);
       }
     }
 

@@ -655,55 +655,91 @@ export default function DashboardScreen() {
               <View style={{ marginTop: SPACE.xxl }}>
                 <Text style={s.sectionLabel}>TODAY'S AGENDA</Text>
 
-                {(todayGym || isGymScheduled) && (
-                  <AnimatedPressable style={s.agendaRow} activeOpacity={0.7} onPress={() => navigation.navigate('Gym')}>
-                    <Ionicons
-                      name={todayGym?.workoutDurationMinutes ? 'checkmark-circle' : 'barbell-outline'}
-                      size={16}
-                      color={todayGym?.workoutDurationMinutes ? colors.accentGreen : colors.accentPrimary}
-                      style={{ marginRight: 12 }}
-                    />
-                    <Text style={[s.agendaRowText,
-                      !!todayGym?.workoutDurationMinutes && { color: colors.textTertiary, textDecorationLine: 'line-through' },
-                      { flex: 1 },
-                    ]}>
-                      {todayGym?.workoutStartTime && !todayGym.workoutDurationMinutes
+                {(() => {
+                  const parseTimeToMins = (tStr: string): number => {
+                    if (!tStr) return 9999;
+                    const startStr = tStr.split('-')[0].trim().toLowerCase();
+                    let h = 0; let m = 0;
+                    const isPM = startStr.includes('pm');
+                    const isAM = startStr.includes('am');
+                    const cleanStr = startStr.replace(/[a-z\s]/g, '');
+                    const parts = cleanStr.split(':');
+                    if (parts.length >= 2) {
+                      h = parseInt(parts[0], 10) || 0; m = parseInt(parts[1], 10) || 0;
+                    } else {
+                      h = parseInt(parts[0], 10) || 0;
+                    }
+                    if (isPM && h < 12) h += 12;
+                    if (isAM && h === 12) h = 0;
+                    return h * 60 + m;
+                  };
+
+                  const agendaItems: any[] = [];
+
+                  if (todayGym || isGymScheduled) {
+                    const isGymCompleted = !!todayGym?.workoutDurationMinutes;
+                    agendaItems.push({
+                      id: 'gym-item',
+                      title: todayGym?.workoutStartTime && !isGymCompleted
                         ? 'Gym Workout (In Progress)'
-                        : todayGym?.workoutDurationMinutes
+                        : isGymCompleted
                           ? 'Gym Workout (Completed)'
-                          : `Gym: ${plannedDay?.name || 'Workout'}`}
-                    </Text>
-                  </AnimatedPressable>
-                )}
+                          : `Gym: ${plannedDay?.name || 'Workout'}`,
+                      timeStr: '',
+                      timeMins: isGymCompleted ? -1 : 1080, // Default to 6 PM if not completed
+                      isCompleted: isGymCompleted,
+                      icon: isGymCompleted ? 'checkmark-circle' : 'barbell-outline',
+                      iconColor: isGymCompleted ? colors.accentGreen : colors.accentPrimary,
+                      onPress: () => navigation.navigate('Gym')
+                    });
+                  }
 
-                {todayClasses.map(c => (
-                  <AnimatedPressable key={c.id} style={s.agendaRow} activeOpacity={0.7} onPress={() => navigation.navigate('Attendance')}>
-                    <Ionicons
-                      name={c.isCompleted ? 'checkmark-circle' : (c.type === 'lab' ? 'flask-outline' : 'library-outline')}
-                      size={16}
-                      color={c.isCompleted ? colors.accentGreen : colors.accentAmber}
-                      style={{ marginRight: 12 }}
-                    />
-                    <Text style={[s.agendaRowText, c.isCompleted && { color: colors.textTertiary, textDecorationLine: 'line-through' }, { flex: 1 }]}>{c.title}</Text>
-                    <Text style={s.agendaRowTime}>{formatTimeStr(c.time)}</Text>
-                  </AnimatedPressable>
-                ))}
+                  todayClasses.forEach((c: any) => {
+                    agendaItems.push({
+                      id: c.id,
+                      title: c.title,
+                      timeStr: formatTimeStr(c.time),
+                      timeMins: parseTimeToMins(c.time),
+                      isCompleted: c.isCompleted,
+                      icon: c.isCompleted ? 'checkmark-circle' : (c.type === 'lab' ? 'flask-outline' : 'library-outline'),
+                      iconColor: c.isCompleted ? colors.accentGreen : colors.accentAmber,
+                      onPress: () => navigation.navigate('Attendance')
+                    });
+                  });
 
-                {todayTasks.map(t => (
-                  <AnimatedPressable key={t.id} style={s.agendaRow} activeOpacity={0.7} onPress={() => navigation.navigate('Tasks')}>
-                    <Ionicons
-                      name={t.status === 'completed' ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={16}
-                      color={t.status === 'completed' ? colors.accentGreen : colors.textTertiary}
-                      style={{ marginRight: 12 }}
-                    />
-                    <Text style={[s.agendaRowText,
-                      t.status === 'completed' && { color: colors.textTertiary, textDecorationLine: 'line-through' },
-                      { flex: 1 },
-                    ]} numberOfLines={1}>{t.title}</Text>
-                    {t.timeSlot && <Text style={s.agendaRowTime}>{formatTimeStr(t.timeSlot)}</Text>}
-                  </AnimatedPressable>
-                ))}
+                  todayTasks.forEach((t: any) => {
+                    agendaItems.push({
+                      id: t.id,
+                      title: t.title,
+                      timeStr: t.timeSlot ? formatTimeStr(t.timeSlot) : '',
+                      timeMins: t.timeSlot ? parseTimeToMins(t.timeSlot) : 9999,
+                      isCompleted: t.status === 'completed',
+                      icon: t.status === 'completed' ? 'checkmark-circle' : 'ellipse-outline',
+                      iconColor: t.status === 'completed' ? colors.accentGreen : colors.textTertiary,
+                      onPress: () => navigation.navigate('Tasks')
+                    });
+                  });
+
+                  agendaItems.sort((a, b) => a.timeMins - b.timeMins);
+
+                  return agendaItems.map(item => (
+                    <AnimatedPressable key={item.id} style={s.agendaRow} activeOpacity={0.7} onPress={item.onPress}>
+                      <Ionicons
+                        name={item.icon}
+                        size={16}
+                        color={item.iconColor}
+                        style={{ marginRight: 12 }}
+                      />
+                      <Text style={[s.agendaRowText,
+                        item.isCompleted && { color: colors.textTertiary, textDecorationLine: 'line-through' },
+                        { flex: 1 },
+                      ]} numberOfLines={1}>
+                        {item.title}
+                      </Text>
+                      {!!item.timeStr && <Text style={s.agendaRowTime}>{item.timeStr}</Text>}
+                    </AnimatedPressable>
+                  ));
+                })()}
               </View>
             )}
                   </Animated.View>

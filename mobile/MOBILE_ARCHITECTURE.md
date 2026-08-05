@@ -863,18 +863,12 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 - **FIXED** `src/hooks/useGymLog.ts` — `hasInitialised` ref was assigned but never read as a guard. Any Firestore snapshot finding 0 results for today replaced the in-progress workout with a blank template. Added `if (hasInitialised.current) return;` guard to `else if (gymLogsReady)` branch.
 - **FIXED** `src/hooks/useGymLog.ts` — `hasInitialised.current` never reset when `dateStr` changes. Switching dates got stuck because the guard blocked exercise initialization for the new day. Added `hasInitialised.current = false` to the dateStr-change effect.
 
-### 2026-08-01 — Timeline Start Hour Fix + Matrix View Removed
+### 2026-08-03 — AppNavigator Heartbeat Listener + DateTimePicker Flicker Fix
 
-- **FIXED** `src/components/Tasks/TimelineView.tsx` — `START_HOUR` was hardcoded to `6`, causing tasks before 6 AM (e.g. 5:30 AM) to be silently dropped and never rendered. Changed to a `useMemo`-computed value: scans all task `timeSlot` values and class/lab schedule times for the selected day, floors the earliest to the nearest hour, and clamps between `5` and `6`. The timeline now starts at 5 AM if any item falls before 6 AM.
-- **REMOVED** Matrix (Eisenhower Matrix) view from `src/screens/TasksScreen.tsx` — was the 3rd of 4 view modes (`list → timeline → matrix → kanban`). View cycle is now 3 modes: `list → timeline → kanban → list`. Updated: `viewMode` type union, toggle `onPress` ternary chain, icon expression, and render branch.
-
-### 2026-08-01 — Grey Screen on Resume Fix (AppNavigator)
-
-- **ROOT CAUSE**: `AppNavigator` had an early `return <SplashLoader />` when `loading === true`. This rendered *outside* the `NavigationContainer`, so every time Firebase's `onAuthStateChanged` re-fired (on token refresh, on app resume from lock screen, or on any background-to-foreground transition), the `NavigationContainer` was **completely unmounted and remounted** — producing the grey OS window background for 200–500ms.
-- **FIX 1** — `hasInitialisedAuth` ref (`src/navigation/AppNavigator.tsx`): `setLoading(false)` now only fires **once** (cold start). Subsequent `onAuthStateChanged` callbacks update `user` state but never touch `loading`. The `NavigationContainer` tree never unmounts again.
-- **FIX 2** — `AppState → forceUpdate` (`src/navigation/AppNavigator.tsx`): An `AppState` listener calls `forceUpdate(n => n + 1)` whenever the app transitions to `'active'`. This kicks React's reconciler and Reanimated's UI thread awake immediately on screen unlock, eliminating residual grey frames.
-- **FIX 3** — `SplashLoader` moved inside `NavigationContainer`: The splash screen now renders as a named `Stack.Screen` ('Splash') inside the nav tree. Previously the early return placed it *outside* the `NavigationContainer`, forcing a full tree tear-down when auth resolved.
-- **FIX 4** — Permanent `#000000` base layer: A `<View style={{ flex:1, backgroundColor: '#000000' }}>` wraps the `NavigationContainer`. Any brief transparency in any layer above now shows true black instead of the grey OS window.
+- **ROOT CAUSE (grey screen + kill→Home)**: The `SESSION_ALIVE_KEY` heartbeat was fully documented in comments and architecture docs but the `AppState` listener was **never implemented**. `sessionAlive` was always `null` → every boot indistinguishable from a cold kill.
+- **FIXED** `src/navigation/AppNavigator.tsx` — Added `AppState.addEventListener('change', handleAppStateChange)` inside the boot `useEffect`. On `'active'`: writes `SESSION_ALIVE_KEY='1'` + calls `forceUpdate(n=>n+1)` to nudge React's reconciler awake on screen unlock (eliminates grey frames). On `'background'`/`'inactive'`: deletes `SESSION_ALIVE_KEY` so a subsequent OS kill is detectable. Also writes initial heartbeat on cold boot. Cleanup: `appStateSub.remove()` alongside `unsubAuth()`.
+- **FIXED** `src/navigation/AppNavigator.tsx` — Added `[, forceUpdate] = useState(0)` counter state incremented on every `'active'` AppState transition. This is the anti-grey-frame reconciler paint trigger.
+- **FIXED** `src/screens/TasksScreen.tsx` — All 4 `DateTimePicker` `onChange` handlers (`onStartTimeChange`/`onEndTimeChange` in `NewTaskModal`; `onStartChange`/`onEndChange` in `EditTaskModalComponent`) now check `event.type` before committing. Android: `'set'` → close + commit; `'dismissed'` → close only; `'change'` (scroll tick) → no-op. iOS: inline spinner, live update. Eliminates flicker caused by committing state on scroll ticks.
 
 ### 2026-08-01 — Notification System Full Audit & Bug Fix Sprint
 

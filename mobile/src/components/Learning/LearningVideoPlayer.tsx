@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Platform, KeyboardAvoidingView, Keyboard, Animated
+  ScrollView, Platform, KeyboardAvoidingView, Keyboard, Animated, AppState
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
@@ -62,6 +62,12 @@ export default function LearningVideoPlayer({
 }: LearningVideoPlayerProps) {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const [appState, setAppState] = useState(AppState.currentState);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', nextState => setAppState(nextState));
+    return () => sub.remove();
+  }, []);
 
   const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
   const handleSpeedChange = () => {
@@ -122,7 +128,8 @@ export default function LearningVideoPlayer({
           isPip && { width: 150, height: 84 },
           isFocusMode && { flex: 1, justifyContent: 'center' },
           !isPip && !isFocusMode && !isNativeFullScreen && { marginTop: Math.max(insets.top, Platform.OS === 'android' ? 48 : 0) },
-          isNativeFullScreen && { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }
+          isNativeFullScreen && { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
+          { opacity: 0.99, overflow: 'hidden' } // FIX: Forces Android to use an off-screen buffer (RenderNode), preventing grey screen on background resume
         ]}
         onLayout={e => {
           if (!isPip && !isFocusMode && !isNativeFullScreen) {

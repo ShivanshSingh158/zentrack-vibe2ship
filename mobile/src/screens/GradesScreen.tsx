@@ -9,6 +9,8 @@ import { db } from '../services/firebase';
 import Svg, { Rect, Line, Circle } from 'react-native-svg';
 import { COLLECTION } from '../config/constants';
 import { useTheme } from "../contexts/ThemeContext";
+import { handleSyncError } from '../utils/errorUtils';
+
 
 const GRADE_MAP: Record<string, number> = {
   'A+': 10, 'A': 9, 'B+': 8, 'B': 7, 'C': 6, 'D': 5, 'F': 0
@@ -144,7 +146,7 @@ export default function GradesScreen() {
         name: semName.trim(),
         order: semesters.length,
         createdAt: Date.now()
-      }).catch(console.error);
+      }).catch(handleSyncError);
     }, 150);
     
     setSemModalVisible(false);
@@ -163,7 +165,7 @@ export default function GradesScreen() {
         name: subName.trim(),
         credits: parseInt(subCredits) || 4,
         grade: subGrade.toUpperCase(),
-      }).catch(console.error);
+      }).catch(handleSyncError);
     }, 150);
     
     setSubModalVisible(false);
@@ -185,7 +187,7 @@ export default function GradesScreen() {
       updateDoc(doc(db, COLLECTION.SEMESTERS, activeSemId), {
         sgpa: sgpaVal,
         totalCredits: creditsVal
-      }).catch(console.error);
+      }).catch(handleSyncError);
     }, 150);
     
     setDirectModalVisible(false);

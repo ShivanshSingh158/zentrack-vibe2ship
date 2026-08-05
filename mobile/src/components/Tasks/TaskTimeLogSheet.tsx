@@ -104,7 +104,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
   // State
   const [selectedDuration, setSelectedDuration] = useState<number>(30);
   const [startOption, setStartOption] = useState<string>('ontime'); // 'ontime' | '+15' | '+30' | '+60' | 'now' | 'custom'
-  const [showCustomPicker, setShowCustomPicker] = useState(false);
+  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
   const [customTime, setCustomTime] = useState<Date>(new Date());
 
   // Dynamic start chips based on whether planned time slot exists
@@ -144,7 +144,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
     const initialDur = plannedMinutes || 30;
     setSelectedDuration(initialDur);
     setStartOption(timeSlotInfo?.startMin !== null && timeSlotInfo?.startMin !== undefined ? 'ontime' : 'now');
-    setShowCustomPicker(false);
+    setShowAndroidPicker(false);
 
     const now = new Date();
     if (timeSlotInfo?.startMin !== null && timeSlotInfo?.startMin !== undefined) {
@@ -159,7 +159,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     let actualStart: string;
-    if (showCustomPicker) {
+    if (startOption === 'custom') {
       const h = customTime.getHours();
       const m = customTime.getMinutes();
       actualStart = minutesTo12HourStr(h * 60 + m);
@@ -176,7 +176,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
     }
 
     onSave(task.id, selectedDuration, actualStart);
-  }, [task, selectedDuration, startOption, showCustomPicker, customTime, startChips, timeSlotInfo, onSave]);
+  }, [task, selectedDuration, startOption, customTime, startChips, timeSlotInfo, onSave]);
 
   const handleSkip = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -218,7 +218,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
               {startChips.map((chip) => {
-                const isSelected = !showCustomPicker && startOption === chip.id;
+                const isSelected = startOption === chip.id;
                 return (
                   <TouchableOpacity
                     key={chip.id}
@@ -230,7 +230,6 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
                     onPress={() => {
                       Haptics.selectionAsync();
                       setStartOption(chip.id);
-                      setShowCustomPicker(false);
                     }}
                   >
                     <Text style={[
@@ -248,31 +247,43 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
                 style={[
                   styles.chip,
                   { backgroundColor: colors.surface2, borderColor: colors.border },
-                  showCustomPicker && styles.chipActive,
+                  startOption === 'custom' && styles.chipActive,
                 ]}
                 onPress={() => {
                   Haptics.selectionAsync();
-                  setShowCustomPicker(true);
+                  setStartOption('custom');
+                  if (Platform.OS === 'android') {
+                    setShowAndroidPicker(true);
+                  }
                 }}
               >
-                <Ionicons name="time-outline" size={14} color={showCustomPicker ? '#A599FF' : colors.textMuted} style={{ marginRight: 4 }} />
+                <Ionicons name="time-outline" size={14} color={startOption === 'custom' ? '#A599FF' : colors.textMuted} style={{ marginRight: 4 }} />
                 <Text style={[
                   styles.chipText,
                   { color: colors.textSecondary },
-                  showCustomPicker && styles.chipTextActive,
+                  startOption === 'custom' && styles.chipTextActive,
                 ]}>
-                  {showCustomPicker ? minutesTo12HourStr(customTime.getHours() * 60 + customTime.getMinutes()) : 'Custom'}
+                  {startOption === 'custom' ? minutesTo12HourStr(customTime.getHours() * 60 + customTime.getMinutes()) : 'Custom'}
                 </Text>
               </TouchableOpacity>
             </ScrollView>
 
-            {showCustomPicker && (
+            {((Platform.OS === 'ios' && startOption === 'custom') || (Platform.OS === 'android' && showAndroidPicker)) && (
               <View style={styles.pickerContainer}>
                 <DateTimePicker
                   value={customTime}
                   mode="time"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_, d) => { if (d) setCustomTime(d); }}
+                  onChange={(event, d) => { 
+                    if (Platform.OS === 'android') {
+                      if (event.type === 'set' && d) {
+                        setCustomTime(d);
+                      }
+                      setShowAndroidPicker(false);
+                    } else {
+                      if (d) setCustomTime(d); 
+                    }
+                  }}
                   textColor={colors.textPrimary}
                 />
               </View>

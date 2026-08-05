@@ -30,6 +30,8 @@ import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestor
 import { awardXP } from '../services/xpSystem';
 import { COLLECTION } from '../config/constants';
 import { useTheme } from "../contexts/ThemeContext";
+import { handleSyncError } from '../utils/errorUtils';
+
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -296,7 +298,7 @@ export default function GoalsScreen() {
         keyResults,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-      }).catch(console.error);
+      }).catch(handleSyncError);
     }, 150);
 
     setShowWizard(false);
@@ -312,7 +314,7 @@ export default function GoalsScreen() {
       status: newStatus,
       progress: newStatus === 'completed' ? 100 : 0,
       updatedAt: Date.now(),
-    }).catch(console.error);
+    }).catch(handleSyncError);
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -320,7 +322,7 @@ export default function GoalsScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
-        onPress: () => deleteDoc(doc(db, COLLECTION.GOALS, id)).catch(console.error),
+        onPress: () => deleteDoc(doc(db, COLLECTION.GOALS, id)).catch(handleSyncError),
       },
     ]);
   };
@@ -337,7 +339,7 @@ export default function GoalsScreen() {
       keyResults: krs,
       progress,
       updatedAt: Date.now(),
-    }).catch(console.error);
+    }).catch(handleSyncError);
   };
 
   const activeGoals = goals.filter(g => g.status !== 'completed');
@@ -447,7 +449,7 @@ export default function GoalsScreen() {
 
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
+        renderItem={({ item }: any) => (
           <GoalCard 
             item={item} 
             onComplete={handleComplete} 

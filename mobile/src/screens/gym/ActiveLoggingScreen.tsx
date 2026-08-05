@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, TextInput,
-  Platform, KeyboardAvoidingView, ScrollView, Modal, ActivityIndicator
+  Platform, KeyboardAvoidingView, ScrollView, Modal, ActivityIndicator, AppState
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import ConfettiCannon from 'react-native-confetti-cannon';
 import YoutubeIframe from 'react-native-youtube-iframe';
@@ -58,7 +59,16 @@ export default function ActiveLoggingScreen() {
   const [showPR, setShowPR] = useState(false);
   // G8: Workout notes local state — synced to Firestore on blur
   const [workoutNotes, setWorkoutNotes] = useState(log?.notes || '');
+  const [showNotesInput, setShowNotesInput] = useState(!!log?.notes);
   // G6: Superset
+  const [confettiTrigger, setConfettiTrigger] = useState(0);
+  const [appState, setAppState] = useState(AppState.currentState);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', nextState => setAppState(nextState));
+    return () => sub.remove();
+  }, []);
+
   const [showSupersetPicker, setShowSupersetPicker] = useState(false);
 
   const [activeExIndex, setActiveExIndex] = useState(route.params?.initialIndex ?? 0);
@@ -114,6 +124,22 @@ export default function ActiveLoggingScreen() {
   const safeIdx = Math.min(activeExIndex, Math.max(0, activeExercises.length - 1));
   const exercise = activeExercises[safeIdx];
 
+  // ─── Progressive overload suggestion ───────────────────────────────────────
+  const overloadSuggestion = useMemo(() => {
+    if (!log?.exercises || !gymLogs) return null;
+    const activeExercisesList = log.exercises.filter((ex: any) => !ex.skipped);
+    const currentExercise = activeExercisesList[Math.min(activeExIndex, Math.max(0, activeExercisesList.length - 1))];
+    if (!currentExercise) return null;
+    const currentWeight = calculateExerciseMaxWeight(currentExercise as any);
+    return getOverloadSuggestion(
+      currentExercise,
+      currentWeight,
+      currentExercise.targetSets || 3,
+      String(currentExercise.targetReps || '8'),
+      gymLogs
+    );
+  }, [log, gymLogs, activeExIndex]);
+
   // Initialize input state when exercise or set count changes
   useEffect(() => {
     if (!exercise) return;
@@ -123,11 +149,22 @@ export default function ActiveLoggingScreen() {
     if (key === inputInitKey.current) return; // don't reset if the key hasn't changed
 
     inputInitKey.current = key;
-    setSetInputs(exercise.setsLog.map(s => ({
-      weight: s.weight !== null && s.weight !== undefined ? String(s.weight) : '',
-      reps: s.reps !== null && s.reps !== undefined ? String(s.reps) : '',
-    })));
-  }, [exercise, activeExIndex]);
+    setSetInputs(exercise.setsLog.map((s, idx) => {
+      let initialWeight = s.weight !== null && s.weight !== undefined ? String(s.weight) : '';
+      let initialReps = s.reps !== null && s.reps !== undefined ? String(s.reps) : '';
+
+      // Auto pre-fill Progressive Overload suggestion for the first incomplete set
+      if (idx === 0 && !s.completed && overloadSuggestion?.recommended) {
+        if (!initialWeight || initialWeight === '0') initialWeight = String(overloadSuggestion.recommended);
+        if (!initialReps || initialReps === '0') initialReps = String(parseInt(String(exercise.targetReps).split("-")[0], 10) || 8);
+      }
+
+      return {
+        weight: initialWeight,
+        reps: initialReps,
+      };
+    }));
+  }, [exercise, activeExIndex, overloadSuggestion]);
 
   // Real-time S.A.R.A AI Swap generator for ActiveLoggingScreen modal
   useEffect(() => {
@@ -140,97 +177,108 @@ export default function ActiveLoggingScreen() {
       ? (origName.toLowerCase().includes('bicep') ? 'Biceps' : origName.toLowerCase().includes('tricep') ? 'Triceps' : origName.toLowerCase().includes('row') || origName.toLowerCase().includes('pull') ? 'Back' : origName.toLowerCase().includes('press') || origName.toLowerCase().includes('dip') ? 'Chest' : origName.toLowerCase().includes('squat') || origName.toLowerCase().includes('leg') ? 'Quads' : origName.toLowerCase().includes('shoulder') || origName.toLowerCase().includes('raise') ? 'Shoulders' : 'Chest')
       : rawMuscle;
 
+    const normalizedInferred = inferredMuscle.toLowerCase();
     const muscleKey = Object.keys(EXERCISE_ALTERNATIVES).find(
-      k => k.toLowerCase() === inferredMuscle.toLowerCase()
-    ) || 'Chest';
+      k => normalizedInferred.includes(k.toLowerCase()) || k.toLowerCase().includes(normalizedInferred)
+    ) || (normalizedInferred.includes('abs') || normalizedInferred.includes('core') ? 'Abs' : 'Chest');
+    
+    // We keep a smart offline fallback ready in case the network fails
+    const smartFallback = (EXERCISE_ALTERNATIVES[muscleKey as keyof typeof EXERCISE_ALTERNATIVES] || []).slice(0, 5).map((alt) => ({
+      name: alt.name,
+      muscle: inferredMuscle,
+      targetSets: 3,
+      targetReps: '8-12',
+      restTimeSecs: 60,
+      videoId: alt.videoId,
+    }));
 
-    const fallbackList = (EXERCISE_ALTERNATIVES[muscleKey as keyof typeof EXERCISE_ALTERNATIVES] || []).slice(0, 6).map((alt, idx) => {
-      const n = (alt.name || '').toLowerCase();
-      const m = inferredMuscle.toLowerCase();
-      let targetSets = 3;
-      let targetReps = '10–12';
-      let restTimeSecs = 75;
-
-      if (n.includes('farmer') || n.includes('hang') || n.includes('pinch') || n.includes('hold')) {
-        targetSets = 3; targetReps = '30–45s hold'; restTimeSecs = 45;
-      } else if (m.includes('forearm') || n.includes('wrist') || n.includes('reverse curl')) {
-        targetSets = 3; targetReps = '15–20'; restTimeSecs = 45;
-      } else if (m.includes('calf') || m.includes('calves') || n.includes('calf')) {
-        targetSets = 4; targetReps = '15–20'; restTimeSecs = 60;
-      } else if (m.includes('abs') || m.includes('core') || n.includes('crunch') || n.includes('plank')) {
-        targetSets = 3; targetReps = '15–20'; restTimeSecs = 45;
-      } else if (n.includes('deadlift') || n.includes('squat') || n.includes('barbell row') || n.includes('bench press') || n.includes('military press') || n.includes('t-bar') || n.includes('rdl')) {
-        targetSets = 4; targetReps = '6–8'; restTimeSecs = 120;
-      } else if (n.includes('press') || n.includes('pulldown') || n.includes('dips') || n.includes('row')) {
-        targetSets = 3; targetReps = '8–12'; restTimeSecs = 90;
-      } else if (n.includes('raise') || n.includes('fly') || n.includes('extension') || n.includes('curl')) {
-        targetSets = 3; targetReps = '12–15'; restTimeSecs = 60;
-      }
-
-      return {
-        name: alt.name,
-        muscle: inferredMuscle,
-        targetSets,
-        targetReps,
-        restTimeSecs,
-        videoId: alt.videoId,
-      };
-    });
-
-    setAiSwapList(fallbackList);
+    setAiSwapList([]);
     setIsAiSwapLoading(true);
 
     async function fetchSaraSwaps() {
       try {
+        const cacheKey = `sara_swap_${origName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+        const cached = await AsyncStorage.getItem(cacheKey);
+        if (cached) {
+          try {
+            const cachedList = JSON.parse(cached);
+            if (Array.isArray(cachedList) && cachedList.length >= 1) {
+              setAiSwapList(cachedList);
+              setIsAiSwapLoading(false);
+              return;
+            }
+          } catch(e) {}
+        }
+
         const prompt = `Exercise to swap: "${origName}" (Target Muscle / Movement: ${inferredMuscle}).
-Read the exercise name "${origName}" carefully to understand its exact movement mechanics, equipment, angle, and target muscle group (${inferredMuscle}).
+Read the exercise name "${origName}" carefully to understand its exact movement mechanics, equipment, angle, and target muscle head (${inferredMuscle}).
+If the exercise targets a specific muscle head (e.g., "short head of the bicep", "long head of the tricep", "upper chest"), your alternatives MUST target that exact same specific muscle head and biomechanical angle.
 Generate EXACTLY 6 non-repetitive, biomechanically equivalent exercise alternatives for "${origName}".
+CRITICAL: Only suggest the absolute best, S-tier, A+, or A category exercises for this exact movement. Do not suggest filler or low-yield exercises.
 For EACH alternative exercise, assign realistic specific targetSets (3 or 4), targetReps ('6-8' for heavy compound, '8-12' for press/pull, '12-15' for isolation, '15-20' or '30-45s' for forearms/grip/calves), and restTimeSecs (45, 60, 90, or 120) tailored to that specific exercise.
 
-Return ONLY a raw valid JSON array of 6 objects:
-[
-  {
-    "name": "Exercise Name",
-    "muscle": "${inferredMuscle}",
-    "targetSets": 3,
-    "targetReps": "8-12",
-    "restTimeSecs": 90
-  }
-]`;
+Return ONLY a valid JSON object with an "exercises" array containing 6 objects:
+{
+  "exercises": [
+    {
+      "name": "Exercise Name",
+      "muscle": "${inferredMuscle}",
+      "targetSets": 3,
+      "targetReps": "8-12",
+      "restTimeSecs": 90
+    }
+  ]
+}`;
 
         const res = await callProxy({
           contents: [{ parts: [{ text: prompt }] }],
-          systemInstruction: `You are S.A.R.A, ZenTrack's AI gym coach. Read custom exercise names carefully and output ONLY valid JSON arrays of 6 exercise recommendations with realistic sets, reps, and rest times. No markdown text.`,
+          systemInstruction: `You are S.A.R.A, ZenTrack's elite AI gym coach. Output ONLY a JSON object with an 'exercises' array. No markdown.`,
           generationConfig: {
             temperature: 0.4,
-            maxOutputTokens: 600,
+            maxOutputTokens: 800,
+            responseMimeType: 'application/json',
           }
         });
 
         if (isCancelled) return;
         const textResult = res?.candidates?.[0]?.content?.parts?.[0]?.text;
+        
         if (textResult) {
-          const cleanJsonStr = textResult.replace(/```json/g, '').replace(/```/g, '').trim();
-          const parsed = JSON.parse(cleanJsonStr);
-          if (Array.isArray(parsed) && parsed.length >= 4) {
-            const formattedPromises = parsed.slice(0, 6).map(async (item: any, i: number) => {
-              const exName = item.name || fallbackList[i]?.name || 'Alternative Exercise';
-              const vidId = (await autoResolveExerciseVideoId(exName)) || fallbackList[i]?.videoId || '';
+          let parsed;
+          try {
+            parsed = JSON.parse(textResult.trim());
+          } catch (e) {
+            console.warn('[ActiveLogging SARA AI Swap] JSON Parse Error. Falling back to offline list.');
+            setAiSwapList(smartFallback);
+            return;
+          }
+
+          const exArray = parsed.exercises || parsed;
+          if (Array.isArray(exArray) && exArray.length >= 1) {
+            const formattedPromises = exArray.slice(0, 6).map(async (item: any) => {
+              const exName = item.name || 'Alternative Exercise';
+              const vidId = (await autoResolveExerciseVideoId(exName)) || '';
               return {
                 name: exName,
-                muscle: item.muscle || exercise.muscle,
-                targetSets: typeof item.targetSets === 'number' ? item.targetSets : fallbackList[i]?.targetSets || 3,
-                targetReps: item.targetReps || fallbackList[i]?.targetReps || '8-12',
-                restTimeSecs: typeof item.restTimeSecs === 'number' ? item.restTimeSecs : fallbackList[i]?.restTimeSecs || 60,
+                muscle: item.muscle || exercise.muscle || inferredMuscle,
+                targetSets: typeof item.targetSets === 'number' ? item.targetSets : 3,
+                targetReps: item.targetReps || '8-12',
+                restTimeSecs: typeof item.restTimeSecs === 'number' ? item.restTimeSecs : 60,
                 videoId: vidId,
               };
             });
             const formatted = await Promise.all(formattedPromises);
             setAiSwapList(formatted);
+            AsyncStorage.setItem(cacheKey, JSON.stringify(formatted)).catch(() => {});
+          } else {
+            setAiSwapList(smartFallback);
           }
+        } else {
+          setAiSwapList(smartFallback);
         }
       } catch (e) {
         console.warn('[ActiveLogging SARA AI Swap] Error:', e);
+        if (!isCancelled) setAiSwapList(smartFallback);
       } finally {
         if (!isCancelled) setIsAiSwapLoading(false);
       }
@@ -295,21 +343,7 @@ Return ONLY a raw valid JSON array of 6 objects:
     return null;
   }, [log, activeExIndex, gymLogs, date]);
 
-  // ─── Progressive overload suggestion ───────────────────────────────────────
-  const overloadSuggestion = useMemo(() => {
-    if (!log?.exercises || !gymLogs) return null;
-    const activeExercises = log.exercises.filter((ex: any) => !ex.skipped);
-    const currentExercise = activeExercises[Math.min(activeExIndex, Math.max(0, activeExercises.length - 1))];
-    if (!currentExercise) return null;
-    const currentWeight = calculateExerciseMaxWeight(currentExercise as any);
-    return getOverloadSuggestion(
-      currentExercise,
-      currentWeight,
-      currentExercise.targetSets || 3,
-      String(currentExercise.targetReps || '8'),
-      gymLogs
-    );
-  }, [log, gymLogs, activeExIndex]);
+
 
   if (!log || !log.exercises) {
     // Show an instant skeleton instead of a black spinner.
@@ -429,12 +463,45 @@ Return ONLY a raw valid JSON array of 6 objects:
       }),
     };
 
-    // G6: If this exercise is in a superset, use 30s active rest; otherwise full smart rest
-    const nextEx = exercises[activeExIndex + 1];
-    const inSuperset = exercise.supersetGroup && nextEx?.supersetGroup === exercise.supersetGroup;
-    const restSecs = inSuperset ? 30 : getRestDuration(exercise);
+    // G6: Superset auto-advance logic
+    let nextIndexToJump = -1;
+    let isSupersetPartner = false;
+
+    if (exercise.supersetGroup) {
+      // Find all exercises in this superset
+      const supersetIndices = exercises
+        .map((ex, idx) => (ex.supersetGroup === exercise.supersetGroup ? idx : -1))
+        .filter(idx => idx !== -1);
+      
+      // If there are multiple exercises in the group
+      if (supersetIndices.length > 1) {
+        const currentIndexInGroup = supersetIndices.indexOf(activeExIndex);
+        
+        // Check the next exercises in the group (wrapping around)
+        for (let i = 1; i < supersetIndices.length; i++) {
+          const checkIndex = supersetIndices[(currentIndexInGroup + i) % supersetIndices.length];
+          const checkEx = exercises[checkIndex];
+          const hasIncompleteSets = checkEx.setsLog.some(s => !s.completed);
+          
+          if (hasIncompleteSets) {
+            nextIndexToJump = checkIndex;
+            isSupersetPartner = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const restSecs = isSupersetPartner ? 30 : getRestDuration(exercise);
 
     logSetAndStartTimer(realExerciseIndex, newEx, restSecs, exercise.name);
+
+    if (nextIndexToJump !== -1) {
+      // Small delay so the user sees the set complete checkmark before it snaps away
+      setTimeout(() => {
+        setActiveExIndex(nextIndexToJump);
+      }, 400);
+    }
   };
 
   const handleNextExercise = () => {
@@ -501,7 +568,7 @@ Return ONLY a raw valid JSON array of 6 objects:
 
         {/* Content */}
         <View style={styles.content}>
-          <ScrollView contentContainerStyle={styles.scrollContent}>
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
             <View style={styles.titleArea}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -628,7 +695,7 @@ Return ONLY a raw valid JSON array of 6 objects:
                     }}
                     initialPlayerParams={{ modestbranding: true, rel: false }}
                     webViewProps={{
-                      androidLayerType: 'hardware',
+                      androidLayerType: appState === 'active' ? 'hardware' : 'software',
                       domStorageEnabled: true,
                       javaScriptEnabled: true,
                     }}
@@ -709,27 +776,39 @@ Return ONLY a raw valid JSON array of 6 objects:
 
             {/* G8: Workout Notes */}
             <View style={{ marginTop: 20, marginBottom: 8 }}>
-              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>Session Notes</Text>
-              <TextInput
-                style={{
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  borderRadius: RADIUS.md,
-                  borderWidth: 1,
-                  borderColor: workoutNotes ? 'rgba(165,153,255,0.3)' : 'rgba(255,255,255,0.08)',
-                  padding: 12,
-                  color: colors.textPrimary,
-                  fontFamily: FONT_FAMILY.body,
-                  fontSize: 14,
-                  minHeight: 80,
-                  textAlignVertical: 'top',
+              <TouchableOpacity
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}
+                onPress={() => {
+                  hapticLight();
+                  setShowNotesInput(prev => !prev);
                 }}
-                placeholder="How did this session feel? Any notes on form, energy, or PRs..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                value={workoutNotes}
-                onChangeText={setWorkoutNotes}
-                onBlur={() => updateNotes(workoutNotes)}
-              />
+              >
+                <Ionicons name={showNotesInput ? "remove" : "add"} size={16} color={colors.textMuted} />
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 }}>Session Notes</Text>
+              </TouchableOpacity>
+              
+              {showNotesInput && (
+                <TextInput
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    borderRadius: RADIUS.md,
+                    borderWidth: 1,
+                    borderColor: workoutNotes ? 'rgba(165,153,255,0.3)' : 'rgba(255,255,255,0.08)',
+                    padding: 12,
+                    color: colors.textPrimary,
+                    fontFamily: FONT_FAMILY.body,
+                    fontSize: 14,
+                    minHeight: 80,
+                    textAlignVertical: 'top',
+                  }}
+                  placeholder="How did this session feel? Any notes on form, energy, or PRs..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  value={workoutNotes}
+                  onChangeText={setWorkoutNotes}
+                  onBlur={() => updateNotes(workoutNotes)}
+                />
+              )}
             </View>
 
             <TouchableOpacity

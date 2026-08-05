@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Animated,
   PanResponder,
+  InteractionManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
@@ -61,13 +62,22 @@ export default function AnimatedRestTimer({
   });
 
   useEffect(() => {
+    let skipped = false;
     const updateTimer = () => {
+      if (skipped) return;
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
       const rem = Math.max(0, durationSecs - elapsed);
       setRemSecs(rem);
 
       if (rem <= 0) {
-        onSkip();
+        skipped = true;
+        // Defer the skip to prevent layout crashes if the timer finishes exactly
+        // as the app is waking up from the background and re-rendering.
+        setTimeout(() => {
+          InteractionManager.runAfterInteractions(() => {
+            onSkip();
+          });
+        }, 100);
       }
     };
 

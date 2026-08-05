@@ -27,6 +27,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { scheduleAllNotifications, clearScheduleCache, sendTestNotification } from '../services/notifications';
 import { useMobileData } from '../contexts/MobileDataContext';
+import { handleSyncError } from '../utils/errorUtils';
+
 
 
 type TimePickerTarget =
@@ -202,7 +204,7 @@ export default function NotificationsSettingsScreen() {
     scheduleAllNotifications({
       tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
       waterLogs, sleepLogs,
-    }).catch(console.error);
+    }).catch(console.warn);
   }, [tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, waterLogs, sleepLogs]);
 
   // Toggle helper — saves + reschedules

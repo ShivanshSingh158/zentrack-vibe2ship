@@ -11,6 +11,13 @@ import { OfflineIndicator } from './src/components/OfflineIndicator';
 import * as Notifications from 'expo-notifications';
 import { requestNotificationPermissions, registerBackgroundNotificationFetch } from './src/services/notifications';
 import * as SplashScreen from 'expo-splash-screen';
+import { enableScreens, enableFreeze } from 'react-native-screens';
+
+// Fix for React Native New Architecture (Fabric) grey screen bug on background// Fix for React Native New Architecture (Fabric) grey screen bug.
+// A system notification/overlay triggers an onPause, and React Freeze catastrophically fails
+// to render the frame during this state transition, causing the grey screen. 
+// We MUST keep this false permanently and accept the CPU tradeoff.
+enableFreeze(false);
 
 import { setupNetworkListener } from './src/services/offlineSync';
 import { PortalProvider } from './src/contexts/PortalContext';
@@ -19,6 +26,7 @@ import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
 import { UpdateBanner } from './src/components/UpdateBanner';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import { navigationRef } from './src/navigation/AppNavigator';
 import { db } from './src/services/firebase';
 import { doc, updateDoc, increment, addDoc, collection, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
@@ -39,6 +47,20 @@ LogBox.ignoreLogs([
   'setLayoutAnimationEnabledExperimental',
   'Could not reach Cloud Firestore backend', // Safe to ignore — Firebase falls back to offline cache automatically
 ]);
+
+// Intercept console to completely silence Metro terminal spam for known safe warnings/errors
+const originalWarn = console.warn;
+console.warn = (...args) => {
+  if (typeof args[0] === 'string' && args[0].includes('setLayoutAnimationEnabledExperimental')) return;
+  originalWarn(...args);
+};
+
+const originalError = console.error;
+console.error = (...args) => {
+  if (typeof args[0] === 'string' && args[0].includes('Could not reach Cloud Firestore backend')) return;
+  originalError(...args);
+};
+
 
 
 export default function App() {
@@ -396,50 +418,7 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // ── Session-alive heartbeat ─────────────────────────────────────────────────
-  //
-  // PURPOSE: Enables WhatsApp-grade kill vs. resume detection in AppNavigator.
-  //
-  // KILL DETECTION:
-  //   When an app is killed, the JS thread stops immediately — no lifecycle
-  //   callback fires. So '@zentrack_session_alive' is ABSENT on the next cold boot.
-  //   AppNavigator sees it missing → boots to Home (kill behaviour).
-  //
-  // RESUME DETECTION:
-  //   When an app is backgrounded (process stays alive), AppState fires
-  //   'background'/'inactive' → we DELETE the key. When the user brings the app
-  //   back, AppState fires 'active' → we WRITE the key.
-  //   AppNavigator sees the key present on the next render → restores last tab.
-  //
-  // CHAT HISTORY CLEAR:
-  //   Sara and Gym AI conversations are cleared on background so every
-  //   foreground session starts fresh — same as before.
-
-  React.useEffect(() => {
-    // Write the heartbeat immediately on mount (first foreground)
-    AsyncStorage.setItem('@zentrack_session_alive', '1').catch(() => {});
-
-    const handleAppStateChange = (nextState: AppStateStatus) => {
-      if (nextState === 'active') {
-        // App came to foreground (warm resume) — mark session alive
-        AsyncStorage.setItem('@zentrack_session_alive', '1').catch(() => {});
-      } else if (nextState === 'background' || nextState === 'inactive') {
-        // App going to background:
-        //   1. Mark session as NOT alive (so a future kill is detectable)
-        //   2. Clear AI chat histories so each session starts fresh
-        AsyncStorage.multiRemove([
-          '@zentrack_session_alive',
-          'sara_chat_history',
-          'sara_memory_summary',
-          'gym_chat_history',
-          'gym_memory_summary',
-        ]).catch(() => {});
-      }
-    };
-
-    const sub = AppState.addEventListener('change', handleAppStateChange);
-    return () => sub.remove();
-  }, []);
+  // AppState listener previously here removed — AppNavigator is the canonical owner of lifecycle logic.
 
   React.useEffect(() => {
     if (fontsLoaded) {
@@ -448,30 +427,23 @@ export default function App() {
     }
   }, [fontsLoaded]);
 
-  // Show SplashLoader (animated quote) while fonts are loading — eliminates the
-  // ~300ms black screen that was previously shown with `return null`.
-  // Fonts load invisibly in background; user sees something beautiful immediately.
-  if (!fontsLoaded) {
-    return (
-      <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#080510' }}>
-        <SafeAreaProvider style={{ flex: 1, backgroundColor: '#080510' }}>
-          <SplashLoader />
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    );
-  }
-
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#080510' }}>
       <SafeAreaProvider style={{ flex: 1, backgroundColor: '#080510' }}>
         <ThemeProvider>
           <PortalProvider>
             <MobileDataProvider>
-              <AppNavigator />
+              <ErrorBoundary screenName="RootApp">
+                <AppNavigator />
+              </ErrorBoundary>
               <OfflineIndicator />
               <UpdateBanner />
             </MobileDataProvider>
           </PortalProvider>
+          
+          {/* Splash overlay — sits ABOVE everything during boot.
+              Fades away once fonts are loaded, revealing the already-mounted AppNavigator. */}
+          {!fontsLoaded && <SplashLoader />}
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

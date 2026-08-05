@@ -23,6 +23,7 @@ import {
   Animated, Easing, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import * as Updates from 'expo-updates';
 import * as Haptics from 'expo-haptics';
 
@@ -171,16 +172,17 @@ export function UpdateBanner() {
   if (!visible) return null;
 
   return (
-    <Modal transparent animationType="none" visible={visible} onRequestClose={dismiss}>
-      <View style={styles.backdrop}>
+    <Modal transparent animationType="fade" visible={visible} onRequestClose={dismiss}>
+      <BlurView intensity={30} tint="dark" style={styles.backdrop}>
         <Animated.View style={[styles.card, { opacity: opacityAnim, transform: [{ translateY: slideAnim }] }]}>
 
-          {/* Glow orb behind icon */}
+          {/* Premium Mesh Gradient Background Orbs */}
           <Animated.View style={[styles.glowOrb, { opacity: glowOpacity }]} />
+          <View style={styles.glowOrbSecondary} />
 
           {/* Icon */}
           <View style={styles.iconWrap}>
-            <Ionicons name="sparkles" size={28} color="#fff" />
+            <Ionicons name="sparkles" size={32} color="#fff" />
           </View>
 
           {/* Title */}
@@ -221,7 +223,7 @@ export function UpdateBanner() {
           </TouchableOpacity>
 
         </Animated.View>
-      </View>
+      </BlurView>
     </Modal>
   );
 }
@@ -229,116 +231,136 @@ export function UpdateBanner() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 24,
   },
   card: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: '#121214',
-    borderRadius: 22,
+    backgroundColor: 'rgba(18, 18, 22, 0.85)',
+    borderRadius: 28,
     padding: 24,
+    paddingTop: 32,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#26262a',
+    borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    elevation: 15,
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.8,
+    shadowRadius: 40,
+    elevation: 20,
     overflow: 'hidden',
   },
   glowOrb: {
     position: 'absolute',
-    top: -50,
+    top: -80,
+    left: -20,
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: 'rgba(165,153,255,0.25)',
+  },
+  glowOrbSecondary: {
+    position: 'absolute',
+    top: -60,
+    right: -40,
     width: 160,
     height: 160,
     borderRadius: 80,
-    backgroundColor: 'rgba(165,153,255,0.15)',
+    backgroundColor: 'rgba(88, 204, 255, 0.15)',
   },
   iconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(165,153,255,0.12)',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(165,153,255,0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.25)',
+    borderColor: 'rgba(165,153,255,0.3)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 20,
+    shadowColor: '#a599ff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
   },
   title: {
-    fontSize: 20,
-    fontFamily: 'Inter_600SemiBold',
+    fontSize: 24,
+    fontFamily: 'Inter_700Bold',
     color: '#ffffff',
-    marginBottom: 6,
+    marginBottom: 8,
     textAlign: 'center',
-    letterSpacing: -0.2,
+    letterSpacing: -0.5,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#8e8e93',
+    color: 'rgba(255,255,255,0.6)',
     textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 20,
-    paddingHorizontal: 6,
+    lineHeight: 20,
+    marginBottom: 24,
+    paddingHorizontal: 8,
   },
   changelogBox: {
     width: '100%',
-    backgroundColor: '#1a1a1e',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 20,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 18,
+    padding: 16,
+    marginBottom: 26,
     borderWidth: 1,
-    borderColor: '#26262a',
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   changelogTitle: {
-    fontSize: 10,
+    fontSize: 11,
     fontFamily: 'Inter_600SemiBold',
     color: '#a599ff',
-    letterSpacing: 1.2,
-    marginBottom: 10,
+    letterSpacing: 1.5,
+    marginBottom: 12,
     textTransform: 'uppercase',
   },
   changelogRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
-    marginBottom: 6,
+    gap: 10,
+    marginBottom: 8,
   },
   changelogText: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'Inter_400Regular',
-    color: '#e5e5ea',
-    lineHeight: 18,
+    color: 'rgba(255,255,255,0.85)',
+    lineHeight: 20,
   },
   updateBtn: {
     width: '100%',
-    height: 48,
-    borderRadius: 14,
+    height: 54,
+    borderRadius: 16,
     backgroundColor: '#a599ff',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    shadowColor: '#a599ff',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 8,
   },
   updateBtnText: {
-    fontSize: 15,
+    fontSize: 16,
     fontFamily: 'Inter_600SemiBold',
     color: '#000000',
-    letterSpacing: 0.1,
+    letterSpacing: 0.2,
   },
   laterBtn: {
-    marginTop: 14,
-    paddingVertical: 6,
+    marginTop: 16,
+    paddingVertical: 8,
   },
   laterText: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    color: '#8e8e93',
+    fontSize: 14,
+    fontFamily: 'Inter_500Medium',
+    color: 'rgba(255,255,255,0.5)',
   },
 });

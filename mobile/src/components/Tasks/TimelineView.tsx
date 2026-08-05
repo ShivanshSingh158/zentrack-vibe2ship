@@ -10,7 +10,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import Svg, { Defs, Pattern, Line, Rect } from 'react-native-svg';
-import { Task, AttendanceSubject } from '../../contexts/MobileDataContext';
+import { Task, AttendanceSubject, GymLog } from '../../contexts/MobileDataContext';
+import { UserGymPlanDoc } from '../../types/gym.types';
+import { getCustomPlanDay, planDayIndexForDate } from '../../hooks/useGymLog';
+import { GYM_PLAN } from '../../data/gymPlan';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import { doc, updateDoc } from 'firebase/firestore';
@@ -28,6 +31,7 @@ interface ClassBlock {
   height: number;
   time: string;
   room?: string;
+  isDone?: boolean;
 }
 
 interface TimelineViewProps {
@@ -35,6 +39,9 @@ interface TimelineViewProps {
   onTaskPress: (task: Task) => void;
   colors: any;
   attendance?: AttendanceSubject[];
+  attendanceLogs?: any[];
+  gymLogs?: GymLog[];
+  userGymPlan?: UserGymPlanDoc | null;
   selectedDate?: string;
 }
 
@@ -381,7 +388,7 @@ const blockStyles = StyleSheet.create({
 
 // ── Main TimelineView ────────────────────────────────────────────────────────
 
-export default function TimelineView({ tasks, onTaskPress, colors, attendance, selectedDate }: TimelineViewProps) {
+export default function TimelineView({ tasks, onTaskPress, colors, attendance, attendanceLogs, gymLogs, userGymPlan, selectedDate }: TimelineViewProps) {
 
   // ── Dynamically compute START_HOUR from earliest task/class (min 5 AM) ────
   const START_HOUR = useMemo(() => {
@@ -398,17 +405,11 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, s
     if (attendance && selectedDate) {
       const dayOfWeek = new Date(selectedDate + 'T00:00:00').getDay();
       const dayKey = dayOfWeek.toString();
-      attendance.forEach(subject => {
-        const sch =
-          subject.schedule?.[dayKey] ||
-          subject.schedule?.[dayOfWeek as any] ||
-          subject.schedule?.[DAY_NAMES[dayOfWeek]] ||
-          subject.schedule?.[DAY_NAMES[dayOfWeek].toLowerCase()];
+      const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      
+      attendance.forEach(subj => {
+        const sch = subj.schedule?.[dayKey] || subj.schedule?.[dayOfWeek as any] || subj.schedule?.[DAY_NAMES[dayOfWeek]] || subj.schedule?.[DAY_NAMES[dayOfWeek].toLowerCase()];
         if (!sch) return;
-        (sch.classes || []).forEach((c: any) => {
-          const f = parseTime(c.time);
-          if (f !== null && f <= END_HOUR) floats.push(f);
-        });
         (sch.labs || []).forEach((l: any) => {
           const f = parseTime(l.time);
           if (f !== null && f <= END_HOUR) floats.push(f);
@@ -504,6 +505,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, s
           const endFloat = Math.min(END_HOUR, startFloat + 1);
           const top = (startFloat - START_HOUR) * HOUR_HEIGHT;
           const height = (endFloat - startFloat) * HOUR_HEIGHT;
+          const hasLog = (attendanceLogs || []).some((l: any) => l.date === selectedDate && l.subjectId === subject.id && l.type === 'class');
           blocks.push({
             id: `${subject.id}-class-${i}`,
             title: subject.name,
@@ -514,6 +516,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, s
             height: Math.max(height - 4, 36),
             time: c.time,
             room: c.room,
+            isDone: hasLog,
           });
         });
       }
@@ -526,6 +529,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, s
           const endFloat = Math.min(END_HOUR, startFloat + 2);
           const top = (startFloat - START_HOUR) * HOUR_HEIGHT;
           const height = (endFloat - startFloat) * HOUR_HEIGHT;
+          const hasLog = (attendanceLogs || []).some((log: any) => log.date === selectedDate && log.subjectId === subject.id && log.type === 'lab');
           blocks.push({
             id: `${subject.id}-lab-${i}`,
             title: `${subject.name} (Lab)`,
@@ -536,20 +540,65 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, s
             height: Math.max(height - 4, 36),
             time: l.time,
             room: l.room,
+            isDone: hasLog,
           });
         });
       }
     });
 
     return blocks.sort((a, b) => a.startFloat - b.startFloat);
-  }, [attendance, selectedDate, START_HOUR]);
+  }, [attendance, attendanceLogs, selectedDate, START_HOUR]);
+
+  // ── Build gym block from gymLogs and userGymPlan ───────────────────────────
+  const gymBlock = useMemo((): ClassBlock | null => {
+    if (!selectedDate) return null;
+    const gLog = (gymLogs || []).find(g => g.date === selectedDate);
+    const planIdx = planDayIndexForDate(selectedDate);
+    const gPlan = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
+    
+    // Use manual override first, then weekly schedule
+    const startTimeStr = gLog?.startTime || gPlan?.startTime;
+    const endTimeStr = gLog?.endTime || gPlan?.endTime;
+    
+    // Do not show gym if it's a rest day AND no manual override exists
+    if (!startTimeStr || (!gLog?.startTime && gPlan?.isRest)) return null;
+
+    const startFloat = parseTime(startTimeStr);
+    if (startFloat === null || startFloat > END_HOUR) return null;
+    
+    let endFloat = Math.min(END_HOUR, startFloat + 1);
+    if (endTimeStr) {
+      const parsedEnd = parseTime(endTimeStr);
+      if (parsedEnd !== null && parsedEnd > startFloat && parsedEnd <= END_HOUR) {
+        endFloat = parsedEnd;
+      }
+    }
+    
+    const top = (startFloat - START_HOUR) * HOUR_HEIGHT;
+    const height = (endFloat - startFloat) * HOUR_HEIGHT;
+    const isDone = !!gLog?.workoutDurationMinutes || !!gLog?.workoutStartTime;
+    
+    return {
+      id: `gym-${selectedDate}`,
+      title: gPlan?.focus ? `Workout: ${gPlan.focus}` : 'Gym Workout',
+      type: 'gym' as any,
+      startFloat,
+      endFloat,
+      top,
+      height: Math.max(height - 4, 36),
+      time: startTimeStr,
+      room: 'Gym',
+      isDone,
+    };
+  }, [gymLogs, userGymPlan, selectedDate, START_HOUR]);
 
   // ── Combine tasks + classes for free-time detection ───────────────────────
   const allBlocks = useMemo(() => {
     const taskB = positionedTasks.map(pt => ({ startFloat: pt.startFloat, endFloat: pt.endFloat }));
     const classB = classBlocks.map(cb => ({ startFloat: cb.startFloat, endFloat: cb.endFloat }));
-    return [...taskB, ...classB].sort((a, b) => a.startFloat - b.startFloat);
-  }, [positionedTasks, classBlocks]);
+    const gymB = gymBlock ? [{ startFloat: gymBlock.startFloat, endFloat: gymBlock.endFloat }] : [];
+    return [...taskB, ...classB, ...gymB].sort((a, b) => a.startFloat - b.startFloat);
+  }, [positionedTasks, classBlocks, gymBlock]);
 
   const freeTimeBlocks = useMemo(() => {
     const fBlocks = [];
@@ -646,13 +695,28 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, s
         ))}
 
         {/* Class / Lab Blocks (non-draggable) */}
-        {classBlocks.map((cb) => {
+        {[...classBlocks, gymBlock].filter(Boolean).map((cb: any) => {
           const isLab = cb.type === 'lab';
-          const blockBg = isLab ? 'rgba(250, 215, 161, 0.12)' : 'rgba(137, 220, 235, 0.12)';
-          const blockBorder = isLab ? '#FAD7A1' : '#89dceb';
+          const isGym = cb.type === 'gym';
+          
+          let blockBg = isLab ? 'rgba(250, 215, 161, 0.12)' : 'rgba(137, 220, 235, 0.12)';
+          let blockBorder = isLab ? '#FAD7A1' : '#89dceb';
+          let iconName = isLab ? 'flask-outline' : 'book-outline';
+          
+          if (isGym) {
+            blockBg = 'rgba(165, 153, 255, 0.12)'; // a599ff
+            blockBorder = '#a599ff';
+            iconName = 'barbell-outline';
+          }
+          
           // Shade past classes (ended before now today)
           const nowHours = new Date().getHours() + new Date().getMinutes() / 60;
-          const isPast = cb.endFloat < nowHours;
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const isToday = selectedDate === todayStr;
+          const isPastDay = selectedDate ? selectedDate < todayStr : false;
+          const isPast = isPastDay || (isToday && cb.endFloat < nowHours);
+          
+          const isMissed = isPast && !cb.isDone;
 
           return (
             <View
@@ -673,16 +737,16 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, s
             >
               <View style={styles.classBlockHeader}>
                 <Ionicons
-                  name={isLab ? 'flask-outline' : 'book-outline'}
+                  name={iconName as any}
                   size={10}
-                  color={isPast ? '#8e8e93' : blockBorder}
+                  color={cb.isDone ? '#5eda9e' : isMissed ? '#ff6961' : isPast ? '#8e8e93' : blockBorder}
                   style={{ marginRight: 4 }}
                 />
-                <Text style={[styles.classTypeTag, { color: isPast ? '#8e8e93' : blockBorder }]}>
-                  {isPast ? 'DONE' : (isLab ? 'LAB' : 'CLASS')}
+                <Text style={[styles.classTypeTag, { color: cb.isDone ? '#5eda9e' : isMissed ? '#ff6961' : isPast ? '#8e8e93' : blockBorder }]}>
+                  {cb.isDone ? 'DONE' : isMissed ? 'MISSED' : isPast ? 'PAST' : (isGym ? 'GYM' : isLab ? 'LAB' : 'CLASS')}
                 </Text>
               </View>
-              <Text style={[styles.taskTitle, { color: isPast ? colors.textMuted : colors.textPrimary, textDecorationLine: isPast ? 'line-through' : 'none' }]} numberOfLines={1}>
+              <Text style={[styles.taskTitle, { color: isPast ? colors.textMuted : colors.textPrimary, textDecorationLine: (cb.isDone || isMissed) ? 'line-through' : 'none' }]} numberOfLines={1}>
                 {cb.title}
               </Text>
               <View style={styles.taskSubtext}>
@@ -692,7 +756,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, s
                 </Text>
               </View>
               {/* Hatch overlay for past classes */}
-              {isPast && <HatchOverlay width={500} height={cb.height} color="rgba(255,255,255,0.06)" />}
+              {isPast && <HatchOverlay width={500} height={cb.height} color={cb.isDone ? 'rgba(94,218,158,0.06)' : isMissed ? 'rgba(255,105,97,0.06)' : 'rgba(255,255,255,0.06)'} />}
             </View>
           );
         })}

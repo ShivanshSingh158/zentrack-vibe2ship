@@ -42,6 +42,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import TaskTimeLogSheet from '../components/Tasks/TaskTimeLogSheet';
 import TimeSpentSheet from '../components/Tasks/TimeSpentSheet';
 import BulkRescheduleSheet from '../components/Tasks/BulkRescheduleSheet';
+import { handleSyncError } from '../utils/errorUtils';
+
 
 const TAG_STORAGE_KEY = 'zentrack_task_tags_v1';
 const TAG_PALETTE = ['#a599ff','#60a5fa','#34d399','#f87171','#fb923c','#e879f9','#facc15','#38bdf8'];
@@ -211,21 +213,41 @@ export const NewTaskModal = React.memo(function NewTaskModal({ visible, onClose,
     return diff;
   };
 
-  const onStartTimeChange = (_: any, d?: Date) => {
-    setShowStartPicker(Platform.OS === 'ios');
-    if (d) {
-      const hh = d.getHours().toString().padStart(2, '0');
-      const mm = d.getMinutes().toString().padStart(2, '0');
-      setStartTime(`${hh}:${mm}`);
+  const onStartTimeChange = (event: any, d?: Date) => {
+    if (Platform.OS === 'android') {
+      // Always close the picker on Android — regardless of OK or Cancel
+      setShowStartPicker(false);
+      // Only commit the value when user tapped OK ('set'), not on every scroll tick ('change')
+      if (event.type === 'set' && d) {
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        setStartTime(`${hh}:${mm}`);
+      }
+      // event.type === 'dismissed' → just close, no value change
+    } else {
+      // iOS: inline spinner, always update value as user scrolls
+      if (d) {
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        setStartTime(`${hh}:${mm}`);
+      }
     }
   };
 
-  const onEndTimeChange = (_: any, d?: Date) => {
-    setShowEndPicker(Platform.OS === 'ios');
-    if (d) {
-      const hh = d.getHours().toString().padStart(2, '0');
-      const mm = d.getMinutes().toString().padStart(2, '0');
-      setEndTime(`${hh}:${mm}`);
+  const onEndTimeChange = (event: any, d?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowEndPicker(false);
+      if (event.type === 'set' && d) {
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        setEndTime(`${hh}:${mm}`);
+      }
+    } else {
+      if (d) {
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        setEndTime(`${hh}:${mm}`);
+      }
     }
   };
 
@@ -642,13 +664,29 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
     return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
   };
 
-  const onStartChange = (_: any, d?: Date) => {
-    setShowStartPicker(Platform.OS === 'ios');
-    if (d) setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+  const onStartChange = (event: any, d?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowStartPicker(false);
+      if (event.type === 'set' && d) {
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        setStartTime(`${hh}:${mm}`);
+      }
+    } else {
+      if (d) setStartTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+    }
   };
-  const onEndChange = (_: any, d?: Date) => {
-    setShowEndPicker(Platform.OS === 'ios');
-    if (d) setEndTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+  const onEndChange = (event: any, d?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowEndPicker(false);
+      if (event.type === 'set' && d) {
+        const hh = d.getHours().toString().padStart(2, '0');
+        const mm = d.getMinutes().toString().padStart(2, '0');
+        setEndTime(`${hh}:${mm}`);
+      }
+    } else {
+      if (d) setEndTime(`${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`);
+    }
   };
 
   const handleDelete = async () => {
@@ -711,7 +749,7 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
               text: 'Today only',
               style: 'destructive',
               onPress: () => {
-                deleteDoc(doc(db, COLLECTION.TASKS, task.id)).catch((e) => console.error(e));
+                deleteDoc(doc(db, COLLECTION.TASKS, task.id)).catch(handleSyncError);
               },
             },
             {
@@ -868,7 +906,7 @@ function EditTaskModalComponent({ visible, onClose, task }: { visible: boolean, 
     } else {
       // Non-recurring: close instantly (optimistic) then write in background
       onClose();
-      updateDoc(doc(db, COLLECTION.TASKS, task.id), updatePayload).catch((e) => console.error(e));
+      updateDoc(doc(db, COLLECTION.TASKS, task.id), updatePayload).catch(handleSyncError);
     }
   };
 
@@ -999,7 +1037,7 @@ const EditTaskModal = React.memo(EditTaskModalComponent);
 export default function TasksScreen() {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors);
-  const { tasks, user, optimisticUpdateTask, attendance } = useMobileData();
+  const { tasks, user, optimisticUpdateTask, attendance, attendanceLogs, gymLogs, userGymPlan } = useMobileData();
   const [selectedDate, setSelectedDate] = useState(today);
   const [viewMode, setViewMode] = useState<'list' | 'timeline' | 'kanban'>('list');
   const [filterTag, setFilterTag] = useState<string | null>(null);
@@ -1076,7 +1114,7 @@ export default function TasksScreen() {
       }
 
       if (spawns > 0) {
-        await batch.commit().catch(console.error);
+        await batch.commit().catch(handleSyncError);
       }
     };
 
@@ -1421,6 +1459,9 @@ export default function TasksScreen() {
             onTaskPress={(t) => setEditingTask(t)} 
             colors={colors}
             attendance={attendance}
+            attendanceLogs={attendanceLogs}
+            gymLogs={gymLogs}
+            userGymPlan={userGymPlan}
             selectedDate={selectedDate}
           />
         </Animated.View>
@@ -1478,12 +1519,12 @@ export default function TasksScreen() {
 
       {/* OVERDUE MODAL */}
       <BottomSheet visible={isOverdueModalOpen} onClose={() => setIsOverdueModalOpen(false)}>
-        <View style={{ flexShrink: 1, maxHeight: 600 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 20, paddingTop: 20 }}>
+        <View style={{ flexShrink: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 8, paddingTop: 10 }}>
             <Ionicons name="warning" size={24} color="#FF6961" style={{ marginRight: 12 }} />
             <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: '#FFFFFF' }}>Overdue Tasks</Text>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 10 }}>
             {overdueTasks.map(t => (
               <TaskRow
                 key={t.id}
@@ -1514,7 +1555,7 @@ export default function TasksScreen() {
       {/* INBOX MODAL */}
       <BottomSheet visible={isInboxModalOpen} onClose={() => setIsInboxModalOpen(false)}>
         <View style={{ flexShrink: 1, maxHeight: 600 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 20, paddingTop: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 8, paddingTop: 20 }}>
             <Ionicons name="file-tray" size={24} color="#A599FF" style={{ marginRight: 12 }} />
             <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: '#FFFFFF' }}>Inbox</Text>
           </View>
@@ -1777,8 +1818,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
     fontWeight: '500',
   },
   dateSelectorContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
+    paddingHorizontal: 0,
+    paddingTop: 0,
   },
   dateRow: {
     flexDirection: 'row',
@@ -2410,9 +2451,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 8,
     paddingTop: 10,
-    paddingBottom: 10,
+    paddingBottom: 0,
     backgroundColor: '#000000',
   },
   topHeaderTitle: {

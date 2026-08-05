@@ -61,11 +61,11 @@ const processNext = (): void => {
     next.importer()
       .then(mod => {
         moduleCache.set(next.id, mod);
-        requestAnimationFrame(processNext);
+        InteractionManager.runAfterInteractions(() => requestAnimationFrame(processNext));
       })
       .catch(err => {
         console.warn(`[ModulePrefetcher] Failed to prefetch ${next.id}:`, err);
-        requestAnimationFrame(processNext);
+        InteractionManager.runAfterInteractions(() => requestAnimationFrame(processNext));
       });
   });
 };

@@ -80,6 +80,8 @@ export interface GymPlanDay {
   focus: string;
   exercises: GymPlanExercise[];
   isRest?: boolean;
+  startTime?: string; // "HH:MM" in 24h or 12h format
+  endTime?: string;   // "HH:MM"
 }
 
 export interface GymCustomPlanDay {

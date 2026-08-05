@@ -11,6 +11,8 @@ import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestor
 import { db } from '../services/firebase';
 import { COLLECTION } from '../config/constants';
 import { useTheme } from "../contexts/ThemeContext";
+import { handleSyncError } from '../utils/errorUtils';
+
 
 const STATUS_CONFIG = {
   wishlist: { label: 'Wishlist', color: '#8b5cf6', icon: 'star-outline' as const },
@@ -65,9 +67,9 @@ export default function JobsScreen() {
 
     setTimeout(() => {
       if (editingId) {
-        updateDoc(doc(db, COLLECTION.JOBS, editingId), data).catch(console.error);
+        updateDoc(doc(db, COLLECTION.JOBS, editingId), data).catch(handleSyncError);
       } else {
-        addDoc(collection(db, COLLECTION.JOBS), { ...data, createdAt: Date.now() }).catch(console.error);
+        addDoc(collection(db, COLLECTION.JOBS), { ...data, createdAt: Date.now() }).catch(handleSyncError);
       }
     }, 150);
     
