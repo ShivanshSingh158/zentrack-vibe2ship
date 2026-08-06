@@ -6,7 +6,7 @@ import {
   Copy, Check, Flag, BookOpen, Zap, HelpCircle,
   Maximize2, Minimize2,
 } from 'lucide-react';
-import { callGeminiProxyStream } from '../../services/gemini/geminiClient';
+import { callGeminiProxyStream, callGeminiProxy, extractGeminiText } from '../../services/gemini/geminiClient';
 import { auth, db } from '../../services/firebase';
 import { addDoc, collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
@@ -73,17 +73,10 @@ const saveHistoryToFirestore = async (userId: string, videoId: string, msgs: Cha
   } catch { /* ignore */ }
 };
 
-// ── YouTube Transcript Fetcher ────────────────────────────────────────────────
-// YouTube's timedtext API is CORS-blocked from browsers. We try:
-//   1. Direct fetch (sometimes works in non-strict CORS environments)
-//   2. corsproxy.io (free, reliable CORS proxy)
-//   3. allorigins.win (free alternative proxy)
-//   4. api.codetabs.com (another free proxy)
-// AI still works without transcript — it answers from title + expert knowledge.
+// ── YouTube Transcript Fetcher & Fallback ───────────────────────────────────
 
-const fetchYouTubeTranscript = async (videoId: string): Promise<string> => {
+const fetchYouTubeTranscript = async (videoId: string): Promise<{ transcript: string; source: string; error: string | null }> => {
   try {
-    // Auth: send Firebase ID token — /api/transcript now requires it
     const { auth } = await import('../../services/firebase');
     const idToken = await auth.currentUser?.getIdToken() ?? '';
     const res = await fetch(`/api/transcript?videoId=${videoId}`, {
@@ -92,15 +85,82 @@ const fetchYouTubeTranscript = async (videoId: string): Promise<string> => {
     if (res.ok) {
       const data = await res.json();
       if (data.transcript && data.transcript.length > 50) {
-        return data.transcript;
+        return { transcript: data.transcript, source: 'captions', error: null };
       }
     }
-  } catch { /* Fail silently */ }
-
-  return ''; // No transcript found
+  } catch (e: any) {
+    return { transcript: '', source: 'none', error: e?.message || 'Server error' };
+  }
+  return { transcript: '', source: 'none', error: 'No transcript found via server' };
 };
 
+const GEMINI_VIDEO_TIMEOUT_MS = 25000;
 
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
+const analyzeVideoWithGemini = async (
+  videoId: string,
+  videoTitle: string,
+): Promise<{ analysis: string; error: string | null }> => {
+  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
+  const timeoutFallback = { analysis: '', error: 'Timed out after 25s — video may be too long for real-time analysis' };
+
+  const work = (async (): Promise<{ analysis: string; error: string | null }> => {
+    try {
+      const data = await callGeminiProxy({
+        model: 'gemini-2.5-flash',
+        contents: [{
+          role: 'user',
+          parts: [
+            { fileData: { fileUri: youtubeUrl, mimeType: 'video/mp4' } } as any,
+            {
+              text: `Analyze this YouTube lecture: "${videoTitle}".
+Produce a DETAILED breakdown with:
+## Overview (2-3 sentences)
+## Timestamped Breakdown — every 2-3 min: [MM:SS] what is taught, code shown, examples
+## Key Concepts — every concept/algorithm/technique
+## Code Examples — reproduce any code shown (specify language)
+## Key Takeaways
+Be precise. Reproduce exact code from the screen.`,
+            },
+          ],
+        }],
+        generationConfig: { maxOutputTokens: 4096 },
+      });
+      const analysis = extractGeminiText(data);
+      if (!analysis || analysis.length < 50) return { analysis: '', error: 'Gemini returned empty analysis' };
+      return { analysis, error: null };
+    } catch (e: any) {
+      return { analysis: '', error: e?.message || 'Gemini video analysis failed' };
+    }
+  })();
+
+  return withTimeout(work, GEMINI_VIDEO_TIMEOUT_MS, timeoutFallback);
+};
+
+const fetchLectureContext = async (
+  videoId: string,
+  videoTitle: string,
+): Promise<{ content: string; source: 'captions' | 'gemini-vision' | 'none'; error: string | null }> => {
+  const captionResult = await fetchYouTubeTranscript(videoId);
+  if (captionResult.transcript) {
+    return { content: captionResult.transcript, source: 'captions', error: null };
+  }
+  const geminiResult = await analyzeVideoWithGemini(videoId, videoTitle);
+  if (geminiResult.analysis) {
+    return { content: geminiResult.analysis, source: 'gemini-vision', error: null };
+  }
+  return {
+    content: '',
+    source: 'none',
+    error: `Server: ${captionResult.error || 'none'} | Gemini Vision: ${geminiResult.error || 'failed'}`,
+  };
+};
 
 // ── Doubt detection ───────────────────────────────────────────────────────────
 
@@ -219,22 +279,29 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
     if (userId && videoId) saveHistoryToFirestore(userId, videoId, msgs);
   }, [userId, videoId]);
 
+  const [transcriptSource, setTranscriptSource] = useState<'captions' | 'gemini-vision' | 'none' | 'loading'>('loading');
+
   // ── Load transcript + history ─────────────────────────────────────────────
   useEffect(() => {
     setTranscriptStatus('loading');
+    setTranscriptSource('loading');
     setMessages([]);
     contentsRef.current = [];
 
     Promise.all([
-      fetchYouTubeTranscript(videoId),
+      fetchLectureContext(videoId, videoTitle),
       userId ? loadHistoryFromFirestore(userId, videoId) : Promise.resolve([] as ChatMessage[]),
-    ]).then(([tx, history]) => {
+    ]).then(([context, history]) => {
       const globalCtx = buildGlobalCtxString(videoId);
-      systemRef.current = buildSystemInstruction(videoTitle, topicName, tx || undefined, progressPct, completedTopics, totalProgress, globalCtx);
-      setTranscriptStatus(tx ? 'ready' : 'unavailable');
+      systemRef.current = buildSystemInstruction(videoTitle, topicName, context.content || undefined, progressPct, completedTopics, totalProgress, globalCtx);
+      setTranscriptStatus(context.content ? 'ready' : 'unavailable');
+      setTranscriptSource(context.source);
       setMessages(history);
       contentsRef.current = history.filter(m => !m.error).map(m => ({ role: m.role, parts: [{ text: m.text }] }));
-    }).catch(() => setTranscriptStatus('unavailable'));
+    }).catch(() => {
+      setTranscriptStatus('unavailable');
+      setTranscriptSource('none');
+    });
   }, [videoId, videoTitle, topicName, userId, progressPct]);
 
   // Auto scroll
@@ -388,8 +455,16 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
                   </div>
                   <div>
                     <div style={{ fontSize: '1rem', fontWeight: 600, color: '#ececec', marginBottom: '0.5rem' }}>How can I help you today?</div>
-                    <div style={{ fontSize: '0.75rem', color: '#8e8e8e', lineHeight: 1.6, maxWidth: '230px' }}>
-                      I've analyzed <strong style={{ color: 'rgba(255,255,255,0.55)' }}>{videoTitle}</strong> — let's dive deep.
+                    <div style={{ fontSize: '0.75rem', color: '#8e8e8e', lineHeight: 1.6, maxWidth: '280px' }}>
+                      {transcriptSource === 'captions' ? (
+                        <>✅ <strong>YouTube captions loaded</strong> — I know this lecture in precise detail. Let's dive deep.</>
+                      ) : transcriptSource === 'gemini-vision' ? (
+                        <>🧠 <strong>Gemini Video AI</strong> analyzed this lecture directly. I watched the video and heard the audio. Let's dive deep.</>
+                      ) : transcriptSource === 'none' ? (
+                        <>❌ <strong>Could not analyze video.</strong> I will answer from general knowledge of the topic.</>
+                      ) : (
+                        <>Loading lecture context...</>
+                      )}
                     </div>
                   </div>
                   {/* Starter chips */}
