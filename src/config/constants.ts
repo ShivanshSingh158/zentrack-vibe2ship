@@ -13,7 +13,7 @@ export const APP_URL = import.meta.env.VITE_APP_URL || 'https://myzentrack.verce
 // ── API Endpoints ─────────────────────────────────────────────────────────────
 export const GEMINI_PROXY_URL = `${APP_URL}/api/gemini-proxy`;
 export const SEARCH_API_URL = `${APP_URL}/api/search`;
-export const TRANSCRIPT_API_URL = `${APP_URL}/api/transcript`;
+export const TRANSCRIPT_API_URL = `${APP_URL}/api/edge-transcript`;
 export const VOICE_PROXY_URL = `${APP_URL}/api/gemini-proxy?action=tts`;
 export const SEND_NOTIFICATION_URL = `${APP_URL}/api/send-notification`;
 

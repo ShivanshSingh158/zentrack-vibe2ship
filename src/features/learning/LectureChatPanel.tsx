@@ -113,7 +113,7 @@ const analyzeVideoWithGemini = async (
   const work = (async (): Promise<{ analysis: string; error: string | null }> => {
     try {
       const data = await callGeminiProxy({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-pro',
         contents: [{
           role: 'user',
           parts: [
