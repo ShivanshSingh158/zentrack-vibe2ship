@@ -570,7 +570,7 @@ export function useGymLog(dateStr: string) {
     });
   }, [saveLog]);
 
-  const endWorkout = useCallback(async () => {
+  const endWorkout = useCallback(async (force: boolean = false) => {
     setLog(prev => {
       if (!prev) return prev;
       const startMs = prev.workoutStartTime || Date.now();
@@ -579,7 +579,7 @@ export function useGymLog(dateStr: string) {
       // ── 10-minute minimum guard ──────────────────────────────────
       // A workout under 10 minutes is treated as a false-start.
       // The screen should pre-check with Alert; this is the safety gate.
-      if (duration < 10) {
+      if (!force && duration < 10) {
         return prev; // abort — do NOT mark complete
       }
 
@@ -591,13 +591,13 @@ export function useGymLog(dateStr: string) {
       const updated = {
         ...prev,
         completed: true,
-        workoutStartTime: undefined,
+        workoutStartTime: null,
         workoutDurationMinutes: duration,
         startTime: prev.startTime || startTimeStr,
         endTime: prev.endTime || endTimeStr,
-        restTimerStartTime: undefined,
-        restTimerDurationSecs: undefined,
-        restTimerExerciseName: undefined,
+        restTimerStartTime: null,
+        restTimerDurationSecs: null,
+        restTimerExerciseName: null,
         updatedAt: Date.now()
       };
       saveLog(updated);

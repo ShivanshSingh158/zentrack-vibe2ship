@@ -494,7 +494,21 @@ Return ONLY a valid JSON object with an "exercises" array containing 6 objects:
 
     const restSecs = isSupersetPartner ? 30 : getRestDuration(exercise);
 
-    logSetAndStartTimer(realExerciseIndex, newEx, restSecs, exercise.name);
+    const willBeAllCompleteForThisExercise = exercise.setsLog.every((s, i) => 
+      i === activeSetIndex ? true : s.completed
+    );
+    const isLastExerciseInWorkout = realExerciseIndex === exercises.length - 1;
+    const shouldAutoFinish = willBeAllCompleteForThisExercise && isLastExerciseInWorkout;
+
+    if (shouldAutoFinish) {
+      updateExercise(realExerciseIndex, newEx);
+      hapticSuccess();
+      clearRestTimer();
+      endWorkout(true);
+      navigation.replace('WorkoutSummary');
+    } else {
+      logSetAndStartTimer(realExerciseIndex, newEx, restSecs, exercise.name);
+    }
 
     if (nextIndexToJump !== -1) {
       // Small delay so the user sees the set complete checkmark before it snaps away
@@ -511,7 +525,7 @@ Return ONLY a valid JSON object with an "exercises" array containing 6 objects:
     } else {
       hapticSuccess();
       clearRestTimer();
-      endWorkout();
+      endWorkout(true);
       navigation.replace('WorkoutSummary');
     }
   };

@@ -178,7 +178,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
             {[
               { amount: 250, label: 'Glass', icon: 'water-outline', mlText: '250ml' },
               { amount: 500, label: 'Bottle', icon: 'flask-outline', mlText: '500ml' },
-              { amount: 1000, label: 'Large', icon: 'pint-outline', mlText: '1000ml' },
+              { amount: 1000, label: 'Large', icon: 'pint-outline', mlText: '1L' },
               { amount: 0, label: 'Custom', icon: 'options-outline', mlText: 'Custom' }
             ].map(item => (
               <TouchableOpacity
@@ -195,7 +195,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
                 <View style={s.iconWrap}>
                   <Ionicons name={item.icon as any} size={28} color="#0A84FF" />
                 </View>
-                <Text style={s.amountText}>{item.mlText}</Text>
+                <Text style={s.amountText} adjustsFontSizeToFit numberOfLines={1}>{item.mlText}</Text>
                 <Text style={s.labelText}>{item.label}</Text>
               </TouchableOpacity>
             ))}

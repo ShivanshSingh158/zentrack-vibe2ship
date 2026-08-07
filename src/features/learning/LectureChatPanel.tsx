@@ -283,6 +283,8 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
 
   // ── Load transcript + history ─────────────────────────────────────────────
   useEffect(() => {
+    if (!userId) return; // Wait for Firebase Auth session to restore
+
     setTranscriptStatus('loading');
     setTranscriptSource('loading');
     setMessages([]);

@@ -347,7 +347,7 @@ export default function GymHomeScreen() {
         </View>
       );
     }
-    if (log?.workoutStartTime) {
+    if (log?.workoutStartTime && !log?.completed) {
       return (
         <View style={s.activeBanner}>
           <View style={s.activeBannerLeft}>
@@ -359,7 +359,7 @@ export default function GymHomeScreen() {
             <TouchableOpacity onPress={() => {
               hapticMedium();
               if (log?.workoutStartTime) {
-                const durationMins = Math.round((Date.now() - log.workoutStartTime) / 60000);
+                const durationMins = Math.round((Date.now() - Number(log.workoutStartTime)) / 60000);
                 if (durationMins < 10) {
                   Alert.alert(
                     'Too Short 💪',

@@ -346,23 +346,33 @@ export default function WorkoutSummaryScreen() {
 
           {/* Chart Display */}
           {chartData ? (
-            <LineChart
-              data={chartData}
-              width={screenWidth - SPACE.xl * 2 - 32} // padding adjustments
-              height={320}
-              chartConfig={{
-                backgroundColor: '#1C1C1E',
-                backgroundGradientFrom: '#1C1C1E',
-                backgroundGradientTo: '#1C1C1E',
-                decimalPlaces: 0,
-                color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(161, 161, 170, ${opacity})`, // colors.textMuted
-                style: { borderRadius: 16 },
-                propsForDots: { r: '4', strokeWidth: '2', stroke: colors.accentPrimary }
-              }}
-              bezier
-              style={{ marginVertical: 8, borderRadius: 16, marginLeft: -16 }} // shift slightly left to align axis
-            />
+              <LineChart
+                data={chartData}
+                width={screenWidth - SPACE.xl * 2}
+                height={260}
+                withVerticalLines={false}
+                chartConfig={{
+                  backgroundColor: 'transparent',
+                  backgroundGradientFrom: '#1C1C1E',
+                  backgroundGradientTo: '#1C1C1E',
+                  backgroundGradientFromOpacity: 0,
+                  backgroundGradientToOpacity: 0,
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => `rgba(165, 153, 255, ${opacity})`,
+                  labelColor: (opacity = 1) => `rgba(161, 161, 170, ${opacity})`,
+                  style: { borderRadius: 16 },
+                  propsForDots: { r: '5', strokeWidth: '2', stroke: colors.accentPrimary },
+                  propsForBackgroundLines: { strokeDasharray: '4', stroke: 'rgba(255,255,255,0.05)' }
+                }}
+                bezier
+                style={{
+                  marginVertical: 8,
+                  borderRadius: 16,
+                  paddingRight: 40,
+                  paddingBottom: 20,
+                  marginLeft: -10,
+                }}
+              />
           ) : (
             <View style={{ height: 320, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 12 }}>
               <Text style={{ color: colors.textMuted, fontFamily: FONT_FAMILY.medium, textAlign: 'center', paddingHorizontal: 20 }}>Not enough {selectedLift} data in last 90 days.</Text>

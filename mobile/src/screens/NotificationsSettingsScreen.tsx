@@ -66,7 +66,9 @@ function toHM(d: Date) {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 function displayTime(hm: string) {
+  if (!hm || !hm.includes(':')) return '--:--';
   const [h, m] = hm.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return '--:--';
   const ampm = h >= 12 ? 'pm' : 'am';
   const hr = h % 12 || 12;
   return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;

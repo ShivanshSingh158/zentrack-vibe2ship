@@ -215,6 +215,7 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
   
   _isScheduling = true;
   
+  try {
   while (_latestParams) {
     const currentParams = _latestParams;
     _latestParams = null;
@@ -230,6 +231,9 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
     _lastScheduleFingerprint = fingerprint;
 
     await Notifications.cancelAllScheduledNotificationsAsync();
+
+    let scheduledCount = 0;
+    const ALARM_CAP = 450; // Android has a hard 500-alarm limit per app.
 
     const now = new Date();
     const y = now.getFullYear();
@@ -261,6 +265,7 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
     '@gym_notification_time', '@gym_notification_enabled',
     '@zentrack_water_reminder_freq', '@zentrack_sleep_reminders_enabled',
     '@zentrack_sleep_reminder_night', '@zentrack_sleep_reminder_morning',
+    'zentrack_water_goal_ml',
     // Per-subject class notification prefs — read once and stored in kv
     ...attendance.flatMap(s => [
       `@class_notif_enabled_${s.id}`,
@@ -344,6 +349,10 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
   // ── Schedule helper ──────────────────────────────────────────────────────────
   async function schedule(title: string, body: string, trigger: Date, data?: any, channel = 'default', categoryId?: string) {
     if (trigger <= now) return;
+    if (scheduledCount >= ALARM_CAP) {
+      console.warn(`[Notifications] Safety cap of ${ALARM_CAP} alarms reached. Skipping remaining schedules.`);
+      return;
+    }
 
     let finalTrigger = trigger;
 
@@ -369,17 +378,22 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
       if (channel !== 'reminders' && channel !== 'sara_critical') return;
     }
 
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title, body, data, categoryIdentifier: categoryId,
-        ...(channel === 'reminders' || channel === 'sara_critical' ? { sound: 'default', priority: 'max' } : {}),
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: finalTrigger.getTime(),
-        channelId: channel,
-      } as any,
-    });
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title, body, data, categoryIdentifier: categoryId,
+          ...(channel === 'reminders' || channel === 'sara_critical' ? { sound: 'default', priority: 'max' } : {}),
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: finalTrigger.getTime(),
+          channelId: channel,
+        } as any,
+      });
+      scheduledCount++;
+    } catch (e) {
+      console.warn(`[Notifications] Failed to schedule specific alarm:`, e);
+    }
   }
 
   // ── 11. Morning Briefing ─────────────────────────────────────────────────────
@@ -664,8 +678,8 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
     }
   }
 
-  // ── Gym + Classes for next 7 days ────────────────────────────────────────────
-  for (let i = 0; i < 7; i++) {
+  // ── Gym + Classes for next 3 days ────────────────────────────────────────────
+  for (let i = 0; i <= 2; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
     const yDay = d.getFullYear();
@@ -864,7 +878,7 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
         }
       }
     }
-  } // end for (let i = 0; i < 7; i++)
+  } // end for (let i = 0; i <= 2; i++)
 
   // ── 12. Inactivity nudge ─────────────────────────────────────────────────────
   if (inactivityNudge) {
@@ -930,14 +944,15 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
     // BUG-N3 / I1 FIX: Check how much water has already been logged today.
     // If user has reached 2000ml (standard daily goal), skip ALL water reminders for today.
     // This prevents nagging the user who has already stayed well-hydrated.
-    const DAILY_WATER_GOAL_ML = 2000;
+    const savedWaterGoal = kv['zentrack_water_goal_ml'];
+    const DAILY_WATER_GOAL_ML = savedWaterGoal ? parseInt(savedWaterGoal, 10) : 2000;
     const waterLoggedTodayMl = waterLogs
       .filter(w => w.date === todayStr)
       .reduce((sum, w) => sum + (w.amountMl || 0), 0);
     const waterGoalMet = waterLoggedTodayMl >= DAILY_WATER_GOAL_ML;
 
-    const startHour = 8;
-    const endHour = 21;
+    const startHour = 6;
+    const endHour = 23;
     // I5 IMPROVEMENT: Schedule for the next 3 days to ensure coverage
     // even if the app isn't opened for 2 days.
     for (let dayOffset = 0; dayOffset <= 2; dayOffset++) {
@@ -960,7 +975,9 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
         if (isToday && waterLoggedTodayMl > 0) {
           const remaining = DAILY_WATER_GOAL_ML - waterLoggedTodayMl;
           const remainingL = (remaining / 1000).toFixed(1);
-          waterBody = `${waterLoggedTodayMl}ml logged today — ${remainingL}L to hit your 2L goal! 💧`;
+          const goalL = (DAILY_WATER_GOAL_ML / 1000).toFixed(1);
+          const loggedL = (waterLoggedTodayMl / 1000).toFixed(1);
+          waterBody = `${loggedL}L logged today — ${remainingL}L to hit your ${goalL}L goal! 💧`;
         } else {
           waterBody = 'Time to drink some water and stay hydrated! 💧';
         }
@@ -976,7 +993,9 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
 
   console.log('[Notifications] All notifications scheduled ✅');
   } // end of while(_latestParams) loop
-  _isScheduling = false;
+  } finally {
+    _isScheduling = false;
+  }
 }
 
 // ── Test Notification ────────────────────────────────────────────────────────

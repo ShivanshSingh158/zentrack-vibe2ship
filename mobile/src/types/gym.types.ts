@@ -51,13 +51,13 @@ export interface GymDayLog {
   exercises: GymExerciseLog[];
   cardio?: GymCardioLog[];
   notes?: string;
-  workoutStartTime?: number;
+  workoutStartTime?: number | null;
   workoutDurationMinutes?: number;
   startTime?: string;
   endTime?: string;
-  restTimerStartTime?: number;
-  restTimerDurationSecs?: number;
-  restTimerExerciseName?: string;
+  restTimerStartTime?: number | null;
+  restTimerDurationSecs?: number | null;
+  restTimerExerciseName?: string | null;
   createdAt: number;
   updatedAt: number;
 }
