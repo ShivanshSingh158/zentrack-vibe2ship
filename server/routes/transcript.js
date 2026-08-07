@@ -29,6 +29,62 @@ if (!admin.apps.length) {
 // When youtube-transcript npm library fails (e.g. YouTube consent page, User-Agent requirement,
 // auto-generated caption track format changes), directly parse ytInitialPlayerResponse from the HTML page.
 async function fetchDirectYouTubeCaptions(videoId, lang) {
+  // 1. Try InnerTube API first (most robust)
+  try {
+    const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)'
+      },
+      body: JSON.stringify({
+        context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38' } },
+        videoId: videoId,
+      }),
+    });
+    const data = await innertubeRes.json();
+    const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    
+    if (captionTracks && captionTracks.length > 0) {
+      let selectedTrack = lang ? captionTracks.find(t => t.languageCode === lang || t.languageCode?.startsWith(lang)) : null;
+      if (!selectedTrack) selectedTrack = captionTracks.find(t => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode?.startsWith('en'));
+      if (!selectedTrack) selectedTrack = captionTracks[0];
+      
+      if (selectedTrack && selectedTrack.baseUrl) {
+        const xmlRes = await fetch(selectedTrack.baseUrl, {
+          headers: { 'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)' }
+        });
+        const xmlText = await xmlRes.text();
+        
+        let formattedLines = [];
+        const pRegex = /<p\s+t="(\d+)"[^>]*>([\s\S]*?)<\/p>/gi;
+        let pMatches = [...xmlText.matchAll(pRegex)];
+        if (pMatches.length > 0) {
+          formattedLines = pMatches.map(m => {
+            const startSec = Math.floor(parseInt(m[1]) / 1000);
+            const mm = Math.floor(startSec / 60);
+            const ss = String(startSec % 60).padStart(2, '0');
+            const cleanText = m[2].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\n/g, ' ').trim();
+            return `[${mm}:${ss}] ${cleanText}`;
+          });
+        } else {
+          const textMatches = [...xmlText.matchAll(/<text\s+start="([\d.]+)"[^>]*>(.*?)<\/text>/gi)];
+          formattedLines = textMatches.map(m => {
+            const startSec = Math.floor(parseFloat(m[1]));
+            const mm = Math.floor(startSec / 60);
+            const ss = String(startSec % 60).padStart(2, '0');
+            const cleanText = m[2].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\n/g, ' ').trim();
+            return `[${mm}:${ss}] ${cleanText}`;
+          });
+        }
+        if (formattedLines.length > 5) return formattedLines.join('\n');
+      }
+    }
+  } catch (e) {
+    console.warn(`[transcript] InnerTube scraper failed:`, e.message);
+  }
+
+  // 2. Fallback to HTML scraper
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   const response = await fetch(url, {
     headers: {
