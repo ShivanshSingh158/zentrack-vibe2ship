@@ -309,12 +309,11 @@ zentrack-vibe2ship/
 | `POST /api/gemini-proxy` | `api/gemini-proxy.js` | **CRITICAL** — validates Firebase ID token, rate-limits, key rotation, Sarvam TTS |
 | `POST /api/gemini-proxy` (stream) | `api/gemini-proxy-stream.js` | Streaming variant |
 | `GET /api/search` | `api/search.js` | DuckDuckGo + YouTube search |
-| `GET /api/transcript` | `api/transcript.js` | YouTube transcript |
 | `POST /api/send-notification` | `api/send-notification.js` | FCM push |
 | `POST /api/send-sms` | `api/send-sms.ts` | Twilio SMS |
 | `GET /api/auth/google` | `api/auth/google.ts` | Google OAuth callback |
 | `GET /api/auth/refresh` | `api/auth/refresh.ts` | Silent token refresh |
-| `GET /api/cron-watchdog` | `api/cron-watchdog.js` | Health cron |
+| `GET /api/transcript` | `api/edge-transcript.ts` | YouTube transcript — **Edge runtime** (fast, global) |
 
 ### Gym Data (moved 2026-07-14)
 | Purpose | File |
@@ -586,7 +585,13 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 
 ## 12. Changelog
 
-### 2026-07-21 — Full Codebase Restructure (Professional Cleanup)
+### 2026-08-09 — Server Cleanup + Mobile TTS Fix
+- **DELETED** `server/routes/daily-briefing.ts` — was explicitly a dead scaffold, zero callers, marked "NOT currently wired" in its own file header.
+- **DELETED** `server/routes/cron-guardian.js` — duplicated `cron-watchdog.js` logic (proactive AI nudge). Was also calling Gemini using `EXPO_PUBLIC_GEMINI_API_KEY` directly (a key already exposed in the APK — doubly wrong). Cron-watchdog covers all the same bases.
+- **DELETED** `server/routes/transcript.js` (Node.js version) — superseded by `api/edge-transcript.ts` which runs on Vercel Edge Network (global, ~50ms, zero cold start). Added `/api/transcript` rewrite in `vercel.json` pointing to the edge handler so existing callers (e.g. `LectureChatPanel.tsx`) work unchanged.
+- **SIMPLIFIED** `mobile/src/services/sarvamProxy.ts` — the `voice-proxy` Vercel route was never deployed to production. Mobile TTS was always falling back to `expo-speech`. Removed the broken network call, `expo-av`, `expo-file-system`, and `firebase/auth` imports from this file. Mobile Sara now speaks via device TTS directly (zero latency, zero network cost).
+- Removed all 3 dead routes from `api/index.ts` imports and mount calls.
+
 - **DELETED** root-level one-off scripts: `fix_blur.cjs`, `patch_modals.js`, `replace_models.js`, `replace_models2.cjs`, `revert_blur.cjs`, `update_app_json.cjs`
 - **DELETED** `temp_notifs.txt` (56KB plaintext dump — temp file violating no-scratch-in-project rule)
 - **DELETED** `Dockerfile` and `cloudbuild.yaml` (unused — app is on Vercel, not Docker/GCP)

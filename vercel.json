@@ -50,6 +50,10 @@
       "destination": "/api/edge-transcript.ts"
     },
     {
+      "source": "/api/transcript",
+      "destination": "/api/edge-transcript.ts"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/index.ts"
     },
