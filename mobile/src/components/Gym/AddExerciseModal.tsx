@@ -1,7 +1,7 @@
 /**
- * AddExerciseModal â€” ZenTrack Mobile (v2)
+ * AddExerciseModal GÇö ZenTrack Mobile (v2)
  *
- * UX: Type to search â†’ compact inline dropdown (max 5 rows) â†’ tap to auto-fill
+ * UX: Type to search GåÆ compact inline dropdown (max 5 rows) GåÆ tap to auto-fill
  * all fields (sets, reps, rest, muscle, videoId) + last-session weight/reps.
  */
 
@@ -23,7 +23,7 @@ import { GYM_PLAN, EXERCISE_ALTERNATIVES } from '../../data/gymPlan';
 import { handleSyncError } from '../../utils/errorUtils';
 
 
-// â”€â”€ All exercises: flatten GYM_PLAN + EXERCISE_ALTERNATIVES into a deduplicated catalogue â”€â”€
+// GöÇGöÇ All exercises: flatten GYM_PLAN + EXERCISE_ALTERNATIVES into a deduplicated catalogue GöÇGöÇ
 
 interface ExerciseCatalogEntry {
   id: string;
@@ -47,7 +47,7 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
     result.push(e);
   };
 
-  // GYM_PLAN exercises (highest priority â€” have full metadata)
+  // GYM_PLAN exercises (highest priority GÇö have full metadata)
   for (const day of GYM_PLAN) {
     for (const ex of day.exercises) {
       add({
@@ -62,30 +62,30 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
     }
   }
 
-  // EXERCISE_ALTERNATIVES (may not have full metadata â€” fill defaults)
+  // EXERCISE_ALTERNATIVES (may not have full metadata GÇö fill defaults)
   const MUSCLE_DEFAULTS: Record<string, { sets: number; reps: string; rest: number }> = {
-    Chest: { sets: 3, reps: '8â€“12', rest: 90 },
-    Back: { sets: 3, reps: '8â€“12', rest: 90 },
-    Shoulders: { sets: 3, reps: '10â€“15', rest: 75 },
-    'Side Delts': { sets: 3, reps: '12â€“15', rest: 60 },
-    'Rear Delts': { sets: 3, reps: '12â€“15', rest: 60 },
-    Triceps: { sets: 3, reps: '10â€“12', rest: 60 },
-    Biceps: { sets: 3, reps: '10â€“12', rest: 60 },
-    Brachialis: { sets: 3, reps: '10â€“12', rest: 60 },
-    Quads: { sets: 3, reps: '8â€“12', rest: 90 },
-    'Quads/Glutes': { sets: 3, reps: '8â€“12', rest: 90 },
-    Hamstrings: { sets: 3, reps: '8â€“12', rest: 90 },
-    'Glutes/Hams': { sets: 3, reps: '10â€“15', rest: 75 },
-    Calves: { sets: 4, reps: '12â€“15', rest: 45 },
-    Soleus: { sets: 4, reps: '12â€“15', rest: 45 },
-    Abs: { sets: 3, reps: '12â€“15', rest: 45 },
-    Obliques: { sets: 3, reps: '12â€“15', rest: 45 },
-    Forearms: { sets: 3, reps: '15â€“20', rest: 45 },
-    Mixed: { sets: 3, reps: '8â€“12', rest: 60 },
+    Chest: { sets: 3, reps: '8GÇô12', rest: 90 },
+    Back: { sets: 3, reps: '8GÇô12', rest: 90 },
+    Shoulders: { sets: 3, reps: '10GÇô15', rest: 75 },
+    'Side Delts': { sets: 3, reps: '12GÇô15', rest: 60 },
+    'Rear Delts': { sets: 3, reps: '12GÇô15', rest: 60 },
+    Triceps: { sets: 3, reps: '10GÇô12', rest: 60 },
+    Biceps: { sets: 3, reps: '10GÇô12', rest: 60 },
+    Brachialis: { sets: 3, reps: '10GÇô12', rest: 60 },
+    Quads: { sets: 3, reps: '8GÇô12', rest: 90 },
+    'Quads/Glutes': { sets: 3, reps: '8GÇô12', rest: 90 },
+    Hamstrings: { sets: 3, reps: '8GÇô12', rest: 90 },
+    'Glutes/Hams': { sets: 3, reps: '10GÇô15', rest: 75 },
+    Calves: { sets: 4, reps: '12GÇô15', rest: 45 },
+    Soleus: { sets: 4, reps: '12GÇô15', rest: 45 },
+    Abs: { sets: 3, reps: '12GÇô15', rest: 45 },
+    Obliques: { sets: 3, reps: '12GÇô15', rest: 45 },
+    Forearms: { sets: 3, reps: '15GÇô20', rest: 45 },
+    Mixed: { sets: 3, reps: '8GÇô12', rest: 60 },
   };
 
   for (const [muscle, entries] of Object.entries(EXERCISE_ALTERNATIVES)) {
-    const defaults = MUSCLE_DEFAULTS[muscle] ?? { sets: 3, reps: '8â€“12', rest: 60 };
+    const defaults = MUSCLE_DEFAULTS[muscle] ?? { sets: 3, reps: '8GÇô12', rest: 60 };
     for (const e of entries) {
       add({
         id: `alt_${e.name.replace(/\s+/g, '_').toLowerCase()}`,
@@ -126,7 +126,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
 
   const { userGymPlan, updateMasterPlan, gymLogs } = useMobileData();
 
-  // â”€â”€ Form state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Form state GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const [name, setName] = useState('');
   const [sets, setSets] = useState('3');
   const [reps, setReps] = useState('8-12');
@@ -139,12 +139,12 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
   // G3: muscle search filter chips
   const [muscleSearchFilter, setMuscleSearchFilter] = useState<string | null>(null);
 
-  // â”€â”€ AI resolver state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ AI resolver state GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const [aiSuggestion, setAiSuggestion] = useState<AIExerciseInfo | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // â”€â”€ Search & filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Search & filter GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const suggestions = useMemo(() => {
     const q = name.trim().toLowerCase();
     // G3: If muscle filter active, show all exercises for that muscle (up to 30)
@@ -163,7 +163,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
       .slice(0, 30);
   }, [name, muscleSearchFilter]);
 
-  // â”€â”€ Last-session lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Last-session lookup GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
     if (!gymLogs) return null;
     // Find all logs that have this exercise, sorted newest first
@@ -180,7 +180,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
     return ex?.setsLog ?? null;
   };
 
-  // â”€â”€ Select from catalogue dropdown â†’ auto-fill â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Select from catalogue dropdown GåÆ auto-fill GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const handleSelectSuggestion = (entry: ExerciseCatalogEntry) => {
     setName(entry.name);
     setSets(String(entry.targetSets));
@@ -193,7 +193,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
     setAiSuggestion(null);
   };
 
-  // â”€â”€ Select from AI suggestion â†’ auto-fill + video lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Select from AI suggestion GåÆ auto-fill + video lookup GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const handleSelectAiSuggestion = async (ai: AIExerciseInfo) => {
     setName(ai.canonicalName);
     setSets(String(ai.targetSets));
@@ -220,7 +220,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
     // Only trigger AI when there's text and no catalogue match
     if (text.trim().length >= 3) {
       aiDebounceRef.current = setTimeout(async () => {
-        // Check if catalogue already has matches â€” if yes, no need for AI
+        // Check if catalogue already has matches GÇö if yes, no need for AI
         const q = text.trim().toLowerCase();
         const hasMatches = EXERCISE_CATALOGUE.some(e => e.name.toLowerCase().includes(q));
         if (!hasMatches) {
@@ -239,7 +239,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
     }
   };
 
-  // â”€â”€ Add exercise â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Add exercise GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const handleAddExercise = async () => {
     if (!name.trim()) return;
 
@@ -324,7 +324,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalContent}
         >
-          {/* â”€â”€ Header â”€â”€ */}
+          {/* GöÇGöÇ Header GöÇGöÇ */}
           <View style={styles.header}>
             <Text style={styles.title}>Add Exercise</Text>
             <TouchableOpacity onPress={resetAndClose} style={styles.closeBtn}>
@@ -366,7 +366,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
               })}
             </ScrollView>
 
-            {/* â”€â”€ Exercise Name with Inline Search Dropdown â”€â”€ */}
+            {/* GöÇGöÇ Exercise Name with Inline Search Dropdown GöÇGöÇ */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>EXERCISE NAME *</Text>
               <View style={{ position: 'relative' }}>
@@ -374,7 +374,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
                   <Ionicons name="search-outline" size={16} color={colors.textTertiary} style={{ marginRight: 8 }} />
                   <TextInput
                     style={styles.searchInput}
-                    placeholder="Search exercisesâ€¦"
+                    placeholder="Search exercisesGÇª"
                     placeholderTextColor={colors.textTertiary}
                     value={name}
                     onChangeText={handleNameChange}
@@ -393,7 +393,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
                   )}
                 </View>
 
-                {/* â”€â”€ Dropdown â”€â”€ */}
+                {/* GöÇGöÇ Dropdown GöÇGöÇ */}
                 {showDropdown && (suggestions.length > 0 || aiLoading || aiSuggestion) && (
                   <View style={styles.dropdown}>
                     {/* Catalogue suggestions */}
@@ -426,7 +426,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
                               </View>
                               <View style={styles.suggestionRight}>
                                 <Text style={styles.suggestionSets}>
-                                  {item.targetSets}Ã—{item.targetReps}
+                                  {item.targetSets}+ù{item.targetReps}
                                 </Text>
                                 <Ionicons name="return-down-back-outline" size={14} color={colors.textTertiary} />
                               </View>
@@ -439,8 +439,8 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
                     {/* AI loading shimmer */}
                     {aiLoading && suggestions.length === 0 && (
                       <View style={styles.aiLoadingRow}>
-                        <Text style={styles.aiLoadingIcon}>âœ¨</Text>
-                        <Text style={styles.aiLoadingText}>AI is identifying exerciseâ€¦</Text>
+                        <Text style={styles.aiLoadingIcon}>G£¿</Text>
+                        <Text style={styles.aiLoadingText}>AI is identifying exerciseGÇª</Text>
                       </View>
                     )}
 
@@ -452,7 +452,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
                         activeOpacity={0.7}
                       >
                         <View style={styles.aiSuggestionLeft}>
-                          <Text style={styles.aiSparkle}>âœ¨</Text>
+                          <Text style={styles.aiSparkle}>G£¿</Text>
                           <View style={{ flex: 1 }}>
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                               <Text style={styles.aiSuggestionName} numberOfLines={1}>
@@ -463,7 +463,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
                               </View>
                             </View>
                             <Text style={[styles.suggestionMeta, { color: resolveMuscleColor(aiSuggestion.muscle) }]}>
-                              {aiSuggestion.muscle}  â€¢  {aiSuggestion.targetSets}Ã—{aiSuggestion.targetReps}  â€¢  {aiSuggestion.restTimeSecs}s rest
+                              {aiSuggestion.muscle}  GÇó  {aiSuggestion.targetSets}+ù{aiSuggestion.targetReps}  GÇó  {aiSuggestion.restTimeSecs}s rest
                             </Text>
                           </View>
                         </View>
@@ -483,7 +483,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
               )}
             </View>
 
-            {/* â”€â”€ Sets / Reps / Rest â€” 3-column row â”€â”€ */}
+            {/* GöÇGöÇ Sets / Reps / Rest GÇö 3-column row GöÇGöÇ */}
             <View style={styles.metaRow}>
               <View style={[styles.inputGroup, { flex: 1 }]}>
                 <Text style={styles.inputLabel}>SETS</Text>
@@ -516,7 +516,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
               </View>
             </View>
 
-            {/* â”€â”€ Muscle Group pills â”€â”€ */}
+            {/* GöÇGöÇ Muscle Group pills GöÇGöÇ */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>MUSCLE GROUP</Text>
               <ScrollView
@@ -544,7 +544,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
               </ScrollView>
             </View>
 
-            {/* â”€â”€ YouTube Link â”€â”€ */}
+            {/* GöÇGöÇ YouTube Link GöÇGöÇ */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>YOUTUBE LINK (OPTIONAL)</Text>
               <TextInput
@@ -557,7 +557,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
               />
             </View>
 
-            {/* â”€â”€ Save to Master Split â”€â”€ */}
+            {/* GöÇGöÇ Save to Master Split GöÇGöÇ */}
             {planDay && (
               <View style={styles.masterSplitContainer}>
                 <View style={{ flex: 1 }}>
@@ -573,7 +573,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
               </View>
             )}
 
-            {/* â”€â”€ Submit â”€â”€ */}
+            {/* GöÇGöÇ Submit GöÇGöÇ */}
             <TouchableOpacity
               style={[styles.submitBtn, !name.trim() && styles.submitBtnDisabled]}
               disabled={!name.trim()}
@@ -589,7 +589,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
   );
 }
 
-// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Styles GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 const makeStyles = (colors: any) => StyleSheet.create({
   modalBg: {
@@ -630,7 +630,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flexGrow: 0,
   },
 
-  // â”€â”€ Search Input â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Search Input GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   inputGroup: {
     gap: 6,
     marginBottom: SPACE.md,
@@ -659,7 +659,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     height: '100%',
   },
 
-  // â”€â”€ Dropdown â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Dropdown GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   dropdown: {
     marginTop: 4,
     backgroundColor: '#1C1C1E',

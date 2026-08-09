@@ -28,12 +28,12 @@ export default function BottomSheet({
 }: BottomSheetProps) {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
-  // â”€â”€ All hooks must be called unconditionally â€” NO early returns before this line â”€â”€
+  // GöÇGöÇ All hooks must be called unconditionally GÇö NO early returns before this line GöÇGöÇ
   const [mounted, setMounted] = React.useState(visible);
   const translateY = useSharedValue(1000);
   const backdropOpacity = useSharedValue(0);
 
-  // â”€â”€ These MUST stay here, before any conditional return â”€â”€
+  // GöÇGöÇ These MUST stay here, before any conditional return GöÇGöÇ
   const keyboard = useAnimatedKeyboard();
 
   const sheetStyle = useAnimatedStyle(() => ({

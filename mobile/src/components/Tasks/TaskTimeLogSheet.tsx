@@ -1,5 +1,5 @@
 /**
- * TaskTimeLogSheet.tsx â€” ZenTrack Mobile
+ * TaskTimeLogSheet.tsx GÇö ZenTrack Mobile
  *
  * Bottom sheet that pops up when completing a task to log:
  *   1. Actual start time (planned time slot offset, or relative/custom time)
@@ -20,7 +20,7 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/token
 import { useTheme } from '../../contexts/ThemeContext';
 import BottomSheet from '../ui/BottomSheet';
 
-// â”€â”€ Duration Chips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Duration Chips GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 const DEFAULT_DURATION_CHIPS: { label: string; minutes: number }[] = [
   { label: '5m',   minutes: 5   },
@@ -34,7 +34,7 @@ const DEFAULT_DURATION_CHIPS: { label: string; minutes: number }[] = [
   { label: '3h',   minutes: 180 },
 ];
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Helpers GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 function parseTimeStrMinutes(str?: string): number | null {
   if (!str) return null;
@@ -80,7 +80,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
   // Parse time slot details
   const timeSlotInfo = useMemo(() => {
     if (!task?.timeSlot) return null;
-    const parts = task.timeSlot.split(/[-â€“]/).map(s => s.trim());
+    const parts = task.timeSlot.split(/[-GÇô]/).map(s => s.trim());
     const startMin = parseTimeStrMinutes(parts[0]);
     const endMin = parts.length > 1 ? parseTimeStrMinutes(parts[1]) : null;
     const durationMin = (startMin !== null && endMin !== null && endMin > startMin)

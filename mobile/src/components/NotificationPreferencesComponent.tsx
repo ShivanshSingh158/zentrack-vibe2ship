@@ -1,15 +1,15 @@
 /**
- * NotificationsSettingsScreen â€” ZenTrack Mobile
+ * NotificationsSettingsScreen GÇö ZenTrack Mobile
  *
  * Full notification customization:
- *  â€“ Per-module toggles (Tasks, Habits, Gym, Attendance, Focus, Sara)
- *  â€“ 10 smart notification types (habit streak, overdue tasks, assignments, etc.)
- *  â€“ Quiet hours (start + end time)
- *  â€“ Pre-task buffer time (15/30/60/120 min)
- *  â€“ Weekday vs. weekend mode
- *  â€“ Morning briefing time
- *  â€“ Inactivity nudge threshold
- *  â€“ XP milestone toggle
+ *  GÇô Per-module toggles (Tasks, Habits, Gym, Attendance, Focus, Sara)
+ *  GÇô 10 smart notification types (habit streak, overdue tasks, assignments, etc.)
+ *  GÇô Quiet hours (start + end time)
+ *  GÇô Pre-task buffer time (15/30/60/120 min)
+ *  GÇô Weekday vs. weekend mode
+ *  GÇô Morning briefing time
+ *  GÇô Inactivity nudge threshold
+ *  GÇô XP milestone toggle
  * All settings persist to AsyncStorage and immediately re-trigger scheduleAllNotifications().
  */
 
@@ -64,9 +64,7 @@ function toHM(d: Date) {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 function displayTime(hm: string) {
-  if (!hm || !hm.includes(':')) return '--:--';
   const [h, m] = hm.split(':').map(Number);
-  if (isNaN(h) || isNaN(m)) return '--:--';
   const ampm = h >= 12 ? 'pm' : 'am';
   const hr = h % 12 || 12;
   return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
@@ -160,7 +158,7 @@ export default function NotificationPreferencesComponent() {
     })();
   }, []);
 
-  // Toggle helper â€” saves + reschedules
+  // Toggle helper GÇö saves + reschedules
   const toggle = useCallback(async (key: string, val: boolean, setter: (v: boolean) => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setter(val);
@@ -422,7 +420,7 @@ export default function NotificationPreferencesComponent() {
           <ToggleRow
             icon="volume-mute-outline"
             label="Enable quiet hours"
-            subtitle={`No notifications ${displayTime(quietStart)} â€“ ${displayTime(quietEnd)}`}
+            subtitle={`No notifications ${displayTime(quietStart)} GÇô ${displayTime(quietEnd)}`}
             value={quietHours}
             onToggle={v => toggle('quiet_hours', v, setQuietHours)}
           />

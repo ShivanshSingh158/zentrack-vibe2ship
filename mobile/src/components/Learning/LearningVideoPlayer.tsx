@@ -1,5 +1,5 @@
 /**
- * LearningVideoPlayer.tsx â€” ZenTrack Mobile
+ * LearningVideoPlayer.tsx GÇö ZenTrack Mobile
  * Extracted from LearningScreen.tsx for bundle splitting.
  * Full-screen YouTube player overlay with PiP, focus mode, controls,
  * AI chat panel, and lecture notes panel.

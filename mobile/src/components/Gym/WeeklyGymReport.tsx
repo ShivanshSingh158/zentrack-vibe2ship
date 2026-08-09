@@ -1,9 +1,9 @@
 /**
- * WeeklyGymReport â€” ZenTrack Mobile
+ * WeeklyGymReport GÇö ZenTrack Mobile
  * Shown every Sunday as the full-week workout analytics dashboard.
  * Displays: muscle frequency rings, set/volume bars, untrained muscle warnings,
  * weekly total stats, and week-over-week set/weight changes.
- * Theme: Obsidian Cosmos â€” no hardcoded colours outside COLORS tokens.
+ * Theme: Obsidian Cosmos GÇö no hardcoded colours outside COLORS tokens.
  */
 
 import React, { useMemo } from 'react';
@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACE, RADIUS, FONT_FAMILY, FONT_SIZE } from '../../theme/tokens';
 import { MUSCLE_CANONICAL, canonicalizeMuscle } from '../../utils/gymUtils';
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Types GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 interface GymSet {
   completed: boolean;
@@ -38,7 +38,7 @@ interface Props {
   weekAnchorDate: string;
 }
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Helpers GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 /** Format a Date to YYYY-MM-DD using LOCAL timezone (not UTC). */
 function localDateStr(d: Date): string {
@@ -48,7 +48,7 @@ function localDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Returns all 7 YYYY-MM-DD strings for the week containing anchorDate (Monâ€“Sun). */
+/** Returns all 7 YYYY-MM-DD strings for the week containing anchorDate (MonGÇôSun). */
 function getWeekRange(anchor: string): string[] {
   const [y, m, day] = anchor.split('-').map(Number);
   const d = new Date(y, m - 1, day); // safe local date parsing
@@ -78,7 +78,7 @@ const ALL_MUSCLES = [
   'Quads', 'Hamstrings', 'Calves', 'Abs', 'Forearms', 'Glutes', 'Traps',
 ];
 
-// Colour per muscle group â€” all from Obsidian Cosmos palette variants
+// Colour per muscle group GÇö all from Obsidian Cosmos palette variants
 const MUSCLE_COLORS: Record<string, string> = {
   Chest:      '#a599ff', // accent purple
   Back:       '#89dceb', // accent blue
@@ -95,7 +95,7 @@ const MUSCLE_COLORS: Record<string, string> = {
   Mixed:      '#3c3c3e', // border
 };
 
-// â”€â”€ Donut Ring (pure SVG, no reanimated) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Donut Ring (pure SVG, no reanimated) GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 function DonutRing({
   pct, color, size = 64, strokeWidth = 7,
@@ -129,7 +129,7 @@ function DonutRing({
   );
 }
 
-// â”€â”€ Bar component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Bar component GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 function MiniBar({ value, maxValue, color }: { value: number; maxValue: number; color: string }) {
   const pct = maxValue > 0 ? Math.min(1, value / maxValue) : 0;
@@ -140,19 +140,19 @@ function MiniBar({ value, maxValue, color }: { value: number; maxValue: number; 
   );
 }
 
-// â”€â”€ Change Badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Change Badge GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 function ChangeBadge({ delta, unit }: { delta: number; unit: string }) {
-  if (delta === 0) return <Text style={st.changeBadgeNeutral}>â€”</Text>;
+  if (delta === 0) return <Text style={st.changeBadgeNeutral}>GÇö</Text>;
   const up = delta > 0;
   return (
     <Text style={[st.changeBadge, { color: up ? COLORS.accentGreen : COLORS.error }]}>
-      {up ? 'â†‘' : 'â†“'} {Math.abs(delta)}{unit}
+      {up ? 'Gåæ' : 'Gåô'} {Math.abs(delta)}{unit}
     </Text>
   );
 }
 
-// â”€â”€ Main Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Main Component GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
   const weekDates = useMemo(() => getWeekRange(weekAnchorDate), [weekAnchorDate]);
@@ -167,7 +167,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
     [gymLogs, prevDates],
   );
 
-  // â”€â”€ Compute per-muscle stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Compute per-muscle stats GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   interface MuscleStats { sets: number; totalKg: number; sessions: number }
 
@@ -189,7 +189,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
   const thisWeekMuscle = useMemo(() => computeMuscleStats(weekLogs), [weekLogs]);
   const prevWeekMuscle = useMemo(() => computeMuscleStats(prevLogs), [prevLogs]);
 
-  // â”€â”€ Global week totals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Global week totals GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   const totalSets = useMemo(() =>
     Object.values(thisWeekMuscle).reduce((s, m) => s + m.sets, 0), [thisWeekMuscle]);
@@ -204,7 +204,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
   const workoutDays = weekLogs.filter(l => (l.exercises?.length ?? 0) > 0 || ((l as any).cardio?.length ?? 0) > 0).length;
   const prevWorkoutDays = prevLogs.filter(l => (l.exercises?.length ?? 0) > 0 || ((l as any).cardio?.length ?? 0) > 0).length;
 
-  // â”€â”€ Muscle breakdown sorted by sets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Muscle breakdown sorted by sets GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   const maxSets = useMemo(
     () => Math.max(1, ...Object.values(thisWeekMuscle).map(m => m.sets)),
@@ -222,7 +222,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
     [thisWeekMuscle],
   );
 
-  // â”€â”€ Per-day volume bars (Monâ€“Sat, skip Sun rest) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Per-day volume bars (MonGÇôSat, skip Sun rest) GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   const dailyVolume = useMemo(() =>
@@ -238,7 +238,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
 
   const maxDailyVol = useMemo(() => Math.max(1, ...dailyVolume), [dailyVolume]);
 
-  // â”€â”€ Render guard â€” no workouts this week â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Render guard GÇö no workouts this week GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
   const hasData = workoutDays > 0;
 
@@ -247,14 +247,14 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
       showsVerticalScrollIndicator={false}
       contentContainerStyle={st.container}
     >
-      {/* â”€â”€ Title â”€â”€ */}
+      {/* GöÇGöÇ Title GöÇGöÇ */}
       <View style={st.titleRow}>
         <View>
           <Text style={st.title}>Weekly Recap</Text>
-          <Text style={st.subtitle}>Rest day  â€¢  Full breakdown below</Text>
+          <Text style={st.subtitle}>Rest day  GÇó  Full breakdown below</Text>
         </View>
         <View style={st.restBadge}>
-          <Text style={st.restBadgeText}>Rest ğŸŒ™</Text>
+          <Text style={st.restBadgeText}>Rest =ƒîÖ</Text>
         </View>
       </View>
 
@@ -266,7 +266,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
         </View>
       ) : (
         <>
-          {/* â”€â”€ Global Stats Row â”€â”€ */}
+          {/* GöÇGöÇ Global Stats Row GöÇGöÇ */}
           <View style={st.statsRow}>
             {[
               { label: 'Sessions', value: workoutDays, prevValue: prevWorkoutDays, unit: '', suffix: '/6' },
@@ -281,7 +281,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
             ))}
           </View>
 
-          {/* â”€â”€ Daily Volume Bar Chart â”€â”€ */}
+          {/* GöÇGöÇ Daily Volume Bar Chart GöÇGöÇ */}
           <View style={st.card}>
             <Text style={st.sectionLabel}>DAILY VOLUME</Text>
             <View style={st.barChart}>
@@ -313,7 +313,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
             </View>
           </View>
 
-          {/* â”€â”€ Muscle Frequency Grid (Donut Rings) â”€â”€ */}
+          {/* GöÇGöÇ Muscle Frequency Grid (Donut Rings) GöÇGöÇ */}
           <View style={st.card}>
             <Text style={st.sectionLabel}>MUSCLE FREQUENCY</Text>
             <View style={st.muscleGrid}>
@@ -336,10 +336,10 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
                     <View style={st.muscleChangeRow}>
                       {delta !== 0 ? (
                         <Text style={{ fontSize: 10, color: delta > 0 ? COLORS.accentGreen : COLORS.error }}>
-                          {delta > 0 ? 'â†‘' : 'â†“'}{Math.abs(delta)}
+                          {delta > 0 ? 'Gåæ' : 'Gåô'}{Math.abs(delta)}
                         </Text>
                       ) : (
-                        <Text style={{ fontSize: 10, color: COLORS.textTertiary }}>â€”</Text>
+                        <Text style={{ fontSize: 10, color: COLORS.textTertiary }}>GÇö</Text>
                       )}
                     </View>
                   </View>
@@ -348,7 +348,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
             </View>
           </View>
 
-          {/* â”€â”€ Muscle Set Bars â”€â”€ */}
+          {/* GöÇGöÇ Muscle Set Bars GöÇGöÇ */}
           <View style={st.card}>
             <Text style={st.sectionLabel}>SETS BY MUSCLE</Text>
             {ALL_MUSCLES.map(muscle => {
@@ -368,7 +368,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
                     <MiniBar value={sets} maxValue={maxSets} color={color} />
                   </View>
                   <Text style={[st.muscleBarSets, { color: isTrained ? COLORS.textPrimary : COLORS.textTertiary }]}>
-                    {isTrained ? `${sets} sets` : 'â€”'}
+                    {isTrained ? `${sets} sets` : 'GÇö'}
                   </Text>
                   {vol > 0 && (
                     <Text style={st.muscleBarVol}>{Math.round(vol / 1000 * 10) / 10}k</Text>
@@ -378,7 +378,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
             })}
           </View>
 
-          {/* â”€â”€ Untrained Muscles Warning â”€â”€ */}
+          {/* GöÇGöÇ Untrained Muscles Warning GöÇGöÇ */}
           {untrainedMuscles.length > 0 && (
             <View style={st.warningCard}>
               <View style={st.warningHeader}>
@@ -398,7 +398,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
             </View>
           )}
 
-          {/* â”€â”€ Week vs Last Week Summary â”€â”€ */}
+          {/* GöÇGöÇ Week vs Last Week Summary GöÇGöÇ */}
           <View style={st.card}>
             <Text style={st.sectionLabel}>VS LAST WEEK</Text>
             {[
@@ -441,7 +441,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
   );
 }
 
-// â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Styles GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 const st = StyleSheet.create({
   container: {

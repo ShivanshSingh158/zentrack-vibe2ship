@@ -109,7 +109,7 @@ export default function AnimatedRestTimer({
       ]}
     >
       {!isExpanded ? (
-        /* Collapsed State: Sleek circular/pill badge showing ⏱ 2:52 */
+        /* Collapsed State: Sleek circular/pill badge showing GŦ 2:52 */
         <TouchableOpacity
           onPress={toggleExpand}
           activeOpacity={0.8}
@@ -119,7 +119,7 @@ export default function AnimatedRestTimer({
           <Text style={styles.collapsedTimeText}>{timeDisplay}</Text>
         </TouchableOpacity>
       ) : (
-        /* Expanded State: Horizontal control capsule = - ⏱ 2:52 + | Skip */
+        /* Expanded State: Horizontal control capsule = - GŦ 2:52 + | Skip */
         <View style={styles.expandedCapsule}>
           {/* Drag handle / collapse icon */}
           <TouchableOpacity onPress={toggleExpand} style={styles.dragGrip} activeOpacity={0.7}>

@@ -52,7 +52,7 @@ const SNAP_MINUTES = 15; // 15-minute grid
 const PIXELS_PER_MINUTE = HOUR_HEIGHT / 60;
 const SNAP_PX = SNAP_MINUTES * PIXELS_PER_MINUTE; // 20px per 15 min
 
-// â”€â”€ Hatch Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Hatch Overlay GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 /** SVG diagonal stripes drawn over completed/attended blocks */
 function HatchOverlay({ width, height, color = 'rgba(255,255,255,0.12)' }: { width: number; height: number; color?: string }) {
   return (
@@ -108,12 +108,12 @@ function snapTopToGrid(top: number): number {
 function topToTimeSlot(snappedTop: number, startHour: number, durationFloat: number): string {
   const startFloat = startHour + snappedTop / HOUR_HEIGHT;
   const endFloat = startFloat + durationFloat;
-  return `${floatToTimeString(startFloat)}â€“${floatToTimeString(endFloat)}`;
+  return `${floatToTimeString(startFloat)}GÇô${floatToTimeString(endFloat)}`;
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-// â”€â”€ Draggable Task Block â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Draggable Task Block GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 interface DraggableTaskBlockProps {
   taskId: string;
@@ -275,7 +275,7 @@ function DraggableTaskBlock({
           animatedStyle,
         ]}
       >
-        {/* Drag handle indicator â€” only shown for active tasks */}
+        {/* Drag handle indicator GÇö only shown for active tasks */}
         {!isDone && !isMissed && (
           <View style={blockStyles.dragHandle}>
             <View style={[blockStyles.dragDot, { backgroundColor: borderNormal }]} />
@@ -294,7 +294,7 @@ function DraggableTaskBlock({
           </Text>
         </View>
 
-        {/* Status badge â€” top-right corner */}
+        {/* Status badge GÇö top-right corner */}
         {isDone && (
           <View style={blockStyles.statusBadge}>
             <Ionicons name="checkmark-circle" size={12} color="#5eda9e" style={{ marginRight: 3 }} />
@@ -313,7 +313,7 @@ function DraggableTaskBlock({
           <View style={[blockStyles.taskSubtext, { marginTop: 3 }]}>
             <Ionicons name="timer-outline" size={10} color="#5eda9e" style={{ marginRight: 4 }} />
             <Text style={[blockStyles.taskTime, { color: '#5eda9e' }]}>
-              {actualStartTime ? `Started ${actualStartTime} â€¢ ` : ''}
+              {actualStartTime ? `Started ${actualStartTime} GÇó ` : ''}
               {actualMinutes < 60 ? `${actualMinutes}m actual` : `${(actualMinutes / 60).toFixed(1)}h actual`}
             </Text>
           </View>
@@ -386,18 +386,18 @@ const blockStyles = StyleSheet.create({
   },
 });
 
-// â”€â”€ Main TimelineView â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇ Main TimelineView GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 
 export default function TimelineView({ tasks, onTaskPress, colors, attendance, attendanceLogs, gymLogs, userGymPlan, selectedDate }: TimelineViewProps) {
 
-  // â”€â”€ Dynamically compute START_HOUR from earliest task/class (min 5 AM) â”€â”€â”€â”€
+  // GöÇGöÇ Dynamically compute START_HOUR from earliest task/class (min 5 AM) GöÇGöÇGöÇGöÇ
   const START_HOUR = useMemo(() => {
     const floats: number[] = [];
 
     tasks
       .filter(t => t.timeSlot)
       .forEach(t => {
-        const startText = t.timeSlot!.split(/[-â€“]/)[0];
+        const startText = t.timeSlot!.split(/[-GÇô]/)[0];
         const f = parseTime(startText);
         if (f !== null && f <= END_HOUR) floats.push(f);
       });
@@ -436,14 +436,14 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
     return arr;
   }, [START_HOUR]);
 
-  // â”€â”€ Build positioned task blocks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Build positioned task blocks GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const positionedTasks = useMemo(() => {
-    // NOW includes completed tasks â€” they show as DONE blocks in their scheduled slot
+    // NOW includes completed tasks GÇö they show as DONE blocks in their scheduled slot
     return tasks
       .filter(t => t.timeSlot)
       .map(task => {
-        const startText = task.timeSlot!.split(/[-â€“]/)[0];
-        const endText = task.timeSlot!.split(/[-â€“]/)[1];
+        const startText = task.timeSlot!.split(/[-GÇô]/)[0];
+        const endText = task.timeSlot!.split(/[-GÇô]/)[1];
 
         const startFloat = parseTime(startText);
         const endFloat = endText ? parseTime(endText) : (startFloat ? startFloat + 1 : null);
@@ -481,7 +481,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
       }[];
   }, [tasks, START_HOUR]);
 
-  // â”€â”€ Build positioned class/lab blocks from attendance schedule â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Build positioned class/lab blocks from attendance schedule GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const classBlocks = useMemo((): ClassBlock[] => {
     if (!attendance || !selectedDate) return [];
     const dayOfWeek = new Date(selectedDate + 'T00:00:00').getDay();
@@ -549,7 +549,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
     return blocks.sort((a, b) => a.startFloat - b.startFloat);
   }, [attendance, attendanceLogs, selectedDate, START_HOUR]);
 
-  // â”€â”€ Build gym block from gymLogs and userGymPlan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Build gym block from gymLogs and userGymPlan GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const gymBlock = useMemo((): ClassBlock | null => {
     if (!selectedDate) return null;
     const gLog = (gymLogs || []).find(g => g.date === selectedDate);
@@ -592,7 +592,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
     };
   }, [gymLogs, userGymPlan, selectedDate, START_HOUR]);
 
-  // â”€â”€ Combine tasks + classes for free-time detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Combine tasks + classes for free-time detection GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const allBlocks = useMemo(() => {
     const taskB = positionedTasks.map(pt => ({ startFloat: pt.startFloat, endFloat: pt.endFloat }));
     const classB = classBlocks.map(cb => ({ startFloat: cb.startFloat, endFloat: cb.endFloat }));
@@ -620,13 +620,13 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
         height: (END_HOUR - currentTime) * HOUR_HEIGHT,
       });
     } else if (allBlocks.length === 0) {
-      // No tasks at all â€” show one full free block
+      // No tasks at all GÇö show one full free block
       fBlocks.push({ top: 0, height: (END_HOUR - START_HOUR) * HOUR_HEIGHT });
     }
     return fBlocks;
   }, [allBlocks, START_HOUR]);
 
-  // â”€â”€ Collision check: does a proposed top position overlap with OTHER tasks or classes? â”€â”€
+  // GöÇGöÇ Collision check: does a proposed top position overlap with OTHER tasks or classes? GöÇGöÇ
   const checkCollision = useCallback((
     draggedTaskId: string,
     proposedTop: number,
@@ -647,7 +647,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
     return false;
   }, [positionedTasks, classBlocks, START_HOUR]);
 
-  // â”€â”€ Save new timeSlot to Firestore â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Save new timeSlot to Firestore GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   const handleReschedule = useCallback(async (taskId: string, newTimeSlot: string) => {
     try {
       feedback.commit();
@@ -752,7 +752,7 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
               <View style={styles.taskSubtext}>
                 <Ionicons name="time-outline" size={10} color={colors.textMuted} style={{ marginRight: 3 }} />
                 <Text style={[styles.taskTime, { color: colors.textMuted }]}>
-                  {cb.time}{cb.room ? ` â€¢ ${cb.room}` : ''}
+                  {cb.time}{cb.room ? ` GÇó ${cb.room}` : ''}
                 </Text>
               </View>
               {/* Hatch overlay for past classes */}

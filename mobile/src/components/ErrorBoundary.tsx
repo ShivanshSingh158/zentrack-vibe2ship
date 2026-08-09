@@ -1,18 +1,18 @@
 /**
- * ErrorBoundary â€” ZenTrack Mobile (Production Grade)
+ * ErrorBoundary GÇö ZenTrack Mobile (Production Grade)
  *
  * ARCHITECTURE: This component is the last line of defence against JS crashes.
  * It is designed to NEVER let a crash propagate to the root and blank/grey the app.
  *
  * Three tiers of protection:
- *   1. Screen-level: Wraps individual screens â€” crash kills only that screen.
+ *   1. Screen-level: Wraps individual screens GÇö crash kills only that screen.
  *      The rest of the app (tab bar, other screens) stays fully alive.
- *   2. Navigator-level: Wraps Tab/Stack navigators â€” catches crashes in
+ *   2. Navigator-level: Wraps Tab/Stack navigators GÇö catches crashes in
  *      navigation structure itself.
- *   3. Root-level: Wraps the entire app â€” absolute last resort.
+ *   3. Root-level: Wraps the entire app GÇö absolute last resort.
  *
  * On error, renders a dark recovery card that matches the app's Obsidian Cosmos
- * design â€” never a white screen, never a grey screen, never a crash dialog.
+ * design GÇö never a white screen, never a grey screen, never a crash dialog.
  * User can tap "Try again" to reset the boundary and re-render the screen.
  *
  * Production behaviour:
@@ -52,7 +52,7 @@ interface State {
   isRestarting?: boolean;
 }
 
-// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GöÇGöÇGöÇ Constants GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
 // These are hardcoded (not from ThemeContext) because:
 // - ErrorBoundary must render even if ThemeContext crashed
 // - ThemeContext being a parent of ErrorBoundary would be circular
@@ -70,19 +70,19 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     this.state = { hasError: false, retryCount: 0 };
   }
 
-  // â”€â”€ Error capture â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Error capture GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    // Capture full component stack â€” available in Logcat on Android
+    // Capture full component stack GÇö available in Logcat on Android
     console.error(
-      `\nâ•”â•â• [ErrorBoundary] Crash caught in: ${this.props.screenName ?? 'unknown'} â•â•â•—\n` +
+      `\nGòöGòÉGòÉ [ErrorBoundary] Crash caught in: ${this.props.screenName ?? 'unknown'} GòÉGòÉGòù\n` +
       `Error: ${error.message}\n` +
       `Stack: ${error.stack ?? 'N/A'}\n` +
       `Component stack: ${info.componentStack ?? 'N/A'}\n` +
-      `â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n`
+      `GòÜGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGòÉGò¥\n`
     );
 
     // Store errorInfo for dev display
@@ -95,7 +95,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       // Never let the reporter crash the boundary itself
     }
 
-    // â”€â”€ Auto-Restart Failsafe â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // GöÇGöÇ Auto-Restart Failsafe GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
     // The user prefers the app to automatically reboot rather than showing a
     // crash screen. We do this in production, but use a timestamp guard to 
     // prevent an infinite crash-loop if the error is persistent on boot.
@@ -126,7 +126,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     }
   }
 
-  // â”€â”€ Recovery â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Recovery GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   handleRetry = () => {
     this.setState(prev => ({
       hasError: false,
@@ -136,10 +136,10 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     }));
   };
 
-  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // GöÇGöÇ Render GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
   render() {
     if (!this.state.hasError) {
-      // Key changes on retry â€” forces a full unmount/remount of children,
+      // Key changes on retry GÇö forces a full unmount/remount of children,
       // which clears any stale state that caused the original crash.
       return (
         <React.Fragment key={`eb-${this.state.retryCount}`}>
@@ -180,7 +180,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
           {/* Dev-only error detail */}
           {__DEV__ && error && (
             <View style={styles.devCard}>
-              <Text style={styles.devLabel}>DEV â€” Error detail</Text>
+              <Text style={styles.devLabel}>DEV GÇö Error detail</Text>
               <Text style={styles.devError} selectable>
                 {error.message}
               </Text>
@@ -199,7 +199,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             </Text>
           )}
 
-          {/* Primary CTA â€” retry */}
+          {/* Primary CTA GÇö retry */}
           <TouchableOpacity
             style={styles.retryBtn}
             onPress={this.handleRetry}
@@ -221,12 +221,12 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   }
 }
 
-// â”€â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// All colours are hardcoded (never from ThemeContext) â€” see comment above.
+// GöÇGöÇGöÇ Styles GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+// All colours are hardcoded (never from ThemeContext) GÇö see comment above.
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: BG,    // #000000 â€” matches windowBackground. NO grey. EVER.
+    backgroundColor: BG,    // #000000 GÇö matches windowBackground. NO grey. EVER.
     alignItems: 'center',
     justifyContent: 'center',
   },

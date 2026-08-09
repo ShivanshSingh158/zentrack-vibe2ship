@@ -1,12 +1,12 @@
-﻿/**
- * KanbanView — ZenTrack Mobile
+/**
+ * KanbanView � ZenTrack Mobile
  *
  * Todoist/Trello-style Kanban board for tasks.
  * 4 columns: Backlog (no date) | Today | This Week | Done
  *
  * - Horizontal snap-scroll between columns
- * - Tap card → opens edit modal
- * - Long-press card → slide to another column (updates Firestore)
+ * - Tap card ? opens edit modal
+ * - Long-press card ? slide to another column (updates Firestore)
  */
 
 import React, { useCallback, useMemo } from "react";
@@ -142,7 +142,7 @@ export default function KanbanView({ tasks, onTaskPress, colors }: Props) {
   );
 }
 
-// ─── KanbanCard ───────────────────────────────────────────────────────────────
+// --- KanbanCard ---------------------------------------------------------------
 
 interface CardProps {
   task: Task;
@@ -222,7 +222,7 @@ function KanbanCard({ task, colors, onPress, onMove, columns, currentColId }: Ca
   );
 }
 
-// ─── Tag color (deterministic hash) ──────────────────────────────────────────
+// --- Tag color (deterministic hash) ------------------------------------------
 const TAG_PALETTE = ["#a599ff","#60a5fa","#34d399","#f87171","#fb923c","#e879f9","#facc15","#38bdf8"];
 function tagColor(tag: string): string {
   let hash = 0;
@@ -230,7 +230,7 @@ function tagColor(tag: string): string {
   return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// --- Styles -------------------------------------------------------------------
 const styles = StyleSheet.create({
   board: {
     paddingHorizontal: SPACE.lg,
