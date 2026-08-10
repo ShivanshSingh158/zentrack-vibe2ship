@@ -276,7 +276,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
       screenListeners={({ route }) => ({
         focus: () => onTabFocus(route.name),
       })}
-      detachInactiveScreens={true}
+      detachInactiveScreens={false}
       screenOptions={{
         headerShown: false,
         sceneStyle:  { backgroundColor: '#080510' },

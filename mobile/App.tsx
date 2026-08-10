@@ -440,10 +440,12 @@ export default function App() {
               <UpdateBanner />
             </MobileDataProvider>
           </PortalProvider>
-          
-          {/* Splash overlay — sits ABOVE everything during boot.
-              Fades away once fonts are loaded, revealing the already-mounted AppNavigator. */}
-          {!fontsLoaded && <SplashLoader />}
+
+          {/* Splash overlay — always sits ABOVE everything.
+              CRITICAL: AppNavigator is ALWAYS mounted underneath.
+              We never conditionally unmount the tree — that causes grey flashes.
+              SplashLoader self-destructs after its fade-out animation. */}
+          <SplashLoader ready={fontsLoaded} />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
