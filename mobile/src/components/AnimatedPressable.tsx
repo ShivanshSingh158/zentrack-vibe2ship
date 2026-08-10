@@ -1,7 +1,7 @@
 import React from 'react';
 import { Pressable, PressableProps, StyleProp, ViewStyle } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, EntryOrExitLayoutType } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing, EntryOrExitLayoutType } from 'react-native-reanimated';
+import { feedback } from '../utils/haptics';
 
 interface AnimatedPressableProps extends PressableProps {
   style?: StyleProp<ViewStyle>;
@@ -37,19 +37,20 @@ export default function AnimatedPressable({
   }));
 
   const handlePressIn = (e: any) => {
-    scale.value = withTiming(scaleTo, { duration: 100 });
-    opacity.value = withTiming(activeOpacity, { duration: 100 });
+    scale.value = withTiming(scaleTo, { duration: 80, easing: Easing.out(Easing.quad) });
+    opacity.value = withTiming(activeOpacity, { duration: 80 });
     
-    if (haptic === 'light') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    else if (haptic === 'medium') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    else if (haptic === 'heavy') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    if (haptic === 'light') feedback.tap();
+    else if (haptic === 'medium') feedback.tap();
+    else if (haptic === 'heavy') feedback.commit();
     
     if (onPressIn) onPressIn(e);
   };
 
   const handlePressOut = (e: any) => {
-    scale.value = withSpring(1, { damping: 12, stiffness: 150 });
-    opacity.value = withTiming(1, { duration: 200 });
+    // iOS-style: clean, no bounce — withTiming feels premium
+    scale.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.quad) });
+    opacity.value = withTiming(1, { duration: 180 });
     
     if (onPressOut) onPressOut(e);
   };

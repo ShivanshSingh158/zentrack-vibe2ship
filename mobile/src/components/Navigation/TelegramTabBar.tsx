@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { Pressable } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,14 +25,16 @@ export function TelegramTabBar({ state, descriptors, navigation }: BottomTabBarP
   });
 
   const activeRouteIndex = visibleRoutes.findIndex(route => route.key === state.routes[state.index].key);
-  const activeIndex = activeRouteIndex >= 0 ? activeRouteIndex : 0;
+  const moreRouteIndex = visibleRoutes.findIndex(route => route.name === 'More');
+  // If current route is not in visible routes (e.g. unpinned module), fallback to "More" tab instead of "Home"
+  const activeIndex = activeRouteIndex >= 0 ? activeRouteIndex : (moreRouteIndex >= 0 ? moreRouteIndex : 0);
 
   const [containerWidth, setContainerWidth] = useState(0);
   // Account for borderWidth (1px left + 1px right = 2px) to get true inner width for flex items
   const innerWidth = Math.max(0, containerWidth - 2); 
   const tabWidth = innerWidth > 0 ? innerWidth / visibleRoutes.length : 0;
 
-  const [contentWidths, setContentWidths] = useState<Record<number, number>>({});
+
   
   // Calculate exact target position for a tiny minimalist dot (4px wide)
   const targetDotWidth = 4;
@@ -111,7 +114,8 @@ export function TelegramTabBar({ state, descriptors, navigation }: BottomTabBarP
       {/* Tabs */}
       {visibleRoutes.map((route, index) => {
         const { options } = descriptors[route.key];
-        const isFocused = activeIndex === index;
+        const isVisuallyFocused = activeIndex === index;
+        const isActuallyFocused = state.routes[state.index].key === route.key;
 
         const onPress = () => {
           feedback.tap();
@@ -121,7 +125,9 @@ export function TelegramTabBar({ state, descriptors, navigation }: BottomTabBarP
             canPreventDefault: true,
           });
 
-          if (!isFocused && !event.defaultPrevented) {
+          // Navigate if the screen isn't the actual current screen. 
+          // This allows tapping 'More' to open the More screen even if we're on an unpinned module and 'More' is visually focused.
+          if (!isActuallyFocused && !event.defaultPrevented) {
             navigation.navigate({ name: route.name, merge: true } as any);
           }
         };
@@ -142,42 +148,33 @@ export function TelegramTabBar({ state, descriptors, navigation }: BottomTabBarP
           More:         { active: 'grid',             inactive: 'grid-outline' },
         };
         const iconSet  = icons[route.name] || { active: 'ellipse', inactive: 'ellipse-outline' };
-        const iconName = isFocused ? iconSet.active : iconSet.inactive;
+        const iconName = isVisuallyFocused ? iconSet.active : iconSet.inactive;
 
         return (
-          <TouchableOpacity
+          <Pressable
             key={route.key}
             accessibilityRole="button"
-            accessibilityState={isFocused ? { selected: true } : {}}
+            accessibilityState={isVisuallyFocused ? { selected: true } : {}}
             accessibilityLabel={options.tabBarAccessibilityLabel}
             testID={(options as any).tabBarTestID}
             onPress={onPress}
             style={styles.tabButton}
-            activeOpacity={0.8}
+            android_ripple={null}
           >
-            <View 
-              style={{ alignItems: 'center' }}
-              onLayout={(e) => {
-                const w = e.nativeEvent.layout.width;
-                setContentWidths(prev => {
-                  if (prev[index] === w) return prev;
-                  return { ...prev, [index]: w };
-                });
-              }}
-            >
+            <View style={{ alignItems: 'center' }}>
               <Ionicons 
                 name={iconName} 
                 size={24} 
-                color={isFocused ? colors.accentPrimary : colors.textMuted} 
+                color={isVisuallyFocused ? colors.accentPrimary : colors.textMuted} 
               />
               <Text style={[
                 styles.tabLabel, 
-                { color: isFocused ? colors.accentPrimary : colors.textMuted }
+                { color: isVisuallyFocused ? colors.accentPrimary : colors.textMuted }
               ]}>
                 {route.name === 'Attendance' ? 'Attend' : route.name}
               </Text>
             </View>
-          </TouchableOpacity>
+          </Pressable>
         );
       })}
     </Animated.View>
