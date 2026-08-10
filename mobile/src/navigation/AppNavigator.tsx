@@ -282,7 +282,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
         sceneStyle:  { backgroundColor: '#080510' },
         lazy:        true,
         freezeOnBlur: false,
-        animation:   'none',
+        animation:   'shift',
       }}
       backBehavior="history"
     >
@@ -320,7 +320,7 @@ function NestedScreens() {
           header:            ({ route }) => <NestedHeader title={route.name} />,
           contentStyle:      { backgroundColor: colors.background },
           animation:         'slide_from_right',
-          animationDuration: 350,
+          animationDuration: 180,
           customAnimationOnGesture: true,
           fullScreenGestureEnabled: true,
         }}
