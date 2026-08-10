@@ -10,6 +10,7 @@
  */
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { InteractionManager } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { CustomEvent, Goal, WeeklyReview } from "../MobileDataContext";
@@ -45,47 +46,40 @@ export function PlannerProvider({
   children: React.ReactNode;
   user: { uid: string } | null;
 }) {
-  const [customEvents, setCustomEvents]       = useState<CustomEvent[]>([]);
-  const [goals, setGoals]                     = useState<Goal[]>([]);
-  const [weeklyReviews, setWeeklyReviews]     = useState<WeeklyReview[]>([]);
+  // ── Offline-first boot: seed from MMKV SYNCHRONOUSLY ──
+  // Reads happen in < 5ms before the first render!
+  const cached = useRef(readPlannerCache());
+
+  const [customEvents, setCustomEvents]       = useState<CustomEvent[]>(cached.current.customEvents || []);
+  const [goals, setGoals]                     = useState<Goal[]>(cached.current.goals || []);
+  const [weeklyReviews, setWeeklyReviews]     = useState<WeeklyReview[]>(cached.current.weeklyReviews || []);
 
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
-
-  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
-  useEffect(() => {
-    let cancelled = false;
-    readPlannerCache().then(cached => {
-      if (cancelled) return;
-      if (cached.customEvents  && cached.customEvents.length > 0)  setCustomEvents(prev  => prev.length === 0 ? cached.customEvents!  : prev);
-      if (cached.goals         && cached.goals.length > 0)         setGoals(prev         => prev.length === 0 ? cached.goals!         : prev);
-      if (cached.weeklyReviews && cached.weeklyReviews.length > 0) setWeeklyReviews(prev => prev.length === 0 ? cached.weeklyReviews! : prev);
-    });
-    return () => { cancelled = true; };
-  }, []);
 
   const openSubscriptions = (uid: string) => {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
-    subscribedRef.current = true;
-
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent)); setCustomEvents(fresh); writePlannerCache({ customEvents: fresh }); },
-      err => console.error("[Planner] customEvents", err)
-    ));
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Goal)); setGoals(fresh); writePlannerCache({ goals: fresh }); },
-      err => console.error("[Planner] goals", err)
-    ));
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)); setWeeklyReviews(fresh); writePlannerCache({ weeklyReviews: fresh }); },
-      err => console.error("[Planner] weeklyReviews", err)
-    ));
-
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        unsubsRef.current.push(onSnapshot(
+          query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
+          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent)); setCustomEvents(fresh); writePlannerCache({ customEvents: fresh }); },
+          err => console.error("[Planner] customEvents", err)
+        ));
+        unsubsRef.current.push(onSnapshot(
+          query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
+          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Goal)); setGoals(fresh); writePlannerCache({ goals: fresh }); },
+          err => console.error("[Planner] goals", err)
+        ));
+        unsubsRef.current.push(onSnapshot(
+          query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
+          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)); setWeeklyReviews(fresh); writePlannerCache({ weeklyReviews: fresh }); },
+          err => console.error("[Planner] weeklyReviews", err)
+        ));
+      }, 150);
+    });
   };
 
   useEffect(() => {

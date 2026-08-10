@@ -10,6 +10,7 @@
  */
 import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { InteractionManager } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { StorageNode, Note, LearningTopic, JobApplication } from "../MobileDataContext";
@@ -40,43 +41,39 @@ export function CreativeProvider({
   children: React.ReactNode;
   user: { uid: string } | null;
 }) {
-  const [storageNodes, setStorageNodes]   = useState<StorageNode[]>([]);
-  const [learningTopics, setLearningTopics] = useState<LearningTopic[]>([]);
-  const [jobs, setJobs]                   = useState<JobApplication[]>([]);
+  // ── Offline-first boot: seed from MMKV SYNCHRONOUSLY ──
+  // Reads happen in < 5ms before the first render!
+  const cached = useRef(readCreativeCache());
+
+  const [storageNodes, setStorageNodes]   = useState<StorageNode[]>(cached.current.storageNodes || []);
+  const [learningTopics, setLearningTopics] = useState<LearningTopic[]>(cached.current.learningTopics || []);
+  const [jobs, setJobs]                   = useState<JobApplication[]>(cached.current.jobs || []);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
-
-  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
-  useEffect(() => {
-    let cancelled = false;
-    readCreativeCache().then(cached => {
-      if (cancelled) return;
-      if (cached.storageNodes   && cached.storageNodes.length > 0)   setStorageNodes(prev   => prev.length === 0 ? cached.storageNodes!   : prev);
-      if (cached.learningTopics && cached.learningTopics.length > 0) setLearningTopics(prev => prev.length === 0 ? cached.learningTopics! : prev);
-      if (cached.jobs           && cached.jobs.length > 0)           setJobs(prev           => prev.length === 0 ? cached.jobs!           : prev);
-    });
-    return () => { cancelled = true; };
-  }, []);
 
   const openSubscriptions = (uid: string) => {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.STORAGE_NODES), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as StorageNode)); setStorageNodes(fresh); writeCreativeCache({ storageNodes: fresh }); },
-      err => console.error("[Creative] storageNodes", err)
-    ));
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.LEARNING_TOPICS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearningTopic)); setLearningTopics(fresh); writeCreativeCache({ learningTopics: fresh }); },
-      err => console.error("[Creative] learningTopics", err)
-    ));
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.JOBS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)); setJobs(fresh); writeCreativeCache({ jobs: fresh }); },
-      err => console.error("[Creative] jobs", err)
-    ));
+    InteractionManager.runAfterInteractions(() => {
+      setTimeout(() => {
+        unsubsRef.current.push(onSnapshot(
+          query(collection(db, COLLECTION.STORAGE_NODES), where("userId", "==", uid)),
+          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as StorageNode)); setStorageNodes(fresh); writeCreativeCache({ storageNodes: fresh }); },
+          err => console.error("[Creative] storageNodes", err)
+        ));
+        unsubsRef.current.push(onSnapshot(
+          query(collection(db, COLLECTION.LEARNING_TOPICS), where("userId", "==", uid)),
+          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearningTopic)); setLearningTopics(fresh); writeCreativeCache({ learningTopics: fresh }); },
+          err => console.error("[Creative] learningTopics", err)
+        ));
+        unsubsRef.current.push(onSnapshot(
+          query(collection(db, COLLECTION.JOBS), where("userId", "==", uid)),
+          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)); setJobs(fresh); writeCreativeCache({ jobs: fresh }); },
+          err => console.error("[Creative] jobs", err)
+        ));
+      }, 600);
+    });
   };
 
   useEffect(() => {

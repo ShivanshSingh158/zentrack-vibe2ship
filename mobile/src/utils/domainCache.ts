@@ -16,7 +16,7 @@
  *
  * Cache clear: called on logout — stale data from a previous user never bleeds.
  */
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storage } from '../lib/cache/mmkvStorage';
 
 // ─── Cache Keys ───────────────────────────────────────────────────────────────
 export const DOMAIN_CACHE_KEYS = {
@@ -44,20 +44,19 @@ export const DOMAIN_CACHE_KEYS = {
 
 type CacheKey = typeof DOMAIN_CACHE_KEYS[keyof typeof DOMAIN_CACHE_KEYS];
 
-// ─── Generic read helper — reads multiple keys in one multiGet call ───────────
-export async function readDomainCache<T extends Record<string, any>>(
+// ─── Generic read helper — reads multiple keys synchronously ───────────
+export function readDomainCache<T extends Record<string, any>>(
   keyMap: Record<string, CacheKey>
-): Promise<Partial<T>> {
+): Partial<T> {
   try {
-    const keys = Object.values(keyMap) as string[];
-    const pairs = await AsyncStorage.multiGet(keys);
     const result: any = {};
-    for (const [key, raw] of pairs) {
-      if (!raw) continue;
-      try {
-        const fieldName = Object.keys(keyMap).find(k => keyMap[k] === key);
-        if (fieldName) result[fieldName] = JSON.parse(raw);
-      } catch { /* ignore individual parse errors */ }
+    for (const [fieldName, key] of Object.entries(keyMap)) {
+      const raw = storage.getString(key);
+      if (raw) {
+        try {
+          result[fieldName] = JSON.parse(raw);
+        } catch { /* ignore individual parse errors */ }
+      }
     }
     return result as Partial<T>;
   } catch {
@@ -66,18 +65,16 @@ export async function readDomainCache<T extends Record<string, any>>(
 }
 
 // ─── Generic write helper — writes only provided keys ─────────────────────────
-export async function writeDomainCache(
+export function writeDomainCache(
   data: Partial<Record<string, any>>,
   keyMap: Record<string, CacheKey>
-): Promise<void> {
+): void {
   try {
-    const pairs: [string, string][] = [];
     for (const [field, key] of Object.entries(keyMap)) {
       if (data[field] !== undefined) {
-        pairs.push([key, JSON.stringify(data[field])]);
+        storage.set(key, JSON.stringify(data[field]));
       }
     }
-    if (pairs.length > 0) await AsyncStorage.multiSet(pairs);
   } catch { /* silent — cache write failure never affects the user */ }
 }
 
@@ -156,8 +153,11 @@ export const readCreativeCache  = () => readDomainCache<CreativeCache>(CREATIVE_
 export const writeCreativeCache = (data: Partial<CreativeCache>) => writeDomainCache(data, CREATIVE_KEY_MAP);
 
 // ─── Clear ALL domain caches on logout ────────────────────────────────────────
-export async function clearAllDomainCaches(): Promise<void> {
+export function clearAllDomainCaches(): void {
   try {
-    await AsyncStorage.multiRemove(Object.values(DOMAIN_CACHE_KEYS));
+    const keys = Object.values(DOMAIN_CACHE_KEYS);
+    for (const key of keys) {
+      storage.delete(key);
+    }
   } catch { /* silent */ }
 }

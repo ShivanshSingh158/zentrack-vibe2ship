@@ -12,6 +12,7 @@ import * as Notifications from "expo-notifications";
 import { collection, query, where, onSnapshot, doc, setDoc, getDoc } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged, User } from "firebase/auth";
+import { InteractionManager } from 'react-native';
 import { auth, db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { Task, Habit, HabitLog } from "../MobileDataContext";
@@ -55,10 +56,14 @@ export function useCoreData(): CoreDataContextType {
 
 // ─── Provider ──────────────────────────────────────────────────────────────────
 export function CoreDataProvider({ children }: { children: React.ReactNode }) {
+  // ── Offline-first boot: seed from MMKV SYNCHRONOUSLY ──
+  // Reads happen in < 5ms before the first render!
+  const cached = useRef(readCoreCacheMulti());
+
   const [user, setUser]           = useState<User | null>(null);
-  const [tasks, setTasks]         = useState<Task[]>([]);
-  const [habits, setHabits]       = useState<Habit[]>([]);
-  const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
+  const [tasks, setTasks]         = useState<Task[]>(cached.current.tasks || []);
+  const [habits, setHabits]       = useState<Habit[]>(cached.current.habits || []);
+  const [habitLogs, setHabitLogs] = useState<HabitLog[]>(cached.current.habitLogs || []);
   // WHATSAPP PATTERN: loading is derived — never a boolean flag that starts true.
   // If cache has seeded tasks/habits, loading is false from the very first render.
   // Screens with cached data never show a spinner on app resume.
@@ -102,20 +107,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       .then(token => { if (token) setGoogleAccessToken(token); });
   }, []);
 
-  // ── Cache-first boot ─────────────────────────────────────────────────
-  // Load tasks/habits/habitLogs from AsyncStorage SYNCHRONOUSLY on mount (~5ms).
-  // Dashboard is fully usable before Firestore has responded.
-  // Firestore snapshots will arrive later and silently update the UI.
-  useEffect(() => {
-    let cancelled = false;
-    readCoreCacheMulti().then(cached => {
-      if (cancelled) return;
-      if (cached.tasks     && cached.tasks.length > 0)     setTasks(prev     => prev.length === 0 ? cached.tasks!     : prev);
-      if (cached.habits    && cached.habits.length > 0)    setHabits(prev    => prev.length === 0 ? cached.habits!    : prev);
-      if (cached.habitLogs && cached.habitLogs.length > 0) setHabitLogs(prev => prev.length === 0 ? cached.habitLogs! : prev);
-    });
-    return () => { cancelled = true; };
-  }, []);
+  // Removed async boot (now synchronous above)
 
   // Auth state — clears all data on logout
   useEffect(() => {
@@ -167,44 +159,52 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   // Critical-path Firestore subscriptions — open immediately on login.
-  // Each snapshot WRITE-THROUGHS to AsyncStorage so the next cold-boot is instant.
+  // Each snapshot WRITE-THROUGHS to MMKV so the next cold-boot is instant.
   useEffect(() => {
     if (!user) return;
     const uid = user.uid;
     const unsubs: (() => void)[] = [];
+    let isCancelled = false;
+    
+    InteractionManager.runAfterInteractions(() => {
+      if (isCancelled) return;
+      
+      unsubs.push(onSnapshot(
+        query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
+        snap => {
+          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
+          setTasks(fresh);
+          setFirestoreReady(true);
+          writeCoreCacheMulti({ tasks: fresh });
+        },
+        err => { console.error("[CoreData] tasks", err); setFirestoreReady(true); }
+      ));
 
-    unsubs.push(onSnapshot(
-      query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
-      snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
-        setTasks(fresh);
-        setFirestoreReady(true);
-        writeCoreCacheMulti({ tasks: fresh });
-      },
-      err => { console.error("[CoreData] tasks", err); setFirestoreReady(true); }
-    ));
+      unsubs.push(onSnapshot(
+        query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
+        snap => {
+          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Habit));
+          if (!isHabitLocked.current) setHabits(fresh);
+          writeCoreCacheMulti({ habits: fresh });
+        },
+        err => console.error("[CoreData] habits", err)
+      ));
 
-    unsubs.push(onSnapshot(
-      query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
-      snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Habit));
-        if (!isHabitLocked.current) setHabits(fresh);
-        writeCoreCacheMulti({ habits: fresh });
-      },
-      err => console.error("[CoreData] habits", err)
-    ));
+      unsubs.push(onSnapshot(
+        query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
+        snap => {
+          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog));
+          if (!isHabitLogLocked.current) setHabitLogs(fresh);
+          writeCoreCacheMulti({ habitLogs: fresh });
+        },
+        err => console.error("[CoreData] habitLogs", err)
+      ));
+    });
 
-    unsubs.push(onSnapshot(
-      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
-      snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog));
-        if (!isHabitLogLocked.current) setHabitLogs(fresh);
-        writeCoreCacheMulti({ habitLogs: fresh });
-      },
-      err => console.error("[CoreData] habitLogs", err)
-    ));
-
-    return () => unsubs.forEach(u => u());
+    return () => {
+      isCancelled = true;
+      unsubs.forEach(u => u());
+    };
   }, [user]);
 
   // loading is TRUE only when: user is authenticated, Firestore hasn't responded yet,
