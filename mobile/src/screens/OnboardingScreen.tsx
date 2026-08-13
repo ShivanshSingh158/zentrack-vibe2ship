@@ -1,23 +1,23 @@
 /**
- * OnboardingScreen — ZenTrack Mobile
+ * OnboardingScreen â€” ZenTrack Mobile
  * Editorial Design Rewrite
  *
- * ╔══════════════════════════════════════════════════════════════════════════╗
- * ║  🔴 BUG-H6 SAFETY CONSTRAINT — READ THIS BEFORE EDITING               ║
- * ║                                                                          ║
- * ║  OnboardingScreen renders OUTSIDE all Stack/Tab navigators in           ║
- * ║  AppNavigator.tsx. It is returned as a standalone component when        ║
- * ║  authLoading=false and hasOnboarded=false, BEFORE the main navigator.  ║
- * ║                                                                          ║
- * ║  NEVER call useNavigation() inside this file. It will throw:           ║
- * ║    "Couldn't find a navigation object. Is your component inside        ║
- * ║     NavigationContainer?"                                               ║
- * ║  ...crashing the app for EVERY new user on first launch.               ║
- * ║                                                                          ║
- * ║  Navigation callbacks must be passed as PROPS from AppNavigator.tsx.   ║
- * ║  The existing pattern (calling onFinish() prop after onboarding) is    ║
- * ║  the correct approach. Do not change this pattern.                     ║
- * ╚══════════════════════════════════════════════════════════════════════════╝
+ * â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+ * â•‘  ðŸ”´ BUG-H6 SAFETY CONSTRAINT â€” READ THIS BEFORE EDITING               â•‘
+ * â•‘                                                                          â•‘
+ * â•‘  OnboardingScreen renders OUTSIDE all Stack/Tab navigators in           â•‘
+ * â•‘  AppNavigator.tsx. It is returned as a standalone component when        â•‘
+ * â•‘  authLoading=false and hasOnboarded=false, BEFORE the main navigator.  â•‘
+ * â•‘                                                                          â•‘
+ * â•‘  NEVER call useNavigation() inside this file. It will throw:           â•‘
+ * â•‘    "Couldn't find a navigation object. Is your component inside        â•‘
+ * â•‘     NavigationContainer?"                                               â•‘
+ * â•‘  ...crashing the app for EVERY new user on first launch.               â•‘
+ * â•‘                                                                          â•‘
+ * â•‘  Navigation callbacks must be passed as PROPS from AppNavigator.tsx.   â•‘
+ * â•‘  The existing pattern (calling onFinish() prop after onboarding) is    â•‘
+ * â•‘  the correct approach. Do not change this pattern.                     â•‘
+ * â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -34,6 +34,7 @@ import { db, auth } from '../services/firebase';
 import { awardXP } from '../services/xpSystem';
 import { requestNotificationPermissions } from '../services/notifications';
 import * as Notifications from 'expo-notifications';
+import Reanimated from 'react-native-reanimated';
 
 // Fonts
 import { useFonts, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
@@ -45,12 +46,12 @@ const { width } = Dimensions.get('window');
 export const ONBOARDING_KEY = 'zentrack_onboarded_v2';
 
 const IDENTITIES = [
-  { id: 'student',  label: 'Student',  icon: '📚', sub: 'Master your academics' },
-  { id: 'athlete',  label: 'Athlete',  icon: '🏋️', sub: 'Train with purpose'    },
-  { id: 'creator',  label: 'Creator',  icon: '🎨', sub: 'Build what matters'    },
-  { id: 'builder',  label: 'Builder',  icon: '🔧', sub: 'Ship every day'        },
-  { id: 'founder',  label: 'Founder',  icon: '🚀', sub: 'Lead with clarity'     },
-  { id: 'explorer', label: 'Explorer', icon: '🌍', sub: 'Grow every day'        },
+  { id: 'student',  label: 'Student',  icon: 'ðŸ“š', sub: 'Master your academics' },
+  { id: 'athlete',  label: 'Athlete',  icon: 'ðŸ‹ï¸', sub: 'Train with purpose'    },
+  { id: 'creator',  label: 'Creator',  icon: 'ðŸŽ¨', sub: 'Build what matters'    },
+  { id: 'builder',  label: 'Builder',  icon: 'ðŸ”§', sub: 'Ship every day'        },
+  { id: 'founder',  label: 'Founder',  icon: 'ðŸš€', sub: 'Lead with clarity'     },
+  { id: 'explorer', label: 'Explorer', icon: 'ðŸŒ', sub: 'Grow every day'        },
 ];
 
 const FOCUS_WORDS = [
@@ -140,7 +141,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
         if (granted) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: "ZenTrack ⚡",
+              title: "ZenTrack âš¡",
               body: "Notifications are active. The system is armed.",
               sound: true,
             },
@@ -186,8 +187,8 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
     switch (step) {
       case 0: return <StepPromise onNext={next} />;
       case 1: return <StepIdentity selected={selectedIdentities} onToggle={toggleIdentity} onNext={() => selectedIdentities.length > 0 && next()} />;
-      case 2: return <StepDiscipline score={disciplineScore} onSelect={selectScore} onNext={() => disciplineScore !== null && next()} />;
-      case 3: return <StepGoal goal={goal} submitted={goalSubmitted} onChangeText={setGoal} onSubmit={handleGoalSubmit} />;
+      case 2: return <StepDiscipline identity={selectedIdentities[0]} score={disciplineScore} onSelect={selectScore} onNext={() => disciplineScore !== null && next()} />;
+      case 3: return <StepGoal identity={selectedIdentities[0]} goal={goal} submitted={goalSubmitted} onChangeText={setGoal} onSubmit={handleGoalSubmit} />;
       case 4: return <StepDone identity={selectedIdentities[0]} saving={saving} onFinish={handleFinish} />;
       default: return null;
     }
@@ -219,7 +220,19 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   );
 }
 
-// ─── Steps ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Steps â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+function TopBadge({ identity }: { identity?: string }) {
+  const identityObj = IDENTITIES.find(i => i.id === identity);
+  if (!identityObj) return null;
+  return (
+    <Reanimated.View sharedTransitionTag="onboarding-identity" style={styles.topBadge}>
+      <Text style={styles.topBadgeEmoji}>{identityObj.icon}</Text>
+      <Text style={styles.topBadgeLabel}>{identityObj.label}</Text>
+    </Reanimated.View>
+  );
+}
+
 
 function StepPromise({ onNext }: { onNext: () => void }) {
   return (
@@ -233,7 +246,7 @@ function StepPromise({ onNext }: { onNext: () => void }) {
         We're building the system to upgrade it.
       </Text>
       <TouchableOpacity style={styles.ctaLink} onPress={onNext}>
-        <Text style={styles.ctaLinkText}>Begin onboarding  →</Text>
+        <Text style={styles.ctaLinkText}>Begin onboarding  â†’</Text>
       </TouchableOpacity>
     </View>
   );
@@ -250,15 +263,20 @@ function StepIdentity({ selected, onToggle, onNext }: { selected: string[]; onTo
         {IDENTITIES.map(id => {
           const active = selected.includes(id.id);
           return (
-            <TouchableOpacity key={id.id} style={[styles.identityTile, active && styles.identityTileActive]} onPress={() => onToggle(id.id)} activeOpacity={0.7}>
-              <Text style={styles.identityEmoji}>{id.icon}</Text>
-              <Text style={[styles.identityLabel, active && styles.identityLabelActive]}>{id.label}</Text>
-              <Text style={[styles.identitySub, active && styles.identityLabelActive]}>{id.sub}</Text>
-              {active && (
-                <View style={styles.identityCheck}>
-                  <Ionicons name="checkmark" size={12} color="#050505" />
-                </View>
-              )}
+            <TouchableOpacity key={id.id} onPress={() => onToggle(id.id)} activeOpacity={0.7} style={{ width: '48%' }}>
+              <Reanimated.View 
+                {...(active ? { sharedTransitionTag: "onboarding-identity" } : {})}
+                style={[styles.identityTile, { width: '100%' }, active && styles.identityTileActive]}
+              >
+                <Text style={styles.identityEmoji}>{id.icon}</Text>
+                <Text style={[styles.identityLabel, active && styles.identityLabelActive]}>{id.label}</Text>
+                <Text style={[styles.identitySub, active && styles.identityLabelActive]}>{id.sub}</Text>
+                {active && (
+                  <View style={styles.identityCheck}>
+                    <Ionicons name="checkmark" size={12} color="#050505" />
+                  </View>
+                )}
+              </Reanimated.View>
             </TouchableOpacity>
           );
         })}
@@ -271,7 +289,7 @@ function StepIdentity({ selected, onToggle, onNext }: { selected: string[]; onTo
   );
 }
 
-function StepDiscipline({ score, onSelect, onNext }: { score: number | null; onSelect: (n: number) => void; onNext: () => void }) {
+function StepDiscipline({ identity, score, onSelect, onNext }: { identity?: string; score: number | null; onSelect: (n: number) => void; onNext: () => void }) {
   const getResponse = (s: number) => {
     if (s <= 3) return "That's why you're here. We'll rebuild from the ground up — together.";
     if (s <= 5) return "You've got the awareness. That's the hardest part. Let's build the system.";
@@ -282,7 +300,10 @@ function StepDiscipline({ score, onSelect, onNext }: { score: number | null; onS
 
   return (
     <View style={styles.centeredStep}>
-      <Text style={styles.stepIndicator}>STEP 2 OF 3</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Text style={[styles.stepIndicator, { marginBottom: 0 }]}>STEP 2 OF 3</Text>
+        <TopBadge identity={identity} />
+      </View>
       <Text style={styles.titleSerif}>How satisfied are you{'\n'}with your current{'\n'}daily discipline?</Text>
       <Text style={styles.subText}>Be honest. This shapes your starting point.</Text>
 
@@ -311,7 +332,7 @@ function StepDiscipline({ score, onSelect, onNext }: { score: number | null; onS
   );
 }
 
-function StepGoal({ goal, submitted, onChangeText, onSubmit }: { goal: string; submitted: boolean; onChangeText: (t: string) => void; onSubmit: () => void }) {
+function StepGoal({ identity, goal, submitted, onChangeText, onSubmit }: { identity?: string; goal: string; submitted: boolean; onChangeText: (t: string) => void; onSubmit: () => void }) {
   if (submitted) {
     return (
       <View style={styles.centeredStep}>
@@ -324,7 +345,10 @@ function StepGoal({ goal, submitted, onChangeText, onSubmit }: { goal: string; s
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
       <View style={styles.centeredStep}>
-        <Text style={styles.stepIndicator}>STEP 3 OF 3</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Text style={[styles.stepIndicator, { marginBottom: 0 }]}>STEP 3 OF 3</Text>
+          <TopBadge identity={identity} />
+        </View>
         <Text style={styles.titleSerif}>What is your most{'\n'}important goal{'\n'}right now?</Text>
         <Text style={styles.subText}>One sentence. Your north star for the next 90 days.</Text>
 
@@ -365,10 +389,10 @@ function StepDone({ identity, saving, onFinish }: { identity?: string; saving: b
       </Text>
 
       {identityObj && (
-        <View style={styles.identityConfirmBadge}>
+        <Reanimated.View sharedTransitionTag="onboarding-identity" style={styles.identityConfirmBadge}>
           <Text style={styles.identityConfirmEmoji}>{identityObj.icon}</Text>
-          <Text style={styles.identityConfirmLabel}>{identityObj.label} — {identityObj.sub}</Text>
-        </View>
+          <Text style={styles.identityConfirmLabel}>{identityObj.label} • {identityObj.sub}</Text>
+        </Reanimated.View>
       )}
 
       <Text style={styles.notifTitle}>One last thing.</Text>
@@ -388,7 +412,7 @@ function StepDone({ identity, saving, onFinish }: { identity?: string; saving: b
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Styles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const styles = StyleSheet.create({
   root: {
@@ -451,6 +475,25 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end', // Moved to far right
     paddingVertical: 12,
     marginTop: 16,
+  },
+  topBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161520',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.4)',
+  },
+  topBadgeEmoji: {
+    fontSize: 12,
+    marginRight: 6,
+  },
+  topBadgeLabel: {
+    fontFamily: 'Inter_600SemiBold',
+    fontSize: 11,
+    color: '#ffffff',
   },
   ctaLinkText: {
     fontFamily: 'Inter_600SemiBold',

@@ -41,15 +41,23 @@ export function CreativeProvider({
   children: React.ReactNode;
   user: { uid: string } | null;
 }) {
-  // ── Offline-first boot: seed from MMKV SYNCHRONOUSLY ──
-  // Reads happen in < 5ms before the first render!
-  const cached = useRef(readCreativeCache());
-
-  const [storageNodes, setStorageNodes]   = useState<StorageNode[]>(cached.current.storageNodes || []);
-  const [learningTopics, setLearningTopics] = useState<LearningTopic[]>(cached.current.learningTopics || []);
-  const [jobs, setJobs]                   = useState<JobApplication[]>(cached.current.jobs || []);
+  const [storageNodes, setStorageNodes]   = useState<StorageNode[]>([]);
+  const [learningTopics, setLearningTopics] = useState<LearningTopic[]>([]);
+  const [jobs, setJobs]                   = useState<JobApplication[]>([]);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
+
+  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  useEffect(() => {
+    let cancelled = false;
+    readCreativeCache().then(cached => {
+      if (cancelled) return;
+      if (cached.storageNodes   && cached.storageNodes.length > 0)   setStorageNodes(prev   => prev.length === 0 ? cached.storageNodes!   : prev);
+      if (cached.learningTopics && cached.learningTopics.length > 0) setLearningTopics(prev => prev.length === 0 ? cached.learningTopics! : prev);
+      if (cached.jobs           && cached.jobs.length > 0)           setJobs(prev           => prev.length === 0 ? cached.jobs!           : prev);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const openSubscriptions = (uid: string) => {
     if (subscribedRef.current) return;

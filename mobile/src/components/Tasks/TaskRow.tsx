@@ -1,6 +1,6 @@
 import React, { useCallback, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming, Easing } from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -12,6 +12,7 @@ const today = new Date().toISOString().slice(0, 10);
 interface TaskRowProps {
   task: Task;
   onComplete: () => void;
+  onCompleteStart?: () => void;
   onReschedule: () => void;
   onPress: () => void;
   onLongPress: () => void;
@@ -23,65 +24,56 @@ interface TaskRowProps {
   onAddSubtask?: () => void;
 }
 
-/** Convert a time string (12-hr or 24-hr) to a display string like "5:30 AM" */
-function formatTimeStr(raw: string): string {
-  const t = raw.trim().toUpperCase();
-  const isPM = t.includes('PM');
-  const isAM = t.includes('AM');
-  const cleaned = t.replace(/[\sAPM]+$/i, '').trim();
-  const parts = cleaned.split(':');
-  let h = parseInt(parts[0], 10);
-  const m = parts.length >= 2 ? (parseInt(parts[1], 10) || 0) : 0;
-  if (isNaN(h)) return raw.trim();
-  if (isPM || isAM) {
-    // already 12-hr format — just normalise
-    const ampm = isPM ? 'PM' : 'AM';
-    const hr = h % 12 || 12;
-    return `${hr}:${m.toString().padStart(2, '0')} ${ampm}`;
-  }
-  // 24-hr input
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const hr = h % 12 || 12;
-  return `${hr}:${m.toString().padStart(2, '0')} ${ampm}`;
+/** Convert a time string (12-hr or 24-hr, single or range) to a display string like "7:30 am to 9:30 am" */
+function formatSingleTime(timeStr: string) {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':');
+  if (!h || !m) return timeStr;
+  let hh = parseInt(h, 10);
+  const suffix = hh >= 12 ? 'pm' : 'am';
+  if (hh === 0) hh = 12;
+  else if (hh > 12) hh -= 12;
+  return `${hh}:${m} ${suffix}`;
 }
 
-function formatSubtext(task: Task, isOverdue: boolean) {
-  if (task.status === 'completed') return null;
-
-  if (isOverdue && task.date) {
-    return {
-      text: `${formatDateShort(task.date)}  Overdue`,
-      color: '#D84C4C',
-      icon: 'calendar-outline' as const,
-    };
+function formatTime12(timeStr?: string) {
+  if (!timeStr) return '';
+  if (timeStr.includes('-')) {
+    const [start, end] = timeStr.split('-');
+    return `${formatSingleTime(start.trim())} to ${formatSingleTime(end.trim())}`;
   }
+  return formatSingleTime(timeStr);
+}
 
+const tagColor = (tag: string) => {
+  const map: Record<string, string> = {
+    'high': '#FF3B30',
+    'work': '#0A84FF',
+    'personal': '#30D158',
+    'errand': '#FF9F0A',
+    'gym': '#A599FF',
+  };
+  return map[tag.toLowerCase()] || '#8E8E93';
+};
+
+const formatSubtext = (task: Task, isOverdue: boolean) => {
+  if (isOverdue) return { text: 'Overdue', color: '#FF453A', icon: 'alert-circle' as const };
   if (task.timeSlot) {
-    // timeSlot may be "5:30 AM - 6:30 AM", "5:30 AM", "05:30-06:30", etc.
-    const [startRaw, endRaw] = task.timeSlot.split(/[-–]/).map(s => s.trim());
-    const formattedStart = formatTimeStr(startRaw);
-    const timeText = endRaw
-      ? `${formattedStart} – ${formatTimeStr(endRaw)}`
-      : formattedStart;
-    return { text: timeText, color: '#8E8E93', icon: 'time-outline' as const };
+    return { text: formatTime12(task.timeSlot), color: '#8E8E93', icon: 'time-outline' as const };
   }
-
+  if (task.date && task.date > today) {
+    return { text: formatDateShort(task.date), color: '#8E8E93', icon: 'calendar-outline' as const };
+  }
   return null;
-}
+};
 
-// ─── Tag color (deterministic by name hash) ─────────────────────────────────
-const TAG_PALETTE = ['#a599ff','#60a5fa','#34d399','#f87171','#fb923c','#e879f9','#facc15','#38bdf8'];
-function tagColor(tag: string): string {
-  let hash = 0;
-  for (let i = 0; i < tag.length; i++) hash = tag.charCodeAt(i) + ((hash << 5) - hash);
-  return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
-}
-
-
-const TaskRow = React.memo(function TaskRow({ task, onComplete, onReschedule, onPress, onLongPress, isOverdue, isBulkEdit, isSelected, onToggleSelect, onUpdateTask, onAddSubtask }: TaskRowProps) {
+const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart, onReschedule, onPress, onLongPress, isOverdue, isBulkEdit, isSelected, onToggleSelect, onUpdateTask, onAddSubtask }: TaskRowProps) {
   const swipeableRef = useRef<Swipeable>(null);
   const checkScale = useSharedValue(1);
-  const isDone = task.status === 'completed';
+  const rowTranslateX = useSharedValue(0);
+  const rowOpacity = useSharedValue(1);
+  const [isCompleting, setIsCompleting] = React.useState(false);
+  const isDone = task.status === 'completed' || isCompleting;
   const [isExpanded, setIsExpanded] = React.useState(false);
 
   const totalSubtasks = task.subtasks?.length || 0;
@@ -91,18 +83,33 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onReschedule, on
   const subtextData = formatSubtext(task, isOverdue);
   const taskTags = task.tags && task.tags.length > 0 ? task.tags : null;
 
-
   const animatedCheckStyle = useAnimatedStyle(() => ({
     transform: [{ scale: checkScale.value }],
   }));
 
+  const animatedRowStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: rowTranslateX.value }],
+    opacity: rowOpacity.value,
+  }));
+
   const handleComplete = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    onComplete();
-    checkScale.value = withSpring(1.35, { damping: 6, stiffness: 350 }, () => {
-      checkScale.value = withSpring(1, { damping: 14, stiffness: 200 });
-    });
-  }, [onComplete]);
+    if (!isDone) {
+      if (onCompleteStart) onCompleteStart();
+      setIsCompleting(true);
+      checkScale.value = withSequence(
+        withTiming(0.8, { duration: 100 }),
+        withTiming(1.2, { duration: 150 }),
+        withTiming(1.0, { duration: 100 })
+      );
+      setTimeout(() => {
+        onComplete();
+      }, 350);
+    } else {
+      if (onCompleteStart) onCompleteStart();
+      onComplete();
+    }
+  }, [onComplete, onCompleteStart, isDone, checkScale]);
 
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -119,26 +126,16 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onReschedule, on
 
   const renderRightActions = useCallback(() => (
     <View style={styles.actionRightContainer}>
-      <TouchableOpacity 
-        style={[styles.actionRight, { backgroundColor: '#5EA2FF', marginRight: 2 }]} 
-        onPress={() => {
-          swipeableRef.current?.close();
-          onAddSubtask?.();
-        }}
-      >
-        <Ionicons name="add-circle-outline" size={22} color="#fff" />
+      <TouchableOpacity style={[styles.actionRight, { backgroundColor: '#A599FF' }]} onPress={onReschedule}>
+        <Ionicons name="calendar-outline" size={20} color="#fff" />
       </TouchableOpacity>
-      <TouchableOpacity 
-        style={[styles.actionRight, { backgroundColor: '#FF9500' }]}
-        onPress={() => {
-          swipeableRef.current?.close();
-          onReschedule();
-        }}
-      >
-        <Ionicons name="calendar-outline" size={22} color="#fff" />
-      </TouchableOpacity>
+      {onAddSubtask && (
+         <TouchableOpacity style={[styles.actionRight, { backgroundColor: '#3A3A3C' }]} onPress={onAddSubtask}>
+          <Ionicons name="list-outline" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
-  ), [onAddSubtask, onReschedule]);
+  ), [onReschedule, onAddSubtask]);
 
   const handleSwipeOpen = useCallback((direction: string) => {
     if (direction === 'left') {
@@ -155,121 +152,123 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onReschedule, on
       onSwipeableOpen={handleSwipeOpen}
       containerStyle={{ backgroundColor: 'transparent' }}
     >
-      <View
-        style={[styles.row, isSelected && { backgroundColor: 'rgba(165, 153, 255, 0.05)' }]}
-      >
-        <TouchableOpacity
-          style={styles.leftHalf}
-          onPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleComplete}
-          onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
-          activeOpacity={0.75}
+      <Animated.View style={animatedRowStyle}>
+        <View
+          style={[styles.row, isSelected && { backgroundColor: 'rgba(165, 153, 255, 0.05)' }]}
         >
-          <View style={styles.checkArea}>
-            <Animated.View style={[
-              styles.checkbox, 
-              isDone && !isBulkEdit && styles.checkboxDone, 
-              isSelected && styles.checkboxSelected,
-              animatedCheckStyle
-            ]}>
-              {isBulkEdit ? (
-                 isSelected && <Ionicons name="checkmark" size={12} color="#000000" />
-              ) : (
-                 isDone && <Ionicons name="checkmark" size={12} color="#000000" />
-              )}
-            </Animated.View>
-          </View>
+          <TouchableOpacity
+            style={styles.leftHalf}
+            onPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleComplete}
+            onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
+            activeOpacity={0.75}
+          >
+            <View style={styles.checkArea}>
+              <Animated.View style={[
+                styles.checkbox, 
+                isDone && !isBulkEdit && styles.checkboxDone, 
+                isSelected && styles.checkboxSelected,
+                animatedCheckStyle
+              ]}>
+                {isBulkEdit ? (
+                   isSelected && <Ionicons name="checkmark" size={12} color="#000000" />
+                ) : (
+                   isDone && <Ionicons name="checkmark" size={12} color="#000000" />
+                )}
+              </Animated.View>
+            </View>
 
-          <View style={styles.content}>
-            <Text style={[styles.title, isDone && styles.titleDone]} numberOfLines={1}>
-              {task.title}
-            </Text>
-
-            {/* Subtask Progress Bar */}
-            {hasSubtasks && !isDone && (
-              <TouchableOpacity 
-                style={styles.subtaskProgressContainer}
-                onPress={() => setIsExpanded(!isExpanded)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.progressBarBg}>
-                  <View style={[styles.progressBarFill, { width: `${(completedSubtasks / totalSubtasks) * 100}%` }]} />
-                </View>
-                <Text style={styles.subtaskProgressText}>
-                  {completedSubtasks}/{totalSubtasks} subtasks
-                </Text>
-                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} color="#8E8E93" style={{ marginLeft: 4 }} />
-              </TouchableOpacity>
-            )}
-
-            {/* Tag Pills */}
-            {taskTags && !isDone && (
-              <View style={styles.tagRow}>
-                {taskTags.slice(0, 3).map(tag => (
-                  <View key={tag} style={[styles.tagPill, { backgroundColor: tagColor(tag) + '22' }]}>
-                    <Text style={[styles.tagPillText, { color: tagColor(tag) }]}>{tag}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={styles.rightHalf}
-          onPress={isBulkEdit && onToggleSelect ? onToggleSelect : onPress}
-          onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
-          activeOpacity={0.75}
-        >
-          {subtextData && !isDone && (
-            <View style={styles.subtextRowRight}>
-              <Ionicons name={subtextData.icon} size={12} color={subtextData.color} style={{ marginRight: 4 }} />
-              <Text style={[styles.subtext, { color: subtextData.color }]}>
-                {subtextData.text}
+            <View style={styles.content}>
+              <Text style={[styles.title, isDone && styles.titleDone]} numberOfLines={1}>
+                {task.title}
               </Text>
-              {subtextData.icon === 'time-outline' && !isOverdue && (
-                 <Ionicons name="repeat" size={10} color="#C7C7CC" style={{ marginLeft: 6 }} />
+
+              {/* Subtask Progress Bar */}
+              {hasSubtasks && !isDone && (
+                <TouchableOpacity 
+                  style={styles.subtaskProgressContainer}
+                  onPress={() => setIsExpanded(!isExpanded)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBarFill, { width: `${(completedSubtasks / totalSubtasks) * 100}%` }]} />
+                  </View>
+                  <Text style={styles.subtaskProgressText}>
+                    {completedSubtasks}/{totalSubtasks} subtasks
+                  </Text>
+                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} color="#8E8E93" style={{ marginLeft: 4 }} />
+                </TouchableOpacity>
+              )}
+
+              {/* Tag Pills */}
+              {taskTags && !isDone && (
+                <View style={styles.tagRow}>
+                  {taskTags.slice(0, 3).map(tag => (
+                    <View key={tag} style={[styles.tagPill, { backgroundColor: tagColor(tag) + '22' }]}>
+                      <Text style={[styles.tagPillText, { color: tagColor(tag) }]}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
               )}
             </View>
-          )}
-        </TouchableOpacity>
-      </View>
+          </TouchableOpacity>
 
-      {/* Expanded Subtasks List */}
-      {isExpanded && hasSubtasks && !isDone && (
-        <View style={styles.subtaskList}>
-          {task.subtasks!.map((st, idx) => (
-            <TouchableOpacity 
-              key={st.id || idx} 
-              style={styles.subtaskItem}
-              activeOpacity={0.7}
-              onPress={() => {
-                if (!onUpdateTask || !task.id) return;
-                Haptics.selectionAsync();
-                const newSubtasks = [...task.subtasks!];
-                newSubtasks[idx] = { ...st, completed: !st.completed };
-                const newCompletedCount = newSubtasks.filter(s => s.completed).length;
-                
-                // If this is the last subtask being completed, auto-complete the parent
-                if (newCompletedCount === totalSubtasks && !st.completed) {
-                  onUpdateTask(task.id, { subtasks: newSubtasks });
-                  setTimeout(() => {
-                    handleComplete();
-                  }, 300);
-                } else {
-                  onUpdateTask(task.id, { subtasks: newSubtasks });
-                }
-              }}
-            >
-              <View style={[styles.subtaskCheckbox, st.completed && styles.subtaskCheckboxDone]}>
-                {st.completed && <Ionicons name="checkmark" size={10} color="#000" />}
+          <TouchableOpacity 
+            style={styles.rightHalf}
+            onPress={isBulkEdit && onToggleSelect ? onToggleSelect : onPress}
+            onLongPress={isBulkEdit && onToggleSelect ? onToggleSelect : handleLongPress}
+            activeOpacity={0.75}
+          >
+            {subtextData && !isDone && (
+              <View style={styles.subtextRowRight}>
+                <Ionicons name={subtextData.icon} size={12} color={subtextData.color} style={{ marginRight: 4 }} />
+                <Text style={[styles.subtext, { color: subtextData.color }]}>
+                  {subtextData.text}
+                </Text>
+                {subtextData.icon === 'time-outline' && !isOverdue && (
+                   <Ionicons name="repeat" size={10} color="#C7C7CC" style={{ marginLeft: 6 }} />
+                )}
               </View>
-              <Text style={[styles.subtaskTitle, st.completed && styles.subtaskTitleDone]}>
-                {st.title}
-              </Text>
-            </TouchableOpacity>
-          ))}
+            )}
+          </TouchableOpacity>
         </View>
-      )}
+
+        {/* Expanded Subtasks List */}
+        {isExpanded && hasSubtasks && !isDone && (
+          <View style={styles.subtaskList}>
+            {task.subtasks!.map((st, idx) => (
+              <TouchableOpacity 
+                key={st.id || idx} 
+                style={styles.subtaskItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  if (!onUpdateTask || !task.id) return;
+                  Haptics.selectionAsync();
+                  const newSubtasks = [...task.subtasks!];
+                  newSubtasks[idx] = { ...st, completed: !st.completed };
+                  const newCompletedCount = newSubtasks.filter(s => s.completed).length;
+                  
+                  // If this is the last subtask being completed, auto-complete the parent
+                  if (newCompletedCount === totalSubtasks && !st.completed) {
+                    onUpdateTask(task.id, { subtasks: newSubtasks });
+                    setTimeout(() => {
+                      handleComplete();
+                    }, 300);
+                  } else {
+                    onUpdateTask(task.id, { subtasks: newSubtasks });
+                  }
+                }}
+              >
+                <View style={[styles.subtaskCheckbox, st.completed && styles.subtaskCheckboxDone]}>
+                  {st.completed && <Ionicons name="checkmark" size={10} color="#000" />}
+                </View>
+                <Text style={[styles.subtaskTitle, st.completed && styles.subtaskTitleDone]}>
+                  {st.title}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </Animated.View>
     </Swipeable>
   );
 });
@@ -288,15 +287,15 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingLeft: 20,
+    paddingVertical: 10,
+    paddingLeft: 4,
     paddingRight: 8,
   },
   rightHalf: {
     alignItems: 'flex-end',
     justifyContent: 'center',
-    paddingVertical: 14,
-    paddingRight: 20,
+    paddingVertical: 10,
+    paddingRight: 4,
     paddingLeft: 8,
     minWidth: 80,
   },
@@ -328,7 +327,7 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: 'Inter_500Medium',
-    fontSize: 15,
+    fontSize: 14,
     color: '#FFFFFF',
   },
   titleDone: {
@@ -453,4 +452,3 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
 });
-

@@ -40,14 +40,21 @@ function parseSingleTime(hStr: string, mStr: string, pStr: string): { hh: string
 }
 
 export function toYMD(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  // Use local date parts to avoid UTC timezone shift (critical for IST UTC+5:30)
+  const y = d.getFullYear();
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function nextWeekday(targetDayIndex: number, forceNext = false): Date {
   const d = new Date();
   const currentDay = d.getDay();
   let diff = targetDayIndex - currentDay;
-  if (diff <= 0 || forceNext) {
+  // Only push to next week if forceNext is explicitly true,
+  // OR if diff is negative (the target day already passed this week).
+  // diff === 0 means TODAY is the target day — return today, not next week.
+  if (diff < 0 || (diff === 0 && forceNext)) {
     diff += 7;
   }
   d.setDate(d.getDate() + diff);
@@ -104,14 +111,55 @@ export function parseNLTask(raw: string): ParsedTask {
     isRecurring = true; recurrenceRule = { type: 'daily', interval: parseInt(m[1], 10) }; dateResult = new Date(now);
     registerToken('recurrence', m[0], `Every ${m[1]} Days`);
   } else {
-    for (let di = 0; di < DAY_NAMES.length; di++) {
-      const dn = DAY_NAMES[di], ds = DAY_SHORT[di];
-      const pat = new RegExp(`\\bevery\\s+(${dn}s?|${ds}s?)\\b`, 'i');
-      const m = text.match(pat);
-      if (m) {
-        isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [di] }; dateResult = nextWeekday(di);
-        const label = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
-        registerToken('recurrence', m[0], `Every ${label}`); break;
+    // Check for day ranges ("monday to friday", "tue and wed")
+    const getDayIdx = (s: string) => {
+      s = s.toLowerCase();
+      let idx = DAY_NAMES.findIndex(d => s.startsWith(d));
+      if (idx !== -1) return idx;
+      return DAY_SHORT.findIndex(d => s.startsWith(d));
+    };
+    
+    const dayRegexStr = '(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
+    const rangePat = new RegExp(`\\b(?:every\\s+)?${dayRegexStr}\\s+(?:to|-)\\s+${dayRegexStr}\\b`, 'i');
+    const andPat = new RegExp(`\\b(?:every\\s+)?${dayRegexStr}\\s+(?:and|&)\\s+${dayRegexStr}\\b`, 'i');
+    
+    const rm = text.match(rangePat);
+    const am = text.match(andPat);
+
+    if (rm) {
+      const start = getDayIdx(rm[1]);
+      const end = getDayIdx(rm[2]);
+      if (start !== -1 && end !== -1) {
+        const days = [];
+        let curr = start;
+        while (true) {
+          days.push(curr);
+          if (curr === end) break;
+          curr = (curr + 1) % 7;
+        }
+        isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days.sort() }; 
+        dateResult = nextWeekday(start);
+        registerToken('recurrence', rm[0], `${rm[1]} to ${rm[2]}`);
+      }
+    } else if (am) {
+      const d1 = getDayIdx(am[1]);
+      const d2 = getDayIdx(am[2]);
+      if (d1 !== -1 && d2 !== -1) {
+        const days = [d1, d2].sort();
+        isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days }; 
+        dateResult = nextWeekday(days[0]);
+        registerToken('recurrence', am[0], `${am[1]} & ${am[2]}`);
+      }
+    } else {
+      for (let di = 0; di < DAY_NAMES.length; di++) {
+        const dn = DAY_NAMES[di], ds = DAY_SHORT[di];
+        const pat = new RegExp(`\\bevery\\s+(${dn}s?|${ds}s?)\\b`, 'i');
+        const m = text.match(pat);
+        if (m) {
+          isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [di] }; dateResult = nextWeekday(di);
+          const label = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
+          registerToken('recurrence', m[0], `Every ${label}`); break;
+        }
       }
     }
   }

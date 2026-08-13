@@ -53,24 +53,35 @@ export function WellnessProvider({
   children: React.ReactNode;
   user: { uid: string } | null;
 }) {
-  // ── Offline-first boot: seed from MMKV SYNCHRONOUSLY ──
-  // Reads happen in < 5ms before the first render!
-  const cached = useRef(readWellnessCache());
-  
-  const [gymLogs, setGymLogs]         = useState<GymLog[]>(cached.current.gymLogs || []);
-  const [userGymPlan, setUserGymPlan] = useState<UserGymPlanDoc | null>(cached.current.userGymPlan || null);
-  const [waterLogs, setWaterLogs] = useState<WaterLog[]>(cached.current.waterLogs || []);
-  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>(cached.current.sleepLogs || []);
-  const [weightLogs, setWeightLogs] = useState<WeightLog[]>(cached.current.weightLogs || []);
+  const [gymLogs, setGymLogs]         = useState<GymLog[]>([]);
+  // WHATSAPP PATTERN: gymLogsReady is derived — never a boolean flag that starts false.
+  // Gym screens show cached data the instant the cache is seeded, with no spinner.
+  const [userGymPlan, setUserGymPlan] = useState<UserGymPlanDoc | null>(null);
+  const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
+  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
+  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
+
+  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  useEffect(() => {
+    let cancelled = false;
+    readWellnessCache().then(cached => {
+      if (cancelled) return;
+      if (cached.gymLogs    && cached.gymLogs.length > 0)    setGymLogs(prev    => prev.length === 0 ? cached.gymLogs!    : prev);
+      if (cached.userGymPlan)                               setUserGymPlan(prev => prev === null   ? cached.userGymPlan! : prev);
+      if (cached.waterLogs  && cached.waterLogs.length > 0) setWaterLogs(prev  => prev.length === 0 ? cached.waterLogs!  : prev);
+      if (cached.sleepLogs  && cached.sleepLogs.length > 0) setSleepLogs(prev  => prev.length === 0 ? cached.sleepLogs!  : prev);
+      if (cached.weightLogs && cached.weightLogs.length > 0) setWeightLogs(prev => prev.length === 0 ? cached.weightLogs! : prev);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const openSubscriptions = (uid: string) => {
     if (subscribedRef.current) return; // idempotent
     subscribedRef.current = true;
 
     InteractionManager.runAfterInteractions(() => {
-      // Small stagger to prevent burst if multiple contexts subscribe at exactly the same time
       setTimeout(() => {
         unsubsRef.current.push(onSnapshot(
           query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid)),
@@ -121,7 +132,7 @@ export function WellnessProvider({
           },
           err => console.error("[Wellness] weightLogs", err)
         ));
-      }, 300);
+      }, 150);
     });
   };
 

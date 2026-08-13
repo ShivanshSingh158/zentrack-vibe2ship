@@ -11,6 +11,7 @@ import { GoogleAuthProvider, signInWithCredential, signInAnonymously } from 'fir
 import { auth } from '../services/firebase';
 import { RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW, SPACE } from '../theme/tokens';
 import { useTheme } from "../contexts/ThemeContext";
+import TermsScreen from './TermsScreen';
 
 // Web client ID from Google Cloud Console
 const WEB_CLIENT_ID = '336719988763-a8l7noum7dapki5st6uoqvscnnlkid7e.apps.googleusercontent.com';
@@ -38,6 +39,7 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const [skipLoading, setSkipLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showTerms, setShowTerms] = useState(false);
 
   const handleSkip = async () => {
     setSkipLoading(true);
@@ -190,7 +192,7 @@ export default function AuthScreen() {
           )}
 
           <Text style={styles.legalText}>
-            By continuing, you agree to our terms. Your data stays secured{'\n'}through Google, Apple and Firebase.
+            By continuing, you agree to our <Text style={styles.linkText} onPress={() => setShowTerms(true)}>Terms of Service</Text>. Your data is secured and strictly private.
           </Text>
         </View>
 
@@ -205,6 +207,8 @@ export default function AuthScreen() {
         </View>
 
       </Animated.View>
+
+      <TermsScreen visible={showTerms} onClose={() => setShowTerms(false)} />
     </SafeAreaView>
   );
 }
@@ -216,9 +220,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
       },
       content: {
         flex: 1,
-        paddingHorizontal: 32,
+        paddingHorizontal: 6,
         justifyContent: 'space-between',
-        paddingTop: 32,
+        paddingTop: 6,
         paddingBottom: 48,
       },
       topHeader: {
@@ -233,7 +237,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       },
       step: {
         fontFamily: FONT_FAMILY.body,
-        fontSize: FONT_SIZE.xs,
+        fontSize: 12,
         color: colors.textMuted,
         opacity: 0.7,
       },
@@ -298,6 +302,13 @@ const makeStyles = (colors: any) => StyleSheet.create({
         color: colors.textMuted,
         lineHeight: 18,
         opacity: 0.6,
+        textAlign: 'center',
+        marginTop: 24,
+        paddingHorizontal: 16,
+      },
+      linkText: {
+        color: colors.accentPrimary || '#007AFF',
+        fontFamily: FONT_FAMILY.medium,
       },
       bottomBlock: {
         alignItems: 'flex-start',

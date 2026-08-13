@@ -34,6 +34,8 @@ export interface GymProfile {
   limitations: string;
   /** Comma-separated exercises to avoid */
   exercisesToAvoid: string;
+  /** Major muscles user wants to focus on */
+  focusMuscles: string;
   /** Any other preferences or notes */
   notes: string;
 }
@@ -49,6 +51,7 @@ export const DEFAULT_PROFILE: GymProfile = {
   daysPerWeek: null,
   limitations: '',
   exercisesToAvoid: '',
+  focusMuscles: '',
   notes: '',
 };
 
@@ -108,6 +111,7 @@ export function useGymProfile() {
     if (p.equipment) lines.push(`Equipment: ${eqMap[p.equipment] || p.equipment}`);
     if (p.daysPerWeek) lines.push(`Training Days/Week: ${p.daysPerWeek}`);
     if (p.limitations) lines.push(`Injuries/Limitations: ${p.limitations}`);
+    if (p.focusMuscles && typeof p.focusMuscles === 'string') lines.push(`Focus Muscles: ${p.focusMuscles}`);
     if (p.exercisesToAvoid) lines.push(`Exercises to AVOID: ${p.exercisesToAvoid}`);
     if (p.notes) lines.push(`Other Preferences: ${p.notes}`);
     lines.push('======================');

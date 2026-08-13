@@ -28,7 +28,7 @@ interface CalendarDayViewProps {
   gymLogs: any[];
 }
 
-export function CalendarDayView({
+export const CalendarDayView = React.memo(function CalendarDayView({
   styles, colors, unscheduledDayEvents, processedEvents, DYNAMIC_HOURS,
   minHour, maxHour, isToday, indicatorTop, scrollViewRef,
   setInitialTime, setSelectedEvent, setShowAddModal, setShowEventModal,
@@ -127,4 +127,4 @@ export function CalendarDayView({
       </ScrollView>
     </View>
   );
-}
+});

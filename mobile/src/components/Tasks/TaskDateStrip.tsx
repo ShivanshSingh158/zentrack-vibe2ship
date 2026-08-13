@@ -74,14 +74,19 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, o
               style={[styles.dateItem, isActive && styles.dateItemActive]}
               onPress={() => onSelectDate(d.dateStr)}
             >
-              <Text style={[styles.dateDay, isActive && styles.dateDayActive]}>
+              <Text style={[styles.dateDay, isActive && styles.dateDayActive, d.isToday && !isActive && { color: '#A599FF' }]}>
                 {d.dayShort}
               </Text>
-              <Text style={[styles.dateNum, isActive && styles.dateNumActive]}>
+              <Text style={[styles.dateNum, isActive && styles.dateNumActive, d.isToday && !isActive && { color: '#A599FF' }]}>
                 {d.dateNum}
               </Text>
               {/* Dot indicator */}
-              <View style={[styles.dot, isActive ? styles.dotActive : null, taskDates?.has(d.dateStr) ? styles.dotVisible : null]} />
+              <View style={[
+                styles.dot, 
+                isActive ? styles.dotActive : null, 
+                taskDates?.has(d.dateStr) ? styles.dotVisible : null,
+                d.isToday && !isActive && { backgroundColor: '#A599FF' }
+              ]} />
             </AnimatedPressable>
           );
         })}

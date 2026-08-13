@@ -5,7 +5,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
 import { useGymLog, todayStr } from '../../hooks/useGymLog';
-import { GYM_PLAN, EXERCISE_ALTERNATIVES } from '../../data/gymPlan';
+import { GYM_PLAN } from '../../data/gymPlan';
+import { EXERCISE_DATABASE } from '../../data/exerciseDatabase';
 import { resolveMuscleColor, hexToRgba } from '../../utils/gymUtils';
 import { hapticMedium, hapticSuccess } from '../../utils/haptics';
 import { callProxy } from '../../services/geminiProxy';
@@ -60,11 +61,16 @@ export default function ExerciseSwapScreen() {
     const origRest = originalExercise?.restTimeSecs || 90;
 
     // 1. Immediate Instant Fallback (0ms latency)
-    const muscleKey = Object.keys(EXERCISE_ALTERNATIVES).find(
-      k => k.toLowerCase() === origMuscle.toLowerCase()
-    ) || 'Chest';
-
-    const alternativesList = EXERCISE_ALTERNATIVES[muscleKey] || EXERCISE_ALTERNATIVES['Chest'];
+    let alternativesList = EXERCISE_DATABASE.filter(db => db.muscle.toLowerCase() === origMuscle.toLowerCase());
+    if (alternativesList.length === 0) {
+      alternativesList = EXERCISE_DATABASE.filter(db => 
+        db.muscle.toLowerCase().includes(origMuscle.toLowerCase()) || 
+        origMuscle.toLowerCase().includes(db.muscle.toLowerCase())
+      );
+    }
+    if (alternativesList.length === 0) {
+      alternativesList = EXERCISE_DATABASE.filter(db => db.muscle.includes('Chest'));
+    }
 
     const instantFallback: AiSwapRecommendation[] = alternativesList.slice(0, 6).map((alt, idx) => {
       const n = (alt.name || '').toLowerCase();
@@ -171,23 +177,24 @@ Return ONLY a raw valid JSON array of 6 objects:
     };
   }, [originalExercise]);
 
-  // Flatten all unique exercises from GYM_PLAN for 'All' tab
+  // Flatten all unique exercises for 'All' tab from EXERCISE_DATABASE
   const allExercises = useMemo(() => {
-    const map = new Map<string, any>();
-    Object.values(GYM_PLAN).forEach(day => {
-      day.exercises.forEach(ex => {
-        if (!map.has(ex.id)) {
-          map.set(ex.id, ex);
-        }
-      });
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return EXERCISE_DATABASE.map(ex => ({
+      id: ex.id,
+      name: ex.name,
+      muscle: ex.muscle,
+      aliases: ex.aliases
+    })).sort((a, b) => a.name.localeCompare(b.name));
   }, []);
 
   const filteredExercises = useMemo(() => {
     if (!search.trim()) return allExercises;
     const lower = search.toLowerCase();
-    return allExercises.filter(ex => ex.name.toLowerCase().includes(lower) || ex.muscle?.toLowerCase().includes(lower));
+    return allExercises.filter(ex => 
+      ex.name.toLowerCase().includes(lower) || 
+      ex.muscle?.toLowerCase().includes(lower) || 
+      (ex.aliases && ex.aliases.some(alias => alias.toLowerCase().includes(lower)))
+    );
   }, [allExercises, search]);
 
   const handleSwap = async (newExDef: any) => {
@@ -406,7 +413,7 @@ const makeStyles = (colors: any) =>
     },
     originalCardLeft: { flex: 1, paddingRight: 8 },
     originalCardLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 9, color: colors.textMuted, letterSpacing: 1.2, marginBottom: 2 },
-    originalCardName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#ffffff' },
+    originalCardName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#ffffff', textTransform: 'capitalize' },
     originalCardMeta: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.textMuted, marginTop: 2 },
 
     tabContainer: {
@@ -583,7 +590,7 @@ const makeStyles = (colors: any) =>
       borderColor: 'rgba(255,255,255,0.02)',
     },
     exInfo: { flex: 1, paddingRight: SPACE.sm },
-    exName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary, marginBottom: 2 },
+    exName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary, marginBottom: 2, textTransform: 'capitalize' },
     exTarget: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted },
 
     musclePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },

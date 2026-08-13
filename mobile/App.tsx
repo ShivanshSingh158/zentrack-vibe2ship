@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import AppNavigator, { SplashLoader } from './src/navigation/AppNavigator';
+import AppNavigator from './src/navigation/AppNavigator';
 import { OfflineIndicator } from './src/components/OfflineIndicator';
 import * as Notifications from 'expo-notifications';
 import { requestNotificationPermissions, registerBackgroundNotificationFetch } from './src/services/notifications';
@@ -421,10 +421,8 @@ export default function App() {
   // AppState listener previously here removed — AppNavigator is the canonical owner of lifecycle logic.
 
   React.useEffect(() => {
-    if (fontsLoaded) {
-      // Hide the native splash screen, revealing the app (which will immediately show the Quote loader)
-      SplashScreen.hideAsync();
-    }
+    // Fonts are loaded, but we defer hiding the native splash screen
+    // to AppNavigator which knows when Firebase Auth is fully ready.
   }, [fontsLoaded]);
 
   return (
@@ -441,11 +439,8 @@ export default function App() {
             </MobileDataProvider>
           </PortalProvider>
 
-          {/* Splash overlay — always sits ABOVE everything.
-              CRITICAL: AppNavigator is ALWAYS mounted underneath.
-              We never conditionally unmount the tree — that causes grey flashes.
-              SplashLoader self-destructs after its fade-out animation. */}
-          <SplashLoader ready={fontsLoaded} />
+          {/* SplashLoader overlay was intentionally removed here to speed up boot times.
+              The native splash screen now stays visible until the app is fully ready. */}
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -10,6 +10,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { agentMemoryStore } from '../../stores/agentMemoryStore';
 
+import { isSilenceOrNoise } from '../../utils/dateUtils';
+
 interface VoiceQuickCaptureWidgetProps {
   inline?: boolean;
 }
@@ -167,8 +169,6 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
     recognitionRef.current = recognition;
   }, []);
 
-
-
   // Global toggle event listener
   useEffect(() => {
     const handleToggle = () => {
@@ -179,7 +179,7 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
   }, []);
 
   useEffect(() => {
-    if (!isListening && transcription.trim() && !isProcessing) {
+    if (!isListening && transcription.trim() && !isSilenceOrNoise(transcription) && !isProcessing) {
       processTranscription(transcription);
     }
   }, [isListening, transcription]);
@@ -199,6 +199,7 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
   }, []);
 
   const processTranscription = async (text: string) => {
+    if (isSilenceOrNoise(text)) return;
     const user = auth.currentUser;
     if (!user) {
       toast.error('Please log in to use voice commands.');

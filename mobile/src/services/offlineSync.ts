@@ -105,7 +105,7 @@ export async function queueWrite(
     await notifyQueueChange();
 
     // Attempt to sync immediately if already online (no-op if offline)
-    syncOfflineQueue();
+    syncOfflineQueue(true);
   } catch (e) {
     console.error('[OfflineSync] Failed to queue operation', e);
   }
@@ -126,7 +126,7 @@ export async function queueGymLogOffline(log: any) {
  * Returns the number of items successfully synced (used by UI toast).
  * Failed items remain in the queue for the next attempt.
  */
-export async function syncOfflineQueue(): Promise<number> {
+export async function syncOfflineQueue(silent = false): Promise<number> {
   if (isSyncing) return 0;
   isSyncing = true;
 
@@ -187,7 +187,7 @@ export async function syncOfflineQueue(): Promise<number> {
 
     // Notify listeners: queue count dropped + sync completed
     await notifyQueueChange();
-    if (syncedCount > 0) {
+    if (syncedCount > 0 && !silent) {
       notifySyncComplete(syncedCount);
     }
   } catch (e) {
@@ -221,16 +221,10 @@ export function setupNetworkListener(): () => void {
   });
 
   // On boot: drain silently without showing the sync toast.
-  // We don't set wasOfflineInSession here, so notifySyncComplete
-  // won't fire even if items drain successfully on startup.
   const bootDrain = async () => {
     const state = await NetInfo.fetch();
     if (state.isConnected) {
-      // Drain without toast: temporarily suppress sync events
-      const savedListeners = new Set(syncCompleteListeners);
-      syncCompleteListeners.clear();
-      await syncOfflineQueue();
-      savedListeners.forEach(l => syncCompleteListeners.add(l));
+      await syncOfflineQueue(true);
     }
   };
   bootDrain();

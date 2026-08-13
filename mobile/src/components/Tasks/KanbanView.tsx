@@ -1,5 +1,5 @@
 /**
- * KanbanView — ZenTrack Mobile
+ * KanbanView  ZenTrack Mobile
  *
  * Todoist/Trello-style Kanban board for tasks.
  * 4 columns: Backlog (no date) | Today | This Week | Done

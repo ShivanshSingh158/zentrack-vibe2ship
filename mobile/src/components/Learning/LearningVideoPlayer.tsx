@@ -1,5 +1,5 @@
 /**
- * LearningVideoPlayer.tsx GÇö ZenTrack Mobile
+ * LearningVideoPlayer.tsx G ZenTrack Mobile
  * Extracted from LearningScreen.tsx for bundle splitting.
  * Full-screen YouTube player overlay with PiP, focus mode, controls,
  * AI chat panel, and lecture notes panel.
@@ -8,14 +8,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Platform, KeyboardAvoidingView, Keyboard, Animated, AppState
+  ScrollView, Platform, KeyboardAvoidingView, Keyboard, Animated, AppState, ActivityIndicator, LayoutAnimation
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Markdown from 'react-native-markdown-display';
+import SyntaxHighlighter from 'react-native-syntax-highlighter';
+import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
 import YoutubeIframe from 'react-native-youtube-iframe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWindowDimensions } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
+import * as Clipboard from 'expo-clipboard';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { LearningSubTask } from '../../contexts/MobileDataContext';
 
@@ -83,7 +86,23 @@ export default function LearningVideoPlayer({
   };
 
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+  const [isChatFullScreen, setIsChatFullScreen] = useState(false);
   const keyboardHeight = useRef(new Animated.Value(0)).current;
+  const chatScrollRef = useRef<ScrollView>(null);
+
+  const markdownRules = {
+    fence: (node, children, parent, styles) => (
+      <SyntaxHighlighter
+        key={node.key}
+        language={node.sourceInfo || 'text'}
+        style={vs2015}
+        customStyle={{ padding: 16, borderRadius: 10, marginVertical: 8, fontSize: 13, backgroundColor: '#1e1e1e', borderWidth: 1, borderColor: '#2c2c2e' }}
+        fontFamily={Platform.OS === 'ios' ? 'Menlo' : 'monospace'}
+      >
+        {node.content}
+      </SyntaxHighlighter>
+    )
+  };
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -166,7 +185,7 @@ export default function LearningVideoPlayer({
       {/* Controls Row */}
       {!isPip && !isFocusMode && !isNativeFullScreen && (
         <View style={s.playerControls}>
-          <View style={{ flexDirection: 'row', gap: 16 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity style={s.controlBtn} onPress={handleSpeedChange}>
               <Text style={s.controlBtnText}>{playbackRate}x</Text>
             </TouchableOpacity>
@@ -176,8 +195,14 @@ export default function LearningVideoPlayer({
             <TouchableOpacity style={s.controlBtn} onPress={() => setNotesVisible(!notesVisible)}>
               <Ionicons name="document-text" size={18} color={notesVisible ? '#a599ff' : '#f2f2f7'} />
             </TouchableOpacity>
+            {aiChatVisible && (
+              <TouchableOpacity style={[s.controlBtn, { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, backgroundColor: 'rgba(165,153,255,0.1)' }]} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setIsChatFullScreen(true); }}>
+                <Ionicons name="expand" size={16} color="#a599ff" />
+                <Text style={{ color: '#a599ff', fontSize: 13, fontFamily: FONT_FAMILY.bold }}>Expand</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <View style={{ flexDirection: 'row', gap: 16 }}>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity style={s.controlBtn} onPress={() => setIsFocusMode(true)}>
               <Ionicons name="scan-outline" size={18} color="#f2f2f7" />
             </TouchableOpacity>
@@ -209,17 +234,53 @@ export default function LearningVideoPlayer({
 
       {/* AI Chat Panel */}
       {!isPip && !isFocusMode && aiChatVisible && (
-        <View style={s.aiPanel}>
-          <ScrollView contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: Math.max(100, insets.bottom + 80), gap: 12 }}>
+        <View style={[s.aiPanel, isChatFullScreen && { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: '#000' }]}>
+          {isChatFullScreen && (
+            <View style={{ paddingTop: Math.max(insets.top, 20), paddingBottom: 10, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', zIndex: 110, position: 'absolute', top: 0, left: 0, right: 0 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#00c16e', marginRight: 8 }} />
+                <Text style={{ color: '#8e8e93', fontSize: 12, fontFamily: FONT_FAMILY.bold }}>ZEN-GPT</Text>
+              </View>
+              <TouchableOpacity style={{ position: 'absolute', right: 20, top: Math.max(insets.top, 20), backgroundColor: '#1c1c1e', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setIsChatFullScreen(false); }}>
+                <Ionicons name="close" size={18} color="#f2f2f7" />
+              </TouchableOpacity>
+            </View>
+          )}
+          <ScrollView 
+            ref={chatScrollRef}
+            onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
+            contentContainerStyle={{ paddingHorizontal: 12, paddingTop: isChatFullScreen ? Math.max(insets.top, 20) + 60 : 10, paddingBottom: Math.max(100, insets.bottom + 80), gap: 24 }}
+          >
             {aiHistory.map((item, i) => (
               <View key={i} style={[s.chatBubble, item.role === 'model' ? s.chatBubbleModel : s.chatBubbleUser]}>
+                {item.role === 'model' && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginTop: i === 0 ? 0 : 8 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#00c16e', marginRight: 8 }} />
+                    <Text style={{ color: '#8e8e93', fontSize: 11, fontFamily: FONT_FAMILY.bold }}>ZEN-GPT</Text>
+                    <TouchableOpacity style={{ marginLeft: 12 }} onPress={() => Clipboard.setStringAsync(item.text)}>
+                      <Ionicons name="copy-outline" size={14} color="#636366" />
+                    </TouchableOpacity>
+                  </View>
+                )}
                 {item.role === 'model' ? (
-                  <Markdown style={mdStylesModel}>{item.text}</Markdown>
+                  <Markdown rules={markdownRules} style={mdStylesModel}>{item.text}</Markdown>
                 ) : (
-                  <Markdown style={mdStylesUser}>{item.text}</Markdown>
+                  <Markdown rules={markdownRules} style={mdStylesUser}>{item.text}</Markdown>
                 )}
               </View>
             ))}
+            {aiLoading && (
+              <View style={[s.chatBubble, s.chatBubbleModel]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#00c16e', marginRight: 8 }} />
+                  <Text style={{ color: '#8e8e93', fontSize: 11, fontFamily: FONT_FAMILY.bold }}>ZEN-GPT</Text>
+                </View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 }}>
+                  <ActivityIndicator size="small" color="#f2f2f7" />
+                  <Text style={{ color: '#8e8e93', fontSize: 13, fontStyle: 'italic', fontFamily: FONT_FAMILY.regular }}>Generating response...</Text>
+                </View>
+              </View>
+            )}
           </ScrollView>
           <Animated.View style={[s.aiInputRow, { bottom: keyboardHeight, paddingBottom: isKeyboardVisible ? 8 : Math.max(16, insets.bottom) }]}>
             <TextInput
@@ -234,14 +295,14 @@ export default function LearningVideoPlayer({
               }}
             />
             <TouchableOpacity
-              style={s.aiSendBtn}
+              style={[s.aiSendBtn, aiInput.trim().length > 0 && { backgroundColor: '#f2f2f7' }]}
               onPress={() => {
                 Keyboard.dismiss();
                 sendAiMessage();
               }}
-              disabled={aiLoading}
+              disabled={aiLoading || aiInput.trim().length === 0}
             >
-              <Ionicons name="send" size={16} color="#000" />
+              <Ionicons name="send" size={16} color={aiInput.trim().length > 0 ? "#000" : "#636366"} />
             </TouchableOpacity>
           </Animated.View>
         </View>
@@ -275,8 +336,8 @@ const s = StyleSheet.create({
   fullPlayerContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000', zIndex: 100 },
   pipContainer: { position: 'absolute', bottom: 100, right: 20, width: 150, height: 84, backgroundColor: '#000', borderRadius: 10, overflow: 'hidden', zIndex: 100, borderWidth: 2, borderColor: '#a599ff' },
   playerWrapper: { width: '100%', backgroundColor: '#000' },
-  playerControls: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 6, alignItems: 'center', backgroundColor: '#141416', borderBottomWidth: 1, borderBottomColor: '#1c1c1e' },
-  controlBtn: { padding: 8, backgroundColor: '#1c1c1e', borderRadius: 6 },
+  playerControls: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 6, alignItems: 'center', backgroundColor: '#141416', borderBottomWidth: 1, borderBottomColor: '#1c1c1e' },
+  controlBtn: { padding: 6, backgroundColor: '#1c1c1e', borderRadius: 6 },
   controlBtnText: { color: '#f2f2f7', fontFamily: FONT_FAMILY.bold, fontSize: 12 },
   pipRestoreBtn: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
   panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#1c1c1e' },
@@ -289,14 +350,14 @@ const s = StyleSheet.create({
   chatBubbleUser: { backgroundColor: '#2f2f2f', alignSelf: 'flex-end', padding: 12, paddingHorizontal: 16, borderRadius: 20, maxWidth: '85%' },
   aiInputRow: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', padding: 16, paddingBottom: 8, gap: 8, backgroundColor: 'transparent' },
   aiInput: { flex: 1, backgroundColor: '#1c1c1e', borderRadius: 22, paddingHorizontal: 16, color: '#f2f2f7' },
-  aiSendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#a599ff', justifyContent: 'center', alignItems: 'center' },
+  aiSendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#2f2f2f', justifyContent: 'center', alignItems: 'center' },
   quizInputBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(165,153,255,0.15)', justifyContent: 'center', alignItems: 'center' },
   notesPanel: { flex: 1, backgroundColor: '#000' },
   notesInput: { flex: 1, padding: 16, color: '#f2f2f7', fontFamily: FONT_FAMILY.body, fontSize: 14 },
 });
 
 const mdStylesModel = StyleSheet.create({
-  body: { color: '#f2f2f7', fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 23, letterSpacing: 0.15 },
+  body: { color: '#f2f2f7', fontFamily: 'Inter_400Regular', fontSize: 16.5, lineHeight: 26, letterSpacing: 0.15 },
   heading1: { color: '#ffffff', fontFamily: 'Inter_600SemiBold', fontSize: 20, marginTop: 14, marginBottom: 6, lineHeight: 26 },
   heading2: { color: '#ffffff', fontFamily: 'Inter_600SemiBold', fontSize: 18, marginTop: 10, marginBottom: 4, lineHeight: 24 },
   heading3: { color: '#ffffff', fontFamily: 'Inter_600SemiBold', fontSize: 16, marginTop: 8, marginBottom: 4, lineHeight: 22 },
@@ -304,7 +365,7 @@ const mdStylesModel = StyleSheet.create({
   em: { color: '#e5e5ea', fontStyle: 'italic' },
   bullet_list_icon: { color: '#a599ff', fontSize: 14, marginTop: 3, marginRight: 8 },
   ordered_list_icon: { color: '#a599ff', fontSize: 14, marginTop: 3, marginRight: 8 },
-  code_inline: { color: '#a599ff', backgroundColor: 'rgba(165,153,255,0.12)', fontFamily: 'Inter_500Medium', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, fontSize: 13.5 },
+  code_inline: { color: '#ff7b72', backgroundColor: 'rgba(255,123,114,0.12)', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, fontSize: 14 },
   code_block: { color: '#f2f2f7', backgroundColor: '#1c1c1e', fontFamily: 'Inter_400Regular', padding: 12, borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#2c2c2e', fontSize: 13.5 },
   fence: { color: '#f2f2f7', backgroundColor: '#1c1c1e', fontFamily: 'Inter_400Regular', padding: 12, borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: '#2c2c2e', fontSize: 13.5 },
   pre: { backgroundColor: '#1c1c1e', borderRadius: 10, borderWidth: 1, borderColor: '#2c2c2e', marginVertical: 6 },

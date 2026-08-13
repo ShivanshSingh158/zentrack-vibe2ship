@@ -1,31 +1,18 @@
 export const BRUTAL_QUOTES = [
-  { text: "Morality is simply the attitude we adopt towards people whom we personally dislike.", author: "Oscar Wilde" },
-  { text: "No man ever steps in the same river twice, for it's not the same river and he's not the same man.", author: "Heraclitus" },
   { text: "If you don't heal what hurt you, you'll bleed on people who didn't cut you.", author: "Unknown" },
-  { text: "Society exists only as a mental concept; in the real world there are only individuals.", author: "Oscar Wilde" },
   { text: "Your trauma is not your fault, but healing is your responsibility.", author: "Unknown" },
   { text: "Happiness is not something ready made. It comes from your own actions.", author: "Dalai Lama" },
   { text: "We are all broken, that's how the light gets in.", author: "Ernest Hemingway" },
-  { text: "We do not need magic to change the world, we carry all the power we need inside ourselves already.", author: "J.K. Rowling" },
-  { text: "We buy things we don't need with money we don't have to impress people we don't like.", author: "Dave Ramsey" },
   { text: "You are entirely up to you.", author: "Unknown" },
   { text: "Discipline is choosing between what you want now and what you want most.", author: "Abraham Lincoln" },
-  { text: "Those who educate children well are more to be honored than they who produce them; for these only gave them life, those the art of living well.", author: "Aristotle" },
   { text: "Great things never come from comfort zones.", author: "Unknown" },
-  { text: "It is the mark of an educated mind to be able to entertain a thought without accepting it.", author: "Aristotle" },
   { text: "Dream it. Wish it. Do it.", author: "Unknown" },
   { text: "We accept the love we think we deserve.", author: "Stephen Chbosky" },
-  { text: "An intelligent fool can make things bigger, more complex, and more violent. It takes a touch of genius - and a lot of courage to move in the opposite direction.", author: "E.F. Schumacher" },
-  { text: "True wisdom comes to each of us when we realize how little we understand about life, ourselves, and the world around us.", author: "Socrates" },
   { text: "The roots of education are bitter, but the fruit is sweet.", author: "Aristotle" },
-  { text: "If you would be a real seeker after truth, it is necessary that at least once in your life you doubt, as far as possible, all things.", author: "René Descartes" },
-  { text: "Youth cannot know how age thinks and feels. But old men are guilty if they forget what it was to be young.", author: "J.K. Rowling" },
   { text: "The truth will set you free, but first it will piss you off.", author: "Joe Klaas" },
   { text: "Expectation is the root of all heartache.", author: "William Shakespeare" },
-  { text: "The biggest communication problem is we do not listen to understand. We listen to reply.", author: "Unknown" },
   { text: "The world owes you nothing. It was here first.", author: "Mark Twain" },
   { text: "The ego is not master in its own house.", author: "Sigmund Freud" },
-  { text: "A wise man can learn more from a foolish question than a fool can learn from a wise answer.", author: "Bruce Lee" },
   { text: "To live is to suffer, to survive is to find some meaning in the suffering.", author: "Friedrich Nietzsche" },
   { text: "We suffer more often in imagination than in reality.", author: "Seneca" },
   { text: "As long as you care what other people think, you are their slave.", author: "Unknown" },
@@ -35,7 +22,6 @@ export const BRUTAL_QUOTES = [
   { text: "Don't let someone comfortable with mediocrity talk you out of your dreams.", author: "Unknown" },
   { text: "People change when they hurt enough that they have to.", author: "John Maxwell" },
   { text: "When people show you who they are, believe them the first time.", author: "Maya Angelou" },
-  { text: "Most people are other people. Their thoughts are someone else's opinions, their lives a mimicry, their passions a quotation.", author: "Oscar Wilde" },
   { text: "People are basically just walking egos, looking for someone to agree with them.", author: "Unknown" },
   { text: "It is no measure of health to be well adjusted to a profoundly sick society.", author: "Jiddu Krishnamurti" },
   { text: "Man is the only creature who refuses to be what he is.", author: "Albert Camus" },
@@ -45,12 +31,8 @@ export const BRUTAL_QUOTES = [
   { text: "If you want to overcome the whole world, overcome yourself.", author: "Fyodor Dostoevsky" },
   { text: "People don't care how much you know until they know how much you care.", author: "Theodore Roosevelt" },
   { text: "Happiness depends upon ourselves.", author: "Aristotle" },
-  { text: "We can never judge the lives of others, because each person knows only their own pain and renunciation.", author: "Paulo Coelho" },
   { text: "People inspire you, or they drain you. Pick them wisely.", author: "Hans F. Hansen" },
   { text: "Tired? Do it tired.", author: "Unknown" },
-  { text: "Holding onto anger is like drinking poison and expecting the other person to die.", author: "Buddha" },
-  { text: "In the end, we will remember not the words of our enemies, but the silence of our friends.", author: "Martin Luther King Jr." },
-  { text: "A man who as a physical being is always turned toward the outside, thinking that his happiness lies outside him, finally turns inward and discovers that the source is within him.", author: "Søren Kierkegaard" },
   { text: "Suffer the pain of discipline or suffer the pain of regret.", author: "Jim Rohn" },
   { text: "It's going to be hard, but hard does not mean impossible.", author: "Unknown" },
   { text: "Action is the foundational key to all success.", author: "Pablo Picasso" },
@@ -59,7 +41,6 @@ export const BRUTAL_QUOTES = [
   { text: "Those who cannot remember the past are condemned to repeat it.", author: "George Santayana" },
   { text: "The truth is rarely pure and never simple.", author: "Oscar Wilde" },
   { text: "We construct our own realities based on our own perceptions.", author: "Unknown" },
-  { text: "Understanding is the first step to acceptance, and only with acceptance can there be recovery.", author: "J.K. Rowling" },
   { text: "Wake up with determination. Go to bed with satisfaction.", author: "Unknown" },
   { text: "To find yourself, think for yourself.", author: "Socrates" },
   { text: "People are not against you; they are for themselves.", author: "Gene Fowler" },
@@ -67,16 +48,11 @@ export const BRUTAL_QUOTES = [
   { text: "People love to talk about themselves. If you want them to like you, just listen.", author: "Unknown" },
   { text: "Life must be understood backward. But it must be lived forward.", author: "Søren Kierkegaard" },
   { text: "Success doesn't just find you. You have to go out and get it.", author: "Unknown" },
-  { text: "Sometimes the hardest part of the journey is believing you're worthy of the trip.", author: "Glenn Beck" },
-  { text: "The reason people find it so hard to be happy is that they always see the past better than it was, the present worse than it is, and the future less resolved than it will be.", author: "Marcel Pagnol" },
   { text: "Someday is not a day of the week.", author: "Janet Dailey" },
-  { text: "People will do anything, no matter how absurd, in order to avoid facing their own souls.", author: "Carl Jung" },
   { text: "Never interrupt your enemy when he is making a mistake.", author: "Napoleon Bonaparte" },
   { text: "Stop negotiating with yourself.", author: "Unknown" },
   { text: "In order to understand the world, one has to turn away from it on occasion.", author: "Albert Camus" },
   { text: "Faith is the highest passion in a human being.", author: "Søren Kierkegaard" },
-  { text: "You will never reach your destination if you stop and throw stones at every dog that barks.", author: "Winston Churchill" },
-  { text: "People who are intimidated by you will talk bad about you with hopes that others won't find you so appealing.", author: "Unknown" },
   { text: "We suffer more from imagination than from reality.", author: "Seneca" },
   { text: "If you look for the bad in people expecting to find it, you surely will.", author: "Abraham Lincoln" },
   { text: "Do not let the behavior of others destroy your inner peace.", author: "Dalai Lama" },
@@ -84,15 +60,10 @@ export const BRUTAL_QUOTES = [
   { text: "What you think of me is none of my business.", author: "Terry Cole-Whittaker" },
   { text: "If you want to test a man's character, give him power.", author: "Abraham Lincoln" },
   { text: "Don't wait for inspiration. Be the inspiration.", author: "Unknown" },
-  { text: "The only way to make sense out of change is to plunge into it, move with it, and join the dance.", author: "Alan Watts" },
-  { text: "The best way to keep a prisoner from escaping is to make sure he never knows he's in prison.", author: "Fyodor Dostoevsky" },
   { text: "Don't count the days, make the days count.", author: "Muhammad Ali" },
-  { text: "A hungry stomach, an empty wallet and a broken heart can teach you the best lessons of life.", author: "Robin Williams" },
   { text: "Pain is temporary. Quitting lasts forever.", author: "Lance Armstrong" },
   { text: "Once you label me you negate me.", author: "Søren Kierkegaard" },
-  { text: "Before you diagnose yourself with depression or low self-esteem, first make sure that you are not, in fact, just surrounded by assholes.", author: "William Gibson" },
   { text: "No one is coming to save you. Get up.", author: "Reality" },
-  { text: "If you are willing to look at another person's behavior toward you as a reflection of the state of their relationship with themselves rather than a statement about your value as a person, then you will, over a period of time cease to react at all.", author: "Yogi Bhajan" },
   { text: "He who fears he shall suffer, already suffers what he fears.", author: "Michel de Montaigne" },
   { text: "Nobody cares. Work harder.", author: "Cameron Hanes" },
   { text: "If you want to be a lion, you must train with lions.", author: "Carlson Gracie" },
@@ -100,22 +71,17 @@ export const BRUTAL_QUOTES = [
   { text: "Every man is guilty of all the good he did not do.", author: "Voltaire" },
   { text: "Your competition is sleeping.", author: "Unknown" },
   { text: "Experience: that most brutal of teachers. But you learn, my God do you learn.", author: "C.S. Lewis" },
-  { text: "To cheat oneself out of love is the most terrible deception; it is an eternal loss for which there is no reparation.", author: "Søren Kierkegaard" },
   { text: "You are what you do, not what you say you'll do.", author: "C.G. Jung" },
-  { text: "Wise men speak because they have something to say; Fools because they have to say something.", author: "Plato" },
   { text: "A friend to all is a friend to none.", author: "Aristotle" },
   { text: "People are lonely because they build walls instead of bridges.", author: "Joseph F. Newton" },
   { text: "Believe you can and you're halfway there.", author: "Theodore Roosevelt" },
   { text: "If you quit now, you'll end up right back where you first began.", author: "Unknown" },
   { text: "Doubt kills more dreams than failure ever will.", author: "Suzy Kassem" },
   { text: "You don't have to be extreme, just consistent.", author: "Unknown" },
-  { text: "It is impossible to live without failing at something, unless you live so cautiously that you might as well not have lived at all - in which case, you fail by default.", author: "J.K. Rowling" },
   { text: "You cannot make someone understand a message they are not ready to receive.", author: "Unknown" },
-  { text: "You have to train your mind to be stronger than your emotions or else you'll lose yourself every time.", author: "Unknown" },
   { text: "Only the dead have seen the end of war.", author: "Plato" },
   { text: "The most common form of despair is not being who you are.", author: "Søren Kierkegaard" },
   { text: "Be stronger than your excuses.", author: "Unknown" },
-  { text: "Nothing in the world is more dangerous than sincere ignorance and conscientious stupidity.", author: "Martin Luther King Jr." },
   { text: "A fool thinks himself to be wise, but a wise man knows himself to be a fool.", author: "William Shakespeare" },
   { text: "We learn from history that we do not learn from history.", author: "Hegel" },
   { text: "A year from now you may wish you had started today.", author: "Karen Lamb" },
@@ -124,51 +90,31 @@ export const BRUTAL_QUOTES = [
   { text: "The quieter you become, the more you can hear.", author: "Ram Dass" },
   { text: "Motivation is garbage. Rely on discipline.", author: "Jocko Willink" },
   { text: "We are what we repeatedly do. Excellence, then, is not an act, but a habit.", author: "Aristotle" },
-  { text: "The primary cause of unhappiness is never the situation but your thoughts about it.", author: "Eckhart Tolle" },
   { text: "He who has a why to live for can bear almost any how.", author: "Friedrich Nietzsche" },
   { text: "People throw rocks at things that shine.", author: "Taylor Swift" },
-  { text: "There is in every one of us, even those who seem to be most moderate, a type of desire that is terrible, wild, and lawless.", author: "Plato" },
   { text: "People only see what they are prepared to see.", author: "Ralph Waldo Emerson" },
-  { text: "People demand freedom of speech as a compensation for the freedom of thought which they seldom use.", author: "Søren Kierkegaard" },
   { text: "Man is not what he thinks he is, he is what he hides.", author: "André Malraux" },
-  { text: "You can discover more about a person in an hour of play than in a year of conversation.", author: "Plato" },
   { text: "The harder you work for something, the greater you'll feel when you achieve it.", author: "Unknown" },
-  { text: "Things we lose have a way of coming back to us in the end, if not always in the way we expect.", author: "J.K. Rowling" },
   { text: "Do not pray for an easy life, pray for the strength to endure a difficult one.", author: "Bruce Lee" },
-  { text: "We can easily forgive a child who is afraid of the dark; the real tragedy of life is when men are afraid of the light.", author: "Plato" },
   { text: "The magic you are looking for is in the work you're avoiding.", author: "Dipen Parmar" },
   { text: "Be kind, for everyone you meet is fighting a harder battle.", author: "Plato" },
-  { text: "You are only as free as you think you are and freedom will always be as real as you believe it to be.", author: "Robert M. Drake" },
   { text: "People will love you and support you when it's beneficial.", author: "Unknown" },
   { text: "The mind is the most important part of achieving any fitness goal.", author: "Unknown" },
   { text: "It's supposed to be hard. If it wasn't hard, everyone would do it.", author: "Tom Hanks" },
-  { text: "The price good men pay for indifference to public affairs is to be ruled by evil men.", author: "Plato" },
-  { text: "If you want to know what a man is really like, take notice of how he acts when he loses money.", author: "Simone Weil" },
   { text: "Don't wait for opportunity. Create it.", author: "Unknown" },
   { text: "The line dividing good and evil cuts through the heart of every human being.", author: "Aleksandr Solzhenitsyn" },
   { text: "Do something today that your future self will thank you for.", author: "Sean Patrick Flanery" },
   { text: "Courage is knowing what not to fear.", author: "Plato" },
   { text: "Knowledge speaks, but wisdom listens.", author: "Jimi Hendrix" },
   { text: "Boredom is the root of all evil.", author: "Søren Kierkegaard" },
-  { text: "It is well that people of the nation do not understand our banking and monetary system, for if they did, I believe there would be a revolution before tomorrow morning.", author: "Henry Ford" },
-  { text: "People take different roads seeking fulfillment and happiness. Just because they're not on your road doesn't mean they've gotten lost.", author: "Dalai Lama" },
-  { text: "Sometimes people don't want to hear the truth because they don't want their illusions destroyed.", author: "Friedrich Nietzsche" },
   { text: "The mind acts like an enemy for those who do not control it.", author: "Bhagavad Gita" },
   { text: "Attachment is the root of all suffering.", author: "Buddha" },
   { text: "The ego is always looking to find something wrong, so that it can complain.", author: "Eckhart Tolle" },
   { text: "Human behavior flows from three main sources: desire, emotion, and knowledge.", author: "Plato" },
-  { text: "Strong minds discuss ideas, average minds discuss events, weak minds discuss people.", author: "Socrates" },
-  { text: "A man who lies to himself, and believes his own lies, becomes unable to recognize truth, either in himself or in anyone else.", author: "Fyodor Dostoevsky" },
-  { text: "Sometimes we're tested not to show our weaknesses, but to discover our strengths.", author: "Unknown" },
   { text: "Do what you have to do until you can do what you want to do.", author: "Oprah Winfrey" },
   { text: "You are not your thoughts, you are the observer of your thoughts.", author: "Eckhart Tolle" },
   { text: "Peace comes from within. Do not seek it without.", author: "Buddha" },
-  { text: "The more you know who you are, and what you want, the less you let things upset you.", author: "Stephanie Perkins" },
-  { text: "You don't have to control your thoughts. You just have to stop letting them control you.", author: "Dan Millman" },
-  { text: "It takes a great deal of bravery to stand up to our enemies, but just as much to stand up to our friends.", author: "J.K. Rowling" },
   { text: "Push yourself, because no one else is going to do it for you.", author: "Unknown" },
-  { text: "Good people do not need laws to tell them to act responsibly, while bad people will find a way around the laws.", author: "Plato" },
-  { text: "Whenever you are about to find fault with someone, ask yourself the following question: What fault of mine most nearly resembles the one I am about to criticize?", author: "Marcus Aurelius" },
   { text: "To understand everything is to forgive everything.", author: "Buddha" },
   { text: "The key to success is to focus on goals, not obstacles.", author: "Unknown" },
   { text: "Beware that, when fighting monsters, you yourself do not become a monster...", author: "Friedrich Nietzsche" },
@@ -178,35 +124,21 @@ export const BRUTAL_QUOTES = [
   { text: "The only place where success comes before work is in the dictionary.", author: "Vidal Sassoon" },
   { text: "No man knows how bad he is till he has tried very hard to be good.", author: "C.S. Lewis" },
   { text: "Little things make big days.", author: "Unknown" },
-  { text: "Courage is the first of human qualities because it is the quality which guarantees the others.", author: "Aristotle" },
-  { text: "People understand me so poorly that they don't even understand my complaint about them not understanding me.", author: "Søren Kierkegaard" },
   { text: "The more you try to impress people, the less impressed they'll be.", author: "Unknown" },
   { text: "Results happen over time, not overnight. Work hard, stay consistent.", author: "Unknown" },
-  { text: "If you hate a person, you hate something in him that is part of yourself. What isn't part of ourselves doesn't disturb us.", author: "Hermann Hesse" },
   { text: "We judge others by their actions and ourselves by our intentions.", author: "Stephen Covey" },
   { text: "The worst solitude is to be destitute of sincere friendship.", author: "Francis Bacon" },
-  { text: "Do not train a child to learn by force or harshness; but direct them to it by what amuses their minds.", author: "Plato" },
-  { text: "Man is a rational animal who always loses his temper when he is called upon to act in accordance with the dictates of reason.", author: "Oscar Wilde" },
-  { text: "People will forget what you said, people will forget what you did, but people will never forget how you made them feel.", author: "Maya Angelou" },
   { text: "People generally see what they look for, and hear what they listen for.", author: "Harper Lee" },
   { text: "If it was easy, everyone would do it.", author: "Unknown" },
-  { text: "Most people do not listen with the intent to understand; they listen with the intent to reply.", author: "Stephen R. Covey" },
   { text: "The most dangerous person is the one who listens, thinks and observes.", author: "Bruce Lee" },
-  { text: "When a man loves cats, I am his friend and comrade, without further introduction.", author: "Mark Twain" },
   { text: "I am not what happened to me, I am what I choose to become.", author: "Carl Jung" },
   { text: "The only bad workout is the one that didn't happen.", author: "Unknown" },
   { text: "Patience is bitter, but its fruit is sweet.", author: "Jean-Jacques Rousseau" },
-  { text: "The greatest weapon against stress is our ability to choose one thought over another.", author: "William James" },
-  { text: "I count him braver who overcomes his desires than him who conquers his enemies; for the hardest victory is over self.", author: "Aristotle" },
-  { text: "There is only one way to avoid criticism: do nothing, say nothing, and be nothing.", author: "Aristotle" },
   { text: "The unexamined life is not worth living.", author: "Socrates" },
-  { text: "If you don't design your own life plan, chances are you'll fall into someone else's plan. And guess what they have planned for you? Not much.", author: "Jim Rohn" },
-  { text: "The secret of happiness, you see, is not found in seeking more, but in developing the capacity to enjoy less.", author: "Socrates" },
   { text: "You lack discipline, not time.", author: "Unknown" },
-  { text: "Sometimes you have to play the role of a fool to fool the fool who thinks they are fooling you.", author: "Unknown" },
   { text: "Dream larger than life.", author: "Unknown" },
   { text: "Learning is not child's play; we cannot learn without pain.", author: "Aristotle" },
-  { text: "Comfort is the enemy of progress.", author: "P.T. Barnum" }
+  { text: "Comfort is the enemy of progress.", author: "P.T. Barnum" },
 ];
 
 // ─── BFE Personality-Keyed Quote Collections (SARA Engine v2) ─────────────────
@@ -252,15 +184,28 @@ export const PERSONALITY_QUOTES: Record<QuotePersonality, Quote[]> = {
   ],
 };
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 /**
- * Get a deterministic daily quote based on user's BFE personality.
- * Changes every day (uses current day-of-year as seed for consistent rotation).
+ * Get a deterministic rotating quote based on user's BFE personality.
+ * Rotates sequentially every time it's called, guaranteeing no repeats until the end.
  */
-export function getDailyQuote(personality: QuotePersonality = 'consistent'): Quote {
-  // Combine the massive global pool of quotes with the user's specific BFE personality quotes
+export async function getDailyQuote(personality: QuotePersonality = 'consistent'): Promise<Quote> {
   const quotes = [...BRUTAL_QUOTES, ...(PERSONALITY_QUOTES[personality] || PERSONALITY_QUOTES['consistent'])];
-  // The user explicitly requested the quote to change randomly every time they view the dashboard
-  const randomIndex = Math.floor(Math.random() * quotes.length);
-  return quotes[randomIndex];
+  
+  try {
+    const savedIndex = await AsyncStorage.getItem('@zentrack_quote_index');
+    let currentIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
+    
+    // Move to next, loop back if we reached the last
+    currentIndex = (currentIndex + 1) % quotes.length;
+    
+    await AsyncStorage.setItem('@zentrack_quote_index', currentIndex.toString());
+    
+    return quotes[currentIndex];
+  } catch (e) {
+    // Fallback to random if storage fails
+    return quotes[Math.floor(Math.random() * quotes.length)];
+  }
 }
 

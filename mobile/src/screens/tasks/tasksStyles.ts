@@ -184,10 +184,10 @@ export const makeTasksStyles = (colors: any) => StyleSheet.create({
   autoStyle116: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
   // Top header
-  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, paddingTop: 10, paddingBottom: 0, backgroundColor: '#000000' },
+  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, paddingTop: 4, paddingBottom: 0, backgroundColor: '#000000' },
   topHeaderTitle: { fontFamily: 'Inter_700Bold', fontSize: 28, color: '#FFFFFF' },
-  topHeaderIcons: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: '#2C2C2E', alignItems: 'center', justifyContent: 'center', backgroundColor: '#141416' },
+  topHeaderIcons: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 4 },
+  iconBtn: { alignItems: 'center', width: 38 },
   badge: { position: 'absolute', top: -4, right: -4, backgroundColor: '#A599FF', width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   badgeText: { color: '#000000', fontSize: 9, fontFamily: 'Inter_700Bold' },
   overdueBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(255, 105, 97, 0.1)', paddingHorizontal: 20, paddingVertical: 12 },

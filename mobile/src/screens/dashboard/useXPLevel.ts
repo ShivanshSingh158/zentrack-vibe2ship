@@ -5,16 +5,7 @@
  * Extracted from DashboardScreen.tsx (was lines 28–52).
  */
 
-export const XP_LEVELS = [
-  { min: 0,     label: 'Seeker'     },
-  { min: 500,   label: 'Guardian'   },
-  { min: 1500,  label: 'Sentinel'   },
-  { min: 3500,  label: 'Warden'     },
-  { min: 7000,  label: 'Vanguard'   },
-  { min: 13000, label: 'Architect'  },
-  { min: 22000, label: 'Luminary'   },
-  { min: 35000, label: 'Ascendant'  },
-];
+import { LEVEL_THRESHOLDS, LEVEL_TITLES } from '../../services/xpSystem';
 
 export interface XPLevelResult {
   label: string;
@@ -25,16 +16,34 @@ export interface XPLevelResult {
 }
 
 export function getLevel(xp: number): XPLevelResult {
-  let level = XP_LEVELS[0];
-  let next = XP_LEVELS[1];
-  for (let i = 0; i < XP_LEVELS.length; i++) {
-    if (xp >= XP_LEVELS[i].min) {
-      level = XP_LEVELS[i];
-      next = XP_LEVELS[i + 1] || XP_LEVELS[i];
+  let currentIndex = 0;
+  
+  for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) {
+    if (xp >= LEVEL_THRESHOLDS[i]) {
+      currentIndex = i;
     }
   }
-  const progress = next.min !== level.min
-    ? (xp - level.min) / (next.min - level.min)
-    : 1;
-  return { label: level.label, nextLabel: next.label, progress: Math.min(progress, 1), xp, nextXP: next.min };
+  
+  const currentLevelLabel = LEVEL_TITLES[currentIndex];
+  
+  const nextIndex = Math.min(currentIndex + 1, LEVEL_THRESHOLDS.length - 1);
+  const nextLevelLabel = LEVEL_TITLES[nextIndex];
+  const nextXP = LEVEL_THRESHOLDS[nextIndex];
+  const currentThreshold = LEVEL_THRESHOLDS[currentIndex];
+  
+  let progress = 1;
+  if (nextXP > currentThreshold) {
+    progress = (xp - currentThreshold) / (nextXP - currentThreshold);
+  } else if (nextXP === currentThreshold && nextIndex === LEVEL_THRESHOLDS.length - 1) {
+    // Max level achieved
+    progress = 1;
+  }
+  
+  return { 
+    label: currentLevelLabel, 
+    nextLabel: nextLevelLabel, 
+    progress: Math.min(Math.max(progress, 0), 1), 
+    xp, 
+    nextXP 
+  };
 }

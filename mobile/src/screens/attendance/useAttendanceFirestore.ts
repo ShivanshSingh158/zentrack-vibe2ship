@@ -37,12 +37,16 @@ interface FirestoreActionsParams {
   overrideCounts: { classesAttended: number; classesTotal: number; labsAttended: number; labsTotal: number };
   setOverrideOpen: (id: string | null) => void;
   setConfirmConfig: (config: any) => void;
+  optimisticUpdateAttendance: (subjectId: string, partial: Partial<AttendanceSubject>) => void;
+  optimisticAddAttendanceLog: (log: any) => void;
+  optimisticRemoveAttendanceLog: (logId: string) => void;
 }
 
 export function useAttendanceFirestore({
   user, subjects, logs, selectedDate,
   logsBySubjectId, overrideCounts,
   setOverrideOpen, setConfirmConfig,
+  optimisticUpdateAttendance, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog,
 }: FirestoreActionsParams) {
 
   // ── Core log action ────────────────────────────────────────────────────────
@@ -62,10 +66,17 @@ export function useAttendanceFirestore({
       const batch = writeBatch(db);
       batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), { [attendedKey]: newAttended, [totalKey]: newTotal });
       const logRef = doc(collection(db, COLLECTION.ATTENDANCE_LOGS));
-      batch.set(logRef, {
+      const newLog = {
+        id: logRef.id,
         userId: user.uid, subjectId: subject.id, subjectName: subject.name,
         type, action, date: logDate, isExtra, timestamp: Date.now(),
-      });
+      };
+      
+      // Optimistically update UI
+      optimisticUpdateAttendance(subject.id, { [attendedKey]: newAttended, [totalKey]: newTotal });
+      optimisticAddAttendanceLog(newLog);
+
+      batch.set(logRef, newLog);
       batch.commit().catch(handleSyncError);
 
       const oldPct         = (subject.classesTotal || 0) + (subject.labsTotal || 0) === 0
@@ -104,10 +115,15 @@ export function useAttendanceFirestore({
 
     try {
       const batch = writeBatch(db);
-      batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), { [attendedKey]: newAttended, [totalKey]: newTotal });
+      batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), { [attendedKey]: newAttended, [totalKey]: newTotal });
       batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, logId));
+      
+      // Optimistically update UI
+      optimisticUpdateAttendance(subject.id, { [attendedKey]: newAttended, [totalKey]: newTotal });
+      optimisticRemoveAttendanceLog(logId);
+
       batch.commit().catch(handleSyncError);
-    } catch (err) { Alert.alert('Error', 'Undo failed'); }
+    } catch (err) { Alert.alert('Error', 'Failed to undo attendance log'); }
   };
 
   // ── Holiday toggle ─────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@
  * show yesterday's content instantly, silently update in the background.
  */
 
-import { storage } from '../lib/cache/mmkvStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Task, Habit, HabitLog } from '../contexts/MobileDataContext';
 
 // ── Cache Keys ────────────────────────────────────────────────────────────────
@@ -27,40 +27,40 @@ export interface CoreCache {
   habitLogs: HabitLog[];
 }
 
-// ── Read — synchronous (~0ms, no network) ────────────────────────────
-export function readCoreCacheMulti(): Partial<CoreCache> {
+// ── Read — single multiGet call (~5ms, no network) ────────────────────────────
+export async function readCoreCacheMulti(): Promise<Partial<CoreCache>> {
   try {
+    const pairs = await AsyncStorage.multiGet([KEYS.TASKS, KEYS.HABITS, KEYS.HABIT_LOGS]);
     const result: Partial<CoreCache> = {};
-    const rawTasks = storage.getString(KEYS.TASKS);
-    if (rawTasks) { try { result.tasks = JSON.parse(rawTasks) as Task[]; } catch {} }
-
-    const rawHabits = storage.getString(KEYS.HABITS);
-    if (rawHabits) { try { result.habits = JSON.parse(rawHabits) as Habit[]; } catch {} }
-
-    const rawHabitLogs = storage.getString(KEYS.HABIT_LOGS);
-    if (rawHabitLogs) { try { result.habitLogs = JSON.parse(rawHabitLogs) as HabitLog[]; } catch {} }
-
+    for (const [key, raw] of pairs) {
+      if (!raw) continue;
+      try {
+        if (key === KEYS.TASKS)      result.tasks      = JSON.parse(raw) as Task[];
+        if (key === KEYS.HABITS)     result.habits     = JSON.parse(raw) as Habit[];
+        if (key === KEYS.HABIT_LOGS) result.habitLogs  = JSON.parse(raw) as HabitLog[];
+      } catch { /* ignore individual parse errors */ }
+    }
     return result;
   } catch {
     return {}; // Cache miss is always safe — Firestore will populate
   }
 }
 
-// ── Write — synchronous after Firestore snapshot ─────────────────────
+// ── Write — single multiSet call after Firestore snapshot ─────────────────────
 // Only writes the keys that are provided (partial updates supported)
-export function writeCoreCacheMulti(data: Partial<CoreCache>): void {
+export async function writeCoreCacheMulti(data: Partial<CoreCache>): Promise<void> {
   try {
-    if (data.tasks     !== undefined) storage.set(KEYS.TASKS,      JSON.stringify(data.tasks));
-    if (data.habits    !== undefined) storage.set(KEYS.HABITS,     JSON.stringify(data.habits));
-    if (data.habitLogs !== undefined) storage.set(KEYS.HABIT_LOGS, JSON.stringify(data.habitLogs));
+    const pairs: [string, string][] = [];
+    if (data.tasks     !== undefined) pairs.push([KEYS.TASKS,      JSON.stringify(data.tasks)]);
+    if (data.habits    !== undefined) pairs.push([KEYS.HABITS,     JSON.stringify(data.habits)]);
+    if (data.habitLogs !== undefined) pairs.push([KEYS.HABIT_LOGS, JSON.stringify(data.habitLogs)]);
+    if (pairs.length > 0) await AsyncStorage.multiSet(pairs);
   } catch { /* silent — cache write failure never affects the user */ }
 }
 
 // ── Invalidate — call on logout to clear stale data ──────────────────────────
-export function clearCoreCache(): void {
+export async function clearCoreCache(): Promise<void> {
   try {
-    storage.delete(KEYS.TASKS);
-    storage.delete(KEYS.HABITS);
-    storage.delete(KEYS.HABIT_LOGS);
+    await AsyncStorage.multiRemove([KEYS.TASKS, KEYS.HABITS, KEYS.HABIT_LOGS]);
   } catch { /* silent */ }
 }

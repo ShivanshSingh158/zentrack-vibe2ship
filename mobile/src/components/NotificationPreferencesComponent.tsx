@@ -1,15 +1,15 @@
 /**
- * NotificationsSettingsScreen GÇö ZenTrack Mobile
+ * NotificationsSettingsScreen â€¢ ZenTrack Mobile
  *
  * Full notification customization:
- *  GÇô Per-module toggles (Tasks, Habits, Gym, Attendance, Focus, Sara)
- *  GÇô 10 smart notification types (habit streak, overdue tasks, assignments, etc.)
- *  GÇô Quiet hours (start + end time)
- *  GÇô Pre-task buffer time (15/30/60/120 min)
- *  GÇô Weekday vs. weekend mode
- *  GÇô Morning briefing time
- *  GÇô Inactivity nudge threshold
- *  GÇô XP milestone toggle
+ *  â€¢ Per-module toggles (Tasks, Habits, Gym, Attendance, Focus, Sara)
+ *  â€¢ 10 smart notification types (habit streak, overdue tasks, assignments, etc.)
+ *  â€¢ Quiet hours (start + end time)
+ *  â€¢ Pre-task buffer time (15/30/60/120 min)
+ *  â€¢ Weekday vs. weekend mode
+ *  â€¢ Morning briefing time
+ *  â€¢ Inactivity nudge threshold
+ *  â€¢ XP milestone toggle
  * All settings persist to AsyncStorage and immediately re-trigger scheduleAllNotifications().
  */
 
@@ -158,7 +158,7 @@ export default function NotificationPreferencesComponent() {
     })();
   }, []);
 
-  // Toggle helper GÇö saves + reschedules
+  // Toggle helper â€¢ saves + reschedules
   const toggle = useCallback(async (key: string, val: boolean, setter: (v: boolean) => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setter(val);
@@ -420,7 +420,7 @@ export default function NotificationPreferencesComponent() {
           <ToggleRow
             icon="volume-mute-outline"
             label="Enable quiet hours"
-            subtitle={`No notifications ${displayTime(quietStart)} GÇô ${displayTime(quietEnd)}`}
+            subtitle={`No notifications ${displayTime(quietStart)} â€¢ ${displayTime(quietEnd)}`}
             value={quietHours}
             onToggle={v => toggle('quiet_hours', v, setQuietHours)}
           />

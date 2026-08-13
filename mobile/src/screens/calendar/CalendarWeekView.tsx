@@ -20,8 +20,8 @@ interface CalendarWeekViewProps {
   setCurrentView: (view: 'Day'|'Week'|'Month') => void;
 }
 
-export function CalendarWeekView({
-  styles, colors, weekEvents, DYNAMIC_HOURS, minHour, maxHour,
+export const CalendarWeekView = React.memo(function CalendarWeekView({
+  styles, colors, weekEvents, minHour, maxHour, DYNAMIC_HOURS,
   indicatorTop, selectedDate, nowDateStr, setSelectedDate, setCurrentView
 }: CalendarWeekViewProps) {
   return (
@@ -73,4 +73,4 @@ export function CalendarWeekView({
       </ScrollView>
     </View>
   );
-}
+});

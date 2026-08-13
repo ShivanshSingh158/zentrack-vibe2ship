@@ -337,7 +337,7 @@ export function ZenGymAiModal({
           >
             <View style={styles.headerLeft}>
               <View style={styles.gainsBadge}>
-                <Image source={require('../../../assets/logo_white.png')} style={{ width: 18, height: 18, resizeMode: 'contain' }} />
+                <Image source={require('../../../assets/logo_white.png')} style={{ width: 36, height: 36, resizeMode: 'contain' }} />
               </View>
               <View>
                 <Text style={styles.headerTitle}>GYM-GPT</Text>
@@ -491,6 +491,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderColor: 'rgba(165,153,255,0.3)',
         alignItems: 'center',
         justifyContent: 'center',
+        overflow: 'hidden',
       },
       headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 17, color: colors.textPrimary },
       headerSub: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },

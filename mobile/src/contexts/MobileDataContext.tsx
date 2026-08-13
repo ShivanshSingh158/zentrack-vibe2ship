@@ -207,6 +207,8 @@ interface MobileDataContextType {
   optimisticUpdateGymLog: (logId: string, partial: Partial<GymLog>) => void;
   // Academic
   optimisticUpdateAttendance: (subjectId: string, partial: Partial<AttendanceSubject>) => void;
+  optimisticAddAttendanceLog: (log: any) => void;
+  optimisticRemoveAttendanceLog: (logId: string) => void;
   optimisticAddAssignment: (assignment: Assignment) => void;
   optimisticUpdateAssignment: (assignmentId: string, partial: Partial<Assignment>) => void;
   optimisticDeleteAssignment: (assignmentId: string) => void;
@@ -231,9 +233,19 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
   const creative = useCreativeData();
   const planner  = usePlannerData();
 
-  // SHOTGUN REMOVED:
-  // Domains now subscribe automatically when their screens mount (lazy).
-  // Wellness/Academic/Creative/Planner screens will call ensureSubscribed() on mount.
+  // WHATSAPP PATTERN: Open ALL subscriptions synchronously when user becomes available.
+  // useMemo runs during render (unlike useEffect which runs after).
+  // This means by the time any child screen reads from these contexts on its FIRST render,
+  // the Firestore listeners are already open and the cached data is already seeding.
+  // Without this, the first render after login has empty arrays even with cached data.
+  // Each ensureSubscribed call is idempotent ΓÇö already-open subscriptions are ignored.
+  if (core.user) {
+    wellness.ensureSubscribed();
+    academic.ensureSubscribed();
+    creative.ensureSubscribed();
+    planner.ensureSubscribed();
+  }
+
 
   const value = useMemo<MobileDataContextType>(() => ({
     // Core domain
@@ -288,6 +300,8 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     optimisticUpdateGymLog: wellness.optimisticUpdateGymLog,
     // Optimistic functions ΓÇö Academic
     optimisticUpdateAttendance: academic.optimisticUpdateAttendance,
+    optimisticAddAttendanceLog: academic.optimisticAddAttendanceLog,
+    optimisticRemoveAttendanceLog: academic.optimisticRemoveAttendanceLog,
     optimisticAddAssignment: academic.optimisticAddAssignment,
     optimisticUpdateAssignment: academic.optimisticUpdateAssignment,
     optimisticDeleteAssignment: academic.optimisticDeleteAssignment,
@@ -306,7 +320,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.updateFullMasterPlan, wellness.applyMasterTemplate, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
     wellness.optimisticAddGymLog, wellness.optimisticUpdateGymLog,
     academic.attendance, academic.attendanceLogs, academic.assignments, academic.semesters, academic.semesterSubjects,
-    academic.optimisticUpdateAttendance, academic.optimisticAddAssignment, academic.optimisticUpdateAssignment, academic.optimisticDeleteAssignment,
+    academic.optimisticUpdateAttendance, academic.optimisticAddAttendanceLog, academic.optimisticRemoveAttendanceLog, academic.optimisticAddAssignment, academic.optimisticUpdateAssignment, academic.optimisticDeleteAssignment,
     creative.storageNodes, creative.notes, creative.learningTopics, creative.jobs,
     planner.customEvents, planner.goals, planner.weeklyReviews,
     planner.optimisticAddEvent, planner.optimisticUpdateEvent, planner.optimisticDeleteEvent, planner.optimisticAddGoal, planner.optimisticUpdateGoal,
@@ -382,6 +396,8 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   optimisticAddGymLog: () => {},
   optimisticUpdateGymLog: () => {},
   optimisticUpdateAttendance: () => {},
+  optimisticAddAttendanceLog: () => {},
+  optimisticRemoveAttendanceLog: () => {},
   optimisticAddAssignment: () => {},
   optimisticUpdateAssignment: () => {},
   optimisticDeleteAssignment: () => {},

@@ -12,7 +12,7 @@ import { useCallback } from 'react';
 import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
-import { todayString } from '../../utils/dateUtils';
+import { getLocalDateString } from './attendanceConstants';
 
 function formatDateNumeric(dateStr: string): string {
   const [y, m, d] = dateStr.split('-');
@@ -70,7 +70,7 @@ export function useAttendanceExport(
       const esc = (v: string) => v.includes(',') ? `"${v}"` : v;
       const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
       const rows: string[] = [];
-      const exportDate = formatDateNumeric(todayString());
+      const exportDate = formatDateNumeric(getLocalDateString(new Date()));
 
       rows.push(`ZenTrack Attendance Report,Generated: ${exportDate}`);
       rows.push('');

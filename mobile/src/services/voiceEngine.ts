@@ -30,12 +30,68 @@ let _lastAudioLevel = 0;
 
 // VAD constants
 const VAD_POLL_INTERVAL_MS = 100;      // Check RMS every 100ms
-const VAD_SILENCE_THRESHOLD = -50;     // dB level below which = silence (expo-av metering)
+const VAD_SILENCE_THRESHOLD = -32;     // dB level below which = silence (real speech > -32dB)
 const VAD_SILENCE_DURATION_MS = 1500;  // 1.5s silence → auto-submit
 
 export async function requestMicPermission(): Promise<boolean> {
   const { status } = await Audio.requestPermissionsAsync();
   return status === 'granted';
+}
+
+/**
+ * Checks if transcribed speech is empty, silence, background noise,
+ * or STT hallucination (e.g. "[silence]", "Thank you.", "Task", etc.)
+ */
+export function isSilenceOrNoise(text: string | null | undefined): boolean {
+  if (!text) return true;
+  const clean = text.trim().toLowerCase();
+  if (clean.length === 0) return true;
+
+  // Single punctuation marks or symbols
+  if (/^[\s.?!,\-–—_"'`~*#@$%^&()\[\]{}|\\/<>:;+=]*$/.test(clean)) return true;
+
+  // Known STT / Gemini silence & noise hallucination patterns
+  const silenceTokens = [
+    'silence',
+    '[silence]',
+    '(silence)',
+    'blank audio',
+    '[blank_audio]',
+    '(blank_audio)',
+    'background noise',
+    '[background noise]',
+    'coughing',
+    '[coughing]',
+    'music',
+    '[music]',
+    'thank you',
+    'thank you.',
+    'thanks',
+    'thanks.',
+    'subtitles by',
+    'am',
+    'task',
+    'task.',
+    'add task',
+    'add task.',
+    'unspecified',
+    'unspecified.',
+    'listening',
+    'listening...',
+    'sound of',
+    'you',
+    'the',
+  ];
+
+  if (silenceTokens.includes(clean)) return true;
+
+  // Starts with bracketed/parenthesized noise description e.g. "[music]", "(silence)"
+  if (/^\[.*\]$/.test(clean) || /^\(.*\)$/.test(clean)) return true;
+
+  // Subtitles by / translated by hallucination
+  if (clean.startsWith('subtitles by') || clean.startsWith('captioned by')) return true;
+
+  return false;
 }
 
 // ─── Start Recording (manual mode — original, unchanged) ─────────────────────
@@ -156,6 +212,7 @@ export async function startVADRecording(
     callbacks.onStateChange('recording');
 
     let hasSpeechStarted = false;
+    let speechFrameCount = 0;
 
     // Poll RMS amplitude every 100ms
     _vadPollInterval = setInterval(async () => {
@@ -171,8 +228,8 @@ export async function startVADRecording(
         const isSpeaking = dbLevel > VAD_SILENCE_THRESHOLD;
 
         if (isSpeaking) {
-          // Speech detected — clear silence timer
-          if (!hasSpeechStarted) {
+          speechFrameCount++;
+          if (speechFrameCount >= 2 && !hasSpeechStarted) {
             hasSpeechStarted = true;
             onVoiceDetected?.();
           }
@@ -181,6 +238,7 @@ export async function startVADRecording(
             _vadSilenceTimer = null;
           }
         } else {
+          speechFrameCount = 0;
           // Silence detected — start/extend silence timer
           // Only trigger auto-submit if the user has spoken at least once
           if (hasSpeechStarted && !_vadSilenceTimer) {
@@ -273,8 +331,8 @@ export async function stopAndTranscribe(
     // Transcribe via Gemini Proxy
     const transcript = await transcribeAudioViaProxy(base64Audio);
 
-    if (!transcript || transcript.trim().length === 0) {
-      callbacks.onError("Couldn't hear that clearly. Please try again.");
+    if (!transcript || isSilenceOrNoise(transcript)) {
+      callbacks.onError("No speech detected. Please try again.");
       callbacks.onStateChange('idle');
       return;
     }

@@ -20,9 +20,10 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
-  Animated,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing, runOnJS, useAnimatedKeyboard } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -35,7 +36,9 @@ import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from "../../contexts/ThemeContext";
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
-import { startVADRecording, stopAndTranscribe, cancelVoiceRecording, VoiceState } from '../../services/voiceEngine';
+import { startVADRecording, stopAndTranscribe, cancelVoiceRecording, isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
+import { Portal } from '../../contexts/PortalContext';
+import NLPTaskInput from '../Tasks/NLPTaskInput';
 
 // ─── NL Date Parser ──────────────────────────────────────────────────────────
 
@@ -66,42 +69,59 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
-  const translateY = useRef(new Animated.Value(400)).current;
+  const translateY = useSharedValue(1000);
+  const keyboard = useAnimatedKeyboard();
   const inputRef = useRef<TextInput>(null);
 
   // Parsed result (live, for tasks only)
-  const parsed = type === 'task' && text.length > 2 ? parseNLTask(text) : null;
+  const parsed = type === 'task' ? (text.length > 2 ? parseNLTask(text) : { tokens: [], text, priority: 'none' } as any) : null;
   const hasChips = parsed && parsed.tokens.length > 0;
+
+  const focusInput = () => {
+    setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const [mounted, setMounted] = useState(visible);
+  const backdropOpacity = useSharedValue(0);
 
   useEffect(() => {
     if (visible) {
+      setMounted(true);
       setSaved(false);
       setText('');
       setVoiceState('idle');
-      Animated.spring(translateY, {
-        toValue: 0,
-        stiffness: 280,
-        damping: 24,
-        mass: 0.7,
-        useNativeDriver: true,
-      }).start(() => {
-        setTimeout(() => inputRef.current?.focus(), 100);
+      backdropOpacity.value = withTiming(1, { duration: 180 });
+      translateY.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) }, (finished) => {
+        if (finished) runOnJS(focusInput)();
       });
-    } else {
+    } else if (mounted) {
       cancelVoiceRecording();
-      Animated.timing(translateY, {
-        toValue: 400,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
+      backdropOpacity.value = withTiming(0, { duration: 150 });
+      translateY.value = withTiming(1000, { duration: 150, easing: Easing.in(Easing.quad) }, (finished) => {
+        if (finished) runOnJS(setMounted)(false);
+      });
     }
   }, [visible]);
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateY: translateY.value }],
+      paddingBottom: Math.max(insets.bottom + SPACE.lg, keyboard.height.value + SPACE.lg),
+    };
+  });
+
+  const backdropStyle = useAnimatedStyle(() => {
+    return {
+      opacity: backdropOpacity.value,
+    };
+  });
 
   const handleToggleVoice = async () => {
     if (voiceState === 'recording') {
       await stopAndTranscribe({
         onStateChange: setVoiceState,
         onTranscript: (t) => {
+          if (!t || !t.trim() || isSilenceOrNoise(t)) return;
           setText(t);
         },
         onError: (err) => console.log('Voice error', err)
@@ -112,6 +132,7 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
     await startVADRecording({
       onStateChange: setVoiceState,
       onTranscript: async (t) => {
+        if (!t || !t.trim() || isSilenceOrNoise(t)) return;
         setText(t);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         await handleSave(t);
@@ -125,9 +146,14 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
 
   const handleSave = async (overrideText?: string) => {
     const textToSave = typeof overrideText === 'string' ? overrideText : text;
-    if (!textToSave.trim() || !user || saving) return;
+    if (!textToSave.trim() || isSilenceOrNoise(textToSave) || !user || saving) return;
     setSaving(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Close immediately for instant UI feedback
+    Keyboard.dismiss();
+    onClose();
+    setText('');
 
     try {
       if (type === 'task') {
@@ -200,12 +226,7 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
           isActive: true
         });
       }
-      setSaved(true);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setTimeout(() => {
-        onClose();
-        setText('');
-      }, 600);
     } catch (e) {
       console.error('[QuickCapture] save error', e);
     } finally {
@@ -219,25 +240,18 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
     habit: 'e.g. "Read 20 pages" or "Meditate"',
   };
 
-  if (!visible) return null;
+  if (!mounted) return null;
 
   return (
-    <Modal transparent animationType="none" visible={visible} onRequestClose={onClose}>
+    <Portal name="quick-capture-sheet">
       {/* Backdrop */}
-      <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={onClose} />
+      <Animated.View style={[s.backdrop, backdropStyle]}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
+      </Animated.View>
 
       {/* Sheet */}
-      <KeyboardAvoidingView
-        behavior="padding"
-        style={s.kavWrapper}
-        pointerEvents="box-none"
-      >
-        <Animated.View
-          style={[
-            s.sheet,
-            { paddingBottom: insets.bottom + SPACE.lg, transform: [{ translateY }] },
-          ]}
-        >
+      <View style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]} pointerEvents="box-none">
+        <Animated.View style={[s.sheet, animatedStyle]}>
           {/* Handle */}
           <View style={s.handle} />
 
@@ -260,8 +274,8 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
                 <Ionicons
                   name={tab.icon as any}
                   size={14}
-                  color={type === tab.key ? colors.background : colors.textMuted}
-                  style={{ marginRight: 4 }}
+                  color={type === tab.key ? '#080510' : (isDark ? 'rgba(255,255,255,0.6)' : colors.textMuted)}
+                  style={{ marginRight: 5 }}
                 />
                 <Text style={[s.tabText, type === tab.key && s.tabTextActive]}>{tab.label}</Text>
               </TouchableOpacity>
@@ -269,74 +283,68 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
           </View>
 
           {/* Quick Capture Input View */}
-          <View style={s.inputContainer}>
-            <TextInput
-              ref={inputRef}
-              style={s.input}
-              placeholder={placeholders[type]}
-              placeholderTextColor={colors.textMuted}
-              value={text}
-              onChangeText={setText}
-              multiline
-              maxLength={200}
-              keyboardAppearance={isDark ? 'dark' : 'light'}
-            />
-            
-            {/* NLP chips for tasks */}
-            {type === 'task' && hasChips && (
-              <View style={s.nlHintRow}>
-                {parsed!.tokens.map((tok, i) => {
-                  const COLOR_MAP: Record<string, { bg: string; text: string }> = {
-                    date:       { bg: '#1a2e4a', text: '#60a5fa' },
-                    time:       { bg: '#1a3a2a', text: '#34d399' },
-                    priority:   { bg: '#3a1a1a', text: '#f87171' },
-                    recurrence: { bg: '#2a1a3a', text: '#c084fc' },
-                  };
-                  const c = COLOR_MAP[tok.type] ?? { bg: '#1e1e2e', text: '#a599ff' };
-                  return (
-                    <View key={i} style={[s.nlChip, { backgroundColor: c.bg }]}>
-                      <Text style={[s.nlChipText, { color: c.text }]}>{tok.display}</Text>
-                    </View>
-                  );
-                })}
-              </View>
+          <View style={s.unifiedInputContainer}>
+            {type === 'task' ? (
+              <NLPTaskInput
+                value={text}
+                onChangeText={setText}
+                parsed={parsed!}
+                onDismissToken={() => {}}
+                placeholder={placeholders.task}
+                autoFocus={true}
+                onSubmitEditing={() => handleSave()}
+                onAutoSubmit={() => handleSave()}
+                hideMic={true}
+              />
+            ) : (
+              <TextInput
+                ref={inputRef}
+                style={s.unifiedTextInput}
+                placeholder={placeholders[type]}
+                placeholderTextColor={isDark ? 'rgba(255,255,255,0.35)' : colors.textMuted}
+                value={text}
+                onChangeText={setText}
+                multiline
+                maxLength={200}
+                keyboardAppearance={isDark ? 'dark' : 'light'}
+              />
             )}
+            
+            {/* Quick Actions (e.g. mic, save) */}
+            <View style={s.unifiedActionsRow}>
+              <TouchableOpacity 
+                style={[s.iconBtn, voiceState === 'recording' && s.iconBtnRecording]} 
+                onPress={handleToggleVoice}
+              >
+                {voiceState === 'processing' ? (
+                  <ActivityIndicator size="small" color={colors.accentPrimary} />
+                ) : (
+                  <Ionicons 
+                    name={voiceState === 'recording' ? "stop" : "mic"} 
+                    size={20} 
+                    color={voiceState === 'recording' ? '#ff6961' : (isDark ? '#a599ff' : colors.textSecondary)} 
+                  />
+                )}
+              </TouchableOpacity>
 
-              {/* Quick Actions (e.g. mic, save) */}
-              <View style={s.actionsRow}>
-                <TouchableOpacity 
-                  style={[s.iconBtn, voiceState === 'recording' && s.iconBtnRecording]} 
-                  onPress={handleToggleVoice}
-                >
-                  {voiceState === 'processing' ? (
-                    <ActivityIndicator size="small" color={colors.accentPrimary} />
-                  ) : (
-                    <Ionicons 
-                      name={voiceState === 'recording' ? "stop" : "mic"} 
-                      size={20} 
-                      color={voiceState === 'recording' ? '#ff6961' : colors.textSecondary} 
-                    />
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[s.saveBtn, (!text.trim() || saving) && s.saveBtnDisabled]}
-                  onPress={() => handleSave()}
-                  disabled={!text.trim() || saving}
-                >
-                  {saving ? (
-                    <ActivityIndicator size="small" color={colors.background} />
-                  ) : saved ? (
-                    <Ionicons name="checkmark" size={20} color={colors.background} />
-                  ) : (
-                    <Ionicons name="arrow-up" size={20} color={colors.background} />
-                  )}
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                style={[s.saveBtn, (!text.trim() || saving) && s.saveBtnDisabled]}
+                onPress={() => handleSave()}
+                disabled={!text.trim() || saving}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#080510" />
+                ) : saved ? (
+                  <Ionicons name="checkmark" size={20} color="#080510" />
+                ) : (
+                  <Ionicons name="arrow-up" size={20} color="#080510" />
+                )}
+              </TouchableOpacity>
             </View>
+          </View>
         </Animated.View>
-      </KeyboardAvoidingView>
-    </Modal>
+      </View>
+    </Portal>
   );
 }
 
@@ -345,88 +353,108 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
 const makeStyles = (colors: any) => StyleSheet.create({
       backdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.55)',
+        backgroundColor: 'rgba(0,0,0,0.75)',
       },
       kavWrapper: {
         flex: 1,
         justifyContent: 'flex-end',
       },
       sheet: {
-        backgroundColor: colors.surfaceRaised,
+        backgroundColor: '#000000',
         borderTopLeftRadius: RADIUS.xxl,
         borderTopRightRadius: RADIUS.xxl,
         paddingTop: SPACE.md,
         paddingHorizontal: SPACE.xl,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: 'rgba(165,153,255,0.22)',
         borderBottomWidth: 0,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: -8 },
+        shadowOpacity: 0.5,
+        shadowRadius: 24,
+        elevation: 16,
       },
       handle: {
-        width: 36,
+        width: 38,
         height: 4,
         borderRadius: 2,
-        backgroundColor: colors.border,
+        backgroundColor: 'rgba(255,255,255,0.22)',
         alignSelf: 'center',
-        marginBottom: SPACE.lg,
+        marginBottom: SPACE.md,
       },
       titleRow: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: SPACE.lg,
+        marginBottom: SPACE.md,
       },
       title: {
         fontFamily: FONT_FAMILY.bold,
         fontSize: FONT_SIZE.lg,
-        color: colors.textPrimary,
+        color: '#ffffff',
+        letterSpacing: -0.3,
       },
       tabs: {
         flexDirection: 'row',
         gap: SPACE.sm,
-        marginBottom: SPACE.lg,
+        marginBottom: SPACE.md,
       },
       tab: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: SPACE.md,
-        paddingVertical: SPACE.sm,
+        paddingHorizontal: SPACE.lg,
+        paddingVertical: 8,
         borderRadius: RADIUS.full,
-        backgroundColor: colors.surface2,
+        backgroundColor: 'rgba(255,255,255,0.06)',
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: 'rgba(255,255,255,0.1)',
       },
       tabActive: {
-        backgroundColor: colors.accentPrimary,
-        borderColor: colors.accentPrimary,
+        backgroundColor: '#a599ff',
+        borderColor: '#a599ff',
+        shadowColor: '#a599ff',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+        elevation: 4,
       },
       tabText: {
         fontFamily: FONT_FAMILY.medium,
-        fontSize: FONT_SIZE.sm,
-        color: colors.textMuted,
+        fontSize: 13,
+        color: 'rgba(255,255,255,0.6)',
       },
       tabTextActive: {
-        color: colors.background,
+        color: '#080510',
         fontFamily: FONT_FAMILY.bold,
       },
-      input: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: FONT_SIZE.base,
-        color: colors.textPrimary,
-        backgroundColor: colors.surface,
-        borderRadius: RADIUS.lg,
+      unifiedInputContainer: {
+        backgroundColor: '#1c1a26',
+        borderRadius: RADIUS.xxl,
         borderWidth: 1,
-        borderColor: colors.border,
-        padding: SPACE.lg,
-        minHeight: 90,
-        textAlignVertical: 'top',
-        marginBottom: SPACE.sm,
+        borderColor: 'rgba(165,153,255,0.25)',
+        padding: SPACE.md,
+        minHeight: 140,
+        marginBottom: SPACE.md,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 12,
+        elevation: 4,
       },
-      inputContainer: { marginTop: SPACE.md },
-  actionsRow: {
+      unifiedTextInput: {
+        fontFamily: FONT_FAMILY.body,
+        fontSize: 16,
+        lineHeight: 24,
+        color: '#ffffff',
+        minHeight: 64,
+        textAlignVertical: 'top',
+        paddingHorizontal: SPACE.xs,
+      },
+      unifiedActionsRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        marginTop: SPACE.md,
+        alignItems: 'flex-end',
+        marginTop: SPACE.sm,
       },
       confirmView: {
         paddingTop: SPACE.md,
@@ -472,12 +500,18 @@ const makeStyles = (colors: any) => StyleSheet.create({
         color: colors.background,
       },
       iconBtn: {
-        width: 44, height: 44, borderRadius: 22,
-        backgroundColor: colors.surface2,
-        alignItems: 'center', justifyContent: 'center',
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
       },
       iconBtnRecording: {
-        backgroundColor: 'rgba(255, 105, 97, 0.15)',
+        backgroundColor: 'rgba(255, 105, 97, 0.2)',
+        borderColor: '#ff6961',
       },
       nlHintRow: {
         flexDirection: 'row',
@@ -502,26 +536,27 @@ const makeStyles = (colors: any) => StyleSheet.create({
         fontFamily: FONT_FAMILY.medium,
         fontSize: 12,
       },
-
       saveBtn: {
-        width: 44, height: 44, borderRadius: 22,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: colors.accentPrimary,
-        shadowColor: colors.accentPrimary,
+        backgroundColor: '#a599ff',
+        shadowColor: '#a599ff',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.35,
+        shadowOpacity: 0.45,
         shadowRadius: 10,
         elevation: 6,
       },
       saveBtnDisabled: {
-        opacity: 0.45,
+        opacity: 0.35,
         shadowOpacity: 0,
         elevation: 0,
       },
       saveBtnText: {
         fontFamily: FONT_FAMILY.bold,
         fontSize: FONT_SIZE.base,
-        color: colors.background,
+        color: '#080510',
       },
     });

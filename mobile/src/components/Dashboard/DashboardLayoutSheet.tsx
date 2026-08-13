@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -23,12 +24,14 @@ const WIDGET_NAMES: Record<string, string> = {
   quote: 'Daily Quote',
   stats: 'Stats Ribbon',
   xp: 'Level & XP',
+  capture: 'Quick Capture',
   agenda: 'Today\'s Agenda',
 };
 
 export default function DashboardLayoutSheet({ visible, onClose, layout, setLayout }: Props) {
   const { colors, isDark } = useTheme();
-  const s = makeStyles(colors);
+  const insets = useSafeAreaInsets();
+  const s = makeStyles(colors, insets);
 
   const moveUp = (index: number) => {
     if (index === 0) return;
@@ -58,7 +61,7 @@ export default function DashboardLayoutSheet({ visible, onClose, layout, setLayo
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent>
       <BlurView intensity={isDark ? 50 : 20} tint={isDark ? "dark" : "light"} style={s.overlay}>
         <TouchableOpacity style={{ flex: 1, width: '100%' }} activeOpacity={1} onPress={onClose} />
         <View style={s.sheet}>
@@ -98,7 +101,7 @@ export default function DashboardLayoutSheet({ visible, onClose, layout, setLayo
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, insets: any) => StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -108,8 +111,10 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderTopLeftRadius: RADIUS.xxl,
     borderTopRightRadius: RADIUS.xxl,
     padding: SPACE.xl,
-    paddingBottom: SPACE.xxl * 2,
-    borderWidth: 1,
+    paddingBottom: Math.max(insets.bottom + SPACE.sm, SPACE.lg),
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
     borderColor: colors.border,
   },
   header: {

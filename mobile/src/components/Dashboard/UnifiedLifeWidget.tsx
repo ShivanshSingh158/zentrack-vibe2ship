@@ -6,7 +6,7 @@
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Circle as SvgCircle } from 'react-native-svg';
+import Svg, { Circle as SvgCircle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 
@@ -44,6 +44,7 @@ interface UnifiedLifeWidgetProps {
   levelNextXP: number;
   levelProgress: number;
   showXPSection?: boolean;
+  showCapture?: boolean;
   urgentAssignments?: UrgentItem[];
   todayStr?: string;
   in3daysStr?: string;
@@ -62,17 +63,28 @@ const RING_STROKE = 9;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
+const MASCOT_IMAGES: Record<string, any> = {
+  'Seeker': require('../../../assets/mascots/level0.png'),
+  'Warden': require('../../../assets/mascots/level1.png'),
+  'Guardian': require('../../../assets/mascots/level2.png'),
+  'Sentinel': require('../../../assets/mascots/level3.png'),
+  'Vanguard': require('../../../assets/mascots/level4.png'),
+  'Luminary': require('../../../assets/mascots/level5.png'),
+  'Legend': require('../../../assets/mascots/level6.png'),
+  'Mythic': require('../../../assets/mascots/level7.png'),
+};
+
 const getGradientForLevel = (level: string) => {
   switch (level) {
-    case 'Seeker':    return ['#94a3b8', '#cbd5e1']; // Slate/Silver
-    case 'Guardian':  return ['#5eda9e', '#3b82f6']; // Emerald to Blue
-    case 'Sentinel':  return ['#3b82f6', '#8b5cf6']; // Blue to Purple
-    case 'Warden':    return ['#8b5cf6', '#d946ef']; // Purple to Fuchsia
-    case 'Vanguard':  return ['#d946ef', '#f43f5e']; // Fuchsia to Rose
-    case 'Architect': return ['#f43f5e', '#f97316']; // Rose to Orange
-    case 'Luminary':  return ['#f97316', '#eab308']; // Orange to Gold
-    case 'Ascendant': return ['#eab308', '#a855f7']; // Gold to Mythic Purple
-    default:          return ['#5eda9e', '#a599ff'];
+    case 'Seeker':    return ['#34d399', '#22d3ee'];
+    case 'Warden':    return ['#22d3ee', '#3b82f6'];
+    case 'Guardian':  return ['#3b82f6', '#6366f1'];
+    case 'Sentinel':  return ['#14b8a6', '#0ea5e9'];
+    case 'Vanguard':  return ['#a855f7', '#ec4899'];
+    case 'Luminary':  return ['#f59e0b', '#fbbf24'];
+    case 'Legend':    return ['#f97316', '#ef4444'];
+    case 'Mythic':    return ['#ec4899', '#8b5cf6'];
+    default:          return ['#34d399', '#22d3ee'];
   }
 };
 
@@ -92,6 +104,7 @@ export function UnifiedLifeWidget({
   levelNextXP,
   levelProgress,
   showXPSection = true,
+  showCapture = true,
   urgentAssignments = [],
   todayStr = '',
   in3daysStr = '',
@@ -108,14 +121,18 @@ export function UnifiedLifeWidget({
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const ringPercent = nextClass
-    ? (nextClass.total ? Math.min(nextClass.attended! / nextClass.total, 1) : 1)
+    ? (nextClass.isOngoing
+        ? Math.min(Math.max((nextClass.nowMins! - nextClass.startTimeMins!) / (nextClass.endTimeMins! - nextClass.startTimeMins!), 0), 1)
+        : (nextClass.total ? Math.min(nextClass.attended! / nextClass.total, 1) : 1))
     : (agendaTotal > 0 ? agendaCompleted / agendaTotal : 0);
     
   const strokeDashoffset = RING_CIRCUMFERENCE * (1 - ringPercent);
   const allDone = nextClass ? ringPercent === 1 : (agendaTotal > 0 && agendaCompleted >= agendaTotal);
 
-  const bgStroke = nextClass ? '#ff4d4f' : 'rgba(255,255,255,0.06)';
-  const fgStroke = nextClass ? '#5eda9e' : (allDone ? '#5eda9e' : '#a599ff');
+  const bgStroke = (nextClass && !nextClass.isOngoing) ? '#ff4d4f' : 'rgba(255,255,255,0.06)';
+  const fgStroke = nextClass 
+    ? (nextClass.isOngoing ? 'url(#xpGradient)' : '#5eda9e') 
+    : (allDone ? '#5eda9e' : 'url(#xpGradient)');
 
   const displayWater = useMemo(() => {
     if (!waterCompleted) return '0';
@@ -129,14 +146,17 @@ export function UnifiedLifeWidget({
 
   return (
     <View style={styles.card}>
-
-
-
       {/* MAIN BODY: Donut (Left) | Compact Metrics (Right) */}
       <View style={styles.mainRow}>
         {/* DONUT RING */}
         <View style={styles.ringWrapper}>
           <Svg width={RING_SIZE} height={RING_SIZE} style={styles.svgAbsolute}>
+            <Defs>
+              <SvgLinearGradient id="xpGradient" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor={getGradientForLevel(levelLabel)[0]} />
+                <Stop offset="1" stopColor={getGradientForLevel(levelLabel)[1]} />
+              </SvgLinearGradient>
+            </Defs>
             <SvgCircle
               cx={RING_SIZE / 2}
               cy={RING_SIZE / 2}
@@ -164,14 +184,19 @@ export function UnifiedLifeWidget({
           </Svg>
           <View style={styles.ringCenter}>
             {nextClass ? (
-              <Animated.View key="next-class" entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={styles.ringCenterInner}>
+              <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={styles.ringCenterInner}>
                 <Text style={styles.ringTimeText}>{nextClass.time}</Text>
                 <Text style={styles.ringClassTitle} numberOfLines={1}>
                   {nextClass.title}
                 </Text>
+                {nextClass.isOngoing && (
+                  <Text style={[styles.ringClassTitle, { color: '#5eda9e', marginTop: 2, fontSize: 10, letterSpacing: 1.5 }]}>
+                    ONGOING
+                  </Text>
+                )}
               </Animated.View>
             ) : (
-              <Animated.View key="quests" entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={styles.ringCenterInner}>
+              <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={styles.ringCenterInner}>
                 <Text style={[styles.ringCount, allDone && { color: '#5eda9e' }]}>
                   {agendaCompleted}/{agendaTotal}
                 </Text>
@@ -189,106 +214,109 @@ export function UnifiedLifeWidget({
         <View style={styles.rightMetricsColumn}>
           {/* HABITS */}
           <AnimatedPressable
-            style={styles.compactMetricRow}
+            style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1 }]}
             activeOpacity={0.75}
             delayPressIn={80}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressHabits(); }}
           >
             <View style={styles.compactLeftGroup}>
-              <View style={[styles.compactBadge, { backgroundColor: 'rgba(94,218,158,0.12)' }]}>
-                <Text style={styles.compactEmoji}>🌱</Text>
-              </View>
-              <Text style={styles.compactLabel}>Habits</Text>
+              <Text style={styles.compactEmoji}>🌱</Text>
+              <Text style={[styles.compactLabel, { color: '#5eda9e' }]}>Momentum</Text>
             </View>
-            <View style={[styles.valuePill, { backgroundColor: 'rgba(94,218,158,0.12)' }]}>
-              <Text style={[styles.valuePillText, { color: '#5eda9e' }]}>{habitsCompleted} / {habitsTotal}</Text>
-            </View>
+            <Text style={[styles.valuePillText, { color: '#5eda9e' }]}>{habitsCompleted}/{habitsTotal}</Text>
           </AnimatedPressable>
 
           {/* WATER */}
           <AnimatedPressable
-            style={styles.compactMetricRow}
+            style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1, overflow: 'hidden' }]}
             activeOpacity={0.75}
             delayPressIn={80}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressWater(); }}
           >
+            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.min(100, (waterCompleted / (waterTotal || 1)) * 100)}%`, backgroundColor: 'rgba(137, 220, 235, 0.15)' }} />
             <View style={styles.compactLeftGroup}>
-              <View style={[styles.compactBadge, { backgroundColor: 'rgba(137,220,235,0.12)' }]}>
-                <Text style={styles.compactEmoji}>💧</Text>
-              </View>
-              <Text style={styles.compactLabel}>Water</Text>
+              <Text style={styles.compactEmoji}>💧</Text>
+              <Text style={[styles.compactLabel, { color: '#89dceb' }]}>Hydration</Text>
             </View>
-            <View style={[styles.valuePill, { backgroundColor: 'rgba(137,220,235,0.12)' }]}>
-              <Text style={[styles.valuePillText, { color: '#89dceb' }]}>{displayWater} / {displayWaterTarget}L</Text>
-            </View>
+            <Text style={[styles.valuePillText, { color: '#89dceb' }]}>{displayWater}/{displayWaterTarget}L</Text>
           </AnimatedPressable>
 
           {/* SLEEP */}
           <AnimatedPressable
-            style={styles.compactMetricRow}
+            style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1 }]}
             activeOpacity={0.75}
             delayPressIn={80}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressSleep(); }}
           >
             <View style={styles.compactLeftGroup}>
-              <View style={[styles.compactBadge, { backgroundColor: 'rgba(165,153,255,0.12)' }]}>
-                <Text style={styles.compactEmoji}>🌙</Text>
-              </View>
-              <Text style={styles.compactLabel}>Sleep</Text>
+              <Text style={styles.compactEmoji}>🌙</Text>
+              <Text style={[styles.compactLabel, { color: '#a599ff' }]}>Sleep</Text>
             </View>
-            <View style={[styles.valuePill, { backgroundColor: 'rgba(165,153,255,0.12)' }]}>
-              <Text style={[styles.valuePillText, { color: '#a599ff' }]}>
-                {lastNightSleep !== null ? `${lastNightSleep} Hour` : '--'}
-              </Text>
-            </View>
+            <Text style={[styles.valuePillText, { color: '#a599ff' }]}>
+              {lastNightSleep !== null ? `${lastNightSleep} Hour` : '--'}
+            </Text>
           </AnimatedPressable>
         </View>
       </View>
 
       {showXPSection && (
-        <>
-          {/* XP BAR */}
-          <View style={styles.xpSection}>
-            <View style={styles.xpLabelRow}>
-              <Text style={styles.xpLevelText}>{levelLabel} • {levelXP} / {levelNextXP} xp</Text>
-              <Text style={styles.xpToNext}>{levelNextXP - levelXP} to {levelNextLabel}</Text>
-            </View>
-            <View style={styles.xpTrack}>
-              <LinearGradient
-                colors={getGradientForLevel(levelLabel)}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={[styles.xpFill, { width: `${Math.max(levelProgress * 100, 2)}%` as any }]}
-              />
+        <AnimatedPressable 
+          style={styles.xpSection} 
+          activeOpacity={0.7} 
+          onPress={() => {
+            if (onPressXP) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onPressXP();
+            }
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Animated.Image 
+              source={MASCOT_IMAGES[levelLabel]} 
+              style={{ width: 62, height: 62, marginRight: 6, marginVertical: -10, alignSelf: 'center' }} 
+              resizeMode="contain" 
+            />
+            <View style={{ flex: 1 }}>
+              <View style={styles.xpLabelRow}>
+                <Text style={styles.xpLevelText}>{levelLabel} • {levelXP} / {levelNextXP} xp</Text>
+                <Text style={styles.xpToNext}>{levelNextXP - levelXP} to {levelNextLabel}</Text>
+              </View>
+              <View style={styles.xpTrack}>
+                <LinearGradient
+                  colors={getGradientForLevel(levelLabel) as any}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.xpFill, { width: `${Math.max(levelProgress * 100, 2)}%` as any }]}
+                />
+              </View>
             </View>
           </View>
-
-          {/* QUICK CAPTURE */}
-          {onCapture && (
-            <AnimatedPressable style={styles.captureBar} activeOpacity={0.75} delayPressIn={100} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCapture(); }}>
-              <Ionicons name="add-circle-outline" size={20} color={colors.accentPrimary} />
-              <Text style={styles.capturePlaceholder} numberOfLines={1}>Add anything... habit, task, notes</Text>
-            </AnimatedPressable>
-          )}
-
-          {/* URGENT BANNER */}
-          {urgentAssignments.length > 0 && (
-            <AnimatedPressable style={styles.urgentBanner} activeOpacity={0.8} delayPressIn={100} onPress={onPressAssignments}>
-              <Ionicons name="warning-outline" size={14} color={colors.accentAmber} style={{ marginRight: 8 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.urgentTitle}>Due soon</Text>
-                {urgentAssignments.map(a => (
-                  <Text key={a.id} style={styles.urgentItem} numberOfLines={1}>
-                    · {a.title} — {a.dueDate === todayStr ? 'Today' : a.dueDate === in3daysStr ? 'in 3 days' : a.dueDate}
-                  </Text>
-                ))}
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-            </AnimatedPressable>
-          )}
-        </>
+        </AnimatedPressable>
       )}
 
+      {/* QUICK CAPTURE */}
+      {showCapture !== false && onCapture && (
+        <AnimatedPressable style={styles.captureBar} activeOpacity={0.75} delayPressIn={100} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCapture(); }}>
+          <Ionicons name="add-circle-outline" size={20} color={colors.accentPrimary} />
+          <Text style={styles.capturePlaceholder} numberOfLines={1}>Add anything... habit, task, notes</Text>
+        </AnimatedPressable>
+      )}
+
+      {/* URGENT BANNER */}
+      {urgentAssignments.length > 0 && (
+        <AnimatedPressable style={styles.urgentBanner} activeOpacity={0.8} delayPressIn={100} onPress={onPressAssignments}>
+          <Ionicons name="warning-outline" size={14} color={colors.accentAmber} style={{ marginRight: 8 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.urgentTitle}>Due soon</Text>
+            {urgentAssignments.map(a => (
+              <Text key={a.id as any} style={styles.urgentItem} numberOfLines={1}>
+                · {a.title} — {a.dueDate === todayStr ? 'Today' : a.dueDate === in3daysStr ? 'in 3 days' : a.dueDate}
+              </Text>
+            ))}
+          </View>
+          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+        </AnimatedPressable>
+      )}
     </View>
   );
 }
@@ -296,14 +324,14 @@ export function UnifiedLifeWidget({
 const makeStyles = (colors: any) =>
   StyleSheet.create({
     card: {
-      backgroundColor: colors.surface || '#1c1c1d',
+      backgroundColor: '#101012', // solid/slug-like black, not pure black
       borderRadius: RADIUS.xl,
       borderWidth: 1,
       borderColor: colors.border || '#2c2c2e',
       paddingHorizontal: SPACE.md,
       paddingTop: 14,
       paddingBottom: 12,
-      marginTop: SPACE.xl,
+      marginTop: 4,
       gap: 8,
     },
     pillsRow: {
@@ -345,24 +373,27 @@ const makeStyles = (colors: any) =>
     },
     verticalDivider: {
       width: 1,
-      height: 90,
+      height: '100%',
       backgroundColor: 'rgba(255,255,255,0.06)',
     },
     rightMetricsColumn: {
       flex: 1,
-      height: 90,
-      justifyContent: 'space-between',
+      justifyContent: 'center',
+      gap: 6,
     },
     compactMetricRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       width: '100%',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 12,
     },
     compactLeftGroup: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
+      gap: 6,
     },
     compactBadge: {
       width: 28,
@@ -443,7 +474,6 @@ const makeStyles = (colors: any) =>
       textAlign: 'center',
       paddingHorizontal: 12,
     },
-
     xpSection: {
       gap: 5,
       marginTop: 2,
@@ -466,19 +496,19 @@ const makeStyles = (colors: any) =>
       letterSpacing: 0.3,
     },
     xpTrack: {
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: 'rgba(255,255,255,0.07)',
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: 'rgba(255,255,255,0.08)',
       overflow: 'hidden',
     },
     xpFill: {
       height: '100%',
-      borderRadius: 2,
+      borderRadius: 3,
     },
     captureBar: {
       marginTop: SPACE.md,
       marginBottom: SPACE.xs,
-      backgroundColor: colors.surface,
+      backgroundColor: '#161618',
       borderRadius: RADIUS.xl,
       borderWidth: 1,
       borderColor: colors.border,

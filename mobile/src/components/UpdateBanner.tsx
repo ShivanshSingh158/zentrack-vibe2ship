@@ -1,5 +1,5 @@
 /**
- * UpdateBanner GÇö ZenTrack Mobile
+ * UpdateBanner â€¢ ZenTrack Mobile
  *
  * Checks for OTA (over-the-air) updates via expo-updates on every app open.
  * If a new update is available, shows a beautiful full-screen-ish modal with:
@@ -11,7 +11,7 @@
  *   1. On mount, calls Updates.checkForUpdateAsync()
  *   2. If update found, calls Updates.fetchUpdateAsync() to download it silently
  *   3. Shows the banner with the update message
- *   4. "Update Now" calls Updates.reloadAsync() GÇö app restarts with new code
+ *   4. "Update Now" calls Updates.reloadAsync() â€¢ app restarts with new code
  *
  * NOTE: expo-updates only works in production builds (EAS), not in Expo Go.
  *       In Expo Go / dev builds, this component silently does nothing.
@@ -31,7 +31,7 @@ const PURPLE = '#a599ff';
 const PURPLE_DIM = 'rgba(165,153,255,0.12)';
 const PURPLE_GLOW = 'rgba(165,153,255,0.3)';
 
-// GöÇGöÇGöÇ Parse human-readable changelog from the EAS update message GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+// â€¢â€¢â€¢ Parse human-readable changelog from the EAS update message â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢
 function parseChangelog(message: string): string[] {
   if (!message) return ['System performance and stability improvements.'];
 
@@ -42,7 +42,7 @@ function parseChangelog(message: string): string[] {
 
   // Split on common delimiters (dashes, bullets, semicolons, or sentence periods)
   const items = cleaned
-    .split(/(?:\s*[-GÇó|;\n]+\s*|\.\s+)/)
+    .split(/(?:\s*[-â€¢|;\n]+\s*|\.\s+)/)
     .map(s => s.trim().replace(/\.$/, ''))
     .filter(s => s.length > 3);
 
@@ -53,7 +53,7 @@ function parseChangelog(message: string): string[] {
   return [cleaned];
 }
 
-// GöÇGöÇGöÇ Component GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+// â€¢â€¢â€¢ Component â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢
 
 export function UpdateBanner() {
   const [visible, setVisible] = useState(false);
@@ -186,7 +186,7 @@ export function UpdateBanner() {
           </View>
 
           {/* Title */}
-          <Text style={styles.title}>Update Ready G£¿</Text>
+          <Text style={styles.title}>Update Ready âœ¨</Text>
           <Text style={styles.subtitle}>A new version of ZenTrack has been downloaded and is ready to install.</Text>
 
           {/* Changelog */}

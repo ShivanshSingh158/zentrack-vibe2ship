@@ -10,6 +10,7 @@ import Svg, { Rect, Line, Circle } from 'react-native-svg';
 import { COLLECTION } from '../config/constants';
 import { useTheme } from "../contexts/ThemeContext";
 import { handleSyncError } from '../utils/errorUtils';
+import EmptyState from '../components/ui/EmptyState';
 
 
 const GRADE_MAP: Record<string, number> = {
@@ -437,10 +438,18 @@ export default function GradesScreen() {
           );
         }}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="document-text" size={32} color="#2c2c2e" />
-            <Text style={styles.emptyText}>No semesters added yet</Text>
-          </View>
+          <EmptyState
+            mascot="idle"
+            title="Clean slate"
+            subtitle="No semesters added yet. Track your academic progress here."
+            action={{
+              label: "Add Semester",
+              onPress: () => {
+                setSemName('');
+                setSemModalVisible(true);
+              }
+            }}
+          />
         }
       />
 

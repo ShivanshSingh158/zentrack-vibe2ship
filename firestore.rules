@@ -14,10 +14,10 @@ service cloud.firestore {
     }
 
     // Null-safe ownership check for existing documents.
-    // resource.data.get('userId', null) prevents null-dereference when a field is missing.
+    // Allow if existing doc has correct userId, OR if existing doc is a legacy doc missing userId but the user is authenticated.
     function ownsDoc() {
       return resource != null
-        && resource.data.get('userId', null) == request.auth.uid;
+        && (resource.data.get('userId', null) == request.auth.uid || resource.data.get('userId', null) == null);
     }
 
     // Ownership check for documents being created.
@@ -27,7 +27,7 @@ service cloud.firestore {
 
     // Prevent oversized document writes (basic DoS protection — 50 fields max).
     function notTooLarge() {
-      return request.resource.data.size() < 50;
+      return request.resource.data.keys().size() < 50;
     }
 
     // ── Users Collection ──────────────────────────────────────────────────────

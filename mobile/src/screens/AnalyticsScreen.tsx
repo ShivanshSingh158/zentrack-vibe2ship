@@ -1,10 +1,10 @@
 /**
- * AnalyticsScreen — ZenTrack Mobile — A+ Rebuild
+ * AnalyticsScreen â€” ZenTrack Mobile â€” A+ Rebuild
  *
  * Features:
  *  - Time period selector: Week / Month / Semester (7 / 30 / 90 days)
- *  - Period-over-period comparison: ▲▼ delta vs previous period
- *  - Zen Score animated ring with gradient (purple → teal)
+ *  - Period-over-period comparison: â–²â–¼ delta vs previous period
+ *  - Zen Score animated ring with gradient (purple â†’ teal)
  *  - Gym strength progression line chart (real data, SVG bezier)
  *  - Task completion bar chart with this-vs-last period overlay
  *  - Deep Work focus bar chart with animated fill
@@ -16,7 +16,7 @@
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { formatDateShort } from '../utils/dateUtils';
+import { formatDateShort, formatDateWithDay } from '../utils/dateUtils';
 import {
   View, Text, StyleSheet, Animated, ScrollView,
   TouchableOpacity, Dimensions,
@@ -31,16 +31,14 @@ import { SCREENS } from '../config/constants';
 import * as Haptics from 'expo-haptics';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
-import AcademicPredictorCard from '../components/Analytics/AcademicPredictorCard';
 import { useTheme } from "../contexts/ThemeContext";
-import { exportAnalyticsToCSV } from '../utils/exportUtils';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHART_H = 90;
 const CARD_PAD = 16;
-const CHART_W = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2;
+const CHART_W = SCREEN_WIDTH - 8 * 2 - CARD_PAD * 2;
 
-// ─── Smooth bezier helper ─────────────────────────────────────────────────────
+// â”€â”€â”€ Smooth bezier helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function smoothPath(pts: { x: number; y: number }[]): string {
   if (pts.length < 2) return pts.length === 1 ? `M ${pts[0].x} ${pts[0].y}` : '';
   const d = [`M ${pts[0].x} ${pts[0].y}`];
@@ -52,7 +50,7 @@ function smoothPath(pts: { x: number; y: number }[]): string {
   return d.join(' ');
 }
 
-// ─── Date helpers ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Date helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function daysAgoStr(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -67,10 +65,10 @@ type Period = 'week' | 'month' | 'semester';
 const PERIOD_DAYS: Record<Period, number> = { week: 7, month: 30, semester: 90 };
 const PERIOD_LABEL: Record<Period, string> = { week: 'This Week', month: 'This Month', semester: 'This Semester' };
 
-// ─── Animated SVG Circle ─────────────────────────────────────────────────────
+// â”€â”€â”€ Animated SVG Circle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// ─── GlassCard ───────────────────────────────────────────────────────────────
+// â”€â”€â”€ GlassCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function GlassCard({ children, style }: { children: React.ReactNode; style?: any }) {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
@@ -81,7 +79,7 @@ function GlassCard({ children, style }: { children: React.ReactNode; style?: any
   );
 }
 
-// ─── Period Pill Selector ─────────────────────────────────────────────────────
+// â”€â”€â”€ Period Pill Selector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
@@ -104,7 +102,7 @@ function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Peri
   );
 }
 
-// ─── Delta badge ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Delta badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: string }) {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
@@ -122,7 +120,7 @@ function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: str
   );
 }
 
-// ─── Bar Chart ────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Bar Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface BarChartProps {
   data: { label: string; cur: number; prev?: number }[];
   color: string;
@@ -202,7 +200,72 @@ function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated =
   );
 }
 
-// ─── Line Chart (SVG) ─────────────────────────────────────────────────────────
+// â”€â”€â”€ Stacked Bar Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+interface StackedBarChartProps {
+  data: { label: string; attended: number; missed: number }[];
+  color1: string;
+  color2: string;
+  maxVal: number;
+  height?: number;
+  animated?: boolean;
+}
+
+function StackedBarChart({ data, color1, color2, maxVal, height = CHART_H, animated = true }: StackedBarChartProps) {
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    anim.setValue(0);
+    if (animated) {
+      Animated.timing(anim, { toValue: 1, duration: 600, useNativeDriver: false }).start();
+    } else {
+      anim.setValue(1);
+    }
+  }, [data]);
+
+  const barW = 12;
+
+  return (
+    <View style={{ height, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+        {[0.25, 0.5, 0.75, 1].map((f, i) => (
+          <View key={i} style={[styles.gridLine, { bottom: `${f * 100}%` as any }]} />
+        ))}
+      </View>
+
+      {data.map((d, i) => {
+        const total = d.attended + d.missed;
+        const totalH = anim.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0, Math.max(0, (total / maxVal) * (height - 20))],
+        });
+
+        const attPct = total > 0 ? d.attended / total : 0;
+        const missedPct = total > 0 ? d.missed / total : 0;
+
+        return (
+          <View key={i} style={{ alignItems: 'center', flex: 1 }}>
+            <Animated.View style={{
+              width: barW,
+              height: totalH,
+              flexDirection: 'column-reverse',
+              borderRadius: 4,
+              overflow: 'hidden',
+              backgroundColor: 'transparent'
+            }}>
+              {d.attended > 0 && <View style={{ flex: attPct, backgroundColor: color1 }} />}
+              {d.missed > 0 && <View style={{ flex: missedPct, backgroundColor: color2 }} />}
+            </Animated.View>
+            <Text style={styles.barLabel}>{d.label}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+// â”€â”€â”€ Line Chart (SVG) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface LineChartProps {
   data: { label: string; value: number }[];
   color: string;
@@ -268,18 +331,18 @@ function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD
         ))}
       </Svg>
       {/* X-axis labels */}
-      <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: pad }}>
-        {data.map((d, i) => (
-          i === 0 || i === Math.floor((data.length - 1) / 2) || i === data.length - 1
-            ? <Text key={i} style={styles.axisLabel}>{d.label}</Text>
-            : <Text key={i} style={[styles.axisLabel, { opacity: 0 }]}>{d.label}</Text>
-        ))}
+      <View style={{ position: 'absolute', bottom: -18, left: pad, right: pad, height: 20 }}>
+        <Text style={[styles.axisLabel, { position: 'absolute', left: 0 }]}>{data[0].label}</Text>
+        <Text style={[styles.axisLabel, { position: 'absolute', alignSelf: 'center' }]}>
+          {data[Math.floor((data.length - 1) / 2)].label}
+        </Text>
+        <Text style={[styles.axisLabel, { position: 'absolute', right: 0 }]}>{data[data.length - 1].label}</Text>
       </View>
     </View>
   );
 }
 
-// ─── Heatmap ──────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Heatmap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ActivityHeatmap({ dates, tasks, gymLogs, habitLogs }: {
   dates: string[];
   tasks: any[];
@@ -317,13 +380,13 @@ function ActivityHeatmap({ dates, tasks, gymLogs, habitLogs }: {
   );
 }
 
-// ─── Main Screen ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Main Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function AnalyticsScreen() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
   const styles = makeStyles(colors);
-  // BUG-H5 FIX: Removed pomodoroSessions — the Focus/Pomodoro module was deleted on 2026-07-15.
+  // BUG-H5 FIX: Removed pomodoroSessions â€” the Focus/Pomodoro module was deleted on 2026-07-15.
   // pomodoroSessions always returns empty, making the Deep Work chart show "Not enough data"
   // and artificially capping the Zen Score. Now using real data only.
   const {
@@ -349,13 +412,13 @@ export default function AnalyticsScreen() {
     // Disabled animations for instant load
   }, []);
 
-  // ── Period bounds ──
+  // â”€â”€ Period bounds â”€â”€
   const days = PERIOD_DAYS[period];
   const curStart  = daysAgoStr(days - 1);
   const prevStart = daysAgoStr(days * 2 - 1);
   const prevEnd   = daysAgoStr(days);
 
-  // ── Computed stats ─────────────────────────────────────────────────────────
+  // â”€â”€ Computed stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const stats = useMemo(() => {
     const inPeriod = (date: string) => date >= curStart;
     const inPrev   = (date: string) => date >= prevStart && date <= prevEnd;
@@ -363,6 +426,10 @@ export default function AnalyticsScreen() {
     // Tasks
     const curTasks  = tasks.filter(t => t.status === 'completed' && ((t.completedAt || t.date || '') >= curStart)).length;
     const prevTasks = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '') >= prevStart && (t.completedAt || t.date || '') <= prevEnd).length;
+
+    // Focus (Real Data: actualMinutes from tasks)
+    const curFocus = tasks.filter(t => t.status === 'completed' && ((t.completedAt || t.date || '') >= curStart)).reduce((acc, t) => acc + (t.actualMinutes || 0), 0);
+    const prevFocus = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '') >= prevStart && (t.completedAt || t.date || '') <= prevEnd).reduce((acc, t) => acc + (t.actualMinutes || 0), 0);
 
     // Habits
     const curHabits  = habitLogs.filter(l => l.date >= curStart).length;
@@ -372,17 +439,45 @@ export default function AnalyticsScreen() {
     const curGym  = gymLogs.filter(g => g.date >= curStart).length;
     const prevGym = gymLogs.filter(g => g.date >= prevStart && g.date <= prevEnd).length;
 
-    // BUG-H5 FIX: Focus now comes from habit consistency (habits logged per day in period)
-    // instead of pomodoroSessions which was always 0 after the Pomodoro module was removed.
-    const activeHabitCount = Math.max(allHabits.filter(h => !h.archived).length, 1);
-    const curFocus  = curHabits > 0 ? Math.round((curHabits / (activeHabitCount * days)) * 100) : 0;
-    const prevFocus = prevHabits > 0 ? Math.round((prevHabits / (activeHabitCount * days)) * 100) : 0;
+    // Attendance
+    const curAttLogs = attendanceLogs.filter(l => l.date >= curStart);
+    const curAttended = curAttLogs.filter(l => l.action === 'attended').length;
+    const curMissed = curAttLogs.filter(l => l.action === 'missed').length;
+    const totalAtt = curAttended + curMissed;
+    const attendancePct = totalAtt > 0 ? (curAttended / totalAtt) * 100 : 100;
 
-    // Zen Score — BUG-H5 FIX: removed pomodoroSessions term (was always 0).
-    // New formula: tasks + habits*2 + gym*5 + habit_rate_bonus
-    const habitRateBonus = Math.round(curFocus / 5); // up to 20 bonus points for perfect habits
-    const zenScore = Math.min(curTasks + curHabits * 2 + curGym * 5 + habitRateBonus, 300);
-    const prevZen  = Math.min(prevTasks + prevHabits * 2 + prevGym * 5, 300);
+    const D = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+    const targetTasks = D * 3;
+    const targetGym = Math.round(D * (4/7));
+    const targetFocus = D * 30;
+    const targetHabits = D * 2;
+
+    const calcScore = (tasks: number, gym: number, focus: number, habits: number, totAtt: number, attPct: number) => {
+      const tScore = Math.min(25, (tasks / targetTasks) * 25);
+      const gScore = targetGym > 0 ? Math.min(30, (gym / targetGym) * 30) : 30;
+      const fScore = Math.min(25, (focus / targetFocus) * 25);
+      const hScore = Math.min(20, (habits / targetHabits) * 20);
+      
+      let base = tScore + gScore + fScore + hScore;
+      let attMod = 0;
+      if (totAtt > 0) {
+        if (attPct >= 90) attMod = 5;
+        else if (attPct < 50) attMod = -10;
+      }
+      return Math.max(0, Math.min(100, Math.round(base + attMod)));
+    };
+
+    // Zen Score - Real Data Formula
+    const zenScore = calcScore(curTasks, curGym, curFocus, curHabits, totalAtt, attendancePct);
+    
+    // Prev Zen
+    const prevAttLogs = attendanceLogs.filter(l => l.date >= prevStart && l.date <= prevEnd);
+    const prevAttended = prevAttLogs.filter(l => l.action === 'attended').length;
+    const prevMissed = prevAttLogs.filter(l => l.action === 'missed').length;
+    const prevTotalAtt = prevAttended + prevMissed;
+    const prevAttendancePct = prevTotalAtt > 0 ? (prevAttended / prevTotalAtt) * 100 : 100;
+    
+    const prevZen = calcScore(prevTasks, prevGym, prevFocus, prevHabits, prevTotalAtt, prevAttendancePct);
 
     // Best streak
     let best = 0, run = 0;
@@ -394,23 +489,20 @@ export default function AnalyticsScreen() {
       if (act) { run++; best = Math.max(best, run); } else { run = 0; }
     }
 
-    // Avg daily habit completion % (current period)
-    const avgFocus = curFocus;
+    return { curTasks, prevTasks, curHabits, prevHabits, curGym, prevGym, curFocus, prevFocus, zenScore, prevZen, bestStreak: best, curAttended };
+  }, [tasks, habitLogs, gymLogs, attendanceLogs, period]);
 
-    return { curTasks, prevTasks, curHabits, prevHabits, curGym, prevGym, curFocus, prevFocus, zenScore, prevZen, bestStreak: best, avgFocus };
-  }, [tasks, habitLogs, gymLogs, allHabits, period]);
-
-  // ── Zen Score ring ──
+  // â”€â”€ Zen Score ring â”€â”€
   const RING_SIZE = 160;
   const RING_R    = (RING_SIZE - 20) / 2;
   const CIRC      = 2 * Math.PI * RING_R;
-  const ringProgress = stats.zenScore / 300;
+  const ringProgress = stats.zenScore / 100;
   const strokeDashoffset = animRing.interpolate({
     inputRange: [0, 1],
     outputRange: [CIRC, CIRC - ringProgress * CIRC],
   });
 
-  // ── Task trend bar chart ──
+  // â”€â”€ Task trend bar chart â”€â”€
   const taskBarData = useMemo(() => {
     const n = Math.min(days, 14);
     const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
@@ -427,9 +519,9 @@ export default function AnalyticsScreen() {
   }, [tasks, period]);
   const maxTaskBar = Math.max(...taskBarData.map(d => Math.max(d.cur, d.prev)), 4);
 
-  // ── Habit consistency line chart (replaces dead Pomodoro focus chart) ──
+  // â”€â”€ Habit consistency line chart (replaces dead Pomodoro focus chart) â”€â”€
   // BUG-H5 FIX: focusBarData used pomodoroSessions which was always empty.
-  // Replaced with habit consistency % per day — always has real data.
+  // Replaced with habit consistency % per day â€” always has real data.
   const focusBarData = useMemo(() => {
     const activeCount = Math.max(allHabits.filter(h => !h.archived).length, 1);
     const n = Math.min(days, 14);
@@ -447,29 +539,37 @@ export default function AnalyticsScreen() {
   }, [habitLogs, allHabits, period]);
   const maxFocusBar = 100; // always percentage, cap at 100%
 
-  // ── Gym strength line chart (bench press max) ──
-  const gymStrengthData = useMemo(() => {
-    const logs = gymLogs
-      .filter(g => g.date >= curStart)
-      .sort((a, b) => a.date.localeCompare(b.date));
+  // â”€â”€ Attendance Stacked Bar Chart Data â”€â”€
+  const attendanceBarData = useMemo(() => {
+    const buckets = days <= 7 ? 7 : days <= 30 ? 5 : 6;
+    const step = days <= 7 ? 1 : days <= 30 ? 6 : 15;
+    const result: { label: string; attended: number; missed: number }[] = [];
+    for (let b = buckets - 1; b >= 0; b--) {
+      const startDay = b * step + step - 1;
+      const endDay = b * step;
+      const startStr = daysAgoStr(startDay);
+      const endStr = daysAgoStr(endDay);
+      let label = '';
+      if (days <= 7) label = formatDateWithDay(endStr).split(',')[0];
+      else label = formatDateShort(startStr);
+      
+      let attended = 0;
+      let missed = 0;
+      for (let i = startDay; i >= endDay; i--) {
+         const targetDate = daysAgoStr(i);
+         attended += attendanceLogs.filter(l => l.date === targetDate && l.action === 'attended').length;
+         missed += attendanceLogs.filter(l => l.date === targetDate && l.action === 'missed').length;
+      }
+      result.push({ label, attended, missed });
+    }
+    return result;
+  }, [attendanceLogs, period]);
+  const maxAttBar = Math.max(...attendanceBarData.map(d => d.attended + d.missed), 4);
 
-    return logs.map(log => {
-      let maxW = 0;
-      (log.exercises || []).forEach((ex: any) => {
-        if (ex.name?.toLowerCase().includes('bench') || ex.name?.toLowerCase().includes('press')) {
-          (ex.setsLog || ex.sets || []).forEach((s: any) => {
-            if ((s.weight || 0) > maxW) maxW = s.weight || 0;
-          });
-        }
-      });
-      return { label: formatDateShort(log.date), value: maxW };
-    }).filter(d => d.value > 0);
-  }, [gymLogs, period]);
-
-  // ── Gym volume bar chart ──
+  // â”€â”€ Gym volume bar chart â”€â”€
   // BUG-M9 FIX: Was showing exercise count (log.exercises?.length), which makes
   // a user doing 3 heavy compounds look identical to one doing 6 easy isolation sets.
-  // Now computes real training volume: sum of (weight × reps) for all completed sets.
+  // Now computes real training volume: sum of (weight Ã— reps) for all completed sets.
   const gymVolData = useMemo(() => {
     const calcVolume = (log: any): number => {
       if (!log?.exercises) return 0;
@@ -499,10 +599,10 @@ export default function AnalyticsScreen() {
   }, [gymLogs, period]);
   const maxGymVol = Math.max(...gymVolData.map(d => Math.max(d.cur, d.prev)), 5);
 
-  // ── Heatmap dates (5 weeks) ──
+  // â”€â”€ Heatmap dates (5 weeks) â”€â”€
   const heatDates = useMemo(() => daysRange(0, 35), []);
 
-  // ── Habit completion rate per day (line) ──
+  // â”€â”€ Habit completion rate per day (line) â”€â”€
   const habitLineData = useMemo(() => {
     const activeCount = allHabits.filter(h => !h.archived).length || 1;
     const n = Math.min(days, 14);
@@ -516,7 +616,7 @@ export default function AnalyticsScreen() {
     return result;
   }, [habitLogs, allHabits, period]);
 
-  // ─── Goal Progress Data ───
+  // â”€â”€â”€ Goal Progress Data â”€â”€â”€
   const goalProgressData = useMemo(() => {
     if (!goals) return [];
     return goals.map(goal => {
@@ -528,13 +628,13 @@ export default function AnalyticsScreen() {
     }).filter(g => g.total > 0 || g.status === 'active');
   }, [goals, tasks]);
 
-  // ─── CGPA Data ───
+  // â”€â”€â”€ CGPA Data â”€â”€â”€
   const cgpaData = useMemo(() => {
     if (!semesters) return [];
     return [...semesters].sort((a, b) => (a.order || 0) - (b.order || 0)).filter(s => s.sgpa && s.sgpa > 0);
   }, [semesters]);
 
-  // ─── Attendance Trend Data ───
+  // â”€â”€â”€ Attendance Trend Data â”€â”€â”€
   const attendanceTrendData = useMemo(() => {
     if (!attendanceLogs || attendanceLogs.length === 0) return [];
     const sorted = [...attendanceLogs].sort((a, b) => a.timestamp - b.timestamp);
@@ -549,14 +649,15 @@ export default function AnalyticsScreen() {
   }, [attendanceLogs]);
 
   return (
-    <ExpoLinearGradient colors={['#181036', '#090710', '#050507']} style={styles.root}>
+    <ExpoLinearGradient colors={['#160C28', '#080512', '#000000']} style={styles.root}>
       {/* Ambient glow blobs */}
       <View style={styles.bgGlow1} />
       <View style={styles.bgGlow2} />
+      <View style={styles.bgGlow3} />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
 
-        {/* ── Header ── */}
+        {/* â”€â”€ Header â”€â”€ */}
         <Animated.View style={[styles.header, {
           opacity: animHeader,
           transform: [{ translateY: animHeader.interpolate({ inputRange: [0,1], outputRange: [-16,0] }) }],
@@ -571,7 +672,7 @@ export default function AnalyticsScreen() {
           </View>
         </Animated.View>
 
-        {/* ── Period Selector ── */}
+        {/* â”€â”€ Period Selector â”€â”€ */}
         <Animated.View style={{ opacity: animHeader }}>
           <PeriodSelector value={period} onChange={setPeriod} />
         </Animated.View>
@@ -589,7 +690,7 @@ export default function AnalyticsScreen() {
               <Text style={[styles.exportBtnText, { color: colors.accentPrimary, marginLeft: 8 }]}>View AI Weekly Review</Text>
             </TouchableOpacity>
 
-          {/* ── 1. ZEN SCORE RING ── */}
+          {/* â”€â”€ 1. ZEN SCORE RING â”€â”€ */}
           <Animated.View style={[styles.heroSection, {
             opacity: animRing,
             transform: [{ scale: animRing.interpolate({ inputRange: [0,1], outputRange: [0.85,1] }) }],
@@ -629,14 +730,16 @@ export default function AnalyticsScreen() {
               </View>
               <View style={styles.summaryDivider} />
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryVal, { color: colors.accentSecondary }]}>{stats.curFocus}m</Text>
-                <Text style={styles.summaryKey}>Focus</Text>
+                <Text style={[styles.summaryVal, { color: colors.accentSecondary }]}>
+                  {stats.curFocus >= 60 ? `${Math.floor(stats.curFocus / 60)}h ${stats.curFocus % 60}m` : `${stats.curFocus}m`}
+                </Text>
+                <Text style={styles.summaryKey}>Focus Time</Text>
                 <Delta cur={stats.curFocus} prev={stats.prevFocus} />
               </View>
             </View>
           </Animated.View>
 
-          {/* ── 2. STAT CARDS ROW ── */}
+          {/* â”€â”€ 2. STAT CARDS ROW â”€â”€ */}
           <Animated.View style={[styles.cardRow, {
             opacity: animCards,
             transform: [{ translateY: animCards.interpolate({ inputRange: [0,1], outputRange: [20,0] }) }],
@@ -647,18 +750,18 @@ export default function AnalyticsScreen() {
               <Text style={styles.statCardLabel}>Best Streak</Text>
             </GlassCard>
             <GlassCard style={styles.statCard}>
-              <Ionicons name="timer-outline" size={20} color={colors.accentSecondary} style={{ marginBottom: 6 }} />
-              <Text style={styles.statCardVal}>{stats.avgFocus}%</Text>
-              <Text style={styles.statCardLabel}>Habit Rate</Text>
+              <Ionicons name="checkmark-circle-outline" size={20} color={colors.accentSecondary} style={{ marginBottom: 6 }} />
+              <Text style={styles.statCardVal}>{stats.curHabits}</Text>
+              <Text style={styles.statCardLabel}>Habits Done</Text>
             </GlassCard>
-            <GlassCard style={styles.statCard}>
-              <Ionicons name="barbell-outline" size={20} color={colors.accentAmber} style={{ marginBottom: 6 }} />
-              <Text style={styles.statCardVal}>{stats.curGym}</Text>
-              <Text style={styles.statCardLabel}>Gym Sessions</Text>
-            </GlassCard>
+              <GlassCard style={styles.statCard}>
+                <Ionicons name="school-outline" size={20} color={colors.success} style={{ marginBottom: 6 }} />
+                <Text style={styles.statCardVal}>{stats.curAttended}</Text>
+                <Text style={styles.statCardLabel}>Classes Attended</Text>
+              </GlassCard>
           </Animated.View>
 
-          {/* ── 3. TASK COMPLETION CHART ── */}
+          {/* —— 3. TASK COMPLETION CHART —— */}
           <Animated.View style={[styles.fullCard, {
             opacity: animCharts,
             transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [30,0] }) }],
@@ -686,7 +789,7 @@ export default function AnalyticsScreen() {
             </GlassCard>
           </Animated.View>
 
-          {/* ── 4. HABIT CONSISTENCY CHART (replaces dead Pomodoro Deep Work chart) ── */}
+          {/* â”€â”€ 4. HABIT CONSISTENCY CHART (replaces dead Pomodoro Deep Work chart) â”€â”€ */}
           <Animated.View style={[styles.fullCard, {
             opacity: animCharts,
             transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
@@ -714,7 +817,7 @@ export default function AnalyticsScreen() {
             </GlassCard>
           </Animated.View>
 
-          {/* ── 5. GYM STRENGTH PROGRESSION LINE CHART ── */}
+          {/* â”€â”€ 5. ATTENDANCE CHART â”€â”€ */}
           <Animated.View style={[styles.fullCard, {
             opacity: animCharts,
             transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [50,0] }) }],
@@ -722,36 +825,28 @@ export default function AnalyticsScreen() {
             <GlassCard style={styles.chartCard}>
               <View style={styles.chartHeader}>
                 <View>
-                  <Text style={styles.chartTitle}>Strength Progress</Text>
-                  <Text style={styles.chartSub}>Bench / Press — Max kg</Text>
+                  <Text style={styles.chartTitle}>Class Attendance</Text>
+                  <Text style={styles.chartSub}>Attended vs Missed</Text>
                 </View>
                 <View style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.accentAmber }]} />
-                  <Text style={styles.legendText}>Max lift</Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.accentGreen }]} />
+                  <Text style={styles.legendText}>Attended</Text>
+                  <View style={[styles.legendDot, { backgroundColor: colors.accentRose }]} />
+                  <Text style={styles.legendText}>Missed</Text>
                 </View>
               </View>
-              <LineChart data={gymStrengthData} color={colors.accentAmber} height={CHART_H + 10} />
+              <StackedBarChart
+                data={attendanceBarData}
+                color1={colors.accentGreen}
+                color2={colors.accentRose}
+                maxVal={maxAttBar}
+                height={CHART_H}
+              />
             </GlassCard>
           </Animated.View>
 
-          {/* ── 6. HABIT COMPLETION RATE LINE ── */}
-          <Animated.View style={[styles.fullCard, {
-            opacity: animCharts,
-            transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [60,0] }) }],
-          }]}>
-            <GlassCard style={styles.chartCard}>
-              <View style={styles.chartHeader}>
-                <View>
-                  <Text style={styles.chartTitle}>Habit Rate</Text>
-                  <Text style={styles.chartSub}>% of habits completed daily</Text>
-                </View>
-                <Delta cur={stats.curHabits} prev={stats.prevHabits} />
-              </View>
-              <LineChart data={habitLineData} color={colors.accentGreen} height={CHART_H} />
-            </GlassCard>
-          </Animated.View>
-
-          {/* ── 7. GYM VOLUME BAR CHART ── */}
+          {/* â”€â”€ 7. GYM VOLUME BAR CHART â”€â”€ */}
+          {/* ——— 7. GYM VOLUME BAR CHART ——— */}
           <Animated.View style={[styles.fullCard, {
             opacity: animCharts,
           }]}>
@@ -759,7 +854,7 @@ export default function AnalyticsScreen() {
               <View style={styles.chartHeader}>
                 <View>
                   <Text style={styles.chartTitle}>Gym Volume</Text>
-                  <Text style={styles.chartSub}>Exercises per session</Text>
+                  <Text style={styles.chartSub}>Total weight × reps (This vs Last period)</Text>
                 </View>
                 <Delta cur={stats.curGym} prev={stats.prevGym} />
               </View>
@@ -773,7 +868,7 @@ export default function AnalyticsScreen() {
             </GlassCard>
           </Animated.View>
 
-          {/* ── 8. ACTIVITY HEATMAP ── */}
+          {/* â”€â”€ 8. ACTIVITY HEATMAP â”€â”€ */}
           <Animated.View style={[styles.fullCard, {
             opacity: animHeat,
             transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
@@ -802,107 +897,9 @@ export default function AnalyticsScreen() {
               </View>
             </GlassCard>
           </Animated.View>
-          {/* ── 9. GOALS PROGRESS OVERLAY ── */}
-          {goalProgressData.length > 0 && (
-            <Animated.View style={[styles.fullCard, {
-              opacity: animHeat,
-              transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
-            }]}>
-              <GlassCard style={styles.chartCard}>
-                <View style={styles.chartHeader}>
-                  <View>
-                    <Text style={styles.chartTitle}>Goal Progression</Text>
-                    <Text style={styles.chartSub}>Tasks contributing to active goals</Text>
-                  </View>
-                </View>
-                {goalProgressData.map((goal, idx) => (
-                  <View key={goal.id || idx} style={{ marginBottom: SPACE.md }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                      <Text style={{ fontFamily: FONT_FAMILY.medium, color: colors.textPrimary, fontSize: 14 }}>{goal.title}</Text>
-                      <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.textMuted, fontSize: 12 }}>{goal.completed}/{goal.total} ({Math.round(goal.pct)}%)</Text>
-                    </View>
-                    <View style={{ height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' }}>
-                      <View style={{ width: `${goal.pct}%`, height: '100%', backgroundColor: colors.accentPrimary, borderRadius: 3 }} />
-                    </View>
-                  </View>
-                ))}
-              </GlassCard>
-            </Animated.View>
-          )}
+          {/* Goal Progression Removed */}
 
-          {/* ── ACADEMICS (Attendance & CGPA) ── */}
-          <AcademicPredictorCard />
-
-          {/* ── 10. CGPA TREND ── */}
-          {cgpaData.length > 1 && (
-            <Animated.View style={[styles.fullCard, {
-              opacity: animHeat,
-              transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
-            }]}>
-              <GlassCard style={styles.chartCard}>
-                <View style={styles.chartHeader}>
-                  <View>
-                    <Text style={styles.chartTitle}>Academic CGPA Trend</Text>
-                    <Text style={styles.chartSub}>SGPA progression across semesters</Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 100, marginTop: SPACE.md, justifyContent: 'space-between' }}>
-                  {cgpaData.map((sem, idx) => {
-                    const hPct = ((sem.sgpa || 0) / 10) * 100; 
-                    return (
-                      <View key={idx} style={{ flex: 1, alignItems: 'center' }}>
-                        <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.accentSecondary, fontSize: 10, marginBottom: 4 }}>{sem.sgpa}</Text>
-                        <View style={{ width: '60%', height: `${hPct}%`, backgroundColor: colors.accentSecondary, borderRadius: 4, minHeight: 4 }} />
-                        <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.textMuted, fontSize: 10, marginTop: 4 }}>{sem.name.substring(0,3)}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </GlassCard>
-            </Animated.View>
-          )}
-
-          {/* ── 11. ATTENDANCE TREND ── */}
-          {attendanceTrendData.length > 1 && (
-            <Animated.View style={[styles.fullCard, {
-              opacity: animHeat,
-              transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
-            }]}>
-              <GlassCard style={styles.chartCard}>
-                <View style={styles.chartHeader}>
-                  <View>
-                    <Text style={styles.chartTitle}>Attendance History</Text>
-                    <Text style={styles.chartSub}>Cumulative % over time</Text>
-                  </View>
-                  <Text style={{ fontFamily: FONT_FAMILY.mono, color: colors.accentPrimary, fontSize: 14 }}>
-                    {Math.round(attendanceTrendData[attendanceTrendData.length-1].pct)}%
-                  </Text>
-                </View>
-                <View style={styles.svgContainer}>
-                  <Svg width={CHART_W} height={CHART_H}>
-                    <Path
-                      d={smoothPath(attendanceTrendData.map((d, i) => ({
-                        x: (i / (attendanceTrendData.length - 1)) * CHART_W,
-                        y: CHART_H - (d.pct / 100) * CHART_H
-                      })))}
-                      fill="none"
-                      stroke={colors.accentPrimary}
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                    />
-                  </Svg>
-                </View>
-              </GlassCard>
-            </Animated.View>
-          )}
-
-          <TouchableOpacity 
-            style={styles.exportBtn}
-            onPress={() => exportAnalyticsToCSV(tasks, habitLogs)}
-          >
-            <Ionicons name="download-outline" size={20} color="#000" />
-            <Text style={styles.exportBtnText}>Export Analytics (CSV)</Text>
-          </TouchableOpacity>
+          {/* Removed Academic Predictor, CGPA Trend, Attendance Trend, and Export Button */}
 
           <View style={{ height: 100 }} />
           </View>
@@ -915,25 +912,34 @@ export default function AnalyticsScreen() {
 const makeStyles = (colors: any) => StyleSheet.create({
       root: { flex: 1 },
 
-      bgGlow1: {
-        position: 'absolute', top: -100, left: -60,
-        width: 300, height: 300, borderRadius: 150,
-        backgroundColor: 'rgba(165,153,255,0.18)',
-        transform: [{ scale: 2 }], opacity: 0.7,
-      },
-      bgGlow2: {
-        position: 'absolute', bottom: 200, right: -100,
-        width: 250, height: 250, borderRadius: 125,
-        backgroundColor: 'rgba(94,218,158,0.1)',
-        transform: [{ scale: 2 }],
-      },
+  bgGlow1: {
+    position: 'absolute', top: -80, left: -100,
+    width: 350, height: 350, borderRadius: 175,
+    backgroundColor: colors.accentPrimary,
+    transform: [{ scale: 1.5 }], opacity: 0.12,
+    filter: 'blur(40px)' as any,
+  },
+  bgGlow2: {
+    position: 'absolute', bottom: 100, right: -120,
+    width: 300, height: 300, borderRadius: 150,
+    backgroundColor: colors.accentSecondary,
+    transform: [{ scale: 1.5 }], opacity: 0.08,
+    filter: 'blur(50px)' as any,
+  },
+  bgGlow3: {
+    position: 'absolute', top: 300, right: -50,
+    width: 200, height: 200, borderRadius: 100,
+    backgroundColor: colors.accentAmber || '#ff9f4d',
+    transform: [{ scale: 1.5 }], opacity: 0.05,
+    filter: 'blur(40px)' as any,
+  },
 
       // Header
       header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
-        paddingHorizontal: SPACE.xl,
+        paddingHorizontal: 8,
         paddingTop: SPACE.lg,
         paddingBottom: SPACE.sm,
       },
@@ -957,7 +963,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       periodRow: {
         flexDirection: 'row',
         gap: SPACE.sm,
-        paddingHorizontal: SPACE.xl,
+        paddingHorizontal: 8,
         marginBottom: SPACE.lg,
       },
       periodBtn: {
@@ -984,7 +990,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       // Hero ring
       heroSection: {
         alignItems: 'center',
-        paddingHorizontal: SPACE.xl,
+        paddingHorizontal: 8,
         marginBottom: SPACE.lg,
       },
       ringInner: {
@@ -1021,7 +1027,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255,255,255,0.08)',
         paddingVertical: SPACE.lg,
-        paddingHorizontal: SPACE.xl,
+        paddingHorizontal: 8,
       },
       summaryItem: { alignItems: 'center', flex: 1 },
       summaryVal: { fontFamily: FONT_FAMILY.bold, fontSize: 22, lineHeight: 26 },
@@ -1043,7 +1049,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       cardRow: {
         flexDirection: 'row',
         gap: SPACE.md,
-        paddingHorizontal: SPACE.xl,
+        paddingHorizontal: 8,
         marginBottom: SPACE.md,
       },
       statCard: {
@@ -1066,7 +1072,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
 
       // Chart cards
       fullCard: {
-        paddingHorizontal: SPACE.xl,
+        paddingHorizontal: 8,
         marginBottom: SPACE.md,
       },
       chartCard: {
@@ -1151,3 +1157,4 @@ const makeStyles = (colors: any) => StyleSheet.create({
         marginTop: SPACE.sm,
       },
     });
+

@@ -46,20 +46,34 @@ function OptionPill<T extends string>({
 }) {
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      {options.map(opt => (
-        <TouchableOpacity
-          key={opt.key}
-          onPress={() => { feedback.tap(); onSelect(opt.key); }}
-          style={[
-            s.pill,
-            { borderColor: value === opt.key ? '#a599ff' : colors.border, backgroundColor: value === opt.key ? 'rgba(165,153,255,0.15)' : colors.surface },
-          ]}
-        >
-          <Text style={[s.pillText, { color: value === opt.key ? '#a599ff' : colors.textSecondary, fontFamily: value === opt.key ? FONT_FAMILY.bold : FONT_FAMILY.body }]}>
-            {opt.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+      {options.map(opt => {
+        const isSelected = value === opt.key;
+        return (
+          <TouchableOpacity
+            key={opt.key}
+            onPress={() => { feedback.tap(); onSelect(opt.key); }}
+            style={[
+              s.pill,
+              {
+                borderColor: isSelected ? '#a599ff' : 'rgba(255,255,255,0.08)',
+                backgroundColor: isSelected ? '#251e3d' : '#14121d',
+              },
+            ]}
+          >
+            <Text
+              style={[
+                s.pillText,
+                {
+                  color: isSelected ? '#a599ff' : 'rgba(255,255,255,0.65)',
+                  fontFamily: isSelected ? FONT_FAMILY.bold : FONT_FAMILY.body,
+                },
+              ]}
+            >
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -69,17 +83,70 @@ export function GymProfileModal({ visible, onClose }: Props) {
   const { gymProfile, saveGymProfile } = useGymProfile();
 
   const [draft, setDraft] = useState<GymProfile>(DEFAULT_PROFILE);
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([]);
+  const [selectedMuscles, setSelectedMuscles] = useState<string[]>([]);
 
   useEffect(() => {
-    if (visible) setDraft(gymProfile);
+    if (visible) {
+      setDraft(gymProfile);
+      const g = gymProfile.goal as any;
+      if (Array.isArray(g)) {
+        setSelectedGoals(g);
+      } else if (typeof g === 'string' && g.length > 0) {
+        setSelectedGoals(g.split(','));
+      } else {
+        setSelectedGoals(g ? [g] : []);
+      }
+      const fm = gymProfile?.focusMuscles;
+      if (typeof fm === 'string' && fm.trim().length > 0) {
+        setSelectedMuscles(fm.split(',').map(m => m.trim()).filter(Boolean));
+      } else if (Array.isArray(fm)) {
+        setSelectedMuscles(fm.filter(Boolean));
+      } else {
+        setSelectedMuscles([]);
+      }
+    }
   }, [visible, gymProfile]);
 
   const set = <K extends keyof GymProfile>(key: K, val: GymProfile[K]) =>
     setDraft(prev => ({ ...prev, [key]: val }));
 
+  const toggleGoal = (key: string) => {
+    feedback.tap();
+    setSelectedGoals(prev => {
+      let next: string[];
+      if (prev.includes(key)) {
+        next = prev.filter(k => k !== key);
+      } else {
+        if (prev.length >= 2) {
+          next = [prev[1], key];
+        } else {
+          next = [...prev, key];
+        }
+      }
+      set('goal', (next.join(',') || null) as any);
+      return next;
+    });
+  };
+
+  const toggleMuscle = (muscle: string) => {
+    feedback.tap();
+    setSelectedMuscles(prev => {
+      const next = prev.includes(muscle)
+        ? prev.filter(m => m !== muscle)
+        : [...prev, muscle];
+      set('focusMuscles', next.join(','));
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     feedback.commit();
-    await saveGymProfile(draft);
+    await saveGymProfile({
+      ...draft,
+      goal: (selectedGoals.join(',') || null) as any,
+      focusMuscles: selectedMuscles.join(','),
+    });
     onClose();
   };
 
@@ -89,10 +156,14 @@ export function GymProfileModal({ visible, onClose }: Props) {
     { key: 'fat_loss', label: '🔥 Fat Loss', icon: 'flame-outline' },
     { key: 'athletic', label: '⚡ Athletic', icon: 'flash-outline' },
   ];
+  const MAJOR_MUSCLES = [
+    'Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps',
+    'Forearms', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Abs / Core',
+  ];
   const EXP = [
-    { key: 'beginner' as const, label: 'Beginner\n(<1 yr)' },
-    { key: 'intermediate' as const, label: 'Intermediate\n(1-3 yr)' },
-    { key: 'advanced' as const, label: 'Advanced\n(3+ yr)' },
+    { key: 'beginner' as const, label: 'Beginner (<1 yr)' },
+    { key: 'intermediate' as const, label: 'Intermediate (1-3 yr)' },
+    { key: 'advanced' as const, label: 'Advanced (3+ yr)' },
   ];
   const EQUIP = [
     { key: 'full_gym' as const, label: '🏟️ Full Gym' },
@@ -108,160 +179,175 @@ export function GymProfileModal({ visible, onClose }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={[p.overlay, { flex: 1, justifyContent: 'flex-end' }]}>
+      <View style={p.overlay}>
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-          style={[p.sheet, { backgroundColor: '#121214' }]}
+          style={p.sheet}
         >
+          {/* Drag Handle */}
+          <View style={p.handle} />
 
-
-            {/* Header */}
-            <View style={p.header}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={p.iconBadge}>
-                  <Ionicons name="person-circle-outline" size={22} color="#a599ff" />
-                </View>
-                <View>
-                  <Text style={p.title}>Athlete Profile</Text>
-                  <Text style={p.subtitle}>GYM-GPT uses this to personalise every response</Text>
-                </View>
+          {/* Header */}
+          <View style={p.header}>
+            <View style={p.headerLeft}>
+              <View style={p.iconBadge}>
+                <Ionicons name="fitness" size={20} color="#a599ff" />
               </View>
-              <TouchableOpacity onPress={onClose} style={p.closeBtn}>
-                <Ionicons name="close" size={22} color="#8e8e93" />
-              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={p.title} numberOfLines={1}>Athlete Profile</Text>
+                <Text style={p.subtitle} numberOfLines={1}>GYM-GPT personalized coaching</Text>
+              </View>
+            </View>
+            <TouchableOpacity onPress={onClose} style={p.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={18} color="rgba(255,255,255,0.8)" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+
+            {/* Body Stats */}
+            <Text style={p.sectionLabel}>BODY STATS</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={p.label}>Height (cm)</Text>
+                <TextInput
+                  style={p.input}
+                  placeholder="e.g. 175"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  keyboardType="numeric"
+                  value={draft.heightCm?.toString() || ''}
+                  onChangeText={v => set('heightCm', v ? parseFloat(v) : null)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={p.label}>Weight (kg)</Text>
+                <TextInput
+                  style={p.input}
+                  placeholder="e.g. 75"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  keyboardType="numeric"
+                  value={draft.weightKg?.toString() || ''}
+                  onChangeText={v => set('weightKg', v ? parseFloat(v) : null)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={p.label}>Age</Text>
+                <TextInput
+                  style={p.input}
+                  placeholder="e.g. 22"
+                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  keyboardType="numeric"
+                  value={draft.age?.toString() || ''}
+                  onChangeText={v => set('age', v ? parseInt(v, 10) : null)}
+                />
+              </View>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+            {/* Gender */}
+            <Text style={p.sectionLabel}>GENDER</Text>
+            <View style={{ marginBottom: 20 }}>
+              <OptionPill options={GENDERS} value={draft.gender} onSelect={v => set('gender', v)} colors={{ border: '#2c2c2e', surface: '#1c1c1e', textSecondary: '#aeaeb2' }} />
+            </View>
 
-              {/* Body Stats */}
-              <Text style={p.sectionLabel}>BODY STATS</Text>
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={p.label}>Height (cm)</Text>
-                  <TextInput
-                    style={p.input}
-                    placeholder="e.g. 175"
-                    placeholderTextColor="#636366"
-                    keyboardType="numeric"
-                    value={draft.heightCm?.toString() || ''}
-                    onChangeText={v => set('heightCm', v ? parseFloat(v) : null)}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={p.label}>Weight (kg)</Text>
-                  <TextInput
-                    style={p.input}
-                    placeholder="e.g. 75"
-                    placeholderTextColor="#636366"
-                    keyboardType="numeric"
-                    value={draft.weightKg?.toString() || ''}
-                    onChangeText={v => set('weightKg', v ? parseFloat(v) : null)}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={p.label}>Age</Text>
-                  <TextInput
-                    style={p.input}
-                    placeholder="e.g. 22"
-                    placeholderTextColor="#636366"
-                    keyboardType="numeric"
-                    value={draft.age?.toString() || ''}
-                    onChangeText={v => set('age', v ? parseInt(v, 10) : null)}
-                  />
-                </View>
-              </View>
-
-              {/* Gender */}
-              <Text style={p.label}>Gender</Text>
-              <View style={{ marginBottom: 20 }}>
-                <OptionPill options={GENDERS} value={draft.gender} onSelect={v => set('gender', v)} colors={{ border: '#2c2c2e', surface: '#1c1c1e', textSecondary: '#aeaeb2' }} />
-              </View>
-
-              {/* Goal */}
-              <Text style={p.sectionLabel}>PRIMARY GOAL</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
-                {GOALS.map(g => (
+            {/* Goal - Single Line Horizontal Scroll with up to 2 multi-selection */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={p.sectionLabel}>PRIMARY GOALS (MAX 2)</Text>
+              <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11, color: selectedGoals.length > 0 ? '#a599ff' : 'rgba(255,255,255,0.4)', marginBottom: 10 }}>
+                {selectedGoals.length}/2 selected
+              </Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 12, marginBottom: 20 }}>
+              {GOALS.map(g => {
+                const isSelected = selectedGoals.includes(g.key!);
+                return (
                   <TouchableOpacity
                     key={g.key!}
-                    onPress={() => { feedback.tap(); set('goal', g.key); }}
-                    style={[p.goalCard, draft.goal === g.key && p.goalCardActive]}
+                    onPress={() => toggleGoal(g.key!)}
+                    style={[p.goalPill, isSelected && p.goalPillActive]}
                   >
-                    <Text style={p.goalEmoji}>{g.label.split(' ')[0]}</Text>
-                    <Text style={[p.goalLabel, { color: draft.goal === g.key ? '#a599ff' : '#aeaeb2' }]}>
+                    <Text style={{ fontSize: 16 }}>{g.label.split(' ')[0]}</Text>
+                    <Text style={[p.goalPillText, { color: isSelected ? '#a599ff' : 'rgba(255,255,255,0.7)', fontFamily: isSelected ? FONT_FAMILY.bold : FONT_FAMILY.medium }]}>
                       {g.label.split(' ').slice(1).join(' ')}
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                );
+              })}
+            </ScrollView>
 
-              {/* Experience */}
-              <Text style={p.sectionLabel}>TRAINING EXPERIENCE</Text>
-              <View style={{ marginBottom: 20 }}>
-                <OptionPill options={EXP} value={draft.experience} onSelect={v => set('experience', v)} colors={{ border: '#2c2c2e', surface: '#1c1c1e', textSecondary: '#aeaeb2' }} />
-              </View>
+            {/* Target Focus Muscles */}
+            <Text style={p.sectionLabel}>TARGET FOCUS MUSCLES</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+              {MAJOR_MUSCLES.map(m => {
+                const isSelected = selectedMuscles.includes(m);
+                return (
+                  <TouchableOpacity
+                    key={m}
+                    onPress={() => toggleMuscle(m)}
+                    style={[
+                      s.pill,
+                      {
+                        borderColor: isSelected ? '#a599ff' : 'rgba(255,255,255,0.08)',
+                        backgroundColor: isSelected ? '#251e3d' : '#14121d',
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        s.pillText,
+                        {
+                          color: isSelected ? '#a599ff' : 'rgba(255,255,255,0.65)',
+                          fontFamily: isSelected ? FONT_FAMILY.bold : FONT_FAMILY.medium,
+                        },
+                      ]}
+                    >
+                      {m}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
-              {/* Equipment */}
-              <Text style={p.sectionLabel}>EQUIPMENT AVAILABLE</Text>
-              <View style={{ marginBottom: 20 }}>
-                <OptionPill options={EQUIP} value={draft.equipment} onSelect={v => set('equipment', v)} colors={{ border: '#2c2c2e', surface: '#1c1c1e', textSecondary: '#aeaeb2' }} />
-              </View>
+            {/* Experience */}
+            <Text style={p.sectionLabel}>TRAINING EXPERIENCE</Text>
+            <View style={{ marginBottom: 20 }}>
+              <OptionPill options={EXP} value={draft.experience} onSelect={v => set('experience', v)} colors={{ border: '#2c2c2e', surface: '#1c1c1e', textSecondary: '#aeaeb2' }} />
+            </View>
 
-              {/* Days per week */}
-              <Text style={p.sectionLabel}>TRAINING DAYS / WEEK</Text>
-              <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-                {DAYS.map(d => (
+            {/* Days per week */}
+            <Text style={p.sectionLabel}>TRAINING DAYS / WEEK</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              {DAYS.map(d => {
+                const isSelected = draft.daysPerWeek === d;
+                return (
                   <TouchableOpacity
                     key={d}
                     onPress={() => { feedback.tap(); set('daysPerWeek', d); }}
-                    style={[p.dayPill, draft.daysPerWeek === d && p.dayPillActive]}
+                    style={[p.dayPill, isSelected && p.dayPillActive]}
                   >
-                    <Text style={[p.dayPillText, { color: draft.daysPerWeek === d ? '#a599ff' : '#aeaeb2' }]}>{d}x</Text>
+                    <Text style={[p.dayPillText, { color: isSelected ? '#a599ff' : 'rgba(255,255,255,0.7)' }]}>{d}x</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                );
+              })}
+            </View>
 
-              {/* Limitations */}
-              <Text style={p.sectionLabel}>INJURIES / LIMITATIONS</Text>
-              <TextInput
-                style={[p.input, p.textArea]}
-                placeholder="e.g. lower back pain, bad knees, shoulder impingement..."
-                placeholderTextColor="#636366"
-                multiline
-                numberOfLines={3}
-                value={draft.limitations}
-                onChangeText={v => set('limitations', v)}
-              />
+            {/* Exercises to avoid */}
+            <Text style={p.sectionLabel}>EXERCISES TO AVOID</Text>
+            <TextInput
+              style={[p.input, p.textArea]}
+              placeholder="e.g. deadlifts, pull-ups, leg press..."
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              multiline
+              numberOfLines={2}
+              value={draft.exercisesToAvoid}
+              onChangeText={v => set('exercisesToAvoid', v)}
+            />
+          </ScrollView>
 
-              {/* Exercises to avoid */}
-              <Text style={[p.sectionLabel, { marginTop: 16 }]}>EXERCISES TO AVOID</Text>
-              <TextInput
-                style={[p.input, p.textArea]}
-                placeholder="e.g. deadlifts, pull-ups, leg press..."
-                placeholderTextColor="#636366"
-                multiline
-                numberOfLines={2}
-                value={draft.exercisesToAvoid}
-                onChangeText={v => set('exercisesToAvoid', v)}
-              />
-
-              {/* Notes */}
-              <Text style={[p.sectionLabel, { marginTop: 16 }]}>OTHER PREFERENCES</Text>
-              <TextInput
-                style={[p.input, p.textArea]}
-                placeholder="e.g. prefer compound movements, no machines, short rest periods..."
-                placeholderTextColor="#636366"
-                multiline
-                numberOfLines={2}
-                value={draft.notes}
-                onChangeText={v => set('notes', v)}
-              />
-            </ScrollView>
-
-            {/* Save */}
-            <TouchableOpacity style={p.saveBtn} onPress={handleSave} activeOpacity={0.85}>
-              <Ionicons name="checkmark-circle" size={20} color="#000" />
-              <Text style={p.saveBtnText}>Save Profile — GYM-GPT will use this</Text>
-            </TouchableOpacity>
+          {/* Save Button */}
+          <TouchableOpacity style={p.saveBtn} onPress={handleSave} activeOpacity={0.85}>
+            <Ionicons name="sparkles" size={18} color="#080510" />
+            <Text style={p.saveBtnText}>Save Profile — GYM-GPT Ready</Text>
+          </TouchableOpacity>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -269,32 +355,196 @@ export function GymProfileModal({ visible, onClose }: Props) {
 }
 
 const p = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 20, paddingHorizontal: 20, maxHeight: '92%', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
-  iconBadge: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(165,153,255,0.12)', borderWidth: 1, borderColor: 'rgba(165,153,255,0.3)', alignItems: 'center', justifyContent: 'center' },
-  title: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#f2f2f7' },
-  subtitle: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: '#636366', marginTop: 2 },
-  closeBtn: { padding: 6, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 14 },
-  sectionLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: '#636366', letterSpacing: 1.5, marginBottom: 10 },
-  label: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#8e8e93', marginBottom: 6 },
-  input: { backgroundColor: '#1c1c1e', borderWidth: 1, borderColor: '#2c2c2e', borderRadius: 14, paddingHorizontal: 14, height: 46, fontFamily: FONT_FAMILY.body, fontSize: 15, color: '#f2f2f7' },
-  textArea: { height: 'auto' as any, paddingVertical: 12, textAlignVertical: 'top', marginBottom: 0 },
-  pill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
-  pillText: { fontFamily: FONT_FAMILY.body, fontSize: 13 },
-  goalCard: { width: '47%', backgroundColor: '#1c1c1e', borderWidth: 1, borderColor: '#2c2c2e', borderRadius: 16, padding: 14, alignItems: 'center', gap: 6 },
-  goalCardActive: { borderColor: '#a599ff', backgroundColor: 'rgba(165,153,255,0.1)' },
-  goalEmoji: { fontSize: 26 },
-  goalLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 13, textAlign: 'center' },
-  dayPill: { flex: 1, paddingVertical: 12, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1c1e', borderWidth: 1, borderColor: '#2c2c2e' },
-  dayPillActive: { borderColor: '#a599ff', backgroundColor: 'rgba(165,153,255,0.12)' },
-  dayPillText: { fontFamily: FONT_FAMILY.bold, fontSize: 16 },
-  saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#a599ff', borderRadius: 18, paddingVertical: 16, marginBottom: Platform.OS === 'ios' ? 32 : 16, marginTop: 8 },
-  saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#000' },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#000000',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 12,
+    paddingHorizontal: 20,
+    maxHeight: '92%',
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.2)',
+    borderBottomWidth: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  handle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  headerLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginRight: 12,
+  },
+  iconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(165,153,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 20,
+    color: '#ffffff',
+    letterSpacing: -0.3,
+  },
+  subtitle: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 2,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionLabel: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 11,
+    color: '#a599ff',
+    letterSpacing: 1.5,
+    marginBottom: 10,
+  },
+  label: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: '#161422',
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.2)',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    height: 48,
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 15,
+    color: '#ffffff',
+  },
+  textArea: {
+    height: 'auto' as any,
+    paddingVertical: 12,
+    textAlignVertical: 'top',
+    marginBottom: 0,
+  },
+  goalPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#14121d',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    gap: 6,
+  },
+  goalPillActive: {
+    borderColor: '#a599ff',
+    backgroundColor: '#251e3d',
+    shadowColor: '#a599ff',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 0,
+  },
+  goalPillText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 13,
+    backgroundColor: 'transparent',
+    includeFontPadding: false,
+  },
+  dayPill: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#14121d',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  dayPillActive: {
+    borderColor: '#a599ff',
+    backgroundColor: '#251e3d',
+    shadowColor: '#a599ff',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 0,
+  },
+  dayPillText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 16,
+    backgroundColor: 'transparent',
+    includeFontPadding: false,
+  },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#a599ff',
+    borderRadius: 26,
+    height: 52,
+    marginBottom: Platform.OS === 'ios' ? 32 : 16,
+    marginTop: 12,
+    shadowColor: '#a599ff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  saveBtnText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 15,
+    color: '#080510',
+    backgroundColor: 'transparent',
+    includeFontPadding: false,
+  },
 });
 
 // Thin alias for the existing style object in modal context
 const s = StyleSheet.create({
-  pill: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20, borderWidth: 1 },
-  pillText: { fontFamily: FONT_FAMILY.body, fontSize: 13 },
+  pill: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  pillText: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 13,
+    backgroundColor: 'transparent',
+    includeFontPadding: false,
+  },
 });

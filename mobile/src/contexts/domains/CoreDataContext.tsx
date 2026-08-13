@@ -56,14 +56,10 @@ export function useCoreData(): CoreDataContextType {
 
 // ─── Provider ──────────────────────────────────────────────────────────────────
 export function CoreDataProvider({ children }: { children: React.ReactNode }) {
-  // ── Offline-first boot: seed from MMKV SYNCHRONOUSLY ──
-  // Reads happen in < 5ms before the first render!
-  const cached = useRef(readCoreCacheMulti());
-
   const [user, setUser]           = useState<User | null>(null);
-  const [tasks, setTasks]         = useState<Task[]>(cached.current.tasks || []);
-  const [habits, setHabits]       = useState<Habit[]>(cached.current.habits || []);
-  const [habitLogs, setHabitLogs] = useState<HabitLog[]>(cached.current.habitLogs || []);
+  const [tasks, setTasks]         = useState<Task[]>([]);
+  const [habits, setHabits]       = useState<Habit[]>([]);
+  const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
   // WHATSAPP PATTERN: loading is derived — never a boolean flag that starts true.
   // If cache has seeded tasks/habits, loading is false from the very first render.
   // Screens with cached data never show a spinner on app resume.
@@ -92,13 +88,19 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   // Pinned modules (AsyncStorage)
   useEffect(() => {
     AsyncStorage.getItem("@zentrack_pinned_modules")
-      .then(val => { if (val) setPinnedModulesState(JSON.parse(val)); })
+      .then(val => { 
+        if (val) {
+          const parsed = JSON.parse(val);
+          setPinnedModulesState(parsed.slice(0, 4));
+        }
+      })
       .catch(handleSyncError);
   }, []);
 
   const setPinnedModules = (mods: string[]) => {
-    setPinnedModulesState(mods);
-    AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(mods)).catch(console.warn);
+    const clamped = mods.slice(0, 4);
+    setPinnedModulesState(clamped);
+    AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(clamped)).catch(console.warn);
   };
 
   // Google Workspace token
@@ -107,7 +109,20 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       .then(token => { if (token) setGoogleAccessToken(token); });
   }, []);
 
-  // Removed async boot (now synchronous above)
+  // ── Cache-first boot ─────────────────────────────────────────────────
+  // Load tasks/habits/habitLogs from AsyncStorage SYNCHRONOUSLY on mount (~5ms).
+  // Dashboard is fully usable before Firestore has responded.
+  // Firestore snapshots will arrive later and silently update the UI.
+  useEffect(() => {
+    let cancelled = false;
+    readCoreCacheMulti().then(cached => {
+      if (cancelled) return;
+      if (cached.tasks     && cached.tasks.length > 0)     setTasks(prev     => prev.length === 0 ? cached.tasks!     : prev);
+      if (cached.habits    && cached.habits.length > 0)    setHabits(prev    => prev.length === 0 ? cached.habits!    : prev);
+      if (cached.habitLogs && cached.habitLogs.length > 0) setHabitLogs(prev => prev.length === 0 ? cached.habitLogs! : prev);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   // Auth state — clears all data on logout
   useEffect(() => {
@@ -159,16 +174,16 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   // Critical-path Firestore subscriptions — open immediately on login.
-  // Each snapshot WRITE-THROUGHS to MMKV so the next cold-boot is instant.
+  // Each snapshot WRITE-THROUGHS to AsyncStorage so the next cold-boot is instant.
   useEffect(() => {
     if (!user) return;
     const uid = user.uid;
     const unsubs: (() => void)[] = [];
     let isCancelled = false;
-    
+
     InteractionManager.runAfterInteractions(() => {
       if (isCancelled) return;
-      
+
       unsubs.push(onSnapshot(
         query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
         snap => {

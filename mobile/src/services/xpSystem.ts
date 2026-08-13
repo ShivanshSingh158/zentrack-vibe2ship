@@ -22,14 +22,14 @@ import { db, auth } from './firebase';
 const XP_KEY     = 'zentrack_xp_v1';
 const STREAK_KEY = 'zentrack_xp_streak';
 
-export const LEVEL_THRESHOLDS = [0, 500, 1500, 3500, 7000, 13000, 22000, 35000];
+export const LEVEL_THRESHOLDS = [0, 500, 1200, 2500, 4200, 6500, 9500, 13500];
 export const LEVEL_TITLES = [
-  'Initiate',     // 0
-  'Operator',     // 500
-  'Commander',    // 1500
-  'Strategist',   // 3500
-  'Vanguard',     // 7000
-  'Architect',    // 13000
+  'Seeker',       // 0
+  'Warden',       // 500
+  'Sentinel',     // 1200
+  'Guardian',     // 2500
+  'Vanguard',     // 4200
+  'Luminary',     // 6500
   'Legend',       // 22000
   'Mythic',       // 35000
 ];

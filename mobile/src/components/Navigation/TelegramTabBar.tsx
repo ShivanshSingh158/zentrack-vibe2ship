@@ -1,14 +1,72 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Pressable } from 'react-native-gesture-handler';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, withSpring, Easing } from 'react-native-reanimated';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { feedback } from '../../utils/haptics';
 import { FONT_FAMILY } from '../../theme/tokens';
 
-export function TelegramTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+
+
+function TabBarIcon({
+  activeName,
+  inactiveName,
+  isFocused,
+  color,
+  inactiveColor,
+}: {
+  activeName: any;
+  inactiveName: any;
+  isFocused: boolean;
+  color: string;
+  inactiveColor: string;
+}) {
+  const scale = useSharedValue(1);
+  const opacityFocused = useSharedValue(isFocused ? 1 : 0);
+
+  useEffect(() => {
+    if (isFocused) {
+      scale.value = withSpring(0.85, { damping: 15, stiffness: 300 }, () => {
+        scale.value = withSpring(1, { damping: 12, stiffness: 200 });
+      });
+    }
+    opacityFocused.value = withTiming(isFocused ? 1 : 0, { duration: 250, easing: Easing.out(Easing.quad) });
+  }, [isFocused]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 24,
+    height: 24,
+  }));
+
+  const activeIconStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    opacity: opacityFocused.value,
+  }));
+
+  const inactiveIconStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    opacity: 1 - opacityFocused.value,
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Animated.View style={inactiveIconStyle}>
+        <Ionicons name={inactiveName} size={24} color={inactiveColor} />
+      </Animated.View>
+      <Animated.View style={activeIconStyle}>
+        <Ionicons name={activeName} size={24} color={color} />
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+type TelegramTabBarProps = BottomTabBarProps & { badges?: Record<string, number> };
+
+export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: TelegramTabBarProps) {
   const { colors } = useTheme();
 
   // Filter routes that are actually visible
@@ -87,8 +145,8 @@ export function TelegramTabBar({ state, descriptors, navigation }: BottomTabBarP
         styles.container, 
         { 
           backgroundColor: 'rgba(25, 25, 28, 0.98)',
-          left: visibleRoutes.length >= 6 ? 6 : 16,
-          right: visibleRoutes.length >= 6 ? 6 : 16,
+          left: 16,
+          right: 16,
         }, 
         containerAnimatedStyle
       ]} 
@@ -118,7 +176,6 @@ export function TelegramTabBar({ state, descriptors, navigation }: BottomTabBarP
         const isActuallyFocused = state.routes[state.index].key === route.key;
 
         const onPress = () => {
-          feedback.tap();
           const event = navigation.emit({
             type: 'tabPress',
             target: route.key,
@@ -162,11 +219,20 @@ export function TelegramTabBar({ state, descriptors, navigation }: BottomTabBarP
             android_ripple={null}
           >
             <View style={{ alignItems: 'center' }}>
-              <Ionicons 
-                name={iconName} 
-                size={24} 
-                color={isVisuallyFocused ? colors.accentPrimary : colors.textMuted} 
-              />
+              <View>
+                <TabBarIcon
+                  activeName={iconSet.active}
+                  inactiveName={iconSet.inactive}
+                  isFocused={isVisuallyFocused}
+                  color={colors.accentPrimary}
+                  inactiveColor={colors.textMuted}
+                />
+                {badges[route.name] > 0 && (
+                  <View style={styles.badgeContainer}>
+                    <Text style={styles.badgeText}>{badges[route.name]}</Text>
+                  </View>
+                )}
+              </View>
               <Text style={[
                 styles.tabLabel, 
                 { color: isVisuallyFocused ? colors.accentPrimary : colors.textMuted }
@@ -219,5 +285,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontFamily: FONT_FAMILY.medium,
     marginTop: 2, 
+  },
+  badgeContainer: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    backgroundColor: '#ff6961',
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: 'rgba(25, 25, 28, 1)',
+  },
+  badgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.bold,
   },
 });

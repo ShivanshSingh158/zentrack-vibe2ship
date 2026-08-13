@@ -1,5 +1,5 @@
 /**
- * TaskTimeLogSheet.tsx GÇö ZenTrack Mobile
+ * TaskTimeLogSheet.tsx â€¢ ZenTrack Mobile
  *
  * Bottom sheet that pops up when completing a task to log:
  *   1. Actual start time (planned time slot offset, or relative/custom time)
@@ -19,8 +19,9 @@ import { Task } from '../../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
 import BottomSheet from '../ui/BottomSheet';
+import AnimatedPressable from '../../components/AnimatedPressable';
 
-// GöÇGöÇ Duration Chips GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+// â€¢â€¢ Duration Chips â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢
 
 const DEFAULT_DURATION_CHIPS: { label: string; minutes: number }[] = [
   { label: '5m',   minutes: 5   },
@@ -34,7 +35,7 @@ const DEFAULT_DURATION_CHIPS: { label: string; minutes: number }[] = [
   { label: '3h',   minutes: 180 },
 ];
 
-// GöÇGöÇ Helpers GöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇGöÇ
+// â€¢â€¢ Helpers â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢
 
 function parseTimeStrMinutes(str?: string): number | null {
   if (!str) return null;
@@ -80,7 +81,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
   // Parse time slot details
   const timeSlotInfo = useMemo(() => {
     if (!task?.timeSlot) return null;
-    const parts = task.timeSlot.split(/[-GÇô]/).map(s => s.trim());
+    const parts = task.timeSlot.split(/[-â€¢]/).map(s => s.trim());
     const startMin = parseTimeStrMinutes(parts[0]);
     const endMin = parts.length > 1 ? parseTimeStrMinutes(parts[1]) : null;
     const durationMin = (startMin !== null && endMin !== null && endMin > startMin)
@@ -220,7 +221,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
               {startChips.map((chip) => {
                 const isSelected = startOption === chip.id;
                 return (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     key={chip.id}
                     style={[
                       styles.chip,
@@ -228,7 +229,6 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
                       isSelected && styles.chipActive,
                     ]}
                     onPress={() => {
-                      Haptics.selectionAsync();
                       setStartOption(chip.id);
                     }}
                   >
@@ -239,18 +239,17 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
                     ]}>
                       {chip.label}
                     </Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 );
               })}
 
-              <TouchableOpacity
+              <AnimatedPressable
                 style={[
                   styles.chip,
                   { backgroundColor: colors.surface2, borderColor: colors.border },
                   startOption === 'custom' && styles.chipActive,
                 ]}
                 onPress={() => {
-                  Haptics.selectionAsync();
                   setStartOption('custom');
                   if (Platform.OS === 'android') {
                     setShowAndroidPicker(true);
@@ -265,7 +264,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
                 ]}>
                   {startOption === 'custom' ? minutesTo12HourStr(customTime.getHours() * 60 + customTime.getMinutes()) : 'Custom'}
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </ScrollView>
 
             {((Platform.OS === 'ios' && startOption === 'custom') || (Platform.OS === 'android' && showAndroidPicker)) && (
@@ -308,7 +307,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
                 const isSelected = selectedDuration === chip.minutes;
                 const isPlanned = plannedMinutes === chip.minutes;
                 return (
-                  <TouchableOpacity
+                  <AnimatedPressable
                     key={chip.minutes}
                     style={[
                       styles.chip,
@@ -317,7 +316,6 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
                       isPlanned && !isSelected && styles.chipPlannedBorder,
                     ]}
                     onPress={() => {
-                      Haptics.selectionAsync();
                       setSelectedDuration(chip.minutes);
                     }}
                   >
@@ -332,7 +330,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
                     ]}>
                       {chip.label}
                     </Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 );
               })}
             </View>
@@ -341,20 +339,20 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
 
         {/* Action Buttons */}
         <View style={[styles.footer, { borderTopColor: colors.border }]}>
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.btn, styles.btnSkip, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
             onPress={handleSkip}
           >
             <Text style={[styles.btnSkipText, { color: colors.textSecondary }]}>Skip</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
 
-          <TouchableOpacity
+          <AnimatedPressable
             style={[styles.btn, styles.btnSave]}
             onPress={handleSave}
           >
             <Ionicons name="checkmark" size={16} color="#000000" style={{ marginRight: 6 }} />
             <Text style={styles.btnSaveText}>Save</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
       </View>
     </BottomSheet>
@@ -364,13 +362,11 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
 const styles = StyleSheet.create({
   container: {
     paddingBottom: SPACE.md,
-    marginHorizontal: -20,
-    marginTop: -10,
+    flexShrink: 1,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingHorizontal: 20,
     marginBottom: SPACE.md,
   },
   iconBadge: {
@@ -412,11 +408,10 @@ const styles = StyleSheet.create({
     color: '#A599FF',
   },
   scrollArea: {
-    maxHeight: 400,
+    maxHeight: 280,
   },
   section: {
     marginBottom: SPACE.lg,
-    paddingHorizontal: 20,
   },
   sectionTitle: {
     fontFamily: FONT_FAMILY.bold,
@@ -490,7 +485,6 @@ const styles = StyleSheet.create({
   footer: {
     flexDirection: 'row',
     gap: SPACE.md,
-    paddingHorizontal: 20,
     paddingTop: SPACE.md,
     marginTop: SPACE.xs,
     borderTopWidth: 1,

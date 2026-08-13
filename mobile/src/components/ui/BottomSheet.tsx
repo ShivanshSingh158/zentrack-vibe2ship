@@ -7,6 +7,7 @@ import Animated, {
   withSpring,
   runOnJS,
   useAnimatedKeyboard,
+  Easing,
 } from 'react-native-reanimated';
 import { Portal } from '../../contexts/PortalContext';
 import { useTheme } from "../../contexts/ThemeContext";
@@ -28,12 +29,12 @@ export default function BottomSheet({
 }: BottomSheetProps) {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
-  // GöÇGöÇ All hooks must be called unconditionally GÇö NO early returns before this line GöÇGöÇ
+  // GG All hooks must be called unconditionally G NO early returns before this line GG
   const [mounted, setMounted] = React.useState(visible);
   const translateY = useSharedValue(1000);
   const backdropOpacity = useSharedValue(0);
 
-  // GöÇGöÇ These MUST stay here, before any conditional return GöÇGöÇ
+  // GG These MUST stay here, before any conditional return GG
   const keyboard = useAnimatedKeyboard();
 
   const sheetStyle = useAnimatedStyle(() => ({
@@ -48,11 +49,13 @@ export default function BottomSheet({
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      translateY.value = withSpring(0, { damping: 20, stiffness: 250, mass: 0.8 });
-      backdropOpacity.value = withTiming(1, { duration: 150 });
+      // Fast, smooth spring for opening (instant but natural feel)
+      translateY.value = withSpring(0, { damping: 22, stiffness: 350, mass: 0.5 });
+      backdropOpacity.value = withTiming(1, { duration: 120 });
     } else if (mounted) {
-      translateY.value = withTiming(1000, { duration: 150 });
-      backdropOpacity.value = withTiming(0, { duration: 150 }, (finished) => {
+      // Very fast close
+      translateY.value = withTiming(1000, { duration: 100, easing: Easing.in(Easing.cubic) });
+      backdropOpacity.value = withTiming(0, { duration: 100 }, (finished) => {
         if (finished) {
           runOnJS(setMounted)(false);
         }
@@ -71,7 +74,7 @@ export default function BottomSheet({
   return (
     <Portal name={portalId}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <Pressable style={{ flex: 1 }} onPress={onClose} />
       </Animated.View>
       <Animated.View
         style={[

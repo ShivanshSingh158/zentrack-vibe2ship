@@ -22,13 +22,16 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
+import * as SplashScreen from 'expo-splash-screen';
+import { Image } from 'react-native';
 import { auth } from '../services/firebase';
 import { useMobileData } from '../contexts/MobileDataContext';
-import { cacheAwareLazy, startPrefetching } from '../utils/ModulePrefetcher';
+import { cacheAwareLazy, startPrefetching, preloadNow } from '../utils/ModulePrefetcher';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FONT_FAMILY, SPACE, FONT_SIZE } from '../theme/tokens';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTabBarBadges } from '../hooks/useTabBarBadges';
 import { feedback } from '../utils/haptics';
 import ErrorBoundary from '../components/ErrorBoundary';
 
@@ -47,6 +50,7 @@ import SettingsScreen from '../screens/SettingsScreen';
 import GymStack from './GymStack';
 import SaraScreen from '../screens/SaraScreen';
 import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen';
+import XPConstellationScreen from '../screens/XPConstellationScreen';
 
 // --- Lazy screens (background-prefetched after login) ------------------------
 // These are NOT pinned by default -- loaded lazily to keep startup fast.
@@ -141,91 +145,6 @@ const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   ...LAZY_COMPONENT_MAP,
 };
 
-// --- SplashLoader ------------------------------------------------------------
-//
-// Full-screen overlay shown while Firebase auth resolves (~800ms avg).
-// Shows a random brutal quote for character — loaded DYNAMICALLY in an effect,
-// never at module parse time, so it never delays startup.
-//
-// Architecture: native splash shows the app icon → JS hydrates → this overlay
-// shows a quote for the auth wait time → fades out smoothly → home screen.
-//
-// CRITICAL: ALL hooks must be called BEFORE any conditional return (React rules).
-
-export function SplashLoader({ ready = false }: { ready?: boolean }) {
-  const overlayOpacity = useSharedValue(1);
-  const textOpacity    = useSharedValue(0);
-  const [hidden, setHidden] = useState(false);
-  const [quote, setQuote]   = useState<{ text: string; author: string } | null>(null);
-
-  // ALL hooks before any conditional return ─────────────────────────────────
-  const overlayStyle = useAnimatedStyle(() => ({ opacity: overlayOpacity.value }));
-  const textStyle    = useAnimatedStyle(() => ({ opacity: textOpacity.value }));
-
-  // Load quote dynamically AFTER first render so it never blocks JS startup
-  useEffect(() => {
-    // Dynamic require — not a module-level import, so it's excluded from the
-    // synchronous parse/eval cost of this file.
-    const { BRUTAL_QUOTES, PERSONALITY_QUOTES } = require('../data/brutalQuotes') as any;
-    const allQuotes = [...BRUTAL_QUOTES, ...PERSONALITY_QUOTES['consistent'], ...PERSONALITY_QUOTES['momentum-builder'], ...PERSONALITY_QUOTES['binge-worker']];
-    const picked = allQuotes[Math.floor(Math.random() * allQuotes.length)];
-    setQuote(picked);
-    // Fade in the quote text once loaded
-    textOpacity.value = withTiming(1, { duration: 400, easing: Easing.out(Easing.ease) });
-  }, []);
-
-  // Fade out the whole overlay once auth resolves
-  useEffect(() => {
-    if (!ready) return;
-    overlayOpacity.value = withTiming(0, { duration: 350, easing: Easing.out(Easing.ease) }, (finished) => {
-      if (finished) runOnJS(setHidden)(true);
-    });
-  }, [ready]);
-
-  if (hidden) return null;
-
-  return (
-    <Animated.View style={[splash.container, overlayStyle]} pointerEvents="none">
-      {quote && (
-        <Animated.View style={[splash.inner, textStyle]}>
-          <Text style={splash.quote}>"{quote.text}"</Text>
-          <Text style={splash.author}>— {quote.author}</Text>
-        </Animated.View>
-      )}
-    </Animated.View>
-  );
-}
-
-const splash = StyleSheet.create({
-  container: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#080510',
-    alignItems:      'center',
-    justifyContent:  'center',
-    paddingHorizontal: 36,
-    zIndex:           9999,
-  },
-  inner: {
-    alignItems: 'center',
-    gap:        16,
-  },
-  quote: {
-    fontFamily:  FONT_FAMILY.serif,
-    fontSize:    20,
-    lineHeight:  30,
-    color:       '#f2f2f7',
-    textAlign:   'center',
-    fontStyle:   'italic',
-  },
-  author: {
-    fontFamily:    FONT_FAMILY.regular,
-    fontSize:      12,
-    color:         'rgba(242,242,247,0.45)',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-});
-
 // --- Nested screen header ----------------------------------------------------
 function NestedHeader({ title }: { title: string }) {
   const { colors }  = useTheme();
@@ -263,11 +182,16 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
     }
   }, []);
 
-  // Background-prefetch lazy (non-sync-imported) screens after interactions settle.
-  // Pinned screens that are sync-imported don't need prefetching.
-  useEffect(() => { startPrefetching(pinnedModules); }, [pinnedModules]);
+  // Background-prefetch lazy screens once on mount (after first render).
+  // We read pinnedModules via ref so the effect never re-fires on re-renders,
+  // keeping startup ultra-lean. Pinned screens are prioritised in the queue.
+  const pinnedModulesRef = useRef(pinnedModules);
+  pinnedModulesRef.current = pinnedModules;
+  useEffect(() => { startPrefetching(pinnedModulesRef.current); }, []);
 
-  const renderTabBar = useCallback((props: any) => <TelegramTabBar {...props} />, []);
+  const badges = useTabBarBadges();
+
+  const renderTabBar = useCallback((props: any) => <TelegramTabBar {...props} badges={badges} />, [badges]);
 
   return (
     <Tab.Navigator
@@ -300,6 +224,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
               tabBarButton:    TabBarNullButton,
             } : {
               tabBarItemStyle: { paddingVertical: 10 },
+              lazy: false,
             }}
           />
         );
@@ -332,6 +257,7 @@ function NestedScreens() {
         <Stack.Screen name="SaraModal"             component={withErrorBoundary(SaraScreen,                  'SaraModal')}     options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="AgentHistory"          component={withErrorBoundary(AgentHistoryScreen,          'AgentHistory')} />
         <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false }} />
+        <Stack.Screen name="XPConstellation"       component={withErrorBoundary(XPConstellationScreen,       'XPConstellation')} options={{ headerShown: false }} />
       </Stack.Navigator>
     </ErrorBoundary>
   );
@@ -348,6 +274,13 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+
+  // Pre-warm SaraScreen 2.5s after login so first tap opens instantly.
+  // Not at startup (keeps cold start fast) — loaded silently in background.
+  useEffect(() => {
+    const timer = setTimeout(() => preloadNow('SaraScreen'), 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const [showSara, setShowSara] = useState(SARA_VISIBLE_ROUTES.has(initialTab));
 
@@ -370,14 +303,17 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
       {showSara && (
         <AnimatedPressable
           style={styles.globalSaraBtn}
-          onPress={() => { feedback.commit(); setSaraVisible(true); }}
-          haptic="heavy"
+          onPress={() => setSaraVisible(true)}
+          haptic="none"
         >
-          <Ionicons name="planet" size={26} color={colors.accentPrimary} />
+          <Image source={require('../../assets/images/sara-idle.png')} style={{ width: 40, height: 40, opacity: 1 }} resizeMode="contain" />
         </AnimatedPressable>
       )}
 
-      <SaraScreen isGlobalModal={true} visible={saraVisible} onClose={() => setSaraVisible(false)} />
+      {/* Only mount SaraScreen when actually opened — prevents 63KB of hooks running at startup */}
+      {saraVisible && (
+        <SaraScreen isGlobalModal={true} visible={saraVisible} onClose={() => setSaraVisible(false)} />
+      )}
     </View>
   );
 }
@@ -414,14 +350,27 @@ export default function AppNavigator() {
   const firstAuthAt = useRef<number>(0);
   const hasResolved = useRef(false);
 
+  const [wasLoggedIn, setWasLoggedIn] = useState(false);
+
   useEffect(() => {
     const boot = async () => {
       try {
-        const [[, savedTab], [, onboardedVal]] =
-          await AsyncStorage.multiGet([NAV_ROUTE_KEY, ONBOARDING_KEY]);
+        const [[, savedTab], [, onboardedVal], [, optimisticUserStr]] =
+          await AsyncStorage.multiGet([NAV_ROUTE_KEY, ONBOARDING_KEY, '@zentrack_optimistic_user']);
+        
         // Cold boot: always Home (WhatsApp/Instagram standard).
         setInitialTab('Home');
         if (onboardedVal) setOnboarded(onboardedVal === 'true');
+        
+        // WhatsApp-style Optimistic Boot: If we have a cached user profile, boot instantly!
+        if (optimisticUserStr) {
+          try {
+            const optimisticUser = JSON.parse(optimisticUserStr);
+            setUser(optimisticUser as User);
+            setAppReady(true);
+            hasResolved.current = true; // Mark as resolved so Firebase background check doesn't double-boot
+          } catch {}
+        }
       } catch {
         // Safe fallback: Home, onboarded=true
       }
@@ -431,25 +380,42 @@ export default function AppNavigator() {
 
     // Firebase auth listener -- one subscription, lives forever
     const unsubAuth = onAuthStateChanged(auth, async (usr) => {
+      await bootPromise;
+
+      const saveOptimisticUser = (u: User | null) => {
+        if (u) {
+          AsyncStorage.setItem('@zentrack_optimistic_user', JSON.stringify({
+            uid: u.uid,
+            email: u.email,
+            displayName: u.displayName,
+          })).catch(() => {});
+        } else {
+          AsyncStorage.removeItem('@zentrack_optimistic_user').catch(() => {});
+        }
+      };
+
       if (!hasResolved.current) {
+        // We only hit this block if we did NOT have an optimistic user (i.e. fresh install or logged out)
+        await auth.authStateReady();
+        const realUser = auth.currentUser;
+
         hasResolved.current = true;
         firstAuthAt.current = Date.now();
-        setUser(usr);
-        if (usr) {
-          const val = await AsyncStorage.getItem(ONBOARDING_KEY).catch(() => null);
-          setOnboarded(val === 'true');
-        }
-        await bootPromise;
+        setUser(realUser);
         setAppReady(true);
+        saveOptimisticUser(realUser);
         return;
       }
 
+      // Background Validation: We booted optimistically, now Firebase is checking the real token
       if (!usr) {
         // Null within 3s of first resolution = token refresh, NOT logout
         if (Date.now() - firstAuthAt.current < 3000) return;
         setUser(null);
+        saveOptimisticUser(null);
       } else {
         setUser(usr);
+        saveOptimisticUser(usr);
       }
     });
 
@@ -522,12 +488,23 @@ export default function AppNavigator() {
     if (routeName) DeviceEventEmitter.emit('route_changed', routeName);
   }, []);
 
+  // CRITICAL: Do not mount the navigation tree until we know the user's auth state.
+  // Otherwise, React Native renders the LandingScreen in the background, and if the 
+  // native splash screen hides a millisecond too early, the user sees it flash.
+  if (!appReady) {
+    return <View style={{ flex: 1, backgroundColor: '#080510' }} />;
+  }
+
   return (
     <View style={{ flex: 1, backgroundColor: '#080510' }}>
       <NavigationContainer
         ref={navigationRef}
         theme={ZEN_DARK_THEME}
         onStateChange={onNavStateChange}
+        onReady={() => {
+          // Hide splash ONLY after React Native has fully painted the final tree!
+          SplashScreen.hideAsync();
+        }}
       >
         {user ? (
           !onboarded ? (
@@ -549,11 +526,6 @@ export default function AppNavigator() {
           </Stack.Navigator>
         )}
       </NavigationContainer>
-
-      {/* Splash overlay -- sits ABOVE NavigationContainer.
-          SplashLoader self-destructs after its 350ms fade-out completes.
-          The native view beneath stays warm -- no grey flash ever. */}
-      <SplashLoader ready={appReady} />
     </View>
   );
 }
@@ -578,16 +550,13 @@ const styles = StyleSheet.create({
     width:            48,
     height:           48,
     borderRadius:     24,
-    borderWidth:      1,
-    borderColor:      'rgba(165,153,255,0.4)',
     alignItems:       'center',
     justifyContent:   'center',
     overflow:         'hidden',
-    backgroundColor:  'rgba(165,153,255,0.1)',
     shadowColor:      '#a599ff',
     shadowOffset:     { width: 0, height: 4 },
     shadowOpacity:    0.3,
     shadowRadius:     8,
-    elevation:        8,
+    elevation:        5,
   },
 });

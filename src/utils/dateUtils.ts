@@ -47,3 +47,54 @@ export function formatHoursDisplay(val: string | number | undefined): string {
     return `${minutes} min`;
   }
 }
+
+/**
+ * Checks if transcribed speech is empty, silence, background noise,
+ * or STT hallucination (e.g. "[silence]", "Thank you.", "Task", etc.)
+ */
+export function isSilenceOrNoise(text: string | null | undefined): boolean {
+  if (!text) return true;
+  const clean = text.trim().toLowerCase();
+  if (clean.length === 0) return true;
+
+  if (/^[\s.?!,\-–—_"'`~*#@$%^&()\[\]{}|\\/<>:;+=]*$/.test(clean)) return true;
+
+  const silenceTokens = [
+    'silence',
+    '[silence]',
+    '(silence)',
+    'blank audio',
+    '[blank_audio]',
+    '(blank_audio)',
+    'background noise',
+    '[background noise]',
+    'coughing',
+    '[coughing]',
+    'music',
+    '[music]',
+    'thank you',
+    'thank you.',
+    'thanks',
+    'thanks.',
+    'subtitles by',
+    'am',
+    'task',
+    'task.',
+    'add task',
+    'add task.',
+    'unspecified',
+    'unspecified.',
+    'listening',
+    'listening...',
+    'sound of',
+    'you',
+    'the',
+  ];
+
+  if (silenceTokens.includes(clean)) return true;
+  if (/^\[.*\]$/.test(clean) || /^\(.*\)$/.test(clean)) return true;
+  if (clean.startsWith('subtitles by') || clean.startsWith('captioned by')) return true;
+
+  return false;
+}
+

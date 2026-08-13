@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { debounce } from 'lodash';
 import { InteractionManager } from 'react-native';
 import { collection, doc, setDoc, updateDoc, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -75,12 +76,17 @@ export function getCustomPlanDay(customDays: any, planIdx: number) {
 }
 
 export function useGymLog(dateStr: string) {
-  const { gymLogs, gymLogsReady, gymEnsureSubscribed, user, userGymPlan } = useMobileData();
+  const { gymLogs, gymLogsReady, gymEnsureSubscribed, user, userGymPlan, updateMasterPlan, optimisticAddGymLog, optimisticUpdateGymLog } = useMobileData();
 
   useEffect(() => {
     gymEnsureSubscribed?.();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [gymEnsureSubscribed]);
+
+  const debouncedSyncMasterPlan = useRef(
+    debounce((newExercises: GymExerciseLog[], planDayIndex: number) => {
+      updateMasterPlan(planDayIndex, newExercises);
+    }, 3500)
+  ).current;
 
   const [log, setLog] = useState<GymDayLog | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -189,7 +195,7 @@ export function useGymLog(dateStr: string) {
       const planIdx = planDayIndexForDate(dateStr);
       const planDay = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
 
-      const patchedExercises = (existing.exercises || []).map((ex, idx) => {
+      let patchedExercises = (existing.exercises || []).map((ex, idx) => {
         const lastSets = getLastSessionSets(ex.exerciseId, ex.name);
         const lastValidSet = lastSets && lastSets.length > 0
           ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
@@ -221,6 +227,19 @@ export function useGymLog(dateStr: string) {
           setsLog: patchedSetsLog,
         };
       });
+
+      // Sync log exercise order with master plan if workout is not started
+      if (!existing.workoutStartTime && planDay && !planDay.isRest) {
+        patchedExercises.sort((a, b) => {
+          const aIndex = planDay.exercises.findIndex((e: any) => e.name === a.name);
+          const bIndex = planDay.exercises.findIndex((e: any) => e.name === b.name);
+          if (aIndex === -1 && bIndex === -1) return 0;
+          if (aIndex === -1) return 1;
+          if (bIndex === -1) return -1;
+          return aIndex - bIndex;
+        });
+        patchedExercises.forEach((ex, idx) => ex._idx = idx);
+      }
 
       let patchedLog = { ...existing, exercises: patchedExercises } as GymDayLog;
       if (!patchedLog.cardio) {
@@ -294,6 +313,14 @@ export function useGymLog(dateStr: string) {
 
     // ── Write cache immediately (sync, ~0ms) so the UI always has fresh data ──
     writeGymLogCache(updatedLog.date, updatedLog);
+
+    setTimeout(() => {
+      if (gymLogs.some(l => l.id === logId)) {
+        optimisticUpdateGymLog(logId, updatedLog);
+      } else {
+        optimisticAddGymLog(updatedLog);
+      }
+    }, 0);
 
     // ── Defer Firestore write until after animations complete ──────────────────
     // InteractionManager.runAfterInteractions guarantees this won't block any
@@ -413,9 +440,29 @@ export function useGymLog(dateStr: string) {
       const reindexed = exercises.map((ex, i) => ({ ...ex, _idx: i }));
       const updated = { ...prev, exercises: reindexed, updatedAt: Date.now() };
       saveLog(updated);
+      
+      if (updated.dayPlanIndex !== undefined && updated.dayPlanIndex !== null) {
+        debouncedSyncMasterPlan(reindexed, updated.dayPlanIndex);
+      }
+      
       return updated;
     });
-  }, [saveLog]);
+  }, [saveLog, debouncedSyncMasterPlan]);
+
+  const reorderExercisesFull = useCallback((newExercisesList: GymExerciseLog[]) => {
+    setLog(prev => {
+      if (!prev) return prev;
+      const reindexed = newExercisesList.map((ex, i) => ({ ...ex, _idx: i }));
+      const updated = { ...prev, exercises: reindexed, updatedAt: Date.now() };
+      saveLog(updated);
+      
+      if (updated.dayPlanIndex !== undefined && updated.dayPlanIndex !== null) {
+        debouncedSyncMasterPlan(reindexed, updated.dayPlanIndex);
+      }
+      
+      return updated;
+    });
+  }, [saveLog, debouncedSyncMasterPlan]);
 
   const addCardio = useCallback((type: string) => {
     setLog(prev => {
@@ -793,6 +840,7 @@ export function useGymLog(dateStr: string) {
     deleteExercise,
     updateExercise,
     reorderExercise,
+    reorderExercisesFull,
     addExercise,
     addSet,
     removeSet,

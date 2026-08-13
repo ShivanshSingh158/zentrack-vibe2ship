@@ -9,7 +9,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput,
-  Platform, ScrollView,
+  Platform, ScrollView, Keyboard
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -20,13 +20,15 @@ import {
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useMobileData } from '../../contexts/MobileDataContext';
 import BottomSheet from '../../components/ui/BottomSheet';
 import NLPTaskInput from '../../components/Tasks/NLPTaskInput';
 import VoiceDictationOverlay from '../../components/Tasks/VoiceDictationOverlay';
 import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal';
 import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
-import { parseNLTask, ParsedTask, NLPToken } from '../../utils/dateUtils';
+import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD } from '../../utils/dateUtils';
+import { isSilenceOrNoise } from '../../services/voiceEngine';
 import {
   TAG_STORAGE_KEY, TAG_PALETTE, tagColorFor,
   today, formatDisplayDate, formatTimeDisplay,
@@ -47,6 +49,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 }: Props) {
   const { colors } = useTheme();
   const styles = makeTasksStyles(colors);
+  const { optimisticAddTask } = useMobileData();
 
   const [title, setTitle] = useState('');
   const [saving, setSaving] = useState(false);
@@ -127,7 +130,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       }
       if (parsed.tokens.some(t => t.type === 'priority') && parsed.priority !== priority) setPriority(parsed.priority);
       if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) setRecurrenceRule(parsed.recurrenceRule);
-    }, 400);
+    }, 300);
   }, [priority]);
 
   const handleDismissToken = useCallback((type: NLPToken['type']) => {
@@ -191,6 +194,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const removeSubtask = (i: number) => setSubtasks(prev => prev.filter((_, idx) => idx !== i));
 
   const resetAndClose = () => {
+    Keyboard.dismiss();
     setTitle(''); setSaving(false); setPriority('low');
     setStartTime(''); setEndTime(''); setRecurrenceRule(null);
     setSubtasks([]); setSubtaskInput(''); setShowSubtasks(false);
@@ -220,7 +224,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const handleSave = (overrideTitle?: string) => {
     const isOverride = typeof overrideTitle === 'string';
     const rawText = isOverride ? overrideTitle : title;
-    if (!rawText.trim()) return;
+    if (!rawText.trim() || isSilenceOrNoise(rawText)) return;
 
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 
@@ -242,19 +246,71 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
     const subtaskObjects = subtasks.map((s, i) => ({ id: `st-${i}`, title: s, completed: false }));
 
-    setTimeout(async () => {
+    // Pre-calculate the exact start date in local time, snapping to the correct day if weekly
+    let startRecurrenceDate: Date | null = null;
+    if (finalRecurrence) {
+      startRecurrenceDate = parseLocalDate(finalDate);
+      if (finalRecurrence.type === 'weekly' && finalRecurrence.daysOfWeek && finalRecurrence.daysOfWeek.length > 0) {
+        // Fast-forward to the FIRST valid day of the week before we even create the first task!
+        // E.g., if created on Monday but rule says "Tuesday", snap to Tuesday immediately.
+        while (!finalRecurrence.daysOfWeek.includes(startRecurrenceDate.getDay())) {
+          startRecurrenceDate.setDate(startRecurrenceDate.getDate() + 1);
+        }
+      }
+    }
+
+    // Do instant optimistic update first
+    if (finalRecurrence && startRecurrenceDate) {
+      let current = new Date(startRecurrenceDate.getTime());
+      const end = finalRecurrence.endDate
+        ? parseLocalDate(finalRecurrence.endDate)
+        : new Date(current.getTime() + 90 * 24 * 60 * 60 * 1000);
+      let count = 0;
+      const MAX_INSTANCES = 90;
+      const sourceId = `rec_${Date.now()}`;
+      while (current <= end && count < MAX_INSTANCES) {
+        optimisticAddTask({
+          id: `temp_${Date.now()}_${count}`,
+          userId, title: finalTitle, status: 'pending',
+          priority: finalPriority, date: toYMD(current), timeSlot: ts || undefined,
+          estimatedMinutes: est, isRecurring: true, recurrenceRule: finalRecurrence || undefined,
+          recurringSourceId: sourceId || undefined, subject: undefined, order: listCount, subtasks: subtaskObjects,
+        });
+        count++;
+        if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
+        else if (finalRecurrence.type === 'weekly') {
+          if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (current <= end && !finalRecurrence.daysOfWeek.includes(current.getDay())); }
+          else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
+        } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
+        else break;
+      }
+    } else {
+      optimisticAddTask({
+        id: `temp_${Date.now()}`,
+        userId, title: finalTitle, status: 'pending',
+        priority: finalPriority, date: finalDate, timeSlot: ts || undefined,
+        estimatedMinutes: est, isRecurring: false, recurrenceRule: undefined,
+        recurringSourceId: undefined, subject: undefined, tags: selectedTags,
+        order: listCount, subtasks: subtaskObjects,
+      });
+    }
+
+    resetAndClose();
+
+    // Fire Firestore write immediately (optimistic UI already shown above)
+    (async () => {
       try {
-        if (finalRecurrence) {
+        if (finalRecurrence && startRecurrenceDate) {
           const batch = writeBatch(db);
-          let current = new Date(finalDate);
+          let current = new Date(startRecurrenceDate.getTime());
           const end = finalRecurrence.endDate
-            ? new Date(finalRecurrence.endDate)
+            ? parseLocalDate(finalRecurrence.endDate)
             : new Date(current.getTime() + 90 * 24 * 60 * 60 * 1000);
           let count = 0;
           const MAX_INSTANCES = 90;
           const sourceId = `rec_${Date.now()}`;
           while (current <= end && count < MAX_INSTANCES) {
-            const dateStr = current.toISOString().slice(0, 10);
+            const dateStr = toYMD(current);
             const docRef = doc(collection(db, COLLECTION.TASKS));
             batch.set(docRef, {
               userId, title: finalTitle, text: finalTitle, status: 'pending',
@@ -290,9 +346,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       } catch (e) {
         console.error('Error creating task(s):', e);
       }
-    }, 150);
-
-    resetAndClose();
+    })();
   };
 
   return (

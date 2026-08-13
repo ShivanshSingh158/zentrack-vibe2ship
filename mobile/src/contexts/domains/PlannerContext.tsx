@@ -46,16 +46,24 @@ export function PlannerProvider({
   children: React.ReactNode;
   user: { uid: string } | null;
 }) {
-  // ── Offline-first boot: seed from MMKV SYNCHRONOUSLY ──
-  // Reads happen in < 5ms before the first render!
-  const cached = useRef(readPlannerCache());
-
-  const [customEvents, setCustomEvents]       = useState<CustomEvent[]>(cached.current.customEvents || []);
-  const [goals, setGoals]                     = useState<Goal[]>(cached.current.goals || []);
-  const [weeklyReviews, setWeeklyReviews]     = useState<WeeklyReview[]>(cached.current.weeklyReviews || []);
+  const [customEvents, setCustomEvents]       = useState<CustomEvent[]>([]);
+  const [goals, setGoals]                     = useState<Goal[]>([]);
+  const [weeklyReviews, setWeeklyReviews]     = useState<WeeklyReview[]>([]);
 
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
+
+  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  useEffect(() => {
+    let cancelled = false;
+    readPlannerCache().then(cached => {
+      if (cancelled) return;
+      if (cached.customEvents  && cached.customEvents.length > 0)  setCustomEvents(prev  => prev.length === 0 ? cached.customEvents!  : prev);
+      if (cached.goals         && cached.goals.length > 0)         setGoals(prev         => prev.length === 0 ? cached.goals!         : prev);
+      if (cached.weeklyReviews && cached.weeklyReviews.length > 0) setWeeklyReviews(prev => prev.length === 0 ? cached.weeklyReviews! : prev);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const openSubscriptions = (uid: string) => {
     if (subscribedRef.current) return;
@@ -78,7 +86,7 @@ export function PlannerProvider({
           snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)); setWeeklyReviews(fresh); writePlannerCache({ weeklyReviews: fresh }); },
           err => console.error("[Planner] weeklyReviews", err)
         ));
-      }, 150);
+      }, 300);
     });
   };
 

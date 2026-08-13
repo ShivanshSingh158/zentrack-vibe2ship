@@ -152,7 +152,7 @@ export default function MoreScreen() {
         setSelected(selected.filter(m => m !== modId));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } else {
-        if (selected.length < 5) {
+        if (selected.length < 4) {
           setSelected([...selected, modId]);
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         } else {
@@ -208,7 +208,7 @@ export default function MoreScreen() {
         </View>
 
         {isEditing && (
-          <Text style={styles.editHint}>Tap up to 5 modules to pin to your home tabs</Text>
+          <Text style={styles.editHint}>Tap up to 4 modules to pin to your home tabs</Text>
         )}
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
@@ -219,7 +219,7 @@ export default function MoreScreen() {
           <View style={styles.grid}>
             {ALL_MODULES.filter(m => isEditing || !pinnedModules.includes(m.id)).map((mod, index) => {
               const isSelected = selected.includes(mod.id);
-              const isDimmed = isEditing && !isSelected && selected.length >= 5;
+              const isDimmed = isEditing && !isSelected && selected.length >= 4;
               return (
                 <AnimatedPressable
                   entering={FadeIn.delay(index * 20).duration(200)}

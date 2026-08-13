@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, ScrollView,
-  Alert, Platform,
+  Alert, Platform, Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -26,7 +26,7 @@ import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal'
 import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
 import { handleSyncError } from '../../utils/errorUtils';
-import { Task } from '../../contexts/MobileDataContext';
+import { Task, useMobileData } from '../../contexts/MobileDataContext';
 import { today, formatDisplayDate, formatTimeDisplay } from './taskConstants';
 import { makeTasksStyles } from './tasksStyles';
 
@@ -99,17 +99,22 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     }
   };
 
+  const { optimisticDeleteTask, optimisticUpdateTask } = useMobileData();
+
   const handleDelete = async () => {
+    Keyboard.dismiss();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     if (task.isRecurring) {
       Alert.alert('Delete Recurring Task', 'Do you want to delete only this instance, or this and all future instances?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'This instance only', style: 'destructive', onPress: async () => {
           onClose();
+          optimisticDeleteTask(task.id);
           try { await deleteDoc(doc(db, COLLECTION.TASKS, task.id)); } catch (e) { console.error(e); }
         }},
         { text: 'All future instances', style: 'destructive', onPress: async () => {
           onClose();
+          optimisticDeleteTask(task.id);
           try {
             const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', task.userId));
             const snap = await getDocs(q);
@@ -119,7 +124,10 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
               const inSameGroup = task.recurringSourceId
                 ? data.recurringSourceId === task.recurringSourceId
                 : (data.title === task.title && data.isRecurring === true);
-              if (inSameGroup && data.date && task.date && data.date >= task.date) deleteBatch.delete(d.ref);
+              if (inSameGroup && data.date && task.date && data.date >= task.date) {
+                optimisticDeleteTask(d.id);
+                deleteBatch.delete(d.ref);
+              }
             });
             await deleteBatch.commit();
           } catch (e) { console.error(e); }
@@ -130,13 +138,21 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       setTimeout(() => {
         Alert.alert('Delete Task', `"${task.title}"`, [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Today only', style: 'destructive', onPress: () => deleteDoc(doc(db, COLLECTION.TASKS, task.id)).catch(handleSyncError) },
+          { text: 'Today only', style: 'destructive', onPress: () => {
+            optimisticDeleteTask(task.id);
+            deleteDoc(doc(db, COLLECTION.TASKS, task.id)).catch(handleSyncError);
+          }},
           { text: 'All tasks', style: 'destructive', onPress: async () => {
             try {
               const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', task.userId));
               const snap = await getDocs(q);
               const batch = writeBatch(db);
-              snap.docs.forEach(d => { if (d.data().title === task.title) batch.delete(d.ref); });
+              snap.docs.forEach(d => { 
+                if (d.data().title === task.title) {
+                  optimisticDeleteTask(d.id);
+                  batch.delete(d.ref); 
+                }
+              });
               await batch.commit();
             } catch (e) { console.error(e); }
           }},
@@ -146,6 +162,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   };
 
   const handleSave = async () => {
+    Keyboard.dismiss();
     if (!title.trim()) return;
     const ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
     const updatePayload = { title: title.trim(), text: title.trim(), priority, date: taskDate, timeSlot: ts, isRecurring: !!recurrenceRule, recurrenceRule: recurrenceRule || null, subtasks };
@@ -207,7 +224,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       <View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACE.md, paddingHorizontal: SPACE.lg }}>
           <TextInput
-            style={[styles.newTaskInputLarge, { flex: 1, marginBottom: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent' }]}
+            style={[styles.newTaskInputLarge, { flex: 1, marginBottom: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', color: '#FFFFFF' }]}
             value={title}
             onChangeText={setTitle}
             placeholder="Task title"

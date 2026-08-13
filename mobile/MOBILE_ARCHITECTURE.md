@@ -749,7 +749,13 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 
 ---
 
-## 16. Changelog
+### 2026-08-12 — WorkoutSummaryScreen Redesign (Minimalist & Structured)
+- **REDESIGNED** `src/screens/gym/WorkoutSummaryScreen.tsx` — Replaced the loud glowing purple elements, oversized trophy icon, and unformatted chart container with a subtle, high-end minimalist design:
+  1. **Minimalist Top Hero** — Clean checkmark-circle indicator in a dark glass frame (`colors.textPrimary` + subtle hairline border), elegant title & subtitle.
+  2. **Quick Session Metrics Grid** — 4-column summary grid showing Exercises count, Sets Done, Volume (kg), and Best Lift.
+  3. **Session Breakdown Card** — Structured list of completed exercises with set badges & max weight logged today.
+  4. **Structured 90-Day Progression** — Minimalist pill chips for exercise selection (no neon glow), compact 2-option Segmented Control (`Est. 1RM` | `Total Volume`), and clean translucent chart styling with a compact empty state card when data points are sparse.
+  5. **Minimalist Primary Action** — Clean primary "Done" button with dark/light neutral contrast, haptic feedback, zero loud glowing purple borders.
 
 ### 2026-07-26 — AddExerciseModal v2: Search-as-you-type + Auto-fill
 - **REWRITTEN** `src/components/Gym/AddExerciseModal.tsx` — Completely replaced the old UX (full plan-day list dumped upfront) with a search-driven experience:

@@ -9,6 +9,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import GlassCard from '../components/ui/GlassCard';
 import * as Haptics from 'expo-haptics';
+import EmptyState from '../components/ui/EmptyState';
 
 export default function WeeklyReviewScreen() {
   const navigation = useNavigation<any>();
@@ -35,14 +36,13 @@ export default function WeeklyReviewScreen() {
 
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           {!latestReview ? (
-            <View style={s.emptyState}>
-              <Ionicons name="sparkles-outline" size={48} color={colors.accentPrimary} />
-              <Text style={s.emptyTitle}>No Reviews Yet</Text>
-              <Text style={s.emptyDesc}>SARA will conduct your weekly review based on the 4 key progress tracking questions.</Text>
-              
-              <TouchableOpacity 
-                style={[s.interviewBtn, { backgroundColor: colors.accentPrimary, marginTop: SPACE.xl }]}
-                onPress={() => {
+            <EmptyState
+              mascot="idle"
+              title="No Reviews Yet"
+              subtitle="SARA will conduct your weekly review based on the 4 key progress tracking questions."
+              action={{
+                label: "Start Weekly Interview",
+                onPress: () => {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                   navigation.navigate('SaraModal', {
                     screen: 'Sara',
@@ -50,12 +50,10 @@ export default function WeeklyReviewScreen() {
                       initialPrompt: "It's time for my weekly review! Please interview me one by one on the 4 tracking questions: 1) Could I solve this week's DSA problems without hints? 2) Can I explain this week's dev concept? 3) Did I code for at least 4 days? 4) What is one new thing I understood this week? After we finish, use the createWeeklyReview action to save it."
                     }
                   });
-                }}
-              >
-                <Ionicons name="mic-outline" size={18} color="#fff" />
-                <Text style={s.interviewBtnText}>Start Weekly Interview</Text>
-              </TouchableOpacity>
-            </View>
+                }
+              }}
+              style={{ marginTop: 20 }}
+            />
           ) : (
             <>
               <View style={s.reviewHeader}>

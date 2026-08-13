@@ -59,11 +59,10 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   useEffect(() => {
     if (visible && userWeight && userWeight > 0) {
       AsyncStorage.getItem(WATER_GOAL_KEY).then(saved => {
-        if (!saved) {
-          const autoGoal = Math.round(userWeight * 35); // 35ml per kg formula
-          onUpdateTarget(autoGoal);
-          AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal));
-        }
+        // Forced override of all old data to use the 40ml formula
+        const autoGoal = Math.round(userWeight * 40); // 40ml per kg formula
+        onUpdateTarget(autoGoal);
+        AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal));
       });
     }
   }, [visible, userWeight]);
@@ -88,7 +87,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
     if (!isNaN(w) && w > 0) {
       // Save weight to gym profile
       await saveGymProfile({ weightKg: w });
-      const autoGoal = Math.round(w * 35);
+      const autoGoal = Math.round(w * 40);
       onUpdateTarget(autoGoal);
       await AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal));
       setShowWeightPrompt(false);
@@ -141,7 +140,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
             <View style={{ flex: 1 }}>
               {userWeight ? (
                 <Text style={s.smartBannerText}>
-                  Goal: <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#0A84FF' }}>{goalLitres}L</Text> for your <Text style={{ fontFamily: FONT_FAMILY.bold }}>{userWeight}kg</Text> body weight (35ml/kg)
+                  Goal: <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#0A84FF' }}>{goalLitres}L</Text> for your <Text style={{ fontFamily: FONT_FAMILY.bold }}>{userWeight}kg</Text> body weight (40ml/kg)
                 </Text>
               ) : (
                 <TouchableOpacity onPress={() => setShowWeightPrompt(v => !v)}>

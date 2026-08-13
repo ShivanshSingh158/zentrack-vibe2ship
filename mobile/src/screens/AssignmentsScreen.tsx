@@ -15,6 +15,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
 import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import { handleSyncError } from '../utils/errorUtils';
+import EmptyState from '../components/ui/EmptyState';
 
 
 const STATUS_CONFIG = {
@@ -204,10 +205,11 @@ export default function AssignmentsScreen() {
           );
         }}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={{ fontSize: 40, marginBottom: 10 }}>📚</Text>
-            <Text style={styles.emptyText}>No assignments found.</Text>
-          </View>
+          <EmptyState
+            mascot="idle"
+            title="All caught up!"
+            subtitle="No pending assignments right now."
+          />
         }
       />
 

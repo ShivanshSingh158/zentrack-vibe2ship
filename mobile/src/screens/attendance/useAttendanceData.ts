@@ -24,10 +24,10 @@ export interface ConfirmConfig {
 }
 
 export function useAttendanceData() {
-  const { user, attendance: subjects } = useMobileData();
+  const { user, attendance: subjects, attendanceLogs: logs } = useMobileData();
 
   // ── Core data from Firestore ────────────────────────────────────────────────
-  const [logs,     setLogs]     = useState<any[]>([]);
+
   const [holidays, setHolidays] = useState<string[]>([]);
 
   // ── UI state ───────────────────────────────────────────────────────────────
@@ -64,16 +64,7 @@ export function useAttendanceData() {
   // ── Load Logs & Holidays ───────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
-    const qLogs = query(
-      collection(db, COLLECTION.ATTENDANCE_LOGS),
-      where('userId', '==', user.uid),
-      limit(300),
-    );
-    const unsubLogs = onSnapshot(qLogs, snap => {
-      const allLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      allLogs.sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0));
-      setLogs(allLogs);
-    });
+
 
     const qHol = query(
       collection(db, COLLECTION.ATTENDANCE_HOLIDAYS),
@@ -83,7 +74,7 @@ export function useAttendanceData() {
       setHolidays(snap.docs.map(d => (d.data() as any).date));
     });
 
-    return () => { unsubLogs(); unsubHol(); };
+    return () => { unsubHol(); };
   }, [user]);
 
   // ── Derived values ─────────────────────────────────────────────────────────

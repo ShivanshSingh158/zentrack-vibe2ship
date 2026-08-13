@@ -25,7 +25,7 @@ import * as Haptics from 'expo-haptics';
 import { parseNLTask, ParsedTask, NLPToken } from '../../utils/dateUtils';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
-import { startVADRecording, stopAndTranscribe, cancelVoiceRecording, VoiceState } from '../../services/voiceEngine';
+import { startVADRecording, stopAndTranscribe, cancelVoiceRecording, isSilenceOrNoise, VoiceState } from '../../services/voiceEngine';
 import { ActivityIndicator } from 'react-native';
 import VoiceMicButton from '../SARA/VoiceMicButton';
 
@@ -49,15 +49,35 @@ interface Props {
   placeholder?: string;
   onSubmitEditing?: () => void;
   onAutoSubmit?: (text: string) => void;
+  hideMic?: boolean;
+  onMicPress?: () => void;
 }
 
 export default function NLPTaskInput({
-  value, onChangeText, parsed, onDismissToken, autoFocus, placeholder, onSubmitEditing, onAutoSubmit,
+  value, onChangeText, parsed, onDismissToken, autoFocus, placeholder, onSubmitEditing, onAutoSubmit, hideMic, onMicPress
 }: Props) {
   const { colors, isDark } = useTheme();
   const inputRef = useRef<TextInput>(null);
   const chipScale = useSharedValue(1);
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
+  
+  // Local state to prevent keystroke dropping during heavy parent re-renders
+  const [localText, setLocalText] = useState(value);
+  const lastTypedText = useRef(value);
+
+  useEffect(() => {
+    // If the parent changed the value programmatically (not from our typing)
+    if (value !== lastTypedText.current) {
+      setLocalText(value);
+      lastTypedText.current = value;
+    }
+  }, [value]);
+
+  const handleLocalChangeText = (t: string) => {
+    lastTypedText.current = t;
+    setLocalText(t);
+    onChangeText(t);
+  };
 
   useEffect(() => {
     return () => {
@@ -70,6 +90,7 @@ export default function NLPTaskInput({
       await stopAndTranscribe({
         onStateChange: setVoiceState,
         onTranscript: (t) => {
+          if (!t || !t.trim() || isSilenceOrNoise(t)) return;
           onChangeText(t);
           if (onAutoSubmit) onAutoSubmit(t);
         },
@@ -81,7 +102,8 @@ export default function NLPTaskInput({
     await startVADRecording({
       onStateChange: setVoiceState,
       onTranscript: (t) => {
-        onChangeText(t);
+        if (!t || !t.trim() || isSilenceOrNoise(t)) return;
+        handleLocalChangeText(t);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         if (onAutoSubmit) onAutoSubmit(t);
       },
@@ -105,31 +127,35 @@ export default function NLPTaskInput({
 
   return (
     <View style={styles.wrapper}>
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { borderRadius: 16 }]}>
         {/* ── Crisp, single-rendered TextInput ─────────────────────────────── */}
         <TextInput
           ref={inputRef}
-          style={[styles.input, { color: voiceState === 'recording' ? colors.accentPrimary : colors.textPrimary }]}
-          value={voiceState === 'recording' ? 'Listening...' : value}
-          onChangeText={onChangeText}
+          style={[styles.input, { color: voiceState === 'recording' ? colors.accentPrimary : colors.textPrimary, paddingRight: hideMic ? 16 : 48 }]}
+          value={voiceState === 'recording' ? 'Listening...' : localText}
+          onChangeText={handleLocalChangeText}
           placeholder={voiceState === 'recording' ? 'Listening...' : (placeholder || "Add a task... try 'report friday 3pm high'")}
           placeholderTextColor={voiceState === 'recording' ? colors.accentPrimary : colors.textMuted}
           autoFocus={autoFocus}
           editable={voiceState !== 'recording' && voiceState !== 'processing'}
-          returnKeyType="done"
-          onSubmitEditing={onSubmitEditing}
-          multiline={false}
-          blurOnSubmit
+          returnKeyType="default"
+          multiline={true}
+          blurOnSubmit={false}
+          autoCorrect={false}
+          spellCheck={false}
+          autoCapitalize="sentences"
         />
         
-        <View style={styles.micBtnContainer}>
-          <VoiceMicButton 
-            onToggleRecord={handleToggleVoice}
-            isRecording={voiceState === 'recording'}
-            isProcessing={voiceState === 'processing'}
-            disabled={voiceState === 'processing'}
-          />
-        </View>
+        {!hideMic && (
+          <View style={styles.micBtnContainer}>
+            <VoiceMicButton 
+              onToggleRecord={onMicPress || handleToggleVoice}
+              isRecording={voiceState === 'recording'}
+              isProcessing={voiceState === 'processing'}
+              disabled={voiceState === 'processing'}
+            />
+          </View>
+        )}
       </View>
 
       {/* ── Parsed token chips ───────────────────────────────────────────── */}
@@ -207,12 +233,13 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.base,
-    lineHeight: 22,
-    paddingHorizontal: SPACE.lg,
-    paddingVertical: Platform.OS === 'ios' ? 14 : 12,
+    fontSize: 18, // increased font size to match EditTaskModal
+    lineHeight: 26,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === 'ios' ? 16 : 14,
     minHeight: 50,
     backgroundColor: 'transparent',
+    textAlignVertical: 'top',
   },
   chipsRow: {
     flexDirection: 'row',

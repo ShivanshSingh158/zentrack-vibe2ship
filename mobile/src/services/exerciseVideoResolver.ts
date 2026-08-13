@@ -552,39 +552,45 @@ Output ONLY the raw 11-character YouTube video ID string (e.g. vB_hT1sK2kM). If 
         return cleanId;
       }
     }
-  } catch (e) {
-    console.warn('[VideoResolver] Primary AI live search error:', e);
+  } catch (e: any) {
+    if (e?.message?.includes('API Error') || e?.message?.includes('429') || e?.message?.includes('401')) {
+      isRateLimited = true;
+    } else {
+      console.warn('[VideoResolver] Primary AI live search error:', e);
+    }
   }
 
-  // 5. Tier 5 Simplified Core Movement Fallback
-  try {
-    const simplifiedName = exerciseName
-      .replace(/hammer strength|machine|cable|smith machine|seated|standing|weighted|barbell|dumbbell|ez-bar|ez bar/gi, '')
-      .trim() || exerciseName;
+  // 5. Tier 5 Simplified Core Movement Fallback (skip if API is rate limited to avoid spam)
+  if (!isRateLimited) {
+    try {
+      const simplifiedName = exerciseName
+        .replace(/hammer strength|machine|cable|smith machine|seated|standing|weighted|barbell|dumbbell|ez-bar|ez bar/gi, '')
+        .trim() || exerciseName;
 
-    const retryPrompt = `Target Exercise: "${simplifiedName}".
+      const retryPrompt = `Target Exercise: "${simplifiedName}".
 Find an ACTIVE, WORKING 11-character YouTube Shorts ID demonstrating proper form for "${simplifiedName}" (published 2020-2026, under 1:30 duration).
 Return ONLY the 11-character YouTube video ID string.`;
 
-    const res = await callProxy({
-      contents: [{ parts: [{ text: retryPrompt }] }],
-      systemInstruction: `Output ONLY a valid 11-character YouTube video ID string. No text.`,
-      generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: 20,
-      }
-    });
+      const res = await callProxy({
+        contents: [{ parts: [{ text: retryPrompt }] }],
+        systemInstruction: `Output ONLY a valid 11-character YouTube video ID string. No text.`,
+        generationConfig: {
+          temperature: 0.8,
+          maxOutputTokens: 20,
+        }
+      });
 
-    const textResult = res?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (textResult) {
-      const cleanId = textResult.replace(/[^a-zA-Z0-9_-]/g, '').trim();
-      if (cleanId.length === 11 && cleanId.toUpperCase() !== 'NONE') {
-        AsyncStorage.setItem(cacheKey, cleanId).catch(() => {});
-        return cleanId;
+      const textResult = res?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (textResult) {
+        const cleanId = textResult.replace(/[^a-zA-Z0-9_-]/g, '').trim();
+        if (cleanId.length === 11 && cleanId.toUpperCase() !== 'NONE') {
+          AsyncStorage.setItem(cacheKey, cleanId).catch(() => {});
+          return cleanId;
+        }
       }
+    } catch (e) {
+      console.warn('[VideoResolver] Tier 5 fallback error:', e);
     }
-  } catch (e) {
-    console.warn('[VideoResolver] Tier 5 fallback error:', e);
   }
 
   // Guaranteed Movement Pattern Fallback — Ensures NO EXERCISE ever returns empty null!

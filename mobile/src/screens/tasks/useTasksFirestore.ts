@@ -129,6 +129,7 @@ export function useTasksFirestore({
     optimisticUpdateTask: (id: string, updates: Partial<Task>) => void,
   ) => {
     const completedAt = new Date().toISOString();
+    setTimeLogTask(null); // Instantly close the modal
     optimisticUpdateTask(taskId, { status: 'completed', completedAt, actualMinutes, actualStartTime } as any);
     (async () => {
       try {
@@ -136,17 +137,22 @@ export function useTasksFirestore({
         await updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'completed', completedAt, actualMinutes, actualStartTime });
       } catch (e) { console.error('[useTasksFirestore] saveTimeLog error', e); }
     })();
-  }, []);
+  }, [setTimeLogTask]);
 
-  const skipTimeLog = useCallback((taskId: string) => {
+  const skipTimeLog = useCallback((
+    taskId: string,
+    optimisticUpdateTask: (id: string, updates: Partial<Task>) => void,
+  ) => {
     const completedAt = new Date().toISOString();
+    setTimeLogTask(null); // Instantly close the modal
+    optimisticUpdateTask(taskId, { status: 'completed', completedAt } as any);
     (async () => {
       try {
         await awardXP('TASK_COMPLETE');
         await updateDoc(doc(db, COLLECTION.TASKS, taskId), { status: 'completed', completedAt });
       } catch (e) { console.error('[useTasksFirestore] skipTimeLog error', e); }
     })();
-  }, []);
+  }, [setTimeLogTask]);
 
   return {
     completeTask,

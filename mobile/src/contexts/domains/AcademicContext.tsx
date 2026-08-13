@@ -29,6 +29,8 @@ export interface AcademicContextType {
   optimisticAddAssignment: (assignment: Assignment) => void;
   optimisticUpdateAssignment: (assignmentId: string, partial: Partial<Assignment>) => void;
   optimisticDeleteAssignment: (assignmentId: string) => void;
+  optimisticAddAttendanceLog: (log: AttendanceLog) => void;
+  optimisticRemoveAttendanceLog: (logId: string) => void;
 }
 
 const AcademicContext = createContext<AcademicContextType | null>(null);
@@ -47,17 +49,27 @@ export function AcademicProvider({
   children: React.ReactNode;
   user: { uid: string } | null;
 }) {
-  // ── Offline-first boot: seed from MMKV SYNCHRONOUSLY ──
-  // Reads happen in < 5ms before the first render!
-  const cached = useRef(readAcademicCache());
-
-  const [attendance, setAttendance]           = useState<AttendanceSubject[]>(cached.current.attendance || []);
-  const [attendanceLogs, setAttendanceLogs]   = useState<AttendanceLog[]>(cached.current.attendanceLogs || []);
-  const [assignments, setAssignments]         = useState<Assignment[]>(cached.current.assignments || []);
-  const [semesters, setSemesters]             = useState<Semester[]>(cached.current.semesters || []);
-  const [semesterSubjects, setSemesterSubjects] = useState<SemesterSubject[]>(cached.current.semesterSubjects || []);
+  const [attendance, setAttendance]           = useState<AttendanceSubject[]>([]);
+  const [attendanceLogs, setAttendanceLogs]   = useState<AttendanceLog[]>([]);
+  const [assignments, setAssignments]         = useState<Assignment[]>([]);
+  const [semesters, setSemesters]             = useState<Semester[]>([]);
+  const [semesterSubjects, setSemesterSubjects] = useState<SemesterSubject[]>([]);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
+
+  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  useEffect(() => {
+    let cancelled = false;
+    readAcademicCache().then(cached => {
+      if (cancelled) return;
+      if (cached.attendance      && cached.attendance.length > 0)      setAttendance(prev      => prev.length === 0 ? cached.attendance!      : prev);
+      if (cached.attendanceLogs  && cached.attendanceLogs.length > 0)  setAttendanceLogs(prev  => prev.length === 0 ? cached.attendanceLogs!  : prev);
+      if (cached.assignments     && cached.assignments.length > 0)     setAssignments(prev     => prev.length === 0 ? cached.assignments!     : prev);
+      if (cached.semesters       && cached.semesters.length > 0)       setSemesters(prev       => prev.length === 0 ? cached.semesters!       : prev);
+      if (cached.semesterSubjects && cached.semesterSubjects.length > 0) setSemesterSubjects(prev => prev.length === 0 ? cached.semesterSubjects! : prev);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   const openSubscriptions = (uid: string) => {
     if (subscribedRef.current) return;
@@ -142,8 +154,24 @@ export function AcademicProvider({
     });
   };
 
+  const optimisticAddAttendanceLog = (log: AttendanceLog) => {
+    setAttendanceLogs(prev => {
+      const next = [log, ...prev];
+      writeAcademicCache({ attendanceLogs: next });
+      return next;
+    });
+  };
+
+  const optimisticRemoveAttendanceLog = (logId: string) => {
+    setAttendanceLogs(prev => {
+      const next = prev.filter(l => l.id !== logId);
+      writeAcademicCache({ attendanceLogs: next });
+      return next;
+    });
+  };
+
   return (
-    <AcademicContext.Provider value={{ attendance, attendanceLogs, assignments, semesters, semesterSubjects, ensureSubscribed, optimisticUpdateAttendance, optimisticAddAssignment, optimisticUpdateAssignment, optimisticDeleteAssignment }}>
+    <AcademicContext.Provider value={{ attendance, attendanceLogs, assignments, semesters, semesterSubjects, ensureSubscribed, optimisticUpdateAttendance, optimisticAddAssignment, optimisticUpdateAssignment, optimisticDeleteAssignment, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog }}>
       {children}
     </AcademicContext.Provider>
   );

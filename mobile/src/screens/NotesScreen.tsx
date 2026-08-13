@@ -27,7 +27,7 @@ import * as Sharing from 'expo-sharing';
 import { useTheme } from "../contexts/ThemeContext";
 import { timeAgo } from '../utils/dateUtils';
 import { handleSyncError } from '../utils/errorUtils';
-
+import EmptyState from '../components/ui/EmptyState';
 
 const UploadProgressRing = ({ progress }: { progress: number }) => {
   const radius = 12;
@@ -399,7 +399,7 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
               <Text style={styles.aiToggleText}>PDF</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowAi(!showAi)} style={[styles.aiToggleBtn, showAi && styles.aiToggleBtnActive]}>
-              <Ionicons name="planet" size={16} color={showAi ? "#fff" : "#C490FF"} />
+              <Image source={require('../../assets/images/sara-running.png')} style={{ width: 16, height: 16 }} resizeMode="contain" />
               <Text style={[styles.aiToggleText, showAi && { color: '#fff' }]}>AI</Text>
             </TouchableOpacity>
           </View>
@@ -439,7 +439,7 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
           {showAi && (
             <View style={styles.aiPanel}>
               <View style={styles.aiPanelHeader}>
-                <Ionicons name="planet" size={16} color="#C490FF" />
+                <Image source={require('../../assets/images/sara-idle.png')} style={{ width: 16, height: 16 }} resizeMode="contain" />
                 <Text style={styles.aiPanelTitle}>Sara</Text>
               </View>
               <ScrollView style={styles.aiChatArea} contentContainerStyle={{ padding: SPACE.sm }}>
@@ -843,10 +843,11 @@ export default function NotesScreen() {
 
         contentContainerStyle={styles.list}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name="folder-open-outline" size={48} color={colors.textMuted} />
-            <Text style={styles.emptyText}>This folder is empty.</Text>
-          </View>
+          <EmptyState
+            mascot="idle"
+            title="Empty folder"
+            subtitle="Add notes, upload files, or create folders here."
+          />
         }
         renderItem={({ item }: any) => {
           const isSelected = selectedIds.has(item.id!);

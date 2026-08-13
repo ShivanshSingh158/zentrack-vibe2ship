@@ -18,7 +18,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 8,
-    paddingTop: 12,
+    paddingTop: 4,
     paddingBottom: 8,
     backgroundColor: colors.background,
   },
@@ -77,7 +77,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   },
   monthText: {
     fontFamily: FONT_FAMILY.bold, // screenshot shows bold title for month
-    fontSize: 28,
+    fontSize: 18,
     color: colors.textPrimary,
   },
   viewSelector: {
@@ -88,7 +88,9 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   },
   viewSelectorBtn: {
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
+    width: 64,
+    alignItems: 'center',
     borderRadius: 6,
   },
   viewSelectorBtnActive: {
