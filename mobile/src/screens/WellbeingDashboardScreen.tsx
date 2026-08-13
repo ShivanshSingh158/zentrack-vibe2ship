@@ -61,7 +61,7 @@ function GlassCard({ children, style }: { children?: React.ReactNode; style?: an
 export default function WellbeingDashboardScreen() {
   const { colors } = useTheme();
   const navigation = useNavigation<any>();
-  const { waterLogs, sleepLogs } = useMobileData();
+  const { waterLogs } = useMobileData();
 
   // Animation values
   const mountAnim = useRef(new Animated.Value(0)).current;
@@ -96,20 +96,7 @@ export default function WellbeingDashboardScreen() {
   const waterPath = smoothPath(waterPts);
   const waterAreaPath = `${waterPath} L ${CHART_W} ${CHART_H} L 0 ${CHART_H} Z`;
 
-  // ─── Sleep Data ────────────────────────────────────────────────────────────
-  const sleepData = useMemo(() => {
-    return days.map(date => {
-      const dayLogs = (sleepLogs || []).filter(s => s.date === date);
-      return dayLogs.reduce((sum, log) => sum + (log.hours || 0), 0);
-    });
-  }, [sleepLogs, days]);
-
-  const maxSleep = Math.max(...sleepData, 8); // at least 8 hours scale
-  const sleepAvg = (sleepData.reduce((a, b) => a + b, 0) / 7).toFixed(1);
-
-  // AI Recommendations State
   const [aiWaterTip, setAiWaterTip] = useState<string | null>(null);
-  const [aiSleepTip, setAiSleepTip] = useState<string | null>(null);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(true);
 
   // Fetch AI insights
@@ -119,12 +106,11 @@ export default function WellbeingDashboardScreen() {
       try {
         const prompt = `
 You are S.A.R.A, a high-performance wellness coach AI.
-Analyze the user's last 7 days of water and sleep logs and provide one short, punchy tip for each.
-Format your response as a JSON object: {"waterTip": "...", "sleepTip": "..."}.
+Analyze the user's last 7 days of water logs and provide one short, punchy tip.
+Format your response as a JSON object: {"waterTip": "..."}.
 Do not include any markdown formatting, just pure JSON.
 
 Water Data (ml per day): ${JSON.stringify(waterData)}
-Sleep Data (hours per day): ${JSON.stringify(sleepData)}
 `;
         const resp = await callProxy({
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -135,7 +121,6 @@ Sleep Data (hours per day): ${JSON.stringify(sleepData)}
         if (rawText) {
           const parsed = JSON.parse(rawText);
           if (parsed.waterTip) setAiWaterTip(parsed.waterTip);
-          if (parsed.sleepTip) setAiSleepTip(parsed.sleepTip);
         }
       } catch (e) {
         console.error('Error fetching wellbeing AI insights', e);
@@ -144,16 +129,11 @@ Sleep Data (hours per day): ${JSON.stringify(sleepData)}
       }
     }
     fetchAiInsights();
-  }, [waterData, sleepData]);
+  }, [waterData]);
 
-  // Fallback Recommendations
   const waterTip = aiWaterTip || (todayWater < 2500 
     ? `You're ${2500 - todayWater}ml away from optimal hydration. Drink a glass now!` 
     : "Great job staying hydrated today!");
-  
-  const sleepTip = aiSleepTip || (Number(sleepAvg) < 7 
-    ? "Your average sleep is under 7 hours. Try winding down 30 mins earlier tonight."
-    : "Excellent sleep patterns this week. Maintain this rhythm!");
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
@@ -230,71 +210,6 @@ Sleep Data (hours per day): ${JSON.stringify(sleepData)}
               <Ionicons name="sparkles" size={16} color="#A599FF" />
               <Text style={styles.tipText}>
                 {isAiThinking ? 'S.A.R.A is analyzing your hydration...' : waterTip}
-              </Text>
-            </GlassCard>
-          </GlassCard>
-        </Animated.View>
-
-        {/* Sleep Patterns Section */}
-        <Animated.View style={{ opacity: mountAnim, transform: [{ translateY: mountAnim.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }], marginTop: SPACE.xl }}>
-          <Text style={styles.sectionTitle}>Sleep Patterns</Text>
-          <GlassCard style={styles.card}>
-            <View style={styles.statRow}>
-              <View>
-                <Text style={styles.statLabel}>Last Night</Text>
-                <Text style={styles.statValue}>{sleepData[sleepData.length - 1]} <Text style={styles.statUnit}>hrs</Text></Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.statLabel}>7-Day Avg</Text>
-                <Text style={styles.statValue}>{sleepAvg} <Text style={styles.statUnit}>hrs</Text></Text>
-              </View>
-            </View>
-
-            <View style={styles.chartContainer}>
-              <Svg width={CHART_W} height={CHART_H}>
-                <Defs>
-                  <SvgLinearGradient id="sleepGrad" x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0%" stopColor="#a599ff" />
-                    <Stop offset="100%" stopColor="rgba(165,153,255,0.2)" />
-                  </SvgLinearGradient>
-                </Defs>
-
-                {/* Grid lines */}
-                {[0, 0.5, 1].map(r => (
-                  <Line key={r} x1="0" y1={CHART_H * r} x2={CHART_W} y2={CHART_H * r} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
-                ))}
-
-                {/* Bars */}
-                {sleepData.map((val, i) => {
-                  const barH = (val / maxSleep) * CHART_H;
-                  const barW = 16;
-                  const x = (i / (days.length - 1)) * CHART_W - (i === 0 ? 0 : i === days.length - 1 ? barW : barW / 2);
-                  const y = CHART_H - barH;
-                  return (
-                    <Rect
-                      key={i}
-                      x={x}
-                      y={y}
-                      width={barW}
-                      height={barH}
-                      rx={6}
-                      fill="url(#sleepGrad)"
-                    />
-                  );
-                })}
-              </Svg>
-
-              <View style={styles.xLabels}>
-                {days.map((d, i) => (
-                  <Text key={i} style={styles.xLabelText}>{getDayLabel(d)}</Text>
-                ))}
-              </View>
-            </View>
-
-            <GlassCard style={styles.tipBox}>
-              <Ionicons name="sparkles" size={16} color="#A599FF" />
-              <Text style={styles.tipText}>
-                {isAiThinking ? 'S.A.R.A is analyzing your sleep...' : sleepTip}
               </Text>
             </GlassCard>
           </GlassCard>

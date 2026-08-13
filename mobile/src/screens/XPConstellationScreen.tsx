@@ -21,6 +21,8 @@ import Animated, {
   Easing,
   FadeIn,
   FadeInDown,
+  useAnimatedScrollHandler,
+  interpolateColor,
 } from 'react-native-reanimated';
 import Svg, {
   Circle,
@@ -58,17 +60,41 @@ const LEVEL_COLORS: [string, string][] = [
   ['#f59e0b', '#fbbf24'], // 5
   ['#f97316', '#ef4444'], // 6
   ['#ec4899', '#8b5cf6'], // 7
+  ['#94a3b8', '#f8fafc'], // 8 - Paragon (Silver/Ice White)
+  ['#dc2626', '#7f1d1d'], // 9 - Titan (Crimson/Dark Red)
+  ['#6ee7b7', '#059669'], // 10 - Ascendant (Mint/Emerald)
+  ['#ca8a04', '#fef08a'], // 11 - Exalted (Rose Gold/Peach)
+  ['#7e22ce', '#d946ef'], // 12 - Sovereign (Purple/Magenta)
+  ['#2563eb', '#22d3ee'], // 13 - Archon (Neon Blue/Cyan)
+  ['#1e3a8a', '#e0f2fe'], // 14 - Celestial (Midnight Blue/White)
+  ['#a78bfa', '#fdf4ff'], // 15 - Ethereal (Lilac/Pearl)
+  ['#f43f5e', '#fdba74'], // 16 - Empyrean (Cherry Red/Orange)
+  ['#0f766e', '#5eead4'], // 17 - Astral (Deep Ocean/Aquamarine)
+  ['#334155', '#e2e8f0'], // 18 - Zenith (Obsidian/Platinum)
+  ['#eab308', '#ffffff'], // 19 - Apex (Pure Gold/White)
 ];
 
 const LEVEL_ICONS = [
-  'compass-outline',       // Seeker
-  'shield-half-outline',   // Warden
-  'eye-outline',           // Sentinel
-  'shield-checkmark-outline', // Guardian
-  'flash-outline',         // Vanguard
-  'star-outline',          // Luminary
-  'flame-outline',         // Legend
-  'infinite-outline',      // Mythic
+  'compass-outline',       // 0 Seeker
+  'shield-half-outline',   // 1 Warden
+  'eye-outline',           // 2 Sentinel
+  'shield-checkmark-outline', // 3 Guardian
+  'flash-outline',         // 4 Vanguard
+  'star-outline',          // 5 Luminary
+  'flame-outline',         // 6 Legend
+  'infinite-outline',      // 7 Mythic
+  'diamond-outline',       // 8 Paragon
+  'hammer-outline',        // 9 Titan
+  'rocket-outline',        // 10 Ascendant
+  'sunny-outline',         // 11 Exalted
+  'trophy-outline',        // 12 Sovereign
+  'hardware-chip-outline', // 13 Archon
+  'planet-outline',        // 14 Celestial
+  'cloud-outline',         // 15 Ethereal
+  'bonfire-outline',       // 16 Empyrean
+  'moon-outline',          // 17 Astral
+  'prism-outline',         // 18 Zenith
+  'sparkles-outline',      // 19 Apex
 ];
 
 const LORE = [
@@ -79,7 +105,19 @@ const LORE = [
   "The tip of the spear. Leading the charge into uncharted strength.",
   "A shining beacon of dedication. Your aura inspires all.",
   "Carving your name into eternity. A living myth walking among mortals.",
-  "Beyond human limits. A cosmic force of unstoppable momentum."
+  "Beyond human limits. A cosmic force of unstoppable momentum.",
+  "A flawless model of excellence. The standard all others strive to meet.",
+  "Unstoppable force meets immovable object. Raw, earth-shattering power.",
+  "Rising above mortal limitations. A being of pure, untethered potential.",
+  "Revered and glorious. Walking in the warm light of true achievement.",
+  "Absolute authority over your own destiny. The king of your domain.",
+  "A commander of raw energy. Precision and power perfectly balanced.",
+  "Observing from the stars. Your vision spans galaxies and ages.",
+  "Drifting through the material world untouched. Pure spiritual focus.",
+  "Burning with the fierce, blinding heat of a supreme solar flare.",
+  "Navigating multidimensional spaces. Boundless depth and ancient wisdom.",
+  "The absolute peak of physical and mental perfection. Silent, sharp, absolute.",
+  "The pinnacle of existence. Radiating pure, brilliant light above all else."
 ];
 
 const MASCOT_IMAGES = [
@@ -91,6 +129,18 @@ const MASCOT_IMAGES = [
   require('../../assets/mascots/level5.png'),
   require('../../assets/mascots/level6.png'),
   require('../../assets/mascots/level7.png'),
+  require('../../assets/mascots/level8.png'), // Paragon
+  require('../../assets/mascots/level9.png'),
+  require('../../assets/mascots/level10.png'),
+  require('../../assets/mascots/level11.png'),
+  require('../../assets/mascots/level12.png'),
+  require('../../assets/mascots/level13.png'),
+  require('../../assets/mascots/level14.png'),
+  require('../../assets/mascots/level15.png'),
+  require('../../assets/mascots/level16.png'),
+  require('../../assets/mascots/level17.png'),
+  require('../../assets/mascots/level18.png'),
+  require('../../assets/mascots/level19.png'),
 ];
 
 const LEVELS: Level[] = LEVEL_TITLES.map((name, i) => ({
@@ -105,6 +155,7 @@ const LEVELS: Level[] = LEVEL_TITLES.map((name, i) => ({
 
 // ---------- Star field ----------
 const NUM_STARS = 90;
+const STAR_COLORS = ['#ffffff', '#e0f2fe', '#fef08a', '#ffedd5', '#d8b4fe'];
 
 function useStarField(height: number) {
   return useMemo(
@@ -112,8 +163,9 @@ function useStarField(height: number) {
       Array.from({ length: NUM_STARS }).map(() => ({
         x: Math.random() * SCREEN_W,
         y: Math.random() * height,
-        r: Math.random() * 1.6 + 0.4,
-        baseOpacity: Math.random() * 0.5 + 0.2,
+        r: Math.random() * 1.8 + 0.3,
+        baseOpacity: Math.random() * 0.6 + 0.1,
+        color: STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)],
         delay: Math.random() * 3000,
         duration: 1800 + Math.random() * 2200,
       })),
@@ -121,18 +173,13 @@ function useStarField(height: number) {
   );
 }
 
-function TwinkleStar({
-  x,
-  y,
-  r,
-  baseOpacity,
-}: {
-  x: number;
-  y: number;
-  r: number;
-  baseOpacity: number;
-}) {
-  return <Circle cx={x} cy={y} r={r} fill="#ffffff" opacity={baseOpacity} />;
+function TwinkleStar({ x, y, r, baseOpacity, color }: any) {
+  return (
+    <>
+      {r > 1.2 && <Circle cx={x} cy={y} r={r * 2.5} fill={color} opacity={baseOpacity * 0.3} />}
+      <Circle cx={x} cy={y} r={r} fill={color} opacity={baseOpacity} />
+    </>
+  );
 }
 
 // ---------- Node ----------
@@ -146,7 +193,7 @@ function ConstellationNode({
   level: Level;
   index: number;
   status: 'past' | 'current' | 'future';
-  layout: 'left' | 'right';
+  layout: 'left' | 'right' | 'center';
   onPress: () => void;
 }) {
   const pulse = useSharedValue(0);
@@ -166,7 +213,7 @@ function ConstellationNode({
   }, [status]);
 
   const haloProps = useAnimatedProps(() => ({
-    r: 30 + (pulse.value * 30),
+    r: (layout === 'center' ? 60 : 30) + (pulse.value * 30),
     opacity: 0.55 * (1 - pulse.value),
   }));
 
@@ -175,15 +222,23 @@ function ConstellationNode({
   }));
 
   const isFuture = status === 'future';
-  const nodeOpacity = isFuture ? 0.32 : 1;
+  const isCenter = layout === 'center';
+  let nodeOpacity = 1;
+  if (isCenter) nodeOpacity = 1;
+  else if (isFuture) nodeOpacity = 0.3;
+  else if (status === 'past') nodeOpacity = 0.7;
   const gradId = `nodeGrad-${level.id}`;
+  const visualSize = isCenter ? 180 : 140;
+  const centerPos = visualSize / 2;
 
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 90).duration(500).easing(Easing.out(Easing.exp))}
+      entering={FadeInDown.duration(350).easing(Easing.out(Easing.exp))}
       style={[
         styles.nodeWrapper,
-        { flexDirection: layout === 'left' ? 'row' : 'row-reverse' },
+        isCenter 
+          ? { flexDirection: 'column', alignItems: 'center', marginBottom: 40, marginTop: 60 }
+          : { flexDirection: layout === 'left' ? 'row' : 'row-reverse' },
       ]}
     >
       <Pressable
@@ -195,8 +250,8 @@ function ConstellationNode({
         }}
         onPress={onPress}
       >
-        <Animated.View style={[styles.nodeVisual, pressStyle]}>
-          <Svg width={140} height={140}>
+        <Animated.View style={[styles.nodeVisual, pressStyle, isCenter && { width: visualSize, height: visualSize, alignSelf: 'center', marginBottom: 0 }]}>
+          <Svg width={visualSize} height={visualSize}>
             <Defs>
               <RadialGradient id={gradId} cx="50%" cy="50%" r="50%">
                 <Stop offset="0%" stopColor={level.colors[0]} stopOpacity={1} />
@@ -210,46 +265,62 @@ function ConstellationNode({
             </Defs>
 
             {status === 'current' && (
-              <AnimatedCircle cx={70} cy={70} fill={`url(#halo-${gradId})`} animatedProps={haloProps} />
+              <AnimatedCircle cx={centerPos} cy={centerPos} fill={`url(#halo-${gradId})`} animatedProps={haloProps} />
             )}
 
             {!level.image ? (
               <>
-                <Circle cx={70} cy={70} r={NODE_RADIUS + 10} fill="none" stroke={level.colors[1]} strokeWidth={isFuture ? 0 : 2} opacity={0.35} />
-                <Circle cx={70} cy={70} r={NODE_RADIUS} fill={`url(#${gradId})`} opacity={nodeOpacity} />
-                <Circle cx={70} cy={70} r={NODE_RADIUS} fill="none" stroke="#ffffff" strokeWidth={1} opacity={0.25} />
+                <Circle cx={centerPos} cy={centerPos} r={(isCenter ? NODE_RADIUS * 2 : NODE_RADIUS) + 10} fill="none" stroke={level.colors[1]} strokeWidth={isFuture ? 0 : 2} opacity={0.35} />
+                <Circle cx={centerPos} cy={centerPos} r={isCenter ? NODE_RADIUS * 2 : NODE_RADIUS} fill={`url(#${gradId})`} opacity={nodeOpacity} />
+                <Circle cx={centerPos} cy={centerPos} r={isCenter ? NODE_RADIUS * 2 : NODE_RADIUS} fill="none" stroke="#ffffff" strokeWidth={1} opacity={0.25} />
               </>
             ) : null}
           </Svg>
 
           {level.image ? (
-            <Animated.Image 
-              source={level.image} 
-              style={{ position: 'absolute', top: -5, left: -5, width: 150, height: 150, opacity: nodeOpacity }} 
-              resizeMode="contain" 
-            />
+            <>
+              {/* Real Mascot Image */}
+              <Animated.Image 
+                source={level.image} 
+                style={[
+                  { position: 'absolute', top: -25, left: -25, width: 190, height: 190, opacity: nodeOpacity, zIndex: 2 },
+                  isCenter && { 
+                    top: -110, 
+                    left: -110, 
+                    width: 400, 
+                    height: 400, 
+                    opacity: 1, 
+                  }
+                ]} 
+                resizeMode="contain" 
+              />
+            </>
           ) : (
-            <View style={{ position: 'absolute', top: 70 - 14, left: 70 - 14, opacity: nodeOpacity }}>
-              <Ionicons name={level.icon as any} size={28} color="#ffffff" />
+            <View style={{ position: 'absolute', top: centerPos - (isCenter ? 24 : 14), left: centerPos - (isCenter ? 24 : 14), opacity: nodeOpacity }}>
+              <Ionicons name={level.icon as any} size={isCenter ? 48 : 28} color="#ffffff" />
             </View>
           )}
         </Animated.View>
       </Pressable>
 
-      <View style={[styles.loreContainer, layout === 'left' ? { paddingLeft: 16 } : { paddingRight: 16 }]}>
+      <View style={[
+        styles.loreContainer, 
+        isCenter ? { paddingHorizontal: 24, alignItems: 'center' } : layout === 'left' ? { paddingLeft: 16 } : { paddingRight: 16 }
+      ]}>
         <Text
           style={[
             styles.nodeLabel,
-            { textAlign: layout === 'left' ? 'left' : 'right', opacity: isFuture ? 0.4 : 1 },
+            { textAlign: isCenter ? 'center' : layout === 'left' ? 'left' : 'right', opacity: isCenter ? 1 : (isFuture ? 0.4 : 1) },
             status === 'current' && styles.nodeLabelCurrent,
+            isCenter && { fontSize: 36, letterSpacing: 1.5, marginBottom: 4 }
           ]}
         >
           {level.name}
         </Text>
-        <Text style={[styles.nodeXp, { textAlign: layout === 'left' ? 'left' : 'right', opacity: isFuture ? 0.35 : 0.7 }]}>
+        <Text style={[styles.nodeXp, { textAlign: isCenter ? 'center' : layout === 'left' ? 'left' : 'right', opacity: isCenter ? 1 : (isFuture ? 0.35 : 0.7) }, isCenter && { fontSize: 18 }]}>
           {level.xp.toLocaleString()} XP
         </Text>
-        <Text style={[styles.loreText, { textAlign: layout === 'left' ? 'left' : 'right', opacity: isFuture ? 0.2 : 0.85 }]}>
+        <Text style={[styles.loreText, { textAlign: isCenter ? 'center' : layout === 'left' ? 'left' : 'right', opacity: isCenter ? 1 : (isFuture ? 0.2 : 0.85), marginTop: isCenter ? 4 : 0 }, isCenter && { fontSize: 16, lineHeight: 24 }]}>
           {level.description}
         </Text>
       </View>
@@ -259,8 +330,16 @@ function ConstellationNode({
 
 export default function XPConstellationScreen() {
   const navigation = useNavigation();
-  const scrollRef = useRef<ScrollView>(null);
+  const scrollRef = useRef<Animated.ScrollView>(null);
+  const nodePositions = useRef<{[key: number]: number}>({});
   const [currentXP, setCurrentXP] = useState(0);
+
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
 
   useEffect(() => {
     getXPState().then(state => {
@@ -283,20 +362,20 @@ export default function XPConstellationScreen() {
   useEffect(() => {
     const t = setTimeout(() => {
       if (scrollRef.current) {
-        // reversed array index: 0 is highest level, 7 is lowest level
+        // reversed array index: 0 is highest level (Apex), 19 is lowest level (Seeker)
         const reverseIndex = LEVELS.length - 1 - currentLevelIndex;
         
-        // Estimate height: 140 visual + 40 margin = 180 per item.
-        // Add 120 for the ScrollView's paddingTop
-        const ITEM_HEIGHT = 180;
-        const targetY = reverseIndex * ITEM_HEIGHT + 120;
+        // Grab the exact Y position of the current level's node
+        const targetY = nodePositions.current[reverseIndex];
         
-        // Offset a bit so it's centered nicely, not perfectly at the very top edge
-        const scrollY = Math.max(targetY - 140, 0); 
-        
-        scrollRef.current.scrollTo({ y: scrollY, animated: true });
+        if (targetY !== undefined) {
+          // Subtract a portion of the screen height so the current level is positioned 
+          // in the middle/lower-middle of the screen
+          const scrollY = Math.max(targetY - (SCREEN_H / 2) + 120, 0); 
+          scrollRef.current.scrollTo({ y: scrollY, animated: true });
+        }
       }
-    }, 400);
+    }, 250);
     return () => clearTimeout(t);
   }, [currentLevelIndex]);
 
@@ -304,16 +383,17 @@ export default function XPConstellationScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
-      <View style={StyleSheet.absoluteFill}>
+      {/* SVG Overlay for Galaxy Effect (Vignette + Stars) */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Svg width={SCREEN_W} height={SCREEN_H}>
           <Defs>
-            <RadialGradient id="bgGlow" cx="50%" cy="20%" r="80%">
-              <Stop offset="0%" stopColor="#1a0b2e" stopOpacity={1} />
-              <Stop offset="55%" stopColor="#0a0614" stopOpacity={1} />
+            <RadialGradient id="galaxyVignette" cx="50%" cy="40%" r="70%">
+              <Stop offset="0%" stopColor="#000000" stopOpacity={0.2} />
+              <Stop offset="60%" stopColor="#000000" stopOpacity={0.85} />
               <Stop offset="100%" stopColor="#000000" stopOpacity={1} />
             </RadialGradient>
           </Defs>
-          <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H} fill="url(#bgGlow)" />
+          <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H} fill="url(#galaxyVignette)" />
           {stars.map((s, i) => (
             <TwinkleStar key={i} {...s} />
           ))}
@@ -331,38 +411,71 @@ export default function XPConstellationScreen() {
         >
           <Text style={styles.backChevron}>‹</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Lore Codex</Text>
+        <Text style={styles.headerTitle}>Ascension Path</Text>
         <View style={{ width: 40 }} />
       </Animated.View>
 
       <ScrollView
-        ref={scrollRef}
+        ref={scrollRef as any}
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingTop: 120, paddingBottom: 160 }}
         showsVerticalScrollIndicator={false}
       >
         {reversedLevels.map((level, i) => {
           const originalIndex = LEVELS.length - 1 - i;
-          const status: 'past' | 'current' | 'future' =
-            originalIndex < currentLevelIndex ? 'past' : originalIndex === currentLevelIndex ? 'current' : 'future';
-          const layout = i % 2 === 0 ? 'left' : 'right';
+          const actualStatus = originalIndex < currentLevelIndex ? 'past' : originalIndex === currentLevelIndex ? 'current' : 'future';
+          const layout = originalIndex === LEVELS.length - 1 ? 'center' : i % 2 === 0 ? 'left' : 'right';
 
           return (
-            <ConstellationNode
+            <View 
               key={level.id}
-              level={level}
-              index={i}
-              status={status}
-              layout={layout}
-              onPress={() => {
-                Haptics.selectionAsync();
+              onLayout={(e) => {
+                nodePositions.current[i] = e.nativeEvent.layout.y;
               }}
-            />
+              style={{ position: 'relative' }}
+            >
+              {/* Localized Nebula Background */}
+              <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', zIndex: -1, opacity: originalIndex === LEVELS.length - 1 ? 1 : (actualStatus === 'future' ? 0.3 : (actualStatus === 'past' ? 0.7 : 1)) }]} pointerEvents="none">
+                <Svg width={SCREEN_W} height={originalIndex === LEVELS.length - 1 ? 1200 : 600} style={{ position: 'absolute' }}>
+                  <Defs>
+                    <RadialGradient id={`nebula-${level.id}`} cx="50%" cy="50%" r="50%">
+                      <Stop offset="0%" stopColor={level.colors[0]} stopOpacity={0.25} />
+                      <Stop offset="40%" stopColor={level.colors[0]} stopOpacity={0.12} />
+                      <Stop offset="100%" stopColor={level.colors[0]} stopOpacity={0} />
+                    </RadialGradient>
+                  </Defs>
+                  {originalIndex === LEVELS.length - 1 ? (
+                    <Circle cx={SCREEN_W / 2} cy={600} r={600} fill={`url(#nebula-${level.id})`} />
+                  ) : (
+                    <Circle cx={SCREEN_W / 2} cy={300} r={300} fill={`url(#nebula-${level.id})`} />
+                  )}
+                </Svg>
+              </View>
+
+              <ConstellationNode
+                level={level}
+                index={i}
+                status={actualStatus}
+                layout={layout}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                }}
+              />
+            </View>
           );
         })}
       </ScrollView>
 
-      <Animated.View entering={FadeInDown.delay(200)} style={styles.footer}>
+      <Animated.View 
+        entering={FadeInDown.delay(200)} 
+        style={[
+          styles.footer, 
+          { 
+            borderColor: LEVELS[currentLevelIndex].colors[0],
+            shadowColor: LEVELS[currentLevelIndex].colors[0] 
+          }
+        ]}
+      >
         <Text style={styles.footerLevel}>{LEVELS[currentLevelIndex].name}</Text>
         <Text style={styles.footerXp}>{currentXP.toLocaleString()} XP total</Text>
       </Animated.View>
@@ -453,15 +566,18 @@ const styles = StyleSheet.create({
   },
   footer: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingBottom: 30,
-    paddingTop: 16,
+    bottom: 30,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(12, 12, 16, 0.95)',
+    borderWidth: 1,
+    borderRadius: 30,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: 'rgba(255,255,255,0.15)',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 15,
+    elevation: 10,
   },
   footerLevel: {
     color: '#ffffff',

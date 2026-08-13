@@ -104,7 +104,18 @@ export interface CustomEvent {
 }
 
 export interface WaterLog { id: string; userId: string; date: string; amountMl: number; }
-export interface SleepLog  { id: string; userId: string; date: string; hours: number; }
+export interface ContentLog {
+  id?: string;
+  userId: string;
+  title: string;
+  contentType: 'book' | 'podcast' | 'article' | 'video';
+  status: 'to_read' | 'in_progress' | 'completed';
+  url?: string;
+  progressPercentage?: number; // 0-100
+  notes?: string;
+  dateAdded: string; // ISO
+  dateCompleted?: string; // ISO
+}
 export interface WeightLog { id?: string; userId: string; date: string; weightKg: number; photoUrl?: string; createdAt: number; }
 
 export interface GymLog {
@@ -187,7 +198,8 @@ interface MobileDataContextType {
   attendance: AttendanceSubject[]; attendanceLogs: AttendanceLog[]; assignments: Assignment[];
   semesters: Semester[]; semesterSubjects: SemesterSubject[];
   learningTopics: LearningTopic[]; jobs: JobApplication[];
-  waterLogs: WaterLog[]; sleepLogs: SleepLog[]; weightLogs: WeightLog[];
+  waterLogs: WaterLog[]; weightLogs: WeightLog[];
+  contentLogs: ContentLog[];
   weeklyReviews: WeeklyReview[];
   googleAccessToken: string | null; loading: boolean;
   pendingTaskCount: number; todayHabits: Habit[];
@@ -269,7 +281,6 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     updateFullMasterPlan: wellness.updateFullMasterPlan,
     applyMasterTemplate:  wellness.applyMasterTemplate,
     waterLogs:            wellness.waterLogs,
-    sleepLogs:            wellness.sleepLogs,
     weightLogs:           wellness.weightLogs,
     // Academic domain
     attendance:        academic.attendance,
@@ -280,6 +291,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     // Creative domain
     storageNodes:      creative.storageNodes,
     notes:             creative.notes,
+    contentLogs:       creative.contentLogs,
     learningTopics:    creative.learningTopics,
     jobs:              creative.jobs,
     // Planner domain
@@ -317,11 +329,11 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     core.pinnedModules, core.setPinnedModules, core.googleAccessToken,
     core.optimisticAddTask, core.optimisticUpdateTask, core.optimisticDeleteTask,
     core.optimisticUpdateHabit, core.optimisticAddHabitLog, core.optimisticUpdateHabitLog, core.optimisticRemoveHabitLog,
-    wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.updateFullMasterPlan, wellness.applyMasterTemplate, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
+    wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.updateFullMasterPlan, wellness.applyMasterTemplate, wellness.waterLogs, wellness.weightLogs,
     wellness.optimisticAddGymLog, wellness.optimisticUpdateGymLog,
     academic.attendance, academic.attendanceLogs, academic.assignments, academic.semesters, academic.semesterSubjects,
     academic.optimisticUpdateAttendance, academic.optimisticAddAttendanceLog, academic.optimisticRemoveAttendanceLog, academic.optimisticAddAssignment, academic.optimisticUpdateAssignment, academic.optimisticDeleteAssignment,
-    creative.storageNodes, creative.notes, creative.learningTopics, creative.jobs,
+    creative.storageNodes, creative.notes, creative.learningTopics, creative.jobs, creative.contentLogs,
     planner.customEvents, planner.goals, planner.weeklyReviews,
     planner.optimisticAddEvent, planner.optimisticUpdateEvent, planner.optimisticDeleteEvent, planner.optimisticAddGoal, planner.optimisticUpdateGoal,
   ]);
@@ -349,7 +361,6 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
         allHabits: core.allHabits,
         assignments: academic.assignments,
         waterLogs: wellness.waterLogs,
-        sleepLogs: wellness.sleepLogs,
         // BUG-N5 FIX: Pass userGymPlan so gym reminders respect the user's
         // custom workout plan instead of always using the static PPL template.
         userGymPlan: wellness.userGymPlan,
@@ -364,7 +375,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     // attendance triggers a reschedule (which removes the now-stale reminder).
     academic.attendanceLogs,
     core.habitLogs, core.allHabits, academic.assignments,
-    wellness.waterLogs, wellness.sleepLogs,
+    wellness.waterLogs,
     // BUG-N5 FIX: Added userGymPlan to dependency array.
     wellness.userGymPlan,
   ]);
@@ -414,7 +425,6 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   updateFullMasterPlan: async () => {},
   applyMasterTemplate: async () => {},
   waterLogs: [],
-  sleepLogs: [],
   weightLogs: [],
   attendance: [],
   attendanceLogs: [],
@@ -423,6 +433,7 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   semesterSubjects: [],
   storageNodes: [],
   notes: [],
+  contentLogs: [],
   learningTopics: [],
   jobs: [],
   customEvents: [],

@@ -13,7 +13,7 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { InteractionManager } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
-import type { StorageNode, Note, LearningTopic, JobApplication } from "../MobileDataContext";
+import type { StorageNode, Note, LearningTopic, JobApplication, ContentLog } from "../MobileDataContext";
 import { readCreativeCache, writeCreativeCache } from "../../utils/domainCache";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -22,6 +22,7 @@ export interface CreativeContextType {
   notes: Note[];   // derived from storageNodes where type === 'note'
   learningTopics: LearningTopic[];
   jobs: JobApplication[];
+  contentLogs: ContentLog[];
   ensureSubscribed: () => void;
 }
 
@@ -44,6 +45,7 @@ export function CreativeProvider({
   const [storageNodes, setStorageNodes]   = useState<StorageNode[]>([]);
   const [learningTopics, setLearningTopics] = useState<LearningTopic[]>([]);
   const [jobs, setJobs]                   = useState<JobApplication[]>([]);
+  const [contentLogs, setContentLogs]     = useState<ContentLog[]>([]);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
 
@@ -55,6 +57,7 @@ export function CreativeProvider({
       if (cached.storageNodes   && cached.storageNodes.length > 0)   setStorageNodes(prev   => prev.length === 0 ? cached.storageNodes!   : prev);
       if (cached.learningTopics && cached.learningTopics.length > 0) setLearningTopics(prev => prev.length === 0 ? cached.learningTopics! : prev);
       if (cached.jobs           && cached.jobs.length > 0)           setJobs(prev           => prev.length === 0 ? cached.jobs!           : prev);
+      if (cached.contentLogs    && cached.contentLogs.length > 0)    setContentLogs(prev    => prev.length === 0 ? cached.contentLogs!    : prev);
     });
     return () => { cancelled = true; };
   }, []);
@@ -80,6 +83,11 @@ export function CreativeProvider({
           snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)); setJobs(fresh); writeCreativeCache({ jobs: fresh }); },
           err => console.error("[Creative] jobs", err)
         ));
+        unsubsRef.current.push(onSnapshot(
+          query(collection(db, COLLECTION.CONTENT_LOGS), where("userId", "==", uid)),
+          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentLog)); setContentLogs(fresh); writeCreativeCache({ contentLogs: fresh }); },
+          err => console.error("[Creative] contentLogs", err)
+        ));
       }, 600);
     });
   };
@@ -89,7 +97,7 @@ export function CreativeProvider({
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      setStorageNodes([]); setLearningTopics([]); setJobs([]);
+      setStorageNodes([]); setLearningTopics([]); setJobs([]); setContentLogs([]);
     }
   }, [user]);
 
@@ -115,7 +123,7 @@ export function CreativeProvider({
   );
 
   return (
-    <CreativeContext.Provider value={{ storageNodes, notes, learningTopics, jobs, ensureSubscribed }}>
+    <CreativeContext.Provider value={{ storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed }}>
       {children}
     </CreativeContext.Provider>
   );

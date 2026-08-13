@@ -82,7 +82,7 @@ export const COLLECTION = {
   WEEKLY_REVIEWS: 'weekly_reviews',
   WATER_LOGS: 'water_logs',
   WEIGHT_LOGS: 'weight_logs',
-  SLEEP_LOGS: 'sleep_logs',
+  CONTENT_LOGS: 'content_logs',
   USER_PROFILES: 'user_profiles',
   // Placement Hub
   DSA_LOGS: 'dsa_logs',
@@ -122,6 +122,7 @@ export const SCREENS = {
   LEARNING: 'Learning',
   JOBS: 'Jobs',
   PLACEMENT_HUB: 'PlacementHub',
+  CONTENT_LIBRARY: 'ContentLibrary',
   // Gym sub-stack
   GYM_HOME: 'GymHome',
   ACTIVE_LOGGING: 'ActiveLogging',
@@ -152,14 +153,26 @@ export const AGENT_HISTORY_MAX_ENTRIES = 50;
 
 // ── XP System ─────────────────────────────────────────────────────────────────
 export const XP_LEVELS = [
-  { xp: 0,     label: 'Initiate' },
-  { xp: 500,   label: 'Operator' },
-  { xp: 1500,  label: 'Commander' },
-  { xp: 3500,  label: 'Strategist' },
-  { xp: 7000,  label: 'Vanguard' },
-  { xp: 13000, label: 'Architect' },
-  { xp: 22000, label: 'Legend' },
-  { xp: 35000, label: 'Mythic' },
+  { xp: 0,      label: 'Seeker' },
+  { xp: 500,    label: 'Warden' },
+  { xp: 1200,   label: 'Sentinel' },
+  { xp: 2500,   label: 'Guardian' },
+  { xp: 4200,   label: 'Vanguard' },
+  { xp: 6500,   label: 'Luminary' },
+  { xp: 9500,   label: 'Legend' },
+  { xp: 13500,  label: 'Mythic' },
+  { xp: 18000,  label: 'Paragon' },
+  { xp: 23000,  label: 'Titan' },
+  { xp: 29000,  label: 'Ascendant' },
+  { xp: 36000,  label: 'Exalted' },
+  { xp: 44000,  label: 'Sovereign' },
+  { xp: 53000,  label: 'Archon' },
+  { xp: 63500,  label: 'Celestial' },
+  { xp: 75500,  label: 'Ethereal' },
+  { xp: 89000,  label: 'Empyrean' },
+  { xp: 104000, label: 'Astral' },
+  { xp: 121000, label: 'Zenith' },
+  { xp: 140000, label: 'Apex' },
 ] as const;
 
 // ── Default Tab Modules ───────────────────────────────────────────────────────

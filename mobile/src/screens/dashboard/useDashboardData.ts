@@ -29,7 +29,7 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
 export function useDashboardData() {
   const {
     user, tasks, gymLogs, userGymPlan, habitLogs, allHabits,
-    attendance, attendanceLogs, assignments, waterLogs, sleepLogs, customEvents,
+    attendance, attendanceLogs, assignments, waterLogs, contentLogs, customEvents,
   } = useMobileData();
 
   // ── UI State ─────────────────────────────────────────────────────────────────
@@ -40,7 +40,6 @@ export function useDashboardData() {
   const [layout, setLayout] = useState<LayoutItem[]>(DEFAULT_LAYOUT);
   const [layoutSheetVisible, setLayoutSheetVisible] = useState(false);
   const [waterLogVisible, setWaterLogVisible] = useState(false);
-  const [sleepLogVisible, setSleepLogVisible] = useState(false);
   const [waterTotal, setWaterTotal] = useState(2500);
   const [nowDate, setNowDate] = useState(new Date());
 
@@ -251,17 +250,17 @@ export function useDashboardData() {
   return {
     // Data
     user, tasks, gymLogs, userGymPlan, habitLogs, allHabits,
-    attendance, attendanceLogs, assignments, waterLogs, sleepLogs,
+    attendance, attendanceLogs, assignments, waterLogs, contentLogs,
     // Derived
     todayStr, timeGreeting, avatarLetter, hour,
     nowDate, nextClass, appStreak, // expose raw Date for .getDay()/.getMinutes() in stats useMemo
     // State
     quote, xp, xpGain, captureVisible, layout, layoutSheetVisible,
-    waterLogVisible, sleepLogVisible, waterTotal,
+    waterLogVisible, waterTotal,
     // Sara surface
     surfaceMessage, surfaceActionLabel, dismissBanner,
     // Setters
     setXpGain, setCaptureVisible, setLayout, setLayoutSheetVisible,
-    setWaterLogVisible, setSleepLogVisible, setWaterTotal,
+    setWaterLogVisible, setWaterTotal,
   };
 }

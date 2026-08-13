@@ -65,6 +65,7 @@ const LearningScreen           = cacheAwareLazy('LearningScreen',           () =
 const StreakDetailScreen        = cacheAwareLazy('StreakDetailScreen',       () => import('../screens/StreakDetailScreen'));
 const AgentHistoryScreen        = cacheAwareLazy('AgentHistoryScreen',      () => import('../screens/AgentHistoryScreen'));
 const WellbeingDashboardScreen  = cacheAwareLazy('WellbeingDashboardScreen', () => import('../screens/WellbeingDashboardScreen'));
+const ContentLibraryScreen      = cacheAwareLazy('ContentLibraryScreen',     () => import('../screens/ContentLibraryScreen'));
 
 // --- Navigators --------------------------------------------------------------
 const Stack = createNativeStackNavigator();
@@ -137,6 +138,7 @@ const LAZY_COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   Assignments:  AssignmentsScreen,
   Grades:       GradesScreen,
   Learning:     LearningScreen,
+  ContentLibrary: ContentLibraryScreen,
 };
 
 // Full combined map (sync screens first for priority)
@@ -258,6 +260,7 @@ function NestedScreens() {
         <Stack.Screen name="AgentHistory"          component={withErrorBoundary(AgentHistoryScreen,          'AgentHistory')} />
         <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false }} />
         <Stack.Screen name="XPConstellation"       component={withErrorBoundary(XPConstellationScreen,       'XPConstellation')} options={{ headerShown: false }} />
+        <Stack.Screen name="ContentLibrary"        component={withErrorBoundary(ContentLibraryScreen,        'ContentLibrary')} options={{ headerShown: false }} />
       </Stack.Navigator>
     </ErrorBoundary>
   );

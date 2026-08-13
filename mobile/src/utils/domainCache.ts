@@ -24,7 +24,6 @@ export const DOMAIN_CACHE_KEYS = {
   GYM_LOGS:         '@zentrack_cache_gym_logs',
   USER_GYM_PLAN:    '@zentrack_cache_user_gym_plan',
   WATER_LOGS:       '@zentrack_cache_water_logs',
-  SLEEP_LOGS:       '@zentrack_cache_sleep_logs',
   WEIGHT_LOGS:      '@zentrack_cache_weight_logs',
   // Academic
   ATTENDANCE:       '@zentrack_cache_attendance',
@@ -40,6 +39,7 @@ export const DOMAIN_CACHE_KEYS = {
   STORAGE_NODES:    '@zentrack_cache_storage_nodes',
   LEARNING_TOPICS:  '@zentrack_cache_learning_topics',
   JOBS:             '@zentrack_cache_jobs',
+  CONTENT_LOGS:     '@zentrack_cache_content_logs',
 } as const;
 
 type CacheKey = typeof DOMAIN_CACHE_KEYS[keyof typeof DOMAIN_CACHE_KEYS];
@@ -88,7 +88,6 @@ const WELLNESS_KEY_MAP = {
   gymLogs:     DOMAIN_CACHE_KEYS.GYM_LOGS,
   userGymPlan: DOMAIN_CACHE_KEYS.USER_GYM_PLAN,
   waterLogs:   DOMAIN_CACHE_KEYS.WATER_LOGS,
-  sleepLogs:   DOMAIN_CACHE_KEYS.SLEEP_LOGS,
   weightLogs:  DOMAIN_CACHE_KEYS.WEIGHT_LOGS,
 } as const;
 
@@ -96,7 +95,6 @@ export interface WellnessCache {
   gymLogs: any[];
   userGymPlan: any | null;
   waterLogs: any[];
-  sleepLogs: any[];
   weightLogs: any[];
 }
 
@@ -144,12 +142,14 @@ const CREATIVE_KEY_MAP = {
   storageNodes:   DOMAIN_CACHE_KEYS.STORAGE_NODES,
   learningTopics: DOMAIN_CACHE_KEYS.LEARNING_TOPICS,
   jobs:           DOMAIN_CACHE_KEYS.JOBS,
+  contentLogs:    DOMAIN_CACHE_KEYS.CONTENT_LOGS,
 } as const;
 
 export interface CreativeCache {
   storageNodes: any[];
   learningTopics: any[];
   jobs: any[];
+  contentLogs: any[];
 }
 
 export const readCreativeCache  = () => readDomainCache<CreativeCache>(CREATIVE_KEY_MAP);

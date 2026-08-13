@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { LEVEL_THRESHOLDS } from '../services/xpSystem';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -15,7 +16,6 @@ import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import QuickCaptureSheet from '../components/Dashboard/QuickCaptureSheet';
 import DashboardLayoutSheet from '../components/Dashboard/DashboardLayoutSheet';
 import WaterLogSheet from '../components/Dashboard/WaterLogSheet';
-import SleepLogSheet from '../components/Dashboard/SleepLogSheet';
 
 export default function DashboardScreen() {
   const { colors } = useTheme();
@@ -36,8 +36,7 @@ export default function DashboardScreen() {
   }).length;
   
   const waterCompleted = (data.waterLogs || []).filter(w => w.date === data.todayStr).reduce((sum, log) => sum + log.amountMl, 0);
-  const sleepInfo = (data.sleepLogs || []).sort((a,b) => b.date.localeCompare(a.date))[0];
-  const lastNightSleep = sleepInfo ? sleepInfo.hours : null;
+  const contentCount = (data.contentLogs || []).length;
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
@@ -103,7 +102,7 @@ export default function DashboardScreen() {
                     habitsTotal={data.allHabits.length}
                     waterCompleted={waterCompleted}
                     waterTotal={data.waterTotal}
-                    lastNightSleep={lastNightSleep}
+                    contentCount={contentCount}
                     levelLabel={levelInfo.label}
                     levelNextLabel={levelInfo.nextLabel}
                     levelXP={data.xp}
@@ -116,7 +115,7 @@ export default function DashboardScreen() {
                     onPressStreak={() => navigation.navigate('MoreStack', { screen: 'StreakDetail' })}
                     onPressHabits={() => navigation.navigate('Habits')}
                     onPressWater={() => data.setWaterLogVisible(true)}
-                    onPressSleep={() => data.setSleepLogVisible(true)}
+                    onPressContent={() => navigation.navigate('MoreStack', { screen: 'ContentLibrary' })}
                     onPressXP={() => navigation.navigate('MoreStack', { screen: 'XPConstellation' })}
                     onCapture={() => data.setCaptureVisible(true)}
                   />
@@ -159,11 +158,6 @@ export default function DashboardScreen() {
         onUpdateTarget={(val) => {
           data.setWaterTotal(val);
         }}
-      />
-      <SleepLogSheet 
-        visible={data.sleepLogVisible} 
-        onClose={() => data.setSleepLogVisible(false)}
-        userId={data.user?.uid || ''}
       />
     </SafeAreaView>
   );

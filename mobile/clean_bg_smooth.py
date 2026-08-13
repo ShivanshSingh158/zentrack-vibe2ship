@@ -8,9 +8,9 @@ def remove_dark_bg_smooth(input_path, output_path):
     
     new_data = []
     # threshold for fully transparent
-    black_thresh = 15
+    black_thresh = 35
     # threshold for fully opaque
-    solid_thresh = 70
+    solid_thresh = 85
     
     for item in data:
         r, g, b, a = item

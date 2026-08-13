@@ -14,7 +14,7 @@ import { InteractionManager } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import { UserGymPlanDoc, GymPlanDay } from "../../types/gym.types";
-import type { GymLog, WaterLog, SleepLog, WeightLog } from "../MobileDataContext";
+import type { GymLog, WaterLog, WeightLog } from "../MobileDataContext";
 import { GYM_PLAN_ARNOLD, GYM_PLAN_PPL } from "../../data/gymPlan";
 import { readWellnessCache, writeWellnessCache } from "../../utils/domainCache";
 
@@ -24,7 +24,6 @@ export interface WellnessContextType {
   /** true once the FIRST Firestore gymLogs snapshot has fired — safe to initialise from */
   gymLogsReady: boolean;
   waterLogs: WaterLog[];
-  sleepLogs: SleepLog[];
   weightLogs: WeightLog[];
   userGymPlan: UserGymPlanDoc | null;
   updateMasterPlan: (dayIndex: number, planDay: GymPlanDay) => Promise<void>;
@@ -58,7 +57,6 @@ export function WellnessProvider({
   // Gym screens show cached data the instant the cache is seeded, with no spinner.
   const [userGymPlan, setUserGymPlan] = useState<UserGymPlanDoc | null>(null);
   const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
-  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
   const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
@@ -71,7 +69,6 @@ export function WellnessProvider({
       if (cached.gymLogs    && cached.gymLogs.length > 0)    setGymLogs(prev    => prev.length === 0 ? cached.gymLogs!    : prev);
       if (cached.userGymPlan)                               setUserGymPlan(prev => prev === null   ? cached.userGymPlan! : prev);
       if (cached.waterLogs  && cached.waterLogs.length > 0) setWaterLogs(prev  => prev.length === 0 ? cached.waterLogs!  : prev);
-      if (cached.sleepLogs  && cached.sleepLogs.length > 0) setSleepLogs(prev  => prev.length === 0 ? cached.sleepLogs!  : prev);
       if (cached.weightLogs && cached.weightLogs.length > 0) setWeightLogs(prev => prev.length === 0 ? cached.weightLogs! : prev);
     });
     return () => { cancelled = true; };
@@ -114,16 +111,6 @@ export function WellnessProvider({
         ));
 
         unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.SLEEP_LOGS), where("userId", "==", uid)),
-          snap => {
-            const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog));
-            setSleepLogs(fresh);
-            writeWellnessCache({ sleepLogs: fresh });
-          },
-          err => console.error("[Wellness] sleepLogs", err)
-        ));
-
-        unsubsRef.current.push(onSnapshot(
           query(collection(db, 'weight_logs'), where("userId", "==", uid)),
           snap => {
             const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeightLog));
@@ -145,7 +132,6 @@ export function WellnessProvider({
       setGymLogs([]);
       setUserGymPlan(null);
       setWaterLogs([]);
-      setSleepLogs([]);
       setWeightLogs([]);
     }
   }, [user]);
@@ -205,7 +191,7 @@ export function WellnessProvider({
   const gymLogsReady = gymLogs.length > 0;
 
   return (
-    <WellnessContext.Provider value={{ gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate, waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog }}>
+    <WellnessContext.Provider value={{ gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate, waterLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog }}>
       {children}
     </WellnessContext.Provider>
   );

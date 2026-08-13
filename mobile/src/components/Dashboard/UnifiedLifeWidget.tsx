@@ -6,7 +6,7 @@
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import Svg, { Circle as SvgCircle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Circle as SvgCircle, Defs, LinearGradient as SvgLinearGradient, RadialGradient, Stop } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 
@@ -37,7 +37,7 @@ interface UnifiedLifeWidgetProps {
   habitsTotal: number;
   waterCompleted: number;
   waterTotal: number;
-  lastNightSleep: number | null;
+  contentCount: number;
   levelLabel: string;
   levelNextLabel: string;
   levelXP: number;
@@ -52,7 +52,7 @@ interface UnifiedLifeWidgetProps {
   onPressStreak: () => void;
   onPressHabits: () => void;
   onPressWater: () => void;
-  onPressSleep: () => void;
+  onPressContent: () => void;
   onPressXP?: () => void;
   onCapture?: () => void;
   onPressAssignments?: () => void;
@@ -66,24 +66,48 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 const MASCOT_IMAGES: Record<string, any> = {
   'Seeker': require('../../../assets/mascots/level0.png'),
   'Warden': require('../../../assets/mascots/level1.png'),
-  'Guardian': require('../../../assets/mascots/level2.png'),
   'Sentinel': require('../../../assets/mascots/level3.png'),
+  'Guardian': require('../../../assets/mascots/level2.png'),
   'Vanguard': require('../../../assets/mascots/level4.png'),
   'Luminary': require('../../../assets/mascots/level5.png'),
   'Legend': require('../../../assets/mascots/level6.png'),
   'Mythic': require('../../../assets/mascots/level7.png'),
+  'Paragon': require('../../../assets/mascots/level8.png'),
+  'Titan': require('../../../assets/mascots/level9.png'),
+  'Ascendant': require('../../../assets/mascots/level10.png'),
+  'Exalted': require('../../../assets/mascots/level11.png'),
+  'Sovereign': require('../../../assets/mascots/level12.png'),
+  'Archon': require('../../../assets/mascots/level13.png'),
+  'Celestial': require('../../../assets/mascots/level14.png'),
+  'Ethereal': require('../../../assets/mascots/level15.png'),
+  'Empyrean': require('../../../assets/mascots/level16.png'),
+  'Astral': require('../../../assets/mascots/level17.png'),
+  'Zenith': require('../../../assets/mascots/level18.png'),
+  'Apex': require('../../../assets/mascots/level19.png'),
 };
 
 const getGradientForLevel = (level: string) => {
   switch (level) {
     case 'Seeker':    return ['#34d399', '#22d3ee'];
     case 'Warden':    return ['#22d3ee', '#3b82f6'];
-    case 'Guardian':  return ['#3b82f6', '#6366f1'];
     case 'Sentinel':  return ['#14b8a6', '#0ea5e9'];
+    case 'Guardian':  return ['#3b82f6', '#6366f1'];
     case 'Vanguard':  return ['#a855f7', '#ec4899'];
     case 'Luminary':  return ['#f59e0b', '#fbbf24'];
     case 'Legend':    return ['#f97316', '#ef4444'];
     case 'Mythic':    return ['#ec4899', '#8b5cf6'];
+    case 'Paragon':   return ['#94a3b8', '#f8fafc'];
+    case 'Titan':     return ['#dc2626', '#7f1d1d'];
+    case 'Ascendant': return ['#6ee7b7', '#059669'];
+    case 'Exalted':   return ['#ca8a04', '#fef08a'];
+    case 'Sovereign': return ['#7e22ce', '#d946ef'];
+    case 'Archon':    return ['#2563eb', '#22d3ee'];
+    case 'Celestial': return ['#1e3a8a', '#e0f2fe'];
+    case 'Ethereal':  return ['#a78bfa', '#fdf4ff'];
+    case 'Empyrean':  return ['#f43f5e', '#fdba74'];
+    case 'Astral':    return ['#0f766e', '#5eead4'];
+    case 'Zenith':    return ['#334155', '#e2e8f0'];
+    case 'Apex':      return ['#eab308', '#ffffff'];
     default:          return ['#34d399', '#22d3ee'];
   }
 };
@@ -97,7 +121,7 @@ export function UnifiedLifeWidget({
   habitsTotal,
   waterCompleted,
   waterTotal,
-  lastNightSleep,
+  contentCount,
   levelLabel,
   levelNextLabel,
   levelXP,
@@ -112,13 +136,19 @@ export function UnifiedLifeWidget({
   onPressStreak,
   onPressHabits,
   onPressWater,
-  onPressSleep,
+  onPressContent,
   onPressXP,
   onCapture,
   onPressAssignments,
 }: UnifiedLifeWidgetProps) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const mascotConfig = useMemo(() => {
+    if (levelLabel === 'Warden') return { w: 90, b: -28, x: 0 };
+    if (levelLabel === 'Apex') return { w: 135, b: -42, x: 6 };
+    return { w: 105, b: -32, x: 0 };
+  }, [levelLabel]);
 
   const ringPercent = nextClass
     ? (nextClass.isOngoing
@@ -241,19 +271,19 @@ export function UnifiedLifeWidget({
             <Text style={[styles.valuePillText, { color: '#89dceb' }]}>{displayWater}/{displayWaterTarget}L</Text>
           </AnimatedPressable>
 
-          {/* SLEEP */}
+          {/* CONTENT */}
           <AnimatedPressable
             style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1 }]}
             activeOpacity={0.75}
             delayPressIn={80}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressSleep(); }}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressContent(); }}
           >
             <View style={styles.compactLeftGroup}>
-              <Text style={styles.compactEmoji}>🌙</Text>
-              <Text style={[styles.compactLabel, { color: '#a599ff' }]}>Sleep</Text>
+              <Text style={styles.compactEmoji}>📚</Text>
+              <Text style={[styles.compactLabel, { color: '#a599ff' }]}>Library</Text>
             </View>
             <Text style={[styles.valuePillText, { color: '#a599ff' }]}>
-              {lastNightSleep !== null ? `${lastNightSleep} Hour` : '--'}
+              {contentCount} {contentCount === 1 ? 'Item' : 'Items'}
             </Text>
           </AnimatedPressable>
         </View>
@@ -261,7 +291,7 @@ export function UnifiedLifeWidget({
 
       {showXPSection && (
         <AnimatedPressable 
-          style={styles.xpSection} 
+          style={[styles.xpSection, { zIndex: 100 }]} 
           activeOpacity={0.7} 
           onPress={() => {
             if (onPressXP) {
@@ -271,11 +301,39 @@ export function UnifiedLifeWidget({
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Animated.Image 
-              source={MASCOT_IMAGES[levelLabel]} 
-              style={{ width: 62, height: 62, marginRight: 6, marginVertical: -10, alignSelf: 'center' }} 
-              resizeMode="contain" 
-            />
+            {/* 3D Overflow Mascot Container */}
+            <View style={{ width: 65, height: 45, marginRight: 8, justifyContent: 'center', alignItems: 'center', zIndex: 100 }}>
+              {/* Glow / Aura Layer (Cross-Platform) */}
+              <Animated.Image 
+                source={MASCOT_IMAGES[levelLabel]} 
+                style={{ 
+                  width: mascotConfig.w, 
+                  height: mascotConfig.w, 
+                  position: 'absolute', 
+                  bottom: mascotConfig.b, 
+                  transform: [{ translateX: mascotConfig.x }],
+                  zIndex: 90,
+                  tintColor: getGradientForLevel(levelLabel)[0],
+                  opacity: 0.95,
+                }} 
+                blurRadius={12}
+                resizeMode="contain" 
+              />
+              
+              {/* Real Mascot Image */}
+              <Animated.Image 
+                source={MASCOT_IMAGES[levelLabel]} 
+                style={{ 
+                  width: mascotConfig.w, 
+                  height: mascotConfig.w, 
+                  position: 'absolute', 
+                  bottom: mascotConfig.b, 
+                  transform: [{ translateX: mascotConfig.x }],
+                  zIndex: 100 
+                }} 
+                resizeMode="contain" 
+              />
+            </View>
             <View style={{ flex: 1 }}>
               <View style={styles.xpLabelRow}>
                 <Text style={styles.xpLevelText}>{levelLabel} • {levelXP} / {levelNextXP} xp</Text>

@@ -22,7 +22,12 @@ import { db, auth } from './firebase';
 const XP_KEY     = 'zentrack_xp_v1';
 const STREAK_KEY = 'zentrack_xp_streak';
 
-export const LEVEL_THRESHOLDS = [0, 500, 1200, 2500, 4200, 6500, 9500, 13500];
+export const LEVEL_THRESHOLDS = [
+  0, 500, 1200, 2500, 4200, 6500, 9500, 13500, 
+  18000, 23000, 29000, 36000, 44000, 53000, 
+  63500, 75500, 89000, 104000, 121000, 140000
+];
+
 export const LEVEL_TITLES = [
   'Seeker',       // 0
   'Warden',       // 500
@@ -30,29 +35,41 @@ export const LEVEL_TITLES = [
   'Guardian',     // 2500
   'Vanguard',     // 4200
   'Luminary',     // 6500
-  'Legend',       // 22000
-  'Mythic',       // 35000
+  'Legend',       // 9500
+  'Mythic',       // 13500
+  'Paragon',      // 18000
+  'Titan',        // 23000
+  'Ascendant',    // 29000
+  'Exalted',      // 36000
+  'Sovereign',    // 44000
+  'Archon',       // 53000
+  'Celestial',    // 63500
+  'Ethereal',     // 75500
+  'Empyrean',     // 89000
+  'Astral',       // 104000
+  'Zenith',       // 121000
+  'Apex',         // 140000
 ];
 
 // ─── XP Sources — Base amounts before variable modifier ──────────────────────
 
 export const XP_SOURCES = {
-  TASK_COMPLETE:    { base: 25, range: 25 },  // 25–50 XP (variable)
-  HABIT_LOG:        { base: 15, range: 0  },  // 15 flat
-  HABIT_STREAK_7:   { base: 75, range: 0  },  // 7-day streak bonus
-  HABIT_STREAK_30:  { base: 300, range: 0 },  // 30-day streak bonus
-  GOAL_MILESTONE:   { base: 200, range: 0 },  // Goal marked complete
-  PERFECT_DAY:      { base: 500, range: 0 },  // All tasks + habits done
-  GYM_SESSION:      { base: 40, range: 20  },  // 40–60 XP
-  GYM_PR:           { base: 150, range: 50 },  // 150–200 XP for a new PR 🏆
-  ONBOARDING:       { base: 100, range: 0 },  // First-run bonus
+  TASK_COMPLETE:    { base: 50, range: 50 },    // 50–100 XP (variable)
+  HABIT_LOG:        { base: 50, range: 0  },    // 50 flat
+  HABIT_STREAK_7:   { base: 300, range: 0  },   // 7-day streak bonus
+  HABIT_STREAK_30:  { base: 1500, range: 0 },   // 30-day streak bonus
+  GOAL_MILESTONE:   { base: 1000, range: 0 },   // Goal marked complete
+  PERFECT_DAY:      { base: 1000, range: 0 },   // All tasks + habits done
+  GYM_SESSION:      { base: 100, range: 50  },  // 100–150 XP
+  GYM_PR:           { base: 300, range: 200 },  // 300–500 XP for a new PR 🏆
+  ONBOARDING:       { base: 500, range: 0 },    // First-run bonus
 };
 
 
-// Surprise bonus: 10% chance, adds 50–200 XP on top of base reward
+// Surprise bonus: 10% chance, adds 150–400 XP on top of base reward
 const SURPRISE_CHANCE   = 0.10;
-const SURPRISE_MIN      = 50;
-const SURPRISE_MAX      = 200;
+const SURPRISE_MIN      = 150;
+const SURPRISE_MAX      = 400;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
