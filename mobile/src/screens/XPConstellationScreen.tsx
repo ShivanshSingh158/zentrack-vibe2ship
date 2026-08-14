@@ -7,6 +7,8 @@ import {
   ScrollView,
   Pressable,
   StatusBar,
+  InteractionManager,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -348,12 +350,17 @@ export default function XPConstellationScreen() {
   }, []);
 
   const currentLevelIndex = useMemo(() => {
-    let idx = 0;
-    LEVELS.forEach((lvl, i) => {
-      if (currentXP >= lvl.xp) idx = i;
-    });
-    return idx;
+    return LEVELS.findIndex((l) => currentXP >= l.xp && (LEVELS.indexOf(l) === LEVELS.length - 1 || currentXP < LEVELS[LEVELS.indexOf(l) + 1].xp));
   }, [currentXP]);
+
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      setIsReady(true);
+    });
+    return () => task.cancel();
+  }, []);
 
   const stars = useStarField(SCREEN_H);
   const reversedLevels = useMemo(() => [...LEVELS].reverse(), []);
@@ -421,49 +428,55 @@ export default function XPConstellationScreen() {
         contentContainerStyle={{ paddingTop: 120, paddingBottom: 160 }}
         showsVerticalScrollIndicator={false}
       >
-        {reversedLevels.map((level, i) => {
-          const originalIndex = LEVELS.length - 1 - i;
-          const actualStatus = originalIndex < currentLevelIndex ? 'past' : originalIndex === currentLevelIndex ? 'current' : 'future';
-          const layout = originalIndex === LEVELS.length - 1 ? 'center' : i % 2 === 0 ? 'left' : 'right';
+        {!isReady ? (
+          <View style={{ flex: 1, height: SCREEN_H * 0.6, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={LEVELS[currentLevelIndex].colors[0]} />
+          </View>
+        ) : (
+          reversedLevels.map((level, i) => {
+            const originalIndex = LEVELS.length - 1 - i;
+            const actualStatus = originalIndex < currentLevelIndex ? 'past' : originalIndex === currentLevelIndex ? 'current' : 'future';
+            const layout = originalIndex === LEVELS.length - 1 ? 'center' : i % 2 === 0 ? 'left' : 'right';
 
-          return (
-            <View 
-              key={level.id}
-              onLayout={(e) => {
-                nodePositions.current[i] = e.nativeEvent.layout.y;
-              }}
-              style={{ position: 'relative' }}
-            >
-              {/* Localized Nebula Background */}
-              <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', zIndex: -1, opacity: originalIndex === LEVELS.length - 1 ? 1 : (actualStatus === 'future' ? 0.3 : (actualStatus === 'past' ? 0.7 : 1)) }]} pointerEvents="none">
-                <Svg width={SCREEN_W} height={originalIndex === LEVELS.length - 1 ? 1200 : 600} style={{ position: 'absolute' }}>
-                  <Defs>
-                    <RadialGradient id={`nebula-${level.id}`} cx="50%" cy="50%" r="50%">
-                      <Stop offset="0%" stopColor={level.colors[0]} stopOpacity={0.25} />
-                      <Stop offset="40%" stopColor={level.colors[0]} stopOpacity={0.12} />
-                      <Stop offset="100%" stopColor={level.colors[0]} stopOpacity={0} />
-                    </RadialGradient>
-                  </Defs>
-                  {originalIndex === LEVELS.length - 1 ? (
-                    <Circle cx={SCREEN_W / 2} cy={600} r={600} fill={`url(#nebula-${level.id})`} />
-                  ) : (
-                    <Circle cx={SCREEN_W / 2} cy={300} r={300} fill={`url(#nebula-${level.id})`} />
-                  )}
-                </Svg>
-              </View>
-
-              <ConstellationNode
-                level={level}
-                index={i}
-                status={actualStatus}
-                layout={layout}
-                onPress={() => {
-                  Haptics.selectionAsync();
+            return (
+              <View 
+                key={level.id}
+                onLayout={(e) => {
+                  nodePositions.current[i] = e.nativeEvent.layout.y;
                 }}
-              />
-            </View>
-          );
-        })}
+                style={{ position: 'relative' }}
+              >
+                {/* Localized Nebula Background */}
+                <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center', zIndex: -1, opacity: originalIndex === LEVELS.length - 1 ? 1 : (actualStatus === 'future' ? 0.3 : (actualStatus === 'past' ? 0.7 : 1)) }]} pointerEvents="none">
+                  <Svg width={SCREEN_W} height={originalIndex === LEVELS.length - 1 ? 1200 : 600} style={{ position: 'absolute' }}>
+                    <Defs>
+                      <RadialGradient id={`nebula-${level.id}`} cx="50%" cy="50%" r="50%">
+                        <Stop offset="0%" stopColor={level.colors[0]} stopOpacity={0.25} />
+                        <Stop offset="40%" stopColor={level.colors[0]} stopOpacity={0.12} />
+                        <Stop offset="100%" stopColor={level.colors[0]} stopOpacity={0} />
+                      </RadialGradient>
+                    </Defs>
+                    {originalIndex === LEVELS.length - 1 ? (
+                      <Circle cx={SCREEN_W / 2} cy={600} r={600} fill={`url(#nebula-${level.id})`} />
+                    ) : (
+                      <Circle cx={SCREEN_W / 2} cy={300} r={300} fill={`url(#nebula-${level.id})`} />
+                    )}
+                  </Svg>
+                </View>
+
+                <ConstellationNode
+                  level={level}
+                  index={i}
+                  status={actualStatus}
+                  layout={layout}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                  }}
+                />
+              </View>
+            );
+          })
+        )}
       </ScrollView>
 
       <Animated.View 

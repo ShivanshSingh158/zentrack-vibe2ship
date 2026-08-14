@@ -135,11 +135,17 @@ const GymModuleInner = () => {
   useEffect(() => {
     if (allWorkoutDone && !formCheckShownRef.current && selectedDate === todayStr()) {
       formCheckShownRef.current = true;
+      if (workoutTimer.isActive) {
+        workoutTimer.stop();
+      }
+      if (log?.workoutStartTime) {
+        endWorkout();
+      }
       setTimeout(() => {
         toast.success('🏆 Workout complete! Open ZenGym AI for recovery advice and form tips.', { duration: 5000 });
       }, 500);
     }
-  }, [allWorkoutDone, selectedDate]);
+  }, [allWorkoutDone, selectedDate, workoutTimer, log?.workoutStartTime, endWorkout]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

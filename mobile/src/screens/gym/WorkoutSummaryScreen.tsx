@@ -378,7 +378,7 @@ export default function WorkoutSummaryScreen() {
 
       {!readOnly && (
         <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 70, 85) }]}>
-          <TouchableOpacity style={styles.doneBtn} activeOpacity={0.85} onPress={() => { feedback.success(); navigation.goBack(); }}>
+          <TouchableOpacity style={styles.doneBtn} activeOpacity={0.85} onPress={() => { feedback.success(); (navigation as any).navigate('GymHome'); }}>
             <Text style={styles.doneBtnText}>Done</Text>
           </TouchableOpacity>
         </View>

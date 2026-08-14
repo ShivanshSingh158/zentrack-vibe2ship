@@ -54,6 +54,7 @@ interface UnifiedLifeWidgetProps {
   onPressWater: () => void;
   onPressContent: () => void;
   onPressXP?: () => void;
+  onPressRing?: () => void;
   onCapture?: () => void;
   onPressAssignments?: () => void;
 }
@@ -138,6 +139,7 @@ export function UnifiedLifeWidget({
   onPressWater,
   onPressContent,
   onPressXP,
+  onPressRing,
   onCapture,
   onPressAssignments,
 }: UnifiedLifeWidgetProps) {
@@ -179,7 +181,13 @@ export function UnifiedLifeWidget({
       {/* MAIN BODY: Donut (Left) | Compact Metrics (Right) */}
       <View style={styles.mainRow}>
         {/* DONUT RING */}
-        <View style={styles.ringWrapper}>
+        <AnimatedPressable 
+          style={styles.ringWrapper} 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onPressRing?.();
+          }}
+        >
           <Svg width={RING_SIZE} height={RING_SIZE} style={styles.svgAbsolute}>
             <Defs>
               <SvgLinearGradient id="xpGradient" x1="0" y1="0" x2="1" y2="1">
@@ -236,7 +244,7 @@ export function UnifiedLifeWidget({
               </Animated.View>
             )}
           </View>
-        </View>
+        </AnimatedPressable>
 
         {/* VERTICAL DIVIDER */}
         <View style={styles.verticalDivider} />

@@ -451,7 +451,7 @@ export default function ActiveLoggingScreen() {
       hapticSuccess();
       clearRestTimer();
       endWorkout(true);
-      navigation.replace('WorkoutSummary');
+      navigation.replace('WorkoutSummary', { date });
     }
   };
 

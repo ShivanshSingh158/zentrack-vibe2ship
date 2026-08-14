@@ -117,6 +117,7 @@ export default function DashboardScreen() {
                     onPressWater={() => data.setWaterLogVisible(true)}
                     onPressContent={() => navigation.navigate('MoreStack', { screen: 'ContentLibrary' })}
                     onPressXP={() => navigation.navigate('MoreStack', { screen: 'XPConstellation' })}
+                    onPressRing={() => navigation.navigate(data.nextClass ? 'Attendance' : 'Tasks')}
                     onCapture={() => data.setCaptureVisible(true)}
                   />
                 </Animated.View>

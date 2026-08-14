@@ -194,13 +194,25 @@ export async function getDailyQuote(personality: QuotePersonality = 'consistent'
   const quotes = [...BRUTAL_QUOTES, ...(PERSONALITY_QUOTES[personality] || PERSONALITY_QUOTES['consistent'])];
   
   try {
-    const savedIndex = await AsyncStorage.getItem('@zentrack_quote_index');
-    let currentIndex = savedIndex ? parseInt(savedIndex, 10) : 0;
+    const bagKey = `@zentrack_quote_bag_${personality}`;
+    const bagStr = await AsyncStorage.getItem(bagKey);
+    let bag: number[] = bagStr ? JSON.parse(bagStr) : [];
     
-    // Move to next, loop back if we reached the last
-    currentIndex = (currentIndex + 1) % quotes.length;
+    // Regenerate bag if empty or if quotes array size changed drastically (indices out of bounds)
+    if (!Array.isArray(bag) || bag.length === 0 || bag.some(i => i >= quotes.length)) {
+      bag = Array.from({ length: quotes.length }, (_, i) => i);
+      // Fisher-Yates shuffle
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [bag[i], bag[j]] = [bag[j], bag[i]];
+      }
+    }
     
-    await AsyncStorage.setItem('@zentrack_quote_index', currentIndex.toString());
+    // Pop the next unique index
+    const currentIndex = bag.pop()!;
+    
+    // Save the remaining bag for next time
+    await AsyncStorage.setItem(bagKey, JSON.stringify(bag));
     
     return quotes[currentIndex];
   } catch (e) {

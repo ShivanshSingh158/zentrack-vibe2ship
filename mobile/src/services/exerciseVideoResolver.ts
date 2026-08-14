@@ -484,6 +484,8 @@ export async function autoResolveExerciseVideoId(exerciseName: string, forceRefr
   const sanitized = sanitizeName(exerciseName);
   const cacheKey = `${VIDEO_CACHE_PREFIX}${sanitized}`;
 
+  let isRateLimited = false;
+
   if (forceRefresh) {
     try {
       await AsyncStorage.removeItem(cacheKey);

@@ -30,7 +30,7 @@ import {
   View, Text, StyleSheet, Modal, TouchableOpacity, TextInput,
 
 
-  ScrollView, KeyboardAvoidingView, Platform, Switch, FlatList,
+  ScrollView, KeyboardAvoidingView, Platform, Switch, FlatList, ActivityIndicator,
 
 
 } from 'react-native';
@@ -599,6 +599,15 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
   const [aiLoading, setAiLoading] = useState(false);
 
 
+  const [isAdding, setIsAdding] = useState(false);
+
+
+
+
+
+  // •• Refs & Animations •••••••••••••••••••••••••••••••••••••••••••••••••••••••
+
+
   const aiDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 
@@ -954,148 +963,169 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
     let userVideoId = extractVideoId(videoLink.trim());
 
 
-    if (!userVideoId) {
+    setIsAdding(true);
 
 
-      userVideoId = (await autoResolveExerciseVideoId(name.trim())) || '';
+    try {
 
 
-    }
+      if (!userVideoId) {
 
 
-
-
-
-    const exId = selectedExerciseId ?? `custom_${Date.now()}`;
-
-
-    const lastSets = getLastSessionSets(exId, name.trim());
-
-
-
-
-
-    const newEx: GymExerciseLog = {
-
-
-      exerciseId: exId,
-
-
-      name: name.trim(),
-
-
-      muscle: muscle === 'None' ? '' : muscle.trim(),
-
-
-      targetSets: parsedSets,
-
-
-      targetReps: reps.trim(),
-
-
-      videoId: userVideoId,
-
-
-      restTimeSecs: parsedRest,
-
-
-      lastSessionSets: lastSets ?? undefined,
-
-
-      setsLog: Array.from({ length: parsedSets }, (_, i) => {
-
-
-        const prev = lastSets?.[i];
-
-
-        return {
-
-
-          setNumber: i + 1,
-
-
-          reps: prev?.reps ?? null,
-
-
-          weight: prev?.weight ?? null,
-
-
-          completed: false,
-
-
-        };
-
-
-      }),
-
-
-      isCustom: !selectedExerciseId || exId.startsWith('custom_'),
-
-
-    };
-
-
-
-
-
-    onAdd(newEx);
-
-
-
-
-
-    if (savePermanently && planDay) {
-
-
-      const currentMasterDay = getCustomPlanDay(userGymPlan?.customDays, planDay.dayIndex) || planDay;
-
-
-      const updatedExercises = [...currentMasterDay.exercises];
-
-
-      if (!updatedExercises.some((e: any) => e.id === newEx.exerciseId)) {
-
-
-        updatedExercises.push({
-
-
-          id: newEx.exerciseId,
-
-
-          name: newEx.name,
-
-
-          muscle: newEx.muscle,
-
-
-          targetSets: newEx.targetSets,
-
-
-          targetReps: newEx.targetReps,
-
-
-          videoId: newEx.videoId,
-
-
-          restTimeSecs: newEx.restTimeSecs,
-
-
-        });
-
-
-        updateMasterPlan(planDay.dayIndex, { ...currentMasterDay, exercises: updatedExercises }).catch(handleSyncError);
+        userVideoId = (await autoResolveExerciseVideoId(name.trim())) || '';
 
 
       }
 
 
+
+
+
+      const exId = selectedExerciseId ?? `custom_${Date.now()}`;
+
+
+      const lastSets = getLastSessionSets(exId, name.trim());
+
+
+
+
+
+      const newEx: GymExerciseLog = {
+
+
+        exerciseId: exId,
+
+
+        name: name.trim(),
+
+
+        muscle: muscle === 'None' ? '' : muscle.trim(),
+
+
+        targetSets: parsedSets,
+
+
+        targetReps: reps.trim(),
+
+
+        videoId: userVideoId,
+
+
+        restTimeSecs: parsedRest,
+
+
+        lastSessionSets: lastSets ?? undefined,
+
+
+        setsLog: Array.from({ length: parsedSets }, (_, i) => {
+
+
+          const prev = lastSets?.[i];
+
+
+          return {
+
+
+            setNumber: i + 1,
+
+
+            reps: prev?.reps ?? null,
+
+
+            weight: prev?.weight ?? null,
+
+
+            completed: false,
+
+
+          };
+
+
+        }),
+
+
+        isCustom: !selectedExerciseId || exId.startsWith('custom_'),
+
+
+      };
+
+
+
+
+
+      onAdd(newEx);
+
+
+
+
+
+      if (savePermanently && planDay) {
+
+
+        const currentMasterDay = getCustomPlanDay(userGymPlan?.customDays, planDay.dayIndex) || planDay;
+
+
+        const updatedExercises = [...currentMasterDay.exercises];
+
+
+        if (!updatedExercises.some((e: any) => e.id === newEx.exerciseId)) {
+
+
+          updatedExercises.push({
+
+
+            id: newEx.exerciseId,
+
+
+            name: newEx.name,
+
+
+            muscle: newEx.muscle,
+
+
+            targetSets: newEx.targetSets,
+
+
+            targetReps: newEx.targetReps,
+
+
+            videoId: newEx.videoId,
+
+
+            restTimeSecs: newEx.restTimeSecs,
+
+
+          });
+
+
+          await updateMasterPlan(planDay.dayIndex, { ...currentMasterDay, exercises: updatedExercises }).catch(handleSyncError);
+
+
+        }
+
+
+      }
+
+
+
+
+
+      resetAndClose();
+
+
+    } catch (err) {
+
+
+      console.error("Error adding exercise:", err);
+
+
+    } finally {
+
+
+      setIsAdding(false);
+
+
     }
-
-
-
-
-
-    resetAndClose();
 
 
   };
@@ -1938,10 +1968,10 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
             <TouchableOpacity
 
 
-              style={[styles.submitBtn, !name.trim() && styles.submitBtnDisabled]}
+              style={[styles.submitBtn, (!name.trim() || isAdding) && styles.submitBtnDisabled]}
 
 
-              disabled={!name.trim()}
+              disabled={!name.trim() || isAdding}
 
 
               onPress={handleAddExercise}
@@ -1950,10 +1980,28 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
             >
 
 
-              <Ionicons name="add" size={18} color="#000" style={{ marginRight: 6 }} />
+              {isAdding ? (
 
 
-              <Text style={styles.submitBtnText}>Add Exercise</Text>
+                <ActivityIndicator color="#000" size="small" />
+
+
+              ) : (
+
+
+                <>
+
+
+                  <Ionicons name="add" size={18} color="#000" style={{ marginRight: 6 }} />
+
+
+                  <Text style={styles.submitBtnText}>Add Exercise</Text>
+
+
+                </>
+
+
+              )}
 
 
             </TouchableOpacity>

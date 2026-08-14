@@ -314,8 +314,9 @@ export function useGymLog(dateStr: string) {
     // ── Write cache immediately (sync, ~0ms) so the UI always has fresh data ──
     writeGymLogCache(updatedLog.date, updatedLog);
 
+    // Queue optimistic update asynchronously to prevent React setState-during-render errors
     setTimeout(() => {
-      if (gymLogs.some(l => l.id === logId)) {
+      if (gymLogs.some(l => l.id === logId || l.date === updatedLog.date)) {
         optimisticUpdateGymLog(logId, updatedLog);
       } else {
         optimisticAddGymLog(updatedLog);
@@ -332,10 +333,11 @@ export function useGymLog(dateStr: string) {
           const sanitizedLog: any = { id: logId };
           Object.keys(updatedLog).forEach(key => {
             if (key === '_idx') return;
-            if ((updatedLog as any)[key] === undefined) {
+            const val = (updatedLog as any)[key];
+            if (val === undefined || val === null) {
               sanitizedLog[key] = deleteField();
             } else {
-              sanitizedLog[key] = deepSanitize((updatedLog as any)[key]);
+              sanitizedLog[key] = deepSanitize(val);
             }
           });
           await setDoc(docRef, sanitizedLog, { merge: true });
@@ -344,7 +346,7 @@ export function useGymLog(dateStr: string) {
         }
       })();
     });
-  }, [user]);
+  }, [user, gymLogs, optimisticAddGymLog, optimisticUpdateGymLog]);
 
   const updateSet = useCallback((exerciseIndex: number, setIndex: number, set: GymSet) => {
     setLog(prev => {
@@ -621,12 +623,12 @@ export function useGymLog(dateStr: string) {
     setLog(prev => {
       if (!prev) return prev;
       const startMs = prev.workoutStartTime || Date.now();
-      const duration = Math.round((Date.now() - startMs) / 60000);
+      const elapsedMins = Math.round((Date.now() - startMs) / 60000);
+      const duration = Math.max(1, elapsedMins);
 
       // ── 10-minute minimum guard ──────────────────────────────────
-      // A workout under 10 minutes is treated as a false-start.
-      // The screen should pre-check with Alert; this is the safety gate.
-      if (!force && duration < 10) {
+      // A workout under 10 minutes is treated as a false-start UNLESS forced (e.g. user completes last exercise).
+      if (!force && elapsedMins < 10) {
         return prev; // abort — do NOT mark complete
       }
 
@@ -635,16 +637,16 @@ export function useGymLog(dateStr: string) {
       const startTimeStr = `${startD.getHours().toString().padStart(2, '0')}:${startD.getMinutes().toString().padStart(2, '0')}`;
       const endTimeStr = `${endD.getHours().toString().padStart(2, '0')}:${endD.getMinutes().toString().padStart(2, '0')}`;
 
-      const updated = {
+      const updated: GymDayLog = {
         ...prev,
         completed: true,
-        workoutStartTime: null,
+        workoutStartTime: undefined,
         workoutDurationMinutes: duration,
         startTime: prev.startTime || startTimeStr,
         endTime: prev.endTime || endTimeStr,
-        restTimerStartTime: null,
-        restTimerDurationSecs: null,
-        restTimerExerciseName: null,
+        restTimerStartTime: undefined,
+        restTimerDurationSecs: undefined,
+        restTimerExerciseName: undefined,
         updatedAt: Date.now()
       };
       saveLog(updated);

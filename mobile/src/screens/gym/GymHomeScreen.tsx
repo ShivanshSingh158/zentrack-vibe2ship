@@ -149,16 +149,14 @@ export default function GymHomeScreen() {
     // Disabled mount animations for instant load
   }, []);
 
-  // ΓöÇΓöÇ Sub-10-min log cleanup ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-  // If today's log was incorrectly saved with a duration < 10 mins (e.g. from
-  // an accidental "Finish" tap), reset it back to an unfinished state so the
-  // user can start a real workout.
+  // ΓöÇΓöÇ Sub-10-min log cleanup ──────────────────────────────────────────
+  // If today's log was an accidental false start (NOT completed), reset it so the user can start cleanly.
   useEffect(() => {
     if (!log) return;
     const isToday = selectedDate === todayStr();
     if (!isToday) return;
-    if (log.workoutDurationMinutes !== undefined && log.workoutDurationMinutes < 10 && !log.workoutStartTime) {
-      // Reset: clear completed flag and duration so the banner disappears
+    if (!log.completed && log.workoutDurationMinutes !== undefined && log.workoutDurationMinutes < 10 && !log.workoutStartTime) {
+      // Reset: clear duration so the banner disappears if abandoned
       const fixed = {
         ...log,
         completed: false,
@@ -169,7 +167,7 @@ export default function GymHomeScreen() {
       };
       saveLog(fixed);
     }
-  }, [log?.id, selectedDate]);
+  }, [log?.id, selectedDate, log?.completed]);
 
   // Mocks for AI modal
   const activeMuscles: { muscle: string }[] = [];
@@ -295,12 +293,14 @@ export default function GymHomeScreen() {
 
   // Renderers
   const renderWorkoutBanner = () => {
-    if (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime) {
+    if (log?.completed || (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime)) {
       return (
         <View style={s.completedBanner}>
           <View style={s.completedBannerLeft}>
             <Text style={s.completedBannerTitle}>Workout Completed</Text>
-            <Text style={s.completedBannerSub}>{log.workoutDurationMinutes} min session</Text>
+            <Text style={s.completedBannerSub}>
+              {log.workoutDurationMinutes ? `${log.workoutDurationMinutes} min session` : 'Session completed'}
+            </Text>
           </View>
           {currentStreak > 0 && (
             <View style={s.streakBadgeInline}>
@@ -311,7 +311,7 @@ export default function GymHomeScreen() {
         </View>
       );
     }
-    if (log?.workoutStartTime) {
+    if (log?.workoutStartTime && !log?.completed) {
       return (
         <View style={s.activeBanner}>
           <View style={s.activeBannerLeft}>
@@ -326,16 +326,16 @@ export default function GymHomeScreen() {
                 const durationMins = Math.round((Date.now() - log.workoutStartTime) / 60000);
                 if (durationMins < 10) {
                   Alert.alert(
-                    'Too Short 💪',
-                    `Your session is only ${durationMins} min${durationMins !== 1 ? 's' : ''}. Are you sure you want to finish early?`,
+                    'Finish Workout 💪',
+                    `Your session is ${Math.max(1, durationMins)} min${durationMins !== 1 ? 's' : ''}. Complete this workout now?`,
                     [
                       { text: 'Keep Going', style: 'cancel' },
                       { 
-                        text: 'Finish Anyway', 
-                        style: 'destructive',
+                        text: 'Finish Workout', 
+                        style: 'default',
                         onPress: () => {
                           endWorkout(true);
-                          navigation.navigate('WorkoutSummary');
+                          navigation.navigate('WorkoutSummary', { date: selectedDate });
                         }
                       }
                     ]
@@ -343,8 +343,8 @@ export default function GymHomeScreen() {
                   return;
                 }
               }
-              endWorkout();
-              navigation.navigate('WorkoutSummary');
+              endWorkout(true);
+              navigation.navigate('WorkoutSummary', { date: selectedDate });
             }}>
               <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '600' }}>Finish</Text>
             </TouchableOpacity>
