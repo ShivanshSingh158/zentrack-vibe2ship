@@ -41,13 +41,39 @@ export default function DashboardScreen() {
   // ── Flashcards State ──
   const [dueFlashcards, setDueFlashcards] = useState<Flashcard[]>([]);
   const [flashcardModalVisible, setFlashcardModalVisible] = useState(false);
+  const [isBannerDismissed, setIsBannerDismissed] = useState(false);
 
   const refreshFlashcards = useCallback(async () => {
     if (data.user?.uid) {
       const cards = await getDueFlashcards(data.user.uid);
       setDueFlashcards(cards);
+      
+      // Check if current cards have been dismissed
+      try {
+        const savedDismissed = await AsyncStorage.getItem('@flashcard_banner_dismissed_ids');
+        if (savedDismissed && cards.length > 0) {
+          const dismissedIds: string[] = JSON.parse(savedDismissed);
+          const currentIds = cards.map(c => c.id || c.question);
+          // If all current cards are already in dismissedIds, hide the banner
+          const allDismissed = currentIds.every(id => dismissedIds.includes(id));
+          setIsBannerDismissed(allDismissed);
+        } else {
+          setIsBannerDismissed(false);
+        }
+      } catch {
+        setIsBannerDismissed(false);
+      }
     }
   }, [data.user?.uid]);
+
+  const handleDismissBanner = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsBannerDismissed(true);
+    try {
+      const currentIds = dueFlashcards.map(c => c.id || c.question);
+      await AsyncStorage.setItem('@flashcard_banner_dismissed_ids', JSON.stringify(currentIds));
+    } catch (_) {}
+  }, [dueFlashcards]);
 
   useEffect(() => {
     refreshFlashcards();
@@ -281,15 +307,14 @@ export default function DashboardScreen() {
           </Animated.View>
 
           {/* ⚡ 3-Minute Active Recall Due Widget */}
-          {dueFlashcards.length > 0 && (
+          {dueFlashcards.length > 0 && !isBannerDismissed && (
             <Animated.View entering={FadeInDown.delay(180).duration(400)} style={{ marginTop: 12, marginBottom: 6 }}>
-              <TouchableOpacity
-                activeOpacity={0.8}
+              <View
                 style={{
                   backgroundColor: '#121214',
                   borderRadius: 18,
-                  paddingHorizontal: 16,
-                  paddingVertical: 14,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
                   flexDirection: 'row',
                   alignItems: 'center',
                   borderWidth: 1,
@@ -300,63 +325,85 @@ export default function DashboardScreen() {
                   shadowRadius: 8,
                   elevation: 6,
                 }}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setFlashcardModalVisible(true);
-                }}
               >
-                <View style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  backgroundColor: 'rgba(165, 153, 255, 0.12)',
-                  borderWidth: 1,
-                  borderColor: 'rgba(165, 153, 255, 0.25)',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: 14
-                }}>
-                  <Ionicons name="flash" size={20} color="#a599ff" />
-                </View>
+                {/* Left Flash Icon */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setFlashcardModalVisible(true);
+                  }}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    backgroundColor: 'rgba(165, 153, 255, 0.12)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(165, 153, 255, 0.25)',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: 12,
+                  }}
+                >
+                  <Ionicons name="flash" size={18} color="#a599ff" />
+                </TouchableOpacity>
 
-                <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#FFFFFF', fontSize: 14, letterSpacing: -0.2 }}>
-                      3-Min Active Recall
-                    </Text>
-                    <View style={{
-                      backgroundColor: 'rgba(0, 193, 110, 0.12)',
-                      borderColor: 'rgba(0, 193, 110, 0.25)',
-                      borderWidth: 1,
-                      paddingHorizontal: 6,
-                      paddingVertical: 2,
-                      borderRadius: 8
-                    }}>
-                      <Text style={{ color: '#00c16e', fontSize: 10, fontFamily: FONT_FAMILY.bold, letterSpacing: 0.3 }}>+15 XP</Text>
-                    </View>
-                  </View>
-                  <Text style={{ color: '#8e8e93', fontSize: 12, fontFamily: FONT_FAMILY.body, marginTop: 3 }} numberOfLines={1}>
-                    {dueFlashcards.length} flashcard{dueFlashcards.length > 1 ? 's' : ''} scheduled for today
+                {/* Middle Text Column (Generous space, no XP badge overlap) */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={{ flex: 1, minWidth: 0, paddingRight: 6 }}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setFlashcardModalVisible(true);
+                  }}
+                >
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#FFFFFF', fontSize: 13.5, letterSpacing: -0.2 }}>
+                    3-Min Active Recall
                   </Text>
-                </View>
+                  <Text style={{ color: '#8e8e93', fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 }} numberOfLines={1}>
+                    {dueFlashcards.length} flashcard{dueFlashcards.length > 1 ? 's' : ''} scheduled
+                  </Text>
+                </TouchableOpacity>
 
-                <View style={{
-                  backgroundColor: '#FFFFFF',
-                  paddingHorizontal: 14,
-                  paddingVertical: 8,
-                  borderRadius: 14,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 4,
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.15,
-                  shadowRadius: 4,
-                }}>
-                  <Text style={{ color: '#000000', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Review</Text>
-                  <Ionicons name="chevron-forward" size={13} color="#000000" />
+                {/* Right Action Cluster: Review Button + Close (✕) Button */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      paddingHorizontal: 12,
+                      paddingVertical: 7,
+                      borderRadius: 12,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 3,
+                    }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setFlashcardModalVisible(true);
+                    }}
+                  >
+                    <Text style={{ color: '#000000', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Review</Text>
+                    <Ionicons name="chevron-forward" size={12} color="#000000" />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 13,
+                      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onPress={handleDismissBanner}
+                  >
+                    <Ionicons name="close" size={14} color="#8e8e93" />
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
+              </View>
             </Animated.View>
           )}
 
