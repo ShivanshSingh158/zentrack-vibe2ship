@@ -85,18 +85,7 @@ export default function LearningVideoPlayer({
     return () => sub.remove();
   }, []);
 
-  const SPEEDS = [1, 1.25, 1.5, 1.75, 2];
-  const handleSpeedChange = () => {
-    const currentIndex = SPEEDS.indexOf(playbackRate);
-    const nextIndex = currentIndex === -1 || currentIndex === SPEEDS.length - 1 ? 0 : currentIndex + 1;
-    const nextRate = SPEEDS[nextIndex];
-    setPlaybackRate(nextRate);
-    try {
-      if (playerRef.current && typeof playerRef.current.setPlaybackRate === 'function') {
-        playerRef.current.setPlaybackRate(nextRate);
-      }
-    } catch (e) {}
-  };
+
 
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
   const [isChatFullScreen, setIsChatFullScreen] = useState(false);
@@ -522,9 +511,7 @@ export default function LearningVideoPlayer({
       {!isPip && !isFocusMode && !isNativeFullScreen && (
         <View style={s.playerControls}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-            <TouchableOpacity style={s.controlBtn} onPress={handleSpeedChange}>
-              <Text style={s.controlBtnText}>{playbackRate}x</Text>
-            </TouchableOpacity>
+
             <TouchableOpacity
               style={[s.controlBtn, aiChatVisible && { backgroundColor: '#a599ff' }]}
               onPress={() => {
@@ -582,14 +569,13 @@ export default function LearningVideoPlayer({
             </TouchableOpacity>
             {aiChatVisible && (
               <TouchableOpacity
-                style={[s.controlBtn, { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, backgroundColor: 'rgba(165,153,255,0.1)' }]}
+                style={[s.controlBtn, { paddingHorizontal: 8 }]}
                 onPress={() => {
                   LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                   setIsChatFullScreen(true);
                 }}
               >
                 <Ionicons name="expand" size={16} color="#a599ff" />
-                <Text style={{ color: '#a599ff', fontSize: 13, fontFamily: FONT_FAMILY.bold }}>Expand</Text>
               </TouchableOpacity>
             )}
             {aiChatVisible && (
