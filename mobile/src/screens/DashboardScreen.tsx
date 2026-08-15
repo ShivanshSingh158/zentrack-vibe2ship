@@ -284,40 +284,77 @@ export default function DashboardScreen() {
           {dueFlashcards.length > 0 && (
             <Animated.View entering={FadeInDown.delay(180).duration(400)} style={{ marginTop: 12, marginBottom: 6 }}>
               <TouchableOpacity
-                activeOpacity={0.85}
+                activeOpacity={0.8}
                 style={{
-                  backgroundColor: '#161922',
-                  borderRadius: 16,
-                  padding: 14,
+                  backgroundColor: '#121214',
+                  borderRadius: 18,
+                  paddingHorizontal: 16,
+                  paddingVertical: 14,
                   flexDirection: 'row',
                   alignItems: 'center',
                   borderWidth: 1,
-                  borderColor: 'rgba(165,153,255,0.3)',
-                  shadowColor: '#a599ff',
-                  shadowOffset: { width: 0, height: 2 },
-                  shadowOpacity: 0.15,
-                  shadowRadius: 6,
+                  borderColor: 'rgba(255, 255, 255, 0.08)',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 6,
                 }}
-                onPress={() => setFlashcardModalVisible(true)}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setFlashcardModalVisible(true);
+                }}
               >
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <View style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  backgroundColor: 'rgba(165, 153, 255, 0.12)',
+                  borderWidth: 1,
+                  borderColor: 'rgba(165, 153, 255, 0.25)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 14
+                }}>
                   <Ionicons name="flash" size={20} color="#a599ff" />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#f2f2f7', fontSize: 14 }}>
-                      3-Min Active Recall Due
+
+                <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#FFFFFF', fontSize: 14, letterSpacing: -0.2 }}>
+                      3-Min Active Recall
                     </Text>
-                    <View style={{ backgroundColor: 'rgba(0,193,110,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
-                      <Text style={{ color: '#00c16e', fontSize: 10, fontFamily: FONT_FAMILY.bold }}>+15 XP</Text>
+                    <View style={{
+                      backgroundColor: 'rgba(0, 193, 110, 0.12)',
+                      borderColor: 'rgba(0, 193, 110, 0.25)',
+                      borderWidth: 1,
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 8
+                    }}>
+                      <Text style={{ color: '#00c16e', fontSize: 10, fontFamily: FONT_FAMILY.bold, letterSpacing: 0.3 }}>+15 XP</Text>
                     </View>
                   </View>
-                  <Text style={{ color: '#8e8e93', fontSize: 12, fontFamily: FONT_FAMILY.body, marginTop: 2 }}>
+                  <Text style={{ color: '#8e8e93', fontSize: 12, fontFamily: FONT_FAMILY.body, marginTop: 3 }} numberOfLines={1}>
                     {dueFlashcards.length} flashcard{dueFlashcards.length > 1 ? 's' : ''} scheduled for today
                   </Text>
                 </View>
-                <View style={{ backgroundColor: '#a599ff', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 }}>
-                  <Text style={{ color: '#080510', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Review</Text>
+
+                <View style={{
+                  backgroundColor: '#FFFFFF',
+                  paddingHorizontal: 14,
+                  paddingVertical: 8,
+                  borderRadius: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 4,
+                }}>
+                  <Text style={{ color: '#000000', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Review</Text>
+                  <Ionicons name="chevron-forward" size={13} color="#000000" />
                 </View>
               </TouchableOpacity>
             </Animated.View>
