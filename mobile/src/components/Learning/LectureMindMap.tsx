@@ -3,10 +3,10 @@
  *
  * AI-Generated Interactive Mind Map for YouTube lectures.
  * Features:
- * - Large 1400x1400 whiteboard canvas with subtle dot grid
- * - 2D Panning (Horizontal + Vertical scrolling) auto-centered on load
- * - Interactive Zoom In / Zoom Out controls (+ / - / reset)
- * - Modern Miro/Whimsical-grade formatted nodes with hierarchical badges and halos
+ * - 360° Free 2D PanResponder (Drag anywhere: left, right, up, down, diagonal)
+ * - Multi-touch Pinch to Zoom + Floating HUD (+ / - / Reset buttons)
+ * - Auto-centers directly on the Central Topic on load
+ * - Spacious 1400x1400 Miro-grade whiteboard layout with zero edge clipping
  * - Zero SVG dependency (pure React Native Views for 100% crash immunity)
  * - Tap any node to instantly consult ZEN-GPT
  */
@@ -14,7 +14,7 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView, Dimensions, Animated, Platform
+  ActivityIndicator, Dimensions, Animated, PanResponder, Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -47,8 +47,8 @@ interface LectureMindMapProps {
 const CANVAS_SIZE = 1400;
 const CX = CANVAS_SIZE / 2;
 const CY = CANVAS_SIZE / 2;
-const BRANCH_RADIUS = 260;
-const LEAF_RADIUS = 500;
+const BRANCH_RADIUS = 250;
+const LEAF_RADIUS = 480;
 
 const BRANCH_COLORS = [
   '#a599ff', // Lavender Purple
@@ -68,7 +68,7 @@ function polarXY(r: number, angleDeg: number) {
   return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
 }
 
-/** Render a crisp connection line between two coordinates */
+/** Render a connection line between two points using rotated View */
 function ConnectorLine({
   x1, y1, x2, y2, color, opacity = 0.35, isDashed = false
 }: {
@@ -140,12 +140,43 @@ export default function LectureMindMap({
   const [error, setError] = useState('');
   const [tappedNode, setTappedNode] = useState<string | null>(null);
 
-  // Zoom scale state
-  const [scale, setScale] = useState(0.85);
+  // Animated values for 2D pan and zoom
+  const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const scale = useRef(new Animated.Value(0.75)).current;
+  const [scaleDisplay, setScaleDisplay] = useState(75);
 
-  // Scroll references for auto-centering
-  const scrollVRef = useRef<ScrollView>(null);
-  const scrollHRef = useRef<ScrollView>(null);
+  // Mutable refs to track gesture math
+  const panOffset = useRef({ x: 0, y: 0 });
+  const scaleValue = useRef(0.75);
+  const initialPinchDistance = useRef<number | null>(null);
+  const initialScaleOnPinch = useRef(0.75);
+
+  const getInitialPosition = useCallback((targetScale = 0.75) => {
+    return {
+      x: WINDOW_W / 2 - CX,
+      y: (WINDOW_H - 120) / 2 - CY,
+    };
+  }, []);
+
+  const resetToCenter = useCallback((targetScale = 0.75) => {
+    const init = getInitialPosition(targetScale);
+    panOffset.current = init;
+    scaleValue.current = targetScale;
+    setScaleDisplay(Math.round(targetScale * 100));
+
+    Animated.parallel([
+      Animated.spring(pan, {
+        toValue: init,
+        useNativeDriver: false,
+        friction: 7,
+      }),
+      Animated.spring(scale, {
+        toValue: targetScale,
+        useNativeDriver: false,
+        friction: 7,
+      }),
+    ]).start();
+  }, [getInitialPosition, pan, scale]);
 
   const generate = useCallback(async () => {
     setLoading(true);
@@ -162,35 +193,21 @@ export default function LectureMindMap({
       const parsed: MindMapData = JSON.parse(cleaned);
       if (!parsed.centralTopic || !Array.isArray(parsed.branches)) throw new Error('Invalid structure');
       setMapData(parsed);
+      resetToCenter(0.75);
     } catch {
       setError('Could not generate mind map. Tap Retry to try again.');
     } finally {
       setLoading(false);
     }
-  }, [lectureTitle, transcript]);
-
-  const centerCanvas = useCallback(() => {
-    setTimeout(() => {
-      const targetX = Math.max(0, CX * scale - WINDOW_W / 2);
-      const targetY = Math.max(0, CY * scale - (WINDOW_H - 120) / 2);
-      scrollHRef.current?.scrollTo({ x: targetX, animated: false });
-      scrollVRef.current?.scrollTo({ y: targetY, animated: false });
-    }, 150);
-  }, [scale]);
+  }, [lectureTitle, transcript, resetToCenter]);
 
   const handleOpen = useCallback(() => {
     if (!mapData && !loading) {
       generate();
     } else if (mapData) {
-      centerCanvas();
+      resetToCenter(scaleValue.current || 0.75);
     }
-  }, [mapData, loading, generate, centerCanvas]);
-
-  useEffect(() => {
-    if (mapData) {
-      centerCanvas();
-    }
-  }, [mapData, centerCanvas]);
+  }, [mapData, loading, generate, resetToCenter]);
 
   const handleTap = useCallback((label: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -202,24 +219,67 @@ export default function LectureMindMap({
     }, 280);
   }, [lectureTitle, onAskQuestion, onClose]);
 
-  // Zoom handlers
+  // Zoom button handlers
   const handleZoomIn = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setScale(prev => Math.min(1.4, Number((prev + 0.15).toFixed(2))));
+    const next = Math.min(1.4, Number((scaleValue.current + 0.15).toFixed(2)));
+    scaleValue.current = next;
+    setScaleDisplay(Math.round(next * 100));
+    Animated.spring(scale, { toValue: next, useNativeDriver: false, friction: 6 }).start();
   };
 
   const handleZoomOut = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setScale(prev => Math.max(0.45, Number((prev - 0.15).toFixed(2))));
+    const next = Math.max(0.35, Number((scaleValue.current - 0.15).toFixed(2)));
+    scaleValue.current = next;
+    setScaleDisplay(Math.round(next * 100));
+    Animated.spring(scale, { toValue: next, useNativeDriver: false, friction: 6 }).start();
   };
 
-  const handleResetZoom = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setScale(0.85);
-    centerCanvas();
-  };
+  // ── PanResponder for 360° Infinite Pan + Pinch to Zoom ───────────────────────
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (evt, gestureState) => {
+      // Activate on drag > 4px or multi-touch pinch
+      return Math.abs(gestureState.dx) > 4 || Math.abs(gestureState.dy) > 4 || evt.nativeEvent.touches.length > 1;
+    },
+    onPanResponderGrant: (evt) => {
+      if (evt.nativeEvent.touches.length === 2) {
+        const [t1, t2] = evt.nativeEvent.touches;
+        initialPinchDistance.current = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
+        initialScaleOnPinch.current = scaleValue.current;
+      }
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      if (evt.nativeEvent.touches.length === 2) {
+        // Multi-touch pinch-to-zoom
+        const [t1, t2] = evt.nativeEvent.touches;
+        const currentDist = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
+        if (initialPinchDistance.current && initialPinchDistance.current > 0) {
+          const ratio = currentDist / initialPinchDistance.current;
+          const nextScale = Math.min(1.5, Math.max(0.35, Number((initialScaleOnPinch.current * ratio).toFixed(2))));
+          scale.setValue(nextScale);
+          scaleValue.current = nextScale;
+          setScaleDisplay(Math.round(nextScale * 100));
+        }
+      } else {
+        // 1-finger 360° smooth pan
+        pan.setValue({
+          x: panOffset.current.x + gestureState.dx,
+          y: panOffset.current.y + gestureState.dy,
+        });
+      }
+    },
+    onPanResponderRelease: (evt, gestureState) => {
+      panOffset.current = {
+        x: panOffset.current.x + gestureState.dx,
+        y: panOffset.current.y + gestureState.dy,
+      };
+      initialPinchDistance.current = null;
+    },
+  }), [pan, scale]);
 
-  // Pre-calculate node positions with wide, non-overlapping spacing
+  // Pre-calculate node positions
   const layout = useMemo(() => {
     if (!mapData) return null;
     const branches = mapData.branches.slice(0, 6);
@@ -231,7 +291,7 @@ export default function LectureMindMap({
       const color = BRANCH_COLORS[bi % BRANCH_COLORS.length];
 
       const leafCount = Math.min(branch.children.length, 4);
-      const angleSpread = 42; // degrees total fan spread for leaf children
+      const angleSpread = 42; // fan spread for leaf children
       const leaves = branch.children.slice(0, 4).map((child, ci) => {
         const offset = leafCount > 1 ? (ci - (leafCount - 1) / 2) * (angleSpread / (leafCount - 1)) : 0;
         const lAngle = bAngle + offset;
@@ -258,7 +318,7 @@ export default function LectureMindMap({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={styles.title}>🗺️ Mind Map</Text>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>Interactive</Text>
+                <Text style={styles.badgeText}>Interactive 360°</Text>
               </View>
             </View>
             <Text style={styles.sub} numberOfLines={1}>{lectureTitle}</Text>
@@ -276,7 +336,7 @@ export default function LectureMindMap({
         {mapData && !loading && (
           <View style={styles.hintBar}>
             <Ionicons name="sparkles" size={12} color="#a599ff" />
-            <Text style={styles.hintText}>Scroll in any direction • Pinch or tap +/− to zoom • Tap any node to ask ZEN-GPT</Text>
+            <Text style={styles.hintText}>Drag anywhere to pan • Pinch or tap +/− to zoom • Tap node to ask AI</Text>
           </View>
         )}
 
@@ -303,168 +363,152 @@ export default function LectureMindMap({
           </View>
         )}
 
-        {/* ── 2D Infinite Canvas with Zoom & Pan ── */}
+        {/* ── 360° Pan & Zoom Whiteboard Canvas ── */}
         {!loading && mapData && layout && (
-          <View style={styles.canvasWrapper}>
-            <ScrollView
-              ref={scrollVRef}
-              style={styles.fill}
-              contentContainerStyle={{ width: CANVAS_SIZE * scale, height: CANVAS_SIZE * scale }}
-              showsVerticalScrollIndicator={true}
-              showsHorizontalScrollIndicator={false}
-              nestedScrollEnabled
+          <View style={styles.viewport} {...panResponder.panHandlers}>
+            
+            <Animated.View
+              style={[
+                styles.board,
+                {
+                  transform: [
+                    { translateX: pan.x },
+                    { translateY: pan.y },
+                    { scale: scale },
+                  ],
+                },
+              ]}
             >
-              <ScrollView
-                ref={scrollHRef}
-                horizontal
-                style={styles.fill}
-                contentContainerStyle={{ width: CANVAS_SIZE * scale, height: CANVAS_SIZE * scale }}
-                showsHorizontalScrollIndicator={true}
-                nestedScrollEnabled
-              >
-                <View
-                  style={[
-                    styles.board,
-                    {
-                      width: CANVAS_SIZE,
-                      height: CANVAS_SIZE,
-                      transform: [{ scale }],
-                      transformOrigin: '0 0',
-                    } as any,
-                  ]}
-                >
-                  {/* Subtle Blueprint Dot Grid */}
-                  <View style={styles.dotGrid} pointerEvents="none" />
+              {/* Dot Grid Background */}
+              <View style={styles.dotGrid} pointerEvents="none" />
 
-                  {/* ── 1. Connector Lines (Behind Nodes) ── */}
-                  {layout.map((b, bi) => (
-                    <React.Fragment key={`lines-${bi}`}>
-                      {/* Center to Branch */}
-                      <ConnectorLine
-                        x1={CX} y1={CY}
-                        x2={b.bPos.x} y2={b.bPos.y}
-                        color={b.color}
-                        opacity={0.45}
-                      />
-                      {/* Branch to Leaf Children */}
-                      {b.leaves.map((leaf, li) => (
-                        <ConnectorLine
-                          key={`ll-${bi}-${li}`}
-                          x1={b.bPos.x} y1={b.bPos.y}
-                          x2={leaf.pos.x} y2={leaf.pos.y}
-                          color={b.color}
-                          opacity={0.25}
-                          isDashed
-                        />
-                      ))}
-                    </React.Fragment>
+              {/* ── 1. Connector Lines (Behind Nodes) ── */}
+              {layout.map((b, bi) => (
+                <React.Fragment key={`lines-${bi}`}>
+                  {/* Center to Branch */}
+                  <ConnectorLine
+                    x1={CX} y1={CY}
+                    x2={b.bPos.x} y2={b.bPos.y}
+                    color={b.color}
+                    opacity={0.45}
+                  />
+                  {/* Branch to Leaf Children */}
+                  {b.leaves.map((leaf, li) => (
+                    <ConnectorLine
+                      key={`ll-${bi}-${li}`}
+                      x1={b.bPos.x} y1={b.bPos.y}
+                      x2={leaf.pos.x} y2={leaf.pos.y}
+                      color={b.color}
+                      opacity={0.25}
+                      isDashed
+                    />
                   ))}
+                </React.Fragment>
+              ))}
 
-                  {/* ── 2. Leaf Concepts (Outer Orbit) ── */}
-                  {layout.map((b, bi) =>
-                    b.leaves.map((leaf, li) => {
-                      const isTapped = tappedNode === leaf.label;
-                      return (
-                        <TouchableOpacity
-                          key={`leaf-${bi}-${li}`}
-                          activeOpacity={0.8}
-                          onPress={() => handleTap(leaf.label)}
-                          style={[
-                            styles.leafCard,
-                            {
-                              left: leaf.pos.x - 70,
-                              top: leaf.pos.y - 24,
-                              borderColor: isTapped ? b.color : 'rgba(255,255,255,0.12)',
-                              backgroundColor: isTapped ? `${b.color}33` : '#16161a',
-                              shadowColor: b.color,
-                            },
-                          ]}
-                        >
-                          <View style={[styles.leafBullet, { backgroundColor: b.color }]} />
-                          <Text
-                            style={[
-                              styles.leafText,
-                              isTapped && { color: '#ffffff', fontFamily: FONT_FAMILY.bold },
-                            ]}
-                            numberOfLines={2}
-                          >
-                            {leaf.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-
-                  {/* ── 3. Branch Pillars (Middle Orbit) ── */}
-                  {layout.map((b, bi) => {
-                    const isTapped = tappedNode === b.branch.label;
-                    return (
-                      <TouchableOpacity
-                        key={`branch-${bi}`}
-                        activeOpacity={0.8}
-                        onPress={() => handleTap(b.branch.label)}
+              {/* ── 2. Leaf Concepts (Outer Orbit) ── */}
+              {layout.map((b, bi) =>
+                b.leaves.map((leaf, li) => {
+                  const isTapped = tappedNode === leaf.label;
+                  return (
+                    <TouchableOpacity
+                      key={`leaf-${bi}-${li}`}
+                      activeOpacity={0.8}
+                      onPress={() => handleTap(leaf.label)}
+                      style={[
+                        styles.leafCard,
+                        {
+                          left: leaf.pos.x - 70,
+                          top: leaf.pos.y - 24,
+                          borderColor: isTapped ? b.color : 'rgba(255,255,255,0.12)',
+                          backgroundColor: isTapped ? `${b.color}33` : '#16161a',
+                          shadowColor: b.color,
+                        },
+                      ]}
+                    >
+                      <View style={[styles.leafBullet, { backgroundColor: b.color }]} />
+                      <Text
                         style={[
-                          styles.branchCard,
-                          {
-                            left: b.bPos.x - 78,
-                            top: b.bPos.y - 30,
-                            borderColor: b.color,
-                            backgroundColor: isTapped ? b.color : '#121217',
-                            shadowColor: b.color,
-                          },
+                          styles.leafText,
+                          isTapped && { color: '#ffffff', fontFamily: FONT_FAMILY.bold },
                         ]}
+                        numberOfLines={2}
                       >
-                        <View style={[styles.branchTopPill, { backgroundColor: `${b.color}25` }]}>
-                          <Text style={[styles.branchPillText, { color: b.color }]}>
-                            {`PILLAR ${bi + 1}`}
-                          </Text>
-                        </View>
-                        <Text
-                          style={[
-                            styles.branchTitle,
-                            { color: isTapped ? '#000000' : '#ffffff' },
-                          ]}
-                          numberOfLines={2}
-                        >
-                          {b.branch.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                        {leaf.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })
+              )}
 
-                  {/* ── 4. Central Topic Hub (Epicenter) ── */}
+              {/* ── 3. Branch Pillars (Middle Orbit) ── */}
+              {layout.map((b, bi) => {
+                const isTapped = tappedNode === b.branch.label;
+                return (
                   <TouchableOpacity
-                    activeOpacity={0.85}
-                    onPress={() => handleTap(mapData.centralTopic)}
+                    key={`branch-${bi}`}
+                    activeOpacity={0.8}
+                    onPress={() => handleTap(b.branch.label)}
                     style={[
-                      styles.centerHub,
+                      styles.branchCard,
                       {
-                        left: CX - 100,
-                        top: CY - 46,
-                        backgroundColor: tappedNode === mapData.centralTopic ? '#a599ff' : '#1c1438',
-                        borderColor: '#a599ff',
+                        left: b.bPos.x - 78,
+                        top: b.bPos.y - 30,
+                        borderColor: b.color,
+                        backgroundColor: isTapped ? b.color : '#121217',
+                        shadowColor: b.color,
                       },
                     ]}
                   >
-                    <View style={styles.centerGlowRing} />
-                    <View style={styles.centerHubBadge}>
-                      <Ionicons name="sparkles" size={10} color="#a599ff" />
-                      <Text style={styles.centerHubBadgeText}>CENTRAL THEME</Text>
+                    <View style={[styles.branchTopPill, { backgroundColor: `${b.color}25` }]}>
+                      <Text style={[styles.branchPillText, { color: b.color }]}>
+                        {`PILLAR ${bi + 1}`}
+                      </Text>
                     </View>
                     <Text
                       style={[
-                        styles.centerHubText,
-                        { color: tappedNode === mapData.centralTopic ? '#000000' : '#ffffff' },
+                        styles.branchTitle,
+                        { color: isTapped ? '#000000' : '#ffffff' },
                       ]}
                       numberOfLines={2}
                     >
-                      {mapData.centralTopic}
+                      {b.branch.label}
                     </Text>
                   </TouchableOpacity>
+                );
+              })}
 
+              {/* ── 4. Central Topic Hub (Epicenter) ── */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => handleTap(mapData.centralTopic)}
+                style={[
+                  styles.centerHub,
+                  {
+                    left: CX - 100,
+                    top: CY - 46,
+                    backgroundColor: tappedNode === mapData.centralTopic ? '#a599ff' : '#1c1438',
+                    borderColor: '#a599ff',
+                  },
+                ]}
+              >
+                <View style={styles.centerGlowRing} />
+                <View style={styles.centerHubBadge}>
+                  <Ionicons name="sparkles" size={10} color="#a599ff" />
+                  <Text style={styles.centerHubBadgeText}>CENTRAL THEME</Text>
                 </View>
-              </ScrollView>
-            </ScrollView>
+                <Text
+                  style={[
+                    styles.centerHubText,
+                    { color: tappedNode === mapData.centralTopic ? '#000000' : '#ffffff' },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {mapData.centralTopic}
+                </Text>
+              </TouchableOpacity>
+
+            </Animated.View>
 
             {/* ── Floating Zoom HUD Toolbar ── */}
             <View style={styles.zoomToolbar}>
@@ -472,8 +516,8 @@ export default function LectureMindMap({
                 <Ionicons name="add" size={18} color="#f2f2f7" />
               </TouchableOpacity>
               <View style={styles.zoomDivider} />
-              <TouchableOpacity style={styles.zoomBtn} onPress={handleResetZoom} activeOpacity={0.7}>
-                <Text style={styles.zoomPercentText}>{Math.round(scale * 100)}%</Text>
+              <TouchableOpacity style={styles.zoomBtn} onPress={() => resetToCenter(0.75)} activeOpacity={0.7}>
+                <Text style={styles.zoomPercentText}>{scaleDisplay}%</Text>
               </TouchableOpacity>
               <View style={styles.zoomDivider} />
               <TouchableOpacity style={styles.zoomBtn} onPress={handleZoomOut} activeOpacity={0.7}>
@@ -482,8 +526,8 @@ export default function LectureMindMap({
             </View>
 
             {/* ── Bottom Legend ── */}
-            <View style={styles.bottomLegend}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+            <View style={styles.bottomLegend} pointerEvents="box-none">
+              <View style={styles.legendContainer}>
                 {layout.map((b, bi) => (
                   <TouchableOpacity
                     key={bi}
@@ -494,7 +538,7 @@ export default function LectureMindMap({
                     <Text style={styles.legendChipText}>{b.branch.label}</Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+              </View>
             </View>
           </View>
         )}
@@ -509,9 +553,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#08080a',
-  },
-  fill: {
-    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -619,13 +660,15 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.bold,
     color: '#a599ff',
   },
-  canvasWrapper: {
+  viewport: {
     flex: 1,
-    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: '#0a0a0e',
   },
   board: {
-    backgroundColor: '#0a0a0e',
-    position: 'relative',
+    width: CANVAS_SIZE,
+    height: CANVAS_SIZE,
+    position: 'absolute',
   },
   dotGrid: {
     position: 'absolute',
@@ -757,13 +800,13 @@ const styles = StyleSheet.create({
   zoomToolbar: {
     position: 'absolute',
     right: 18,
-    bottom: 64,
+    bottom: 74,
     flexDirection: 'column',
     alignItems: 'center',
-    backgroundColor: 'rgba(24, 24, 27, 0.92)',
+    backgroundColor: 'rgba(24, 24, 27, 0.94)',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     paddingVertical: 4,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
@@ -796,24 +839,31 @@ const styles = StyleSheet.create({
     bottom: 12,
     zIndex: 90,
   },
+  legendContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
   legendChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
     backgroundColor: 'rgba(24, 24, 27, 0.92)',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.08)',
   },
   legendDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   legendChipText: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: FONT_FAMILY.medium,
     color: '#e4e4e7',
   },
