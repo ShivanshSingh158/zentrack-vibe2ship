@@ -22,14 +22,14 @@ const DEFAULT_LAYOUT: LayoutItem[] = [
   { id: 'quote', hidden: false },
   { id: 'stats', hidden: false },
   { id: 'xp', hidden: false },
-  { id: 'capture', hidden: false },
+  { id: 'capture', hidden: true },
   { id: 'agenda', hidden: false },
 ];
 
 export function useDashboardData() {
   const {
     user, tasks, gymLogs, userGymPlan, habitLogs, allHabits,
-    attendance, attendanceLogs, assignments, waterLogs, contentLogs, customEvents,
+    attendance, attendanceLogs, assignments, waterLogs, customEvents,
   } = useMobileData();
 
   // ── UI State ─────────────────────────────────────────────────────────────────
@@ -52,30 +52,50 @@ export function useDashboardData() {
   // ── AsyncStorage loads (deferred) ─────────────────────────────────────────
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
-      AsyncStorage.getItem('@zentrack_dashboard_layout').then(val => {
-        if (!val) return;
-        try {
-          const parsed = JSON.parse(val);
-          if (Array.isArray(parsed)) {
-            let loaded = parsed;
-            if (typeof parsed[0] === 'string') {
-              loaded = parsed.map((id: string) => ({ id, hidden: false }));
-            }
-            // Merge with defaults to ensure new items like 'capture' exist
-            const merged = DEFAULT_LAYOUT.map(def => {
-              const found = loaded.find((l: any) => l.id === def.id);
-              return found ? found : def;
-            });
-            setLayout(merged);
-          } else { setLayout(DEFAULT_LAYOUT); }
-        } catch { setLayout(DEFAULT_LAYOUT); }
+      AsyncStorage.getItem('@zentrack_dashboard_layout_v2_migrated').then(migrated => {
+        AsyncStorage.getItem('@zentrack_dashboard_layout').then(val => {
+          if (!val) {
+            setLayout(DEFAULT_LAYOUT);
+            return;
+          }
+          try {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed)) {
+              let loaded = parsed;
+              if (typeof parsed[0] === 'string') {
+                loaded = parsed.map((id: string) => ({ id, hidden: id === 'capture' }));
+              }
+              // Merge with defaults to ensure all items exist
+              const merged = DEFAULT_LAYOUT.map(def => {
+                const found = loaded.find((l: any) => l.id === def.id);
+                if (!migrated && def.id === 'capture') {
+                  // One-time default migration: hide quick capture by default
+                  return { ...def, hidden: true };
+                }
+                return found ? found : def;
+              });
+              setLayout(merged);
+              if (!migrated) {
+                AsyncStorage.setItem('@zentrack_dashboard_layout_v2_migrated', 'true');
+                AsyncStorage.setItem('@zentrack_dashboard_layout', JSON.stringify(merged));
+              }
+            } else { setLayout(DEFAULT_LAYOUT); }
+          } catch { setLayout(DEFAULT_LAYOUT); }
+        });
       });
+
+      // Canonical water goal key with one-time legacy key migration
       AsyncStorage.getItem('zentrack_water_goal_ml').then(val => {
         if (val) {
           setWaterTotal(parseInt(val, 10));
         } else {
           AsyncStorage.getItem('@zentrack_water_target').then(legacy => {
-            if (legacy) setWaterTotal(parseInt(legacy, 10));
+            if (legacy) {
+              const parsed = parseInt(legacy, 10);
+              setWaterTotal(parsed);
+              AsyncStorage.setItem('zentrack_water_goal_ml', legacy);
+              AsyncStorage.removeItem('@zentrack_water_target');
+            }
           });
         }
       });
@@ -267,7 +287,7 @@ export function useDashboardData() {
     });
 
     const attendedCount = (attendanceLogs || []).filter(l => 
-      l.date === todayStr && (l.action === 'attended' || l.action === 'present')
+      l.date === todayStr && (l.action === 'attended' || (l.action as any) === 'present')
     ).length;
 
     let totalAttendedAll = 0;
@@ -289,7 +309,7 @@ export function useDashboardData() {
   return {
     // Data
     user, tasks, gymLogs, userGymPlan, habitLogs, allHabits,
-    attendance, attendanceLogs, assignments, waterLogs, contentLogs,
+    attendance, attendanceLogs, assignments, waterLogs,
     // Derived
     todayStr, timeGreeting, avatarLetter, hour,
     nowDate, nextClass, appStreak,

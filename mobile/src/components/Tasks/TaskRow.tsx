@@ -95,6 +95,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
   const handleComplete = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     if (!isDone) {
+      // Completing a pending task — optimistic animation
       if (onCompleteStart) onCompleteStart();
       setIsCompleting(true);
       checkScale.value = withSequence(
@@ -106,10 +107,12 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
         onComplete();
       }, 350);
     } else {
-      if (onCompleteStart) onCompleteStart();
+      // Un-completing — reset the local optimistic flag so isDone clears immediately
+      setIsCompleting(false);
       onComplete();
     }
   }, [onComplete, onCompleteStart, isDone, checkScale]);
+
 
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);

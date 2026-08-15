@@ -1,22 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo, memo, useCallback } from 'react';
-
-// ΓöÇΓöÇ Isolated WorkoutTimer ΓÇö only this re-renders every second, not the whole screen
-const WorkoutTimer = memo(function WorkoutTimer({ startTime }: { startTime: number }) {
-  const [elapsed, setElapsed] = React.useState(Math.floor((Date.now() - startTime) / 1000));
-  useEffect(() => {
-    setElapsed(Math.floor((Date.now() - startTime) / 1000));
-    const iv = setInterval(() => setElapsed(Math.floor((Date.now() - startTime) / 1000)), 1000);
-    return () => clearInterval(iv);
-  }, [startTime]);
-  const h = Math.floor(elapsed / 3600);
-  const m = Math.floor((elapsed % 3600) / 60);
-  const s = elapsed % 60;
-  const label = h > 0
-    ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-    : `${m}:${s.toString().padStart(2, '0')}`;
-  return <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: '#a599ff' }}>{label}</Text>;
-});
-
+import WorkoutTimer from '../../components/Gym/WorkoutTimer';
 import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Animated, Image, Modal, LayoutAnimation, Dimensions } from 'react-native';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
@@ -42,19 +25,18 @@ import { COLORS, SPACE, RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW } from '../../the
 import { AddExerciseModal } from '../../components/Gym/AddExerciseModal';
 import { AddCardioModal } from '../../components/Gym/AddCardioModal';
 import { ExerciseHistoryDrawer } from '../../components/Gym/ExerciseHistoryDrawer';
-import { ZenGymAiModal } from '../../components/Gym/ZenGymAiModal';
+import { ZenGymAiModal, type MultiDayPlanEntry } from '../../components/Gym/ZenGymAiModal';
 import { LogCardioModal } from '../../components/Gym/LogCardioModal';
 import { SwapRoutineModal } from '../../components/Gym/SwapRoutineModal';
 import { GymProfileModal } from '../../components/Gym/GymProfileModal';
 import { GymTemplateModal } from '../../components/Gym/GymTemplateModal';
 import { GymScheduleSettingsModal } from '../../components/Gym/GymScheduleSettingsModal';
-import { WorkoutInsightCard } from '../../components/Gym/WorkoutInsightCard';
 import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
 import { GymCardioLog } from '../../types/gym.types';
 import { useGymProfile } from '../../hooks/useGymProfile';
-import { generateWorkoutInsight, hasInsightFiredToday, markInsightFiredToday, WorkoutInsight } from '../../services/gymInsightEngine';
 import BodyMetricsSheet from '../../components/Gym/BodyMetricsSheet';
 import PRHallOfFameSheet from '../../components/Gym/PRHallOfFameSheet';
+import { ZenGymAiFab } from '../../components/Gym/ZenGymAiFab';
 import { handleSyncError } from '../../utils/errorUtils';
 
 
@@ -74,7 +56,7 @@ export default function GymHomeScreen() {
     }, [])
   );
 
-  const { gymLogs, waterLogs, sleepLogs, tasks, customEvents, attendance, habitLogs, allHabits, assignments, applyMasterTemplate, userGymPlan, updateFullMasterPlan, user } = useMobileData();
+  const { gymLogs, waterLogs, sleepLogs, tasks, customEvents, attendance, habitLogs, allHabits, assignments, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan, user } = useMobileData();
   const currentStreak = useMemo(() => calculateGymStreak(gymLogs, userGymPlan), [gymLogs, userGymPlan]);
 
   // BUG-3 FIX: Callback passed to GymNotificationModal so gym reminder time
@@ -102,41 +84,6 @@ export default function GymHomeScreen() {
   const [showBodyMetrics, setShowBodyMetrics] = useState(false);
   const [showPRHallOfFame, setShowPRHallOfFame] = useState(false);
 
-  // ΓöÇΓöÇ Workout Insight Card State ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-  const { gymProfile } = useGymProfile();
-  const [showInsightCard, setShowInsightCard] = useState(false);
-  const [insightCardLoading, setInsightCardLoading] = useState(false);
-  const [workoutInsight, setWorkoutInsight] = useState<WorkoutInsight | null>(null);
-  const insightFiredRef = useRef(false);
-
-  /** Trigger insight once per day when workout is started */
-  const triggerWorkoutInsight = async (dateStr: string, exercises: any[]) => {
-    if (insightFiredRef.current) return;
-    const alreadyFired = await hasInsightFiredToday(dateStr);
-    if (alreadyFired) return;
-    insightFiredRef.current = true;
-    
-    setShowInsightCard(true);
-    setInsightCardLoading(true);
-    try {
-      const insight = await generateWorkoutInsight(
-        gymLogs ?? [],
-        gymProfile,
-        exercises,
-        dateStr
-      );
-      setWorkoutInsight(insight);
-      if (insight) {
-        await markInsightFiredToday(dateStr);
-      } else {
-        insightFiredRef.current = false;
-      }
-    } catch (_) {
-      insightFiredRef.current = false;
-    }
-    finally { setInsightCardLoading(false); }
-  };
-
   const SCREEN_HEIGHT = Dimensions.get('window').height;
   const scrollViewRef = useRef<any>(null);
   const currentScrollY = useRef<number>(0);
@@ -158,25 +105,45 @@ export default function GymHomeScreen() {
     // Disabled mount animations for instant load
   }, []);
 
-  // ΓöÇΓöÇ Sub-10-min log cleanup ──────────────────────────────────────────
-  // If today's log was an accidental false start (NOT completed), reset it so the user can start cleanly.
+  // ─── Sub-5-min Abandoned Micro-Log Auto-Purge ──────────────────────────
+  // If a workout was started but abandoned without any completed sets,
+  // or has duration < 5 min with 0 sets logged, auto-reset it so junk logs don't clutter history.
   useEffect(() => {
     if (!log) return;
     const isToday = selectedDate === todayStr();
     if (!isToday) return;
-    if (!log.completed && log.workoutDurationMinutes !== undefined && log.workoutDurationMinutes < 10 && !log.workoutStartTime) {
-      // Reset: clear duration so the banner disappears if abandoned
+
+    const completedSetsCount = (log.exercises || []).reduce(
+      (sum, ex) => sum + (ex.setsLog || []).filter((s: any) => s.completed).length,
+      0
+    );
+
+    const isAbandonedQuickStart =
+      !(log as any).completed &&
+      completedSetsCount === 0 &&
+      log.workoutDurationMinutes !== undefined &&
+      log.workoutDurationMinutes < 5 &&
+      !log.workoutStartTime;
+
+    const isStaleZeroSession =
+      !(log as any).completed &&
+      completedSetsCount === 0 &&
+      log.workoutStartTime &&
+      Date.now() - log.workoutStartTime > 4 * 60 * 60 * 1000;
+
+    if (isAbandonedQuickStart || isStaleZeroSession) {
       const fixed = {
         ...log,
         completed: false,
         workoutDurationMinutes: undefined,
+        workoutStartTime: undefined,
         startTime: undefined,
         endTime: undefined,
         updatedAt: Date.now(),
       };
       saveLog(fixed);
     }
-  }, [log?.id, selectedDate, log?.completed]);
+  }, [log?.id, selectedDate, (log as any)?.completed, log?.workoutStartTime, log?.workoutDurationMinutes]);
 
   // Mocks for AI modal
   const activeMuscles: { muscle: string }[] = [];
@@ -236,6 +203,70 @@ export default function GymHomeScreen() {
     });
   };
 
+  /**
+   * Import a multi-day plan generated by GYM-GPT directly into the recurring
+   * gym calendar (customDays). This is permanent — applies every future week.
+   */
+  const handleAiImportMultiDayPlan = async (planName: string, days: MultiDayPlanEntry[]) => {
+    const newCustomDays = { ...(userGymPlan?.customDays || {}) };
+    for (const d of days) {
+      newCustomDays[d.dayIndex] = {
+        dayIndex: d.dayIndex,
+        name: d.dayName,
+        subtitle: d.focus || d.dayName,
+        focus: d.focus || d.dayName,
+        exercises: d.exercises.map((ex, idx) => ({
+          id: `ai_import_${d.dayIndex}_${Date.now()}_${idx}`,
+          name: ex.name,
+          targetSets: ex.targetSets,
+          targetReps: ex.targetReps,
+          muscle: ex.muscle || 'Mixed',
+          videoId: '',
+          restTimeSecs: 90,
+          isCompound: false,
+        })),
+        isRest: false,
+      };
+    }
+    await updateFullMasterPlan(newCustomDays);
+  };
+
+  /**
+   * Add a single exercise to a specific recurring plan day (permanent).
+   * dayIndex: 1=Monday … 7=Sunday
+   */
+  const handleAiAddExerciseToPlanDay = async (
+    dayIndex: number,
+    dayName: string,
+    exercise: { name: string; targetSets: number; targetReps: string; muscle?: string }
+  ) => {
+    const { GYM_PLAN } = require('../../data/gymPlan');
+    const existingDay = userGymPlan?.customDays?.[dayIndex] ||
+      (GYM_PLAN as GymPlanDay[]).find(d => d.dayIndex === dayIndex);
+
+    const updatedDay: GymPlanDay = {
+      dayIndex,
+      name: existingDay?.name || dayName,
+      subtitle: existingDay?.subtitle || dayName,
+      focus: existingDay?.focus || dayName,
+      exercises: [
+        ...(existingDay?.exercises || []),
+        {
+          id: `ai_add_${dayIndex}_${Date.now()}`,
+          name: exercise.name,
+          targetSets: exercise.targetSets,
+          targetReps: exercise.targetReps,
+          muscle: exercise.muscle || 'Mixed',
+          videoId: '',
+          restTimeSecs: 90,
+          isCompound: false,
+        },
+      ],
+      isRest: false,
+    };
+    await updateMasterPlan(dayIndex, updatedDay);
+  };
+
   // Date strip: Standard Monday to Sunday calendar week
   const weekDates = useMemo(() => {
     const today = todayStr();
@@ -254,11 +285,6 @@ export default function GymHomeScreen() {
       return;
     }
     if (!log?.workoutStartTime) startWorkout();
-    // Trigger workout insight card once per day on first start
-    const today = todayStr();
-    if (selectedDate === today) {
-      triggerWorkoutInsight(today, log?.exercises ?? []);
-    }
     navigation.navigate('ActiveLogging', { date: selectedDate });
   };
 
@@ -302,13 +328,13 @@ export default function GymHomeScreen() {
 
   // Renderers
   const renderWorkoutBanner = () => {
-    if (log?.completed || (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime)) {
+    if ((log as any)?.completed || (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime)) {
       return (
         <View style={s.completedBanner}>
           <View style={s.completedBannerLeft}>
             <Text style={s.completedBannerTitle}>Workout Completed</Text>
             <Text style={s.completedBannerSub}>
-              {log.workoutDurationMinutes ? `${log.workoutDurationMinutes} min session` : 'Session completed'}
+              {log?.workoutDurationMinutes ? `${log.workoutDurationMinutes} min session` : 'Session completed'}
             </Text>
           </View>
           {currentStreak > 0 && (
@@ -320,7 +346,7 @@ export default function GymHomeScreen() {
         </View>
       );
     }
-    if (log?.workoutStartTime && !log?.completed) {
+    if (log?.workoutStartTime && !(log as any)?.completed) {
       return (
         <View style={s.activeBanner}>
           <View style={s.activeBannerLeft}>
@@ -554,7 +580,58 @@ export default function GymHomeScreen() {
             </TouchableOpacity>
             <TouchableOpacity 
               style={s.actionBtn} 
-              onPress={() => navigation.navigate('ExerciseDetail', { exerciseId: ex.exerciseId, date: log!.date })}
+              onPress={() => {
+                hapticMedium();
+                const isGrouped = !!ex.supersetGroup;
+                const buttons = [
+                  {
+                    text: 'Exercise Details & Guide',
+                    onPress: () => navigation.navigate('ExerciseDetail', { exerciseId: ex.exerciseId, date: log!.date }),
+                  },
+                  ...(isGrouped
+                    ? [{
+                        text: `Remove from Superset (${ex.supersetGroup})`,
+                        style: 'destructive' as const,
+                        onPress: () => {
+                          const updated = log!.exercises.map(e => e.exerciseId === ex.exerciseId ? { ...e, supersetGroup: undefined } : e);
+                          reorderExercisesFull(updated);
+                        },
+                      }]
+                    : [{
+                        text: 'Link as Superset...',
+                        onPress: () => {
+                          const availablePartners = log!.exercises.filter(e => !e.skipped && e.exerciseId !== ex.exerciseId);
+                          if (availablePartners.length === 0) {
+                            Alert.alert('Superset', 'Add at least 2 exercises to create a superset.');
+                            return;
+                          }
+                          Alert.alert(
+                            'Select Superset Partner',
+                            `Pair "${ex.name}" with:`,
+                            [
+                              ...availablePartners.map(partner => ({
+                                text: partner.name,
+                                onPress: () => {
+                                  const groupLetter = partner.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
+                                  const updated = log!.exercises.map(e => {
+                                    if (e.exerciseId === ex.exerciseId || e.exerciseId === partner.exerciseId) {
+                                      return { ...e, supersetGroup: groupLetter };
+                                    }
+                                    return e;
+                                  });
+                                  reorderExercisesFull(updated);
+                                },
+                              })),
+                              { text: 'Cancel', style: 'cancel' as const },
+                            ]
+                          );
+                        },
+                      }]
+                  ),
+                  { text: 'Cancel', style: 'cancel' as const },
+                ];
+                Alert.alert(ex.name, 'Exercise Options', buttons);
+              }}
             >
               <Ionicons name="ellipsis-horizontal" size={20} color={COLORS.textMuted} />
             </TouchableOpacity>
@@ -641,7 +718,7 @@ export default function GymHomeScreen() {
         <>
           {selectedDate === todayStr() && (() => {
             const lastSleep = (sleepLogs || []).slice(-1)[0];
-            const isLowReadiness = lastSleep && lastSleep.hours < 6;
+            const isLowReadiness = lastSleep && lastSleep.hours != null && lastSleep.hours < 6;
             if (isLowReadiness) {
               return (
                 <View style={s.workoutSection}>
@@ -662,8 +739,6 @@ export default function GymHomeScreen() {
             {renderWorkoutBanner()}
           </View>
 
-          {renderCardio()}
-
           {activeExercisesData.length > 0 && (
             <View style={{ paddingHorizontal: 8, marginBottom: 12, marginTop: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -677,51 +752,62 @@ export default function GymHomeScreen() {
   );
 
   const renderFooter = () => {
-    if (activeExercisesData.length === 0) return <View style={{ height: 100 }} />;
-
-    const muscleCounts: Record<string, number> = {};
-    activeExercisesData.forEach(ex => {
-      const m = ex.muscle || 'Mixed';
-      muscleCounts[m] = (muscleCounts[m] || 0) + 1;
-    });
-    const getMuscleWeight = (m: string) => {
-      const ml = m.toLowerCase();
-      if (ml.includes('chest') || ml.includes('pec')) return 1;
-      if (ml.includes('delt') || ml.includes('shoulder')) return 2;
-      if (ml.includes('back') || ml.includes('lat') || ml.includes('trap')) return 3;
-      if (ml.includes('bicep') || ml.includes('tricep') || ml.includes('brach') || ml.includes('forearm')) return 4;
-      if (ml.includes('abs') || ml.includes('oblique') || ml.includes('core')) return 5;
-      if (ml.includes('quad') || ml.includes('glute') || ml.includes('ham') || ml.includes('calf') || ml.includes('soleus')) return 6;
-      return 7;
-    };
-
-    const sortedMuscles = Object.entries(muscleCounts).sort((a, b) => {
-      const wA = getMuscleWeight(a[0]);
-      const wB = getMuscleWeight(b[0]);
-      if (wA !== wB) return wA - wB;
-      return b[1] - a[1];
-    });
-
     return (
-      <View style={{ paddingHorizontal: 24, paddingTop: 16, paddingBottom: 20 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16, opacity: 0.8 }}>
-          <Ionicons name="analytics-outline" size={16} color={COLORS.textTertiary} />
-          <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: COLORS.textTertiary, letterSpacing: 0.5, textTransform: 'uppercase' }}>Session Muscle Target</Text>
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
-          {sortedMuscles.map(([muscle, count]) => (
-            <View key={muscle} style={{ 
-              flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.03)', 
-              paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
-            }}>
-              <Text style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: FONT_FAMILY.medium, flexShrink: 1 }} numberOfLines={1}>{muscle}</Text>
-              <Text style={{ fontSize: 10, color: COLORS.textTertiary, fontFamily: FONT_FAMILY.bold, marginLeft: 4 }}>×{count}</Text>
+      <View style={{ paddingBottom: 100 }}>
+        {!planDay?.isRest && (
+          <View style={{ marginTop: 16 }}>
+            {renderCardio()}
+          </View>
+        )}
+        
+        {activeExercisesData.length > 0 && (() => {
+          const muscleCounts: Record<string, number> = {};
+          activeExercisesData.forEach(ex => {
+            const m = ex.muscle || 'Mixed';
+            muscleCounts[m] = (muscleCounts[m] || 0) + 1;
+          });
+          const getMuscleWeight = (m: string) => {
+            const ml = m.toLowerCase();
+            if (ml.includes('chest') || ml.includes('pec')) return 1;
+            if (ml.includes('delt') || ml.includes('shoulder')) return 2;
+            if (ml.includes('back') || ml.includes('lat') || ml.includes('trap')) return 3;
+            if (ml.includes('bicep') || ml.includes('tricep') || ml.includes('brach') || ml.includes('forearm')) return 4;
+            if (ml.includes('abs') || ml.includes('oblique') || ml.includes('core')) return 5;
+            if (ml.includes('quad') || ml.includes('glute') || ml.includes('ham') || ml.includes('calf') || ml.includes('soleus')) return 6;
+            return 7;
+          };
+
+          const sortedMuscles = Object.entries(muscleCounts).sort((a, b) => {
+            const wA = getMuscleWeight(a[0]);
+            const wB = getMuscleWeight(b[0]);
+            if (wA !== wB) return wA - wB;
+            return b[1] - a[1];
+          });
+
+          return (
+            <View style={{ paddingHorizontal: 24, paddingTop: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 16, opacity: 0.8 }}>
+                <Ionicons name="analytics-outline" size={16} color={COLORS.textTertiary} />
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: COLORS.textTertiary, letterSpacing: 0.5, textTransform: 'uppercase' }}>Session Muscle Target</Text>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' }}>
+                {sortedMuscles.map(([muscle, count]) => (
+                  <View key={muscle} style={{ 
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.03)', 
+                    paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+                  }}>
+                    <Text style={{ fontSize: 10, color: COLORS.textMuted, fontFamily: FONT_FAMILY.medium, flexShrink: 1 }} numberOfLines={1}>{muscle}</Text>
+                    <Text style={{ fontSize: 10, color: COLORS.textTertiary, fontFamily: FONT_FAMILY.bold, marginLeft: 4 }}>×{count}</Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          ))}
-        </View>
+          );
+        })()}
       </View>
     );
   };
+
 
   return (
     <View style={s.root}>
@@ -745,7 +831,7 @@ export default function GymHomeScreen() {
               if (log.exercises[i].skipped) {
                 newFullList.push(log.exercises[i]);
               } else {
-                const draggedItem = { ...data[activeIdx] };
+                const draggedItem = { ...data[activeIdx] } as any;
                 delete draggedItem.originalIndex; // Cleanup before save
                 newFullList.push(draggedItem);
                 activeIdx++;
@@ -797,6 +883,8 @@ export default function GymHomeScreen() {
           onDeleteExercise={deleteExercise}
           onLogSet={handleAiLogSet}
           onGenerateWorkoutPlan={handleAiGenerateWorkoutPlan}
+          onImportMultiDayPlan={handleAiImportMultiDayPlan}
+          onAddExerciseToPlanDay={handleAiAddExerciseToPlanDay}
           onAutoregulateDeload={triggerDeload}
           userGymPlan={userGymPlan}
           currentPlanDay={planDay}
@@ -857,14 +945,6 @@ export default function GymHomeScreen() {
           }}
         />
 
-        {/* Workout Insight Card ΓÇö fires once per day on workout start */}
-        <WorkoutInsightCard
-          visible={showInsightCard}
-          insight={workoutInsight}
-          loading={insightCardLoading}
-          onDismiss={() => setShowInsightCard(false)}
-        />
-
         {/* Body Metrics & PR Hall */}
         <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />
         <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />
@@ -873,11 +953,7 @@ export default function GymHomeScreen() {
       </SafeAreaView>
 
       {/* ZenGymAI FAB fixed to root, immune to keyboard layout jumps */}
-      <TouchableOpacity style={s.fabAi} onPress={() => setShowAiModal(true)}>
-        <View style={s.fabGradient}>
-          <Ionicons name="barbell" size={24} color={COLORS.background} />
-        </View>
-      </TouchableOpacity>
+      <ZenGymAiFab onPress={() => setShowAiModal(true)} />
     </View>
   );
 }

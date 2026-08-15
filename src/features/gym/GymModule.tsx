@@ -9,7 +9,6 @@ const ZenGymAI = React.lazy(() => import('./ZenGymAI').then(m => ({ default: m.Z
 import { useGymLog, todayStr, dateStrOffset, dayLabelFromDate, planDayIndexForDate } from './hooks/useGymLog';
 import { usePreviousSession } from './hooks/usePreviousSession';
 import { useRestTimer } from './hooks/useRestTimer';
-import { useWorkoutTimer } from './hooks/useWorkoutTimer';
 import { ExerciseCard } from './components/ExerciseCard';
 import { TreadmillCard } from './components/TreadmillCard';
 import { CardioCard } from './components/CardioCard';
@@ -63,15 +62,6 @@ const GymModuleInner = () => {
 
   // Rest timer
   const restTimer = useRestTimer(log, clearRestTimer);
-
-  // Workout timer — manual start/stop only
-  const workoutTimer = useWorkoutTimer();
-
-  // Reset timer on date change
-  useEffect(() => {
-    workoutTimer.reset();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate]);
 
   // Plan info
   const planDayIdx = planDayIndexForDate(selectedDate);
@@ -135,9 +125,6 @@ const GymModuleInner = () => {
   useEffect(() => {
     if (allWorkoutDone && !formCheckShownRef.current && selectedDate === todayStr()) {
       formCheckShownRef.current = true;
-      if (workoutTimer.isActive) {
-        workoutTimer.stop();
-      }
       if (log?.workoutStartTime) {
         endWorkout();
       }
@@ -145,7 +132,7 @@ const GymModuleInner = () => {
         toast.success('🏆 Workout complete! Open ZenGym AI for recovery advice and form tips.', { duration: 5000 });
       }, 500);
     }
-  }, [allWorkoutDone, selectedDate, workoutTimer, log?.workoutStartTime, endWorkout]);
+  }, [allWorkoutDone, selectedDate, log?.workoutStartTime, endWorkout]);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

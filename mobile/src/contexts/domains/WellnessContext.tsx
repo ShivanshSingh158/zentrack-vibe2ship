@@ -11,6 +11,7 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { collection, query, where, onSnapshot, doc, setDoc } from "firebase/firestore";
 import { InteractionManager } from 'react-native';
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import { UserGymPlanDoc, GymPlanDay } from "../../types/gym.types";
@@ -217,9 +218,10 @@ export function WellnessProvider({
     
     // Base workout days (dayIndex 1 to 6)
     const workoutDays = selectedPlan.filter(d => !d.isRest);
-    const restDayTemplate = selectedPlan.find(d => d.isRest) || { 
+    const restDayTemplate: GymPlanDay = { 
       dayIndex: 7, 
       name: 'Rest & Recovery', 
+      subtitle: 'Active recovery, hydration & sleep',
       focus: 'Active recovery, hydration & sleep', 
       isRest: true, 
       exercises: [] 
@@ -271,6 +273,47 @@ export function WellnessProvider({
     writeWellnessCache({ userGymPlan: updatedPlan });
 
     await setDoc(docRef, { userId: user.uid, templateId, schedulePattern, customDays: newCustomDays, updatedAt: now }, { merge: true });
+
+    // Clean up unstarted gym logs for the current week so they immediately adopt the new template
+    try {
+      const todayObj = new Date();
+      const currentDayOfWeek = todayObj.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+      const mondayOffset = currentDayOfWeek === 0 ? -6 : 1 - currentDayOfWeek;
+      const monday = new Date(todayObj);
+      monday.setDate(todayObj.getDate() + mondayOffset);
+
+      const weekDates: string[] = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        weekDates.push(`${y}-${m}-${day}`);
+      }
+
+      // Purge local cache for unworked days of this week
+      for (const dStr of weekDates) {
+        AsyncStorage.removeItem(`@gym_log_${dStr}`).catch(() => {});
+      }
+
+      // Filter in-memory logs to strip unstarted logs and trigger fresh instantiation
+      setGymLogs(prev => {
+        const next = prev.filter(l => {
+          if (!weekDates.includes(l.date)) return true;
+          const hasLoggedSets = (l.exercises || []).some((ex: any) =>
+            (ex.setsLog || []).some((s: any) => s.completed || (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0))
+          );
+          // Keep completed or active workouts
+          return l.completed || l.workoutStartTime || hasLoggedSets;
+        });
+        writeWellnessCache({ gymLogs: next });
+        return next;
+      });
+    } catch (e) {
+      console.warn('[Wellness] Error clearing unstarted week logs on template apply:', e);
+    }
+
     return newCustomDays;
   };
 

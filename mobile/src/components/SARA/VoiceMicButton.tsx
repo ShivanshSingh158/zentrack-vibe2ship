@@ -48,20 +48,19 @@ export default function VoiceMicButton({
   return (
     <Animated.View style={[s.button, {
       transform: [{ scale: scaleAnim }],
-      opacity: disabled ? 0.5 : 1,
-      backgroundColor: isRecording ? 'rgba(255, 77, 79, 0.15)' : 'rgba(165,153,255,0.15)',
-      borderColor: isRecording ? 'rgba(255, 77, 79, 0.4)' : 'rgba(165,153,255,0.4)',
+      opacity: disabled ? 0.4 : 1,
+      backgroundColor: isRecording ? 'rgba(255, 77, 79, 0.15)' : 'transparent',
     }]}>
       <TouchableOpacity
         onPress={handlePress}
         disabled={disabled || isProcessing}
         style={s.touch}
-        activeOpacity={0.85}
+        activeOpacity={0.75}
       >
         <Ionicons
-          name={isProcessing ? 'hourglass-outline' : isRecording ? 'square' : 'mic'}
-          size={isRecording ? 16 : 20}
-          color={isRecording ? RED : PURPLE}
+          name={isProcessing ? 'hourglass-outline' : isRecording ? 'square' : 'mic-outline'}
+          size={20}
+          color={isRecording ? '#ff4d4f' : '#8e8e93'}
         />
       </TouchableOpacity>
     </Animated.View>
@@ -70,16 +69,16 @@ export default function VoiceMicButton({
 
 const s = StyleSheet.create({
   button: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    backgroundColor: 'rgba(165,153,255,0.15)',
-    borderWidth: 1.5,
-    borderColor: 'rgba(165,153,255,0.4)',
-    overflow: 'hidden',
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   touch: {
-    flex: 1,
+    width: 34,
+    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },

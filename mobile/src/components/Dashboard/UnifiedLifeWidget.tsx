@@ -26,7 +26,13 @@ export interface NextClassData {
   subjectId: string;
   attended?: number;
   total?: number;
-}interface UnifiedLifeWidgetProps {
+  isOngoing?: boolean;
+  nowMins?: number;
+  startTimeMins?: number;
+  endTimeMins?: number;
+}
+
+interface UnifiedLifeWidgetProps {
   currentStreak: number;
   streakAtRisk?: boolean;
   agendaCompleted: number;
@@ -35,7 +41,6 @@ export interface NextClassData {
   habitsTotal: number;
   waterCompleted: number;
   waterTotal: number;
-  contentCount?: number;
   classesAttendedToday?: number;
   classesTotalToday?: number;
   overallAttendancePct?: number;
@@ -53,7 +58,6 @@ export interface NextClassData {
   onPressStreak: () => void;
   onPressHabits: () => void;
   onPressWater: () => void;
-  onPressContent?: () => void;
   onPressAttendance?: () => void;
   onPressXP?: () => void;
   onPressRing?: () => void;
@@ -99,19 +103,19 @@ const getGradientForLevel = (level: string) => {
     case 'Luminary':  return ['#f59e0b', '#fbbf24'];
     case 'Legend':    return ['#f97316', '#ef4444'];
     case 'Mythic':    return ['#ec4899', '#8b5cf6'];
-    case 'Paragon':   return ['#94a3b8', '#f8fafc'];
-    case 'Titan':     return ['#dc2626', '#7f1d1d'];
-    case 'Ascendant': return ['#6ee7b7', '#059669'];
-    case 'Exalted':   return ['#ca8a04', '#fef08a'];
-    case 'Sovereign': return ['#7e22ce', '#d946ef'];
-    case 'Archon':    return ['#2563eb', '#22d3ee'];
-    case 'Celestial': return ['#1e3a8a', '#e0f2fe'];
-    case 'Ethereal':  return ['#a78bfa', '#fdf4ff'];
-    case 'Empyrean':  return ['#f43f5e', '#fdba74'];
-    case 'Astral':    return ['#0f766e', '#5eead4'];
-    case 'Zenith':    return ['#334155', '#e2e8f0'];
-    case 'Apex':      return ['#eab308', '#ffffff'];
-    default:          return ['#34d399', '#22d3ee'];
+    case 'Paragon':   return ['#8b5cf6', '#6366f1'];
+    case 'Titan':     return ['#6366f1', '#3b82f6'];
+    case 'Ascendant': return ['#3b82f6', '#06b6d4'];
+    case 'Exalted':   return ['#06b6d4', '#10b981'];
+    case 'Sovereign': return ['#10b981', '#84cc16'];
+    case 'Archon':    return ['#84cc16', '#eab308'];
+    case 'Celestial': return ['#eab308', '#f97316'];
+    case 'Ethereal':  return ['#f97316', '#ef4444'];
+    case 'Empyrean':  return ['#ef4444', '#ec4899'];
+    case 'Astral':    return ['#ec4899', '#d946ef'];
+    case 'Zenith':    return ['#d946ef', '#a855f7'];
+    case 'Apex':      return ['#a855f7', '#8b5cf6'];
+    default:          return ['#a599ff', '#6366f1'];
   }
 };
 
@@ -124,7 +128,6 @@ export function UnifiedLifeWidget({
   habitsTotal,
   waterCompleted,
   waterTotal,
-  contentCount,
   classesAttendedToday = 0,
   classesTotalToday = 0,
   overallAttendancePct = 0,
@@ -142,7 +145,6 @@ export function UnifiedLifeWidget({
   onPressStreak,
   onPressHabits,
   onPressWater,
-  onPressContent,
   onPressAttendance,
   onPressXP,
   onPressRing,
@@ -158,6 +160,9 @@ export function UnifiedLifeWidget({
     return { w: 105, b: -32, x: 0 };
   }, [levelLabel]);
 
+  const levelGradients = useMemo(() => getGradientForLevel(levelLabel), [levelLabel]);
+  const primaryLevelColor = levelGradients[0];
+
   const ringPercent = nextClass
     ? (nextClass.isOngoing
         ? Math.min(Math.max((nextClass.nowMins! - nextClass.startTimeMins!) / (nextClass.endTimeMins! - nextClass.startTimeMins!), 0), 1)
@@ -168,9 +173,7 @@ export function UnifiedLifeWidget({
   const allDone = nextClass ? ringPercent === 1 : (agendaTotal > 0 && agendaCompleted >= agendaTotal);
 
   const bgStroke = (nextClass && !nextClass.isOngoing) ? '#ff4d4f' : 'rgba(255,255,255,0.06)';
-  const fgStroke = nextClass 
-    ? (nextClass.isOngoing ? 'url(#xpGradient)' : '#5eda9e') 
-    : (allDone ? '#5eda9e' : 'url(#xpGradient)');
+  const fgStroke = 'url(#xpGradient)';
 
   const displayWater = useMemo(() => {
     if (!waterCompleted) return '0';
@@ -197,8 +200,8 @@ export function UnifiedLifeWidget({
           <Svg width={RING_SIZE} height={RING_SIZE} style={styles.svgAbsolute}>
             <Defs>
               <SvgLinearGradient id="xpGradient" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0%" stopColor={getGradientForLevel(levelLabel)[0]} />
-                <Stop offset="1%" stopColor={getGradientForLevel(levelLabel)[1]} />
+                <Stop offset="0%" stopColor={levelGradients[0]} />
+                <Stop offset="100%" stopColor={levelGradients[1]} />
               </SvgLinearGradient>
             </Defs>
             <SvgCircle
@@ -234,14 +237,14 @@ export function UnifiedLifeWidget({
                   {nextClass.title}
                 </Text>
                 {nextClass.isOngoing && (
-                  <Text style={[styles.ringClassTitle, { color: '#5eda9e', marginTop: 2, fontSize: 10, letterSpacing: 1.5 }]}>
+                  <Text style={[styles.ringClassTitle, { color: primaryLevelColor, marginTop: 2, fontSize: 10, letterSpacing: 1.5 }]}>
                     ONGOING
                   </Text>
                 )}
               </Animated.View>
             ) : (
               <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={styles.ringCenterInner}>
-                <Text style={[styles.ringCount, allDone && { color: '#5eda9e' }]}>
+                <Text style={[styles.ringCount, { color: primaryLevelColor }]}>
                   {agendaCompleted}/{agendaTotal}
                 </Text>
                 <Text style={styles.ringLabel}>
@@ -260,7 +263,6 @@ export function UnifiedLifeWidget({
           <AnimatedPressable
             style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1 }]}
             activeOpacity={0.75}
-            delayPressIn={80}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressHabits(); }}
           >
             <View style={styles.compactLeftGroup}>
@@ -274,7 +276,6 @@ export function UnifiedLifeWidget({
           <AnimatedPressable
             style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1, overflow: 'hidden' }]}
             activeOpacity={0.75}
-            delayPressIn={80}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressWater(); }}
           >
             <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.min(100, (waterCompleted / (waterTotal || 1)) * 100)}%`, backgroundColor: 'rgba(137, 220, 235, 0.15)' }} />
@@ -289,11 +290,9 @@ export function UnifiedLifeWidget({
           <AnimatedPressable
             style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1 }]}
             activeOpacity={0.75}
-            delayPressIn={80}
             onPress={() => { 
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
               if (onPressAttendance) onPressAttendance();
-              else onPressContent?.(); 
             }}
           >
             <View style={styles.compactLeftGroup}>
@@ -375,7 +374,7 @@ export function UnifiedLifeWidget({
 
       {/* QUICK CAPTURE */}
       {showCapture !== false && onCapture && (
-        <AnimatedPressable style={styles.captureBar} activeOpacity={0.75} delayPressIn={100} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCapture(); }}>
+        <AnimatedPressable style={styles.captureBar} activeOpacity={0.75} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onCapture(); }}>
           <Ionicons name="add-circle-outline" size={20} color={colors.accentPrimary} />
           <Text style={styles.capturePlaceholder} numberOfLines={1}>Add anything... habit, task, notes</Text>
         </AnimatedPressable>
@@ -383,7 +382,7 @@ export function UnifiedLifeWidget({
 
       {/* URGENT BANNER */}
       {urgentAssignments.length > 0 && (
-        <AnimatedPressable style={styles.urgentBanner} activeOpacity={0.8} delayPressIn={100} onPress={onPressAssignments}>
+        <AnimatedPressable style={styles.urgentBanner} activeOpacity={0.8} onPress={onPressAssignments}>
           <Ionicons name="warning-outline" size={14} color={colors.accentAmber} style={{ marginRight: 8 }} />
           <View style={{ flex: 1 }}>
             <Text style={styles.urgentTitle}>Due soon</Text>

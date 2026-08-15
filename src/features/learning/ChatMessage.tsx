@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bot, User, AlertCircle, Copy, Check, Maximize2, Minimize2 } from 'lucide-react';
-import { auth } from '../../services/firebase';
+import { Bot, User, AlertCircle, Copy, Check, Maximize2, Minimize2, FileText } from 'lucide-react';
+import { toast } from 'sonner';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../../services/firebase';
 
 export interface ChatMessage {
   id: string;
@@ -209,17 +211,117 @@ export const TypingDots = () => (
 
 // ── ChatMessageBubble ──────────────────────────────────────────────────────────
 
-export const ChatMessageBubble = ({ msg, isLoading, onSendMessage }: { msg: ChatMessage, isLoading: boolean, onSendMessage: (msg: string) => void }) => {
+export const ChatMessageBubble = ({
+  msg,
+  isLoading,
+  onSendMessage,
+  videoTitle,
+  topicName,
+}: {
+  msg: ChatMessage;
+  isLoading: boolean;
+  onSendMessage: (msg: string) => void;
+  videoTitle?: string;
+  topicName?: string;
+}) => {
+  const [copied, setCopied] = useState(false);
+  const [savingNote, setSavingNote] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(msg.text);
+    setCopied(true);
+    toast.success('Copied to clipboard');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleExportToNotes = async () => {
+    if (!auth.currentUser) {
+      toast.error('Please sign in to save notes');
+      return;
+    }
+    setSavingNote(true);
+    try {
+      await addDoc(collection(db, 'storageNodes'), {
+        userId: auth.currentUser.uid,
+        name: `ZEN-GPT: ${videoTitle || 'Lecture Note'}`,
+        content: `# 🤖 ZEN-GPT Lecture Note\n\n**Lecture:** ${videoTitle || 'Lecture'}\n**Topic:** ${topicName || 'Learning'}\n**Date:** ${new Date().toLocaleDateString()}\n\n---\n\n${msg.text.trim()}`,
+        type: 'note',
+        folderId: null,
+        tags: ['zengpt', 'lecture-notes', (topicName || 'learning').toLowerCase().replace(/\s+/g, '-')],
+        pinned: false,
+        color: '#00c16e',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      toast.success('📝 Exported to ZenNotes workspace!');
+    } catch (e: any) {
+      toast.error('Failed to export note: ' + (e?.message || 'Error'));
+    } finally {
+      setSavingNote(false);
+    }
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.8rem' }}>
       
       {/* AI Header */}
       {msg.role === 'model' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.2rem' }}>
-           <div style={{ width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <div style={{ width: '24px', height: '24px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
               <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-           </div>
-           <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#ececec' }}>ZEN-GPT</span>
+            </div>
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#ececec' }}>ZEN-GPT</span>
+          </div>
+
+          {!msg.error && msg.text && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <button
+                onClick={handleCopy}
+                title="Copy response"
+                style={{
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: copied ? '#00c16e' : '#a1a1aa',
+                  borderRadius: '6px',
+                  padding: '3px 7px',
+                  fontSize: '0.68rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {copied ? <Check size={11} /> : <Copy size={11} />}
+                <span>{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+
+              <button
+                onClick={handleExportToNotes}
+                disabled={savingNote}
+                title="Export response to Lecture Notes"
+                style={{
+                  background: 'rgba(0,193,110,0.1)',
+                  border: '1px solid rgba(0,193,110,0.25)',
+                  color: '#00c16e',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '0.68rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  cursor: savingNote ? 'wait' : 'pointer',
+                  opacity: savingNote ? 0.6 : 1,
+                  transition: 'all 0.15s',
+                }}
+              >
+                <FileText size={11} />
+                <span>{savingNote ? 'Exporting...' : 'Export to Notes'}</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

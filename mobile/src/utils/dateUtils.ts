@@ -1,13 +1,17 @@
-// ─── NL Task Parser — Todoist-level intelligence ──────────────────────────────
-// Handles: "Submit lab report next Tuesday at 3pm high priority"
+// ─── NL Task Parser — Best-in-Class NLP ────────────────────────────────────────
+// Handles: "Submit lab report next Tuesday at 3pm p:high #work for 45m"
+//          "Gym class monday to friday 6am"   "every weekday at 9am !1"
+//          "Call doctor aug 15 at 2pm"        "every other tuesday 1h"
 // Returns: parsed fields + token spans for live inline text highlighting
 
 const DAY_NAMES = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
 const DAY_SHORT  = ['sun','mon','tue','wed','thu','fri','sat'];
+const MONTH_SHORT = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+const MONTH_LONG  = ['january','february','march','april','may','june','july','august','september','october','november','december'];
 
 /** A single detected token in the raw text (for inline highlighting) */
 export interface NLPToken {
-  type: 'date' | 'time' | 'priority' | 'recurrence';
+  type: 'date' | 'time' | 'priority' | 'recurrence' | 'tag' | 'duration';
   start: number;
   end: number;
   display: string;
@@ -23,6 +27,10 @@ export interface ParsedTask {
   isRecurring: boolean;
   recurrenceRule: { type: 'daily' | 'weekly' | 'monthly'; interval: number; daysOfWeek?: number[] } | null;
   multiDays?: number;
+  /** Auto-extracted #hashtag values, lowercased, without the # */
+  tags?: string[];
+  /** Parsed duration in minutes (e.g. "for 45m" → 45, "1h30m" → 90) */
+  durationMinutes?: number | null;
   tokens: NLPToken[];
 }
 
@@ -61,6 +69,18 @@ export function nextWeekday(targetDayIndex: number, forceNext = false): Date {
   return d;
 }
 
+/** Resolve a month name + day number to a local Date (pushes to next year if already past) */
+function resolveMonthDay(monthStr: string, dayNum: number): Date | null {
+  const mLow = monthStr.toLowerCase().slice(0, 3);
+  const monthIdx = MONTH_SHORT.findIndex(m => m === mLow);
+  if (monthIdx === -1 || dayNum < 1 || dayNum > 31) return null;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let candidate = new Date(now.getFullYear(), monthIdx, dayNum);
+  if (candidate < today) candidate = new Date(now.getFullYear() + 1, monthIdx, dayNum);
+  return candidate;
+}
+
 export function parseNLTask(raw: string): ParsedTask {
   const now = new Date();
   let text = raw;
@@ -72,32 +92,106 @@ export function parseNLTask(raw: string): ParsedTask {
   let isRecurring = false;
   let recurrenceRule: ParsedTask['recurrenceRule'] = null;
   let multiDays: number | undefined;
+  let durationMinutes: number | null = null;
+  const extractedTags: string[] = [];
 
   function registerToken(type: NLPToken['type'], matchStr: string, display: string) {
     const idx = text.toLowerCase().indexOf(matchStr.toLowerCase());
     if (idx === -1) return;
     tokens.push({ type, start: idx, end: idx + matchStr.length, display });
+    // Blank with spaces (same length) so subsequent searches skip this span
     text = text.slice(0, idx) + ' '.repeat(matchStr.length) + text.slice(idx + matchStr.length);
   }
 
-  // 1. PRIORITY
+  // ── 0. TAGS (#hashtag) ─────────────────────────────────────────────────────
+  // Extract all #tag tokens from raw BEFORE modifying `text`, so positions are
+  // correct for the highlighting layer. Process in reverse to preserve indices.
+  {
+    const tagRe = /#([a-zA-Z][a-zA-Z0-9_-]*)/g;
+    let tm: RegExpExecArray | null;
+    const tagMatches: Array<{ full: string; name: string; start: number }> = [];
+    while ((tm = tagRe.exec(raw)) !== null) {
+      tagMatches.push({ full: tm[0], name: tm[1].toLowerCase(), start: tm.index });
+    }
+    for (const t of tagMatches) {
+      extractedTags.push(t.name);
+      tokens.push({ type: 'tag', start: t.start, end: t.start + t.full.length, display: `#${t.name}` });
+    }
+    // Blank tags in working text in reverse order to preserve earlier indices
+    for (let i = tagMatches.length - 1; i >= 0; i--) {
+      const t = tagMatches[i];
+      text = text.slice(0, t.start) + ' '.repeat(t.full.length) + text.slice(t.start + t.full.length);
+    }
+  }
+
+  // ── 1. PRIORITY ──────────────────────────────────────────────────────────────
+  // Supports: p:high p:1 !1 !2 !3  urgent  high priority  high
   const priorityPatterns: Array<[RegExp, 'high' | 'medium' | 'low', string]> = [
-    [/\b(urgent|critical|asap|p1|high priority|highest priority)\b/i, 'high',   'High'],
-    [/\b(important|p2|medium priority|mid priority)\b/i,              'medium', 'Medium'],
-    [/\b(low priority|p3|someday|whenever)\b/i,                       'low',    'Low'],
-    [/\bhigh\b/i,                                                       'high',   'High'],
-    [/\bmedium\b/i,                                                     'medium', 'Medium'],
+    [/\bp:(?:high|1|urgent|critical)\b/i,               'high',   'High'],
+    [/\bp:(?:medium|2|mid|normal|med)\b/i,              'medium', 'Medium'],
+    [/\bp:(?:low|3|someday|whenever)\b/i,               'low',    'Low'],
+    [/\b!1\b/,                                          'high',   'High'],
+    [/\b!2\b/,                                          'medium', 'Medium'],
+    [/\b!3\b/,                                          'low',    'Low'],
+    [/\b(urgent|critical|asap|p1|high\s+priority|highest\s+priority)\b/i, 'high',   'High'],
+    [/\b(important|p2|medium\s+priority|mid\s+priority)\b/i,              'medium', 'Medium'],
+    [/\b(low\s+priority|p3|someday|whenever)\b/i,                         'low',    'Low'],
+    [/\bhigh\b/i,                                       'high',   'High'],
+    [/\bmedium\b/i,                                     'medium', 'Medium'],
   ];
   for (const [pat, pri, label] of priorityPatterns) {
     const m = text.match(pat);
     if (m) { priority = pri; registerToken('priority', m[0], label); break; }
   }
 
-  // 2. RECURRENCE
+  // ── 2. DURATION ──────────────────────────────────────────────────────────────
+  // Supports: "for 45m"  "for 1h30m"  "for 2 hours"  "1h"  "45min"  "1h 30m"
+  const durationPatterns: Array<[RegExp, (m: RegExpMatchArray) => number]> = [
+    [/\bfor\s+(\d+)\s*h(?:(?:ou)?rs?)?\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i, m => parseInt(m[1])*60 + parseInt(m[2])],
+    [/\bfor\s+(\d+)\s*h(\d{2})\b/i,                                        m => parseInt(m[1])*60 + parseInt(m[2])],
+    [/\bfor\s+(\d+)\s*h(?:(?:ou)?rs?)?\b/i,                               m => parseInt(m[1])*60],
+    [/\bfor\s+(\d+)\s*m(?:in(?:utes?)?)?\b/i,                             m => parseInt(m[1])],
+    [/\bfor\s+(\d+)\s+hours?\b/i,                                          m => parseInt(m[1])*60],
+    [/\bfor\s+(\d+)\s+minutes?\b/i,                                        m => parseInt(m[1])],
+    [/\b(\d+)h(\d+)m\b/i,                                                  m => parseInt(m[1])*60 + parseInt(m[2])],
+    [/\b(\d+)h\b(?!\d)/i,                                                  m => parseInt(m[1])*60],
+    [/\b(\d+)min\b/i,                                                       m => parseInt(m[1])],
+  ];
+  for (const [pat, calc] of durationPatterns) {
+    const m = text.match(pat);
+    if (m) {
+      durationMinutes = calc(m);
+      const hh = Math.floor(durationMinutes / 60);
+      const mm = durationMinutes % 60;
+      const disp = hh > 0 ? (mm > 0 ? `${hh}h ${mm}m` : `${hh}h`) : `${mm}m`;
+      registerToken('duration', m[0], disp);
+      break;
+    }
+  }
+
+  // ── 3. RECURRENCE ─────────────────────────────────────────────────────────────
+  const getDayIdx = (s: string) => {
+    s = s.toLowerCase();
+    let idx = DAY_NAMES.findIndex(d => s.startsWith(d));
+    if (idx !== -1) return idx;
+    return DAY_SHORT.findIndex(d => s.startsWith(d));
+  };
+  const dayRegexStr = '(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
+
   if (/\b(every\s+day|daily|each\s+day)\b/i.test(text)) {
     const m = text.match(/\b(every\s+day|daily|each\s+day)\b/i)!;
     isRecurring = true; recurrenceRule = { type: 'daily', interval: 1 }; dateResult = new Date(now);
     registerToken('recurrence', m[0], 'Daily');
+  } else if (/\b(every\s+weekday|every\s+workday|weekdays|workdays)\b/i.test(text)) {
+    const m = text.match(/\b(every\s+weekday|every\s+workday|weekdays|workdays)\b/i)!;
+    isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [1,2,3,4,5] };
+    dateResult = nextWeekday(1); // snap to next Monday
+    registerToken('recurrence', m[0], 'Weekdays');
+  } else if (/\b(every\s+weekend|weekends)\b/i.test(text)) {
+    const m = text.match(/\b(every\s+weekend|weekends)\b/i)!;
+    isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [0, 6] };
+    dateResult = nextWeekday(6); // snap to next Saturday
+    registerToken('recurrence', m[0], 'Weekends');
   } else if (/\b(every\s+week|weekly)\b/i.test(text)) {
     const m = text.match(/\b(every\s+week|weekly)\b/i)!;
     isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1 }; dateResult = new Date(now);
@@ -110,55 +204,71 @@ export function parseNLTask(raw: string): ParsedTask {
     const m = text.match(/\bevery\s+(\d+)\s+days?\b/i)!;
     isRecurring = true; recurrenceRule = { type: 'daily', interval: parseInt(m[1], 10) }; dateResult = new Date(now);
     registerToken('recurrence', m[0], `Every ${m[1]} Days`);
+  } else if (/\bevery\s+(\d+)\s+weeks?\b/i.test(text)) {
+    const m = text.match(/\bevery\s+(\d+)\s+weeks?\b/i)!;
+    isRecurring = true; recurrenceRule = { type: 'weekly', interval: parseInt(m[1], 10) }; dateResult = new Date(now);
+    registerToken('recurrence', m[0], `Every ${m[1]} Weeks`);
   } else {
-    // Check for day ranges ("monday to friday", "tue and wed")
-    const getDayIdx = (s: string) => {
-      s = s.toLowerCase();
-      let idx = DAY_NAMES.findIndex(d => s.startsWith(d));
-      if (idx !== -1) return idx;
-      return DAY_SHORT.findIndex(d => s.startsWith(d));
-    };
-    
-    const dayRegexStr = '(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)s?';
-    const rangePat = new RegExp(`\\b(?:every\\s+)?${dayRegexStr}\\s+(?:to|-)\\s+${dayRegexStr}\\b`, 'i');
-    const andPat = new RegExp(`\\b(?:every\\s+)?${dayRegexStr}\\s+(?:and|&)\\s+${dayRegexStr}\\b`, 'i');
-    
-    const rm = text.match(rangePat);
-    const am = text.match(andPat);
+    // "every other tuesday" → biweekly
+    const everyOtherPat = new RegExp(`\\bevery\\s+other\\s+${dayRegexStr}\\b`, 'i');
+    const eom = text.match(everyOtherPat);
+    if (eom) {
+      const di = getDayIdx(eom[1]);
+      if (di !== -1) {
+        isRecurring = true; recurrenceRule = { type: 'weekly', interval: 2, daysOfWeek: [di] };
+        dateResult = nextWeekday(di);
+        const lbl = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
+        registerToken('recurrence', eom[0], `Every Other ${lbl}`);
+      }
+    }
 
-    if (rm) {
-      const start = getDayIdx(rm[1]);
-      const end = getDayIdx(rm[2]);
-      if (start !== -1 && end !== -1) {
-        const days = [];
-        let curr = start;
-        while (true) {
-          days.push(curr);
-          if (curr === end) break;
-          curr = (curr + 1) % 7;
+    if (!isRecurring) {
+      // Day range: "monday to friday", "mon-fri"
+      const rangePat = new RegExp(`\\b(?:every\\s+)?${dayRegexStr}\\s+(?:to|-)\\s+${dayRegexStr}\\b`, 'i');
+      const andPat   = new RegExp(`\\b(?:every\\s+)?${dayRegexStr}\\s+(?:and|&)\\s+${dayRegexStr}\\b`, 'i');
+      const rm = text.match(rangePat);
+      const am = text.match(andPat);
+
+      if (rm) {
+        const start = getDayIdx(rm[1]);
+        const end   = getDayIdx(rm[2]);
+        if (start !== -1 && end !== -1) {
+          const days: number[] = [];
+          let curr = start;
+          while (true) {
+            days.push(curr);
+            if (curr === end) break;
+            curr = (curr + 1) % 7;
+            if (days.length > 7) break;
+          }
+          isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days.sort() };
+          dateResult = nextWeekday(start);
+          const sLbl = DAY_NAMES[start]?.charAt(0).toUpperCase() + DAY_NAMES[start]?.slice(1);
+          const eLbl = DAY_NAMES[end]?.charAt(0).toUpperCase() + DAY_NAMES[end]?.slice(1);
+          registerToken('recurrence', rm[0], `${sLbl} – ${eLbl}`);
         }
-        isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days.sort() }; 
-        dateResult = nextWeekday(start);
-        registerToken('recurrence', rm[0], `${rm[1]} to ${rm[2]}`);
-      }
-    } else if (am) {
-      const d1 = getDayIdx(am[1]);
-      const d2 = getDayIdx(am[2]);
-      if (d1 !== -1 && d2 !== -1) {
-        const days = [d1, d2].sort();
-        isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days }; 
-        dateResult = nextWeekday(days[0]);
-        registerToken('recurrence', am[0], `${am[1]} & ${am[2]}`);
-      }
-    } else {
-      for (let di = 0; di < DAY_NAMES.length; di++) {
-        const dn = DAY_NAMES[di], ds = DAY_SHORT[di];
-        const pat = new RegExp(`\\bevery\\s+(${dn}s?|${ds}s?)\\b`, 'i');
-        const m = text.match(pat);
-        if (m) {
-          isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [di] }; dateResult = nextWeekday(di);
-          const label = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
-          registerToken('recurrence', m[0], `Every ${label}`); break;
+      } else if (am) {
+        const d1 = getDayIdx(am[1]);
+        const d2 = getDayIdx(am[2]);
+        if (d1 !== -1 && d2 !== -1) {
+          const days = [d1, d2].sort();
+          isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: days };
+          dateResult = nextWeekday(days[0]);
+          const l1 = DAY_NAMES[d1]?.charAt(0).toUpperCase() + DAY_NAMES[d1]?.slice(1);
+          const l2 = DAY_NAMES[d2]?.charAt(0).toUpperCase() + DAY_NAMES[d2]?.slice(1);
+          registerToken('recurrence', am[0], `${l1} & ${l2}`);
+        }
+      } else {
+        for (let di = 0; di < DAY_NAMES.length; di++) {
+          const dn = DAY_NAMES[di], ds = DAY_SHORT[di];
+          const pat = new RegExp(`\\bevery\\s+(${dn}s?|${ds}s?)\\b`, 'i');
+          const m = text.match(pat);
+          if (m) {
+            isRecurring = true; recurrenceRule = { type: 'weekly', interval: 1, daysOfWeek: [di] };
+            dateResult = nextWeekday(di);
+            const label = DAY_NAMES[di].charAt(0).toUpperCase() + DAY_NAMES[di].slice(1);
+            registerToken('recurrence', m[0], `Every ${label}`); break;
+          }
         }
       }
     }
@@ -241,7 +351,35 @@ export function parseNLTask(raw: string): ParsedTask {
       const m = text.match(/\bin\s+(\d+)\s+weeks?\b/i)!;
       const n = parseInt(m[1], 10); dateResult = new Date(now); dateResult.setDate(dateResult.getDate() + n * 7);
       registerToken('date', m[0], `In ${n} Week${n === 1 ? '' : 's'}`);
+    } else if (/\bin\s+(\d+)\s+months?\b/i.test(text)) {
+      const m = text.match(/\bin\s+(\d+)\s+months?\b/i)!;
+      const n = parseInt(m[1], 10); dateResult = new Date(now); dateResult.setMonth(dateResult.getMonth() + n);
+      registerToken('date', m[0], `In ${n} Month${n === 1 ? '' : 's'}`);
     } else {
+      // Specific dates: "Aug 15", "15 Aug", "August 15th", "15th August"
+      const mPat = `(${MONTH_LONG.join('|')}|${MONTH_SHORT.join('|')})`;
+      const mdPat = new RegExp(`\\b${mPat}\\s+(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'i');
+      const dmPat = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${mPat}\\b`, 'i');
+      const mdM = text.match(mdPat);
+      const dmM = text.match(dmPat);
+      if (mdM) {
+        const d = resolveMonthDay(mdM[1], parseInt(mdM[2], 10));
+        if (d) {
+          dateResult = d;
+          const mLabel = mdM[1].charAt(0).toUpperCase() + mdM[1].slice(1).toLowerCase();
+          registerToken('date', mdM[0], `${mLabel} ${mdM[2]}`);
+        }
+      } else if (dmM) {
+        const d = resolveMonthDay(dmM[2], parseInt(dmM[1], 10));
+        if (d) {
+          dateResult = d;
+          const mLabel = dmM[2].charAt(0).toUpperCase() + dmM[2].slice(1).toLowerCase();
+          registerToken('date', dmM[0], `${dmM[1]} ${mLabel}`);
+        }
+      }
+    }
+
+    if (!dateResult) {
       const byMatch = text.match(/\b(?:by|due)\s+(next\s+)?([a-z]+)\b/i);
       if (byMatch) {
         const forceNext = !!byMatch[1], dayStr = byMatch[2].toLowerCase();
@@ -284,13 +422,91 @@ export function parseNLTask(raw: string): ParsedTask {
   title = title.replace(/\s{2,}/g, ' ').replace(/^[\s,.:]+|[\s,.:]+$/g, '').trim();
   if (!title) title = raw.trim();
 
-  return { title, date: dateResult ? toYMD(dateResult) : null, timeSlot, endTimeSlot, priority, isRecurring, recurrenceRule, multiDays, tokens };
+  return {
+    title,
+    date: dateResult ? toYMD(dateResult) : null,
+    timeSlot,
+    endTimeSlot,
+    priority,
+    isRecurring,
+    recurrenceRule,
+    multiDays,
+    tags: extractedTags,
+    durationMinutes,
+    tokens,
+  };
 }
 
 // Legacy compat for QuickCaptureSheet
 export function parseNLDate(text: string): { date: string | null; timeSlot: string | null; cleanTitle: string; multiDays?: number } {
   const r = parseNLTask(text);
   return { date: r.date, timeSlot: r.timeSlot, cleanTitle: r.title, multiDays: r.multiDays };
+}
+
+export interface ParsedEvent {
+  title: string;
+  date: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  type: 'exam' | 'assignment_due' | 'holiday' | 'todo' | 'job';
+  typeLabel: string;
+  typeIcon: string;
+  typeColor: string;
+  tokens: NLPToken[];
+}
+
+export function parseNLEvent(raw: string): ParsedEvent {
+  const task = parseNLTask(raw);
+  let type: ParsedEvent['type'] = 'todo';
+  let typeLabel = 'Task';
+  let typeIcon = '✅';
+  let typeColor = '#7c3aed';
+
+  const lower = raw.toLowerCase();
+  if (/\b(exam|test|quiz|viva|midterm|endsem|finals?|theory|practical|paper|assessment)\b/i.test(lower)) {
+    type = 'exam';
+    typeLabel = 'Exam';
+    typeIcon = '📝';
+    typeColor = '#ef4444';
+  } else if (/\b(assignment|homework|submission|report|project|submit|lab report|presentation)\b/i.test(lower)) {
+    type = 'assignment_due';
+    typeLabel = 'Assignment';
+    typeIcon = '📋';
+    typeColor = '#8b5cf6';
+  } else if (/\b(holiday|vacation|leave|break|trip|festival|off)\b/i.test(lower)) {
+    type = 'holiday';
+    typeLabel = 'Holiday';
+    typeIcon = '🌴';
+    typeColor = '#10b981';
+  } else if (/\b(interview|placement|job|drive|meeting|call|webinar|conference|hiring|oa|round)\b/i.test(lower)) {
+    type = 'job';
+    typeLabel = 'Interview';
+    typeIcon = '💼';
+    typeColor = '#fbbf24';
+  }
+
+  let startTime = task.timeSlot;
+  let endTime = task.endTimeSlot || null;
+  if (startTime && !endTime) {
+    const [hh, mm] = startTime.split(':').map(Number);
+    const dur = task.durationMinutes || (type === 'exam' ? 120 : (type === 'job' ? 60 : 60));
+    const totalMin = hh * 60 + mm + dur;
+    const endH = Math.floor(totalMin / 60) % 24;
+    const endM = totalMin % 60;
+    endTime = `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
+  }
+
+  return {
+    title: task.title,
+    date: task.date,
+    startTime,
+    endTime,
+    type,
+    typeLabel,
+    typeIcon,
+    typeColor,
+    tokens: task.tokens,
+  };
 }
 
 export function timeAgo(dateInput: any): string {

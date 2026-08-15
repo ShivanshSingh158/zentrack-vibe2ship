@@ -1,11 +1,20 @@
-import React from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable, StyleSheet, TouchableOpacity, BackHandler } from 'react-native';
+import Animated, {
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  interpolate,
+  Easing,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 import { LEVEL_THRESHOLDS } from '../services/xpSystem';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
+import { FONT_FAMILY } from '../theme/tokens';
 import { makeStyles } from './dashboard/dashboardStyles';
 import { useDashboardData } from './dashboard/useDashboardData';
 import { getLevel } from './dashboard/useXPLevel';
@@ -16,6 +25,8 @@ import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import QuickCaptureSheet from '../components/Dashboard/QuickCaptureSheet';
 import DashboardLayoutSheet from '../components/Dashboard/DashboardLayoutSheet';
 import WaterLogSheet from '../components/Dashboard/WaterLogSheet';
+import FlashcardReviewModal from '../components/Learning/FlashcardReviewModal';
+import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 
 export default function DashboardScreen() {
   const { colors } = useTheme();
@@ -27,19 +38,191 @@ export default function DashboardScreen() {
   const paddingBottom = insets.bottom + 80;
   const levelInfo = getLevel(data.xp);
 
+  // ── Flashcards State ──
+  const [dueFlashcards, setDueFlashcards] = useState<Flashcard[]>([]);
+  const [flashcardModalVisible, setFlashcardModalVisible] = useState(false);
+
+  const refreshFlashcards = useCallback(async () => {
+    if (data.user?.uid) {
+      const cards = await getDueFlashcards(data.user.uid);
+      setDueFlashcards(cards);
+    }
+  }, [data.user?.uid]);
+
+  useEffect(() => {
+    refreshFlashcards();
+  }, [refreshFlashcards]);
+
   const todayTasks = data.tasks.filter(t => t.date === data.todayStr);
   const doneTasksCount = todayTasks.filter(t => t.status === 'completed').length;
   
   const habitsCompleted = data.allHabits.filter(h => {
     const log = data.habitLogs.find(l => l.habitId === h.id && l.date === data.todayStr);
-    return log && log.count >= (h.targetCount || 1);
+    return log && (log.count ?? 0) >= (h.targetCount || 1);
   }).length;
   
   const waterCompleted = (data.waterLogs || []).filter(w => w.date === data.todayStr).reduce((sum, log) => sum + log.amountMl, 0);
-  const contentCount = (data.contentLogs || []).length;
+
+  // ── Floating Action Menu State & Motion (Smooth Linear / Non-Bouncy) ────────
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuLayout, setMenuLayout] = useState({ x: 0, y: 0, ready: false });
+  const avatarRef = useRef<View>(null);
+  const rotateVal = useSharedValue(0);
+  const animVal = useSharedValue(0);
+
+  const closeMenu = useCallback(() => {
+    if (menuOpen) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      rotateVal.value = withTiming(0, { duration: 240, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+      animVal.value = withTiming(0, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+      setTimeout(() => {
+        setMenuOpen(false);
+        setMenuLayout(prev => ({ ...prev, ready: false }));
+      }, 220);
+    }
+  }, [menuOpen, rotateVal, animVal]);
+
+  const toggleMenu = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (menuOpen) {
+      closeMenu();
+    } else {
+      avatarRef.current?.measure((x, y, w, h, pageX, pageY) => {
+        setMenuLayout({ x: pageX, y: pageY + h, ready: true });
+        setMenuOpen(true);
+        rotateVal.value = withTiming(180, { duration: 260, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+        animVal.value = withTiming(1, { duration: 240, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+      });
+    }
+  }, [menuOpen, closeMenu, rotateVal, animVal]);
+
+  useEffect(() => {
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (menuOpen) {
+        closeMenu();
+        return true;
+      }
+      return false;
+    });
+    return () => backHandler.remove();
+  }, [menuOpen, closeMenu]);
+
+  const avatarAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotateVal.value}deg` }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: animVal.value,
+  }));
+
+  const layoutBtnStyle = useAnimatedStyle(() => ({
+    opacity: animVal.value,
+    transform: [
+      { translateY: interpolate(animVal.value, [0, 1], [-44, 0]) },
+      { scale: interpolate(animVal.value, [0, 1], [0.1, 1]) },
+      { rotate: `${interpolate(animVal.value, [0, 1], [-180, 0])}deg` },
+    ],
+  }));
+
+  const settingsBtnStyle = useAnimatedStyle(() => ({
+    opacity: animVal.value,
+    transform: [
+      { translateY: interpolate(animVal.value, [0, 1], [-88, 0]) },
+      { scale: interpolate(animVal.value, [0, 1], [0.1, 1]) },
+      { rotate: `${interpolate(animVal.value, [0, 1], [-360, 0])}deg` },
+    ],
+  }));
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
+      {/* Root-Level Absolute Overlay for Dropdown Menu to bypass ScrollView touch issues */}
+      <Animated.View
+        pointerEvents={menuOpen ? 'auto' : 'none'}
+        style={[StyleSheet.absoluteFillObject, { zIndex: 9999 }, backdropStyle]}
+      >
+        <Pressable
+          style={StyleSheet.absoluteFillObject}
+          onPress={closeMenu}
+        />
+        
+        {/* Floating Action Menu Buttons */}
+        {menuLayout.ready && (
+          <View
+            pointerEvents="box-none"
+            style={{
+              position: 'absolute',
+              top: menuLayout.y + 8,
+              left: menuLayout.x,
+              width: 36,
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            {/* Icon 1: Customize Layout */}
+            <Animated.View style={layoutBtnStyle}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: '#1c1c1e',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.18)',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.4,
+                  shadowRadius: 8,
+                  elevation: 12,
+                }}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  closeMenu();
+                  setTimeout(() => {
+                    data.setLayoutSheetVisible(true);
+                  }, 120);
+                }}
+              >
+                <Ionicons name="color-palette-outline" size={18} color="#a599ff" />
+              </TouchableOpacity>
+            </Animated.View>
+
+            {/* Icon 2: App Settings */}
+            <Animated.View style={settingsBtnStyle}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: '#1c1c1e',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.18)',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.4,
+                  shadowRadius: 8,
+                  elevation: 12,
+                }}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  closeMenu();
+                  setTimeout(() => {
+                    navigation.navigate('MoreStack', { screen: 'Settings' });
+                  }, 120);
+                }}
+              >
+                <Ionicons name="settings-outline" size={18} color="#38bdf8" />
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        )}
+      </Animated.View>
+
       <SaraHUDBanner
         message={data.surfaceMessage || ''}
         visible={!!data.surfaceMessage}
@@ -48,14 +231,17 @@ export default function DashboardScreen() {
       />
       
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
+        <ScrollView scrollEnabled={!menuOpen} contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
           
-          <Animated.View entering={FadeInDown.delay(100).duration(400)} style={s.greetingContainer}>
-            <View>
+          <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[s.greetingContainer, { zIndex: 999 }]}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={s.greetingGood}>Good</Text>
               <Text style={s.greetingTime}>{data.timeGreeting}</Text>
             </View>
-            <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+
+            {/* Header Action Bar */}
+            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', zIndex: 999 }}>
+              {/* Flame streak pill */}
               <AnimatedPressable
                 style={s.headerStreakPill}
                 onPress={() => navigation.navigate('MoreStack', { screen: 'StreakDetail' })}
@@ -65,18 +251,77 @@ export default function DashboardScreen() {
                   {data.appStreak}
                 </Text>
               </AnimatedPressable>
-              <AnimatedPressable style={s.avatarCircle} onPress={() => data.setLayoutSheetVisible(true)}>
-                <Ionicons name="options-outline" size={22} color={colors.textPrimary} />
-              </AnimatedPressable>
-              <AnimatedPressable style={s.avatarCircle} onPress={() => navigation.navigate('MoreStack', { screen: 'Settings' })}>
-                {data.user?.photoURL ? (
-                  <Image source={{ uri: data.user.photoURL }} style={{ width: 36, height: 36, borderRadius: 18 }} />
-                ) : (
-                  <Text style={s.avatarText}>{data.avatarLetter}</Text>
-                )}
-              </AnimatedPressable>
+
+              {/* Anchored Vertical Speed Dial Container */}
+              <View collapsable={false} ref={avatarRef} style={{ position: 'relative', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 1000, elevation: 10 }}>
+                {/* Rotating Trigger Avatar / Close Button */}
+                <Animated.View style={avatarAnimatedStyle}>
+                  <AnimatedPressable
+                    style={[
+                      s.avatarCircle,
+                      menuOpen && {
+                        backgroundColor: '#2c2c2e',
+                        borderWidth: 1,
+                        borderColor: 'rgba(255,255,255,0.2)',
+                      },
+                    ]}
+                    onPress={toggleMenu}
+                  >
+                    {menuOpen ? (
+                      <Ionicons name="close" size={20} color="#ffffff" />
+                    ) : data.user?.photoURL ? (
+                      <Image source={{ uri: data.user.photoURL }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                    ) : (
+                      <Text style={s.avatarText}>{data.avatarLetter}</Text>
+                    )}
+                  </AnimatedPressable>
+                </Animated.View>
+              </View>
             </View>
           </Animated.View>
+
+          {/* ⚡ 3-Minute Active Recall Due Widget */}
+          {dueFlashcards.length > 0 && (
+            <Animated.View entering={FadeInDown.delay(180).duration(400)} style={{ marginTop: 12, marginBottom: 6 }}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={{
+                  backgroundColor: '#161922',
+                  borderRadius: 16,
+                  padding: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: 'rgba(165,153,255,0.3)',
+                  shadowColor: '#a599ff',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 6,
+                }}
+                onPress={() => setFlashcardModalVisible(true)}
+              >
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                  <Ionicons name="flash" size={20} color="#a599ff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#f2f2f7', fontSize: 14 }}>
+                      3-Min Active Recall Due
+                    </Text>
+                    <View style={{ backgroundColor: 'rgba(0,193,110,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                      <Text style={{ color: '#00c16e', fontSize: 10, fontFamily: FONT_FAMILY.bold }}>+15 XP</Text>
+                    </View>
+                  </View>
+                  <Text style={{ color: '#8e8e93', fontSize: 12, fontFamily: FONT_FAMILY.body, marginTop: 2 }}>
+                    {dueFlashcards.length} flashcard{dueFlashcards.length > 1 ? 's' : ''} scheduled for today
+                  </Text>
+                </View>
+                <View style={{ backgroundColor: '#a599ff', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 }}>
+                  <Text style={{ color: '#080510', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Review</Text>
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
 
           {data.layout.map((layoutItem) => {
             if (layoutItem.hidden) return null;
@@ -161,6 +406,12 @@ export default function DashboardScreen() {
         onUpdateTarget={(val) => {
           data.setWaterTotal(val);
         }}
+      />
+      <FlashcardReviewModal
+        visible={flashcardModalVisible}
+        dueCards={dueFlashcards}
+        onClose={() => setFlashcardModalVisible(false)}
+        onSessionComplete={refreshFlashcards}
       />
     </SafeAreaView>
   );

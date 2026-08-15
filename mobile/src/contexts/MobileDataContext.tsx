@@ -132,6 +132,7 @@ export interface WeightLog { id?: string; userId: string; date: string; weightKg
 export interface GymLog {
   id: string; date: string; userId: string; exercises?: any[]; cardio?: any[];
   workoutStartTime?: number; workoutDurationMinutes?: number;
+  completed?: boolean; dayPlanIndex?: number;
   startTime?: string; endTime?: string; updatedAt?: number;
   notes?: string;
 }

@@ -55,6 +55,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const [saving, setSaving] = useState(false);
   const [priority, setPriority] = useState<Priority>('low');
   const [nlpParsed, setNlpParsed] = useState<ParsedTask | null>(null);
+  const [nlpDuration, setNlpDuration] = useState<number | null>(null);
 
   // Tags
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -130,24 +131,30 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       }
       if (parsed.tokens.some(t => t.type === 'priority') && parsed.priority !== priority) setPriority(parsed.priority);
       if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) setRecurrenceRule(parsed.recurrenceRule);
+      // Auto-apply extracted #tags to the tag selection
+      if (parsed.tags && parsed.tags.length > 0) {
+        parsed.tags.forEach(tag => addTag(tag));
+      }
+      // Capture NLP-inferred duration (used as fallback when no start+end time)
+      if (parsed.durationMinutes != null) setNlpDuration(parsed.durationMinutes);
     }, 300);
   }, [priority]);
 
-  const handleDismissToken = useCallback((type: NLPToken['type']) => {
+  const handleDismissToken = useCallback((token: NLPToken) => {
+    const { type, start, end, display } = token;
     if (type === 'date')       { setTaskDate(selectedDate); }
     if (type === 'time')       { setStartTime(''); setEndTime(''); }
     if (type === 'priority')   { setPriority('low'); }
     if (type === 'recurrence') { setRecurrenceRule(null); }
-    if (nlpParsed) {
-      const tok = nlpParsed.tokens.find(t => t.type === type);
-      if (tok) {
-        const cleaned = (title.slice(0, tok.start) + title.slice(tok.end)).replace(/\s{2,}/g, ' ').trim();
-        setTitle(cleaned);
-        const reparsed = parseNLTask(cleaned);
-        setNlpParsed(reparsed.tokens.length > 0 ? reparsed : null);
-      }
-    }
-  }, [nlpParsed, title, selectedDate]);
+    if (type === 'duration')   { setNlpDuration(null); }
+    if (type === 'tag')        { removeSelectedTag(display.replace(/^#/, '')); }
+    // Splice the matched span out of the raw title and re-parse
+    const cleaned = (title.slice(0, start) + title.slice(end)).replace(/\s{2,}/g, ' ').trim();
+    setTitle(cleaned);
+    const reparsed = parseNLTask(cleaned);
+    setNlpParsed(reparsed.tokens.length > 0 ? reparsed : null);
+  }, [title, selectedDate]);
+
 
   const timeLabel = startTime ? formatTimeDisplay(startTime) : 'Time';
   const dateLabel = taskDate === today ? 'Today'
@@ -156,9 +163,10 @@ export const NewTaskModal = React.memo(function NewTaskModal({
       : formatDisplayDate(taskDate);
 
   const calcEstMinutes = (s: string, e: string) => {
-    if (!s || !e) return 0;
+    if (!s || !e || !s.includes(':') || !e.includes(':')) return 0;
     const [sH, sM] = s.split(':').map(Number);
     const [eH, eM] = e.split(':').map(Number);
+    if (isNaN(sH) || isNaN(sM) || isNaN(eH) || isNaN(eM)) return 0;
     let diff = (eH * 60 + eM) - (sH * 60 + sM);
     if (diff < 0) diff += 24 * 60;
     return diff;
@@ -198,7 +206,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
     setTitle(''); setSaving(false); setPriority('low');
     setStartTime(''); setEndTime(''); setRecurrenceRule(null);
     setSubtasks([]); setSubtaskInput(''); setShowSubtasks(false);
-    setIsCalendarOpen(false); setNlpParsed(null);
+    setIsCalendarOpen(false); setNlpParsed(null); setNlpDuration(null);
     setSelectedTags([]); setNewTagInput(''); setShowTagInput(false);
     onClose();
   };
@@ -228,21 +236,34 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
 
-    let finalTitle = nlpParsed?.title?.trim() || title.trim();
+    // ── Always re-parse synchronously at save time ──────────────────────────
+    // The debounced nlpParsed may be stale (or null) if the user submitted
+    // before the 300ms debounce fired. Parsing fresh here ensures:
+    //   "DSA monday to friday" → title="DSA" + recurrenceRule=Mon–Fri
+    const rawForParse = isOverride ? rawText : title;
+    const saveParsed = rawForParse.trim().length >= 2 ? parseNLTask(rawForParse) : null;
+
+    let finalTitle = saveParsed?.title?.trim() || nlpParsed?.title?.trim() || rawForParse.trim();
     let ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
-    let est = calcEstMinutes(startTime, endTime);
+    let est = calcEstMinutes(startTime, endTime) || nlpDuration || saveParsed?.durationMinutes || 0;
     let finalPriority = priority;
     let finalDate = taskDate;
     let finalRecurrence = recurrenceRule;
 
-    if (isOverride) {
-      const p = parseNLTask(rawText);
-      finalTitle = p.title.trim() || rawText.trim();
-      if (p.timeSlot) ts = p.endTimeSlot ? `${p.timeSlot} - ${p.endTimeSlot}` : p.timeSlot;
-      if (p.priority !== 'low') finalPriority = p.priority;
-      if (p.date) finalDate = p.date;
-      if (p.recurrenceRule) finalRecurrence = p.recurrenceRule;
+    // Apply NLP-parsed values, but never override what the user explicitly set via UI controls
+    if (saveParsed?.tokens.length) {
+      // Time: only if user didn't manually set start time
+      if (!ts && saveParsed.timeSlot) {
+        ts = saveParsed.endTimeSlot ? `${saveParsed.timeSlot} - ${saveParsed.endTimeSlot}` : saveParsed.timeSlot;
+      }
+      // Priority: only override the default 'low'
+      if (finalPriority === 'low' && saveParsed.priority !== 'low') finalPriority = saveParsed.priority;
+      // Date: use NLP date if user didn't change it from the default selectedDate
+      if (finalDate === selectedDate && saveParsed.date) finalDate = saveParsed.date;
+      // Recurrence: only if not explicitly set via RecurrencePicker
+      if (!finalRecurrence && saveParsed.recurrenceRule) finalRecurrence = saveParsed.recurrenceRule;
     }
+
 
     const subtaskObjects = subtasks.map((s, i) => ({ id: `st-${i}`, title: s, completed: false }));
 
@@ -547,13 +568,31 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 
         {showStartPicker && (
           <DateTimePicker
-            value={(() => { const d = new Date(); if (startTime) { const [h, m] = startTime.split(':'); d.setHours(+h, +m); } return d; })()}
+            value={(() => {
+              const d = new Date();
+              if (startTime && startTime.includes(':')) {
+                const [h, m] = startTime.split(':');
+                const parsedH = parseInt(h, 10);
+                const parsedM = parseInt(m, 10);
+                if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+              }
+              return d;
+            })()}
             mode="time" display="default" onChange={onStartTimeChange}
           />
         )}
         {showEndPicker && (
           <DateTimePicker
-            value={(() => { const d = new Date(); if (endTime) { const [h, m] = endTime.split(':'); d.setHours(+h, +m); } return d; })()}
+            value={(() => {
+              const d = new Date();
+              if (endTime && endTime.includes(':')) {
+                const [h, m] = endTime.split(':');
+                const parsedH = parseInt(h, 10);
+                const parsedM = parseInt(m, 10);
+                if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+              }
+              return d;
+            })()}
             mode="time" display="default" onChange={onEndTimeChange}
           />
         )}

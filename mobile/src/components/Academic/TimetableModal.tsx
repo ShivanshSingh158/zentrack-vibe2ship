@@ -10,8 +10,6 @@ interface TimetableModalProps {
   visible: boolean;
   onClose: () => void;
   subjects: Subject[];
-  isImporting: boolean;
-  handleImportTimetable: () => void;
   handleAddSubject: () => void;
   setEditSubject: (subject: Subject) => void;
   setShowAddModal: (show: boolean) => void;
@@ -24,8 +22,6 @@ export const TimetableModal = React.memo(({
   visible,
   onClose,
   subjects,
-  isImporting,
-  handleImportTimetable,
   handleAddSubject,
   setEditSubject,
   setShowAddModal,
@@ -43,19 +39,6 @@ export const TimetableModal = React.memo(({
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Timetable</Text>
           <View style={styles.headerActions}>
-            <TouchableOpacity
-              onPress={() => {
-                import('react-native').then(({ Alert }) => {
-                  Alert.alert('Coming Soon', 'We are working on this feature! It will be available in a new update.');
-                });
-              }}
-              activeOpacity={0.7}
-              style={styles.scanBtn}
-            >
-              <Ionicons name="scan" size={14} color="#a599ff" />
-              <Text style={styles.scanBtnText}>Scan</Text>
-            </TouchableOpacity>
-
             <TouchableOpacity
               onPress={handleAddSubject}
               activeOpacity={0.8}
@@ -180,22 +163,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  scanBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(165,153,255,0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.2)',
-  },
-  scanBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 12,
-    color: '#a599ff',
   },
   addBtn: {
     flexDirection: 'row',

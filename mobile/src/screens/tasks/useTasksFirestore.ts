@@ -31,7 +31,7 @@ export function useTasksFirestore({
   setBulkRescheduleModal,
 }: UseTasksFirestoreProps) {
 
-  const completeTask = useCallback((task: Task, fromSwipe?: boolean) => {
+  const completeTask = useCallback((task: Task) => {
     if (!task.id) return;
     const newStatus = task.status === 'completed' ? 'pending' : 'completed';
     const completedAt = newStatus === 'completed' ? new Date().toISOString() : null;
@@ -39,14 +39,13 @@ export function useTasksFirestore({
     if (newStatus === 'completed') {
       import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
     }
-    if (newStatus === 'completed' && !fromSwipe) { setTimeLogTask(task); return; }
     (async () => {
       try {
         if (newStatus === 'completed') await awardXP('TASK_COMPLETE');
         await updateDoc(doc(db, COLLECTION.TASKS, task.id), { status: newStatus, completedAt });
       } catch (error) { console.error('[useTasksFirestore] completeTask error', error); }
     })();
-  }, [optimisticUpdateTask, setTimeLogTask]);
+  }, [optimisticUpdateTask]);
 
   const clearCompletedTasks = useCallback(async (tasks: Task[]) => {
     try {

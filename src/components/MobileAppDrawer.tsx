@@ -22,6 +22,7 @@ export const MOBILE_APPS = [
   { name: 'Learning', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Brain/3D/brain_3d.png', route: '/learning' },
   { name: 'Attendance', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Graduation%20cap/3D/graduation_cap_3d.png', route: '/attendance' },
   { name: 'Grades', img: 'https://img.icons8.com/color/96/000000/exam.png', route: '/grades' },
+  { name: 'Gym', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Person%20lifting%20weights/3D/person_lifting_weights_3d.png', route: '/gym' },
 ];
 
 export const MobileAppDrawer: React.FC<MobileAppDrawerProps> = ({ isOpen, onClose, pinnedApps, onTogglePin }) => {

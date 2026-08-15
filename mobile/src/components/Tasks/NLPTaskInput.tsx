@@ -35,6 +35,8 @@ const TOKEN_COLORS: Record<NLPToken['type'], { bg: string; text: string; border:
   time:       { bg: '#1a3a2a', text: '#34d399', border: '#10b981' },  // green
   priority:   { bg: '#3a1a1a', text: '#f87171', border: '#ef4444' },  // red
   recurrence: { bg: '#2a1a3a', text: '#c084fc', border: '#a855f7' },  // purple
+  tag:        { bg: '#1a2a3a', text: '#38bdf8', border: '#0ea5e9' },  // cyan
+  duration:   { bg: '#2a2a1a', text: '#fbbf24', border: '#f59e0b' },  // amber
 };
 
 // Priority → accent color map for the priority chip icon
@@ -44,7 +46,7 @@ interface Props {
   value: string;
   onChangeText: (text: string) => void;
   parsed: ParsedTask;
-  onDismissToken: (type: NLPToken['type']) => void;
+  onDismissToken: (token: NLPToken) => void;
   autoFocus?: boolean;
   placeholder?: string;
   onSubmitEditing?: () => void;
@@ -177,7 +179,7 @@ export default function NLPTaskInput({
                 }]}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  onDismissToken(tok.type);
+                  onDismissToken(tok);
                 }}
                 activeOpacity={0.75}
               >

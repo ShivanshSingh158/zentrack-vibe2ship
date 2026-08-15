@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, addDoc, updateDoc, deleteDoc, collection } from 'firebase/firestore';
-import { db } from './firebase';
+import { doc, setDoc, addDoc, updateDoc, deleteDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { db, auth } from './firebase';
 import NetInfo from '@react-native-community/netinfo';
 import { COLLECTION } from '../config/constants';
 
@@ -19,6 +20,7 @@ interface QueueItem {
   data: any;
   docId?: string;
   timestamp: number;
+  retries?: number;
 }
 
 // ── Listener Registry ───────────────────────────────────────────────────────
@@ -89,13 +91,20 @@ export async function queueWrite(
     const existingStr = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
     const queue: QueueItem[] = existingStr ? JSON.parse(existingStr) : [];
 
+    const currentUser = auth.currentUser;
+    const payload = data && typeof data === 'object' ? { ...data } : data;
+    if (currentUser && payload && typeof payload === 'object' && !payload.userId && operation !== 'delete') {
+      payload.userId = currentUser.uid;
+    }
+
     queue.push({
       id: Date.now().toString() + Math.random().toString(36).substring(7),
       collection: collectionName,
       operation,
-      data,
+      data: payload,
       docId,
       timestamp: Date.now(),
+      retries: 0,
     });
 
     await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
@@ -104,10 +113,12 @@ export async function queueWrite(
     // Notify all subscribers (e.g. OfflineIndicator) that the count changed
     await notifyQueueChange();
 
-    // Attempt to sync immediately if already online (no-op if offline)
-    syncOfflineQueue(true);
+    // Attempt to sync immediately if online & authenticated (no-op if offline/guest)
+    if (auth.currentUser) {
+      syncOfflineQueue(true);
+    }
   } catch (e) {
-    console.error('[OfflineSync] Failed to queue operation', e);
+    console.warn('[OfflineSync] Failed to queue operation', e);
   }
 }
 
@@ -139,6 +150,13 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
       return 0;
     }
 
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      // Defer drain until user authentication is fully hydrated
+      isSyncing = false;
+      return 0;
+    }
+
     const existingStr = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
     if (!existingStr) {
       isSyncing = false;
@@ -151,30 +169,52 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
       return 0;
     }
 
-    console.log(`[OfflineSync] Draining ${queue.length} operations to Firestore…`);
+    console.log(`[OfflineSync] Draining ${queue.length} operations to Firestore for ${currentUser.uid}…`);
 
     const failedQueue: QueueItem[] = [];
 
     // Process sequentially to maintain causality (add before update, etc.)
     for (const item of queue) {
       try {
+        const dataToWrite = item.data && typeof item.data === 'object' ? { ...item.data } : item.data;
+        if (currentUser && dataToWrite && typeof dataToWrite === 'object' && !dataToWrite.userId && item.operation !== 'delete') {
+          dataToWrite.userId = currentUser.uid;
+        }
+
+        // Restore serialized sentinel timestamps if parsed as empty object
+        if (dataToWrite && typeof dataToWrite === 'object') {
+          if (dataToWrite.createdAt && typeof dataToWrite.createdAt === 'object' && Object.keys(dataToWrite.createdAt).length === 0) {
+            dataToWrite.createdAt = serverTimestamp();
+          }
+          if (dataToWrite.updatedAt && typeof dataToWrite.updatedAt === 'object' && Object.keys(dataToWrite.updatedAt).length === 0) {
+            dataToWrite.updatedAt = serverTimestamp();
+          }
+        }
+
         if (item.operation === 'add') {
-          await addDoc(collection(db, item.collection), item.data);
+          await addDoc(collection(db, item.collection), dataToWrite);
         } else if (item.operation === 'set' && item.docId) {
           const docRef = doc(db, item.collection, item.docId);
-          await setDoc(docRef, item.data, { merge: true });
+          await setDoc(docRef, dataToWrite, { merge: true });
         } else if (item.operation === 'update' && item.docId) {
           const docRef = doc(db, item.collection, item.docId);
-          await updateDoc(docRef, item.data);
+          await updateDoc(docRef, dataToWrite);
         } else if (item.operation === 'delete' && item.docId) {
           const docRef = doc(db, item.collection, item.docId);
           await deleteDoc(docRef);
         }
         syncedCount++;
         console.log(`[OfflineSync] ✓ Synced ${item.operation} on ${item.collection}`);
-      } catch (e) {
-        console.error(`[OfflineSync] ✗ Failed to sync ${item.id}, retaining in queue`, e);
-        failedQueue.push(item);
+      } catch (e: any) {
+        console.warn(`[OfflineSync] ✗ Write failed for item ${item.id} in ${item.collection}:`, e?.message || e);
+        const isPermissionError = e?.message?.includes('permission') || e?.code?.includes('permission');
+        const retries = (item.retries || 0) + 1;
+        // Keep in queue for transient network drops; discard persistent authorization errors or corrupted items (>3 retries)
+        if (!isPermissionError && retries < 4) {
+          failedQueue.push({ ...item, retries });
+        } else {
+          console.warn(`[OfflineSync] Discarding un-syncable queue item ${item.id} (${item.collection}) to prevent queue lock.`);
+        }
       }
     }
 
@@ -191,7 +231,7 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
       notifySyncComplete(syncedCount);
     }
   } catch (e) {
-    console.error('[OfflineSync] Error during sync drain', e);
+    console.warn('[OfflineSync] Error during sync drain', e);
   } finally {
     isSyncing = false;
   }
@@ -199,18 +239,14 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
   return syncedCount;
 }
 
-// ── Network Listener ────────────────────────────────────────────────────────
+// ── Network & Auth Listener ─────────────────────────────────────────────────
 
 /**
  * Call this once in AppNavigator to automatically drain the queue when
- * the network reconnects. Returns an unsubscribe function.
- *
- * Only shows the "Synced N offline changes" toast when the device
- * actually went offline→online within this session, preventing the
- * false positive toast that appeared on every cold boot.
+ * the network reconnects or user authenticates. Returns an unsubscribe function.
  */
 export function setupNetworkListener(): () => void {
-  const unsubscribe = NetInfo.addEventListener(state => {
+  const netUnsubscribe = NetInfo.addEventListener(state => {
     if (state.isConnected === false) {
       // Device just went offline — remember this for the current session
       wasOfflineInSession = true;
@@ -220,14 +256,24 @@ export function setupNetworkListener(): () => void {
     }
   });
 
-  // On boot: drain silently without showing the sync toast.
+  // When auth token restores or user logs in, trigger automatic background drain
+  const authUnsubscribe = onAuthStateChanged(auth, user => {
+    if (user) {
+      syncOfflineQueue(true);
+    }
+  });
+
+  // On boot: drain silently if already online and authenticated
   const bootDrain = async () => {
     const state = await NetInfo.fetch();
-    if (state.isConnected) {
+    if (state.isConnected && auth.currentUser) {
       await syncOfflineQueue(true);
     }
   };
   bootDrain();
 
-  return unsubscribe;
+  return () => {
+    netUnsubscribe();
+    authUnsubscribe();
+  };
 }

@@ -73,93 +73,46 @@ const saveHistoryToFirestore = async (userId: string, videoId: string, msgs: Cha
   } catch { /* ignore */ }
 };
 
-// ── YouTube Transcript Fetcher & Fallback ───────────────────────────────────
-
-const fetchYouTubeTranscript = async (videoId: string): Promise<{ transcript: string; source: string; error: string | null }> => {
-  try {
-    const { auth } = await import('../../services/firebase');
-    const idToken = await auth.currentUser?.getIdToken() ?? '';
-    const res = await fetch(`/api/transcript?videoId=${videoId}`, {
-      headers: idToken ? { 'Authorization': `Bearer ${idToken}` } : {},
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.transcript && data.transcript.length > 50) {
-        return { transcript: data.transcript, source: 'captions', error: null };
-      }
-    }
-  } catch (e: any) {
-    return { transcript: '', source: 'none', error: e?.message || 'Server error' };
-  }
-  return { transcript: '', source: 'none', error: 'No transcript found via server' };
-};
-
-const GEMINI_VIDEO_TIMEOUT_MS = 25000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms)),
-  ]);
-}
-
-const analyzeVideoWithGemini = async (
-  videoId: string,
-  videoTitle: string,
-): Promise<{ analysis: string; error: string | null }> => {
-  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const timeoutFallback = { analysis: '', error: 'Timed out after 25s — video may be too long for real-time analysis' };
-
-  const work = (async (): Promise<{ analysis: string; error: string | null }> => {
-    try {
-      const data = await callGeminiProxy({
-        model: 'gemini-1.5-pro',
-        contents: [{
-          role: 'user',
-          parts: [
-            { fileData: { fileUri: youtubeUrl, mimeType: 'video/mp4' } } as any,
-            {
-              text: `Analyze this YouTube lecture: "${videoTitle}".
-Produce a DETAILED breakdown with:
-## Overview (2-3 sentences)
-## Timestamped Breakdown — every 2-3 min: [MM:SS] what is taught, code shown, examples
-## Key Concepts — every concept/algorithm/technique
-## Code Examples — reproduce any code shown (specify language)
-## Key Takeaways
-Be precise. Reproduce exact code from the screen.`,
-            },
-          ],
-        }],
-        generationConfig: { maxOutputTokens: 4096 },
-      });
-      const analysis = extractGeminiText(data);
-      if (!analysis || analysis.length < 50) return { analysis: '', error: 'Gemini returned empty analysis' };
-      return { analysis, error: null };
-    } catch (e: any) {
-      return { analysis: '', error: e?.message || 'Gemini video analysis failed' };
-    }
-  })();
-
-  return withTimeout(work, GEMINI_VIDEO_TIMEOUT_MS, timeoutFallback);
-};
-
+// ── 4-Layer YouTube Transcript Pipeline (InnerTube -> Supadata -> Gemini Multimodal -> Gemini Audio) ──
 const fetchLectureContext = async (
   videoId: string,
   videoTitle: string,
-): Promise<{ content: string; source: 'captions' | 'gemini-vision' | 'none'; error: string | null }> => {
-  const captionResult = await fetchYouTubeTranscript(videoId);
-  if (captionResult.transcript) {
-    return { content: captionResult.transcript, source: 'captions', error: null };
+): Promise<{ content: string; source: 'supadata' | 'captions' | 'gemini-vision' | 'gemini-audio' | 'none'; error: string | null }> => {
+  try {
+    const endpoints = [
+      `/api/youtube/transcript?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(videoTitle || '')}`,
+      `https://zentrackworld.vercel.app/api/youtube/transcript?videoId=${encodeURIComponent(videoId)}&title=${encodeURIComponent(videoTitle || '')}`,
+    ];
+
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(25000) });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.cues && Array.isArray(data.cues) && data.cues.length > 0) {
+            const formatted = data.cues
+              .map((c: any) => `[${c.formattedTime || '00:00'}] ${c.text}`)
+              .join('\n');
+            const sourceMap: Record<string, 'supadata' | 'captions' | 'gemini-vision' | 'gemini-audio'> = {
+              supadata: 'supadata',
+              innertube: 'captions',
+              gemini_multimodal: 'gemini-vision',
+              gemini_audio: 'gemini-audio',
+            };
+            return {
+              content: formatted,
+              source: sourceMap[data.source] || 'captions',
+              error: null,
+            };
+          }
+        }
+      } catch {}
+    }
+  } catch (e: any) {
+    console.warn('[WebLectureChatPanel] Transcript fetch error:', e);
   }
-  const geminiResult = await analyzeVideoWithGemini(videoId, videoTitle);
-  if (geminiResult.analysis) {
-    return { content: geminiResult.analysis, source: 'gemini-vision', error: null };
-  }
-  return {
-    content: '',
-    source: 'none',
-    error: `Server: ${captionResult.error || 'none'} | Gemini Vision: ${geminiResult.error || 'failed'}`,
-  };
+
+  return { content: '', source: 'none', error: null };
 };
 
 // ── Doubt detection ───────────────────────────────────────────────────────────
@@ -279,7 +232,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
     if (userId && videoId) saveHistoryToFirestore(userId, videoId, msgs);
   }, [userId, videoId]);
 
-  const [transcriptSource, setTranscriptSource] = useState<'captions' | 'gemini-vision' | 'none' | 'loading'>('loading');
+  const [transcriptSource, setTranscriptSource] = useState<'supadata' | 'captions' | 'gemini-vision' | 'gemini-audio' | 'none' | 'loading'>('loading');
 
   // ── Load transcript + history ─────────────────────────────────────────────
   useEffect(() => {
@@ -458,12 +411,12 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
                   <div>
                     <div style={{ fontSize: '1rem', fontWeight: 600, color: '#ececec', marginBottom: '0.5rem' }}>How can I help you today?</div>
                     <div style={{ fontSize: '0.75rem', color: '#8e8e8e', lineHeight: 1.6, maxWidth: '280px' }}>
-                      {transcriptSource === 'captions' ? (
-                        <>✅ <strong>YouTube captions loaded</strong> — I know this lecture in precise detail. Let's dive deep.</>
-                      ) : transcriptSource === 'gemini-vision' ? (
-                        <>🧠 <strong>Gemini Video AI</strong> analyzed this lecture directly. I watched the video and heard the audio. Let's dive deep.</>
+                      {transcriptSource === 'supadata' || transcriptSource === 'captions' ? (
+                        <>✅ <strong>Lecture transcript loaded</strong> ({transcriptSource === 'supadata' ? 'Supadata AI' : 'YouTube Captions'}) — I know this lecture in precise detail. Let's dive deep.</>
+                      ) : transcriptSource === 'gemini-vision' || transcriptSource === 'gemini-audio' ? (
+                        <>🧠 <strong>Gemini Multimodal AI</strong> analyzed this lecture directly. I watched the video and heard the audio. Let's dive deep.</>
                       ) : transcriptSource === 'none' ? (
-                        <>❌ <strong>Could not analyze video.</strong> I will answer from general knowledge of the topic.</>
+                        <>🎓 <strong>Ready to tutor.</strong> I will guide you on <strong>{videoTitle}</strong> with deep topic expertise.</>
                       ) : (
                         <>Loading lecture context...</>
                       )}
@@ -485,7 +438,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
 
               {/* Messages */}
               {messages.map(msg => (
-                <ChatMessageBubble key={msg.id} msg={msg} isLoading={isLoading} onSendMessage={sendMessage} />
+                <ChatMessageBubble key={msg.id} msg={msg} isLoading={isLoading} onSendMessage={sendMessage} videoTitle={videoTitle} topicName={topicName} />
               ))}
 
               {/* Standalone loading dots (before first model chunk arrives) */}

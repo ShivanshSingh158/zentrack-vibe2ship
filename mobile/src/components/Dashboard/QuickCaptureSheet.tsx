@@ -289,7 +289,7 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
                 value={text}
                 onChangeText={setText}
                 parsed={parsed!}
-                onDismissToken={() => {}}
+                onDismissToken={(_tok) => {}}
                 placeholder={placeholders.task}
                 autoFocus={true}
                 onSubmitEditing={() => handleSave()}

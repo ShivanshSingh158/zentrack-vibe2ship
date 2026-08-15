@@ -27,7 +27,7 @@ import { makeStyles } from './attendance/attendanceStyles';
 import { useAttendanceData } from './attendance/useAttendanceData';
 import { useAttendanceFirestore } from './attendance/useAttendanceFirestore';
 import { useAttendanceExport } from './attendance/useAttendanceExport';
-import { useTimetableScanner } from './attendance/useTimetableScanner';
+import { HorizontalWeekStrip } from './attendance/HorizontalWeekStrip';
 import ErrorBoundary from '../components/ErrorBoundary';
 import EmptyState from '../components/ui/EmptyState';
 
@@ -61,7 +61,7 @@ export default function AttendanceScreen() {
   } = data;
 
   // --- SARA Surface ---
-  const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface("AttendanceScreen", appCtx);
+  const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface("AttendanceScreen", appCtx as any);
 
   const firestoreActions = useAttendanceFirestore({
     user, subjects, logs, selectedDate, logsBySubjectId,
@@ -78,10 +78,6 @@ export default function AttendanceScreen() {
   // 3. Export Hook
   const exportActions = useAttendanceExport(logs, holidays, subjects);
   const { handleExportCSV } = exportActions;
-
-  // 4. Scanner Hook
-  const scannerActions = useTimetableScanner(user?.uid);
-  const { handleImportTimetable, isImporting } = scannerActions;
 
   const handleAddSubject = () => {
     setEditSubject(null);
@@ -187,19 +183,14 @@ export default function AttendanceScreen() {
               </View>
             )}
 
-            {/* ── Week Strip ── */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, marginBottom: 18 }}>
-              {weekDates.map((date, i) => {
-                const isHol = holidays.includes(date);
-                const isSel = date === selectedDate;
-                return (
-                  <TouchableOpacity key={date} onPress={() => setSelectedDate(date)} style={[{ alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 }, isSel && { backgroundColor: colors.accentPrimary, borderRadius: 10 }]}>
-                    <Text style={{ fontSize: 11, color: isSel ? '#000000' : colors.textTertiary, marginBottom: 2, fontWeight: isSel ? '600' : '400' }}>{DAY_SHORT[i]}</Text>
-                    <Text style={{ fontSize: 13, color: isSel ? '#000000' : colors.textTertiary, fontWeight: isSel ? '600' : '400' }}>{isHol ? '🌴┤' : date.split('-')[2]}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            {/* ── Swipeable Horizontal Week Strip ── */}
+            <HorizontalWeekStrip
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+              holidays={holidays}
+              today={today}
+              logs={logs}
+            />
 
             {/* ── Daily Schedule ── */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, marginBottom: 8 }}>
@@ -426,13 +417,10 @@ export default function AttendanceScreen() {
       {/* ── Modals ── */}
 
       {/* Timetable Modal */}
-      {/* Timetable Modal */}
       <TimetableModal
         visible={isTimetableOpen}
         onClose={() => setIsTimetableOpen(false)}
         subjects={subjects}
-        isImporting={isImporting}
-        handleImportTimetable={handleImportTimetable}
         handleAddSubject={handleAddSubject}
         setEditSubject={setEditSubject}
         setShowAddModal={setShowAddModal}
@@ -450,7 +438,7 @@ export default function AttendanceScreen() {
           </View>
           <FlatList
             data={selectedHistorySubject ? logs.filter(l => l.subjectId === selectedHistorySubject.id) : []}
-            keyExtractor={l => l.id}
+            keyExtractor={l => l.id || ''}
             contentContainerStyle={{ padding: SPACE.md }}
             renderItem={({ item: l }) => (
               <View style={styles.historyCard}>
@@ -460,7 +448,7 @@ export default function AttendanceScreen() {
                   </Text>
                   <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{formatDisplayDate(l.date)} • {new Date(l.timestamp).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</Text>
                 </View>
-                <TouchableOpacity onPress={() => handleUndo(l.id)} style={styles.undoBtn}><Ionicons name="refresh" size={14} color={colors.textPrimary}/></TouchableOpacity>
+                <TouchableOpacity onPress={() => l.id && handleUndo(l.id)} style={styles.undoBtn}><Ionicons name="refresh" size={14} color={colors.textPrimary}/></TouchableOpacity>
               </View>
             )}
             ListEmptyComponent={

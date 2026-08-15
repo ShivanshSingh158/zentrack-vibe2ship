@@ -161,7 +161,9 @@ export const SPACE = {
   lg:   16,
   xl:   20,
   xxl:  28,
+  '2xl': 28,
   xxxl: 40,
+  '3xl': 40,
 };
 
 // ─── Font ─────────────────────────────────────────────────────────────────────
@@ -172,6 +174,7 @@ export const FONT_FAMILY = {
   heading: 'PlayfairDisplay_600SemiBold', // Alias for title (back-compat)
   serif:   'PlayfairDisplay_600SemiBold', // Alias for title (back-compat)
   body:    'Inter_400Regular',            // Readable — body text, labels
+  regular: 'Inter_400Regular',            // Alias for body (back-compat)
   medium:  'Inter_500Medium',             // Emphasis — subheadings, amounts
   bold:    'Inter_600SemiBold',           // Strong — CTAs, stats
   mono:    'Inter_400Regular',            // Mono alias — back-compat

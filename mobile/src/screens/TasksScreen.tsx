@@ -148,13 +148,7 @@ export default function TasksScreen() {
     <TaskRow
       task={item}
       isOverdue={item.date ? item.date < today && item.status !== 'completed' : false}
-      onCompleteStart={() => {
-        if (item.status !== 'completed') setTimeLogTask(item);
-      }}
-      onComplete={() => {
-        if (item.status === 'completed') completeTask(item);
-        else optimisticUpdateTask(item.id!, { status: 'completed', completedAt: new Date().toISOString() } as any);
-      }}
+      onComplete={() => completeTask(item)}
       onReschedule={() => {
         setSelectedTaskIds(new Set([item.id!]));
         setBulkRescheduleModal(true);
@@ -397,13 +391,7 @@ export default function TasksScreen() {
                 key={t.id}
                 task={t}
                 isOverdue={true}
-                onCompleteStart={() => {
-                  if (t.status !== 'completed') setTimeLogTask(t);
-                }}
-                onComplete={() => {
-                  if (t.status === 'completed') completeTask(t);
-                  else optimisticUpdateTask(t.id!, { status: 'completed', completedAt: new Date().toISOString() } as any);
-                }}
+                onComplete={() => completeTask(t)}
                 onReschedule={() => {
                   setIsOverdueModalOpen(false);
                   setSelectedTaskIds(new Set([t.id!]));
@@ -438,13 +426,7 @@ export default function TasksScreen() {
                   key={t.id}
                   task={t}
                   isOverdue={false}
-                  onCompleteStart={() => {
-                    if (t.status !== 'completed') setTimeLogTask(t);
-                  }}
-                  onComplete={() => {
-                    if (t.status === 'completed') completeTask(t);
-                    else optimisticUpdateTask(t.id!, { status: 'completed', completedAt: new Date().toISOString() } as any);
-                  }}
+                  onComplete={() => completeTask(t)}
                   onReschedule={() => {
                     setIsInboxModalOpen(false);
                     setSelectedTaskIds(new Set([t.id!]));

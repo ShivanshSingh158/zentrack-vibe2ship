@@ -53,6 +53,7 @@ export interface GymDayLog {
   notes?: string;
   workoutStartTime?: number | null;
   workoutDurationMinutes?: number;
+  completed?: boolean;
   startTime?: string;
   endTime?: string;
   restTimerStartTime?: number | null;
@@ -76,7 +77,7 @@ export interface GymPlanExercise {
 export interface GymPlanDay {
   dayIndex: number;   // 1–7
   name: string;
-  subtitle: string;
+  subtitle?: string;
   focus: string;
   exercises: GymPlanExercise[];
   isRest?: boolean;
@@ -90,7 +91,10 @@ export interface GymCustomPlanDay {
 }
 
 export interface UserGymPlanDoc {
+  id?: string;
   userId: string;
+  templateId?: 'arnold' | 'ppl';
+  schedulePattern?: 'mon_sun' | 'tue_mon' | 'wed_sun' | 'mon_fri';
   customDays: Record<number, GymPlanDay>;
   updatedAt: number;
 }

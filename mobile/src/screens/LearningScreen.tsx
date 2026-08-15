@@ -18,7 +18,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMobileData, LearningTopic, LearningSubTask } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, SHADOW, RADIUS } from '../theme/tokens';
 import { useTheme } from '../contexts/ThemeContext';
-import { collection, updateDoc, doc, writeBatch } from 'firebase/firestore';
+import { collection, updateDoc, doc, writeBatch, setDoc } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { callProxy, parseProxyResponse } from '../services/geminiProxy';
@@ -29,314 +29,11 @@ import LearningVideoPlayer from '../components/Learning/LearningVideoPlayer';
 import LearningModals from '../components/Learning/LearningModals';
 import { COLLECTION, GEMINI_PROXY_BASE } from '../config/constants';
 import EmptyState from '../components/ui/EmptyState';
+import { awardXP } from '../services/xpSystem';
+import * as Haptics from 'expo-haptics';
+import { fetchVideoTranscript, transcriptToPlainText } from '../services/youtubeTranscriptService';
 
-// ΓöÇΓöÇΓöÇ Stage 0: Direct YouTube TimedText API Fetcher (Instant ~50ms) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Calls YouTube's public TimedText XML REST API directly (https://www.youtube.com/api/timedtext).
-// Returns timestamped captions in ~50ms. Zero HTML scraping, zero network error!
-const fetchYouTubeTimedTextDirect = async (videoId: string): Promise<{ transcript: string; error: string | null }> => {
-  try {
-    const parseXmlTranscript = (xml: string): string => {
-      let lines: string[] = [];
-      
-      // 1. Try srv3 format (<p t="ms" d="ms">)
-      const pRegex = /<p\s+t="(\d+)"[^>]*>([\s\S]*?)<\/p>/gi;
-      let pMatches = [...xml.matchAll(pRegex)];
-      
-      if (pMatches.length > 0) {
-        lines = pMatches.map(m => {
-          const startSec = Math.floor(parseInt(m[1]) / 1000);
-          const mm = Math.floor(startSec / 60);
-          const ss = String(startSec % 60).padStart(2, '0');
-          // clean inner tags like <s>
-          let inner = m[2].replace(/<[^>]+>/g, '');
-          const cleanText = inner
-            .replace(/&amp;/g, '&')
-            .replace(/&#39;/g, "'")
-            .replace(/&quot;/g, '"')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/\n/g, ' ')
-            .trim();
-          return `[${mm}:${ss}] ${cleanText}`;
-        }).filter(line => line.length > 5);
-      } else {
-        // 2. Fallback to srv1 / classic format (<text start="s" dur="s">)
-        const textMatches = [...xml.matchAll(new RegExp('<text\\s+start="([\\d.]+)"[^>]*>(.*?)</text>', 'gi'))];
-        lines = textMatches.map(m => {
-          const startSec = Math.floor(parseFloat(m[1]));
-          const mm = Math.floor(startSec / 60);
-          const ss = String(startSec % 60).padStart(2, '0');
-          const cleanText = m[2]
-            .replace(/&amp;/g, '&')
-            .replace(/&#39;/g, "'")
-            .replace(/&quot;/g, '"')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(new RegExp('<[^>]*>', 'g'), '')
-            .replace(/\n/g, ' ')
-            .trim();
-          return `[${mm}:${ss}] ${cleanText}`;
-        }).filter(line => line.length > 5);
-      }
-      return lines.join('\n');
-    };
-
-    // 1. Direct language code checks (English, Hindi, Auto-translated)
-    const langCodes = ['en', 'hi', 'en-US', 'en-GB', 'a.en', 'a.hi'];
-    for (const lang of langCodes) {
-      try {
-        const res = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=${lang}`);
-        if (res.ok) {
-          const xml = await res.text();
-          if (xml && xml.includes('<text')) {
-            const formatted = parseXmlTranscript(xml);
-            if (formatted.length > 50) {
-              return { transcript: formatted, error: null };
-            }
-          }
-        }
-      } catch {}
-    }
-
-    // 2. Track list lookup — get all available track languages
-    try {
-      const listRes = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&type=list`);
-      if (listRes.ok) {
-        const listXml = await listRes.text();
-        const matches = [...listXml.matchAll(/<track[^>]+lang_code="([^"]+)"[^>]*\/>/gi)];
-        if (matches.length > 0) {
-          const firstLang = matches[0][1];
-          const trackRes = await fetch(`https://www.youtube.com/api/timedtext?v=${videoId}&lang=${firstLang}`);
-          if (trackRes.ok) {
-            const xml = await trackRes.text();
-            const formatted = parseXmlTranscript(xml);
-            if (formatted.length > 50) {
-              return { transcript: formatted, error: null };
-            }
-          }
-        }
-      }
-    } catch {}
-
-    // 3. InnerTube API (Android Client payload) - extremely reliable on mobile IPs
-    try {
-      const innertubeRes = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)',
-        },
-        body: JSON.stringify({
-          context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38' } },
-          videoId: videoId,
-        }),
-      });
-      const data = await innertubeRes.json();
-      const captionTracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-      if (captionTracks && captionTracks.length > 0) {
-        let selectedTrack = captionTracks.find((t: any) => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode?.startsWith('en'));
-        if (!selectedTrack) selectedTrack = captionTracks[0];
-        if (selectedTrack && selectedTrack.baseUrl) {
-          // Natively fetch the URL WITHOUT appending anything, to preserve signature!
-          const xmlRes = await fetch(selectedTrack.baseUrl, {
-            headers: {
-              'Accept-Language': selectedTrack.languageCode,
-              'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14)',
-            }
-          });
-          const xmlText = await xmlRes.text();
-          if (xmlText && (xmlText.includes('<text') || xmlText.includes('<p'))) {
-            const formatted = parseXmlTranscript(xmlText);
-            if (formatted.length > 50) return { transcript: formatted, error: null };
-          }
-        }
-      }
-    } catch (e: any) {
-      console.log('InnerTube error:', e);
-    }
-
-    // 4. Direct YouTube Page Scrape (with robust regex dotAll flag)
-    let pageHtml = '';
-    try {
-      const pageRes = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-      });
-      pageHtml = await pageRes.text();
-      let jsonStr = '';
-      
-      const match1 = pageHtml.match(/ytInitialPlayerResponse\s*=\s*({[\s\S]+?});/);
-      const match2 = pageHtml.match(new RegExp('ytInitialPlayerResponse\\s*=\\s*({[\\s\\S]+?})</script>'));
-      
-      if (match1) jsonStr = match1[1];
-      else if (match2) jsonStr = match2[1];
-      
-      if (jsonStr) {
-        const playerResponse = JSON.parse(jsonStr);
-        const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
-        if (captionTracks && captionTracks.length > 0) {
-          let selectedTrack = captionTracks.find((t: any) => t.languageCode === 'en' || t.languageCode === 'en-US' || t.languageCode?.startsWith('en'));
-          if (!selectedTrack) selectedTrack = captionTracks[0];
-          if (selectedTrack && selectedTrack.baseUrl) {
-            // Natively fetch the URL WITHOUT appending anything, to preserve signature!
-            const xmlRes = await fetch(selectedTrack.baseUrl, {
-              headers: {
-                'Accept-Language': selectedTrack.languageCode,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-              }
-            });
-            const xmlText = await xmlRes.text();
-            if (xmlText && (xmlText.includes('<text') || xmlText.includes('<p'))) {
-              const formatted = parseXmlTranscript(xmlText);
-              if (formatted.length > 50) return { transcript: formatted, error: null };
-            }
-          }
-        }
-      }
-    } catch (e: any) {
-      console.log('HTML Scrape error:', e);
-    }
-
-    // If we reach here, ALL 4 on-device stages failed.
-    const hasYtInitial = pageHtml.includes('ytInitialPlayerResponse');
-    const hasCaptcha = pageHtml.includes('captcha') || pageHtml.includes('consent.youtube.com');
-    
-    return { 
-      transcript: '', 
-      error: `Scraper V3 Failed (Initial: ${hasYtInitial}, Captcha: ${hasCaptcha}) - video may have NO captions at all` 
-    };
-  } catch (e: any) {
-    return { transcript: '', error: e?.message || 'TimedText fetch failed' };
-  }
-};
-
-// ΓöÇΓöÇΓöÇ Stage 1: YouTube Captions via Vercel Endpoint ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Calls the Vercel /api/transcript endpoint as backup
-const fetchYouTubeCaptions = async (videoId: string): Promise<{ transcript: string; error: string | null }> => {
-  try {
-    let user = auth.currentUser;
-    if (!user) {
-      await new Promise(r => setTimeout(r, 1000));
-      user = auth.currentUser;
-    }
-
-    const idToken = user ? await user.getIdToken(true).catch(() => '') : '';
-    const headers: Record<string, string> = {};
-    if (idToken) {
-      headers['Authorization'] = `Bearer ${idToken}`;
-    }
-
-    const res = await fetch(`${GEMINI_PROXY_BASE}/api/transcript?videoId=${videoId}`, { headers });
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      return { transcript: '', error: errData?.error || `Server error (${res.status})` };
-    }
-    const data = await res.json();
-    if (data.transcript && data.transcript.length > 50) {
-      return { transcript: data.transcript, error: null };
-    }
-    return { transcript: '', error: 'No captions on this video' };
-  } catch (e: any) {
-    return { transcript: '', error: e?.message || 'Network error' };
-  }
-};
-
-// ΓöÇΓöÇΓöÇ Stage 2: Gemini Native YouTube Video Understanding ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-const GEMINI_VIDEO_TIMEOUT_MS = 25000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms)),
-  ]);
-}
-
-const analyzeVideoWithGemini = async (
-  videoId: string,
-  videoTitle: string,
-): Promise<{ analysis: string; error: string | null }> => {
-  const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
-  const timeoutFallback = { analysis: '', error: 'Timed out after 25s — video may be too long for real-time analysis' };
-
-  const work = (async (): Promise<{ analysis: string; error: string | null }> => {
-    try {
-      const data = await callProxy({
-        model: 'gemini-2.5-flash',
-        contents: [{
-          role: 'user',
-          parts: [
-            { fileData: { fileUri: youtubeUrl, mimeType: 'video/mp4' } } as any,
-            {
-              text: `Analyze this YouTube lecture: "${videoTitle}".
-Produce a DETAILED breakdown with:
-## Overview (2-3 sentences)
-## Timestamped Breakdown — every 2-3 min: [MM:SS] what is taught, code shown, examples
-## Key Concepts — every concept/algorithm/technique
-## Code Examples — reproduce any code shown (specify language)
-## Key Takeaways
-Be precise. Reproduce exact code from the screen.`,
-            },
-          ],
-        }],
-        generationConfig: { temperature: 0, maxOutputTokens: 4096 },
-      });
-      const analysis = parseProxyResponse(data).text;
-      if (!analysis || analysis.length < 50) return { analysis: '', error: 'Gemini returned empty analysis' };
-      return { analysis, error: null };
-    } catch (e: any) {
-      return { analysis: '', error: e?.message || 'Gemini video analysis failed' };
-    }
-  })();
-
-  return withTimeout(work, GEMINI_VIDEO_TIMEOUT_MS, timeoutFallback);
-};
-
-// ΓöÇΓöÇΓöÇ Master Lecture Context Fetcher ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-export type TranscriptSource = 'captions' | 'gemini-vision' | 'none';
-export interface LectureContext {
-  content: string;
-  source: TranscriptSource;
-  error: string | null;
-}
-
-const fetchLectureContext = async (
-  videoId: string,
-  videoTitle: string,
-  onStageUpdate: (msg: string) => void,
-): Promise<LectureContext> => {
-  onStageUpdate('⏳ Loading lecture transcript directly...');
-
-  // STAGE 0: Direct YouTube TimedText API fetch (instant ~50ms)
-  const directResult = await fetchYouTubeTimedTextDirect(videoId);
-  if (directResult.transcript) {
-    return { content: directResult.transcript, source: 'captions', error: null };
-  }
-
-  // Fallback: Run Vercel captions endpoint + Gemini Vision in parallel
-  onStageUpdate('⏳ Checking backup transcript sources...');
-  const [captionResult, geminiResult] = await Promise.all([
-    fetchYouTubeCaptions(videoId),
-    analyzeVideoWithGemini(videoId, videoTitle),
-  ]);
-
-  if (captionResult.transcript) {
-    return { content: captionResult.transcript, source: 'captions', error: null };
-  }
-  if (geminiResult.analysis) {
-    return { content: geminiResult.analysis, source: 'gemini-vision', error: null };
-  }
-
-  // All failed
-  return {
-    content: '',
-    source: 'none',
-    error: `On-Device: ${directResult.error || 'none'} | Server: ${captionResult.error || 'none'} | Gemini Vision: ${geminiResult.error || 'failed'}`,
-  };
-};
-
-// ΓöÇΓöÇΓöÇ System Prompt Builder ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── System Prompt Builder ───────────────────────────────────────────────────
 // Mirror of the web tutor's buildSystemInstruction — same 8 Laws of Zen Tutoring
 const buildZenGptSystemPrompt = (
   videoTitle: string,
@@ -372,25 +69,29 @@ The student is watching: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"${ti
 5. CROSS-TOPIC CONNECTIONS: Actively connect new concepts to fundamentals. "This is the same idea as X, which you've likely seen before..."
 
 6. FOLLOW-UP QUESTIONS: End EVERY response with 2 specific, intellectually curious follow-up questions:
-   ≡ƒÆí **Ask next:** "Question 1?" ┬╖ "Question 2?"
+   💡 **Ask next:** "Question 1?" · "Question 2?"
    Must be specific to THIS lecture's content — not generic.
 
 7. QUIZ MODE (triggered by "quiz me", "test me", "quiz"):
    - Exactly 3 MCQ questions labeled Q1, Q2, Q3
    - Each tests understanding, not memorization
    - Difficulty: Q1 = conceptual, Q2 = applied, Q3 = tricky edge case
-   - Options: (A) (B) (C) (D)
+   - Options format strictly as:
+     A) Option A
+     B) Option B
+     C) Option C
+     D) Option D
    - Do NOT reveal answers until student responds
    - After response, explain WHY each option is right/wrong
 
 8. NOTES MODE (triggered by "save this", "make notes", "summarize for notes"):
    - Start with ## [Clear Title]
-   - Structure: Key concept ΓåÆ How it works ΓåÆ Code example ΓåÆ When to use it
+   - Structure: Key concept → How it works → Code example → When to use it
    - Make it a self-contained reference the student can study from later
    - Include timestamps if available
 
 == RESPONSE FORMAT ==
-- **bold** for key terms, 'inline code' for snippets, fenced code blocks for all code
+- **bold** for key terms, \`inline code\` for snippets, fenced code blocks for all code
 - Numbered lists for steps, bullets for features/options/comparisons
 - Use ## and ### headers to organize detailed responses
 - Write as deeply as the topic demands — NEVER artificially truncate a response
@@ -527,10 +228,19 @@ export default function LearningScreen() {
   const toggleSubtask = async (topicId: string, subtaskId: string) => {
     const topic = learningTopics.find(t => t.id === topicId);
     if (!topic) return;
+    const subtask = topic.subTasks?.find(s => s.id === subtaskId);
+    const willBeCompleted = !subtask?.isCompleted;
+
     const updatedSubtasks = (topic.subTasks || []).map(s =>
-      s.id === subtaskId ? { ...s, isCompleted: !s.isCompleted } : s
+      s.id === subtaskId ? { ...s, isCompleted: willBeCompleted } : s
     );
-    try { await updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, topicId), { subTasks: updatedSubtasks }); } catch (e) {}
+    try {
+      await updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, topicId), { subTasks: updatedSubtasks });
+      if (willBeCompleted) {
+        await awardXP('LECTURE_COMPLETE');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (e) {}
   };
 
   const togglePin = async (topicId: string, subtaskId: string) => {
@@ -562,6 +272,8 @@ export default function LearningScreen() {
     } catch (error) { console.error('Failed to reorder topics:', error); }
   };
 
+
+
   const openVideo = async (topicId: string, sub: LearningSubTask) => {
     const vidId = extractVideoId(sub.url);
     if (!vidId) { Alert.alert('Invalid URL', 'Only YouTube links are supported.'); return; }
@@ -570,53 +282,107 @@ export default function LearningScreen() {
     setPlaying(true);
     setIsPip(false);
     setIsFocusMode(false);
-    setCurrentNotes(sub.notes || '');
 
-    // Safe title — some old subtasks may have missing or undefined title
+    // 1. Restore Notes (prefer local draft if newer, else sub.notes)
+    let initialNotes = sub.notes || '';
+    try {
+      const localNotes = await AsyncStorage.getItem(`@lecture_notes_${sub.id}`);
+      if (localNotes && localNotes.trim().length > initialNotes.trim().length) {
+        initialNotes = localNotes;
+      }
+    } catch (e) {}
+    setCurrentNotes(initialNotes);
+
     const videoTitle = sub.title?.trim() || 'this lecture';
     const topic = learningTopics.find(t => t.id === topicId);
     const topicName = topic?.title || 'your learning path';
 
-    // Reset tutor context for the new video
-    tutorConversationRef.current = [];
-    tutorTranscriptRef.current = '';
-    tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, '');
+    // 2. Check for saved chat history for this lecture
+    let savedChat: { role: string; text: string }[] | null = null;
+    try {
+      const raw = await AsyncStorage.getItem(`@lecture_chat_${sub.id}`);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          savedChat = parsed;
+        }
+      }
+    } catch (e) {}
 
-    // Show live stage updates in the chat
-    setAiHistory([{ role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}**. ⏳ Loading transcript...` }]);
-    setTranscriptStatus('loading');
+    // 3. Check for cached transcript
+    let cachedTranscript = '';
+    try {
+      cachedTranscript = (await AsyncStorage.getItem(`@lecture_transcript_${vidId}`)) || '';
+    } catch (e) {}
 
-    // Two-stage fetch: captions ΓåÆ Gemini Video AI
-    const { content, source, error } = await fetchLectureContext(
-      vidId,
-      videoTitle,
-      (stageMsg) => setAiHistory(() => [
-        { role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}**. ${stageMsg}` },
-      ]),
-    );
+    if (savedChat) {
+      // Restore previous chat session seamlessly!
+      setAiHistory(savedChat);
+      tutorConversationRef.current = savedChat
+        .filter(m => m.text && !m.text.startsWith('⚠️'))
+        .map(m => ({ role: m.role === 'model' ? 'model' : 'user', parts: [{ text: m.text }] }));
 
-    tutorTranscriptRef.current = content;
-    tutorSystemPromptRef.current = buildZenGptSystemPrompt(
-      videoTitle,
-      topicName,
-      content,
-    );
-    setTranscriptStatus(content ? 'ready' : 'unavailable');
-
-    // Honest final status message
-    let statusMsg: string;
-    if (source === 'captions' && content) {
-      statusMsg = `✅ **YouTube captions loaded** — ~${Math.round(content.length / 5)} words. I know this lecture in precise detail with exact timestamps. Ask me anything!`;
-    } else if (source === 'gemini-vision' && content) {
-      statusMsg = `🧠 **Gemini Video AI** analyzed this lecture directly (no captions available). I watched the video, heard the audio, and read any code shown on screen. My knowledge is based on the actual video content — ask me anything!`;
+      if (cachedTranscript) {
+        tutorTranscriptRef.current = cachedTranscript;
+        tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, cachedTranscript);
+        setTranscriptStatus('ready');
+      } else {
+        // Fetch transcript in background via 4-layer resilient pipeline without disrupting restored chat
+        fetchVideoTranscript(vidId, videoTitle).then(res => {
+          const content = transcriptToPlainText(res.cues);
+          if (content) {
+            tutorTranscriptRef.current = content;
+            tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, content);
+            setTranscriptStatus('ready');
+            AsyncStorage.setItem(`@lecture_transcript_${vidId}`, content).catch(() => {});
+          }
+        });
+      }
     } else {
-      statusMsg = `❌ **Could not understand this lecture.**\n_${error || 'Both caption fetch and Gemini video analysis failed.'}_\n\nI can only answer from my general knowledge of the topic "${topicName}" — not from this specific video.`;
-    }
+      // First time opening this lecture — initialize new tutor session
+      tutorConversationRef.current = [];
+      tutorTranscriptRef.current = '';
+      tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, '');
 
-    setAiHistory([
-      { role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}** (${topicName}). 🎓` },
-      { role: 'model', text: statusMsg },
-    ]);
+      setAiHistory([{ role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}**. ⏳ Loading transcript...` }]);
+      setTranscriptStatus('loading');
+
+      if (cachedTranscript) {
+        tutorTranscriptRef.current = cachedTranscript;
+        tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, cachedTranscript);
+        setTranscriptStatus('ready');
+        const welcomeHistory = [
+          { role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}** (${topicName}). 🎓` },
+          { role: 'model', text: `✅ **Lecture transcript loaded**. I know this lecture in detail with exact timestamps. Ask me anything!` },
+        ];
+        setAiHistory(welcomeHistory);
+        AsyncStorage.setItem(`@lecture_chat_${sub.id}`, JSON.stringify(welcomeHistory)).catch(() => {});
+      } else {
+        const res = await fetchVideoTranscript(vidId, videoTitle);
+        const content = transcriptToPlainText(res.cues);
+
+        tutorTranscriptRef.current = content;
+        tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, content);
+        setTranscriptStatus(content ? 'ready' : 'unavailable');
+        if (content) {
+          AsyncStorage.setItem(`@lecture_transcript_${vidId}`, content).catch(() => {});
+        }
+
+        let statusMsg: string;
+        if (content) {
+          statusMsg = `✅ **Lecture transcript loaded** (~${res.cues.length} timestamped cues). I know this lecture in precise detail. Ask me anything!`;
+        } else {
+          statusMsg = `🎓 I am ready to tutor you on **${videoTitle}** (${topicName}). Ask me any concept, code explanation, or quiz!`;
+        }
+
+        const welcomeHistory = [
+          { role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}** (${topicName}). 🎓` },
+          { role: 'model', text: statusMsg },
+        ];
+        setAiHistory(welcomeHistory);
+        AsyncStorage.setItem(`@lecture_chat_${sub.id}`, JSON.stringify(welcomeHistory)).catch(() => {});
+      }
+    }
 
     try {
       const timeStr = await AsyncStorage.getItem(`@video_time_${sub.id}`);
@@ -627,11 +393,29 @@ export default function LearningScreen() {
   };
 
   const closeVideo = async () => {
-    if (activeVideoSub && playerRef.current) {
+    if (activeVideoSub) {
       try {
-        const time = await playerRef.current.getCurrentTime();
-        await AsyncStorage.setItem(`@video_time_${activeVideoSub.id}`, Math.floor(time).toString());
+        if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+          const time = await playerRef.current.getCurrentTime();
+          if (time > 0) {
+            await AsyncStorage.setItem(`@video_time_${activeVideoSub.id}`, Math.floor(time).toString());
+          }
+        }
+        if (currentNotes) {
+          await AsyncStorage.setItem(`@lecture_notes_${activeVideoSub.id}`, currentNotes);
+        }
       } catch (e) {}
+
+      // Auto-save notes to Firestore
+      if (activeVideoTopicId && currentNotes) {
+        const topic = learningTopics.find(t => t.id === activeVideoTopicId);
+        if (topic) {
+          const updated = (topic.subTasks || []).map(s =>
+            s.id === activeVideoSub.id ? { ...s, notes: currentNotes } : s
+          );
+          updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeVideoTopicId), { subTasks: updated }).catch(() => {});
+        }
+      }
     }
     setActiveVideoSub(null);
     setAiChatVisible(false);
@@ -646,7 +430,12 @@ export default function LearningScreen() {
     const updated = (topic.subTasks || []).map(s =>
       s.id === activeVideoSub.id ? { ...s, notes: currentNotes } : s
     );
-    try { await updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeVideoTopicId), { subTasks: updated }); } catch (e) {}
+    try {
+      await updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeVideoTopicId), { subTasks: updated });
+      await AsyncStorage.setItem(`@lecture_notes_${activeVideoSub.id}`, currentNotes);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Notes Saved', 'Your lecture notes have been saved.');
+    } catch (e) {}
   };
 
   const generateQuiz = async () => {
@@ -706,13 +495,77 @@ export default function LearningScreen() {
         { role: 'model', parts: [{ text: reply }] },
       ];
 
-      setAiHistory([...newHistory, { role: 'model', text: reply }]);
+      const updatedAiHistory = [...newHistory, { role: 'model', text: reply }];
+      setAiHistory(updatedAiHistory);
+
+      // Persist to local storage & Firestore cloud per subtask
+      if (activeVideoSub) {
+        AsyncStorage.setItem(`@lecture_chat_${activeVideoSub.id}`, JSON.stringify(updatedAiHistory)).catch(() => {});
+        if (user?.uid) {
+          setDoc(doc(db, 'lectureChats', user.uid, 'videos', activeVideoSub.id), {
+            messages: updatedAiHistory,
+            updatedAt: Date.now(),
+            videoTitle: activeVideoSub.title || '',
+            topicId: activeVideoTopicId || '',
+          }, { merge: true }).catch(() => {});
+        }
+
+        // Cap total stored lecture chats to 5 (auto-prune oldest)
+        AsyncStorage.getAllKeys().then(async keys => {
+          const chatKeys = keys.filter(k => k.startsWith('@lecture_chat_'));
+          if (chatKeys.length > 5) {
+            const currentKey = `@lecture_chat_${activeVideoSub.id}`;
+            const otherKeys = chatKeys.filter(k => k !== currentKey);
+            const pairs = await AsyncStorage.multiGet(otherKeys);
+            const sortedPairs = [...pairs].sort((a: any, b: any) => {
+              const lenA = a[1] ? JSON.parse(a[1])?.length || 0 : 0;
+              const lenB = b[1] ? JSON.parse(b[1])?.length || 0 : 0;
+              return lenB - lenA;
+            });
+            const excessKeys = sortedPairs.slice(4).map((p: any) => p[0]);
+            for (const k of excessKeys) {
+              AsyncStorage.removeItem(k).catch(() => {});
+            }
+          }
+        }).catch(() => {});
+      }
+
+      // Deep Work XP: Detect 3/3 perfect quiz evaluation
+      if (
+        /(\b3\/3\b|\b3 out of 3\b|\bscore:\s*3\/3\b|\bperfect score\b|\ball 3 correct\b)/i.test(reply)
+      ) {
+        await awardXP('QUIZ_PERFECT');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } catch (e: any) {
-      setAiHistory([...newHistory, { role: 'model', text: `⚠️ Error connecting to ZEN-GPT: ${e?.message || 'Please try again.'}` }]);
+      const errHistory = [...newHistory, { role: 'model', text: `⚠️ Error connecting to ZEN-GPT: ${e?.message || 'Please try again.'}` }];
+      setAiHistory(errHistory);
     } finally {
       setAiLoading(false);
     }
-  }, [aiInput, aiLoading, aiHistory, activeVideoSub, activeVideoTopicId, learningTopics, playerRef]);
+  }, [aiInput, aiLoading, aiHistory, activeVideoSub, activeVideoTopicId, learningTopics, playerRef, user]);
+
+  const resetChatHistory = useCallback(async () => {
+    if (!activeVideoSub) return;
+    const videoTitle = activeVideoSub.title || 'this lecture';
+    const topic = learningTopics.find(t => t.id === activeVideoTopicId);
+    const topicName = topic?.title || 'your learning path';
+
+    tutorConversationRef.current = [];
+    const freshWelcome = [
+      { role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}** (${topicName}). 🎓` },
+      { role: 'model', text: tutorTranscriptRef.current ? `✅ **Lecture transcript loaded**. I know this lecture in detail with exact timestamps. Ask me anything!` : `🎓 I am ready to tutor you on **${videoTitle}**. Ask me anything!` },
+    ];
+    setAiHistory(freshWelcome);
+    await AsyncStorage.removeItem(`@lecture_chat_${activeVideoSub.id}`).catch(() => {});
+    if (user?.uid) {
+      await setDoc(doc(db, 'lectureChats', user.uid, 'videos', activeVideoSub.id), {
+        messages: freshWelcome,
+        updatedAt: Date.now(),
+      }, { merge: true }).catch(() => {});
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [activeVideoSub, activeVideoTopicId, learningTopics, user]);
 
   const sortedTopics = [...learningTopics].sort((a, b) => (a.order || 0) - (b.order || 0));
 
@@ -818,6 +671,8 @@ export default function LearningScreen() {
           setCurrentNotes={setCurrentNotes}
           saveNotes={saveNotes}
           closeVideo={closeVideo}
+          resetChatHistory={resetChatHistory}
+          onSelectLecture={openVideo}
         />
       )}
 

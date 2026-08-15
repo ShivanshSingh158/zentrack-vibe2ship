@@ -63,6 +63,9 @@ export const XP_SOURCES = {
   GYM_SESSION:      { base: 100, range: 50  },  // 100–150 XP
   GYM_PR:           { base: 300, range: 200 },  // 300–500 XP for a new PR 🏆
   ONBOARDING:       { base: 500, range: 0 },    // First-run bonus
+  LECTURE_COMPLETE: { base: 25, range: 0 },     // +25 XP per completed lecture chapter
+  QUIZ_PERFECT:     { base: 50, range: 0 },     // +50 XP for scoring 3/3 on lecture quiz
+  FLASHCARD_REVIEW: { base: 10, range: 0 },     // +10 XP for daily flashcard review session
 };
 
 

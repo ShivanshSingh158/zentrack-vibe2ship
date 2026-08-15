@@ -41,10 +41,39 @@ export const formatDisplayDate = (d: string): string => {
 
 export const formatTimeDisplay = (t: string): string => {
   if (!t) return '';
-  const [h, m] = t.split(':').map(Number);
-  const ampm = h >= 12 ? 'pm' : 'am';
-  const hr = h % 12 || 12;
-  return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
+  const trimmed = t.trim();
+  const lower = trimmed.toLowerCase();
+
+  // Named slots
+  if (lower === 'morning') return 'Morning';
+  if (lower === 'afternoon') return 'Afternoon';
+  if (lower === 'evening') return 'Evening';
+  if (lower === 'night') return 'Night';
+
+  // If already formatted with am/pm (e.g. "7:00 PM" or "7pm")
+  if (/am|pm/i.test(trimmed)) return trimmed;
+
+  // If format is HH:MM (e.g. "19:00" or "07:30")
+  if (trimmed.includes(':')) {
+    const parts = trimmed.split(':');
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (isNaN(h)) return trimmed;
+    const safeM = isNaN(m) ? 0 : m;
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const hr = h % 12 || 12;
+    return `${hr}:${safeM.toString().padStart(2, '0')}${ampm}`;
+  }
+
+  // If it's a single hour number like "19" or "7"
+  const hNum = parseInt(trimmed, 10);
+  if (!isNaN(hNum)) {
+    const ampm = hNum >= 12 ? 'pm' : 'am';
+    const hr = hNum % 12 || 12;
+    return `${hr}:00${ampm}`;
+  }
+
+  return trimmed;
 };
 
 export const parseTimeFloat = (timeStr?: string | null): number => {

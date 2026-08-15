@@ -1,11 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { debounce } from 'lodash';
 import { InteractionManager } from 'react-native';
 import { collection, doc, setDoc, updateDoc, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
-import { GymDayLog, GymExerciseLog, GymSet, GymCardioLog } from '../types/gym.types';
+import { GymDayLog, GymExerciseLog, GymSet, GymCardioLog, GymPlanDay } from '../types/gym.types';
+
+function debounce<T extends (...args: any[]) => any>(fn: T, ms: number) {
+  let timer: any;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import { COLLECTION } from '../config/constants';
@@ -84,7 +91,15 @@ export function useGymLog(dateStr: string) {
 
   const debouncedSyncMasterPlan = useRef(
     debounce((newExercises: GymExerciseLog[], planDayIndex: number) => {
-      updateMasterPlan(planDayIndex, newExercises);
+      const existingPlan = getCustomPlanDay(userGymPlan?.customDays, planDayIndex) || GYM_PLAN.find(d => d.dayIndex === planDayIndex);
+      updateMasterPlan(planDayIndex, {
+        dayIndex: planDayIndex,
+        name: existingPlan?.name || `Day ${planDayIndex}`,
+        subtitle: existingPlan?.subtitle || '',
+        focus: existingPlan?.focus || '',
+        exercises: newExercises as any,
+        isRest: existingPlan?.isRest || false,
+      });
     }, 3500)
   ).current;
 
@@ -129,7 +144,10 @@ export function useGymLog(dateStr: string) {
 
     const currentPlanUpdatedAt = userGymPlan?.updatedAt ?? 0;
     if (prevPlanUpdatedRef.current !== null && prevPlanUpdatedRef.current !== currentPlanUpdatedAt) {
-      if (logRef.current && !logRef.current.workoutStartTime && !logRef.current.completed) {
+      const hasLoggedSets = (logRef.current?.exercises || []).some((ex: any) =>
+        (ex.setsLog || []).some((s: any) => s.completed || (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0))
+      );
+      if (logRef.current && !logRef.current.workoutStartTime && !logRef.current.completed && !hasLoggedSets) {
         setLog(null);
         logRef.current = null;
         localWriteAtRef.current = 0;
@@ -197,11 +215,15 @@ export function useGymLog(dateStr: string) {
 
       let patchedExercises: GymExerciseLog[] = [];
 
-      // If workout has not started and is not completed, sync with the latest planDay definition
-      if (!existing.workoutStartTime && !existing.completed) {
+      const hasLoggedSets = (existing.exercises || []).some((ex: any) =>
+        (ex.setsLog || []).some((s: any) => s.completed || (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0))
+      );
+
+      // If workout has not started and is not completed (and no real logged sets), ALWAYS sync with the latest planDay definition
+      if (!existing.workoutStartTime && !existing.completed && !hasLoggedSets) {
         if (planDay?.isRest) {
           patchedExercises = [];
-        } else if (planDay && (!existing.exercises || existing.exercises.length === 0 || existing.dayPlanIndex !== planIdx)) {
+        } else if (planDay && planDay.exercises) {
           patchedExercises = planDay.exercises.map((e: any, idx: number) => {
             const lastSets = getLastSessionSets(e.id, e.name);
             const lastValidSet = lastSets && lastSets.length > 0
@@ -360,9 +382,9 @@ export function useGymLog(dateStr: string) {
     // Queue optimistic update asynchronously to prevent React setState-during-render errors
     setTimeout(() => {
       if (gymLogs.some(l => l.id === logId || l.date === updatedLog.date)) {
-        optimisticUpdateGymLog(logId, updatedLog);
+        optimisticUpdateGymLog(logId, updatedLog as any);
       } else {
-        optimisticAddGymLog(updatedLog);
+        optimisticAddGymLog(updatedLog as any);
       }
     }, 0);
 
@@ -880,6 +902,14 @@ export function useGymLog(dateStr: string) {
 
   // ── Force override plan layout when master template changes ────────────────
   const forceOverrideTodayPlan = useCallback((newCustomDays: Record<number, GymPlanDay>) => {
+    const hasLoggedSets = (logRef.current?.exercises || []).some((ex: any) =>
+      (ex.setsLog || []).some((s: any) => s.completed || (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0))
+    );
+    // Never overwrite an already started or completed session
+    if (logRef.current?.completed || logRef.current?.workoutStartTime || hasLoggedSets) {
+      return;
+    }
+
     const pIdx = planDayIndexForDate(dateStr);
     const targetPlanDay = getCustomPlanDay(newCustomDays, pIdx) || GYM_PLAN.find(d => d.dayIndex === pIdx);
     if (!targetPlanDay) return;

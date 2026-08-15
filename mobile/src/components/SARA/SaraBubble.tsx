@@ -1,14 +1,11 @@
-/**
- * SaraBubble — Chat message bubble component for Sara screen.
+﻿/**
+ * SaraBubble - ChatGPT-style message bubble for Sara AI.
  *
  * Variants:
- *   'sara'        — dark card, left-aligned, Sara's message (with markdown rendering)
- *   'user'        — purple pill, right-aligned, user's message
- *   'action_card' — confirmation card for Firestore writes
- *   'quick_reply' — row of tappable suggestion chips
- *
- * Markdown supported (no external package):
- *   **bold**, *italic*, # Header, ## Subheader, * bullet, - bullet, empty lines
+ *   'sara' - Full-width, no bubble card. Sparkles avatar + SARA label + clean markdown
+ *   'user' - Right-aligned dark pill/capsule (#27272a)
+ *   actionCard / batchActions - Obsidian cards with glassmorphism border
+ *   quickReplies - Translucent violet glass pills
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -17,13 +14,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BatchActionCard, { BatchAction } from './BatchActionCard';
-import { useTheme } from "../../contexts/ThemeContext";
+import { FONT_FAMILY } from '../../theme/tokens';
 
-// ── Design tokens ─────────────────────────────────────────────────────────
-
-// ── Types ─────────────────────────────────────────────────────────────────
 export interface ActionCardData {
-  icon?: string;   // ionicons name
+  icon?: string;
   title: string;
   subtitle?: string;
   onPress?: () => void;
@@ -47,28 +41,24 @@ interface SaraBubbleProps {
   timestamp?: string;
 }
 
-// ── Blinking cursor ────────────────────────────────────────────────────────
+// -- Blinking cursor -----------------------------------------------------------
 function Cursor() {
-    const { colors, isDark } = useTheme();
-    const s = makeStyles(colors);
   const opacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     const anim = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 0, duration: 500, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 500, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0, duration: 450, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 450, useNativeDriver: true }),
       ])
     );
     anim.start();
     return () => anim.stop();
   }, [opacity]);
-  return <Animated.Text style={[s.cursor, { opacity }]}>{'|'}</Animated.Text>;
+  return <Animated.Text style={[styles.cursor, { opacity }]}>|</Animated.Text>;
 }
 
-// ── Typing indicator ────────────────────────────────────────────────────────
+// -- Typing indicator (ChatGPT style 3 pulsing dots) ----------------------------
 function TypingIndicator() {
-    const { colors, isDark } = useTheme();
-    const s = makeStyles(colors);
   const dot1 = useRef(new Animated.Value(0.3)).current;
   const dot2 = useRef(new Animated.Value(0.3)).current;
   const dot3 = useRef(new Animated.Value(0.3)).current;
@@ -90,18 +80,16 @@ function TypingIndicator() {
   }, []);
 
   return (
-    <View style={s.typingContainer}>
-      <Animated.View style={[s.typingDot, { opacity: dot1 }]} />
-      <Animated.View style={[s.typingDot, { opacity: dot2 }]} />
-      <Animated.View style={[s.typingDot, { opacity: dot3 }]} />
+    <View style={styles.typingContainer}>
+      <Animated.View style={[styles.typingDot, { opacity: dot1 }]} />
+      <Animated.View style={[styles.typingDot, { opacity: dot2 }]} />
+      <Animated.View style={[styles.typingDot, { opacity: dot3 }]} />
     </View>
   );
 }
 
-// ── Inline markdown parser ─────────────────────────────────────────────────
-// Handles **bold**, *italic*, `code` within a single line segment
-function parseInlineMarkdown(text: string, baseStyle: any, colors: any): React.ReactNode {
-  // Match **bold**, *italic*, `code`
+// -- Inline markdown parser ----------------------------------------------------
+function parseInlineMarkdown(text: string, baseStyle: any): React.ReactNode {
   const parts: { text: string; bold?: boolean; italic?: boolean; code?: boolean }[] = [];
   const regex = /(\*\*[\s\S]+?\*\*|\*[\s\S]+?\*|`[^`]+`)/g;
   let lastIndex = 0;
@@ -124,7 +112,6 @@ function parseInlineMarkdown(text: string, baseStyle: any, colors: any): React.R
   if (lastIndex < text.length) {
     parts.push({ text: text.slice(lastIndex) });
   }
-
   if (parts.length === 0) return null;
   if (parts.length === 1 && !parts[0].bold && !parts[0].italic && !parts[0].code) {
     return <Text style={baseStyle}>{parts[0].text}</Text>;
@@ -137,14 +124,9 @@ function parseInlineMarkdown(text: string, baseStyle: any, colors: any): React.R
           key={i}
           style={[
             baseStyle,
-            part.bold  && { fontWeight: '700', color: colors.textPrimary },
+            part.bold && { fontFamily: FONT_FAMILY.bold, color: '#ffffff' },
             part.italic && { fontStyle: 'italic' },
-            part.code  && {
-              fontFamily: 'monospace',
-              backgroundColor: 'rgba(165,153,255,0.15)',
-              color: colors.accentPrimary,
-              borderRadius: 3,
-            },
+            part.code && { fontFamily: FONT_FAMILY.bold, color: '#a599ff' },
           ]}
         >
           {part.text}
@@ -154,10 +136,8 @@ function parseInlineMarkdown(text: string, baseStyle: any, colors: any): React.R
   );
 }
 
-// ── Block markdown renderer ─────────────────────────────────────────────────
+// -- Block markdown renderer ---------------------------------------------------
 function MarkdownText({ text, baseStyle }: { text: string; baseStyle: any }) {
-    const { colors, isDark } = useTheme();
-    const s = makeStyles(colors);
   const lines = text.split('\n');
   const nodes: React.ReactNode[] = [];
   let i = 0;
@@ -166,70 +146,54 @@ function MarkdownText({ text, baseStyle }: { text: string; baseStyle: any }) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // ── H1: # Title ──────────────────────────────────────────────────────
     if (/^#\s/.test(trimmed)) {
       const content = trimmed.replace(/^#+\s/, '');
       nodes.push(
-        <Text key={i} style={[baseStyle, s.mdH1]}>
-          {parseInlineMarkdown(content, s.mdH1, colors)}
+        <Text key={i} style={styles.mdH1}>
+          {parseInlineMarkdown(content, styles.mdH1)}
         </Text>
       );
-    }
-    // ── H2: ## Title ─────────────────────────────────────────────────────
-    else if (/^##\s/.test(trimmed)) {
+    } else if (/^##\s/.test(trimmed)) {
       const content = trimmed.replace(/^#+\s/, '');
       nodes.push(
-        <Text key={i} style={[baseStyle, s.mdH2]}>
-          {parseInlineMarkdown(content, s.mdH2, colors)}
+        <Text key={i} style={styles.mdH2}>
+          {parseInlineMarkdown(content, styles.mdH2)}
         </Text>
       );
-    }
-    // ── Bullet: * item or - item ──────────────────────────────────────────
-    else if (/^[\*\-]\s/.test(trimmed)) {
+    } else if (/^[\*\-]\s/.test(trimmed)) {
       const content = trimmed.replace(/^[\*\-]\s+/, '');
       nodes.push(
-        <Text key={i} style={[baseStyle, s.mdBulletText]}>
-          <Text style={s.mdBulletDot}>{'•   '}</Text>
-          {/* parseInlineMarkdown returns a <Text>, which nests perfectly */}
-          {parseInlineMarkdown(content, baseStyle, colors)}
+        <Text key={i} style={[baseStyle, styles.mdBulletText]}>
+          <Text style={styles.mdBulletDot}>{'•   '}</Text>
+          {parseInlineMarkdown(content, baseStyle)}
         </Text>
       );
-    }
-    // ── Numbered: 1. item ─────────────────────────────────────────────────
-    else if (/^\d+\.\s/.test(trimmed)) {
+    } else if (/^\d+\.\s/.test(trimmed)) {
       const num = trimmed.match(/^(\d+)\./)?.[1] || '';
       const content = trimmed.replace(/^\d+\.\s+/, '');
       nodes.push(
-        <Text key={i} style={[baseStyle, s.mdBulletText]}>
-          <Text style={s.mdBulletDot}>{`${num}.  `}</Text>
-          {parseInlineMarkdown(content, baseStyle, colors)}
+        <Text key={i} style={[baseStyle, styles.mdBulletText]}>
+          <Text style={styles.mdBulletDot}>{`${num}.  `}</Text>
+          {parseInlineMarkdown(content, baseStyle)}
         </Text>
       );
-    }
-    // ── Horizontal rule ───────────────────────────────────────────────────
-    else if (/^(---|\*\*\*|___)$/.test(trimmed)) {
-      nodes.push(<View key={i} style={s.mdHr} />);
-    }
-    // ── Empty line → spacer ───────────────────────────────────────────────
-    else if (trimmed === '') {
+    } else if (/^(---|\*\*\*|___)$/.test(trimmed)) {
+      nodes.push(<View key={i} style={styles.mdHr} />);
+    } else if (trimmed === '') {
       nodes.push(<View key={i} style={{ height: 6 }} />);
-    }
-    // ── Regular paragraph ─────────────────────────────────────────────────
-    else {
+    } else {
       nodes.push(
-        <View key={i} style={s.mdPara}>
-          {parseInlineMarkdown(trimmed, baseStyle, colors)}
+        <View key={i} style={styles.mdPara}>
+          {parseInlineMarkdown(trimmed, baseStyle)}
         </View>
       );
     }
-
     i++;
   }
-
   return <>{nodes}</>;
 }
 
-// ── Main SaraBubble component ──────────────────────────────────────────────
+// -- Main SaraBubble Component -------------------------------------------------
 function SaraBubbleInner({
   sender,
   text = '',
@@ -239,336 +203,347 @@ function SaraBubbleInner({
   batchActions,
   onBatchConfirm,
 }: SaraBubbleProps) {
-    const { colors, isDark } = useTheme();
-    const s = makeStyles(colors);
   const isUser = sender === 'user';
 
-  return (
-    <View style={[s.wrapper, isUser && s.wrapperUser]}>
+  // User Message -> Right-aligned ChatGPT Dark Pill
+  if (isUser) {
+    return (
+      <View style={styles.userRow}>
+        <View style={styles.userBubble}>
+          <Text style={styles.userBubbleText}>{text}</Text>
+        </View>
+      </View>
+    );
+  }
 
-      {/* ── Message bubble ── */}
-      <View style={[s.bubble, isUser ? s.bubbleUser : s.bubbleSara]}>
-        {!text && isStreaming && !isUser ? (
-          <TypingIndicator />
-        ) : isUser ? (
-          // User bubbles: plain text (user doesn't type markdown)
-          <Text style={s.textUser}>
-            {text}
-            {isStreaming && <Cursor />}
-          </Text>
+  // Sara Message -> ChatGPT Full Width, No Boxy Card
+  return (
+    <View style={styles.assistantRow}>
+      <View style={styles.assistantMessageContainer}>
+        {/* Avatar + Label Header */}
+        <View style={styles.assistantHeader}>
+          <View style={styles.assistantAvatar}>
+            <Ionicons name="sparkles" size={12} color="#a599ff" />
+          </View>
+          <Text style={styles.assistantName}>SARA</Text>
+        </View>
+
+        {/* Content Body */}
+        {!text && isStreaming ? (
+          <View style={styles.thinkingContainer}>
+            <TypingIndicator />
+          </View>
         ) : (
-          // Sara bubbles: full markdown rendering
-          <View>
-            <MarkdownText text={text} baseStyle={s.textSara} />
+          <View style={styles.markdownWrapper}>
+            <MarkdownText text={text} baseStyle={styles.textSara} />
             {isStreaming && <Cursor />}
           </View>
         )}
-      </View>
 
-      {/* ── Action confirmation card ── */}
-      {!isUser && actionCard && (
-        <View style={s.actionCard}>
-          {/* Header row */}
-          <TouchableOpacity
-            style={s.actionCardHeader}
-            onPress={actionCard.onPress}
-            disabled={!actionCard.onPress}
-            activeOpacity={0.75}
-          >
-            <View style={s.actionCardIcon}>
-              <Ionicons
-                name={(actionCard.icon as any) || 'document-text-outline'}
-                size={16}
-                color={colors.accentPrimary}
-              />
-            </View>
-            <View style={s.actionCardContent}>
-              <Text style={s.actionCardTitle}>
-                {actionCard.title}
-              </Text>
-              {actionCard.subtitle ? (
-                <Text style={s.actionCardSub}>
-                  {actionCard.subtitle}
-                </Text>
+        {/* Action confirmation card */}
+        {actionCard && (
+          <View style={styles.actionCard}>
+            <TouchableOpacity
+              style={styles.actionCardHeader}
+              onPress={actionCard.onPress}
+              disabled={!actionCard.onPress}
+              activeOpacity={0.75}
+            >
+              <View style={styles.actionCardIcon}>
+                <Ionicons
+                  name={(actionCard.icon as any) || 'document-text-outline'}
+                  size={16}
+                  color="#a599ff"
+                />
+              </View>
+              <View style={styles.actionCardContent}>
+                <Text style={styles.actionCardTitle}>{actionCard.title}</Text>
+                {actionCard.subtitle ? (
+                  <Text style={styles.actionCardSub}>{actionCard.subtitle}</Text>
+                ) : null}
+              </View>
+              {actionCard.onPress ? (
+                <Ionicons name="chevron-forward" size={14} color="#71717a" style={{ marginLeft: 4 }} />
               ) : null}
-            </View>
-            {actionCard.onPress ? (
-              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} style={{ marginLeft: 4 }} />
-            ) : null}
-          </TouchableOpacity>
-
-          {/* Button row */}
-          {(actionCard.onConfirm || actionCard.onEditTime) && (
-            <View style={s.actionCardActionsRow}>
-              {actionCard.onEditTime && (
-                <TouchableOpacity
-                  style={s.editBtn}
-                  onPress={actionCard.onEditTime}
-                  activeOpacity={0.8}
-                >
-                  <Text style={s.editBtnText}>Edit</Text>
-                </TouchableOpacity>
-              )}
-              {actionCard.onConfirm && (
-                <TouchableOpacity
-                  style={s.confirmBtn}
-                  onPress={actionCard.onConfirm}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="checkmark" size={14} color="#000" style={{ marginRight: 4 }} />
-                  <Text style={s.confirmBtnText}>Confirm</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
-      )}
-
-      {/* ── Batch action card (multi-action) ── */}
-      {!isUser && batchActions && batchActions.length > 0 && (
-        <BatchActionCard
-          actions={batchActions}
-          onConfirmAll={onBatchConfirm || (() => {})}
-          onDismiss={() => {}}
-        />
-      )}
-
-      {/* ── Quick-reply chips ── */}
-      {!isUser && quickReplies && quickReplies.length > 0 && (
-        <View style={s.quickReplies}>
-          {quickReplies.map((qr, i) => (
-            <TouchableOpacity key={i} style={s.qrChip} onPress={qr.onPress} activeOpacity={0.75}>
-              <Text style={s.qrChipText}>{qr.label}</Text>
             </TouchableOpacity>
-          ))}
-        </View>
-      )}
+
+            {(actionCard.onConfirm || actionCard.onEditTime) && (
+              <View style={styles.actionCardActionsRow}>
+                {actionCard.onEditTime && (
+                  <TouchableOpacity style={styles.editBtn} onPress={actionCard.onEditTime} activeOpacity={0.8}>
+                    <Text style={styles.editBtnText}>Edit</Text>
+                  </TouchableOpacity>
+                )}
+                {actionCard.onConfirm && (
+                  <TouchableOpacity style={styles.confirmBtn} onPress={actionCard.onConfirm} activeOpacity={0.8}>
+                    <Ionicons name="checkmark" size={14} color="#000000" style={{ marginRight: 4 }} />
+                    <Text style={styles.confirmBtnText}>Confirm</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Batch action card */}
+        {batchActions && batchActions.length > 0 && (
+          <BatchActionCard
+            actions={batchActions}
+            onConfirmAll={onBatchConfirm || (() => {})}
+            onDismiss={() => {}}
+          />
+        )}
+
+        {/* Quick-reply chips */}
+        {quickReplies && quickReplies.length > 0 && (
+          <View style={styles.quickReplies}>
+            {quickReplies.map((qr, i) => (
+              <TouchableOpacity key={i} style={styles.qrChip} onPress={qr.onPress} activeOpacity={0.75}>
+                <Text style={styles.qrChipText}>{qr.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
 
-/**
- * React.memo with a custom comparator:
- * - A bubble that is NO LONGER streaming (isStreaming=false) has immutable props —
- *   skip re-renders entirely (return true = props are equal = skip render).
- * - A bubble that IS streaming must re-render on every new text token, so we
- *   fall through to the default shallow comparison.
- *
- * Effect: during a Sara response, only the LAST bubble (the actively streaming one)
- * re-renders. All previous message bubbles are frozen. This eliminates the O(n)
- * render cascade that previously ran on every streaming token update.
- */
 const SaraBubble = React.memo(SaraBubbleInner, (prev, next) => {
-  // If the bubble was not streaming and is still not streaming → props are immutable → skip render
   if (!prev.isStreaming && !next.isStreaming) {
-    // Only re-render if the text actually changed (e.g. action card update)
-    return prev.text === next.text &&
-           prev.actionCard === next.actionCard &&
-           prev.batchActions === next.batchActions &&
-           prev.quickReplies === next.quickReplies;
+    return (
+      prev.text === next.text &&
+      prev.actionCard === next.actionCard &&
+      prev.batchActions === next.batchActions &&
+      prev.quickReplies === next.quickReplies
+    );
   }
-  // The bubble is (or was) streaming — allow React's default shallow comparison
   return false;
 });
 
 export default SaraBubble;
 
-// ── Styles ─────────────────────────────────────────────────────────────────
-const makeStyles = (colors: any) => StyleSheet.create({
-      wrapper: {
-        marginBottom: 16,
-        alignItems: 'flex-start',
-        paddingHorizontal: 16,
-      },
-      wrapperUser: {
-        alignItems: 'flex-end',
-      },
+// -- Styles --------------------------------------------------------------------
+const styles = StyleSheet.create({
+  // User Bubble
+  userRow: {
+    alignItems: 'flex-end',
+    width: '100%',
+    marginBottom: 16,
+    paddingHorizontal: 16,
+  },
+  userBubble: {
+    backgroundColor: '#27272a',
+    borderRadius: 20,
+    borderBottomRightRadius: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    maxWidth: '85%',
+  },
+  userBubbleText: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 15,
+    color: '#ffffff',
+    lineHeight: 22,
+  },
 
-      // Bubbles
-      bubble: {
-        maxWidth: '86%',
-        borderRadius: 18,
-        paddingVertical: 10,
-        paddingHorizontal: 14,
-      },
-      bubbleSara: {
-        backgroundColor: colors.surface,
-        borderBottomLeftRadius: 4,
-      },
-      bubbleUser: {
-        backgroundColor: colors.accentPrimary,
-        borderBottomRightRadius: 4,
-      },
+  // Assistant Message (ChatGPT style)
+  assistantRow: {
+    width: '100%',
+    marginBottom: 20,
+    paddingHorizontal: 16,
+  },
+  assistantMessageContainer: {
+    width: '100%',
+  },
+  assistantHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  assistantAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(165,153,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  assistantName: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 12.5,
+    color: '#a599ff',
+    letterSpacing: 0.5,
+  },
+  markdownWrapper: {
+    width: '100%',
+  },
+  thinkingContainer: {
+    paddingVertical: 4,
+  },
 
-      textSara: {
-        fontSize: 15,
-        fontWeight: '400',
-        color: colors.textPrimary,
-        lineHeight: 22,
-      },
-      textUser: {
-        fontSize: 15,
-        fontWeight: '400',
-        color: colors.background,
-        lineHeight: 22,
-      },
+  // Typography & Elements
+  textSara: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 15,
+    color: '#ececec',
+    lineHeight: 23,
+  },
+  cursor: {
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.bold,
+    color: '#a599ff',
+  },
+  typingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#a599ff',
+  },
 
-      // Cursor
-      cursor: {
-        fontSize: 15,
-        fontWeight: '700',
-        color: colors.accentPrimary,
-      },
-      typingContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: 4,
-        paddingVertical: 6,
-      },
-      typingDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: colors.accentPrimary,
-      },
+  // Markdown block elements
+  mdH1: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 17,
+    color: '#ffffff',
+    lineHeight: 24,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  mdH2: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 15,
+    color: '#f4f4f5',
+    lineHeight: 22,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  mdBulletText: {
+    marginVertical: 3,
+    lineHeight: 22,
+  },
+  mdBulletDot: {
+    fontSize: 15,
+    color: '#a599ff',
+    fontFamily: FONT_FAMILY.bold,
+  },
+  mdHr: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginVertical: 8,
+    width: '100%',
+  },
+  mdPara: {
+    marginVertical: 2,
+  },
 
-      // ── Markdown styles ──────────────────────────────────────────────────────
-      mdH1: {
-        fontSize: 17,
-        fontWeight: '700',
-        color: colors.textPrimary,
-        lineHeight: 24,
-        marginTop: 6,
-        marginBottom: 4,
-      },
-      mdH2: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: colors.textPrimary,
-        lineHeight: 22,
-        marginTop: 4,
-        marginBottom: 2,
-      },
-      mdBulletText: {
-        marginVertical: 3,
-        lineHeight: 22,
-      },
-      mdBulletDot: {
-        fontSize: 15,
-        color: colors.accentPrimary,
-        fontWeight: 'bold',
-      },
-      mdHr: {
-        height: 1,
-        backgroundColor: colors.border,
-        marginVertical: 8,
-        width: '100%',
-      },
-      mdPara: {
-        marginVertical: 1,
-      },
+  // Action Cards
+  actionCard: {
+    marginTop: 12,
+    backgroundColor: '#141417',
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.22)',
+  },
+  actionCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  actionCardIcon: {
+    marginRight: 10,
+    marginTop: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: 'rgba(165,153,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  actionCardContent: {
+    flex: 1,
+    flexShrink: 1,
+  },
+  actionCardTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 15,
+    color: '#ffffff',
+    lineHeight: 21,
+    marginBottom: 3,
+  },
+  actionCardSub: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 13,
+    color: '#a1a1aa',
+    lineHeight: 18,
+  },
+  actionCardActionsRow: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 10,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    paddingTop: 10,
+  },
+  confirmBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  confirmBtnText: {
+    color: '#000000',
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 13.5,
+  },
+  editBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  editBtnText: {
+    color: '#d4d4d8',
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 13.5,
+  },
 
-      // ── Action card ──────────────────────────────────────────────────────────
-      actionCard: {
-        marginTop: 8,
-        backgroundColor: '#1a1a2e',
-        borderRadius: 16,
-        paddingVertical: 16,
-        paddingHorizontal: 16,
-        borderWidth: 1,
-        borderColor: 'rgba(165,153,255,0.3)',
-        width: '85%', // Using a specific width fixes Android flex height measurement bugs with wrapped text
-      },
-      actionCardHeader: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-      },
-      actionCardIcon: {
-        marginRight: 10,
-        marginTop: 2,
-        width: 28,
-        height: 28,
-        borderRadius: 8,
-        backgroundColor: 'rgba(165,153,255,0.15)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
-      },
-      actionCardContent: {
-        flex: 1,
-        flexShrink: 1, // Fixes Android height calculation for wrapped text in row
-      },
-      actionCardTitle: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: colors.textPrimary,
-        lineHeight: 22,
-        marginBottom: 4,
-      },
-      actionCardSub: {
-        fontSize: 13,
-        fontWeight: '400',
-        color: colors.textTertiary,
-        lineHeight: 18,
-      },
-      actionCardActionsRow: {
-        flexDirection: 'row',
-        marginTop: 16,
-        gap: 10,
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        borderTopWidth: 1,
-        borderTopColor: 'rgba(255,255,255,0.05)',
-        paddingTop: 12,
-      },
-      confirmBtn: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.textPrimary,
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: 9,
-      },
-      confirmBtnText: {
-        color: '#000000',
-        fontSize: 14,
-        fontWeight: '600',
-      },
-      editBtn: {
-        backgroundColor: 'transparent',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 9,
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
-      editBtnText: {
-        color: '#ffffff',
-        fontSize: 14,
-        fontWeight: '400',
-      },
+  // Quick Reply Chips
+  quickReplies: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+  },
+  qrChip: {
+    paddingHorizontal: 13,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.3)',
+    backgroundColor: 'rgba(165,153,255,0.1)',
+  },
+  qrChipText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 12.5,
+    color: '#c4bfff',
+  },
+});
 
-      // ── Quick-reply chips ────────────────────────────────────────────────────
-      quickReplies: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 8,
-        marginTop: 8,
-      },
-      qrChip: {
-        paddingHorizontal: 14,
-        paddingVertical: 7,
-        borderRadius: 20,
-        borderWidth: 1.5,
-        borderColor: 'rgba(165,153,255,0.5)',
-        backgroundColor: 'rgba(165,153,255,0.08)',
-      },
-      qrChipText: {
-        fontSize: 13,
-        fontWeight: '500',
-        color: colors.textPrimary,
-      },
-    });

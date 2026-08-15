@@ -124,6 +124,15 @@ export default function ActiveLoggingScreen() {
   const activeExercises = useMemo(() => log?.exercises?.filter(ex => !ex.skipped) || [], [log]);
   const safeIdx = Math.min(activeExIndex, Math.max(0, activeExercises.length - 1));
   const exercise = activeExercises[safeIdx];
+  const exercises = activeExercises;
+
+  // Superset partner exercise lookup
+  const partnerExercise = useMemo(() => {
+    if (!exercise?.supersetGroup) return null;
+    return activeExercises.find(
+      (e, i) => e.supersetGroup === exercise.supersetGroup && i !== safeIdx
+    );
+  }, [exercise?.supersetGroup, activeExercises, safeIdx]);
 
   // ΓöÇΓöÇΓöÇ Progressive overload suggestion ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const overloadSuggestion = useMemo(() => {
@@ -199,7 +208,7 @@ export default function ActiveLoggingScreen() {
     async function loadOfflineSwaps() {
       try {
         const formattedPromises = offlineList.map(async (alt) => {
-          let vidId = alt.videoId && alt.videoId !== '1' ? alt.videoId : undefined;
+          let vidId = (alt as any).videoId && (alt as any).videoId !== '1' ? (alt as any).videoId : undefined;
           if (!vidId) {
             vidId = (await autoResolveExerciseVideoId(alt.name)) || '';
           }
@@ -248,9 +257,9 @@ export default function ActiveLoggingScreen() {
   // completed, so the user can see what they lifted last time immediately.
   const lastTimeData = useMemo(() => {
     if (!log?.exercises || !gymLogs) return null;
-    const exercises = log.exercises.filter(ex => !ex.skipped);
-    const safeIdx = Math.min(activeExIndex, Math.max(0, exercises.length - 1));
-    const currentEx = exercises[safeIdx];
+    const exercisesList = log.exercises.filter(ex => !ex.skipped);
+    const safeExerciseIdx = Math.min(activeExIndex, Math.max(0, exercisesList.length - 1));
+    const currentEx = exercisesList[safeExerciseIdx];
     if (!currentEx) return null;
 
     // First check if the hook pre-filled lastSessionSets from history
@@ -322,9 +331,6 @@ export default function ActiveLoggingScreen() {
     );
   }
 
-
-  const exercises = activeExercises;
-
   if (!exercise) {
     return (
       <View style={[styles.root, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -348,32 +354,41 @@ export default function ActiveLoggingScreen() {
     navigation.goBack();
   };
 
-  // BUG FIX #1: handleTextChange only updates local input state ΓÇö it does NOT
-  // call updateExercise on every keystroke. The actual save happens onBlur
-  // or when the user presses "Log Set", so the TextInput never gets reset mid-type.
+  // SMART SET FORWARD AUTO-FILL:
+  // When user types weight or reps in Set 1 (idx 0), auto-propagate forward to all uncompleted sets.
   const handleTextChange = (setIdx: number, field: 'reps' | 'weight', text: string) => {
     setSetInputs(prev => {
       const next = [...prev];
       if (!next[setIdx]) next[setIdx] = { weight: '', reps: '' };
       next[setIdx] = { ...next[setIdx], [field]: text };
+
+      // Propagate forward from Set 1 (index 0) to all subsequent incomplete sets
+      if (setIdx === 0 && exercise?.setsLog) {
+        for (let i = 1; i < exercise.setsLog.length; i++) {
+          if (!exercise.setsLog[i].completed) {
+            if (!next[i]) next[i] = { weight: '', reps: '' };
+            next[i] = { ...next[i], [field]: text };
+          }
+        }
+      }
+
       return next;
     });
   };
 
   // Flush local input state into the exercise when user leaves a field
-  const handleBlur = (setIdx: number) => {
-    const input = setInputs[setIdx];
-    if (!input) return;
+  const handleBlur = (_setIdx: number) => {
     const newEx = {
       ...exercise,
       setsLog: exercise.setsLog.map((s, i) => {
-        if (i !== setIdx) return s;
+        const input = setInputs[i];
+        if (!input) return s;
         const weight = input.weight === '' ? null : parseFloat(input.weight);
         const reps = input.reps === '' ? null : parseInt(input.reps, 10);
         return {
           ...s,
-          weight: isNaN(weight as number) ? s.weight : weight,
-          reps: isNaN(reps as number) ? s.reps : reps,
+          weight: !isNaN(weight as number) && weight !== null ? weight : s.weight,
+          reps: !isNaN(reps as number) && reps !== null ? reps : s.reps,
         };
       }),
     };
@@ -402,21 +417,19 @@ export default function ActiveLoggingScreen() {
       }),
     };
 
-    // G6: Superset auto-advance logic
+    // SUPERSET & GIANT SET ALTERNATING FLOW:
     let nextIndexToJump = -1;
     let isSupersetPartner = false;
 
     if (exercise.supersetGroup) {
-      // Find all exercises in this superset
       const supersetIndices = exercises
         .map((ex, idx) => (ex.supersetGroup === exercise.supersetGroup ? idx : -1))
         .filter(idx => idx !== -1);
       
-      // If there are multiple exercises in the group
       if (supersetIndices.length > 1) {
         const currentIndexInGroup = supersetIndices.indexOf(activeExIndex);
         
-        // Check the next exercises in the group (wrapping around)
+        // Find next exercise in the superset that has incomplete sets
         for (let i = 1; i < supersetIndices.length; i++) {
           const checkIndex = supersetIndices[(currentIndexInGroup + i) % supersetIndices.length];
           const checkEx = exercises[checkIndex];
@@ -431,12 +444,12 @@ export default function ActiveLoggingScreen() {
       }
     }
 
+    // 30s transition for alternating superset partners, otherwise full rest duration
     const restSecs = isSupersetPartner ? 30 : getRestDuration(exercise);
 
     logSetAndStartTimer(realExerciseIndex, newEx, restSecs, exercise.name);
 
     if (nextIndexToJump !== -1) {
-      // Small delay so the user sees the set complete checkmark before it snaps away
       setTimeout(() => {
         setActiveExIndex(nextIndexToJump);
       }, 400);
@@ -465,11 +478,21 @@ export default function ActiveLoggingScreen() {
 
   const handleAddSet = () => {
     hapticLight();
+    const lastSet = exercise.setsLog[exercise.setsLog.length - 1];
+    const lastInput = setInputs[setInputs.length - 1];
+    const weightVal = lastSet?.weight ?? (lastInput?.weight ? parseFloat(lastInput.weight) : null);
+    const repsVal = lastSet?.reps ?? (lastInput?.reps ? parseInt(lastInput.reps, 10) : null);
+
     const newEx = {
       ...exercise,
       setsLog: [
         ...exercise.setsLog,
-        { setNumber: exercise.setsLog.length + 1, reps: null, weight: null, completed: false },
+        {
+          setNumber: exercise.setsLog.length + 1,
+          reps: repsVal,
+          weight: weightVal,
+          completed: false,
+        },
       ],
     };
     updateExercise(realExerciseIndex, newEx);
@@ -568,6 +591,64 @@ export default function ActiveLoggingScreen() {
               <Text style={styles.lastTimeText}>
                 {lastTimeData ?? `Goal: ${exercise.targetSets} sets × ${exercise.targetReps} reps`}
               </Text>
+
+              {/* Superset Partner Companion Banner */}
+              {exercise.supersetGroup && partnerExercise && (
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() => {
+                    hapticLight();
+                    const partnerIdx = activeExercises.findIndex(e => e.exerciseId === partnerExercise.exerciseId);
+                    if (partnerIdx !== -1) setActiveExIndex(partnerIdx);
+                  }}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    backgroundColor: 'rgba(255,159,77,0.12)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,159,77,0.35)',
+                    borderRadius: RADIUS.md,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    marginTop: 8,
+                    width: '92%',
+                    alignSelf: 'center',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, marginRight: 10, minWidth: 0 }}>
+                    <Ionicons name="git-merge" size={14} color="#ff9f4d" style={{ flexShrink: 0 }} />
+                    <View style={{
+                      backgroundColor: 'rgba(255,159,77,0.2)',
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 6,
+                      flexShrink: 0,
+                    }}>
+                      <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 10, color: '#ff9f4d', letterSpacing: 0.5 }}>
+                        SUPER-{exercise.supersetGroup}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        fontFamily: FONT_FAMILY.medium,
+                        fontSize: 12,
+                        color: colors.textPrimary,
+                        flex: 1,
+                        flexShrink: 1,
+                      }}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
+                      {partnerExercise.name}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                    <Text style={{ fontSize: 11, color: '#ff9f4d', fontFamily: FONT_FAMILY.bold }}>Switch</Text>
+                    <Ionicons name="arrow-forward" size={12} color="#ff9f4d" />
+                  </View>
+                </TouchableOpacity>
+              )}
 
               {overloadSuggestion && overloadSuggestion.type !== 'maintain' && (
                 <Reanimated.View entering={FadeIn.duration(400)} style={[

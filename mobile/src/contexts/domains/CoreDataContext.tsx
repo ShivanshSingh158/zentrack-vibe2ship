@@ -180,31 +180,6 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
-  // Zero-Click notification actions
-  useEffect(() => {
-    if (!user) return;
-    const sub = Notifications.addNotificationResponseReceivedListener(async response => {
-      const actionId = response.actionIdentifier;
-      const data = response.notification.request.content.data;
-      try {
-        if (actionId === "mark_present" && data?.subjectId) {
-          const docRef = doc(db, COLLECTION.ATTENDANCE, data.subjectId as string);
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-            await setDoc(docRef, { classesAttended: (snap.data().classesAttended || 0) + 1 }, { merge: true });
-          }
-        } else if (actionId === "snooze_15m" && data?.type === "gym") {
-          const trigger = new Date(Date.now() + 15 * 60 * 1000);
-          await Notifications.scheduleNotificationAsync({
-            content: { title: "Gym Snooze ⏳", body: "15 minutes are up. Time to workout.", data },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: trigger, channelId: "default" } as any,
-          });
-        }
-      } catch (err) { console.error("[CoreData] notification action", err); }
-    });
-    return () => sub.remove();
-  }, [user]);
-
   // Critical-path Firestore subscriptions — open immediately on login.
   // Each snapshot WRITE-THROUGHS to AsyncStorage so the next cold-boot is instant.
   useEffect(() => {

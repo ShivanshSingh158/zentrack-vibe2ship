@@ -86,20 +86,21 @@ export async function requestNotificationPermissions() {
 
     // Actionable Notification Categories
     await Notifications.setNotificationCategoryAsync('class_reminder', [
-      { identifier: 'mark_present', buttonTitle: '✅ Present' },
-      { identifier: 'mark_bunking', buttonTitle: '❌ Bunking', options: { isDestructive: true } },
+      { identifier: 'mark_present', buttonTitle: '✅ Present', options: { opensAppToForeground: false } },
+      { identifier: 'mark_absent', buttonTitle: '❌ Absent', options: { opensAppToForeground: false, isDestructive: true } },
+      { identifier: 'mark_cancelled', buttonTitle: '🚫 Cancelled', options: { opensAppToForeground: false } },
     ]);
     await Notifications.setNotificationCategoryAsync('gym_reminder', [
-      { identifier: 'start_workout', buttonTitle: '🏋️ Start Workout' },
-      { identifier: 'snooze_15m', buttonTitle: '⏰ Snooze 15m' },
+      { identifier: 'start_workout', buttonTitle: '🏋️ Start Workout', options: { opensAppToForeground: true } },
+      { identifier: 'snooze_15m', buttonTitle: '⏰ Snooze 15m', options: { opensAppToForeground: false } },
     ]);
     await Notifications.setNotificationCategoryAsync('task_reminder', [
-      { identifier: 'mark_task_done', buttonTitle: '✅ Mark Done' },
-      { identifier: 'open_tasks', buttonTitle: '📋 Open Tasks' },
+      { identifier: 'mark_task_done', buttonTitle: '✅ Mark Done', options: { opensAppToForeground: false } },
+      { identifier: 'open_tasks', buttonTitle: '📋 Open Tasks', options: { opensAppToForeground: true } },
     ]);
     await Notifications.setNotificationCategoryAsync('habit_reminder', [
-      { identifier: 'log_habit', buttonTitle: '🔥 Log It' },
-      { identifier: 'open_habits', buttonTitle: '📊 View Habits' },
+      { identifier: 'log_habit', buttonTitle: '🔥 Log It', options: { opensAppToForeground: false } },
+      { identifier: 'open_habits', buttonTitle: '📊 View Habits', options: { opensAppToForeground: true } },
     ]);
 
     return true;
@@ -112,15 +113,41 @@ export async function requestNotificationPermissions() {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function parseTimeString(t?: string): { hours: number; minutes: number } | null {
-  if (!t) return null;
-  const m = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM|am|pm)?/);
-  if (!m) return null;
-  let h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  const ampm = m[3]?.toUpperCase();
-  if (ampm === 'PM' && h < 12) h += 12;
-  if (ampm === 'AM' && h === 12) h = 0;
-  return { hours: h, minutes: min };
+  if (!t || typeof t !== 'string') return null;
+  const str = t.trim().toLowerCase();
+
+  // Pattern 1: "9:30 am", "09:30pm", "9.30 am", "14:30"
+  const colonMatch = str.match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/);
+  if (colonMatch) {
+    let h = parseInt(colonMatch[1], 10);
+    const min = parseInt(colonMatch[2], 10);
+    const ampm = colonMatch[3];
+    if (ampm === 'pm' && h < 12) h += 12;
+    if (ampm === 'am' && h === 12) h = 0;
+    if (!isNaN(h) && !isNaN(min) && h >= 0 && h < 24 && min >= 0 && min < 60) {
+      return { hours: h, minutes: min };
+    }
+  }
+
+  // Pattern 2: "9 am", "11pm", "9am"
+  const hourAmPmMatch = str.match(/(\d{1,2})\s*(am|pm)/);
+  if (hourAmPmMatch) {
+    let h = parseInt(hourAmPmMatch[1], 10);
+    const ampm = hourAmPmMatch[2];
+    if (ampm === 'pm' && h < 12) h += 12;
+    if (ampm === 'am' && h === 12) h = 0;
+    if (!isNaN(h) && h >= 0 && h < 24) {
+      return { hours: h, minutes: 0 };
+    }
+  }
+
+  // Pattern 3: Raw hour e.g. "9", "14"
+  const rawH = parseInt(str, 10);
+  if (!isNaN(rawH) && rawH >= 0 && rawH < 24) {
+    return { hours: rawH, minutes: 0 };
+  }
+
+  return null;
 }
 
 function parseHM(s: string) {
@@ -360,6 +387,9 @@ export function clearScheduleCache() {
 }
 
 function _buildFingerprint(params: ScheduleParams): string {
+  const attendanceFingerprint = (params.attendance || [])
+    .map(s => `${s.id}_${s.classesTotal}_${s.classesAttended}_${JSON.stringify(s.schedule || {})}`)
+    .join(';');
   return [
     params.tasks.length,
     (params.habitLogs || []).length,
@@ -368,7 +398,9 @@ function _buildFingerprint(params: ScheduleParams): string {
     (params.waterLogs || []).length,
     (params.sleepLogs || []).length,
     (params.attendanceLogs || []).length,
-    new Date().toISOString().slice(0, 10),
+    (params.attendance || []).length,
+    attendanceFingerprint,
+    new Date().toISOString().slice(0, 13), // Invalidate hourly so upcoming triggers stay active
   ].join('|');
 }
 
@@ -1035,69 +1067,78 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
           });
 
           daySessions.sort((a, b) => a.startMs - b.startMs);
-          const firstSessionMs = daySessions[0]?.startMs ?? null;
 
           for (const sess of daySessions) {
             const sid = sess.subjectId;
-            const isFirstSession = sess.startMs === firstSessionMs;
-            const firstPreEnabled = kv[`@class_notif_first_pre_${sid}`] !== 'false';
+            const subjectEnabled = kv[`@class_notif_enabled_${sid}`] !== 'false';
+            if (!subjectEnabled) continue;
 
-            // Pre-class warning for first session (e.g. 30m prior)
-            if (isFirstSession && firstPreEnabled) {
-              const preOffsets = [-30]; // Clean single pre-warning to prevent spam
-              for (const offsetMin of preOffsets) {
-                const triggerMs = sess.startMs + offsetMin * 60 * 1000;
-                if (triggerMs > now.getTime()) {
-                  await schedule(
-                    `Class in 30m: ${sess.subject} 🎒`,
-                    getRandomMessage(CLASS_PRE_POOLS(sess.subject, sess.time, '30m')),
-                    new Date(triggerMs),
-                    { type: 'class_pre', subject: sess.subject, subjectId: sid },
-                    'reminders',
-                    actionableNotifs ? 'class_reminder' : undefined
-                  );
-                }
+            // 1. Pre-class early warnings (custom user offsets or default to 30m)
+            const preRaw = kv[`@class_notif_pre_offsets_${sid}`];
+            let preOffsets = [-30];
+            if (preRaw) {
+              try {
+                const parsed = JSON.parse(preRaw);
+                if (Array.isArray(parsed) && parsed.length > 0) preOffsets = parsed;
+              } catch {}
+            }
+
+            for (const offsetMin of preOffsets) {
+              const triggerMs = sess.startMs + offsetMin * 60 * 1000;
+              if (triggerMs > now.getTime()) {
+                const offsetLabel = `${Math.abs(offsetMin)}m`;
+                await schedule(
+                  `Class in ${offsetLabel}: ${sess.subject} 🎒`,
+                  getRandomMessage(CLASS_PRE_POOLS(sess.subject, sess.time, offsetLabel)),
+                  new Date(triggerMs),
+                  { type: 'class_pre', subject: sess.subject, subjectId: sid, isLab: sess.isLab, date: dateStr },
+                  'reminders',
+                  actionableNotifs ? 'class_reminder' : undefined
+                );
               }
             }
 
+            // 2. Post-class / Post-lab log reminder
+            const logDelay = parseInt(kv[`@class_notif_log_delay_${sid}`] || '0', 10);
+            const durationMs = sess.isLab ? 120 * 60 * 1000 : 60 * 60 * 1000;
+            const endTriggerMs = sess.startMs + durationMs + logDelay * 60 * 1000;
+            const alreadyLogged = attendanceLogs.some(
+              l => l.subjectId === sid && l.date === dateStr && (sess.isLab ? l.type === 'lab' : (l.type === 'class' || !l.type)) && !l.isExtra
+            );
+
             if (!sess.isLab) {
-              // Post-class log reminder (1 hr after start)
-              const endTrigger = new Date(sess.startMs + 60 * 60 * 1000);
-              const alreadyLogged = attendanceLogs.some(
-                l => l.subjectId === sid && l.date === dateStr && (l.type === 'class' || !l.type) && !l.isExtra
-              );
-              if (!alreadyLogged && endTrigger > now) {
+              if (!alreadyLogged && endTriggerMs > now.getTime()) {
                 await schedule(
                   'Attendance Lagayi Kya? 📝',
                   getRandomMessage(POST_CLASS_LOG_POOLS(sess.subject)),
-                  endTrigger,
-                  { type: 'class_log', subject: sess.subject, subjectId: sid },
-                  'default',
+                  new Date(endTriggerMs),
+                  { type: 'class_log', subject: sess.subject, subjectId: sid, isLab: false, date: dateStr },
+                  'reminders',
                   actionableNotifs ? 'class_reminder' : undefined
                 );
               }
             } else {
-              // Mid-lab (60m) and Post-lab (120m)
-              const midTrigger = new Date(sess.startMs + 60 * 60 * 1000);
-              if (midTrigger > now) {
+              // Mid-lab checkpoint (at 60 min mark)
+              const midEnabled = kv[`@class_notif_lab_mid_${sid}`] !== 'false';
+              const midTriggerMs = sess.startMs + 60 * 60 * 1000;
+              if (midEnabled && midTriggerMs > now.getTime()) {
                 await schedule(
                   `Lab Checkpoint: ${sess.subject} 🧪`,
                   getRandomMessage(LAB_MID_POOLS(sess.subject)),
-                  midTrigger,
-                  { type: 'lab_mid', subject: sess.subject, subjectId: sid },
-                  'default',
+                  new Date(midTriggerMs),
+                  { type: 'lab_mid', subject: sess.subject, subjectId: sid, isLab: true, date: dateStr },
+                  'reminders',
                   actionableNotifs ? 'class_reminder' : undefined
                 );
               }
 
-              const endTrigger = new Date(sess.startMs + 120 * 60 * 1000);
-              if (endTrigger > now) {
+              if (!alreadyLogged && endTriggerMs > now.getTime()) {
                 await schedule(
                   'Attendance Lagayi Kya? 📝',
                   getRandomMessage(POST_LAB_LOG_POOLS(sess.subject)),
-                  endTrigger,
-                  { type: 'lab_log', subject: sess.subject, subjectId: sid },
-                  'default',
+                  new Date(endTriggerMs),
+                  { type: 'lab_log', subject: sess.subject, subjectId: sid, isLab: true, date: dateStr },
+                  'reminders',
                   actionableNotifs ? 'class_reminder' : undefined
                 );
               }

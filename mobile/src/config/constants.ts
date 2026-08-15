@@ -70,6 +70,7 @@ export const COLLECTION = {
   USER_GYM_PLANS: 'user_gym_plans',
   JOBS: 'job_applications',
   LEARNING_TOPICS: 'learning_topics',
+  FLASHCARDS: 'flashcards',
   ATTENDANCE: 'attendance_subjects',
   ATTENDANCE_LOGS: 'attendance_logs',
   ATTENDANCE_HOLIDAYS: 'attendance_holidays',

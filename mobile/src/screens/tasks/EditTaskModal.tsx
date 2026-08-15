@@ -71,9 +71,25 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     setRecurrenceRule(task.recurrenceRule || null);
     setSubtasks(task.subtasks || []);
     if (task.timeSlot) {
-      const parts = task.timeSlot.split(/[-–]/).map((s: string) => s.trim());
-      setStartTime(parts[0] || '');
-      setEndTime(parts[1] || '');
+      const trimmed = task.timeSlot.trim();
+      const lower = trimmed.toLowerCase();
+      if (lower === 'morning') {
+        setStartTime('09:00');
+        setEndTime('10:00');
+      } else if (lower === 'afternoon') {
+        setStartTime('14:00');
+        setEndTime('15:00');
+      } else if (lower === 'evening') {
+        setStartTime('19:00');
+        setEndTime('20:00');
+      } else if (lower === 'night') {
+        setStartTime('21:00');
+        setEndTime('22:00');
+      } else {
+        const parts = trimmed.split(/[-–]/).map((s: string) => s.trim());
+        setStartTime(parts[0] || '');
+        setEndTime(parts[1] || '');
+      }
     } else {
       setStartTime('');
       setEndTime('');
@@ -308,13 +324,31 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
 
         {showStartPicker && (
           <DateTimePicker
-            value={(() => { const d = new Date(); if (startTime) { const [h, m] = startTime.split(':'); d.setHours(+h, +m); } return d; })()}
+            value={(() => {
+              const d = new Date();
+              if (startTime && startTime.includes(':')) {
+                const [h, m] = startTime.split(':');
+                const parsedH = parseInt(h, 10);
+                const parsedM = parseInt(m, 10);
+                if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+              }
+              return d;
+            })()}
             mode="time" display="default" onChange={onStartChange}
           />
         )}
         {showEndPicker && (
           <DateTimePicker
-            value={(() => { const d = new Date(); if (endTime) { const [h, m] = endTime.split(':'); d.setHours(+h, +m); } return d; })()}
+            value={(() => {
+              const d = new Date();
+              if (endTime && endTime.includes(':')) {
+                const [h, m] = endTime.split(':');
+                const parsedH = parseInt(h, 10);
+                const parsedM = parseInt(m, 10);
+                if (!isNaN(parsedH)) d.setHours(parsedH, isNaN(parsedM) ? 0 : parsedM);
+              }
+              return d;
+            })()}
             mode="time" display="default" onChange={onEndChange}
           />
         )}

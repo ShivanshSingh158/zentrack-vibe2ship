@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { AddEventModal } from '../components/Calendar/AddEventModal';
+import { CalendarWeekStripPager } from '../components/Calendar/CalendarWeekStripPager';
 import { useNavigation } from '@react-navigation/native';
 import { callGeminiProxy } from '../services/geminiProxy';
 import { useTheme } from "../contexts/ThemeContext";
@@ -66,7 +67,47 @@ export default function CalendarScreen() {
   const indicatorTop = (currentHour * HOUR_HEIGHT) + ((currentMinutes / 60) * HOUR_HEIGHT);
   const isToday = selectedDate === now.toISOString().slice(0, 10);
 
-const markedDates = useMemo(() => {
+  // Pre-indexed timetable cache: computes which day indices (0-6) have classes/labs
+  const daysWithClasses = useMemo(() => {
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const hasClasses = new Array(7).fill(false);
+    if (!attendance || attendance.length === 0) return hasClasses;
+
+    for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+      for (const subj of attendance) {
+        const sch = subj.schedule?.[dayIdx.toString()] || subj.schedule?.[dayIdx] || subj.schedule?.[DAY_NAMES[dayIdx]] || subj.schedule?.[DAY_NAMES[dayIdx].toLowerCase()];
+        if (sch && ((sch.classes && sch.classes.length > 0) || (sch.labs && sch.labs.length > 0) || (sch.classCount || 0) > 0 || (sch.labCount || 0) > 0)) {
+          hasClasses[dayIdx] = true;
+          break;
+        }
+      }
+    }
+    return hasClasses;
+  }, [attendance]);
+
+  // Pre-computed class date strings for the visible month (recalculates ONLY when month or timetable changes)
+  const currentYearMonth = selectedDate.slice(0, 7); // "YYYY-MM"
+  const monthClassDates = useMemo(() => {
+    if (!daysWithClasses.some(Boolean)) return [];
+    const [yStr, mStr] = currentYearMonth.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10) - 1;
+
+    const numDays = new Date(y, m + 1, 0).getDate();
+    const firstDayOfWeek = new Date(y, m, 1).getDay();
+
+    const dates: string[] = [];
+    for (let d = 1; d <= numDays; d++) {
+      const dayOfWeek = (firstDayOfWeek + d - 1) % 7;
+      if (daysWithClasses[dayOfWeek]) {
+        const dd = d < 10 ? `0${d}` : `${d}`;
+        dates.push(`${currentYearMonth}-${dd}`);
+      }
+    }
+    return dates;
+  }, [currentYearMonth, daysWithClasses]);
+
+  const markedDates = useMemo(() => {
     const marks: any = {};
     const MAX_DOTS = 3;
 
@@ -77,33 +118,16 @@ const markedDates = useMemo(() => {
       }
     };
 
-    customEvents.forEach(e => addDot(e.date, getEventColors(colors)[e.type]?.bg || '#a599ff', e.id));
-    tasks.forEach(t => t.date && addDot(t.date, '#f59e0b', t.id)); // Orange for tasks/assignments
+    customEvents.forEach(e => e.date && addDot(e.date, getEventColors(colors)[e.type]?.bg || '#a599ff', e.id));
+    tasks.forEach(t => t.date && addDot(t.date, '#f59e0b', t.id)); // Orange for tasks
     if (gymLogs) {
       gymLogs.forEach((g: any) => g.date && addDot(g.date, '#10b981', g.id)); // Green for gym
     }
 
-    // Classes & Labs
-    if (attendance) {
-      const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      attendance.forEach(subj => {
-        // We must calculate dates for the current visible month ideally, but we can't iterate all dates easily here without a bounds.
-        // As a shortcut, we mark classes just for the selected month to avoid huge loops.
-        const currentM = new Date(selectedDate);
-        const y = currentM.getFullYear();
-        const m = currentM.getMonth();
-        for (let d = 1; d <= 31; d++) {
-          const testD = new Date(y, m, d);
-          if (testD.getMonth() !== m) break;
-          const dayIdx = testD.getDay();
-          const dStr = testD.toISOString().slice(0, 10);
-          const sch = subj.schedule?.[dayIdx.toString()] || subj.schedule?.[dayIdx] || subj.schedule?.[DAY_NAMES[dayIdx]] || subj.schedule?.[DAY_NAMES[dayIdx].toLowerCase()];
-          if (sch && ((sch.classes && sch.classes.length > 0) || (sch.labs && sch.labs.length > 0) || sch.classCount > 0 || sch.labCount > 0)) {
-            addDot(dStr, '#3390ec', subj.id + '-class-' + dStr); // Blue for classes
-          }
-        }
-      });
-    }
+    // Classes & Labs from pre-indexed cache
+    monthClassDates.forEach((dStr) => {
+      addDot(dStr, '#3390ec', 'class-' + dStr); // Blue for classes
+    });
 
     if (marks[selectedDate]) {
       marks[selectedDate] = { ...marks[selectedDate], selected: true, selectedColor: colors.accentPrimary, selectedTextColor: '#000000' };
@@ -111,7 +135,7 @@ const markedDates = useMemo(() => {
       marks[selectedDate] = { selected: true, selectedColor: colors.accentPrimary, selectedTextColor: '#000000' };
     }
     return marks;
-  }, [customEvents, tasks, selectedDate, attendance, gymLogs]);
+  }, [customEvents, tasks, selectedDate, monthClassDates, gymLogs, colors]);
 
 const handleFindFreeSlots = async () => {
     setFindingSlots(true);
@@ -245,31 +269,15 @@ const handleFindFreeSlots = async () => {
         </View>
       )}
 
-      {/* 2. DATE SELECTOR (Week Strip) */}
-      <View style={[styles.weekStrip, { display: (!isMonthDropdownOpen && currentView !== 'Month') ? 'flex' : 'none' }]}>
-          {Array.from({length: 7}).map((_, i) => {
-            const dateObj = new Date(now);
-            // Quick hack to show current week: start from Sunday of current week
-            const currentDay = now.getDay();
-            dateObj.setDate(now.getDate() - currentDay + i);
-            const yyyy = dateObj.getFullYear();
-            const mm = (dateObj.getMonth() + 1).toString().padStart(2, '0');
-            const dd = dateObj.getDate().toString().padStart(2, '0');
-            const dateStr = `${yyyy}-${mm}-${dd}`;
-            const isSelected = dateStr === selectedDate;
-            const dateNum = dateObj.getDate();
-            const dateDay = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-            
-            return (
-              <TouchableOpacity key={dateStr} style={styles.dayCol} onPress={() => setSelectedDate(dateStr)}>
-                <Text style={[styles.dayLetter, isSelected && styles.dayLetterActive]}>{dateDay}</Text>
-                <View style={[styles.dayPill, isSelected && styles.dayPillActive]}>
-                  <Text style={[styles.dayNum, isSelected && styles.dayNumActive]}>{dateNum}</Text>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+
+      {/* 2. DATE SELECTOR (Horizontal Paging Week Strip) */}
+      {!isMonthDropdownOpen && currentView !== 'Month' && (
+        <CalendarWeekStripPager
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          markedDates={markedDates}
+        />
+      )}
 
       
       {/* 3. TIMELINE GRID (DAY VIEW) */}
@@ -325,7 +333,7 @@ const handleFindFreeSlots = async () => {
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
         selectedDate={selectedDate}
-        initialTime={initialTime}
+        initialStartTime={initialTime}
       />
 
       {/* Gym Modal */}
@@ -362,7 +370,7 @@ const handleFindFreeSlots = async () => {
           zIndex: 100,
         }}
         onPress={() => {
-          setInitialTime(null);
+          setInitialTime('');
           setShowAddModal(true);
         }}
       >

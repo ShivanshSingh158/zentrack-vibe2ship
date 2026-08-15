@@ -1,10 +1,9 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Pressable, ViewStyle, StyleProp } from 'react-native';
+import React, { useEffect, useCallback, useState } from 'react';
+import { StyleSheet, Pressable, ViewStyle, StyleProp, BackHandler, Keyboard } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
-  withSpring,
   runOnJS,
   useAnimatedKeyboard,
   Easing,
@@ -27,54 +26,66 @@ export default function BottomSheet({
   contentStyle,
   fullHeight = false,
 }: BottomSheetProps) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
-  // GG All hooks must be called unconditionally G NO early returns before this line GG
-  const [mounted, setMounted] = React.useState(visible);
-  const translateY = useSharedValue(1000);
+  const { colors } = useTheme();
+  const styles = makeStyles(colors);
+
+  const [mounted, setMounted] = useState(visible);
+  const translateY = useSharedValue(600);
   const backdropOpacity = useSharedValue(0);
 
-  // GG These MUST stay here, before any conditional return GG
   const keyboard = useAnimatedKeyboard();
 
   const sheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
-    paddingBottom: keyboard.height.value + (fullHeight ? 0 : 40),
+    paddingBottom: keyboard.height.value + (fullHeight ? 0 : 32),
   }));
 
   const backdropStyle = useAnimatedStyle(() => ({
     opacity: backdropOpacity.value,
   }));
 
+  const handleClose = useCallback(() => {
+    Keyboard.dismiss();
+    translateY.value = withTiming(600, { duration: 140, easing: Easing.in(Easing.quad) });
+    backdropOpacity.value = withTiming(0, { duration: 130, easing: Easing.in(Easing.quad) }, (finished) => {
+      if (finished) {
+        runOnJS(setMounted)(false);
+        runOnJS(onClose)();
+      }
+    });
+  }, [onClose]);
+
+  // Android hardware back button handler
+  useEffect(() => {
+    if (!visible) return;
+    const onBackPress = () => {
+      handleClose();
+      return true;
+    };
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
+  }, [visible, handleClose]);
+
   useEffect(() => {
     if (visible) {
       setMounted(true);
-      // Fast, smooth spring for opening (instant but natural feel)
-      translateY.value = withSpring(0, { damping: 22, stiffness: 350, mass: 0.5 });
-      backdropOpacity.value = withTiming(1, { duration: 120 });
+      // Instant, smooth fluid entrance with ZERO bounce
+      translateY.value = 600;
+      translateY.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
+      backdropOpacity.value = withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) });
     } else if (mounted) {
-      // Very fast close
-      translateY.value = withTiming(1000, { duration: 100, easing: Easing.in(Easing.cubic) });
-      backdropOpacity.value = withTiming(0, { duration: 100 }, (finished) => {
-        if (finished) {
-          runOnJS(setMounted)(false);
-        }
-      });
+      handleClose();
     }
   }, [visible]);
 
-  // Use Modal's built-in visible gate instead of an early return
-  // This keeps the hook call order stable across renders
-  // We generate a unique portal name using a simple random ID if not provided,
-  // but since Portal handles keys, we just use a stable internal id for this instance.
-  const [portalId] = React.useState(() => `bottom-sheet-${Math.random().toString(36).substr(2, 9)}`);
+  const [portalId] = useState(() => `bottom-sheet-${Math.random().toString(36).substring(2, 9)}`);
 
   if (!mounted) return null;
 
   return (
     <Portal name={portalId}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}>
-        <Pressable style={{ flex: 1 }} onPress={onClose} />
+        <Pressable style={{ flex: 1 }} onPress={handleClose} />
       </Animated.View>
       <Animated.View
         style={[
@@ -84,7 +95,9 @@ export default function BottomSheet({
           contentStyle,
         ]}
       >
-        <Animated.View style={styles.handle} />
+        <Pressable onPress={handleClose} hitSlop={{ top: 10, bottom: 10 }}>
+          <Animated.View style={styles.handle} />
+        </Pressable>
         {children}
       </Animated.View>
     </Portal>
@@ -92,38 +105,39 @@ export default function BottomSheet({
 }
 
 const makeStyles = (colors: any) => StyleSheet.create({
-      backdrop: {
-        backgroundColor: 'rgba(0, 0, 0, 0.4)',
-      },
-      sheet: {
-        position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        backgroundColor: '#000000',
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        padding: 20,
-        elevation: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        borderWidth: 1,
-        borderColor: '#27272A',
-      },
-      fullHeight: {
-        height: '90%',
-      },
-      wrapContent: {
-        maxHeight: '90%',
-      },
-      handle: {
-        width: 40,
-        height: 4,
-        backgroundColor: colors.border,
-        borderRadius: 2,
-        alignSelf: 'center',
-        marginBottom: 20,
-      },
-    });
+  backdrop: {
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  sheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#0c0c0e',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    elevation: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  fullHeight: {
+    height: '90%',
+  },
+  wrapContent: {
+    maxHeight: '90%',
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 14,
+  },
+});

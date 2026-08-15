@@ -13,7 +13,7 @@
  *   - Actions deep-link directly into the relevant screen, never dead-ends
  */
 
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FONT_FAMILY, FONT_SIZE, RADIUS } from '../theme/tokens';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSafeTimeout } from '../hooks/useSafeTimeout';
@@ -176,6 +176,7 @@ export interface SaraProps {
 }
 
 export default function SaraScreen(props: SaraProps) {
+    const insets = useSafeAreaInsets();
     const { colors, isDark } = useTheme();
     const s = makeStyles(colors);
   if (props.isGlobalModal) {
@@ -203,6 +204,7 @@ interface SaraInnerProps extends SaraProps {
 }
 
 function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRoutePrompt }: SaraInnerProps) {
+  const insets = useSafeAreaInsets();
   const safeSetTimeout = useSafeTimeout();
   const { colors, isDark } = useTheme();
   const s = makeStyles(colors);
@@ -326,7 +328,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
       const pct = Math.round((atRiskSubject.classesAttended / atRiskSubject.classesTotal) * 100);
       list.push({
         title: `Fix ${atRiskSubject.name} attendance (${pct}%)`,
-        subtitle: `Target: ${atRiskSubject.targetPercentage || 75}% ┬╖ Calculate target classes`,
+        subtitle: `Target: ${atRiskSubject.targetPercentage || 75}% · Calculate target classes`,
         command: `How many consecutive classes of ${atRiskSubject.name} do I need to attend to reach ${atRiskSubject.targetPercentage || 75}%?`,
         icon: 'school-outline',
         accent: '#FF9F0A',
@@ -334,7 +336,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
     } else if (upcomingAssignment) {
       list.push({
         title: `Review assignment: ${upcomingAssignment.title}`,
-        subtitle: `Due: ${upcomingAssignment.dueDate} ┬╖ ${upcomingAssignment.subjectName || 'Academic'}`,
+        subtitle: `Due: ${upcomingAssignment.dueDate} · ${upcomingAssignment.subjectName || 'Academic'}`,
         command: `Give me a study & execution plan for my upcoming assignment "${upcomingAssignment.title}" due on ${upcomingAssignment.dueDate}.`,
         icon: 'document-text-outline',
         accent: '#64D2FF',
@@ -367,6 +369,131 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
 
     return list.slice(0, 4);
   }, [tasks, gymLogs, attendance, assignments, habits, habitLogs]);
+
+  // ── Context-aware Personalized Nudges (Input Bar shortcuts) ───────────────
+  const personalizedNudges = useMemo(() => {
+    const now = new Date();
+    const todayY = now.getFullYear();
+    const todayM = String(now.getMonth() + 1).padStart(2, '0');
+    const todayD = String(now.getDate()).padStart(2, '0');
+    const todayStr = `${todayY}-${todayM}-${todayD}`;
+    const dayOfWeek = now.getDay();
+    const currentHour = now.getHours();
+
+    const nudges: { label: string; icon: any; command: string }[] = [];
+
+    // 1. Overdue or Today's tasks
+    const activeTasks = (tasks || []).filter((t: any) => t.status !== 'done' && !t.completed);
+    const overdueTasks = activeTasks.filter((t: any) => t.date && t.date < todayStr);
+    const todayTasks = activeTasks.filter((t: any) => t.date === todayStr);
+
+    if (overdueTasks.length > 0) {
+      nudges.push({
+        label: `${overdueTasks.length} Overdue Task${overdueTasks.length > 1 ? 's' : ''}`,
+        icon: 'alert-circle-outline',
+        command: `Show my ${overdueTasks.length} overdue tasks and help me prioritize or reschedule them.`,
+      });
+    } else if (todayTasks.length > 0) {
+      nudges.push({
+        label: `${todayTasks.length} Task${todayTasks.length > 1 ? 's' : ''} Today`,
+        icon: 'checkbox-outline',
+        command: `Review my ${todayTasks.length} tasks scheduled for today and give me an action plan.`,
+      });
+    }
+
+    // 2. Gym / Workout status
+    const todayGymLog = (gymLogs || []).find((l: any) => l.date === todayStr);
+    const hasWorkedOut = todayGymLog?.exercises?.some((e: any) => e.setsLog?.some((s: any) => s.completed));
+    const defaultPlanDay = (GYM_PLAN as any[])?.find((d: any) => d.dayIndex === (WEEKDAY_TO_PLAN[dayOfWeek] ?? 7));
+    const workoutName = defaultPlanDay?.name || "Today's Workout";
+
+    if (hasWorkedOut && todayGymLog?.exercises) {
+      const completedSets = todayGymLog.exercises.reduce((acc: number, ex: any) => acc + (ex.setsLog?.filter((s: any) => s.completed).length || 0), 0);
+      nudges.push({
+        label: `Workout Done (${completedSets} sets)`,
+        icon: 'checkmark-done-circle-outline',
+        command: `Analyze my workout performance from today (${completedSets} sets completed) and give me recovery & nutrition advice.`,
+      });
+    } else if (defaultPlanDay && !defaultPlanDay.isRest) {
+      nudges.push({
+        label: workoutName,
+        icon: 'barbell-outline',
+        command: `What exercises do I have planned for ${workoutName} today? Give me target weights and warm-up recommendations.`,
+      });
+    }
+
+    // 3. Attendance Risk
+    const lowAttendance = (attendance || []).find((a: any) => {
+      const total = a.classesTotal || 0;
+      const attended = a.classesAttended || 0;
+      if (total < 3) return false;
+      return ((attended / total) * 100) < (a.targetPercentage || 75);
+    });
+
+    if (lowAttendance) {
+      const pct = Math.round(((lowAttendance.classesAttended || 0) / (lowAttendance.classesTotal || 1)) * 100);
+      nudges.push({
+        label: `${lowAttendance.name} (${pct}%)`,
+        icon: 'school-outline',
+        command: `My attendance in ${lowAttendance.name} is at ${pct}%. How many consecutive classes do I need to attend to get above ${lowAttendance.targetPercentage || 75}%?`,
+      });
+    }
+
+    // 4. Pending Habits
+    const activeHabits = (habits || []).filter((h: any) => !h.archived);
+    if (activeHabits.length > 0) {
+      const completedHabitIds = new Set(
+        (habitLogs || []).filter((hl: any) => hl.date === todayStr).map((hl: any) => hl.habitId)
+      );
+      const pendingHabits = activeHabits.filter((h: any) => !completedHabitIds.has(h.id));
+      if (pendingHabits.length > 0) {
+        nudges.push({
+          label: `${pendingHabits.length} Habit${pendingHabits.length > 1 ? 's' : ''} Left`,
+          icon: 'flame-outline',
+          command: `Which habits do I still have left to complete today? Remind me.`,
+        });
+      } else {
+        nudges.push({
+          label: 'Habits 100% Done 🔥',
+          icon: 'sparkles-outline',
+          command: `Check my habit streaks and show how consistent I've been this week.`,
+        });
+      }
+    }
+
+    // 5. Time of Day Context
+    if (currentHour < 12) {
+      nudges.push({
+        label: 'Morning Priorities',
+        icon: 'sunny-outline',
+        command: "Give me my morning briefing — what are my top priorities, schedule, and goals today?",
+      });
+    } else if (currentHour >= 18) {
+      nudges.push({
+        label: 'Evening Review',
+        icon: 'moon-outline',
+        command: "Summarize what I accomplished today, review my habit progress, and help me prep for tomorrow.",
+      });
+    } else {
+      nudges.push({
+        label: "Midday Focus",
+        icon: 'compass-outline',
+        command: "What should I focus on right now to make the most progress today?",
+      });
+    }
+
+    // 6. Active Learning / Course
+    const activeTopic = (learningTopics || []).find((t: any) => (t.progress || 0) < 100 && t.lectures?.length > 0);
+    if (activeTopic) {
+      nudges.push({
+        label: `Study ${activeTopic.title.slice(0, 14)}...`,
+        icon: 'book-outline',
+        command: `What is the next lecture in ${activeTopic.title} and what should I study next?`,
+      });
+    }
+
+    return nudges.slice(0, 6);
+  }, [tasks, habits, habitLogs, gymLogs, attendance, assignments, learningTopics]);
 
   // Load chat history + memory summary + notification settings from storage
   useEffect(() => {
@@ -493,17 +620,18 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
     }
   }, [initialRoutePrompt, messages.length, isRunning, isLoaded]);
 
-  // Keyboard listener
+  // Keyboard listener — instant show/hide
   useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    
-    const showSub = Keyboard.addListener(showEvent, () => setKeyboardVisible(true));
-    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardVisible(false));
-    
+    const s1 = Keyboard.addListener('keyboardWillShow', () => setKeyboardVisible(true));
+    const s2 = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const s3 = Keyboard.addListener('keyboardWillHide', () => setKeyboardVisible(false));
+    const s4 = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+
     return () => {
-      showSub.remove();
-      hideSub.remove();
+      s1.remove();
+      s2.remove();
+      s3.remove();
+      s4.remove();
     };
   }, []);
 
@@ -1353,8 +1481,14 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
         keyboardVerticalOffset={0}
       >
         {!hasMessages ? (
-          /* ΓöÇΓöÇ Empty state ΓöÇΓöÇ */
-          <ScrollView contentContainerStyle={s.emptyState} keyboardShouldPersistTaps="handled">
+          /* ── Empty state ── */
+          <ScrollView
+            contentContainerStyle={[
+              s.emptyState,
+              { paddingBottom: Math.max(insets.bottom, 14) + (!isKeyboardVisible && personalizedNudges.length > 0 && !isRunning ? 115 : 70) }
+            ]}
+            keyboardShouldPersistTaps="handled"
+          >
             {!isKeyboardVisible && (
               <>
                 <VoiceOrb size="small" status={isRunning ? 'processing' : 'idle'} />
@@ -1386,11 +1520,19 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
             )}
           </ScrollView>
         ) : (
-          /* ΓöÇΓöÇ Message thread ΓöÇΓöÇ */
+          /* ── Message thread ── */
           <FlatList
             ref={scrollRef}
             style={s.thread}
-            contentContainerStyle={s.threadContent}
+            contentContainerStyle={[
+              s.threadContent,
+              {
+                paddingTop: isKeyboardVisible
+                  ? 70
+                  : Math.max(insets.bottom, 14) + (personalizedNudges.length > 0 && !isRunning ? 115 : 68),
+                paddingBottom: 20,
+              }
+            ]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             inverted={true}
@@ -1400,7 +1542,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
             getItemLayout={(_, index) => ({ length: 80, offset: 80 * index, index })}
             ListHeaderComponent={
               <View style={{ height: 16 }}>
-                {/* Cap 4: Reasoning Feed ΓÇö shown above the streaming bubble during thinking */}
+                {/* Cap 4: Reasoning Feed — shown above the streaming bubble during thinking */}
                 <ReasoningFeed steps={reasoningSteps} visible={showReasoningFeed && isRunning} />
               </View>
             }
@@ -1419,18 +1561,18 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           />
         )}
 
-        {/* ΓöÇΓöÇ Input bar ΓöÇΓöÇ */}
-        <View style={[s.inputBar, { paddingBottom: isKeyboardVisible ? 10 : 16 }]}>
-          {/* Quick Command chips ΓÇö hidden during processing and when keyboard is up */}
-          {!isRunning && !isKeyboardVisible && (
+        {/* ── Input bar ── */}
+        <View style={[s.inputBar, { paddingBottom: isKeyboardVisible ? 10 : Math.max(insets.bottom, 14) }]}>
+          {/* Quick Command chips - hidden during processing and when keyboard is up */}
+          {!isRunning && !isKeyboardVisible && personalizedNudges.length > 0 && (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               style={s.quickChipsContainer}
-              contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingBottom: 10 }}
+              contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingBottom: 2 }}
               keyboardShouldPersistTaps="handled"
             >
-              {QUICK_COMMANDS.map((cmd) => (
+              {personalizedNudges.map((cmd) => (
                 <AnimatedPressable
                   key={cmd.label}
                   style={s.quickChip}
@@ -1439,43 +1581,47 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
                     sendMessage(cmd.command);
                   }}
                 >
-                  <Ionicons name={cmd.icon} size={13} color={colors.accentPrimary} style={s.quickChipIcon} />
+                  <Ionicons name={cmd.icon} size={13} color="#a599ff" style={s.quickChipIcon} />
                   <Text style={s.quickChipLabel}>{cmd.label}</Text>
                 </AnimatedPressable>
               ))}
             </ScrollView>
           )}
           <View style={[s.inputRow, { paddingHorizontal: 16 }]}>
-            <TouchableOpacity style={s.inputWrap} activeOpacity={1} onPress={() => inputRef.current?.focus()}>
+            <View style={s.inputCapsule}>
               <TextInput
                 ref={inputRef}
                 style={s.textInput}
-                placeholder="Message Sara"
-                placeholderTextColor={colors.textTertiary}
+                placeholder="Message Sara..."
+                placeholderTextColor="#71717a"
                 value={input}
                 onChangeText={setInput}
+                onFocus={() => setKeyboardVisible(true)}
+                onBlur={() => setKeyboardVisible(false)}
                 onSubmitEditing={() => sendMessage(input)}
                 returnKeyType="send"
                 editable={!isRunning}
-                multiline={false}
+                multiline
+                maxLength={500}
               />
-            </TouchableOpacity>
-            {input.trim().length > 0 ? (
-              <TouchableOpacity 
-                style={[s.sendBtn, isRunning && { opacity: 0.5 }]}
-                onPress={() => sendMessage(input)}
-                disabled={isRunning}
-              >
-                <Ionicons name="send" size={18} color="#fff" style={{ marginLeft: 2 }} />
-              </TouchableOpacity>
-            ) : (
-              <VoiceMicButton
-                onToggleRecord={inlineDictationToggle}
-                isRecording={isVoiceRecording}
-                isProcessing={isRunning}
-                disabled={isRunning}
-              />
-            )}
+              {input.trim().length > 0 ? (
+                <TouchableOpacity 
+                  style={[s.sendBtn, isRunning && { opacity: 0.5 }]}
+                  onPress={() => sendMessage(input)}
+                  disabled={isRunning}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="arrow-up" size={18} color="#000000" />
+                </TouchableOpacity>
+              ) : (
+                <VoiceMicButton
+                  onToggleRecord={inlineDictationToggle}
+                  isRecording={isVoiceRecording}
+                  isProcessing={isRunning}
+                  disabled={isRunning}
+                />
+              )}
+            </View>
           </View>
         </View>
 
@@ -1801,109 +1947,124 @@ const makeStyles = (colors: any) => StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 28,
+        paddingHorizontal: 24,
         paddingBottom: 40,
       },
       emptyGreeting: {
-        fontSize: 20,
-        fontWeight: '600',
-        color: colors.textPrimary,
+        fontSize: 22,
+        fontFamily: FONT_FAMILY.bold,
+        color: '#ffffff',
         textAlign: 'center',
-        marginTop: 24,
-        marginBottom: 8,
+        marginTop: 20,
+        marginBottom: 6,
+        letterSpacing: 0.2,
       },
       emptySub: {
-        fontSize: 14,
-        fontWeight: '400',
-        color: colors.textMuted,
+        fontSize: 13.5,
+        fontFamily: FONT_FAMILY.body,
+        color: '#71717a',
         textAlign: 'center',
         lineHeight: 20,
-        marginBottom: 36,
+        marginBottom: 28,
       },
       starterList: { width: '100%', gap: 10 },
       starterChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface2,
-        borderRadius: 12,
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: colors.border,
-        gap: 10,
+        backgroundColor: '#18181b',
+        borderRadius: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.08)',
+        gap: 12,
       },
       starterIconBadge: {
-        width: 28,
-        height: 28,
-        borderRadius: 14,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: 'rgba(255,255,255,0.04)',
       },
-      starterChipTitle: { fontSize: 13, fontWeight: '500', color: colors.textPrimary },
+      starterChipTitle: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 13.5,
+        color: '#f4f4f5',
+      },
 
       // Thread
       thread: { flex: 1 },
-      threadContent: { paddingTop: 16, paddingBottom: 8 },
+      threadContent: { paddingBottom: 8 },
 
       // Input bar
       inputBar: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
         flexDirection: 'column',
-        paddingTop: 6,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: colors.border,
+        paddingTop: 4,
+        backgroundColor: 'transparent',
+        borderTopWidth: 0,
+        zIndex: 10,
       },
       // Row within input bar (TextInput + send/mic button)
       inputRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 10,
-        paddingVertical: 6,
+        paddingVertical: 0,
       },
       // Quick command chips scroller
       quickChipsContainer: {
         flexGrow: 0,
+        marginBottom: 4,
       },
       quickChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.surface2,
-        borderRadius: RADIUS.full,
-        paddingVertical: 6,
-        paddingHorizontal: 12,
+        backgroundColor: '#18181b',
+        borderRadius: 18,
+        paddingVertical: 7,
+        paddingHorizontal: 13,
         borderWidth: 1,
-        borderColor: colors.border,
-        gap: 5,
+        borderColor: 'rgba(255,255,255,0.08)',
+        gap: 6,
       },
       quickChipIcon: {
         // Inline with label
       },
       quickChipLabel: {
         fontFamily: FONT_FAMILY.medium,
-        fontSize: 12,
-        color: colors.textSecondary,
+        fontSize: 12.5,
+        color: '#d4d4d8',
         letterSpacing: 0.1,
       },
-      inputWrap: {
+      inputCapsule: {
         flex: 1,
-        backgroundColor: colors.accentDim,
-        borderRadius: 22,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#18181b',
+        borderRadius: 25,
         borderWidth: 1,
-        borderColor: colors.borderGlow,
-        paddingHorizontal: 16,
-        height: 44,
-        justifyContent: 'center',
+        borderColor: 'rgba(255,255,255,0.12)',
+        paddingLeft: 16,
+        paddingRight: 6,
+        minHeight: 48,
       },
       textInput: {
+        flex: 1,
+        fontFamily: FONT_FAMILY.body,
         fontSize: 15,
-        fontWeight: '400',
-        color: colors.textPrimary,
-        height: '100%',
+        color: '#ffffff',
+        maxHeight: 100,
+        paddingVertical: 10,
       },
       sendBtn: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: colors.accentPrimary,
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        backgroundColor: '#ffffff',
         alignItems: 'center',
         justifyContent: 'center',
       },

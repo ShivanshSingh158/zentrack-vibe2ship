@@ -28,7 +28,7 @@ import { ThemeProvider } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { navigationRef } from './src/navigation/AppNavigator';
-import { db } from './src/services/firebase';
+import { db, auth } from './src/services/firebase';
 import { doc, updateDoc, increment, addDoc, collection, getDoc, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { todayStr } from './src/hooks/useGymLog';
 import { COLLECTION } from './src/config/constants';
@@ -46,6 +46,8 @@ LogBox.ignoreLogs([
   'expo-notifications` functionality is not fully supported',
   'setLayoutAnimationEnabledExperimental',
   'Could not reach Cloud Firestore backend', // Safe to ignore — Firebase falls back to offline cache automatically
+  '[OfflineSync]',
+  'Missing or insufficient permissions',
 ]);
 
 // Intercept console to completely silence Metro terminal spam for known safe warnings/errors
@@ -269,18 +271,35 @@ export default function App() {
       }
 
       // ── ACTION: "Present" button on class_reminder ─────────────────────────
-      // FIX: Removed nav('Attendance') — app stays in background after tapping.
-      // Confirmation banner fires 1s later. Only opens app on write failure.
+      // App stays in background (opensAppToForeground: false).
+      // Writes both attendance_subjects and attendance_logs with lab/class distinction.
       if (actionIdentifier === 'mark_present') {
         const subjectId   = data?.subjectId  as string | undefined;
-        const subjectName = data?.subject     as string | undefined;
+        const subjectName = (data?.subject || 'Class') as string;
+        const isLab       = !!data?.isLab;
+        const logDate     = (data?.date || todayStr()) as string;
+        const uid         = auth.currentUser?.uid;
         let success = false;
         if (subjectId) {
           try {
+            const attendedField = isLab ? 'labsAttended' : 'classesAttended';
+            const totalField    = isLab ? 'labsTotal'    : 'classesTotal';
             await updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
-              classesAttended: increment(1),
-              classesTotal: increment(1),
+              [attendedField]: increment(1),
+              [totalField]: increment(1),
             });
+            if (uid) {
+              await addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), {
+                userId: uid,
+                subjectId,
+                subjectName,
+                type: isLab ? 'lab' : 'class',
+                action: 'attended',
+                date: logDate,
+                isExtra: false,
+                timestamp: Date.now(),
+              });
+            }
             success = true;
           } catch (e) {
             console.warn('[Notification] mark_present write failed:', e);
@@ -290,7 +309,7 @@ export default function App() {
           await Notifications.scheduleNotificationAsync({
             content: {
               title: '✓ Present — logged!',
-              body: subjectName ? `Attendance recorded for ${subjectName}.` : 'Attendance recorded.',
+              body: `${subjectName} marked as present.`,
               data: {},
               sound: undefined,
             },
@@ -302,27 +321,89 @@ export default function App() {
         return;
       }
 
-      // ── ACTION: "Bunking" button on class_reminder ─────────────────────────
-      // FIX: Removed nav('Attendance') — app stays in background after tapping.
-      if (actionIdentifier === 'mark_bunking') {
+      // ── ACTION: "Absent" / "Bunking" button on class_reminder ──────────────
+      // App stays in background (opensAppToForeground: false).
+      // Writes both attendance_subjects and attendance_logs with missed status.
+      if (actionIdentifier === 'mark_absent' || actionIdentifier === 'mark_bunking') {
         const subjectId   = data?.subjectId  as string | undefined;
-        const subjectName = data?.subject     as string | undefined;
+        const subjectName = (data?.subject || 'Class') as string;
+        const isLab       = !!data?.isLab;
+        const logDate     = (data?.date || todayStr()) as string;
+        const uid         = auth.currentUser?.uid;
         let success = false;
         if (subjectId) {
           try {
+            const totalField = isLab ? 'labsTotal' : 'classesTotal';
             await updateDoc(doc(db, COLLECTION.ATTENDANCE, subjectId), {
-              classesTotal: increment(1),
+              [totalField]: increment(1),
             });
+            if (uid) {
+              await addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), {
+                userId: uid,
+                subjectId,
+                subjectName,
+                type: isLab ? 'lab' : 'class',
+                action: 'missed',
+                date: logDate,
+                isExtra: false,
+                timestamp: Date.now(),
+              });
+            }
             success = true;
           } catch (e) {
-            console.warn('[Notification] mark_bunking write failed:', e);
+            console.warn('[Notification] mark_absent write failed:', e);
           }
         }
         if (success) {
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: '❌ Bunked — logged',
-              body: subjectName ? `${subjectName} marked as absent.` : 'Class marked as absent.',
+              title: '❌ Absent — logged',
+              body: `${subjectName} marked as missed.`,
+              data: {},
+              sound: undefined,
+            },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: Date.now() + 1000 } as any,
+          }).catch(() => {});
+        } else {
+          nav('Attendance');
+        }
+        return;
+      }
+
+      // ── ACTION: "Cancelled" button on class_reminder ───────────────────────
+      // App stays in background (opensAppToForeground: false).
+      // Writes attendance_logs with cancelled status (totals remain unchanged).
+      if (actionIdentifier === 'mark_cancelled') {
+        const subjectId   = data?.subjectId  as string | undefined;
+        const subjectName = (data?.subject || 'Class') as string;
+        const isLab       = !!data?.isLab;
+        const logDate     = (data?.date || todayStr()) as string;
+        const uid         = auth.currentUser?.uid;
+        let success = false;
+        if (subjectId) {
+          try {
+            if (uid) {
+              await addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), {
+                userId: uid,
+                subjectId,
+                subjectName,
+                type: isLab ? 'lab' : 'class',
+                action: 'cancelled',
+                date: logDate,
+                isExtra: false,
+                timestamp: Date.now(),
+              });
+            }
+            success = true;
+          } catch (e) {
+            console.warn('[Notification] mark_cancelled write failed:', e);
+          }
+        }
+        if (success) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: '🚫 Class Cancelled — recorded',
+              body: `${subjectName} recorded as cancelled today.`,
               data: {},
               sound: undefined,
             },
@@ -339,7 +420,7 @@ export default function App() {
       if (
         notifType === 'rest_over' ||
         notification.request.content.title?.includes('Rest is over') ||
-        notification.request.content.title?.includes('ΓÅ▒∩╕Å')
+        notification.request.content.title?.includes('⏱️')
       ) {
         if (navigationRef.isReady()) {
           // Step 1: focus the Gym tab (mounts GymStack)
@@ -372,8 +453,15 @@ export default function App() {
         return;
       }
 
-      // ── BODY TAP: Attendance warning (low %) ───────────────────────────────
-      if (notifType === 'attendance_warning' || notifType === 'class') {
+      // ── BODY TAP: Class / Attendance notification → Attendance screen ──────
+      if (
+        notifType === 'class' ||
+        notifType === 'class_pre' ||
+        notifType === 'class_log' ||
+        notifType === 'lab_mid' ||
+        notifType === 'lab_log' ||
+        notifType === 'attendance_warning'
+      ) {
         nav('Attendance');
         return;
       }

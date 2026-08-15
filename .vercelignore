@@ -1,0 +1,40 @@
+# ── Vercel Deploy Ignore ──────────────────────────────────────────────────────
+# Vercel installs dependencies automatically via package.json — never upload these.
+
+# Dependencies
+node_modules/
+mobile/node_modules/
+
+# Mobile app (not deployed to Vercel — built separately via Expo)
+mobile/android/
+mobile/ios/
+mobile/.expo/
+mobile/dist/
+
+# Build outputs already re-built on Vercel
+dist/
+
+# Large data & cache files
+ytData.json
+*.jsonl
+.vision_cache/
+
+# Scratch / temp files
+temp.js
+test.js
+fix_nav.cjs
+patch.diff
+old_youtube.js
+AttendanceScreen.tsx
+
+# Local env files (secrets never go to Vercel via CLI)
+.env
+.env.local
+.env.vercel
+.env.vercel.current
+.env.vercel.pulled
+.env.vercel.prod
+
+# IDE / git metadata
+.idea/
+.git/

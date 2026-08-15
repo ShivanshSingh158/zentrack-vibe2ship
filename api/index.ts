@@ -9,6 +9,7 @@ import search from '../server/routes/search.js';
 import sendNotification from '../server/routes/send-notification.js';
 import sendSms from '../server/routes/send-sms.js';
 import youtube from '../server/routes/youtube.js';
+import youtubeTranscript from '../server/routes/youtube-transcript.js';
 import authGoogle from '../server/routes/auth/google.js';
 import authRefresh from '../server/routes/auth/refresh.js';
 
@@ -26,6 +27,7 @@ app.use('/api/search', search);
 app.use('/api/send-notification', sendNotification);
 app.use('/api/send-sms', sendSms);
 app.use('/api/youtube', youtube);
+app.use('/api/youtube/transcript', youtubeTranscript);
 app.use('/api/auth/google', authGoogle);
 app.use('/api/auth/refresh', authRefresh);
 

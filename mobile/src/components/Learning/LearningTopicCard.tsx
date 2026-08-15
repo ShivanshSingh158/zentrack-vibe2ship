@@ -1,17 +1,15 @@
-/**
- * LearningTopicCard.tsx — ZenTrack Mobile
- * Extracted from LearningScreen.tsx for bundle splitting.
- * Single draggable topic card with expandable subtask list.
- */
-
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity
+  View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { FONT_FAMILY, SHADOW } from '../../theme/tokens';
 import { LearningTopic, LearningSubTask } from '../../contexts/MobileDataContext';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, auth } from '../../services/firebase';
+import { COLLECTION } from '../../config/constants';
+import * as Haptics from 'expo-haptics';
 
 interface LearningTopicCardProps extends RenderItemParams<LearningTopic> {
   expandedTopics: Set<string>;
@@ -41,6 +39,65 @@ export default function LearningTopicCard({
   const completedCount = subTasks.filter(s => s.isCompleted).length;
   const totalCount = subTasks.length;
   const progress = totalCount === 0 ? 0 : (completedCount / totalCount) * 100;
+
+  const [scheduleSubtask, setScheduleSubtask] = useState<LearningSubTask | null>(null);
+  const [scheduling, setScheduling] = useState(false);
+
+  const handleOpenScheduleModal = (sub: LearningSubTask) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setScheduleSubtask(sub);
+  };
+
+  const handleConfirmSchedule = async (slot: 'today' | 'tomorrow' | 'task') => {
+    const user = auth.currentUser;
+    if (!user || !scheduleSubtask) return;
+    setScheduling(true);
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const tmrw = new Date();
+    tmrw.setDate(tmrw.getDate() + 1);
+    const tmrwStr = tmrw.toISOString().slice(0, 10);
+
+    try {
+      if (slot === 'today' || slot === 'tomorrow') {
+        const targetDate = slot === 'today' ? todayStr : tmrwStr;
+        const dayLabel = slot === 'today' ? 'Today' : 'Tomorrow';
+        await addDoc(collection(db, COLLECTION.CALENDAR_EVENTS), {
+          userId: user.uid,
+          title: `Study: ${scheduleSubtask.title}`,
+          date: targetDate,
+          startTime: '19:00',
+          endTime: '20:00',
+          type: 'assignment',
+          notes: `Topic: ${topic.title}\nURL: ${scheduleSubtask.url || ''}`,
+          createdAt: serverTimestamp(),
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('🎉 Scheduled!', `Added "${scheduleSubtask.title}" to ${dayLabel}'s Calendar (7:00 PM - 8:00 PM).`);
+      } else {
+        await addDoc(collection(db, COLLECTION.TASKS), {
+          userId: user.uid,
+          title: `Study: ${scheduleSubtask.title}`,
+          date: todayStr,
+          timeSlot: '19:00 - 20:00',
+          startTime: '19:00',
+          endTime: '20:00',
+          priority: 'medium',
+          tags: ['learning'],
+          status: 'pending',
+          notes: `Topic: ${topic.title}\nURL: ${scheduleSubtask.url || ''}`,
+          createdAt: serverTimestamp(),
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert('🎉 Task Created!', `Added "${scheduleSubtask.title}" to your Task timeline under #learning.`);
+      }
+      setScheduleSubtask(null);
+    } catch (e: any) {
+      Alert.alert('Scheduling Error', e?.message || 'Failed to schedule study slot.');
+    } finally {
+      setScheduling(false);
+    }
+  };
 
   return (
     <ScaleDecorator>
@@ -131,7 +188,10 @@ export default function LearningTopicCard({
                         <Text style={s.watchBtnText}>Watch</Text>
                       </TouchableOpacity>
                     )}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                      <TouchableOpacity onPress={() => handleOpenScheduleModal(sub)} style={{ padding: 4 }}>
+                        <Ionicons name="calendar-outline" size={14} color="#a599ff" />
+                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => togglePin(topic.id!, sub.id)} style={{ padding: 4 }}>
                         <Ionicons name={sub.pinned ? "star" : "star-outline"} size={14} color={sub.pinned ? '#a599ff' : '#636366'} />
                       </TouchableOpacity>
@@ -157,6 +217,128 @@ export default function LearningTopicCard({
           </View>
         )}
       </View>
+
+      {/* ── Custom Schedule Study Slot Bottom Sheet Modal ── */}
+      <Modal
+        visible={!!scheduleSubtask}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setScheduleSubtask(null)}
+      >
+        <TouchableOpacity
+          style={s.scheduleModalOverlay}
+          activeOpacity={1}
+          onPress={() => setScheduleSubtask(null)}
+        >
+          <View
+            style={s.scheduleModalCard}
+            onStartShouldSetResponder={() => true}
+          >
+            {/* Drag Handle */}
+            <View style={s.dragHandle} />
+
+            {/* Header */}
+            <View style={s.scheduleHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={s.scheduleIconBadge}>
+                  <Ionicons name="calendar" size={16} color="#a599ff" />
+                </View>
+                <Text style={s.scheduleModalTitle}>Schedule Study Slot</Text>
+              </View>
+              <TouchableOpacity
+                style={s.scheduleCloseBtn}
+                onPress={() => setScheduleSubtask(null)}
+              >
+                <Ionicons name="close" size={18} color="#8e8e93" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Checkpoint Detail Box */}
+            <View style={s.scheduleCheckpointBox}>
+              <Text style={s.scheduleCheckpointTopic} numberOfLines={1}>
+                {topic.title}
+              </Text>
+              <Text style={s.scheduleCheckpointTitle} numberOfLines={2}>
+                "{scheduleSubtask?.title}"
+              </Text>
+            </View>
+
+            {/* Action Cards */}
+            <View style={{ gap: 10, marginVertical: 12 }}>
+              {/* Option 1: Today at 7 PM */}
+              <TouchableOpacity
+                style={s.scheduleOptionCard}
+                onPress={() => handleConfirmSchedule('today')}
+                disabled={scheduling}
+                activeOpacity={0.7}
+              >
+                <View style={s.scheduleOptionIcon}>
+                  <Ionicons name="calendar-outline" size={20} color="#a599ff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.scheduleOptionTitle}>Today at 7:00 PM</Text>
+                  <Text style={s.scheduleOptionSub}>Calendar · 1 hour study session</Text>
+                </View>
+                {scheduling ? (
+                  <ActivityIndicator size="small" color="#a599ff" />
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color="#636366" />
+                )}
+              </TouchableOpacity>
+
+              {/* Option 2: Tomorrow at 7 PM */}
+              <TouchableOpacity
+                style={s.scheduleOptionCard}
+                onPress={() => handleConfirmSchedule('tomorrow')}
+                disabled={scheduling}
+                activeOpacity={0.7}
+              >
+                <View style={[s.scheduleOptionIcon, { backgroundColor: 'rgba(165,153,255,0.12)' }]}>
+                  <Ionicons name="time-outline" size={20} color="#a599ff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.scheduleOptionTitle}>Tomorrow at 7:00 PM</Text>
+                  <Text style={s.scheduleOptionSub}>Calendar · 1 hour study session</Text>
+                </View>
+                {scheduling ? (
+                  <ActivityIndicator size="small" color="#a599ff" />
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color="#636366" />
+                )}
+              </TouchableOpacity>
+
+              {/* Option 3: Today's Tasks */}
+              <TouchableOpacity
+                style={s.scheduleOptionCard}
+                onPress={() => handleConfirmSchedule('task')}
+                disabled={scheduling}
+                activeOpacity={0.7}
+              >
+                <View style={[s.scheduleOptionIcon, { backgroundColor: 'rgba(0,193,110,0.12)' }]}>
+                  <Ionicons name="checkbox-outline" size={20} color="#00c16e" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.scheduleOptionTitle}>Add to Today's Tasks</Text>
+                  <Text style={s.scheduleOptionSub}>Tasks Timeline · Tagged #learning</Text>
+                </View>
+                {scheduling ? (
+                  <ActivityIndicator size="small" color="#00c16e" />
+                ) : (
+                  <Ionicons name="chevron-forward" size={16} color="#636366" />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Cancel Button */}
+            <TouchableOpacity
+              style={s.scheduleCancelBtn}
+              onPress={() => setScheduleSubtask(null)}
+            >
+              <Text style={s.scheduleCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ScaleDecorator>
   );
 }
@@ -184,4 +366,21 @@ const s = StyleSheet.create({
   primaryBtnText: { color: '#000', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
   addSubBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, paddingVertical: 8 },
   addSubText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#a599ff' },
+  // Schedule Modal
+  scheduleModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
+  scheduleModalCard: { backgroundColor: '#141416', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 36, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  dragHandle: { width: 40, height: 4, backgroundColor: '#2c2c2e', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  scheduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  scheduleIconBadge: { width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  scheduleModalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#f2f2f7' },
+  scheduleCloseBtn: { padding: 6, backgroundColor: '#1c1c1e', borderRadius: 14 },
+  scheduleCheckpointBox: { backgroundColor: '#1c1c1e', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  scheduleCheckpointTopic: { color: '#a599ff', fontSize: 11, fontFamily: FONT_FAMILY.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
+  scheduleCheckpointTitle: { color: '#f2f2f7', fontSize: 14, fontFamily: FONT_FAMILY.bold, marginTop: 4, lineHeight: 20 },
+  scheduleOptionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1c1e', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  scheduleOptionIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  scheduleOptionTitle: { color: '#f2f2f7', fontSize: 14, fontFamily: FONT_FAMILY.bold },
+  scheduleOptionSub: { color: '#8e8e93', fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 },
+  scheduleCancelBtn: { marginTop: 6, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1c1e', borderRadius: 12 },
+  scheduleCancelText: { color: '#8e8e93', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
 });
