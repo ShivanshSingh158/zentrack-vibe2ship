@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo, memo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, memo, useCallback } from 'react';
 
 // ΓöÇΓöÇ Isolated WorkoutTimer ΓÇö only this re-renders every second, not the whole screen
 const WorkoutTimer = memo(function WorkoutTimer({ startTime }: { startTime: number }) {
@@ -22,7 +22,7 @@ import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-nativ
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -64,6 +64,15 @@ export default function GymHomeScreen() {
   const navigation = useNavigation<any>();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [weekOffset, setWeekOffset] = useState(0);
+
+  // When switching to the Gym module from another tab/module, always return to Today
+  useFocusEffect(
+    useCallback(() => {
+      const today = todayStr();
+      setSelectedDate(today);
+      setWeekOffset(0);
+    }, [])
+  );
 
   const { gymLogs, waterLogs, sleepLogs, tasks, customEvents, attendance, habitLogs, allHabits, assignments, applyMasterTemplate, userGymPlan, updateFullMasterPlan, user } = useMobileData();
   const currentStreak = useMemo(() => calculateGymStreak(gymLogs, userGymPlan), [gymLogs, userGymPlan]);
@@ -597,7 +606,7 @@ export default function GymHomeScreen() {
 
       {/* Week Strip */}
       <Animated.View style={[s.weekStrip, { opacity: Animated.multiply(headerFade, animWeek), transform: [{ translateY: animWeek.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
-        <TouchableOpacity onPress={() => { hapticLight(); setWeekOffset(prev => prev - 1); setSelectedDate(prev => dateStrOffset(-7, prev)); }} style={s.weekNavBtn}>
+        <TouchableOpacity onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setWeekOffset(prev => prev - 1); setSelectedDate(prev => dateStrOffset(-7, prev)); }} style={s.weekNavBtn}>
           <Ionicons name="chevron-back" size={16} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
@@ -611,7 +620,7 @@ export default function GymHomeScreen() {
             const dateDay = days[dateObj.getDay()];
             
             return (
-              <TouchableOpacity key={date} style={s.dayCol} onPress={() => setSelectedDate(date)}>
+              <TouchableOpacity key={date} style={s.dayCol} onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setSelectedDate(date); }}>
                 <Text style={[s.dayLetter, isSelected && s.dayLetterActive]}>{dateDay}</Text>
                 <View style={[s.dayPill, isSelected && s.dayPillActive]}>
                   <Text style={[s.dayNum, isSelected && s.dayNumActive]}>{dateNum}</Text>
@@ -621,7 +630,7 @@ export default function GymHomeScreen() {
           })}
         </View>
 
-        <TouchableOpacity onPress={() => { hapticLight(); setWeekOffset(prev => prev + 1); setSelectedDate(prev => dateStrOffset(7, prev)); }} style={s.weekNavBtn}>
+        <TouchableOpacity onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setWeekOffset(prev => prev + 1); setSelectedDate(prev => dateStrOffset(7, prev)); }} style={s.weekNavBtn}>
           <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
         </TouchableOpacity>
       </Animated.View>
