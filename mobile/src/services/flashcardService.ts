@@ -206,13 +206,16 @@ export async function getDueFlashcards(userId: string): Promise<Flashcard[]> {
   try {
     const q = query(
       collection(db, COLLECTION.FLASHCARDS),
-      where('userId', '==', userId),
-      where('nextReviewDate', '<=', today)
+      where('userId', '==', userId)
     );
     const snap = await getDocs(q);
     const results: Flashcard[] = [];
     snap.forEach(d => {
-      results.push({ id: d.id, ...(d.data() as any) });
+      const data = d.data() as Flashcard;
+      // Filter for cards due on or before today
+      if (!data.nextReviewDate || data.nextReviewDate <= today) {
+        results.push({ id: d.id, ...data });
+      }
     });
     return results;
   } catch (e) {
