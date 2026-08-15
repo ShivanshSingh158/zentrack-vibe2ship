@@ -20,6 +20,8 @@ import { fetchVideoTranscript, TranscriptCue, TranscriptResult } from '../../ser
 import { generateFlashcardsFromContext, saveFlashcardsToFirestore } from '../../services/flashcardService';
 import VsCodeSyntaxHighlighter from './VsCodeSyntaxHighlighter';
 import LectureChatHistoryModal from './LectureChatHistoryModal';
+import LectureMindMap from './LectureMindMap';
+import InlineCodeRunner, { isRunnable } from './InlineCodeRunner';
 
 interface LearningVideoPlayerProps {
   activeVideoSub: LearningSubTask;
@@ -152,6 +154,7 @@ export default function LearningVideoPlayer({
 
   const { user, learningTopics } = useMobileData();
   const [generatingCards, setGeneratingCards] = useState(false);
+  const [mindMapVisible, setMindMapVisible] = useState(false);
 
   const handleGenerateFlashcards = async (sourceText?: string) => {
     if (!user) {
@@ -277,10 +280,32 @@ export default function LearningVideoPlayer({
     return transcriptCues.filter(c => c.text.toLowerCase().includes(q) || c.formattedTime.includes(q));
   }, [transcriptCues, transcriptSearch]);
 
+  // Plain-text transcript for mind map generation (from already-loaded cues)
+  const transcriptPlainText = useMemo(
+    () => transcriptCues.map(c => `[${c.formattedTime}] ${c.text}`).join('\n'),
+    [transcriptCues]
+  );
+
   const markdownRules = {
     fence: (node: any) => {
       const language = (node.sourceInfo || 'code').trim();
       const codeContent = (node.content || '').replace(/\n$/, '');
+
+      // ── InlineCodeRunner for executable languages ──────────────────────────
+      // JS / TS / Python get a ▶ Run button + sandboxed output panel.
+      // All other languages fall back to the static copy-only block.
+      if (isRunnable(language)) {
+        return (
+          <InlineCodeRunner
+            key={node.key}
+            code={codeContent}
+            language={language}
+            nodeKey={node.key}
+          />
+        );
+      }
+
+      // ── Static copy-only block for non-runnable languages ─────────────────
       return (
         <View key={node.key} style={s.codeBoxContainer}>
           <View style={s.codeBoxHeader}>
@@ -520,6 +545,7 @@ export default function LearningVideoPlayer({
             >
               <Ionicons name="document-text" size={18} color={notesVisible ? '#000' : '#f2f2f7'} />
             </TouchableOpacity>
+            {/* Transcript button */}
             <TouchableOpacity
               style={[s.controlBtn, transcriptVisible && { backgroundColor: '#a599ff' }]}
               onPress={() => {
@@ -529,6 +555,30 @@ export default function LearningVideoPlayer({
               }}
             >
               <Ionicons name="receipt-outline" size={18} color={transcriptVisible ? '#000' : '#f2f2f7'} />
+            </TouchableOpacity>
+
+            {/* ── Flashcard generate button ────────────────────────────────────
+                Triggers ZEN-GPT to produce 5 SM-2 flashcards from transcript/notes.
+                Shows a spinner while generating. Green accent when transcript ready. */}
+            <TouchableOpacity
+              style={[s.controlBtn, { paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 3 }]}
+              onPress={() => handleGenerateFlashcards()}
+              disabled={generatingCards}
+            >
+              {generatingCards
+                ? <ActivityIndicator size="small" color="#a599ff" style={{ transform: [{ scale: 0.7 }] }} />
+                : <Text style={{ fontSize: 14 }}>🃏</Text>
+              }
+            </TouchableOpacity>
+
+            {/* ── Mind Map button ──────────────────────────────────────────────
+                Opens LectureMindMap modal with AI-generated SVG diagram.
+                Enabled once transcript cues are loaded. */}
+            <TouchableOpacity
+              style={[s.controlBtn, { paddingHorizontal: 8 }, mindMapVisible && { backgroundColor: '#a599ff' }]}
+              onPress={() => setMindMapVisible(true)}
+            >
+              <Text style={{ fontSize: 14 }}>🗺️</Text>
             </TouchableOpacity>
             {aiChatVisible && (
               <TouchableOpacity
@@ -918,9 +968,29 @@ export default function LearningVideoPlayer({
         onSelectLecture={onSelectLecture}
         onClearCurrentChat={resetChatHistory}
       />
+
+      {/* ── Mind Map Modal ───────────────────────────────────────────────────────
+          Lazy-renders on first open. Transcript plain text derived from the
+          already-fetched transcriptCues — no extra network call.
+          Tapping a node auto-sends the concept to ZEN-GPT and closes the map.
+      ─────────────────────────────────────────────────────────────────────── */}
+      <LectureMindMap
+        visible={mindMapVisible}
+        onClose={() => setMindMapVisible(false)}
+        lectureTitle={activeVideoSub?.title || 'Lecture'}
+        transcript={transcriptPlainText}
+        onAskQuestion={(question) => {
+          setMindMapVisible(false);
+          setAiChatVisible(true);
+          setNotesVisible(false);
+          // Small delay to let the AI panel open before auto-sending
+          setTimeout(() => sendAiMessage(question), 200);
+        }}
+      />
     </View>
   );
 }
+
 
 const s = StyleSheet.create({
   fullPlayerContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000000', zIndex: 100 },
