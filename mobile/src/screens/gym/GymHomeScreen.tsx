@@ -38,6 +38,7 @@ import BodyMetricsSheet from '../../components/Gym/BodyMetricsSheet';
 import PRHallOfFameSheet from '../../components/Gym/PRHallOfFameSheet';
 import { ZenGymAiFab } from '../../components/Gym/ZenGymAiFab';
 import { handleSyncError } from '../../utils/errorUtils';
+import { getOverloadSuggestion } from '../../services/progressiveOverload';
 
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
@@ -84,11 +85,19 @@ export default function GymHomeScreen() {
   const [showBodyMetrics, setShowBodyMetrics] = useState(false);
   const [showPRHallOfFame, setShowPRHallOfFame] = useState(false);
 
+  // ── Progressive Overload Toast state ────────────────────────────────────────
+  const [overloadToast, setOverloadToast] = useState<{
+    exerciseName: string;
+    suggestedWeight: number;
+    currentWeight: number;
+    step: number;
+  } | null>(null);
+  const overloadToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const SCREEN_HEIGHT = Dimensions.get('window').height;
   const scrollViewRef = useRef<any>(null);
   const currentScrollY = useRef<number>(0);
 
-  // Custom panResponder drag state removed in favor of DraggableFlatList
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerFade = scrollY.interpolate({
     inputRange: [0, 50],
@@ -100,10 +109,6 @@ export default function GymHomeScreen() {
   const animWeek = useRef(new Animated.Value(1)).current;
   const animBanner = useRef(new Animated.Value(1)).current;
   const animList = useRef(new Animated.Value(1)).current;
-
-  useEffect(() => {
-    // Disabled mount animations for instant load
-  }, []);
 
   // ─── Sub-5-min Abandoned Micro-Log Auto-Purge ──────────────────────────
   // If a workout was started but abandoned without any completed sets,
@@ -145,10 +150,69 @@ export default function GymHomeScreen() {
     }
   }, [log?.id, selectedDate, (log as any)?.completed, log?.workoutStartTime, log?.workoutDurationMinutes]);
 
-  // Mocks for AI modal
-  const activeMuscles: { muscle: string }[] = [];
-  const doneSets = 0;
-  const totalSets = 0;
+  // ── Real-time session context for GYM-GPT ─────────────────────────────────
+  // Previously hardcoded mocks — now computed from actual log data so GYM-GPT
+  // knows exactly what muscles were trained and how many sets are done.
+  const activeMuscles = useMemo(() =>
+    [...new Set((log?.exercises || []).filter(ex => !ex.skipped).flatMap(ex => ex.muscle ? [ex.muscle] : []))]
+      .map(m => ({ muscle: m as string })),
+  [log?.exercises]);
+
+  const doneSets = useMemo(() =>
+    (log?.exercises || []).reduce((sum, ex) => sum + (ex.setsLog || []).filter((s: any) => s.completed).length, 0),
+  [log?.exercises]);
+
+  const totalSets = useMemo(() =>
+    (log?.exercises || []).reduce((sum, ex) => sum + (ex.setsLog || []).length, 0),
+  [log?.exercises]);
+
+  // ── Progressive Overload Toast trigger ────────────────────────────────────
+  // Fires when an exercise becomes 100% complete (all sets done).
+  // Checks if the user has hit targets for 2+ past sessions and surfaces a
+  // weight increase suggestion — the core value of apps like Hevy / Strong.
+  const prevExercisesDoneRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!log?.exercises || !gymLogs) return;
+    (log.exercises || []).forEach(ex => {
+      if (ex.skipped) return;
+      const allDone = ex.setsLog.length > 0 && ex.setsLog.every((s: any) => s.completed);
+      if (!allDone || prevExercisesDoneRef.current.has(ex.exerciseId)) return;
+
+      // Mark as already triggered so we don't re-fire on re-render
+      prevExercisesDoneRef.current = new Set([...prevExercisesDoneRef.current, ex.exerciseId]);
+
+      const lastCompletedWeight = Math.max(...(ex.setsLog || []).map((s: any) => s.weight || 0));
+      if (lastCompletedWeight <= 0) return;
+
+      const suggestion = getOverloadSuggestion(
+        { name: ex.name, isCompound: ex.isCompound },
+        lastCompletedWeight,
+        ex.setsLog.length,
+        ex.targetReps || '8',
+        gymLogs
+      );
+
+      if (suggestion?.type === 'increase') {
+        // Clear any existing toast timer
+        if (overloadToastTimer.current) clearTimeout(overloadToastTimer.current);
+        setOverloadToast({
+          exerciseName: ex.name,
+          suggestedWeight: suggestion.recommended,
+          currentWeight: lastCompletedWeight,
+          step: suggestion.weightDelta,
+        });
+        // Auto-dismiss after 6 seconds
+        overloadToastTimer.current = setTimeout(() => setOverloadToast(null), 6000);
+      }
+    });
+  }, [log?.exercises, gymLogs]);
+
+  // Reset done-set tracker when date/log changes
+  useEffect(() => {
+    prevExercisesDoneRef.current = new Set();
+    setOverloadToast(null);
+  }, [log?.id]);
 
   const handleAiAddExercise = (name: string, targetSets: number, targetReps: string) => {
     addExercise({
@@ -955,6 +1019,54 @@ export default function GymHomeScreen() {
 
       </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* ── Progressive Overload Toast ─────────────────────────────────────────
+          Surfaces automatically when an exercise is fully completed and the
+          algorithm detects the user has hit their targets 2+ sessions in a row.
+          Floats above the AI FAB, auto-dismisses after 6 seconds.
+      ─────────────────────────────────────────────────────────────────────── */}
+      {overloadToast && (
+        <Animated.View
+          style={{
+            position: 'absolute',
+            bottom: 160, // above the AI FAB
+            left: 16,
+            right: 16,
+            backgroundColor: '#1a2a1a',
+            borderRadius: 16,
+            padding: 14,
+            borderWidth: 1,
+            borderColor: 'rgba(52,199,89,0.35)',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            shadowColor: '#34C759',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.25,
+            shadowRadius: 12,
+            elevation: 12,
+            zIndex: 9998,
+          }}
+        >
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(52,199,89,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 18 }}>💪</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 12, fontFamily: FONT_FAMILY.bold, color: '#34C759', marginBottom: 2 }}>
+              Progressive Overload Ready!
+            </Text>
+            <Text style={{ fontSize: 11, fontFamily: FONT_FAMILY.body, color: '#c7f7d4', lineHeight: 15 }} numberOfLines={2}>
+              {overloadToast.exerciseName}: try {overloadToast.suggestedWeight}kg next session (+{overloadToast.step}kg from {overloadToast.currentWeight}kg)
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => { if (overloadToastTimer.current) clearTimeout(overloadToastTimer.current); setOverloadToast(null); }}
+            style={{ padding: 4 }}
+          >
+            <Ionicons name="close" size={16} color="rgba(255,255,255,0.4)" />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
 
       {/* ZenGymAI FAB fixed to root, immune to keyboard layout jumps */}
       <ZenGymAiFab onPress={() => setShowAiModal(true)} />
