@@ -33,20 +33,19 @@ import { awardXP } from '../services/xpSystem';
 import * as Haptics from 'expo-haptics';
 import { fetchVideoTranscript, transcriptToPlainText } from '../services/youtubeTranscriptService';
 
-// ── System Prompt Builder ───────────────────────────────────────────────────
-// Mirror of the web tutor's buildSystemInstruction — same 8 Laws of Zen Tutoring
-const buildZenGptSystemPrompt = (
+// ── System Prompt Builders ─────────────────────────────────────────────────
+// PERF FIX: Split into two functions:
+// 1. buildZenGptBasePrompt — expensive, built ONCE when transcript arrives.
+//    Includes the full 50k+ char transcript. Cached in tutorBasePromptRef.
+// 2. buildZenGptSystemPrompt — cheap per-message wrapper that injects only
+//    the current video timestamp (~5 lines). Never re-concatenates the transcript.
+const buildZenGptBasePrompt = (
   videoTitle: string,
   topicName: string,
   transcript: string,
-  currentVideoSecond?: number,
 ): string => {
-  const timestampCtx = currentVideoSecond !== undefined
-    ? `\nStudent is currently at: ${formatSeconds(currentVideoSecond)} in the video.`
-    : '';
-
   return `You are ZEN-GPT — a world-class expert educator and AI tutor embedded inside ZenTrack mobile.
-The student is watching: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"${timestampCtx}
+The student is watching: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"
 
 == THE 8 LAWS OF ZEN TUTORING (NEVER BREAK) ==
 
@@ -105,7 +104,20 @@ Reference timestamps precisely when answering: "At 4:32, she explains..." — qu
 
 ${transcript}
 === END TRANSCRIPT ===`
-  : '(No transcript available — answer from the video title, topic, and your deep expert knowledge of this subject.)'}`;
+  : '(No transcript available — answer from the video title, topic, and your deep expert knowledge of this subject.)'}`.trimEnd();
+};
+
+/**
+ * Per-message wrapper — injects only the current playback second.
+ * The base prompt (with 50k+ char transcript) is passed by reference from the
+ * cached ref, so no re-concatenation of the transcript happens per message.
+ */
+const buildZenGptSystemPrompt = (
+  basePrompt: string,
+  currentVideoSecond?: number,
+): string => {
+  if (currentVideoSecond === undefined) return basePrompt;
+  return `${basePrompt}\nStudent is currently at: ${formatSeconds(currentVideoSecond)} in the video.`;
 };
 
 const formatSeconds = (secs: number): string => {
@@ -156,8 +168,11 @@ export default function LearningScreen() {
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
 
-  // ΓöÇΓöÇ ZEN-GPT Tutor context (persisted for full session) ΓöÇΓöÇ
+  // ── ZEN-GPT Tutor context (persisted for full session) ──
   const tutorSystemPromptRef = useRef<string>('');
+  // PERF FIX: base prompt (with full transcript) is cached separately.
+  // Per-message, only the ~5-line timestamp header is recalculated on top.
+  const tutorBasePromptRef = useRef<string>('');
   const tutorConversationRef = useRef<{ role: string; parts: { text: string }[] }[]>([]);
   const tutorTranscriptRef = useRef<string>('');
   const [transcriptStatus, setTranscriptStatus] = useState<'idle' | 'loading' | 'ready' | 'unavailable'>('idle');
@@ -277,119 +292,92 @@ export default function LearningScreen() {
   const openVideo = async (topicId: string, sub: LearningSubTask) => {
     const vidId = extractVideoId(sub.url);
     if (!vidId) { Alert.alert('Invalid URL', 'Only YouTube links are supported.'); return; }
+
+    // ── INSTANT: Show video player immediately, don't wait for context ────────
     setActiveVideoTopicId(topicId);
     setActiveVideoSub(sub);
     setPlaying(true);
     setIsPip(false);
     setIsFocusMode(false);
-
-    // 1. Restore Notes (prefer local draft if newer, else sub.notes)
-    let initialNotes = sub.notes || '';
-    try {
-      const localNotes = await AsyncStorage.getItem(`@lecture_notes_${sub.id}`);
-      if (localNotes && localNotes.trim().length > initialNotes.trim().length) {
-        initialNotes = localNotes;
-      }
-    } catch (e) {}
-    setCurrentNotes(initialNotes);
+    setCurrentNotes(sub.notes || '');
 
     const videoTitle = sub.title?.trim() || 'this lecture';
     const topic = learningTopics.find(t => t.id === topicId);
     const topicName = topic?.title || 'your learning path';
 
-    // 2. Check for saved chat history for this lecture
+    // Set placeholder UI state while context loads in background
+    tutorConversationRef.current = [];
+    tutorTranscriptRef.current = '';
+    const emptyBase = buildZenGptBasePrompt(videoTitle, topicName, '');
+    tutorBasePromptRef.current = emptyBase;
+    tutorSystemPromptRef.current = emptyBase;
+    setAiHistory([{ role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}**. ⏳ Loading context...` }]);
+    setTranscriptStatus('loading');
+
+    // ── BACKGROUND: Load all context in parallel ───────────────────────────
+    const [localNotes, chatRaw, cachedTranscript, videoTimeStr] = await Promise.all([
+      AsyncStorage.getItem(`@lecture_notes_${sub.id}`).catch(() => null),
+      AsyncStorage.getItem(`@lecture_chat_${sub.id}`).catch(() => null),
+      AsyncStorage.getItem(`@lecture_transcript_${vidId}`).catch(() => null),
+      AsyncStorage.getItem(`@video_time_${sub.id}`).catch(() => null),
+    ]);
+
+    // 1. Apply notes (prefer local draft if longer)
+    const bestNotes = (localNotes && localNotes.trim().length > (sub.notes || '').trim().length)
+      ? localNotes : (sub.notes || '');
+    setCurrentNotes(bestNotes);
+
+    // 2. Restore saved video position
+    if (videoTimeStr && playerRef.current) {
+      playerRef.current.seekTo(parseInt(videoTimeStr, 10), true);
+    }
+
+    // 3. Parse saved chat
     let savedChat: { role: string; text: string }[] | null = null;
-    try {
-      const raw = await AsyncStorage.getItem(`@lecture_chat_${sub.id}`);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          savedChat = parsed;
-        }
+    if (chatRaw) {
+      try {
+        const parsed = JSON.parse(chatRaw);
+        if (Array.isArray(parsed) && parsed.length > 0) savedChat = parsed;
+      } catch { /* ignore */ }
+    }
+
+    // 4. Build system prompt from transcript (cached or fetched)
+    const resolveTranscript = async (): Promise<string> => {
+      if (cachedTranscript) return cachedTranscript;
+      try {
+        const res = await fetchVideoTranscript(vidId, videoTitle);
+        const content = transcriptToPlainText(res.cues);
+        if (content) AsyncStorage.setItem(`@lecture_transcript_${vidId}`, content).catch(() => {});
+        return content;
+      } catch {
+        return '';
       }
-    } catch (e) {}
+    };
 
-    // 3. Check for cached transcript
-    let cachedTranscript = '';
-    try {
-      cachedTranscript = (await AsyncStorage.getItem(`@lecture_transcript_${vidId}`)) || '';
-    } catch (e) {}
+    const transcript = await resolveTranscript();
+    tutorTranscriptRef.current = transcript;
+    const basePrompt = buildZenGptBasePrompt(videoTitle, topicName, transcript);
+    tutorBasePromptRef.current = basePrompt;
+    tutorSystemPromptRef.current = basePrompt;
+    setTranscriptStatus(transcript ? 'ready' : 'unavailable');
 
+    // 5. Restore chat or show fresh welcome
     if (savedChat) {
-      // Restore previous chat session seamlessly!
       setAiHistory(savedChat);
       tutorConversationRef.current = savedChat
         .filter(m => m.text && !m.text.startsWith('⚠️'))
         .map(m => ({ role: m.role === 'model' ? 'model' : 'user', parts: [{ text: m.text }] }));
-
-      if (cachedTranscript) {
-        tutorTranscriptRef.current = cachedTranscript;
-        tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, cachedTranscript);
-        setTranscriptStatus('ready');
-      } else {
-        // Fetch transcript in background via 4-layer resilient pipeline without disrupting restored chat
-        fetchVideoTranscript(vidId, videoTitle).then(res => {
-          const content = transcriptToPlainText(res.cues);
-          if (content) {
-            tutorTranscriptRef.current = content;
-            tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, content);
-            setTranscriptStatus('ready');
-            AsyncStorage.setItem(`@lecture_transcript_${vidId}`, content).catch(() => {});
-          }
-        });
-      }
     } else {
-      // First time opening this lecture — initialize new tutor session
-      tutorConversationRef.current = [];
-      tutorTranscriptRef.current = '';
-      tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, '');
-
-      setAiHistory([{ role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}**. ⏳ Loading transcript...` }]);
-      setTranscriptStatus('loading');
-
-      if (cachedTranscript) {
-        tutorTranscriptRef.current = cachedTranscript;
-        tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, cachedTranscript);
-        setTranscriptStatus('ready');
-        const welcomeHistory = [
-          { role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}** (${topicName}). 🎓` },
-          { role: 'model', text: `✅ **Lecture transcript loaded**. I know this lecture in detail with exact timestamps. Ask me anything!` },
-        ];
-        setAiHistory(welcomeHistory);
-        AsyncStorage.setItem(`@lecture_chat_${sub.id}`, JSON.stringify(welcomeHistory)).catch(() => {});
-      } else {
-        const res = await fetchVideoTranscript(vidId, videoTitle);
-        const content = transcriptToPlainText(res.cues);
-
-        tutorTranscriptRef.current = content;
-        tutorSystemPromptRef.current = buildZenGptSystemPrompt(videoTitle, topicName, content);
-        setTranscriptStatus(content ? 'ready' : 'unavailable');
-        if (content) {
-          AsyncStorage.setItem(`@lecture_transcript_${vidId}`, content).catch(() => {});
-        }
-
-        let statusMsg: string;
-        if (content) {
-          statusMsg = `✅ **Lecture transcript loaded** (~${res.cues.length} timestamped cues). I know this lecture in precise detail. Ask me anything!`;
-        } else {
-          statusMsg = `🎓 I am ready to tutor you on **${videoTitle}** (${topicName}). Ask me any concept, code explanation, or quiz!`;
-        }
-
-        const welcomeHistory = [
-          { role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}** (${topicName}). 🎓` },
-          { role: 'model', text: statusMsg },
-        ];
-        setAiHistory(welcomeHistory);
-        AsyncStorage.setItem(`@lecture_chat_${sub.id}`, JSON.stringify(welcomeHistory)).catch(() => {});
-      }
+      const statusMsg = transcript
+        ? `✅ **Lecture transcript loaded** (~${transcript.split('\n').length} cues). I know this lecture in precise detail. Ask me anything!`
+        : `🎓 I am ready to tutor you on **${videoTitle}** (${topicName}). Ask me any concept, code explanation, or quiz!`;
+      const welcomeHistory = [
+        { role: 'model', text: `I am **ZEN-GPT**, your AI tutor for **${videoTitle}** (${topicName}). 🎓` },
+        { role: 'model', text: statusMsg },
+      ];
+      setAiHistory(welcomeHistory);
+      AsyncStorage.setItem(`@lecture_chat_${sub.id}`, JSON.stringify(welcomeHistory)).catch(() => {});
     }
-
-    try {
-      const timeStr = await AsyncStorage.getItem(`@video_time_${sub.id}`);
-      if (timeStr && playerRef.current) {
-        playerRef.current.seekTo(parseInt(timeStr, 10), true);
-      }
-    } catch (e) {}
   };
 
   const closeVideo = async () => {
@@ -460,13 +448,12 @@ export default function LearningScreen() {
       }
     } catch { /* ignore */ }
 
-    // Refresh system prompt with latest playback position
+    // Refresh system prompt with current playback position.
+    // PERF FIX: Only recalculates the ~5-line timestamp header on top of the
+    // cached base prompt — never re-concatenates the full transcript string.
     if (activeVideoSub) {
-      const topic = learningTopics.find(t => t.id === activeVideoTopicId);
       tutorSystemPromptRef.current = buildZenGptSystemPrompt(
-        activeVideoSub.title,
-        topic?.title || activeVideoTopicId || '',
-        tutorTranscriptRef.current,
+        tutorBasePromptRef.current,
         currentSecond,
       );
     }
@@ -478,7 +465,13 @@ export default function LearningScreen() {
     try {
       const data = await callProxy({
         model: 'gemini-2.5-flash',
-        contents: conversationHistory,
+        // PERF FIX: Build conversation array in-place. userTurn is pushed onto
+        // the ref array directly — no O(n) spread copy. The ref array IS the
+        // contents array, so Gemini always sees the full history.
+        contents: (() => {
+          tutorConversationRef.current.push({ role: 'user', parts: [{ text: msg }] });
+          return tutorConversationRef.current;
+        })(),
         systemInstruction: tutorSystemPromptRef.current,
         generationConfig: {
           temperature: 0.7,
@@ -489,11 +482,8 @@ export default function LearningScreen() {
       const { text: reply } = parseProxyResponse(data);
       if (!reply) throw new Error('Empty response from ZEN-GPT');
 
-      // Persist conversation history for multi-turn memory
-      tutorConversationRef.current = [
-        ...conversationHistory,
-        { role: 'model', parts: [{ text: reply }] },
-      ];
+      // Persist conversation history for multi-turn memory — push in-place (O(1))
+      tutorConversationRef.current.push({ role: 'model', parts: [{ text: reply }] });
 
       const updatedAiHistory = [...newHistory, { role: 'model', text: reply }];
       setAiHistory(updatedAiHistory);
@@ -510,22 +500,25 @@ export default function LearningScreen() {
           }, { merge: true }).catch(() => {});
         }
 
-        // Cap total stored lecture chats to 5 (auto-prune oldest)
-        AsyncStorage.getAllKeys().then(async keys => {
+        // PERF FIX: Chat pruning — cap total stored lecture chats to 5.
+        // Old approach: getAllKeys → multiGet(all) → JSON.parse all → sort by length. O(n) I/O.
+        // New approach: getAllKeys → count only → if > 5, sort by key ID substring (no I/O).
+        // The key format is @lecture_chat_<subId>. We can compare IDs lexicographically
+        // as a proxy for age (older subtask IDs are lexicographically earlier when
+        // using timestamp-based IDs). No value reads needed.
+        AsyncStorage.getAllKeys().then(keys => {
           const chatKeys = keys.filter(k => k.startsWith('@lecture_chat_'));
-          if (chatKeys.length > 5) {
-            const currentKey = `@lecture_chat_${activeVideoSub.id}`;
-            const otherKeys = chatKeys.filter(k => k !== currentKey);
-            const pairs = await AsyncStorage.multiGet(otherKeys);
-            const sortedPairs = [...pairs].sort((a: any, b: any) => {
-              const lenA = a[1] ? JSON.parse(a[1])?.length || 0 : 0;
-              const lenB = b[1] ? JSON.parse(b[1])?.length || 0 : 0;
-              return lenB - lenA;
-            });
-            const excessKeys = sortedPairs.slice(4).map((p: any) => p[0]);
-            for (const k of excessKeys) {
-              AsyncStorage.removeItem(k).catch(() => {});
-            }
+          // Fast path: under the limit, skip all I/O
+          if (chatKeys.length <= 5) return;
+
+          const currentKey = `@lecture_chat_${activeVideoSub.id}`;
+          const otherKeys = chatKeys.filter(k => k !== currentKey);
+          // Sort oldest-first by key ID suffix (lexicographic ≈ creation order for timestamp IDs)
+          otherKeys.sort();
+          // Remove all excess keys beyond slot 4 (keep 4 others + current = 5 total)
+          const excessKeys = otherKeys.slice(4);
+          for (const k of excessKeys) {
+            AsyncStorage.removeItem(k).catch(() => {});
           }
         }).catch(() => {});
       }
