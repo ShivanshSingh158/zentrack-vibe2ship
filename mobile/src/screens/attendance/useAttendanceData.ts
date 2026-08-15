@@ -3,7 +3,7 @@
  * All local state, Firestore listeners (logs + holidays), schema migration,
  * and derived computed values for the Attendance module.
  */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, query, where, onSnapshot, writeBatch, doc, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useMobileData, AttendanceSubject } from '../../contexts/MobileDataContext';
@@ -78,12 +78,37 @@ export function useAttendanceData() {
   }, [user]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
+  // ── logsBySubjectId — stable indexed map ──────────────────────────────────
+  // PERF FIX: A plain useMemo([logs]) rebuilds the whole O(n) map every time
+  // the `logs` array reference changes — which happens on EVERY optimistic
+  // update (every Present/Absent tap). With 200+ logs this causes noticeable
+  // button lag.
+  //
+  // Fix: We keep a ref to the previous map and a memoization key built from
+  // just the log count + last log's id+action. The map is only rebuilt when
+  // content genuinely changes, not on every identity change of the array.
+  const logsBySubjectIdRef = useRef<Record<string, any[]>>({});
+  const logsKeyRef = useRef<string>('');
+
   const logsBySubjectId = useMemo(() => {
+    // Build a cheap key: length + last entry id + last entry action.
+    // This stays stable when Firestore sends back the same data in a new array.
+    const last = logs[logs.length - 1];
+    const key = `${logs.length}:${last?.id ?? ''}:${last?.action ?? ''}`;
+
+    if (key === logsKeyRef.current) {
+      // Nothing actually changed — return the cached map, skip O(n) rebuild
+      return logsBySubjectIdRef.current;
+    }
+
+    // Content changed — rebuild
+    logsKeyRef.current = key;
     const map: Record<string, any[]> = {};
     for (const log of logs) {
       if (!map[log.subjectId]) map[log.subjectId] = [];
       map[log.subjectId].push(log);
     }
+    logsBySubjectIdRef.current = map;
     return map;
   }, [logs]);
 

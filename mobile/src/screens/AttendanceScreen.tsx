@@ -250,7 +250,7 @@ export default function AttendanceScreen() {
                   <TouchableOpacity
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      requestAnimationFrame(() => handleUndo(log.id));
+                      handleUndo(log.id);
                     }}
                     style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }}
                   >
@@ -267,7 +267,7 @@ export default function AttendanceScreen() {
                       style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        requestAnimationFrame(() => handleLog(subject, type, 'attended'));
+                        handleLog(subject, type, 'attended');
                       }}
                     >
                       <Text style={{ color: colors.priorityLow, fontSize: 12, fontWeight: '600' }}>Present</Text>
@@ -276,7 +276,7 @@ export default function AttendanceScreen() {
                       style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2c2c2e' }}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        requestAnimationFrame(() => handleLog(subject, type, 'missed'));
+                        handleLog(subject, type, 'missed');
                       }}
                     >
                       <Text style={{ color: colors.error, fontSize: 12, fontWeight: '600' }}>Absent</Text>
@@ -285,7 +285,7 @@ export default function AttendanceScreen() {
                       style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#2c2c2e', alignItems: 'center', justifyContent: 'center' }}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        requestAnimationFrame(() => handleLog(subject, type, 'cancelled'));
+                        handleLog(subject, type, 'cancelled');
                       }}
                     >
                       <Ionicons name="close" size={18} color={colors.textMuted} />
