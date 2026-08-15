@@ -236,33 +236,53 @@ export default function LectureMindMap({
     Animated.spring(scale, { toValue: next, useNativeDriver: false, friction: 6 }).start();
   };
 
-  // ── PanResponder for 360° Infinite Pan + Pinch to Zoom ───────────────────────
+  // ── PanResponder for 360° Infinite Pan + Natural Pinch to Zoom ───────────────
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => false,
     onMoveShouldSetPanResponder: (evt, gestureState) => {
-      // Activate on drag > 4px or multi-touch pinch
-      return Math.abs(gestureState.dx) > 4 || Math.abs(gestureState.dy) > 4 || evt.nativeEvent.touches.length > 1;
+      // Activate on drag > 2px or multi-touch pinch
+      const touchCount = evt.nativeEvent.touches?.length || 0;
+      return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2 || touchCount > 1;
     },
     onPanResponderGrant: (evt) => {
-      if (evt.nativeEvent.touches.length === 2) {
-        const [t1, t2] = evt.nativeEvent.touches;
+      const touches = evt.nativeEvent.touches;
+      if (touches && touches.length === 2) {
+        const [t1, t2] = touches;
         initialPinchDistance.current = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
         initialScaleOnPinch.current = scaleValue.current;
+      } else {
+        initialPinchDistance.current = null;
       }
     },
     onPanResponderMove: (evt, gestureState) => {
-      if (evt.nativeEvent.touches.length === 2) {
-        // Multi-touch pinch-to-zoom
-        const [t1, t2] = evt.nativeEvent.touches;
+      const touches = evt.nativeEvent.touches;
+
+      if (touches && touches.length === 2) {
+        // Multi-touch natural pinch-to-zoom
+        const [t1, t2] = touches;
         const currentDist = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
-        if (initialPinchDistance.current && initialPinchDistance.current > 0) {
+
+        // Dynamically initialize pinch baseline if 2nd finger was added mid-drag
+        if (initialPinchDistance.current == null || initialPinchDistance.current <= 0) {
+          initialPinchDistance.current = currentDist;
+          initialScaleOnPinch.current = scaleValue.current;
+          return;
+        }
+
+        if (initialPinchDistance.current > 0) {
           const ratio = currentDist / initialPinchDistance.current;
-          const nextScale = Math.min(1.5, Math.max(0.35, Number((initialScaleOnPinch.current * ratio).toFixed(2))));
+          const nextScale = Math.min(1.6, Math.max(0.35, Number((initialScaleOnPinch.current * ratio).toFixed(3))));
           scale.setValue(nextScale);
           scaleValue.current = nextScale;
           setScaleDisplay(Math.round(nextScale * 100));
         }
-      } else {
+      } else if (touches && touches.length === 1) {
+        // Reset pinch baseline if transitioning back to 1 finger
+        if (initialPinchDistance.current != null) {
+          initialPinchDistance.current = null;
+          initialScaleOnPinch.current = scaleValue.current;
+        }
+
         // 1-finger 360° smooth pan
         pan.setValue({
           x: panOffset.current.x + gestureState.dx,
@@ -276,6 +296,15 @@ export default function LectureMindMap({
         y: panOffset.current.y + gestureState.dy,
       };
       initialPinchDistance.current = null;
+      initialScaleOnPinch.current = scaleValue.current;
+    },
+    onPanResponderTerminate: (evt, gestureState) => {
+      panOffset.current = {
+        x: panOffset.current.x + gestureState.dx,
+        y: panOffset.current.y + gestureState.dy,
+      };
+      initialPinchDistance.current = null;
+      initialScaleOnPinch.current = scaleValue.current;
     },
   }), [pan, scale]);
 
