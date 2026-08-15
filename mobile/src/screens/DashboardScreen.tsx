@@ -27,6 +27,7 @@ import DashboardLayoutSheet from '../components/Dashboard/DashboardLayoutSheet';
 import WaterLogSheet from '../components/Dashboard/WaterLogSheet';
 import FlashcardReviewModal from '../components/Learning/FlashcardReviewModal';
 import { getDueFlashcards, Flashcard } from '../services/flashcardService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DashboardScreen() {
   const { colors } = useTheme();
