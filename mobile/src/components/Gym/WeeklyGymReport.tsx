@@ -1,46 +1,44 @@
 /**
  * WeeklyGymReport • ZenTrack Mobile
- * Shown every Sunday as the full-week workout analytics dashboard.
- * Displays: muscle frequency rings, set/volume bars, untrained muscle warnings,
- * weekly total stats, and week-over-week set/weight changes.
- * Theme: Obsidian Cosmos • no hardcoded colours outside COLORS tokens.
+ * Shown on rest days (e.g. Sunday) as the full-week workout analytics dashboard.
+ * Displays:
+ *  - Dynamic muscle target completion rings (done / planned sets, e.g. 9/9 = 100% full circle)
+ *  - Global weekly KPIs (Sessions, Total Sets, Volume) with week-over-week deltas
+ *  - Weekly Highlights & Top Lifts
+ *  - Daily Volume Distribution bar chart
+ *  - Cardio & Conditioning recap
+ *  - Untrained muscle balance alert
+ *  - GYM-GPT Weekly Intelligence: Deep set/rep/volume analysis, last week comparisons,
+ *    30-day mesocycle trajectory, and actionable next-cycle directives.
+ *
+ * Theme: Obsidian Cosmos • COLORS tokens only.
  */
 
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACE, RADIUS, FONT_FAMILY, FONT_SIZE } from '../../theme/tokens';
-import { MUSCLE_CANONICAL, canonicalizeMuscle } from '../../utils/gymUtils';
+import { COLORS, RADIUS, FONT_FAMILY, FONT_SIZE } from '../../theme/tokens';
+import { canonicalizeMuscle, isValidWorkoutSession } from '../../utils/gymUtils';
+import { hapticLight, hapticMedium } from '../../utils/haptics';
+import { GYM_PLAN } from '../../data/gymPlan';
+import {
+  getOrGenerateWeeklyGymAnalysis,
+  WeeklyGymAnalysis,
+} from '../../services/weeklyGymAnalysisEngine';
+import type { GymDayLog, GymPlanDay, UserGymPlanDoc } from '../../types/gym.types';
 
-// •• Types ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
-
-interface GymSet {
-  completed: boolean;
-  reps?: number | null;
-  weight?: number | null;
-}
-
-interface GymExercise {
-  name: string;
-  muscle?: string;
-  setsLog: GymSet[];
-}
-
-interface GymLog {
-  date: string; // YYYY-MM-DD
-  exercises?: GymExercise[];
-}
+// ── Types ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  gymLogs: GymLog[];
-  /** ISO date string of the week being viewed (any day in that week) */
+  gymLogs: Array<GymDayLog | any>;
+  /** ISO date string of the week being viewed (any day in that week, YYYY-MM-DD) */
   weekAnchorDate: string;
+  userGymPlan?: UserGymPlanDoc | any | null;
 }
 
-// •• Helpers •••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Format a Date to YYYY-MM-DD using LOCAL timezone (not UTC). */
 function localDateStr(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -48,10 +46,10 @@ function localDateStr(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Returns all 7 YYYY-MM-DD strings for the week containing anchorDate (Mon•Sun). */
+/** Returns all 7 YYYY-MM-DD strings for the week containing anchorDate (Mon–Sun). */
 function getWeekRange(anchor: string): string[] {
   const [y, m, day] = anchor.split('-').map(Number);
-  const d = new Date(y, m - 1, day); // safe local date parsing
+  const d = new Date(y, m - 1, day);
   const dow = d.getDay(); // 0=Sun
   const monday = new Date(d);
   monday.setDate(d.getDate() - ((dow + 6) % 7));
@@ -70,15 +68,6 @@ function getPrevWeekRange(anchor: string): string[] {
   return getWeekRange(localDateStr(d));
 }
 
-
-
-/** All muscle groups we track */
-const ALL_MUSCLES = [
-  'Chest', 'Back', 'Shoulders', 'Triceps', 'Biceps',
-  'Quads', 'Hamstrings', 'Calves', 'Abs', 'Forearms', 'Glutes', 'Traps',
-];
-
-// Colour per muscle group • all from Obsidian Cosmos palette variants
 const MUSCLE_COLORS: Record<string, string> = {
   Chest:      '#a599ff', // accent purple
   Back:       '#89dceb', // accent blue
@@ -88,73 +77,117 @@ const MUSCLE_COLORS: Record<string, string> = {
   Quads:      '#ff9f4d', // amber
   Hamstrings: '#89dceb', // blue
   Calves:     '#5eda9e', // green
-  Abs:        '#636366', // muted
+  Abs:        '#a599ff', // purple
   Forearms:   '#ff9f4d', // amber
   Glutes:     '#a599ff', // purple
   Traps:      '#89dceb', // blue
-  Mixed:      '#3c3c3e', // border
+  Mixed:      '#8e8e93', // muted
 };
 
-// •• Donut Ring (pure SVG, no reanimated) •••••••••••••••••••••••••••••••••••••
+// ── Formatted Text Component (Parses **bold** into native bold font) ─────────
 
-function DonutRing({
-  pct, color, size = 64, strokeWidth = 7,
-}: { pct: number; color: string; size?: number; strokeWidth?: number }) {
-  const r = (size - strokeWidth) / 2;
-  const circ = 2 * Math.PI * r;
-  const filled = Math.min(1, pct / 100) * circ;
-  const center = size / 2;
+function FormattedText({
+  text,
+  style,
+  boldColor,
+}: {
+  text?: string;
+  style?: any;
+  boldColor?: string;
+}) {
+  if (!text) return null;
+  // Splits by **...** markers
+  const segments = text.split(/(\*\*[^*]+\*\*)/g);
 
   return (
-    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      {/* Track */}
-      <Circle
-        cx={center} cy={center} r={r}
-        stroke="rgba(255,255,255,0.06)"
-        strokeWidth={strokeWidth}
-        fill="none"
-      />
-      {/* Fill */}
-      <G rotation="-90" origin={`${center},${center}`}>
-        <Circle
-          cx={center} cy={center} r={r}
-          stroke={color}
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeDasharray={`${filled} ${circ - filled}`}
-          strokeLinecap="round"
-        />
-      </G>
-    </Svg>
-  );
-}
-
-// •• Bar component •••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
-
-function MiniBar({ value, maxValue, color }: { value: number; maxValue: number; color: string }) {
-  const pct = maxValue > 0 ? Math.min(1, value / maxValue) : 0;
-  return (
-    <View style={{ flex: 1, height: 4, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 2, overflow: 'hidden' }}>
-      <View style={{ width: `${pct * 100}%`, height: '100%', backgroundColor: color, borderRadius: 2 }} />
-    </View>
-  );
-}
-
-// •• Change Badge ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
-
-function ChangeBadge({ delta, unit }: { delta: number; unit: string }) {
-  if (delta === 0) return <Text style={st.changeBadgeNeutral}>•</Text>;
-  const up = delta > 0;
-  return (
-    <Text style={[st.changeBadge, { color: up ? COLORS.accentGreen : COLORS.error }]}>
-      {up ? '•' : '•'} {Math.abs(delta)}{unit}
+    <Text style={style}>
+      {segments.map((seg, idx) => {
+        if (seg.startsWith('**') && seg.endsWith('**') && seg.length > 4) {
+          const inner = seg.slice(2, -2);
+          return (
+            <Text
+              key={idx}
+              style={{
+                fontFamily: FONT_FAMILY.bold,
+                fontWeight: '700',
+                color: boldColor || COLORS.textPrimary,
+              }}
+            >
+              {inner}
+            </Text>
+          );
+        }
+        return <Text key={idx}>{seg}</Text>;
+      })}
     </Text>
   );
 }
 
-// •• Main Component ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+// ── Donut Ring Component ─────────────────────────────────────────────────────
 
-export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
+function DonutRing({
+  pct,
+  color,
+  size = 66,
+  strokeWidth = 6.5,
+}: {
+  pct: number;
+  color: string;
+  size?: number;
+  strokeWidth?: number;
+}) {
+  const r = (size - strokeWidth) / 2;
+  const circ = 2 * Math.PI * r;
+  const clampedPct = Math.min(100, Math.max(0, pct));
+  const filled = (clampedPct / 100) * circ;
+  const center = size / 2;
+  const isComplete = clampedPct >= 100;
+
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* Background Track */}
+      <Circle
+        cx={center}
+        cy={center}
+        r={r}
+        stroke="rgba(255,255,255,0.06)"
+        strokeWidth={strokeWidth}
+        fill="none"
+      />
+      {/* Filled Arc */}
+      {filled > 0 && (
+        <G rotation="-90" origin={`${center},${center}`}>
+          <Circle
+            cx={center}
+            cy={center}
+            r={r}
+            stroke={isComplete ? (color === '#8e8e93' ? COLORS.accentGreen : color) : color}
+            strokeWidth={strokeWidth}
+            fill="none"
+            strokeDasharray={`${filled} ${circ - filled}`}
+            strokeLinecap="round"
+          />
+        </G>
+      )}
+    </Svg>
+  );
+}
+
+// ── Change Delta Badge ───────────────────────────────────────────────────────
+
+function ChangeBadge({ delta, unit = '' }: { delta: number; unit?: string }) {
+  if (delta === 0) return <Text style={st.changeBadgeNeutral}>• no change</Text>;
+  const isPositive = delta > 0;
+  return (
+    <Text style={[st.changeBadge, { color: isPositive ? COLORS.accentGreen : COLORS.error }]}>
+      {isPositive ? '▲ +' : '▼ -'}{Math.abs(delta)}{unit}
+    </Text>
+  );
+}
+
+// ── Main Component ───────────────────────────────────────────────────────────
+
+export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }: Props) {
   const weekDates = useMemo(() => getWeekRange(weekAnchorDate), [weekAnchorDate]);
   const prevDates = useMemo(() => getPrevWeekRange(weekAnchorDate), [weekAnchorDate]);
 
@@ -167,19 +200,59 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
     [gymLogs, prevDates],
   );
 
-  // •• Compute per-muscle stats ••••••••••••••••••••••••••••••••••••••••••••••
+  // ── Compute Weekly Target Sets from Active Routine ─────────────────────────
+  const plannedMuscleTargets = useMemo(() => {
+    const targets: Record<string, number> = {};
+    const daysIndices = [1, 2, 3, 4, 5, 6, 7];
 
-  interface MuscleStats { sets: number; totalKg: number; sessions: number }
+    daysIndices.forEach(dayIdx => {
+      const planDay: GymPlanDay | undefined =
+        userGymPlan?.customDays?.[dayIdx] || GYM_PLAN.find(p => p.dayIndex === dayIdx);
 
-  function computeMuscleStats(logs: GymLog[]): Record<string, MuscleStats> {
+      if (planDay && !planDay.isRest && planDay.exercises) {
+        planDay.exercises.forEach(ex => {
+          const m = canonicalizeMuscle(ex.muscle);
+          const sets = ex.targetSets || 3;
+          targets[m] = (targets[m] || 0) + sets;
+        });
+      }
+    });
+
+    return targets;
+  }, [userGymPlan]);
+
+  // Total planned workout days in weekly routine
+  const plannedWorkoutDaysCount = useMemo(() => {
+    const daysIndices = [1, 2, 3, 4, 5, 6, 7];
+    let count = 0;
+    daysIndices.forEach(dayIdx => {
+      const planDay: GymPlanDay | undefined =
+        userGymPlan?.customDays?.[dayIdx] || GYM_PLAN.find(p => p.dayIndex === dayIdx);
+      if (planDay && !planDay.isRest) count++;
+    });
+    return Math.max(1, count);
+  }, [userGymPlan]);
+
+  // ── Compute Actual Logged Muscle Stats ─────────────────────────────────────
+  interface MuscleStats {
+    sets: number;
+    totalKg: number;
+    sessions: number;
+  }
+
+  function computeMuscleStats(logs: GymDayLog[]): Record<string, MuscleStats> {
     const map: Record<string, MuscleStats> = {};
     for (const log of logs) {
-      for (const ex of (log.exercises ?? [])) {
+      for (const ex of log.exercises ?? []) {
+        if (ex.skipped) continue;
         const m = canonicalizeMuscle(ex.muscle);
         if (!map[m]) map[m] = { sets: 0, totalKg: 0, sessions: 0 };
-        const completedSets = ex.setsLog.filter(s => s.completed);
+        const completedSets = (ex.setsLog ?? []).filter(s => s.completed);
         map[m].sets += completedSets.length;
-        map[m].totalKg += completedSets.reduce((sum, s) => sum + ((s.weight ?? 0) * (s.reps ?? 0)), 0);
+        map[m].totalKg += completedSets.reduce(
+          (sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0),
+          0,
+        );
         if (completedSets.length > 0) map[m].sessions += 1;
       }
     }
@@ -189,102 +262,374 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
   const thisWeekMuscle = useMemo(() => computeMuscleStats(weekLogs), [weekLogs]);
   const prevWeekMuscle = useMemo(() => computeMuscleStats(prevLogs), [prevLogs]);
 
-  // •• Global week totals •••••••••••••••••••••••••••••••••••••••••••••••••••
-
-  const totalSets = useMemo(() =>
-    Object.values(thisWeekMuscle).reduce((s, m) => s + m.sets, 0), [thisWeekMuscle]);
-  const prevTotalSets = useMemo(() =>
-    Object.values(prevWeekMuscle).reduce((s, m) => s + m.sets, 0), [prevWeekMuscle]);
-
-  const totalVolume = useMemo(() =>
-    Object.values(thisWeekMuscle).reduce((s, m) => s + m.totalKg, 0), [thisWeekMuscle]);
-  const prevTotalVolume = useMemo(() =>
-    Object.values(prevWeekMuscle).reduce((s, m) => s + m.totalKg, 0), [prevWeekMuscle]);
-
-  const workoutDays = weekLogs.filter(l => (l.exercises?.length ?? 0) > 0 || ((l as any).cardio?.length ?? 0) > 0).length;
-  const prevWorkoutDays = prevLogs.filter(l => (l.exercises?.length ?? 0) > 0 || ((l as any).cardio?.length ?? 0) > 0).length;
-
-  // •• Muscle breakdown sorted by sets •••••••••••••••••••••••••••••••••••••
-
-  const maxSets = useMemo(
-    () => Math.max(1, ...Object.values(thisWeekMuscle).map(m => m.sets)),
+  // ── Global KPI Totals ──────────────────────────────────────────────────────
+  const totalSets = useMemo(
+    () => Object.values(thisWeekMuscle).reduce((s, m) => s + m.sets, 0),
     [thisWeekMuscle],
   );
-
-  const trainedMuscles = useMemo(() =>
-    ALL_MUSCLES.filter(m => (thisWeekMuscle[m]?.sets ?? 0) > 0)
-      .sort((a, b) => (thisWeekMuscle[b]?.sets ?? 0) - (thisWeekMuscle[a]?.sets ?? 0)),
-    [thisWeekMuscle],
+  const prevTotalSets = useMemo(
+    () => Object.values(prevWeekMuscle).reduce((s, m) => s + m.sets, 0),
+    [prevWeekMuscle],
   );
 
-  const untrainedMuscles = useMemo(() =>
-    ALL_MUSCLES.filter(m => !(thisWeekMuscle[m]?.sets ?? 0)),
+  const totalVolume = useMemo(
+    () => Object.values(thisWeekMuscle).reduce((s, m) => s + m.totalKg, 0),
     [thisWeekMuscle],
   );
+  const prevTotalVolume = useMemo(
+    () => Object.values(prevWeekMuscle).reduce((s, m) => s + m.totalKg, 0),
+    [prevWeekMuscle],
+  );
 
-  // •• Per-day volume bars (Mon•Sat, skip Sun rest) •••••••••••••••••••••••••
+  const workoutDays = useMemo(
+    () => weekLogs.filter(isValidWorkoutSession).length,
+    [weekLogs],
+  );
 
+  const prevWorkoutDays = useMemo(
+    () => prevLogs.filter(isValidWorkoutSession).length,
+    [prevLogs],
+  );
+
+  // ── Weekly Highlights: Heaviest Lift & Top Volume Exercise ─────────────────
+  const weeklyHighlights = useMemo(() => {
+    let topLift = { name: '', weight: 0, reps: 0 };
+    const exerciseVolMap: Record<string, { volume: number; name: string }> = {};
+
+    for (const log of weekLogs) {
+      for (const ex of log.exercises ?? []) {
+        if (ex.skipped) continue;
+        for (const s of ex.setsLog ?? []) {
+          if (s.completed && s.weight && s.weight > 0) {
+            if (s.weight > topLift.weight) {
+              topLift = { name: ex.name, weight: s.weight, reps: s.reps || 0 };
+            }
+            const vol = s.weight * (s.reps || 1);
+            if (!exerciseVolMap[ex.name]) {
+              exerciseVolMap[ex.name] = { name: ex.name, volume: 0 };
+            }
+            exerciseVolMap[ex.name].volume += vol;
+          }
+        }
+      }
+    }
+
+    const topVolumeExercise = Object.values(exerciseVolMap).sort(
+      (a, b) => b.volume - a.volume,
+    )[0] || null;
+
+    return { topLift: topLift.weight > 0 ? topLift : null, topVolumeExercise };
+  }, [weekLogs]);
+
+  // ── Cardio Recap ───────────────────────────────────────────────────────────
+  const cardioSummary = useMemo(() => {
+    let totalMinutes = 0;
+    let totalKm = 0;
+    let sessions = 0;
+    let loggedCalories = 0;
+
+    for (const log of weekLogs) {
+      for (const c of log.cardio ?? []) {
+        if (c.completed) {
+          sessions++;
+          totalMinutes += Number(c.durationMinutes) || 0;
+          totalKm += Number(c.distanceKm) || 0;
+          loggedCalories += Number(c.caloriesBurned) || 0;
+        }
+      }
+    }
+
+    const roundedKm = Math.round(totalKm * 10) / 10;
+    const estCalories = loggedCalories > 0 ? loggedCalories : Math.round(totalMinutes * 8.5);
+    const avgDuration = sessions > 0 ? Math.round(totalMinutes / sessions) : 0;
+    const avgSpeedKmh = totalMinutes > 0 && roundedKm > 0 ? Math.round((roundedKm / (totalMinutes / 60)) * 10) / 10 : 0;
+    const avgPaceMinKm = roundedKm > 0 && totalMinutes > 0 ? Math.round((totalMinutes / roundedKm) * 10) / 10 : 0;
+
+    return {
+      totalMinutes,
+      totalKm: roundedKm,
+      sessions,
+      estCalories,
+      avgDuration,
+      avgSpeedKmh,
+      avgPaceMinKm,
+    };
+  }, [weekLogs]);
+
+  // ── Muscle List for Display ────────────────────────────────────────────────
+  const displayMuscles = useMemo(() => {
+    const allRelevant = Array.from(
+      new Set([
+        ...Object.keys(plannedMuscleTargets),
+        ...Object.keys(thisWeekMuscle),
+      ]),
+    );
+
+    return allRelevant
+      .filter(m => (thisWeekMuscle[m]?.sets ?? 0) > 0 || (plannedMuscleTargets[m] ?? 0) > 0)
+      .sort((a, b) => {
+        const setsA = thisWeekMuscle[a]?.sets ?? 0;
+        const setsB = thisWeekMuscle[b]?.sets ?? 0;
+        return setsB - setsA;
+      });
+  }, [plannedMuscleTargets, thisWeekMuscle]);
+
+  const untrainedMuscles = useMemo(() => {
+    return Object.keys(plannedMuscleTargets).filter(
+      m => !(thisWeekMuscle[m]?.sets ?? 0) && (plannedMuscleTargets[m] ?? 0) > 0,
+    );
+  }, [plannedMuscleTargets, thisWeekMuscle]);
+
+  // ── Daily Volume Bar Chart Data (Mon–Sun) ──────────────────────────────────
   const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  const dailyVolume = useMemo(() =>
-    weekDates.map(date => {
+  const dailyVolume = useMemo(() => {
+    return weekDates.map(date => {
       const log = weekLogs.find(l => l.date === date);
       if (!log) return 0;
-      return (log.exercises ?? []).reduce((sum, ex) =>
-        sum + ex.setsLog.filter(s => s.completed).reduce((s2, s) =>
-          s2 + ((s.weight ?? 0) * (s.reps ?? 0)), 0), 0);
-    }),
-    [weekLogs, weekDates],
-  );
+      return (log.exercises ?? []).reduce((sum, ex) => {
+        if (ex.skipped) return sum;
+        return (
+          sum +
+          (ex.setsLog ?? [])
+            .filter(s => s.completed)
+            .reduce((s2, s) => s2 + (s.weight ?? 0) * (s.reps ?? 0), 0)
+        );
+      }, 0);
+    });
+  }, [weekLogs, weekDates]);
 
   const maxDailyVol = useMemo(() => Math.max(1, ...dailyVolume), [dailyVolume]);
 
-  // •• Render guard • no workouts this week ••••••••••••••••••••••••••••••••
+  const totalPlannedSets = useMemo(
+    () => Object.values(plannedMuscleTargets).reduce((a, b) => a + b, 0),
+    [plannedMuscleTargets],
+  );
+  const adherenceRate = totalPlannedSets > 0 ? Math.round((totalSets / totalPlannedSets) * 100) : 100;
+  const hasData = workoutDays > 0 || cardioSummary.sessions > 0;
 
-  const hasData = workoutDays > 0;
+  // ── GYM-GPT Weekly Intelligence Hook & State ──────────────────────────────
+  const [aiAnalysis, setAiAnalysis] = useState<WeeklyGymAnalysis | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const loadWeeklyAnalysis = useCallback(async (force = false) => {
+    if (!hasData) return;
+    setAiLoading(true);
+    try {
+      const res = await getOrGenerateWeeklyGymAnalysis(
+        gymLogs,
+        weekAnchorDate,
+        userGymPlan,
+        undefined,
+        force,
+      );
+      if (res.analysis) {
+        setAiAnalysis(res.analysis);
+      }
+    } catch (e) {
+      console.warn('[WeeklyGymReport] AI load error:', e);
+    } finally {
+      setAiLoading(false);
+    }
+  }, [gymLogs, weekAnchorDate, userGymPlan, hasData]);
+
+  useEffect(() => {
+    loadWeeklyAnalysis(false);
+  }, [loadWeeklyAnalysis]);
 
   return (
     <View style={st.container}>
-      {/* •• Title •• */}
+      {/* ── Title Header ──────────────────────────────────────────────────── */}
       <View style={st.titleRow}>
         <View>
           <Text style={st.title}>Weekly Recap</Text>
-          <Text style={st.subtitle}>Rest day  •  Full breakdown below</Text>
+          <Text style={st.subtitle}>
+            {workoutDays}/{plannedWorkoutDaysCount} Days Trained • Full Breakdown
+          </Text>
         </View>
         <View style={st.restBadge}>
-          <Text style={st.restBadgeText}>Rest =</Text>
+          <Ionicons name="bed-outline" size={13} color={COLORS.accentPrimary} />
+          <Text style={st.restBadgeText}>Recovery Mode</Text>
         </View>
       </View>
 
       {!hasData ? (
         <View style={st.emptyCard}>
-          <Ionicons name="barbell-outline" size={40} color={COLORS.textTertiary} />
+          <Ionicons name="barbell-outline" size={42} color={COLORS.textTertiary} />
           <Text style={st.emptyText}>No workouts logged this week yet.</Text>
-          <Text style={st.emptySubtext}>Start training and your stats will appear here every Sunday.</Text>
+          <Text style={st.emptySubtext}>
+            Log your workouts during the week and your full analytics and progress rings will populate here.
+          </Text>
         </View>
       ) : (
         <>
-          {/* •• Global Stats Row •• */}
+          {/* ── Global KPI Stats ────────────────────────────────────────────── */}
           <View style={st.statsRow}>
-            {[
-              { label: 'Sessions', value: workoutDays, prevValue: prevWorkoutDays, unit: '', suffix: '/6' },
-              { label: 'Total Sets', value: totalSets, prevValue: prevTotalSets, unit: '' },
-              { label: 'Volume', value: Math.round(totalVolume / 1000), prevValue: Math.round(prevTotalVolume / 1000), unit: 'k kg' },
-            ].map(({ label, value, prevValue, unit, suffix }) => (
-              <View key={label} style={st.statCard}>
-                <Text style={st.statValue}>{value}{unit}{suffix ?? ''}</Text>
-                <Text style={st.statLabel}>{label}</Text>
-                <ChangeBadge delta={value - prevValue} unit={unit} />
-              </View>
-            ))}
+            <View style={st.statCard}>
+              <Text style={st.statValue}>
+                {workoutDays}
+                <Text style={st.statSuffix}>/{plannedWorkoutDaysCount}</Text>
+              </Text>
+              <Text style={st.statLabel}>Sessions</Text>
+              <ChangeBadge delta={workoutDays - prevWorkoutDays} unit="d" />
+            </View>
+
+            <View style={st.statCard}>
+              <Text style={st.statValue}>{totalSets}</Text>
+              <Text style={st.statLabel}>Total Sets</Text>
+              <ChangeBadge delta={totalSets - prevTotalSets} unit="s" />
+            </View>
+
+            <View style={st.statCard}>
+              <Text style={st.statValue}>
+                {totalVolume >= 1000
+                  ? `${Math.round(totalVolume / 100) / 10}k`
+                  : totalVolume}
+                <Text style={st.statSuffix}> kg</Text>
+              </Text>
+              <Text style={st.statLabel}>Volume</Text>
+              <ChangeBadge
+                delta={Math.round((totalVolume - prevTotalVolume) / 100) / 10}
+                unit="k"
+              />
+            </View>
           </View>
 
-          {/* •• Daily Volume Bar Chart •• */}
+          {/* ── Highlights & Top Lift Card (Subtle Obsidian Gold) ───────────── */}
+          {weeklyHighlights.topLift && (
+            <View style={st.highlightCard}>
+              <View style={st.highlightHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={st.trophyCircle}>
+                    <Ionicons name="trophy" size={13} color="#e6c875" />
+                  </View>
+                  <View>
+                    <Text style={st.highlightTitle}>WEEKLY BEST LIFTS</Text>
+                    <Text style={st.highlightSubtitle}>Peak Load & Volume Leaders</Text>
+                  </View>
+                </View>
+                <View style={st.highlightBadge}>
+                  <Text style={st.highlightBadgeText}>🏆 PR Highs</Text>
+                </View>
+              </View>
+
+              <View style={st.highlightPodsGrid}>
+                {/* Pod 1: Heaviest Lift */}
+                <View style={st.highlightPod}>
+                  <View style={st.highlightPodHeader}>
+                    <Ionicons name="barbell-outline" size={12} color="#e6c875" />
+                    <Text style={st.highlightPodTag}>HEAVIEST LIFT</Text>
+                  </View>
+                  <Text style={st.highlightLiftName} numberOfLines={1}>
+                    {weeklyHighlights.topLift.name}
+                  </Text>
+                  <View style={st.highlightStatRow}>
+                    <Text style={st.highlightWeightText}>
+                      {weeklyHighlights.topLift.weight}
+                      <Text style={st.highlightUnit}> kg</Text>
+                    </Text>
+                    <Text style={st.highlightRepsText}>
+                      • {weeklyHighlights.topLift.reps} reps
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Pod 2: Volume Leader */}
+                {weeklyHighlights.topVolumeExercise && (
+                  <View style={st.highlightPod}>
+                    <View style={st.highlightPodHeader}>
+                      <Ionicons name="layers-outline" size={12} color="#89dceb" />
+                      <Text style={[st.highlightPodTag, { color: '#89dceb' }]}>VOLUME LEADER</Text>
+                    </View>
+                    <Text style={st.highlightLiftName} numberOfLines={1}>
+                      {weeklyHighlights.topVolumeExercise.name}
+                    </Text>
+                    <View style={st.highlightStatRow}>
+                      <Text style={[st.highlightWeightText, { color: '#ffffff' }]}>
+                        {Math.round(weeklyHighlights.topVolumeExercise.volume / 100) / 10}k
+                        <Text style={st.highlightUnit}> kg</Text>
+                      </Text>
+                      <Text style={st.highlightRepsText}>
+                        • workload
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* ── Muscle Target Adherence (Dynamic Donut Circles) ─────────────── */}
           <View style={st.card}>
-            <Text style={st.sectionLabel}>DAILY VOLUME</Text>
+            <View style={st.cardHeaderRow}>
+              <Text style={st.sectionLabel}>MUSCLE TARGET ADHERENCE</Text>
+              <View style={st.adherenceBadge}>
+                <Text style={st.adherenceBadgeText}>
+                  {adherenceRate >= 100 ? '100% Plan Hit' : `${adherenceRate}% Plan Hit`}
+                </Text>
+              </View>
+            </View>
+
+            <View style={st.muscleGrid}>
+              {displayMuscles.map(muscle => {
+                const stats = thisWeekMuscle[muscle] || { sets: 0, totalKg: 0, sessions: 0 };
+                const plannedTarget = plannedMuscleTargets[muscle] || stats.sets || 1;
+                const pct = Math.min(100, Math.round((stats.sets / plannedTarget) * 100));
+                const isComplete = stats.sets >= plannedTarget && plannedTarget > 0;
+                const color = isComplete ? COLORS.accentGreen : (MUSCLE_COLORS[muscle] ?? COLORS.accentPrimary);
+                const prev = prevWeekMuscle[muscle];
+                const delta = stats.sets - (prev?.sets ?? 0);
+
+                return (
+                  <View key={muscle} style={st.muscleCard}>
+                    <View style={st.ringWrapper}>
+                      <DonutRing pct={pct} color={color} size={66} strokeWidth={6.5} />
+                      <View style={st.ringCenter}>
+                        <Text style={[st.ringNum, { color }]}>
+                          {stats.sets}
+                          <Text style={st.ringTarget}>/{plannedTarget}</Text>
+                        </Text>
+                        <Text style={st.ringUnit}>
+                          {isComplete ? '✓ Done' : `${pct}%`}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={st.muscleName} numberOfLines={1}>
+                      {muscle}
+                    </Text>
+
+                    <View style={st.muscleChangeRow}>
+                      {delta !== 0 ? (
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontFamily: FONT_FAMILY.bold,
+                            color: delta > 0 ? COLORS.accentGreen : COLORS.error,
+                          }}
+                        >
+                          {delta > 0 ? '▲ +' : '▼ -'}{Math.abs(delta)} sets
+                        </Text>
+                      ) : (
+                        <Text style={{ fontSize: 10, color: COLORS.textTertiary }}>
+                          • on track
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* ── Daily Volume Bar Chart ──────────────────────────────────────── */}
+          <View style={st.card}>
+            <Text style={st.sectionLabel}>DAILY TRAINING VOLUME</Text>
             <View style={st.barChart}>
               {dailyVolume.map((vol, i) => {
-                const pct = vol / maxDailyVol;
+                const pct = maxDailyVol > 0 ? vol / maxDailyVol : 0;
                 const isSun = i === 6;
+                const isTrained = vol > 0;
+
                 return (
                   <View key={i} style={st.barCol}>
                     <View style={st.barTrack}>
@@ -294,14 +639,20 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
                           {
                             height: `${Math.max(4, pct * 100)}%`,
                             backgroundColor: isSun
-                              ? COLORS.textTertiary
-                              : vol > 0 ? COLORS.accentPrimary : 'rgba(255,255,255,0.05)',
-                            opacity: isSun ? 0.3 : 1,
+                              ? 'rgba(255,255,255,0.1)'
+                              : isTrained
+                              ? COLORS.accentPrimary
+                              : 'rgba(255,255,255,0.05)',
                           },
                         ]}
                       />
                     </View>
-                    <Text style={[st.barLabel, vol > 0 && !isSun && { color: COLORS.textMuted }]}>
+                    <Text
+                      style={[
+                        st.barLabel,
+                        isTrained && { color: COLORS.textPrimary, fontFamily: FONT_FAMILY.bold },
+                      ]}
+                    >
                       {DAY_LABELS[i]}
                     </Text>
                   </View>
@@ -310,80 +661,100 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
             </View>
           </View>
 
-          {/* •• Muscle Frequency Grid (Donut Rings) •• */}
-          <View style={st.card}>
-            <Text style={st.sectionLabel}>MUSCLE FREQUENCY</Text>
-            <View style={st.muscleGrid}>
-              {trainedMuscles.map(muscle => {
-                const stats = thisWeekMuscle[muscle];
-                const prev = prevWeekMuscle[muscle];
-                const pct = Math.min(100, (stats.sets / 18) * 100); // 18 sets = 100%
-                const color = MUSCLE_COLORS[muscle] ?? COLORS.accentPrimary;
-                const delta = stats.sets - (prev?.sets ?? 0);
-                return (
-                  <View key={muscle} style={st.muscleCard}>
-                    <View style={st.ringWrapper}>
-                      <DonutRing pct={pct} color={color} size={62} strokeWidth={6} />
-                      <View style={st.ringCenter}>
-                        <Text style={[st.ringNum, { color }]}>{stats.sets}</Text>
-                        <Text style={st.ringUnit}>sets</Text>
-                      </View>
-                    </View>
-                    <Text style={st.muscleName}>{muscle}</Text>
-                    <View style={st.muscleChangeRow}>
-                      {delta !== 0 ? (
-                        <Text style={{ fontSize: 10, color: delta > 0 ? COLORS.accentGreen : COLORS.error }}>
-                          {delta > 0 ? '•' : '•'}{Math.abs(delta)}
-                        </Text>
-                      ) : (
-                        <Text style={{ fontSize: 10, color: COLORS.textTertiary }}>•</Text>
-                      )}
-                    </View>
+          {/* ── Cardio & Conditioning (Elevated Luxury Pods Design) ─────────── */}
+          {cardioSummary.sessions > 0 && (
+            <View style={st.cardioCard}>
+              <View style={st.cardioHeaderRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={st.cardioIconBadge}>
+                    <Ionicons name="flame" size={14} color={COLORS.accentAmber} />
                   </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* •• Muscle Set Bars •• */}
-          <View style={st.card}>
-            <Text style={st.sectionLabel}>SETS BY MUSCLE</Text>
-            {ALL_MUSCLES.map(muscle => {
-              const sets = thisWeekMuscle[muscle]?.sets ?? 0;
-              const vol = thisWeekMuscle[muscle]?.totalKg ?? 0;
-              const color = MUSCLE_COLORS[muscle] ?? COLORS.accentPrimary;
-              const isTrained = sets > 0;
-              return (
-                <View key={muscle} style={st.muscleBarRow}>
-                  <View style={st.muscleBarNameCol}>
-                    <View style={[st.muscleDot, { backgroundColor: isTrained ? color : COLORS.border }]} />
-                    <Text style={[st.muscleBarName, !isTrained && { color: COLORS.textTertiary }]}>
-                      {muscle}
-                    </Text>
+                  <View>
+                    <Text style={st.cardioSectionTitle}>CARDIO & CONDITIONING</Text>
+                    <Text style={st.cardioSectionSubtitle}>Aerobic & Heart Health Output</Text>
                   </View>
-                  <View style={st.muscleBarFill}>
-                    <MiniBar value={sets} maxValue={maxSets} color={color} />
-                  </View>
-                  <Text style={[st.muscleBarSets, { color: isTrained ? COLORS.textPrimary : COLORS.textTertiary }]}>
-                    {isTrained ? `${sets} sets` : '•'}
-                  </Text>
-                  {vol > 0 && (
-                    <Text style={st.muscleBarVol}>{Math.round(vol / 1000 * 10) / 10}k</Text>
-                  )}
                 </View>
-              );
-            })}
-          </View>
 
-          {/* •• Untrained Muscles Warning •• */}
+                <View style={st.cardioTagPill}>
+                  <Text style={st.cardioTagText}>
+                    {cardioSummary.avgDuration > 0
+                      ? `Avg ${cardioSummary.avgDuration}m / run`
+                      : `${cardioSummary.sessions} Sessions`}
+                  </Text>
+                </View>
+              </View>
+
+              {/* 3 Styled Metric Pods */}
+              <View style={st.cardioPodsGrid}>
+                {/* Pod 1: Duration */}
+                <View style={st.cardioPod}>
+                  <View style={[st.cardioPodIconBox, { backgroundColor: 'rgba(255, 159, 77, 0.12)' }]}>
+                    <Ionicons name="time-outline" size={12} color={COLORS.accentAmber} />
+                  </View>
+                  <Text style={st.cardioPodValue}>
+                    {cardioSummary.totalMinutes}
+                    <Text style={st.cardioPodUnit}> min</Text>
+                  </Text>
+                  <Text style={st.cardioPodLabel}>Total Time</Text>
+                </View>
+
+                {/* Pod 2: Distance */}
+                <View style={st.cardioPod}>
+                  <View style={[st.cardioPodIconBox, { backgroundColor: 'rgba(137, 220, 235, 0.12)' }]}>
+                    <Ionicons name="navigate-outline" size={12} color={COLORS.accentBlue} />
+                  </View>
+                  <Text style={st.cardioPodValue}>
+                    {cardioSummary.totalKm}
+                    <Text style={st.cardioPodUnit}> km</Text>
+                  </Text>
+                  <Text style={st.cardioPodLabel}>Distance</Text>
+                </View>
+
+                {/* Pod 3: Frequency */}
+                <View style={st.cardioPod}>
+                  <View style={[st.cardioPodIconBox, { backgroundColor: 'rgba(94, 218, 158, 0.12)' }]}>
+                    <Ionicons name="pulse-outline" size={12} color={COLORS.accentGreen} />
+                  </View>
+                  <Text style={st.cardioPodValue}>
+                    {cardioSummary.sessions}
+                    <Text style={st.cardioPodUnit}> runs</Text>
+                  </Text>
+                  <Text style={st.cardioPodLabel}>Sessions</Text>
+                </View>
+              </View>
+
+              {/* Footer Output / Pace & Calorie Bar */}
+              <View style={st.cardioFooterRow}>
+                <View style={st.cardioFooterItem}>
+                  <Ionicons name="speedometer-outline" size={12} color={COLORS.accentAmber} />
+                  <Text style={st.cardioFooterText}>
+                    {cardioSummary.avgPaceMinKm > 0
+                      ? `${cardioSummary.avgPaceMinKm} min/km pace`
+                      : cardioSummary.avgSpeedKmh > 0
+                      ? `${cardioSummary.avgSpeedKmh} km/h speed`
+                      : `Aerobic Base Active`}
+                  </Text>
+                </View>
+
+                <View style={st.cardioFooterItem}>
+                  <Ionicons name="flame-outline" size={12} color={COLORS.accentAmber} />
+                  <Text style={st.cardioFooterText}>
+                    ~{cardioSummary.estCalories} kcal burned
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* ── Untrained Muscles Warning (if any skipped) ──────────────────── */}
           {untrainedMuscles.length > 0 && (
             <View style={st.warningCard}>
               <View style={st.warningHeader}>
-                <Ionicons name="warning-outline" size={14} color={COLORS.accentAmber} />
-                <Text style={st.warningTitle}>NEEDS ATTENTION</Text>
+                <Ionicons name="alert-circle-outline" size={15} color={COLORS.accentAmber} />
+                <Text style={st.warningTitle}>MUSCLE GROUPS NEEDING ATTENTION</Text>
               </View>
               <Text style={st.warningBody}>
-                These muscle groups were not trained this week:
+                These planned target muscles had 0 completed sets this week:
               </Text>
               <View style={st.chipRow}>
                 {untrainedMuscles.map(m => (
@@ -395,63 +766,208 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate }: Props) {
             </View>
           )}
 
-          {/* •• Week vs Last Week Summary •• */}
-          <View style={st.card}>
-            <Text style={st.sectionLabel}>VS LAST WEEK</Text>
-            {[
-              {
-                label: 'Workout Days',
-                thisVal: workoutDays,
-                prevVal: prevWorkoutDays,
-                unit: 'days',
-              },
-              {
-                label: 'Total Sets',
-                thisVal: totalSets,
-                prevVal: prevTotalSets,
-                unit: 'sets',
-              },
-              {
-                label: 'Volume',
-                thisVal: Math.round(totalVolume),
-                prevVal: Math.round(prevTotalVolume),
-                unit: 'kg',
-              },
-            ].map(({ label, thisVal, prevVal, unit }) => {
-              const delta = thisVal - prevVal;
-              const pctChange = prevVal > 0 ? Math.round((delta / prevVal) * 100) : 0;
-              return (
-                <View key={label} style={st.compRow}>
-                  <Text style={st.compLabel}>{label}</Text>
-                  <View style={st.compRight}>
-                    <Text style={st.compThis}>{thisVal} <Text style={st.compUnit}>{unit}</Text></Text>
-                    <ChangeBadge delta={pctChange} unit="%" />
-                  </View>
+          {/* ── GYM-GPT Weekly Intelligence Card (High-End Design) ──────────── */}
+          <View style={st.aiCard}>
+            {/* Header with Title, Grade Badge, and Sync Button */}
+            <View style={st.aiCardHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                <View style={st.aiSparkleBadge}>
+                  <Ionicons name="sparkles" size={13} color="#a599ff" />
                 </View>
-              );
-            })}
+                <View>
+                  <Text style={st.aiSectionTitle}>GYM-GPT • WEEKLY INTELLIGENCE</Text>
+                  <Text style={st.aiSectionSubtitle}>S.A.R.A Biomechanics & Overload Analysis</Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {aiAnalysis && (
+                  <View style={st.aiScoreBadge}>
+                    <Text style={st.aiScoreBadgeText}>
+                      {aiAnalysis.scoreGrade} • {aiAnalysis.score}/100
+                    </Text>
+                  </View>
+                )}
+                <TouchableOpacity
+                  onPress={() => {
+                    hapticMedium();
+                    loadWeeklyAnalysis(true);
+                  }}
+                  disabled={aiLoading}
+                  style={st.aiRefreshBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name="sync-outline"
+                    size={14}
+                    color={aiLoading ? COLORS.accentPrimary : COLORS.textTertiary}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {aiLoading && !aiAnalysis ? (
+              <View style={st.aiLoadingState}>
+                <ActivityIndicator size="small" color="#a599ff" />
+                <Text style={st.aiLoadingText}>
+                  Synthesizing 30-day mesocycle & progressive overload...
+                </Text>
+              </View>
+            ) : aiAnalysis ? (
+              <View style={st.aiContent}>
+                {/* 1. Headline & Executive Verdict */}
+                <View style={st.aiHeroBlock}>
+                  <FormattedText
+                    text={aiAnalysis.headline}
+                    style={st.aiHeadline}
+                    boldColor="#ffffff"
+                  />
+                  <FormattedText
+                    text={aiAnalysis.verdict}
+                    style={st.aiVerdict}
+                    boldColor="#ffffff"
+                  />
+                </View>
+
+                {/* 2. Directives (Numbered Luxury Action Cards) */}
+                {aiAnalysis.nextWeekDirectives && aiAnalysis.nextWeekDirectives.length > 0 && (
+                  <View style={st.aiBlock}>
+                    <View style={st.aiBlockHeader}>
+                      <Ionicons name="flag" size={13} color="#a599ff" />
+                      <Text style={[st.aiBlockTitle, { color: '#a599ff' }]}>
+                        NEXT CYCLE DIRECTIVES
+                      </Text>
+                    </View>
+
+                    <View style={{ gap: 8, marginTop: 4 }}>
+                      {aiAnalysis.nextWeekDirectives.map((directive, idx) => (
+                        <View key={idx} style={st.aiDirectiveCard}>
+                          <View style={st.aiDirectiveNumPill}>
+                            <Text style={st.aiDirectiveNumText}>0{idx + 1}</Text>
+                          </View>
+                          <FormattedText
+                            text={directive}
+                            style={st.aiDirectiveText}
+                            boldColor="#ffffff"
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* 3. Overload Comparison vs Last Week */}
+                <View style={st.aiBlock}>
+                  <View style={st.aiBlockHeader}>
+                    <Ionicons name="swap-horizontal" size={13} color={COLORS.accentGreen} />
+                    <Text style={[st.aiBlockTitle, { color: COLORS.accentGreen }]}>
+                      VS LAST WEEK (PROGRESSIVE OVERLOAD)
+                    </Text>
+                  </View>
+
+                  {aiAnalysis.comparisonVsLastWeek?.volumeDeltaText ? (
+                    <View style={st.aiVolumePill}>
+                      <Ionicons name="trending-up" size={12} color={COLORS.accentGreen} style={{ marginRight: 4 }} />
+                      <Text style={st.aiVolumePillText}>
+                        {aiAnalysis.comparisonVsLastWeek.volumeDeltaText}
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {aiAnalysis.comparisonVsLastWeek?.keyOverloads?.map((item, idx) => (
+                    <View key={idx} style={st.aiBulletRow}>
+                      <Text style={st.aiBulletDot}>•</Text>
+                      <FormattedText
+                        text={item}
+                        style={st.aiBulletText}
+                        boldColor="#ffffff"
+                      />
+                    </View>
+                  ))}
+
+                  {aiAnalysis.comparisonVsLastWeek?.summary ? (
+                    <FormattedText
+                      text={aiAnalysis.comparisonVsLastWeek.summary}
+                      style={st.aiSubSummary}
+                      boldColor="#d1d1d6"
+                    />
+                  ) : null}
+                </View>
+
+                {/* 4. 30-Day Mesocycle Dynamics & Fatigue Indicator */}
+                <View style={st.aiBlock}>
+                  <View style={st.aiBlockHeader}>
+                    <Ionicons name="analytics" size={13} color={COLORS.accentAmber} />
+                    <Text style={[st.aiBlockTitle, { color: COLORS.accentAmber }]}>
+                      30-DAY MESOCYCLE DYNAMICS
+                    </Text>
+                  </View>
+
+                  <FormattedText
+                    text={aiAnalysis.thirtyDayTrend.trajectory}
+                    style={st.aiTrajectoryText}
+                    boldColor="#ffffff"
+                  />
+
+                  {aiAnalysis.thirtyDayTrend?.laggingMuscles?.map((item, idx) => (
+                    <View key={idx} style={st.aiBulletRow}>
+                      <Text style={[st.aiBulletDot, { color: COLORS.accentAmber }]}>⚡</Text>
+                      <FormattedText
+                        text={item}
+                        style={st.aiBulletText}
+                        boldColor="#ffffff"
+                      />
+                    </View>
+                  ))}
+
+                  {aiAnalysis.thirtyDayTrend?.fatigueIndicator ? (
+                    <View style={st.aiFatigueBox}>
+                      <Ionicons name="shield-checkmark" size={13} color={COLORS.accentAmber} />
+                      <FormattedText
+                        text={aiAnalysis.thirtyDayTrend.fatigueIndicator}
+                        style={st.aiFatigueText}
+                        boldColor={COLORS.accentAmber}
+                      />
+                    </View>
+                  ) : null}
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={st.aiGenerateBtn}
+                onPress={() => {
+                  hapticLight();
+                  loadWeeklyAnalysis(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="sparkles" size={14} color="#a599ff" />
+                <Text style={st.aiGenerateBtnText}>Generate Deep Gym-GPT Analysis</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </>
       )}
-      <View style={{ height: 80 }} />
+
+      <View style={{ height: 40 }} />
     </View>
   );
 }
 
-// •• Styles ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+// ── Styles ───────────────────────────────────────────────────────────────────
 
 const st = StyleSheet.create({
   container: {
     paddingHorizontal: 8,
-    paddingBottom: 40,
+    paddingBottom: 24,
   },
 
-  // Title
+  // Title Row
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: 16,
     marginTop: 4,
   },
   title: {
@@ -464,36 +980,40 @@ const st = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textTertiary,
     marginTop: 2,
+    fontFamily: FONT_FAMILY.medium,
   },
   restBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     backgroundColor: 'rgba(165,153,255,0.1)',
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.2)',
+    borderColor: 'rgba(165,153,255,0.25)',
     borderRadius: RADIUS.full,
     paddingHorizontal: 12,
     paddingVertical: 5,
   },
   restBadgeText: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.accentPrimary,
-    fontWeight: '600',
+    fontFamily: FONT_FAMILY.bold,
   },
 
-  // Empty
+  // Empty Card
   emptyCard: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     alignItems: 'center',
-    paddingVertical: 48,
+    paddingVertical: 40,
     paddingHorizontal: 24,
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   emptyText: {
     fontSize: 15,
     fontWeight: '600',
-    color: COLORS.textMuted,
+    color: COLORS.textPrimary,
     textAlign: 'center',
   },
   emptySubtext: {
@@ -503,26 +1023,32 @@ const st = StyleSheet.create({
     lineHeight: 18,
   },
 
-  // Section label
+  // Section Headers
   sectionLabel: {
     fontSize: 10,
     fontWeight: '700',
     color: COLORS.textTertiary,
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 14,
   },
 
-  // Shared card
+  // Shared Card Wrapper
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: RADIUS.xl,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.06)',
   },
 
-  // Global stats
+  // Global KPI Stats
   statsRow: {
     flexDirection: 'row',
     gap: 8,
@@ -534,37 +1060,223 @@ const st = StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: 14,
     alignItems: 'center',
-    gap: 3,
+    gap: 2,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.06)',
   },
   statValue: {
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: '700',
     color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  statSuffix: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
   },
   statLabel: {
     fontSize: 10,
     color: COLORS.textTertiary,
     textAlign: 'center',
+    fontFamily: FONT_FAMILY.medium,
   },
   changeBadge: {
     fontSize: 10,
     fontWeight: '600',
     marginTop: 2,
+    fontFamily: FONT_FAMILY.medium,
   },
   changeBadgeNeutral: {
     fontSize: 10,
     color: COLORS.textTertiary,
     marginTop: 2,
+    fontFamily: FONT_FAMILY.medium,
   },
 
-  // Daily volume bar chart
+  // Highlights & Top Lifts (Subtle Luxury Obsidian)
+  highlightCard: {
+    backgroundColor: '#121215',
+    borderRadius: RADIUS.xl,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(230, 200, 117, 0.16)',
+  },
+  highlightHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
+  },
+  trophyCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(230, 200, 117, 0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(230, 200, 117, 0.22)',
+  },
+  highlightTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#e6c875',
+    letterSpacing: 1.2,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  highlightSubtitle: {
+    fontSize: 9,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+    marginTop: 1,
+  },
+  highlightBadge: {
+    backgroundColor: 'rgba(230, 200, 117, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(230, 200, 117, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  highlightBadgeText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.bold,
+    color: '#e6c875',
+  },
+  highlightPodsGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  highlightPod: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderRadius: RADIUS.lg,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    gap: 4,
+  },
+  highlightPodHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: 2,
+  },
+  highlightPodTag: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#e6c875',
+    letterSpacing: 0.9,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  highlightLiftName: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY.medium,
+    lineHeight: 16,
+  },
+  highlightStatRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginTop: 2,
+  },
+  highlightWeightText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#e6c875',
+    fontFamily: FONT_FAMILY.bold,
+  },
+  highlightUnit: {
+    fontSize: 10,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+  },
+  highlightRepsText: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+  },
+
+  // Muscle Donut Grid
+  adherenceBadge: {
+    backgroundColor: 'rgba(94, 218, 158, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(94, 218, 158, 0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  adherenceBadgeText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.bold,
+    color: COLORS.accentGreen,
+  },
+  muscleGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  muscleCard: {
+    width: '30.5%',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 6,
+  },
+  ringWrapper: {
+    position: 'relative',
+    width: 66,
+    height: 66,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ringNum: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 16,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  ringTarget: {
+    fontSize: 9,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+  },
+  ringUnit: {
+    fontSize: 8,
+    color: COLORS.textTertiary,
+    lineHeight: 10,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  muscleName: {
+    fontSize: 11,
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    fontFamily: FONT_FAMILY.medium,
+    marginTop: 2,
+  },
+  muscleChangeRow: {
+    height: 14,
+    justifyContent: 'center',
+  },
+
+  // Daily Volume Bar Chart
   barChart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    height: 80,
+    height: 76,
     gap: 6,
+    marginTop: 10,
   },
   barCol: {
     flex: 1,
@@ -591,97 +1303,131 @@ const st = StyleSheet.create({
     color: COLORS.textTertiary,
   },
 
-  // Muscle donut grid
-  muscleGrid: {
+  // Cardio Summary (Luxury Obsidian Pods)
+  cardioCard: {
+    backgroundColor: '#121215',
+    borderRadius: RADIUS.xl,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 159, 77, 0.18)',
+  },
+  cardioHeaderRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  muscleCard: {
-    width: '30%',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 8,
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.04)',
   },
-  ringWrapper: {
-    position: 'relative',
-    width: 62,
-    height: 62,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringCenter: {
-    position: 'absolute',
+  cardioIconBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255, 159, 77, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 159, 77, 0.25)',
   },
-  ringNum: {
-    fontSize: 15,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  ringUnit: {
-    fontSize: 8,
-    color: COLORS.textTertiary,
-    lineHeight: 10,
-  },
-  muscleName: {
+  cardioSectionTitle: {
     fontSize: 11,
-    color: COLORS.textMuted,
-    textAlign: 'center',
+    fontWeight: '700',
+    color: COLORS.accentAmber,
+    letterSpacing: 1.2,
+    fontFamily: FONT_FAMILY.bold,
   },
-  muscleChangeRow: {
-    height: 14,
-    justifyContent: 'center',
+  cardioSectionSubtitle: {
+    fontSize: 9,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+    marginTop: 1,
   },
-
-  // Set bars
-  muscleBarRow: {
+  cardioTagPill: {
+    backgroundColor: 'rgba(255, 159, 77, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 159, 77, 0.22)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  cardioTagText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.bold,
+    color: COLORS.accentAmber,
+  },
+  cardioPodsGrid: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 8,
     marginBottom: 10,
   },
-  muscleBarNameCol: {
-    flexDirection: 'row',
+  cardioPod: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+    borderRadius: RADIUS.lg,
+    padding: 10,
     alignItems: 'center',
-    gap: 6,
-    width: 88,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    gap: 2,
   },
-  muscleDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
+  cardioPodIconBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
   },
-  muscleBarName: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    flex: 1,
+  cardioPodValue: {
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.bold,
+    color: COLORS.textPrimary,
+    fontWeight: '700',
   },
-  muscleBarFill: {
-    flex: 1,
-  },
-  muscleBarSets: {
-    fontSize: 11,
-    width: 44,
-    textAlign: 'right',
-  },
-  muscleBarVol: {
+  cardioPodUnit: {
     fontSize: 10,
     color: COLORS.textTertiary,
-    width: 34,
-    textAlign: 'right',
+    fontFamily: FONT_FAMILY.medium,
+  },
+  cardioPodLabel: {
+    fontSize: 9.5,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+    marginTop: 1,
+  },
+  cardioFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 159, 77, 0.05)',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 159, 77, 0.12)',
+  },
+  cardioFooterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  cardioFooterText: {
+    fontSize: 10.5,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY.medium,
   },
 
-  // Untrained warning
+  // Warning Card
   warningCard: {
-    backgroundColor: 'rgba(255,159,77,0.07)',
+    backgroundColor: 'rgba(255,159,77,0.06)',
     borderRadius: RADIUS.xl,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,159,77,0.2)',
-    gap: 8,
+    gap: 6,
   },
   warningHeader: {
     flexDirection: 'row',
@@ -692,57 +1438,263 @@ const st = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     color: COLORS.accentAmber,
-    letterSpacing: 1.5,
+    letterSpacing: 1.2,
+    fontFamily: FONT_FAMILY.bold,
   },
   warningBody: {
-    fontSize: 12,
+    fontSize: 11,
     color: COLORS.textMuted,
   },
   chipRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
+    marginTop: 2,
   },
   chip: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: RADIUS.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderWidth: 1,
-    borderColor: 'rgba(255,159,77,0.15)',
+    borderColor: 'rgba(255,159,77,0.2)',
   },
   chipText: {
-    fontSize: 11,
+    fontSize: 10,
     color: COLORS.accentAmber,
-    fontWeight: '600',
+    fontFamily: FONT_FAMILY.bold,
   },
 
-  // Comparison table
-  compRow: {
+  // ── GYM-GPT AI Section Styles (Minimalist Obsidian Editorial) ──────────────
+  aiCard: {
+    backgroundColor: '#121215',
+    borderRadius: RADIUS.xl,
+    padding: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.18)',
+  },
+  aiCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.05)',
   },
-  compLabel: {
-    fontSize: 13,
-    color: COLORS.textMuted,
+  aiSparkleBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(165,153,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.25)',
   },
-  compRight: {
-    flexDirection: 'row',
+  aiSectionTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#a599ff',
+    letterSpacing: 1.2,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  aiSectionSubtitle: {
+    fontSize: 9,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+    marginTop: 1,
+  },
+  aiScoreBadge: {
+    backgroundColor: 'rgba(94, 218, 158, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(94, 218, 158, 0.25)',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  aiScoreBadgeText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.bold,
+    color: COLORS.accentGreen,
+  },
+  aiRefreshBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiLoadingState: {
+    paddingVertical: 24,
     alignItems: 'center',
     gap: 10,
   },
-  compThis: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
+  aiLoadingText: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+    textAlign: 'center',
   },
-  compUnit: {
+  aiContent: {
+    gap: 14,
+  },
+  aiHeroBlock: {
+    gap: 6,
+    paddingBottom: 4,
+  },
+  aiHeadline: {
+    fontSize: 16,
+    color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY.bold,
+    lineHeight: 22,
+    letterSpacing: -0.2,
+  },
+  aiVerdict: {
+    fontSize: 12.5,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY.body,
+    lineHeight: 19,
+  },
+  aiBlock: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderRadius: RADIUS.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.04)',
+    gap: 6,
+  },
+  aiBlockHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  aiBlockTitle: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  aiVolumePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(94, 218, 158, 0.09)',
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(94, 218, 158, 0.2)',
+  },
+  aiVolumePillText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    color: COLORS.accentGreen,
+  },
+  aiBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    paddingLeft: 2,
+    marginBottom: 2,
+  },
+  aiBulletDot: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    lineHeight: 17,
+  },
+  aiBulletText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY.body,
+    lineHeight: 18,
+  },
+  aiSubSummary: {
     fontSize: 11,
     color: COLORS.textTertiary,
-    fontWeight: '400',
+    fontFamily: FONT_FAMILY.body,
+    marginTop: 4,
+    fontStyle: 'italic',
+    lineHeight: 16,
+  },
+  aiTrajectoryText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY.body,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  aiFatigueBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 159, 77, 0.08)',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 159, 77, 0.2)',
+  },
+  aiFatigueText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: COLORS.accentAmber,
+    fontFamily: FONT_FAMILY.medium,
+    lineHeight: 16,
+  },
+  aiDirectiveCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: 'rgba(165,153,255,0.05)',
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.12)',
+  },
+  aiDirectiveNumPill: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: 'rgba(165,153,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  aiDirectiveNumText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.bold,
+    color: '#a599ff',
+  },
+  aiDirectiveText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.textPrimary,
+    fontFamily: FONT_FAMILY.body,
+    lineHeight: 18,
+  },
+  aiGenerateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(165,153,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.3)',
+    borderRadius: RADIUS.lg,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  aiGenerateBtnText: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.bold,
+    color: '#a599ff',
   },
 });

@@ -30,11 +30,25 @@ export interface PlannerContextType {
   optimisticUpdateGoal: (goalId: string, partial: Partial<Goal>) => void;
 }
 
+const DEFAULT_PLANNER_DATA: PlannerContextType = {
+  customEvents: [],
+  goals: [],
+  weeklyReviews: [],
+  ensureSubscribed: () => {},
+  optimisticAddEvent: () => {},
+  optimisticUpdateEvent: () => {},
+  optimisticDeleteEvent: () => {},
+  optimisticAddGoal: () => {},
+  optimisticUpdateGoal: () => {},
+};
+
 const PlannerContext = createContext<PlannerContextType | null>(null);
 
 export function usePlannerData(): PlannerContextType {
   const ctx = useContext(PlannerContext);
-  if (!ctx) throw new Error("usePlannerData must be inside PlannerProvider");
+  if (!ctx) {
+    return DEFAULT_PLANNER_DATA;
+  }
   return ctx;
 }
 
@@ -69,25 +83,21 @@ export function PlannerProvider({
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
-    InteractionManager.runAfterInteractions(() => {
-      setTimeout(() => {
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent)); setCustomEvents(fresh); writePlannerCache({ customEvents: fresh }); },
-          err => console.error("[Planner] customEvents", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Goal)); setGoals(fresh); writePlannerCache({ goals: fresh }); },
-          err => console.error("[Planner] goals", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)); setWeeklyReviews(fresh); writePlannerCache({ weeklyReviews: fresh }); },
-          err => console.error("[Planner] weeklyReviews", err)
-        ));
-      }, 300);
-    });
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent)); setCustomEvents(fresh); writePlannerCache({ customEvents: fresh }); },
+      err => console.error("[Planner] customEvents", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Goal)); setGoals(fresh); writePlannerCache({ goals: fresh }); },
+      err => console.error("[Planner] goals", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)); setWeeklyReviews(fresh); writePlannerCache({ weeklyReviews: fresh }); },
+      err => console.error("[Planner] weeklyReviews", err)
+    ));
   };
 
   useEffect(() => {

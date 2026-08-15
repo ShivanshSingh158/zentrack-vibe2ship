@@ -81,6 +81,7 @@ export const COLLECTION = {
   POMODORO_SESSIONS: 'pomodoro_sessions',
   WEEKLY_REVIEWS: 'weekly_reviews',
   WATER_LOGS: 'water_logs',
+  SLEEP_LOGS: 'sleep_logs',
   WEIGHT_LOGS: 'weight_logs',
   CONTENT_LOGS: 'content_logs',
   USER_PROFILES: 'user_profiles',

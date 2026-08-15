@@ -247,13 +247,53 @@ export function useDashboardData() {
     return calculateAppStreak(tasks, gymLogs, habitLogs);
   }, [tasks, gymLogs, habitLogs]);
 
+  // ── Today's Class & Overall Attendance Stats ──────────────────────────────
+  const { classesAttendedToday, classesTotalToday, overallAttendancePct } = useMemo(() => {
+    if (!attendance || attendance.length === 0) {
+      return { classesAttendedToday: 0, classesTotalToday: 0, overallAttendancePct: 0 };
+    }
+
+    const dayOfWeek = nowDate.getDay().toString();
+    const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const todayClasses = attendance.flatMap(subj => {
+      const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[Number(dayOfWeek)]
+        || subj.schedule?.[DAY_NAMES[nowDate.getDay()]]
+        || subj.schedule?.[DAY_NAMES[nowDate.getDay()].toLowerCase()];
+      if (!sch) return [];
+      const cls: any[] = [];
+      if (sch.classes) sch.classes.forEach((c: any) => c.time && cls.push({ subjectId: subj.id, type: 'class', ...c }));
+      if (sch.labs) sch.labs.forEach((l: any) => l.time && cls.push({ subjectId: subj.id, type: 'lab', ...l }));
+      return cls;
+    });
+
+    const attendedCount = (attendanceLogs || []).filter(l => 
+      l.date === todayStr && (l.action === 'attended' || l.action === 'present')
+    ).length;
+
+    let totalAttendedAll = 0;
+    let totalClassesAll = 0;
+    attendance.forEach(subj => {
+      totalAttendedAll += (subj.classesAttended || 0) + (subj.labsAttended || 0);
+      totalClassesAll += (subj.classesTotal || 0) + (subj.labsTotal || 0);
+    });
+
+    const overallPct = totalClassesAll > 0 ? Math.round((totalAttendedAll / totalClassesAll) * 100) : 0;
+
+    return {
+      classesAttendedToday: attendedCount,
+      classesTotalToday: todayClasses.length,
+      overallAttendancePct: overallPct,
+    };
+  }, [attendance, attendanceLogs, todayStr, nowDate]);
+
   return {
     // Data
     user, tasks, gymLogs, userGymPlan, habitLogs, allHabits,
     attendance, attendanceLogs, assignments, waterLogs, contentLogs,
     // Derived
     todayStr, timeGreeting, avatarLetter, hour,
-    nowDate, nextClass, appStreak, // expose raw Date for .getDay()/.getMinutes() in stats useMemo
+    nowDate, nextClass, appStreak,
+    classesAttendedToday, classesTotalToday, overallAttendancePct,
     // State
     quote, xp, xpGain, captureVisible, layout, layoutSheetVisible,
     waterLogVisible, waterTotal,

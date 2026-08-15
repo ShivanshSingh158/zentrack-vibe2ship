@@ -46,11 +46,34 @@ export interface CoreDataContextType {
   optimisticRemoveHabitLog: (habitId: string, date: string) => void;
 }
 
+const DEFAULT_CORE_DATA: CoreDataContextType = {
+  user: null,
+  tasks: [],
+  habits: [],
+  allHabits: [],
+  habitLogs: [],
+  loading: false,
+  pendingTaskCount: 0,
+  todayHabits: [],
+  pinnedModules: ["Tasks", "Gym", "Calendar", "Attendance"],
+  setPinnedModules: () => {},
+  googleAccessToken: null,
+  optimisticAddTask: () => {},
+  optimisticUpdateTask: () => {},
+  optimisticDeleteTask: () => {},
+  optimisticUpdateHabit: () => {},
+  optimisticAddHabitLog: () => {},
+  optimisticUpdateHabitLog: () => {},
+  optimisticRemoveHabitLog: () => {},
+};
+
 const CoreDataContext = createContext<CoreDataContextType | null>(null);
 
 export function useCoreData(): CoreDataContextType {
   const ctx = useContext(CoreDataContext);
-  if (!ctx) throw new Error("useCoreData must be inside CoreDataProvider");
+  if (!ctx) {
+    return DEFAULT_CORE_DATA;
+  }
   return ctx;
 }
 
@@ -83,22 +106,31 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     if (habitLogWriteLockRef.current) clearTimeout(habitLogWriteLockRef.current);
     habitLogWriteLockRef.current = setTimeout(() => { isHabitLogLocked.current = false; }, 2000);
   };
-  const [pinnedModules, setPinnedModulesState]    = useState<string[]>(["Tasks", "Calendar"]);
+  const DEFAULT_PINNED_MODULES = ["Tasks", "Gym", "Calendar", "Attendance"];
+  const [pinnedModules, setPinnedModulesState]    = useState<string[]>(DEFAULT_PINNED_MODULES);
 
   // Pinned modules (AsyncStorage)
   useEffect(() => {
     AsyncStorage.getItem("@zentrack_pinned_modules")
       .then(val => { 
         if (val) {
-          const parsed = JSON.parse(val);
-          setPinnedModulesState(parsed.slice(0, 4));
+          try {
+            const parsed = JSON.parse(val);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setPinnedModulesState(parsed.slice(0, 4));
+            } else {
+              setPinnedModulesState(DEFAULT_PINNED_MODULES);
+            }
+          } catch {
+            setPinnedModulesState(DEFAULT_PINNED_MODULES);
+          }
         }
       })
       .catch(handleSyncError);
   }, []);
 
   const setPinnedModules = (mods: string[]) => {
-    const clamped = mods.slice(0, 4);
+    const clamped = mods.length > 0 ? mods.slice(0, 4) : DEFAULT_PINNED_MODULES;
     setPinnedModulesState(clamped);
     AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(clamped)).catch(console.warn);
   };
@@ -179,45 +211,39 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     const uid = user.uid;
     const unsubs: (() => void)[] = [];
-    let isCancelled = false;
 
-    InteractionManager.runAfterInteractions(() => {
-      if (isCancelled) return;
+    unsubs.push(onSnapshot(
+      query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
+      snap => {
+        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
+        setTasks(fresh);
+        setFirestoreReady(true);
+        writeCoreCacheMulti({ tasks: fresh });
+      },
+      err => { console.error("[CoreData] tasks", err); setFirestoreReady(true); }
+    ));
 
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
-        snap => {
-          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
-          setTasks(fresh);
-          setFirestoreReady(true);
-          writeCoreCacheMulti({ tasks: fresh });
-        },
-        err => { console.error("[CoreData] tasks", err); setFirestoreReady(true); }
-      ));
+    unsubs.push(onSnapshot(
+      query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
+      snap => {
+        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Habit));
+        if (!isHabitLocked.current) setHabits(fresh);
+        writeCoreCacheMulti({ habits: fresh });
+      },
+      err => console.error("[CoreData] habits", err)
+    ));
 
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
-        snap => {
-          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Habit));
-          if (!isHabitLocked.current) setHabits(fresh);
-          writeCoreCacheMulti({ habits: fresh });
-        },
-        err => console.error("[CoreData] habits", err)
-      ));
-
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
-        snap => {
-          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog));
-          if (!isHabitLogLocked.current) setHabitLogs(fresh);
-          writeCoreCacheMulti({ habitLogs: fresh });
-        },
-        err => console.error("[CoreData] habitLogs", err)
-      ));
-    });
+    unsubs.push(onSnapshot(
+      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
+      snap => {
+        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog));
+        if (!isHabitLogLocked.current) setHabitLogs(fresh);
+        writeCoreCacheMulti({ habitLogs: fresh });
+      },
+      err => console.error("[CoreData] habitLogs", err)
+    ));
 
     return () => {
-      isCancelled = true;
       unsubs.forEach(u => u());
     };
   }, [user]);

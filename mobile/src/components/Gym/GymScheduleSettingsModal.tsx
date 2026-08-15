@@ -249,16 +249,20 @@ export function GymScheduleSettingsModal({
                       <TouchableOpacity 
                         key={dayIndex} 
                         style={[s.dayRow, isRest && s.dayRowRest]}
-                        onPress={() => !isRest && handleDayPressWeekly(dayIndex)}
-                        activeOpacity={isRest ? 1 : 0.7}
+                        onPress={() => handleDayPressWeekly(dayIndex)}
+                        activeOpacity={0.7}
                       >
                         <View style={s.dayInfo}>
                           <Text style={[s.dayName, isRest && s.dayNameRest]}>{dayName}</Text>
                           <Text style={[s.planFocus, isRest && s.planFocusRest]}>
-                            {isRest ? 'Rest Day' : planDay.focus || 'Workout'}
+                            {isRest ? '🧘 Rest Day (Weekly Recap)' : planDay.name || planDay.focus || 'Workout'}
                           </Text>
                         </View>
-                        {!isRest && (
+                        {isRest ? (
+                          <View style={{ backgroundColor: 'rgba(255,159,77,0.12)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,159,77,0.25)' }}>
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#ff9f4d' }}>REST</Text>
+                          </View>
+                        ) : (
                           <View style={s.timeBlock}>
                             {planDay.startTime ? (
                               <View>
@@ -291,60 +295,128 @@ export function GymScheduleSettingsModal({
                     <Text style={[s.title, { fontSize: FONT_SIZE.lg }]}>{dayNames[editingDayIdx - 1]}</Text>
                     <View style={{ width: 24 }} />
                   </View>
-                  <Text style={s.editSubtitle}>{localDays[editingDayIdx]?.focus}</Text>
-                  
-                  <View style={s.timeRow}>
-                    <Text style={s.timeRowTitle}>Start Time</Text>
-                    <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerWeekly('start')}>
-                      <Text style={s.timeBtnText}>{formatTime(tempStartTimeWeekly)}</Text>
-                    </TouchableOpacity>
-                  </View>
-                  {showPickerWeekly === 'start' && (
-                    <View style={s.pickerWrapper}>
-                      <DateTimePicker
-                        value={tempStartTimeWeekly} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(_, date) => {
-                          if (Platform.OS === 'android') setShowPickerWeekly(null);
-                          if (date) {
-                            setTempStartTimeWeekly(date);
-                            const newEnd = new Date(date); newEnd.setHours(date.getHours() + 1); setTempEndTimeWeekly(newEnd);
+
+                  {/* Day Type Toggle: Workout vs Rest */}
+                  <View style={{ flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12, padding: 4, marginBottom: 16 }}>
+                      <TouchableOpacity
+                        style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, backgroundColor: !localDays[editingDayIdx]?.isRest ? colors.accentPrimary : 'transparent' }}
+                        onPress={() => {
+                          hapticLight();
+                          setLocalDays(prev => {
+                            const currentDay = prev[editingDayIdx];
+                            let defaultExercises = currentDay?.exercises || [];
+                            if (!defaultExercises || defaultExercises.length === 0) {
+                              const templateDay = GYM_PLAN.find(d => d.dayIndex === editingDayIdx);
+                              if (templateDay && !templateDay.isRest && templateDay.exercises?.length > 0) {
+                                defaultExercises = JSON.parse(JSON.stringify(templateDay.exercises));
+                              } else {
+                                const sampleDay = GYM_PLAN.find(d => !d.isRest && d.exercises?.length > 0);
+                                if (sampleDay) {
+                                  defaultExercises = JSON.parse(JSON.stringify(sampleDay.exercises));
+                                }
+                              }
+                            }
+                            return {
+                              ...prev,
+                              [editingDayIdx]: {
+                                ...currentDay,
+                                isRest: false,
+                                name: (!currentDay?.name || currentDay?.name === 'Rest & Recovery' || currentDay?.name === 'Rest Day') ? 'Workout' : currentDay.name,
+                                focus: (!currentDay?.focus || currentDay?.focus === 'Rest & Recovery' || currentDay?.focus.includes('recovery')) ? 'Chest & Back' : currentDay.focus,
+                                exercises: defaultExercises,
+                              }
+                            };
+                          });
+                        }}
+                      >
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: !localDays[editingDayIdx]?.isRest ? '#000000' : colors.textSecondary }}>🏋️ Workout Day</Text>
+                      </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8, backgroundColor: localDays[editingDayIdx]?.isRest ? '#ff9f4d' : 'transparent' }}
+                      onPress={() => {
+                        hapticLight();
+                        setLocalDays(prev => ({
+                          ...prev,
+                          [editingDayIdx]: {
+                            ...prev[editingDayIdx],
+                            isRest: true,
+                            name: 'Rest & Recovery',
+                            focus: 'Rest & Recovery',
+                            exercises: []
                           }
-                        }}
-                        textColor={colors.textPrimary}
-                      />
-                      {Platform.OS === 'ios' && (
-                        <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerWeekly(null)}>
-                          <Text style={s.pickerDoneText}>Done</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  )}
-
-                  <View style={s.timeRow}>
-                    <Text style={s.timeRowTitle}>End Time</Text>
-                    <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerWeekly('end')}>
-                      <Text style={s.timeBtnText}>{formatTime(tempEndTimeWeekly)}</Text>
+                        }));
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: localDays[editingDayIdx]?.isRest ? '#000000' : colors.textSecondary }}>🧘 Rest Day</Text>
                     </TouchableOpacity>
                   </View>
-                  {showPickerWeekly === 'end' && (
-                    <View style={s.pickerWrapper}>
-                      <DateTimePicker
-                        value={tempEndTimeWeekly} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                        onChange={(_, date) => {
-                          if (Platform.OS === 'android') setShowPickerWeekly(null);
-                          if (date) setTempEndTimeWeekly(date);
-                        }}
-                        textColor={colors.textPrimary}
-                      />
-                      {Platform.OS === 'ios' && (
-                        <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerWeekly(null)}>
-                          <Text style={s.pickerDoneText}>Done</Text>
-                        </TouchableOpacity>
-                      )}
+
+                  {localDays[editingDayIdx]?.isRest ? (
+                    <View style={{ backgroundColor: 'rgba(255,159,77,0.08)', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: 'rgba(255,159,77,0.2)', marginBottom: 24 }}>
+                      <Text style={{ fontSize: 14, fontWeight: '700', color: '#ff9f4d', marginBottom: 4 }}>Rest Day Configured</Text>
+                      <Text style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 18 }}>
+                        This day will automatically show your Weekly Gym Recap and Performance Report instead of an exercise list.
+                      </Text>
                     </View>
+                  ) : (
+                    <>
+                      <Text style={s.editSubtitle}>{localDays[editingDayIdx]?.name || localDays[editingDayIdx]?.focus}</Text>
+                      
+                      <View style={s.timeRow}>
+                        <Text style={s.timeRowTitle}>Start Time</Text>
+                        <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerWeekly('start')}>
+                          <Text style={s.timeBtnText}>{formatTime(tempStartTimeWeekly)}</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {showPickerWeekly === 'start' && (
+                        <View style={s.pickerWrapper}>
+                          <DateTimePicker
+                            value={tempStartTimeWeekly} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(_, date) => {
+                              if (Platform.OS === 'android') setShowPickerWeekly(null);
+                              if (date) {
+                                setTempStartTimeWeekly(date);
+                                const newEnd = new Date(date); newEnd.setHours(date.getHours() + 1); setTempEndTimeWeekly(newEnd);
+                              }
+                            }}
+                            textColor={colors.textPrimary}
+                          />
+                          {Platform.OS === 'ios' && (
+                            <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerWeekly(null)}>
+                              <Text style={s.pickerDoneText}>Done</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+
+                      <View style={s.timeRow}>
+                        <Text style={s.timeRowTitle}>End Time</Text>
+                        <TouchableOpacity style={s.timeBtn} onPress={() => setShowPickerWeekly('end')}>
+                          <Text style={s.timeBtnText}>{formatTime(tempEndTimeWeekly)}</Text>
+                        </TouchableOpacity>
+                      </View>
+                      {showPickerWeekly === 'end' && (
+                        <View style={s.pickerWrapper}>
+                          <DateTimePicker
+                            value={tempEndTimeWeekly} mode="time" display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                            onChange={(_, date) => {
+                              if (Platform.OS === 'android') setShowPickerWeekly(null);
+                              if (date) setTempEndTimeWeekly(date);
+                            }}
+                            textColor={colors.textPrimary}
+                          />
+                          {Platform.OS === 'ios' && (
+                            <TouchableOpacity style={s.pickerDoneBtn} onPress={() => setShowPickerWeekly(null)}>
+                              <Text style={s.pickerDoneText}>Done</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+                    </>
                   )}
 
-                  <View style={{ height: 40 }} />
+                  <View style={{ height: 30 }} />
                   <TouchableOpacity style={[s.saveBtn, { backgroundColor: 'transparent', borderColor: colors.border, borderWidth: 1, marginBottom: SPACE.md }]} onPress={clearEditedDayWeekly}>
                     <Text style={[s.saveBtnText, { color: colors.textPrimary }]}>Clear Time</Text>
                   </TouchableOpacity>

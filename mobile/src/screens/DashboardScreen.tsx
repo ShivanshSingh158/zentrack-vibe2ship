@@ -102,7 +102,9 @@ export default function DashboardScreen() {
                     habitsTotal={data.allHabits.length}
                     waterCompleted={waterCompleted}
                     waterTotal={data.waterTotal}
-                    contentCount={contentCount}
+                    classesAttendedToday={data.classesAttendedToday}
+                    classesTotalToday={data.classesTotalToday}
+                    overallAttendancePct={data.overallAttendancePct}
                     levelLabel={levelInfo.label}
                     levelNextLabel={levelInfo.nextLabel}
                     levelXP={data.xp}
@@ -115,7 +117,7 @@ export default function DashboardScreen() {
                     onPressStreak={() => navigation.navigate('MoreStack', { screen: 'StreakDetail' })}
                     onPressHabits={() => navigation.navigate('Habits')}
                     onPressWater={() => data.setWaterLogVisible(true)}
-                    onPressContent={() => navigation.navigate('MoreStack', { screen: 'ContentLibrary' })}
+                    onPressAttendance={() => navigation.navigate('Attendance')}
                     onPressXP={() => navigation.navigate('MoreStack', { screen: 'XPConstellation' })}
                     onPressRing={() => navigation.navigate(data.nextClass ? 'Attendance' : 'Tasks')}
                     onCapture={() => data.setCaptureVisible(true)}

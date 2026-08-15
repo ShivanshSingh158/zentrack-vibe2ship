@@ -177,6 +177,9 @@ const TabBarNullButton = () => null;
 
 function MainTabNavigator({ initialTab }: { initialTab: string }) {
   const { pinnedModules } = useMobileData();
+  const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
+    ? pinnedModules
+    : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 
   const onTabFocus = useCallback((routeName: string) => {
     if (ALLOWED_SAVE_ROUTES.has(routeName)) {
@@ -187,8 +190,8 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
   // Background-prefetch lazy screens once on mount (after first render).
   // We read pinnedModules via ref so the effect never re-fires on re-renders,
   // keeping startup ultra-lean. Pinned screens are prioritised in the queue.
-  const pinnedModulesRef = useRef(pinnedModules);
-  pinnedModulesRef.current = pinnedModules;
+  const pinnedModulesRef = useRef(effectivePinned);
+  pinnedModulesRef.current = effectivePinned;
   useEffect(() => { startPrefetching(pinnedModulesRef.current); }, []);
 
   const badges = useTabBarBadges();
@@ -214,7 +217,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
     >
       <Tab.Screen name="Home" component={SafeDashboard} options={{ lazy: false }} />
       {Object.keys(COMPONENT_MAP).map((modId) => {
-        const isPinned     = pinnedModules.includes(modId);
+        const isPinned     = effectivePinned.includes(modId);
         const isSyncScreen = modId in SYNC_SCREEN_MAP;
         return (
           <Tab.Screen

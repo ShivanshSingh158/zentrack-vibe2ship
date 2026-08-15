@@ -187,20 +187,33 @@ export default function MoreScreen() {
             <Text style={styles.headerTitle}>All Modules</Text>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
             <AnimatedPressable
-              style={[styles.actionBtn, isEditing && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary }]}
+              style={[
+                styles.editPillBtn,
+                isEditing && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+              ]}
               onPress={toggleEdit}
+              haptic="light"
             >
               <Ionicons
                 name={isEditing ? 'checkmark' : 'pencil'}
-                size={18}
+                size={14}
                 color={isEditing ? colors.background : colors.textPrimary}
               />
+              <Text
+                style={[
+                  styles.editPillText,
+                  { color: isEditing ? colors.background : colors.textPrimary },
+                ]}
+              >
+                {isEditing ? 'Done' : 'Edit Nav'}
+              </Text>
             </AnimatedPressable>
             <AnimatedPressable
               style={[styles.actionBtn, { backgroundColor: 'rgba(255,255,255,0.05)' }]}
               onPress={handleClose}
+              haptic="light"
             >
               <Ionicons name="close" size={20} color={colors.textMuted} />
             </AnimatedPressable>
@@ -302,6 +315,22 @@ const makeStyles = (colors: any) => StyleSheet.create({
         width: 36, height: 36, borderRadius: 18,
         borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
         alignItems: 'center', justifyContent: 'center',
+      },
+      editPillBtn: {
+        height: 36,
+        paddingHorizontal: 12,
+        borderRadius: 18,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
+      },
+      editPillText: {
+        fontFamily: FONT_FAMILY.medium,
+        fontSize: 12,
+        letterSpacing: 0.2,
       },
 
       editHint: {

@@ -1,11 +1,11 @@
 /**
  * CalendarAgendaView.tsx
- * Renders the Month Dropdown (when tapping month header) AND the Month/Agenda View.
- * We isolate this file so `react-native-calendars` (which is heavy) is lazy-loaded!
+ * Renders the Foldable / Expandable Month View.
+ * Supports swiping/pulling between 1-week collapsed strip and full month view.
  */
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, FlatList } from 'react-native';
-import { Calendar, CalendarProvider, ExpandableCalendar } from 'react-native-calendars';
+import { View, Text, TouchableOpacity, FlatList } from 'react-native';
+import { CalendarProvider, ExpandableCalendar } from 'react-native-calendars';
 import { getEventColors, format12Hour } from './calendarUtils';
 import { formatDateFull } from '../../utils/dateUtils';
 import { FONT_FAMILY } from '../../theme/tokens';
@@ -70,60 +70,74 @@ const CalendarAgendaView = React.memo(function CalendarAgendaView({
       <CalendarProvider
         date={selectedDate}
         onDateChanged={(date: string) => setSelectedDate(date)}
-        showTodayButton
-        todayBottomMargin={110}
+        showTodayButton={false}
         theme={{ todayButtonTextColor: colors.accentPrimary }}
       >
         <ExpandableCalendar
           initialPosition={ExpandableCalendar.positions.OPEN}
           allowShadow={false}
           firstDay={1}
-          markingType={'custom'}
-          markedDates={Object.keys(markedDates).reduce((acc: any, date) => {
-            const hasEvents = markedDates[date].dots && markedDates[date].dots.length > 0;
-            acc[date] = {
-              customStyles: {
-                container: { backgroundColor: date === selectedDate ? colors.accentPrimary : 'transparent', borderRadius: 16 },
-                text: { color: date === selectedDate ? '#000' : colors.textPrimary, fontWeight: date === selectedDate ? 'bold' : 'normal' }
-              }
-            };
-            if (hasEvents) {
-              acc[date].marked = true;
-              acc[date].dotColor = date === selectedDate ? '#000' : colors.accentPrimary;
-            }
-            return acc;
-          }, {})}
+          horizontal={true}
+          enableSwipeMonths={true}
+          onMonthChange={(month: any) => {
+            if (month?.dateString) setSelectedDate(month.dateString);
+          }}
+          markingType={'multi-dot'}
+          markedDates={markedDates}
+          hideKnob={false}
+          renderHeader={() => null}
           theme={{
             backgroundColor: colors.background,
             calendarBackground: colors.background,
             textSectionTitleColor: colors.textMuted,
+            selectedDayBackgroundColor: colors.accentPrimary,
+            selectedDayTextColor: '#000000',
+            todayTextColor: colors.accentPrimary,
             dayTextColor: colors.textPrimary,
             textDisabledColor: colors.border,
-            monthTextColor: colors.textPrimary,
+            dotColor: colors.accentPrimary,
+            selectedDotColor: '#000000',
             arrowColor: colors.accentPrimary,
+            monthTextColor: colors.textPrimary,
             textDayFontFamily: FONT_FAMILY.body,
             textDayHeaderFontFamily: FONT_FAMILY.medium,
-            textDayFontSize: 16,
+            textDayFontSize: 15,
             textDayHeaderFontSize: 12,
+            'stylesheet.expandable.main': {
+              knob: {
+                width: 38,
+                height: 4,
+                borderRadius: 2,
+                backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                alignSelf: 'center',
+                marginVertical: 6,
+              },
+              knobContainer: {
+                height: 20,
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: colors.background,
+              },
+            },
             'stylesheet.calendar.header': {
-              header: { height: 0, opacity: 0 },
-              week: { marginTop: 0, flexDirection: 'row', justifyContent: 'space-around' }
+              header: { height: 0, opacity: 0, margin: 0, padding: 0 },
+              week: { marginTop: 4, marginBottom: 6, flexDirection: 'row', justifyContent: 'space-around' }
             }
           } as any}
         />
-      <View style={styles.monthEventListContainer}>
-        <Text style={styles.monthEventListHeader}>{formatDateFull(selectedDate).toUpperCase()}</Text>
-        <FlatList
-          data={dayEvents}
-          keyExtractor={item => item.id}
-          renderItem={renderMonthEventItem}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
-          ListEmptyComponent={<Text style={styles.emptyText}>No events on this day.</Text>}
-        />
-      </View>
+        <View style={styles.monthEventListContainer}>
+          <Text style={styles.monthEventListHeader}>{formatDateFull(selectedDate).toUpperCase()}</Text>
+          <FlatList
+            data={dayEvents}
+            keyExtractor={item => item.id}
+            renderItem={renderMonthEventItem}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 100 }}
+            ListEmptyComponent={<Text style={styles.emptyText}>No events on this day.</Text>}
+          />
+        </View>
       </CalendarProvider>
-      </View>
+    </View>
   );
 });
 

@@ -33,11 +33,28 @@ export interface AcademicContextType {
   optimisticRemoveAttendanceLog: (logId: string) => void;
 }
 
+const DEFAULT_ACADEMIC_DATA: AcademicContextType = {
+  attendance: [],
+  attendanceLogs: [],
+  assignments: [],
+  semesters: [],
+  semesterSubjects: [],
+  ensureSubscribed: () => {},
+  optimisticUpdateAttendance: () => {},
+  optimisticAddAssignment: () => {},
+  optimisticUpdateAssignment: () => {},
+  optimisticDeleteAssignment: () => {},
+  optimisticAddAttendanceLog: () => {},
+  optimisticRemoveAttendanceLog: () => {},
+};
+
 const AcademicContext = createContext<AcademicContextType | null>(null);
 
 export function useAcademicData(): AcademicContextType {
   const ctx = useContext(AcademicContext);
-  if (!ctx) throw new Error("useAcademicData must be inside AcademicProvider");
+  if (!ctx) {
+    return DEFAULT_ACADEMIC_DATA;
+  }
   return ctx;
 }
 
@@ -75,35 +92,31 @@ export function AcademicProvider({
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
-    InteractionManager.runAfterInteractions(() => {
-      setTimeout(() => {
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.ATTENDANCE), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceSubject)); setAttendance(fresh); writeAcademicCache({ attendance: fresh }); },
-          err => console.error("[Academic] attendance", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceLog)); setAttendanceLogs(fresh); writeAcademicCache({ attendanceLogs: fresh }); },
-          err => console.error("[Academic] attendanceLogs", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.ASSIGNMENTS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment)); setAssignments(fresh); writeAcademicCache({ assignments: fresh }); },
-          err => console.error("[Academic] assignments", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.SEMESTERS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Semester)); setSemesters(fresh); writeAcademicCache({ semesters: fresh }); },
-          err => console.error("[Academic] semesters", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.SEMESTER_SUBJECTS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SemesterSubject)); setSemesterSubjects(fresh); writeAcademicCache({ semesterSubjects: fresh }); },
-          err => console.error("[Academic] semesterSubjects", err)
-        ));
-      }, 450);
-    });
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.ATTENDANCE), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceSubject)); setAttendance(fresh); writeAcademicCache({ attendance: fresh }); },
+      err => console.error("[Academic] attendance", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceLog)); setAttendanceLogs(fresh); writeAcademicCache({ attendanceLogs: fresh }); },
+      err => console.error("[Academic] attendanceLogs", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.ASSIGNMENTS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment)); setAssignments(fresh); writeAcademicCache({ assignments: fresh }); },
+      err => console.error("[Academic] assignments", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.SEMESTERS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Semester)); setSemesters(fresh); writeAcademicCache({ semesters: fresh }); },
+      err => console.error("[Academic] semesters", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.SEMESTER_SUBJECTS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SemesterSubject)); setSemesterSubjects(fresh); writeAcademicCache({ semesterSubjects: fresh }); },
+      err => console.error("[Academic] semesterSubjects", err)
+    ));
   };
 
   useEffect(() => {

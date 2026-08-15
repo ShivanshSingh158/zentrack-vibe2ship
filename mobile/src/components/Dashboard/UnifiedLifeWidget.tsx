@@ -26,9 +26,7 @@ export interface NextClassData {
   subjectId: string;
   attended?: number;
   total?: number;
-}
-
-interface UnifiedLifeWidgetProps {
+}interface UnifiedLifeWidgetProps {
   currentStreak: number;
   streakAtRisk?: boolean;
   agendaCompleted: number;
@@ -37,7 +35,10 @@ interface UnifiedLifeWidgetProps {
   habitsTotal: number;
   waterCompleted: number;
   waterTotal: number;
-  contentCount: number;
+  contentCount?: number;
+  classesAttendedToday?: number;
+  classesTotalToday?: number;
+  overallAttendancePct?: number;
   levelLabel: string;
   levelNextLabel: string;
   levelXP: number;
@@ -52,7 +53,8 @@ interface UnifiedLifeWidgetProps {
   onPressStreak: () => void;
   onPressHabits: () => void;
   onPressWater: () => void;
-  onPressContent: () => void;
+  onPressContent?: () => void;
+  onPressAttendance?: () => void;
   onPressXP?: () => void;
   onPressRing?: () => void;
   onCapture?: () => void;
@@ -123,6 +125,9 @@ export function UnifiedLifeWidget({
   waterCompleted,
   waterTotal,
   contentCount,
+  classesAttendedToday = 0,
+  classesTotalToday = 0,
+  overallAttendancePct = 0,
   levelLabel,
   levelNextLabel,
   levelXP,
@@ -138,6 +143,7 @@ export function UnifiedLifeWidget({
   onPressHabits,
   onPressWater,
   onPressContent,
+  onPressAttendance,
   onPressXP,
   onPressRing,
   onCapture,
@@ -191,8 +197,8 @@ export function UnifiedLifeWidget({
           <Svg width={RING_SIZE} height={RING_SIZE} style={styles.svgAbsolute}>
             <Defs>
               <SvgLinearGradient id="xpGradient" x1="0" y1="0" x2="1" y2="1">
-                <Stop offset="0" stopColor={getGradientForLevel(levelLabel)[0]} />
-                <Stop offset="1" stopColor={getGradientForLevel(levelLabel)[1]} />
+                <Stop offset="0%" stopColor={getGradientForLevel(levelLabel)[0]} />
+                <Stop offset="1%" stopColor={getGradientForLevel(levelLabel)[1]} />
               </SvgLinearGradient>
             </Defs>
             <SvgCircle
@@ -279,19 +285,26 @@ export function UnifiedLifeWidget({
             <Text style={[styles.valuePillText, { color: '#89dceb' }]}>{displayWater}/{displayWaterTarget}L</Text>
           </AnimatedPressable>
 
-          {/* CONTENT */}
+          {/* CLASSES (Replaced Library) */}
           <AnimatedPressable
             style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1 }]}
             activeOpacity={0.75}
             delayPressIn={80}
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressContent(); }}
+            onPress={() => { 
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
+              if (onPressAttendance) onPressAttendance();
+              else onPressContent?.(); 
+            }}
           >
             <View style={styles.compactLeftGroup}>
-              <Text style={styles.compactEmoji}>📚</Text>
-              <Text style={[styles.compactLabel, { color: '#a599ff' }]}>Library</Text>
+              <Text style={styles.compactEmoji}>🎓</Text>
+              <Text style={[styles.compactLabel, { color: '#fbbf24' }]}>Classes</Text>
             </View>
-            <Text style={[styles.valuePillText, { color: '#a599ff' }]}>
-              {contentCount} {contentCount === 1 ? 'Item' : 'Items'}
+            <Text style={[styles.valuePillText, { color: '#fbbf24' }]}>
+              {classesTotalToday > 0 
+                ? `${classesAttendedToday}/${classesTotalToday} Done`
+                : (overallAttendancePct > 0 ? `${overallAttendancePct}% Avg` : '0/0 Done')
+              }
             </Text>
           </AnimatedPressable>
         </View>

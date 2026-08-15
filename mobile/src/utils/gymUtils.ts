@@ -30,7 +30,7 @@ export const MUSCLE_CANONICAL: Record<string, string> = {
   calves: 'Calves',
   abs: 'Abs',
   forearms: 'Forearms',
-  glutes: 'Glutes',
+  glutes: 'Hamstrings', // Clubbed into Hamstrings
   traps: 'Traps',
   mixed: 'Mixed',
   // Micro-targets
@@ -39,6 +39,7 @@ export const MUSCLE_CANONICAL: Record<string, string> = {
   'lower chest': 'Chest',
   'lat width': 'Back',
   'mid-back': 'Back',
+  'lower back': 'Back',
   'front delts': 'Shoulders',
   'rear delts': 'Shoulders',
   'upper traps': 'Traps',
@@ -48,7 +49,10 @@ export const MUSCLE_CANONICAL: Record<string, string> = {
   'long bicep': 'Biceps',
   'quad teardrop': 'Quads',
   'glutes/quads': 'Quads',
-  'glutes/abductors': 'Glutes',
+  'glutes/abductors': 'Hamstrings', // Clubbed into Hamstrings
+  'glutes/hams': 'Hamstrings', // Clubbed into Hamstrings
+  'gluteus maximus': 'Hamstrings',
+  'gluteus medius': 'Hamstrings',
   'gastrocnemius': 'Calves',
   'soleus': 'Calves',
   'upper abs': 'Abs',
@@ -57,12 +61,59 @@ export const MUSCLE_CANONICAL: Record<string, string> = {
   'obliques': 'Abs',
   'forearm flexors': 'Forearms',
   'forearm extensors': 'Forearms',
-  'brachioradialis': 'Forearms'
+  'forearm extensors (outside)': 'Forearms',
+  'forearm flexors (inside)': 'Forearms',
+  'brachioradialis': 'Forearms',
+  'grip': 'Forearms',
+  'wrist': 'Forearms',
 };
 
 export function canonicalizeMuscle(muscle?: string): string {
   if (!muscle) return 'Mixed';
-  return MUSCLE_CANONICAL[muscle.toLowerCase()] ?? muscle;
+  const clean = muscle.trim().toLowerCase();
+  
+  // 1. Direct dictionary match
+  if (MUSCLE_CANONICAL[clean]) {
+    return MUSCLE_CANONICAL[clean];
+  }
+
+  // 2. Pattern-based grouping
+  if (clean.includes('forearm') || clean.includes('wrist') || clean.includes('brachio') || clean.includes('grip')) {
+    return 'Forearms';
+  }
+  if (clean.includes('glute') || clean.includes('hamstring') || clean.includes('hams') || clean.includes('abductor')) {
+    return 'Hamstrings';
+  }
+  if (clean.includes('chest') || clean.includes('pec')) {
+    return 'Chest';
+  }
+  if (clean.includes('lat') || clean.includes('back') || clean.includes('erector')) {
+    return 'Back';
+  }
+  if (clean.includes('delt') || clean.includes('shoulder')) {
+    return 'Shoulders';
+  }
+  if (clean.includes('tricep')) {
+    return 'Triceps';
+  }
+  if (clean.includes('bicep')) {
+    return 'Biceps';
+  }
+  if (clean.includes('quad')) {
+    return 'Quads';
+  }
+  if (clean.includes('calv') || clean.includes('soleus') || clean.includes('gastro')) {
+    return 'Calves';
+  }
+  if (clean.includes('ab') || clean.includes('core') || clean.includes('oblique')) {
+    return 'Abs';
+  }
+  if (clean.includes('trap')) {
+    return 'Traps';
+  }
+
+  // Capitalize first letter as fallback
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
 export const resolveMuscleColor = (m: string | undefined | null) => {
@@ -133,12 +184,31 @@ export const hexToRgba = (hex: string, alpha: number = 1): string => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
-export const calculateGymStreak = (logs: any[] | null | undefined): number => {
+/**
+ * Qualifies a gym log as a legitimate workout session:
+ * Requires logging at least 3 completed exercises from the routine (or a completed cardio session >= 15m),
+ * preventing accidental timer openings or single-exercise touches from falsely incrementing sessions.
+ */
+export function isValidWorkoutSession(log: any): boolean {
+  if (!log) return false;
+  const completedExercises = (log.exercises ?? []).filter(
+    (e: any) => !e.skipped && (e.setsLog ?? []).some((s: any) => s.completed),
+  ).length;
+
+  const hasCompletedCardio = (log.cardio ?? []).some(
+    (c: any) => c.completed && (Number(c.durationMinutes) || 0) >= 15,
+  );
+
+  return completedExercises >= 3 || hasCompletedCardio;
+}
+
+import { WEEKDAY_TO_PLAN, GYM_PLAN } from '../data/gymPlan';
+
+export const calculateGymStreak = (logs: any[] | null | undefined, userGymPlan?: any | null): number => {
   if (!logs || logs.length === 0) return 0;
   
   const loggedDates = new Set(
-    logs.filter(l => (l.exercises && l.exercises.length > 0) || (l.cardio && l.cardio.length > 0) || l.workoutDurationMinutes > 0)
-        .map(l => l.date)
+    logs.filter(isValidWorkoutSession).map(l => l.date)
   );
 
   let streak = 0;
@@ -146,6 +216,13 @@ export const calculateGymStreak = (logs: any[] | null | undefined): number => {
   
   const toDateStr = (date: Date) => {
     return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+  };
+
+  const isRestDayForDate = (date: Date): boolean => {
+    const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon...
+    const planIdx = WEEKDAY_TO_PLAN[dayOfWeek] ?? 7;
+    const plan = userGymPlan?.customDays?.[planIdx] || GYM_PLAN.find(p => p.dayIndex === planIdx);
+    return plan?.isRest === true;
   };
 
   const todayStr = toDateStr(d);
@@ -158,7 +235,7 @@ export const calculateGymStreak = (logs: any[] | null | undefined): number => {
     const dStr = toDateStr(d);
     if (loggedDates.has(dStr)) {
       streak++;
-    } else if (d.getDay() !== 0) { // If it's not Sunday and not logged, streak breaks
+    } else if (!isRestDayForDate(d)) { // If it's a workout day and not logged, streak breaks
       break;
     }
     d.setDate(d.getDate() - 1);

@@ -10,6 +10,7 @@ import { callGeminiProxy } from '../services/geminiProxy';
 import { useTheme } from "../contexts/ThemeContext";
 import AnimatedPressable from '../components/AnimatedPressable';
 
+import * as Haptics from 'expo-haptics';
 import { useCalendarData } from './calendar/useCalendarData';
 import { CalendarDayView } from './calendar/CalendarDayView';
 import { CalendarWeekView } from './calendar/CalendarWeekView';
@@ -105,9 +106,9 @@ const markedDates = useMemo(() => {
     }
 
     if (marks[selectedDate]) {
-      marks[selectedDate] = { ...marks[selectedDate], selected: true };
+      marks[selectedDate] = { ...marks[selectedDate], selected: true, selectedColor: colors.accentPrimary, selectedTextColor: '#000000' };
     } else {
-      marks[selectedDate] = { selected: true };
+      marks[selectedDate] = { selected: true, selectedColor: colors.accentPrimary, selectedTextColor: '#000000' };
     }
     return marks;
   }, [customEvents, tasks, selectedDate, attendance, gymLogs]);
@@ -136,11 +137,13 @@ const handleFindFreeSlots = async () => {
           <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
             <TouchableOpacity 
               onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 const d = new Date(selectedDate);
                 d.setMonth(d.getMonth() - 1);
                 setSelectedDate(d.toISOString().split('T')[0]);
               }} 
-              style={{ paddingVertical: 4, paddingRight: 6 }}
+              style={{ paddingVertical: 4, paddingHorizontal: 6 }}
+              activeOpacity={0.6}
             >
               <Ionicons name="caret-back" size={16} color={colors.accentPrimary} />
             </TouchableOpacity>
@@ -149,11 +152,13 @@ const handleFindFreeSlots = async () => {
             </Text>
             <TouchableOpacity 
               onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 const d = new Date(selectedDate);
                 d.setMonth(d.getMonth() + 1);
                 setSelectedDate(d.toISOString().split('T')[0]);
               }} 
-              style={{ paddingVertical: 4, paddingLeft: 6 }}
+              style={{ paddingVertical: 4, paddingHorizontal: 6 }}
+              activeOpacity={0.6}
             >
               <Ionicons name="caret-forward" size={16} color={colors.accentPrimary} />
             </TouchableOpacity>
@@ -292,17 +297,19 @@ const handleFindFreeSlots = async () => {
       </View>
 
       {/* 5. MONTH VIEW */}
-      <View style={[styles.monthViewContainer, currentView !== 'Month' && { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, opacity: 0, zIndex: -10, pointerEvents: 'none' }]}>
-        <CalendarAgendaView 
-          styles={styles} colors={colors} selectedDate={selectedDate} 
-          currentView={currentView}
-          setSelectedDate={setSelectedDate} markedDates={markedDates} 
-          dayEvents={dayEvents} setSelectedGymLog={setSelectedGymLog} 
-          setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput} 
-          setShowGymModal={setShowGymModal} setSelectedEvent={setSelectedEvent} 
-          setShowEventModal={setShowEventModal} gymLogs={gymLogs} 
-        />
-      </View>
+      {currentView === 'Month' && (
+        <View style={styles.monthViewContainer}>
+          <CalendarAgendaView 
+            styles={styles} colors={colors} selectedDate={selectedDate} 
+            currentView={currentView}
+            setSelectedDate={setSelectedDate} markedDates={markedDates} 
+            dayEvents={dayEvents} setSelectedGymLog={setSelectedGymLog} 
+            setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput} 
+            setShowGymModal={setShowGymModal} setSelectedEvent={setSelectedEvent} 
+            setShowEventModal={setShowEventModal} gymLogs={gymLogs} 
+          />
+        </View>
+      )}
 
       {/* Event Details Sheet */}
       {showEventModal && (

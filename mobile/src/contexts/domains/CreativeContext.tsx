@@ -26,11 +26,22 @@ export interface CreativeContextType {
   ensureSubscribed: () => void;
 }
 
+const DEFAULT_CREATIVE_DATA: CreativeContextType = {
+  storageNodes: [],
+  notes: [],
+  learningTopics: [],
+  jobs: [],
+  contentLogs: [],
+  ensureSubscribed: () => {},
+};
+
 const CreativeContext = createContext<CreativeContextType | null>(null);
 
 export function useCreativeData(): CreativeContextType {
   const ctx = useContext(CreativeContext);
-  if (!ctx) throw new Error("useCreativeData must be inside CreativeProvider");
+  if (!ctx) {
+    return DEFAULT_CREATIVE_DATA;
+  }
   return ctx;
 }
 
@@ -66,30 +77,26 @@ export function CreativeProvider({
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
-    InteractionManager.runAfterInteractions(() => {
-      setTimeout(() => {
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.STORAGE_NODES), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as StorageNode)); setStorageNodes(fresh); writeCreativeCache({ storageNodes: fresh }); },
-          err => console.error("[Creative] storageNodes", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.LEARNING_TOPICS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearningTopic)); setLearningTopics(fresh); writeCreativeCache({ learningTopics: fresh }); },
-          err => console.error("[Creative] learningTopics", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.JOBS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)); setJobs(fresh); writeCreativeCache({ jobs: fresh }); },
-          err => console.error("[Creative] jobs", err)
-        ));
-        unsubsRef.current.push(onSnapshot(
-          query(collection(db, COLLECTION.CONTENT_LOGS), where("userId", "==", uid)),
-          snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentLog)); setContentLogs(fresh); writeCreativeCache({ contentLogs: fresh }); },
-          err => console.error("[Creative] contentLogs", err)
-        ));
-      }, 600);
-    });
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.STORAGE_NODES), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as StorageNode)); setStorageNodes(fresh); writeCreativeCache({ storageNodes: fresh }); },
+      err => console.error("[Creative] storageNodes", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.LEARNING_TOPICS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearningTopic)); setLearningTopics(fresh); writeCreativeCache({ learningTopics: fresh }); },
+      err => console.error("[Creative] learningTopics", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.JOBS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)); setJobs(fresh); writeCreativeCache({ jobs: fresh }); },
+      err => console.error("[Creative] jobs", err)
+    ));
+    unsubsRef.current.push(onSnapshot(
+      query(collection(db, COLLECTION.CONTENT_LOGS), where("userId", "==", uid)),
+      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentLog)); setContentLogs(fresh); writeCreativeCache({ contentLogs: fresh }); },
+      err => console.error("[Creative] contentLogs", err)
+    ));
   };
 
   useEffect(() => {

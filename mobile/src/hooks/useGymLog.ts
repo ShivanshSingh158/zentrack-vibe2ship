@@ -127,9 +127,9 @@ export function useGymLog(dateStr: string) {
     }
     prevDateStrRef.current = dateStr;
 
-    const currentPlanUpdatedAt = userGymPlan?.updatedAt || 0;
+    const currentPlanUpdatedAt = userGymPlan?.updatedAt ?? 0;
     if (prevPlanUpdatedRef.current !== null && prevPlanUpdatedRef.current !== currentPlanUpdatedAt) {
-      if (logRef.current && !logRef.current.workoutStartTime) {
+      if (logRef.current && !logRef.current.workoutStartTime && !logRef.current.completed) {
         setLog(null);
         logRef.current = null;
         localWriteAtRef.current = 0;
@@ -195,41 +195,80 @@ export function useGymLog(dateStr: string) {
       const planIdx = planDayIndexForDate(dateStr);
       const planDay = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
 
-      let patchedExercises = (existing.exercises || []).map((ex, idx) => {
-        const lastSets = getLastSessionSets(ex.exerciseId, ex.name);
-        const lastValidSet = lastSets && lastSets.length > 0
-          ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
-          : null;
+      let patchedExercises: GymExerciseLog[] = [];
 
-        let patchedVideoId = ex.videoId;
-        if (!patchedVideoId && planDay) {
-          const planEx = planDay.exercises.find((pe: any) => pe.id === ex.exerciseId || pe.name === ex.name);
-          if (planEx?.videoId) {
-            patchedVideoId = planEx.videoId;
-          }
+      // If workout has not started and is not completed, sync with the latest planDay definition
+      if (!existing.workoutStartTime && !existing.completed) {
+        if (planDay?.isRest) {
+          patchedExercises = [];
+        } else if (planDay && (!existing.exercises || existing.exercises.length === 0 || existing.dayPlanIndex !== planIdx)) {
+          patchedExercises = planDay.exercises.map((e: any, idx: number) => {
+            const lastSets = getLastSessionSets(e.id, e.name);
+            const lastValidSet = lastSets && lastSets.length > 0
+              ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
+              : null;
+
+            return {
+              _idx: idx,
+              exerciseId: e.id,
+              name: e.name,
+              targetSets: e.targetSets,
+              targetReps: e.targetReps,
+              muscle: e.muscle,
+              videoId: e.videoId,
+              restTimeSecs: e.restTimeSecs,
+              lastSessionSets: lastSets ?? undefined,
+              setsLog: Array.from({ length: e.targetSets }, (_, i) => {
+                const lastSet = lastSets?.[i] || lastValidSet;
+                return {
+                  setNumber: i + 1,
+                  reps: lastSet?.reps ?? null,
+                  weight: lastSet?.weight ?? null,
+                  completed: false,
+                };
+              }),
+            };
+          });
         }
+      }
 
-        // Pre-fill any unlogged/null set values with last session's exact set data
-        const patchedSetsLog = (ex.setsLog || []).map((s: any, sIdx: number) => {
-          const lastSet = lastSets?.[sIdx] || lastValidSet;
+      if (patchedExercises.length === 0 && (!planDay?.isRest) && existing.exercises && existing.exercises.length > 0) {
+        patchedExercises = existing.exercises.map((ex, idx) => {
+          const lastSets = getLastSessionSets(ex.exerciseId, ex.name);
+          const lastValidSet = lastSets && lastSets.length > 0
+            ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
+            : null;
+
+          let patchedVideoId = ex.videoId;
+          if (!patchedVideoId && planDay) {
+            const planEx = planDay.exercises.find((pe: any) => pe.id === ex.exerciseId || pe.name === ex.name);
+            if (planEx?.videoId) {
+              patchedVideoId = planEx.videoId;
+            }
+          }
+
+          // Pre-fill any unlogged/null set values with last session's exact set data
+          const patchedSetsLog = (ex.setsLog || []).map((s: any, sIdx: number) => {
+            const lastSet = lastSets?.[sIdx] || lastValidSet;
+            return {
+              ...s,
+              reps: s.reps ?? lastSet?.reps ?? null,
+              weight: s.weight ?? lastSet?.weight ?? null,
+            };
+          });
+
           return {
-            ...s,
-            reps: s.reps ?? lastSet?.reps ?? null,
-            weight: s.weight ?? lastSet?.weight ?? null,
+            ...ex,
+            _idx: idx,
+            videoId: patchedVideoId,
+            lastSessionSets: ex.lastSessionSets || lastSets || undefined,
+            setsLog: patchedSetsLog,
           };
         });
-
-        return {
-          ...ex,
-          _idx: idx,
-          videoId: patchedVideoId,
-          lastSessionSets: ex.lastSessionSets || lastSets || undefined,
-          setsLog: patchedSetsLog,
-        };
-      });
+      }
 
       // Sync log exercise order with master plan if workout is not started
-      if (!existing.workoutStartTime && planDay && !planDay.isRest) {
+      if (!existing.workoutStartTime && planDay && !planDay.isRest && patchedExercises.length > 0) {
         patchedExercises.sort((a, b) => {
           const aIndex = planDay.exercises.findIndex((e: any) => e.name === a.name);
           const bIndex = planDay.exercises.findIndex((e: any) => e.name === b.name);
@@ -241,7 +280,11 @@ export function useGymLog(dateStr: string) {
         patchedExercises.forEach((ex, idx) => ex._idx = idx);
       }
 
-      let patchedLog = { ...existing, exercises: patchedExercises } as GymDayLog;
+      let patchedLog = { 
+        ...existing, 
+        dayPlanIndex: !existing.workoutStartTime && !existing.completed ? planIdx : existing.dayPlanIndex,
+        exercises: patchedExercises 
+      } as GymDayLog;
       if (!patchedLog.cardio) {
         patchedLog.cardio = [];
       }
@@ -835,6 +878,45 @@ export function useGymLog(dateStr: string) {
     });
   }, [saveLog]);
 
+  // ── Force override plan layout when master template changes ────────────────
+  const forceOverrideTodayPlan = useCallback((newCustomDays: Record<number, GymPlanDay>) => {
+    const pIdx = planDayIndexForDate(dateStr);
+    const targetPlanDay = getCustomPlanDay(newCustomDays, pIdx) || GYM_PLAN.find(d => d.dayIndex === pIdx);
+    if (!targetPlanDay) return;
+
+    const isRest = targetPlanDay.isRest === true;
+    const newExercises = !isRest ? targetPlanDay.exercises.map((e: any, idx: number) => ({
+      _idx: idx,
+      exerciseId: e.id,
+      name: e.name,
+      targetSets: e.targetSets,
+      targetReps: e.targetReps,
+      muscle: e.muscle,
+      videoId: e.videoId,
+      restTimeSecs: e.restTimeSecs,
+      setsLog: Array.from({ length: e.targetSets }, (_, i) => ({
+        setNumber: i + 1,
+        reps: null,
+        weight: null,
+        completed: false,
+      })),
+    })) : [];
+
+    const updated: GymDayLog = {
+      ...(logRef.current || { userId: user?.uid || '', date: dateStr, cardio: [], createdAt: Date.now() }),
+      dayPlanIndex: pIdx,
+      exercises: newExercises,
+      cardio: [],
+      workoutStartTime: undefined,
+      workoutDurationMinutes: undefined,
+      completed: false,
+      updatedAt: Date.now(),
+    };
+
+    setLog(updated);
+    saveLog(updated);
+  }, [dateStr, user?.uid, saveLog]);
+
   return {
     log,
     updateSet,
@@ -867,5 +949,6 @@ export function useGymLog(dateStr: string) {
     swapDayRoutine,
     triggerDeload,
     updateNotes,
+    forceOverrideTodayPlan,
   };
 }

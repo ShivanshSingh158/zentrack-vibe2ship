@@ -33,7 +33,7 @@ import { COLLECTION } from '../../config/constants';
 import { useMobileData } from '../../contexts/MobileDataContext';
 import { useGymLog, todayStr, dateStrOffset, planDayIndexForDate } from '../../hooks/useGymLog';
 import { GYM_PLAN_PPL, GYM_PLAN_ARNOLD } from '../../data/gymPlan';
-import type { GymPlanDay } from '../../data/gymPlan';
+import type { GymPlanDay } from '../../types/gym.types';
 import { calculateGymStreak } from '../../utils/gymUtils';
 import { clearScheduleCache, scheduleAllNotifications } from '../../services/notifications';
 
@@ -58,7 +58,7 @@ import PRHallOfFameSheet from '../../components/Gym/PRHallOfFameSheet';
 import { handleSyncError } from '../../utils/errorUtils';
 
 
-// ΓöÇΓöÇ Design Tokens ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Design Tokens ────────────────────────────────────────────────────────────
 
 export default function GymHomeScreen() {
   const navigation = useNavigation<any>();
@@ -66,7 +66,7 @@ export default function GymHomeScreen() {
   const [weekOffset, setWeekOffset] = useState(0);
 
   const { gymLogs, waterLogs, sleepLogs, tasks, customEvents, attendance, habitLogs, allHabits, assignments, applyMasterTemplate, userGymPlan, updateFullMasterPlan, user } = useMobileData();
-  const currentStreak = useMemo(() => calculateGymStreak(gymLogs), [gymLogs]);
+  const currentStreak = useMemo(() => calculateGymStreak(gymLogs, userGymPlan), [gymLogs, userGymPlan]);
 
   // BUG-3 FIX: Callback passed to GymNotificationModal so gym reminder time
   // changes reschedule immediately (not just on next app open or data change).
@@ -627,7 +627,7 @@ export default function GymHomeScreen() {
       </Animated.View>
 
       {planDay?.isRest ? (
-        <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} />
+        <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
       ) : (
         <>
           {selectedDate === todayStr() && (() => {
@@ -837,16 +837,11 @@ export default function GymHomeScreen() {
         <GymTemplateModal
           visible={showTemplateModal}
           onClose={() => setShowTemplateModal(false)}
-          onApply={async (templateId) => {
-            await applyMasterTemplate(templateId);
+          onApply={async (templateId, schedulePattern) => {
+            const newCustomDays = await applyMasterTemplate(templateId, schedulePattern);
             
             // If today's log hasn't started, overwrite it instantly with the new template's layout.
-            if (!log?.workoutStartTime) {
-              const selectedPlan = templateId === 'ppl' ? GYM_PLAN_PPL : GYM_PLAN_ARNOLD;
-              const newCustomDays: Record<number, GymPlanDay> = {};
-              selectedPlan.forEach(d => {
-                newCustomDays[d.dayIndex] = d;
-              });
+            if (!log?.workoutStartTime && newCustomDays) {
               forceOverrideTodayPlan(newCustomDays);
               setWeekOffset(prev => prev); // trigger minor re-render
             }
