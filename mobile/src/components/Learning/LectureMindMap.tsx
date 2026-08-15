@@ -3,10 +3,11 @@
  *
  * AI-Generated Interactive Mind Map for YouTube lectures.
  * Features:
- * - 360° Free 2D PanResponder (Drag anywhere: left, right, up, down, diagonal)
- * - Multi-touch Pinch to Zoom + Floating HUD (+ / - / Reset buttons)
+ * - Fluid Multi-touch 2-Finger Pinch to Zoom + 360° Infinite Pan
+ * - Seamless gesture transition (1-finger pan to 2-finger pinch with focal tracking)
  * - Auto-centers directly on the Central Topic on load
- * - Spacious 1400x1400 Miro-grade whiteboard layout with zero edge clipping
+ * - Floating HUD Zoom Controls (+ / - / Reset buttons)
+ * - Spacious 1600x1600 Miro-grade whiteboard layout with zero edge clipping
  * - Zero SVG dependency (pure React Native Views for 100% crash immunity)
  * - Tap any node to instantly consult ZEN-GPT
  */
@@ -44,11 +45,11 @@ interface LectureMindMapProps {
 
 // ── Canvas & Spatial Constants ────────────────────────────────────────────────
 
-const CANVAS_SIZE = 1400;
+const CANVAS_SIZE = 1600;
 const CX = CANVAS_SIZE / 2;
 const CY = CANVAS_SIZE / 2;
-const BRANCH_RADIUS = 250;
-const LEAF_RADIUS = 480;
+const BRANCH_RADIUS = 270;
+const LEAF_RADIUS = 520;
 
 const BRANCH_COLORS = [
   '#a599ff', // Lavender Purple
@@ -145,11 +146,9 @@ export default function LectureMindMap({
   const scale = useRef(new Animated.Value(0.75)).current;
   const [scaleDisplay, setScaleDisplay] = useState(75);
 
-  // Mutable refs to track gesture math
+  // Mutable refs to track gesture state
   const panOffset = useRef({ x: 0, y: 0 });
   const scaleValue = useRef(0.75);
-  const initialPinchDistance = useRef<number | null>(null);
-  const initialScaleOnPinch = useRef(0.75);
 
   const getInitialPosition = useCallback((targetScale = 0.75) => {
     return {
@@ -222,7 +221,7 @@ export default function LectureMindMap({
   // Zoom button handlers
   const handleZoomIn = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = Math.min(1.4, Number((scaleValue.current + 0.15).toFixed(2)));
+    const next = Math.min(1.8, Number((scaleValue.current + 0.15).toFixed(2)));
     scaleValue.current = next;
     setScaleDisplay(Math.round(next * 100));
     Animated.spring(scale, { toValue: next, useNativeDriver: false, friction: 6 }).start();
@@ -230,83 +229,115 @@ export default function LectureMindMap({
 
   const handleZoomOut = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const next = Math.max(0.35, Number((scaleValue.current - 0.15).toFixed(2)));
+    const next = Math.max(0.3, Number((scaleValue.current - 0.15).toFixed(2)));
     scaleValue.current = next;
     setScaleDisplay(Math.round(next * 100));
     Animated.spring(scale, { toValue: next, useNativeDriver: false, friction: 6 }).start();
   };
 
-  // ── PanResponder for 360° Infinite Pan + Natural Pinch to Zoom ───────────────
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (evt, gestureState) => {
-      // Activate on drag > 2px or multi-touch pinch
-      const touchCount = evt.nativeEvent.touches?.length || 0;
-      return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2 || touchCount > 1;
-    },
-    onPanResponderGrant: (evt) => {
-      const touches = evt.nativeEvent.touches;
-      if (touches && touches.length === 2) {
-        const [t1, t2] = touches;
-        initialPinchDistance.current = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
-        initialScaleOnPinch.current = scaleValue.current;
-      } else {
-        initialPinchDistance.current = null;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
+  // ── High-Performance Fluid Pan & Multi-Touch Pinch Engine ───────────────────
+  const panResponder = useMemo(() => {
+    let lastTouchCount = 0;
+    let pinchStartDist = 0;
+    let pinchStartScale = 0.75;
+    let lastMidX = 0;
+    let lastMidY = 0;
 
-      if (touches && touches.length === 2) {
-        // Multi-touch natural pinch-to-zoom
-        const [t1, t2] = touches;
-        const currentDist = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
-
-        // Dynamically initialize pinch baseline if 2nd finger was added mid-drag
-        if (initialPinchDistance.current == null || initialPinchDistance.current <= 0) {
-          initialPinchDistance.current = currentDist;
-          initialScaleOnPinch.current = scaleValue.current;
-          return;
+    return PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => false,
+      onMoveShouldSetPanResponder: (evt, gs) => {
+        // Activate pan if dragged > 2px or multi-touch pinch detected
+        return Math.hypot(gs.dx, gs.dy) > 2 || evt.nativeEvent.touches.length > 1;
+      },
+      onMoveShouldSetPanResponderCapture: (evt, gs) => {
+        return evt.nativeEvent.touches.length > 1 || Math.hypot(gs.dx, gs.dy) > 8;
+      },
+      onPanResponderGrant: (evt, gs) => {
+        const touches = evt.nativeEvent.touches;
+        lastTouchCount = touches.length;
+        if (touches.length >= 2) {
+          const [t1, t2] = touches;
+          pinchStartDist = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
+          pinchStartScale = scaleValue.current;
+          lastMidX = (t1.pageX + t2.pageX) / 2;
+          lastMidY = (t1.pageY + t2.pageY) / 2;
         }
+      },
+      onPanResponderMove: (evt, gs) => {
+        const touches = evt.nativeEvent.touches;
 
-        if (initialPinchDistance.current > 0) {
-          const ratio = currentDist / initialPinchDistance.current;
-          const nextScale = Math.min(1.6, Math.max(0.35, Number((initialScaleOnPinch.current * ratio).toFixed(3))));
-          scale.setValue(nextScale);
-          scaleValue.current = nextScale;
-          setScaleDisplay(Math.round(nextScale * 100));
-        }
-      } else if (touches && touches.length === 1) {
-        // Reset pinch baseline if transitioning back to 1 finger
-        if (initialPinchDistance.current != null) {
-          initialPinchDistance.current = null;
-          initialScaleOnPinch.current = scaleValue.current;
-        }
+        if (touches.length >= 2) {
+          const [t1, t2] = touches;
+          const currentDist = Math.hypot(t1.pageX - t2.pageX, t1.pageY - t2.pageY);
+          const currentMidX = (t1.pageX + t2.pageX) / 2;
+          const currentMidY = (t1.pageY + t2.pageY) / 2;
 
-        // 1-finger 360° smooth pan
-        pan.setValue({
-          x: panOffset.current.x + gestureState.dx,
-          y: panOffset.current.y + gestureState.dy,
-        });
-      }
-    },
-    onPanResponderRelease: (evt, gestureState) => {
-      panOffset.current = {
-        x: panOffset.current.x + gestureState.dx,
-        y: panOffset.current.y + gestureState.dy,
-      };
-      initialPinchDistance.current = null;
-      initialScaleOnPinch.current = scaleValue.current;
-    },
-    onPanResponderTerminate: (evt, gestureState) => {
-      panOffset.current = {
-        x: panOffset.current.x + gestureState.dx,
-        y: panOffset.current.y + gestureState.dy,
-      };
-      initialPinchDistance.current = null;
-      initialScaleOnPinch.current = scaleValue.current;
-    },
-  }), [pan, scale]);
+          if (lastTouchCount < 2 || pinchStartDist === 0) {
+            // New 2-finger gesture registered mid-flight
+            pinchStartDist = currentDist;
+            pinchStartScale = scaleValue.current;
+            lastMidX = currentMidX;
+            lastMidY = currentMidY;
+            lastTouchCount = 2;
+            return;
+          }
+
+          // 1. Natural Two-Finger Zoom
+          const scaleRatio = currentDist / pinchStartDist;
+          const newScale = Math.min(2.0, Math.max(0.3, Number((pinchStartScale * scaleRatio).toFixed(3))));
+          scale.setValue(newScale);
+          scaleValue.current = newScale;
+          setScaleDisplay(Math.round(newScale * 100));
+
+          // 2. Natural Two-Finger Focal Pan
+          const dMidX = currentMidX - lastMidX;
+          const dMidY = currentMidY - lastMidY;
+          panOffset.current.x += dMidX;
+          panOffset.current.y += dMidY;
+          lastMidX = currentMidX;
+          lastMidY = currentMidY;
+
+          pan.setValue({
+            x: panOffset.current.x,
+            y: panOffset.current.y,
+          });
+
+        } else if (touches.length === 1) {
+          if (lastTouchCount >= 2) {
+            // Clean seamless transition from 2-finger pinch back to 1-finger pan
+            lastTouchCount = 1;
+            pinchStartDist = 0;
+            panOffset.current = {
+              x: (pan.x as any)._value || panOffset.current.x,
+              y: (pan.y as any)._value || panOffset.current.y,
+            };
+            return;
+          }
+
+          lastTouchCount = 1;
+          pan.setValue({
+            x: panOffset.current.x + gs.dx,
+            y: panOffset.current.y + gs.dy,
+          });
+        }
+      },
+      onPanResponderRelease: (evt, gs) => {
+        if (lastTouchCount === 1) {
+          panOffset.current = {
+            x: panOffset.current.x + gs.dx,
+            y: panOffset.current.y + gs.dy,
+          };
+        }
+        lastTouchCount = 0;
+        pinchStartDist = 0;
+      },
+      onPanResponderTerminate: () => {
+        lastTouchCount = 0;
+        pinchStartDist = 0;
+      },
+    });
+  }, [pan, scale]);
 
   // Pre-calculate node positions
   const layout = useMemo(() => {
@@ -320,7 +351,7 @@ export default function LectureMindMap({
       const color = BRANCH_COLORS[bi % BRANCH_COLORS.length];
 
       const leafCount = Math.min(branch.children.length, 4);
-      const angleSpread = 42; // fan spread for leaf children
+      const angleSpread = 44; // fan spread for leaf children
       const leaves = branch.children.slice(0, 4).map((child, ci) => {
         const offset = leafCount > 1 ? (ci - (leafCount - 1) / 2) * (angleSpread / (leafCount - 1)) : 0;
         const lAngle = bAngle + offset;
@@ -347,7 +378,7 @@ export default function LectureMindMap({
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={styles.title}>🗺️ Mind Map</Text>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>Interactive 360°</Text>
+                <Text style={styles.badgeText}>Pinch & Pan</Text>
               </View>
             </View>
             <Text style={styles.sub} numberOfLines={1}>{lectureTitle}</Text>
@@ -365,7 +396,7 @@ export default function LectureMindMap({
         {mapData && !loading && (
           <View style={styles.hintBar}>
             <Ionicons name="sparkles" size={12} color="#a599ff" />
-            <Text style={styles.hintText}>Drag anywhere to pan • Pinch or tap +/− to zoom • Tap node to ask AI</Text>
+            <Text style={styles.hintText}>Pinch with 2 fingers to zoom • Drag anywhere to pan • Tap any node to ask AI</Text>
           </View>
         )}
 
