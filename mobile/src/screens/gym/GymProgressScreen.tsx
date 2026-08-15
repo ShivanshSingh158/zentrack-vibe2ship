@@ -95,7 +95,7 @@ export default function GymProgressScreen() {
       // Calculate Volume & Muscle Group
       log.exercises?.forEach(ex => {
         let vol = 0;
-        ex.setsLog?.forEach(s => {
+        ex.setsLog?.forEach((s: any) => {
           if (s.completed && s.weight && s.reps) {
             vol += (s.weight * s.reps);
             isWorkout = true;

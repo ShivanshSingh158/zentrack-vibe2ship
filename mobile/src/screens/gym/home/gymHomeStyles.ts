@@ -9,7 +9,7 @@ import { COLORS } from '../../../theme/tokens';
 
 export const gymHomeStyles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
-  scrollContent: { paddingBottom: 160 },
+  scrollContent: { paddingBottom: 95 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },

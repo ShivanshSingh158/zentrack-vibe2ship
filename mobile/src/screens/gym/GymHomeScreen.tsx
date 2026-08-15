@@ -588,6 +588,10 @@ export default function GymHomeScreen() {
                     text: 'Exercise Details & Guide',
                     onPress: () => navigation.navigate('ExerciseDetail', { exerciseId: ex.exerciseId, date: log!.date }),
                   },
+                  {
+                    text: 'Swap Exercise...',
+                    onPress: () => navigation.navigate('ExerciseSwap', { originalExerciseId: ex.exerciseId, date: log!.date }),
+                  },
                   ...(isGrouped
                     ? [{
                         text: `Remove from Superset (${ex.supersetGroup})`,
@@ -753,7 +757,7 @@ export default function GymHomeScreen() {
 
   const renderFooter = () => {
     return (
-      <View style={{ paddingBottom: 100 }}>
+      <View style={{ paddingBottom: 0 }}>
         {!planDay?.isRest && (
           <View style={{ marginTop: 16 }}>
             {renderCardio()}
@@ -960,7 +964,7 @@ export default function GymHomeScreen() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
-  scrollContent: { paddingBottom: 160 },
+  scrollContent: { paddingBottom: 95 },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },

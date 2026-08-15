@@ -1,16 +1,20 @@
-import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  FlatList,
+  StyleSheet,
   Dimensions,
+  FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../contexts/ThemeContext';
 import { DAY_SHORT, getLocalDateString } from './attendanceConstants';
+
+const TOTAL_WEEKS = 21;
+const INITIAL_PAGE = 10; // offset = 0
 
 interface HorizontalWeekStripProps {
   selectedDate: string;
@@ -28,14 +32,14 @@ export function HorizontalWeekStrip({
 }: HorizontalWeekStripProps) {
   const { colors } = useTheme();
   const flatListRef = useRef<FlatList>(null);
-  const [containerWidth, setContainerWidth] = useState(
-    Dimensions.get('window').width - 16
-  );
+  const [pageWidth, setPageWidth] = useState(Dimensions.get('window').width - 16);
+  const [currentPage, setCurrentPage] = useState(INITIAL_PAGE);
+  const isInternalScroll = useRef(false);
 
-  // Compute base Sunday for the active selectedDate
-  const currentSunday = useMemo(() => {
+  // Stabilized anchor Sunday representing INITIAL_PAGE (offset 0)
+  const anchorSunday = useMemo(() => {
     try {
-      const [y, m, d] = (selectedDate || today).split('-').map(Number);
+      const [y, m, d] = (today || selectedDate).split('-').map(Number);
       const target = new Date(y, m - 1, d);
       target.setHours(0, 0, 0, 0);
       const day = target.getDay();
@@ -48,147 +52,167 @@ export function HorizontalWeekStrip({
       d.setDate(d.getDate() - d.getDay());
       return d;
     }
-  }, [selectedDate, today]);
+  }, []); // Anchored once on mount
 
-  // Generate 7-day array for a given week offset from currentSunday (-1: prev, 0: current, 1: next)
-  const getWeekDates = useCallback(
-    (offsetWeek: number): string[] => {
-      const baseMs = currentSunday.getTime() + offsetWeek * 7 * 86400000;
-      return Array.from({ length: 7 }, (_, i) => {
-        const d = new Date(baseMs + i * 86400000);
-        return getLocalDateString(d);
-      });
-    },
-    [currentSunday]
-  );
-
-  // Always maintain 3 virtual pages: [-1: Prev Week, 0: Active Week, 1: Next Week]
-  const pages = useMemo(() => [-1, 0, 1], []);
-
-  // Ensure scroll is centered on active week (index 1) whenever currentSunday changes
+  // Sync pager when selectedDate is changed externally (e.g. from Date picker)
   useEffect(() => {
-    flatListRef.current?.scrollToIndex({ index: 1, animated: false });
-  }, [currentSunday]);
-
-  const handleScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offset = e.nativeEvent.contentOffset.x;
-    const pageIndex = Math.round(offset / containerWidth);
-
-    if (pageIndex === 0) {
-      // Swiped to Previous Week
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (!selectedDate || isInternalScroll.current) return;
+    try {
       const [y, m, d] = selectedDate.split('-').map(Number);
-      const prevDate = new Date(y, m - 1, d - 7);
-      onSelectDate(getLocalDateString(prevDate));
-    } else if (pageIndex === 2) {
-      // Swiped to Next Week
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const [y, m, d] = selectedDate.split('-').map(Number);
-      const nextDate = new Date(y, m - 1, d + 7);
-      onSelectDate(getLocalDateString(nextDate));
-    }
-  };
+      const sel = new Date(y, m - 1, d);
+      sel.setHours(0, 0, 0, 0);
+      const selSunday = new Date(sel.getFullYear(), sel.getMonth(), sel.getDate() - sel.getDay());
+      selSunday.setHours(0, 0, 0, 0);
+
+      const diffWeeks = Math.round((selSunday.getTime() - anchorSunday.getTime()) / (7 * 86400000));
+      const targetPage = INITIAL_PAGE + diffWeeks;
+
+      if (targetPage >= 0 && targetPage < TOTAL_WEEKS && targetPage !== currentPage) {
+        setCurrentPage(targetPage);
+        flatListRef.current?.scrollToIndex({ index: targetPage, animated: true });
+      }
+    } catch (_) {}
+  }, [selectedDate, anchorSunday, currentPage]);
+
+  const handleMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetX = e.nativeEvent.contentOffset.x;
+      const pageIndex = Math.round(offsetX / pageWidth);
+
+      if (pageIndex !== currentPage && pageIndex >= 0 && pageIndex < TOTAL_WEEKS) {
+        setCurrentPage(pageIndex);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+        // Compute date in target week matching the currently selected day of week
+        isInternalScroll.current = true;
+        const weekOffset = pageIndex - INITIAL_PAGE;
+        const baseMs = anchorSunday.getTime() + weekOffset * 7 * 86400000;
+        const curDayOfWeek = selectedDate ? new Date(selectedDate + 'T00:00:00').getDay() : 0;
+        const targetDate = new Date(baseMs + curDayOfWeek * 86400000);
+        onSelectDate(getLocalDateString(targetDate));
+
+        setTimeout(() => {
+          isInternalScroll.current = false;
+        }, 150);
+      }
+    },
+    [currentPage, pageWidth, anchorSunday, selectedDate, onSelectDate]
+  );
 
   const PURPLE_ACCENT = colors.accentPrimary || '#a599ff';
 
+  const pages = useMemo(() => Array.from({ length: TOTAL_WEEKS }, (_, i) => i - INITIAL_PAGE), []);
+
+  const renderWeek = useCallback(
+    ({ item: offset }: { item: number }) => {
+      const baseMs = anchorSunday.getTime() + offset * 7 * 86400000;
+      const dates = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(baseMs + i * 86400000);
+        return getLocalDateString(d);
+      });
+
+      return (
+        <View style={[styles.weekRow, { width: pageWidth }]}>
+          {dates.map((date, i) => {
+            const isHol = holidays.includes(date);
+            const isSel = date === selectedDate;
+            const isToday = date === today;
+            const dayNum = date.split('-')[2];
+
+            return (
+              <TouchableOpacity
+                key={date}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  onSelectDate(date);
+                }}
+                style={[
+                  styles.dayCol,
+                  isSel && { backgroundColor: PURPLE_ACCENT },
+                  isToday && !isSel && {
+                    backgroundColor: 'rgba(165, 153, 255, 0.16)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(165, 153, 255, 0.45)',
+                  },
+                ]}
+                activeOpacity={0.7}
+              >
+                <Text
+                  style={{
+                    fontSize: 11,
+                    color: isSel ? '#000000' : (isToday ? PURPLE_ACCENT : colors.textTertiary),
+                    marginBottom: 2,
+                    fontWeight: isSel ? '700' : (isToday ? '600' : '400'),
+                  }}
+                >
+                  {DAY_SHORT[i]}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: isSel ? '#000000' : (isToday ? PURPLE_ACCENT : colors.textTertiary),
+                    fontWeight: isSel ? '700' : (isToday ? '600' : '400'),
+                  }}
+                >
+                  {isHol ? '🌴' : dayNum}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      );
+    },
+    [anchorSunday, pageWidth, holidays, selectedDate, today, PURPLE_ACCENT, colors.textTertiary, onSelectDate]
+  );
+
   return (
     <View
-      style={{
-        width: '100%',
-        minHeight: 46,
-        marginBottom: 16,
-        justifyContent: 'center',
-      }}
-      onLayout={e => {
+      style={styles.container}
+      onLayout={(e) => {
         const w = e.nativeEvent.layout.width;
-        if (w > 0 && Math.abs(w - containerWidth) > 2) {
-          setContainerWidth(w);
+        if (w > 0 && Math.abs(w - pageWidth) > 1) {
+          setPageWidth(w);
         }
       }}
     >
       <FlatList
         ref={flatListRef}
         data={pages}
-        keyExtractor={item => `week-offset-${item}`}
+        keyExtractor={(item) => `week-${item}`}
+        renderItem={renderWeek}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        initialScrollIndex={1}
+        initialScrollIndex={INITIAL_PAGE}
+        initialNumToRender={TOTAL_WEEKS}
         getItemLayout={(_, index) => ({
-          length: containerWidth,
-          offset: containerWidth * index,
+          length: pageWidth,
+          offset: pageWidth * index,
           index,
         })}
-        onMomentumScrollEnd={handleScrollEnd}
-        renderItem={({ item: offsetWeek }) => {
-          const dates = getWeekDates(offsetWeek);
-          return (
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                paddingHorizontal: 4,
-                width: containerWidth,
-              }}
-            >
-              {dates.map((date, i) => {
-                const isHol = holidays.includes(date);
-                const isSel = date === selectedDate;
-                const isToday = date === today;
-                const dayNum = date.split('-')[2];
-
-                return (
-                  <TouchableOpacity
-                    key={date}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      onSelectDate(date);
-                    }}
-                    style={[
-                      {
-                        alignItems: 'center',
-                        paddingVertical: 4,
-                        paddingHorizontal: 8,
-                        borderRadius: 10,
-                        minWidth: 38,
-                      },
-                      isSel && {
-                        backgroundColor: PURPLE_ACCENT,
-                      },
-                      isToday && !isSel && {
-                        backgroundColor: 'rgba(165, 153, 255, 0.16)',
-                        borderWidth: 1,
-                        borderColor: 'rgba(165, 153, 255, 0.45)',
-                      },
-                    ]}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={{
-                        fontSize: 11,
-                        color: isSel ? '#000000' : (isToday ? PURPLE_ACCENT : colors.textTertiary),
-                        marginBottom: 2,
-                        fontWeight: isSel ? '700' : (isToday ? '600' : '400'),
-                      }}
-                    >
-                      {DAY_SHORT[i]}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        color: isSel ? '#000000' : (isToday ? PURPLE_ACCENT : colors.textTertiary),
-                        fontWeight: isSel ? '700' : (isToday ? '600' : '400'),
-                      }}
-                    >
-                      {isHol ? '🌴' : dayNum}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          );
-        }}
+        onMomentumScrollEnd={handleMomentumScrollEnd}
+        decelerationRate="fast"
+        bounces={false}
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+    marginBottom: 16,
+  },
+  weekRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+  },
+  dayCol: {
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    minWidth: 38,
+  },
+});

@@ -585,6 +585,11 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 
 ## 12. Changelog
 
+### 2026-08-15 — Exercise Swap: Cross-Day Template Matching & PPL Shorts Library
+- **UPDATED** `src/features/gym/components/AddExerciseModal.tsx` — Enhanced the routine template picker with a dynamic day selector (`Mon` through `Sat`), allowing users to browse and import exercises across all workout days in the routine (e.g. browsing Monday's Long Tricep exercises when editing a Thursday workout).
+- **OVERHAULED** Mobile `ExerciseSwapScreen.tsx` — Full integration of template exercises across all days with origin badges, biomechanical AI recommendations, and unified search.
+- **COMPLETED** `mobile/src/data/gymPlan.ts` & `mobile/src/services/exerciseVideoResolver.ts` — Verified YouTube Shorts (< 120s) form video library across all 6 days of the PPL Split (**Monday to Saturday, 55 total exercises**). Tapping any exercise video guide opens high-yield, concise video tutorials.
+
 ### 2026-08-09 — Server Cleanup + Mobile TTS Fix
 - **DELETED** `server/routes/daily-briefing.ts` — was explicitly a dead scaffold, zero callers, marked "NOT currently wired" in its own file header.
 - **DELETED** `server/routes/cron-guardian.js` — duplicated `cron-watchdog.js` logic (proactive AI nudge). Was also calling Gemini using `EXPO_PUBLIC_GEMINI_API_KEY` directly (a key already exposed in the APK — doubly wrong). Cron-watchdog covers all the same bases.

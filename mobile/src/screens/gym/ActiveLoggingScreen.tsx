@@ -187,52 +187,102 @@ export default function ActiveLoggingScreen() {
       ? (origName.toLowerCase().includes('bicep') ? 'Biceps' : origName.toLowerCase().includes('tricep') ? 'Triceps' : origName.toLowerCase().includes('row') || origName.toLowerCase().includes('pull') ? 'Back' : origName.toLowerCase().includes('press') || origName.toLowerCase().includes('dip') ? 'Chest' : origName.toLowerCase().includes('squat') || origName.toLowerCase().includes('leg') ? 'Quads' : origName.toLowerCase().includes('shoulder') || origName.toLowerCase().includes('raise') ? 'Shoulders' : 'Chest')
       : rawMuscle;
 
-    let alternativesList = EXERCISE_DATABASE.filter(db => db.muscle.toLowerCase() === inferredMuscle.toLowerCase());
+    const origNameLower = origName.toLowerCase().trim();
+    const muscleLower = inferredMuscle.toLowerCase();
+
+    // 1. Find matching exercises from the workout template across all days
+    const templateMatches: any[] = [];
+    const seenNames = new Set<string>();
+    seenNames.add(origNameLower);
+
+    const DAY_NAMES: Record<number, string> = {
+      1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday', 7: 'Sunday'
+    };
+
+    const daysToScan = GYM_PLAN;
+    for (const d of daysToScan) {
+      if (!d || !d.exercises) continue;
+      const dayLabel = DAY_NAMES[d.dayIndex] ? `${DAY_NAMES[d.dayIndex]} (${d.name || d.subtitle || ''})` : (d.name || 'Routine Day');
+      for (const ex of d.exercises) {
+        const exName = (ex.name || '').trim();
+        const exNameLower = exName.toLowerCase();
+        if (!exName || seenNames.has(exNameLower)) continue;
+        const exMuscleLower = (ex.muscle || '').toLowerCase();
+        const isMatch = exMuscleLower === muscleLower ||
+          (muscleLower.includes('tricep') && exMuscleLower.includes('tricep')) ||
+          (muscleLower.includes('bicep') && (exMuscleLower.includes('bicep') || exMuscleLower.includes('brachialis'))) ||
+          (muscleLower.includes('chest') && exMuscleLower.includes('chest')) ||
+          (muscleLower.includes('back') && (exMuscleLower.includes('back') || exMuscleLower.includes('lat'))) ||
+          (muscleLower.includes('delt') && (exMuscleLower.includes('delt') || exMuscleLower.includes('shoulder'))) ||
+          (muscleLower.includes('quad') && exMuscleLower.includes('quad')) ||
+          (muscleLower.includes('ham') && exMuscleLower.includes('ham')) ||
+          (muscleLower.includes('calf') && (exMuscleLower.includes('calf') || exMuscleLower.includes('soleus'))) ||
+          (muscleLower.includes('ab') && (exMuscleLower.includes('ab') || exMuscleLower.includes('core')));
+        
+        if (isMatch) {
+          seenNames.add(exNameLower);
+          templateMatches.push({
+            name: exName,
+            muscle: ex.muscle || inferredMuscle,
+            targetSets: ex.targetSets || 3,
+            targetReps: ex.targetReps || '8-12',
+            restTimeSecs: (ex as any).restTimeSecs || 90,
+            videoId: ex.videoId,
+            isFromTemplate: true,
+            dayName: dayLabel,
+          });
+        }
+      }
+    }
+
+    // 2. Offline exercise database matches
+    let alternativesList = EXERCISE_DATABASE.filter(db => db.muscle.toLowerCase() === muscleLower);
     if (alternativesList.length === 0) {
       alternativesList = EXERCISE_DATABASE.filter(db => 
-        db.muscle.toLowerCase().includes(inferredMuscle.toLowerCase()) || 
-        inferredMuscle.toLowerCase().includes(db.muscle.toLowerCase())
+        db.muscle.toLowerCase().includes(muscleLower) || 
+        muscleLower.includes(db.muscle.toLowerCase())
       );
     }
     if (alternativesList.length === 0) {
       alternativesList = EXERCISE_DATABASE.filter(db => db.muscle.includes('Chest'));
     }
     
-    const offlineList = alternativesList
-      .filter(alt => alt.name.toLowerCase() !== origName.toLowerCase())
+    const dbList = alternativesList
+      .filter(alt => !seenNames.has(alt.name.toLowerCase().trim()))
       .slice(0, 6);
 
     setAiSwapList([]);
     setIsAiSwapLoading(true);
 
-    async function loadOfflineSwaps() {
+    async function loadAllSwaps() {
       try {
-        const formattedPromises = offlineList.map(async (alt) => {
+        const combined = [...templateMatches];
+        for (const alt of dbList) {
           let vidId = (alt as any).videoId && (alt as any).videoId !== '1' ? (alt as any).videoId : undefined;
           if (!vidId) {
             vidId = (await autoResolveExerciseVideoId(alt.name)) || '';
           }
-          return {
+          combined.push({
             name: alt.name,
             muscle: inferredMuscle,
             targetSets: 3,
             targetReps: '8-12',
             restTimeSecs: 60,
             videoId: vidId,
-          };
-        });
+            isFromTemplate: false,
+          });
+        }
         
-        const formatted = await Promise.all(formattedPromises);
         if (isCancelled) return;
-        setAiSwapList(formatted);
+        setAiSwapList(combined);
       } catch (e) {
-        console.warn('[Offline Swap] Error:', e);
+        console.warn('[Swap Load] Error:', e);
       } finally {
         if (!isCancelled) setIsAiSwapLoading(false);
       }
     }
 
-    loadOfflineSwaps();
+    loadAllSwaps();
     return () => { isCancelled = true; };
   }, [showSwapModal, exercise]);
 
@@ -539,7 +589,10 @@ export default function ActiveLoggingScreen() {
                   <Text style={[styles.muscleText, { color: colors.accentPrimary }]}>{exercise.muscle}</Text>
                 </View>
                 <TouchableOpacity
-                  onPress={() => { hapticMedium(); setShowSwapModal(true); }}
+                  onPress={() => {
+                    hapticMedium();
+                    setShowSwapModal(true);
+                  }}
                   style={[styles.musclePill, { backgroundColor: 'rgba(255,255,255,0.1)', marginBottom: 0, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center' }]}
                 >
                   <Ionicons name="swap-horizontal" size={14} color={colors.textPrimary} />
@@ -968,8 +1021,8 @@ export default function ActiveLoggingScreen() {
               <View style={[styles.modalContent, { maxHeight: '85%' }]}>
                 <View style={styles.modalHeader}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="swap-horizontal" size={18} color="#a599ff" />
-                    <Text style={styles.modalTitle}>Exercise Swap</Text>
+                    <Ionicons name="sparkles" size={18} color="#a599ff" />
+                    <Text style={styles.modalTitle}>S.A.R.A AI Exercise Swap</Text>
                   </View>
                   <TouchableOpacity onPress={() => setShowSwapModal(false)}>
                     <Ionicons name="close" size={24} color={colors.textPrimary} />
@@ -998,7 +1051,7 @@ export default function ActiveLoggingScreen() {
                         padding: SPACE.md,
                         marginBottom: SPACE.sm,
                         borderWidth: 1,
-                        borderColor: 'rgba(255,255,255,0.06)',
+                        borderColor: alt.isFromTemplate ? 'rgba(165,153,255,0.25)' : 'rgba(255,255,255,0.06)',
                       }}
                       activeOpacity={0.75}
                       onPress={async () => {
@@ -1040,9 +1093,29 @@ export default function ActiveLoggingScreen() {
                       }}
                     >
                       <View style={{ flex: 1, paddingRight: 8 }}>
-                        <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#ffffff', marginBottom: 4 }}>
-                          {alt.name}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                          <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#ffffff' }}>
+                            {alt.name}
+                          </Text>
+                          {alt.isFromTemplate && (
+                            <View style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 4,
+                              backgroundColor: 'rgba(165,153,255,0.12)',
+                              paddingHorizontal: 6,
+                              paddingVertical: 2,
+                              borderRadius: 6,
+                              borderWidth: 1,
+                              borderColor: 'rgba(165,153,255,0.25)',
+                            }}>
+                              <Ionicons name="calendar-outline" size={10} color="#a599ff" />
+                              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 9.5, color: '#a599ff' }}>
+                                {alt.dayName || 'Template'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text style={{ fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted }}>
                           {alt.targetSets} Sets × {alt.targetReps} Reps  •  {alt.restTimeSecs}s Rest
                         </Text>

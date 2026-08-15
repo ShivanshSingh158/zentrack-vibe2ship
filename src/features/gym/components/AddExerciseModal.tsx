@@ -20,7 +20,8 @@ function extractYouTubeId(url: string) {
 }
 
 export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }: AddExerciseModalProps) => {
-  const plan = GYM_PLAN.find(d => d.dayIndex === planDayIdx);
+  const [selectedPlanDayIdx, setSelectedPlanDayIdx] = useState(planDayIdx);
+  const plan = GYM_PLAN.find(d => d.dayIndex === selectedPlanDayIdx);
   const isEditMode = !!initialExercise;
   const [name, setName] = useState(initialExercise?.name || '');
   const [sets, setSets] = useState(initialExercise?.targetSets || 3);
@@ -77,22 +78,41 @@ export const AddExerciseModal = ({ planDayIdx, initialExercise, onAdd, onClose }
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '50%', width: '34px', height: '34px', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={15} /></button>
         </div>
 
-        {/* Quick-add from plan */}
-        {!isEditMode && plan && plan.exercises.length > 0 && (
+        {/* Quick-add from plan with Day selection */}
+        {!isEditMode && (
           <div style={{ marginBottom: '0.85rem' }}>
-            <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
-              From {plan.name}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.4rem' }}>
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                From Routine Template
+              </div>
+              <select
+                value={selectedPlanDayIdx}
+                onChange={e => setSelectedPlanDayIdx(Number(e.target.value))}
+                style={{
+                  background: 'rgba(124,58,237,0.15)', border: '1px solid rgba(124,58,237,0.3)',
+                  color: '#a855f7', borderRadius: '6px', fontSize: '0.72rem', padding: '0.15rem 0.4rem',
+                  fontWeight: 600, outline: 'none', cursor: 'pointer'
+                }}
+              >
+                {GYM_PLAN.filter(d => !d.isRest).map(d => (
+                  <option key={d.dayIndex} value={d.dayIndex} style={{ color: '#000' }}>
+                    {['Mon','Tue','Wed','Thu','Fri','Sat'][d.dayIndex - 1] || 'Day'}: {d.name}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '140px', overflowY: 'auto' }}>
-              {plan.exercises.map(p => (
-                <button key={p.id}
-                  onClick={() => { setName(p.name); setSets(p.targetSets); setReps(p.targetReps); setMuscle(p.muscle || ''); setVideoId(p.videoId || ''); setFromPlan(p); }}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 0.7rem', borderRadius: '10px', border: `1px solid ${fromPlan?.id === p.id ? 'rgba(124,58,237,0.4)' : 'rgba(255,255,255,0.06)'}`, background: fromPlan?.id === p.id ? 'rgba(124,58,237,0.1)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', textAlign: 'left', minHeight: '42px' }}>
-                  <span style={{ fontSize: '0.83rem', color: fromPlan?.id === p.id ? '#a855f7' : 'rgba(255,255,255,0.75)', flex: 1 }}>{p.name}</span>
-                  <span style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.28)' }}>{p.targetSets}×{p.targetReps}</span>
-                </button>
-              ))}
-            </div>
+            {plan && plan.exercises.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '140px', overflowY: 'auto' }}>
+                {plan.exercises.map(p => (
+                  <button key={p.id}
+                    onClick={() => { setName(p.name); setSets(p.targetSets); setReps(p.targetReps); setMuscle(p.muscle || ''); setVideoId(p.videoId || ''); setFromPlan(p); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.55rem 0.7rem', borderRadius: '10px', border: `1px solid ${fromPlan?.id === p.id ? 'rgba(124,58,237,0.4)' : 'rgba(255,255,255,0.06)'}`, background: fromPlan?.id === p.id ? 'rgba(124,58,237,0.1)' : 'rgba(255,255,255,0.03)', cursor: 'pointer', textAlign: 'left', minHeight: '42px' }}>
+                    <span style={{ fontSize: '0.83rem', color: fromPlan?.id === p.id ? '#a855f7' : 'rgba(255,255,255,0.75)', flex: 1 }}>{p.name}</span>
+                    <span style={{ fontSize: '0.67rem', color: 'rgba(255,255,255,0.28)' }}>{p.targetSets}×{p.targetReps}</span>
+                  </button>
+                ))}
+              </div>
+            )}
             <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '0.7rem 0' }} />
           </div>
         )}

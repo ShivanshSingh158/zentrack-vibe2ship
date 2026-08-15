@@ -179,7 +179,7 @@ export type GymNavigationParamList = {
   WorkoutSummary: { date?: string; readOnly?: boolean } | undefined;
   GymProgress: { date?: string } | undefined;
   ExerciseDetail: { exerciseId: string; date?: string };
-  ExerciseSwap: { exerciseIndex: number; date: string; currentName: string; originalExerciseId?: string };
+  ExerciseSwap: { exerciseIndex?: number; date?: string; currentName?: string; originalExerciseId?: string };
   GymHistory: undefined;
   CardioLog: { date: string; cardioId?: string };
 };
