@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Dimensions, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Dimensions, LayoutAnimation, UIManager, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
@@ -30,6 +30,7 @@ export default function CalendarScreen() {
   const styles = React.useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const [findingSlots, setFindingSlots] = useState(false);
+  const [aiSlotResult, setAiSlotResult] = useState<string | null>(null);
 
   const data = useCalendarData();
   const {
@@ -65,7 +66,10 @@ export default function CalendarScreen() {
   const currentHour = currentTime.getHours();
   const currentMinutes = currentTime.getMinutes();
   const indicatorTop = (currentHour * HOUR_HEIGHT) + ((currentMinutes / 60) * HOUR_HEIGHT);
-  const isToday = selectedDate === now.toISOString().slice(0, 10);
+  const todayStr = now.toISOString().slice(0, 10);
+  const isToday = selectedDate === todayStr;
+  // Minutes since midnight — used to fade past events
+  const currentTimeMins = currentHour * 60 + currentMinutes;
 
   // Pre-indexed timetable cache: computes which day indices (0-6) have classes/labs
   const daysWithClasses = useMemo(() => {
@@ -137,23 +141,77 @@ export default function CalendarScreen() {
     return marks;
   }, [customEvents, tasks, selectedDate, monthClassDates, gymLogs, colors]);
 
+  // ── Month Density Heat Map: count events per date ──────────────────────────
+  // Used in CalendarAgendaView to color-tint day cells (0=none, 1-2=light, 3-5=medium, 6+=dark)
+  const eventCountByDate = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const bump = (date: string) => { counts[date] = (counts[date] || 0) + 1; };
+    customEvents.forEach((e: any) => e.date && bump(e.date));
+    tasks.forEach((t: any) => t.date && bump(t.date));
+    if (gymLogs) gymLogs.forEach((g: any) => g.date && bump(g.date));
+    monthClassDates.forEach((d) => bump(d));
+    return counts;
+  }, [customEvents, tasks, gymLogs, monthClassDates]);
+
 const handleFindFreeSlots = async () => {
     setFindingSlots(true);
     try {
-      const prompt = `Here are my events for today: ${JSON.stringify(dayEvents.map(e => ({title: e.title, start: e.startTime, end: e.endTime})))}\nFind the best 1-2 hour continuous free slot during working hours (9 AM - 6 PM). Output a brief, energetic message with the time slot.`;
+      const prompt = `Here are my events for today: ${JSON.stringify(dayEvents.map(e => ({title: e.title, start: e.startTime, end: e.endTime})))}\nFind the best 1-2 hour continuous free slot during working hours (9 AM - 6 PM). Output a brief, energetic message with the time slot and why it's the best choice.`;
       const text = await callGeminiProxy(
         [{ role: 'user', parts: [{ text: prompt }] }],
-        { maxOutputTokens: 200, temperature: 0.5 }
+        { maxOutputTokens: 250, temperature: 0.5 }
       );
-      alert('AI Scheduler: ' + text);
+      setAiSlotResult(text || 'No free slots found.');
     } catch(e) {
-      alert('Error finding slots');
+      setAiSlotResult('Unable to find free slots. Please try again.');
     }
     setFindingSlots(false);
   };
 
   return (
     <SafeAreaView style={styles.root}>
+
+      {/* ── AI Slot Result Bottom Sheet ── */}
+      <Modal
+        visible={!!aiSlotResult}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setAiSlotResult(null)}
+      >
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}
+          activeOpacity={1}
+          onPress={() => setAiSlotResult(null)}
+        >
+          <View style={{
+            backgroundColor: colors.surface || '#1c1c1e',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            padding: 24,
+            paddingBottom: 40,
+            borderTopWidth: 1,
+            borderTopColor: colors.border || 'rgba(255,255,255,0.08)',
+          }}>
+            {/* Handle bar */}
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'center', marginBottom: 20 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 16 }}>✨</Text>
+              </View>
+              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 18, color: colors.textPrimary || '#fff' }}>AI Free Slot</Text>
+            </View>
+            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 15, color: colors.textSecondary || '#ebebf5cc', lineHeight: 22 }}>
+              {aiSlotResult}
+            </Text>
+            <TouchableOpacity
+              onPress={() => setAiSlotResult(null)}
+              style={{ marginTop: 24, paddingVertical: 14, backgroundColor: colors.accentPrimary || '#a599ff', borderRadius: 14, alignItems: 'center' }}
+            >
+              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 15, color: '#000' }}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* 1.5. SUB HEADER (Month + View Selector) */}
       <View style={styles.subHeader}>
@@ -195,6 +253,29 @@ const handleFindFreeSlots = async () => {
           >
             <Text style={styles.monthText}>{monthName}</Text>
             <Ionicons name={isMonthDropdownOpen ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} style={{ marginLeft: 4, marginTop: 4 }} />
+          </TouchableOpacity>
+        )}
+
+        {/* "Today" jump button — only visible when user navigated away from today */}
+        {!isToday && (
+          <TouchableOpacity
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setSelectedDate(todayStr);
+            }}
+            style={{
+              paddingVertical: 5,
+              paddingHorizontal: 12,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: colors.accentPrimary || '#a599ff',
+              marginRight: 8,
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 12, color: colors.accentPrimary || '#a599ff' }}>
+              Today
+            </Text>
           </TouchableOpacity>
         )}
 
@@ -280,41 +361,47 @@ const handleFindFreeSlots = async () => {
       )}
 
       
-      {/* 3. TIMELINE GRID (DAY VIEW) */}
-      <View style={{ flex: 1, display: currentView === 'Day' ? 'flex' : 'none' }}>
-        <CalendarDayView 
-          styles={styles} colors={colors} 
-          unscheduledDayEvents={unscheduledDayEvents} processedEvents={processedEvents} 
-          DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour} 
-          isToday={isToday} indicatorTop={indicatorTop} scrollViewRef={scrollViewRef} 
-          setInitialTime={setInitialTime} setSelectedEvent={setSelectedEvent} 
-          setShowAddModal={setShowAddModal} setSelectedGymLog={setSelectedGymLog} 
-          setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput} 
-          setShowGymModal={setShowGymModal} setShowEventModal={setShowEventModal} gymLogs={gymLogs} 
-        />
-      </View>
+      {/* 3. TIMELINE GRID (DAY VIEW) — conditional mount (not display:none) */}
+      {currentView === 'Day' && (
+        <View style={{ flex: 1 }}>
+          <CalendarDayView
+            styles={styles} colors={colors}
+            unscheduledDayEvents={unscheduledDayEvents} processedEvents={processedEvents}
+            DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
+            isToday={isToday} indicatorTop={indicatorTop} scrollViewRef={scrollViewRef}
+            setInitialTime={setInitialTime} setSelectedEvent={setSelectedEvent}
+            setShowAddModal={setShowAddModal} setSelectedGymLog={setSelectedGymLog}
+            setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput}
+            setShowGymModal={setShowGymModal} setShowEventModal={setShowEventModal} gymLogs={gymLogs}
+            currentTimeMins={isToday ? currentTimeMins : undefined}
+          />
+        </View>
+      )}
 
-      {/* 4. WEEK VIEW GRID */}
-      <View style={{ flex: 1, display: currentView === 'Week' ? 'flex' : 'none' }}>
-        <CalendarWeekView 
-          styles={styles} colors={colors} weekEvents={weekEvents} 
-          DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour} 
-          indicatorTop={indicatorTop} selectedDate={selectedDate} nowDateStr={now.toISOString().slice(0, 10)} 
-          setSelectedDate={setSelectedDate} setCurrentView={setCurrentView} 
-        />
-      </View>
+      {/* 4. WEEK VIEW GRID — conditional mount */}
+      {currentView === 'Week' && (
+        <View style={{ flex: 1 }}>
+          <CalendarWeekView
+            styles={styles} colors={colors} weekEvents={weekEvents}
+            DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
+            indicatorTop={indicatorTop} selectedDate={selectedDate} nowDateStr={todayStr}
+            setSelectedDate={setSelectedDate} setCurrentView={setCurrentView}
+          />
+        </View>
+      )}
 
       {/* 5. MONTH VIEW */}
       {currentView === 'Month' && (
         <View style={styles.monthViewContainer}>
-          <CalendarAgendaView 
-            styles={styles} colors={colors} selectedDate={selectedDate} 
+          <CalendarAgendaView
+            styles={styles} colors={colors} selectedDate={selectedDate}
             currentView={currentView}
-            setSelectedDate={setSelectedDate} markedDates={markedDates} 
-            dayEvents={dayEvents} setSelectedGymLog={setSelectedGymLog} 
-            setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput} 
-            setShowGymModal={setShowGymModal} setSelectedEvent={setSelectedEvent} 
-            setShowEventModal={setShowEventModal} gymLogs={gymLogs} 
+            setSelectedDate={setSelectedDate} markedDates={markedDates}
+            dayEvents={dayEvents} setSelectedGymLog={setSelectedGymLog}
+            setGymStartTimeInput={setGymStartTimeInput} setGymEndTimeInput={setGymEndTimeInput}
+            setShowGymModal={setShowGymModal} setSelectedEvent={setSelectedEvent}
+            setShowEventModal={setShowEventModal} gymLogs={gymLogs}
+            eventCountByDate={eventCountByDate}
           />
         </View>
       )}

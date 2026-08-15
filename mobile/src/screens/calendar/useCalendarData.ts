@@ -319,15 +319,18 @@ export function useCalendarData() {
     return hours;
   }, [minHour, maxHour]);
 
-  // Scroll to current time on mount if today
+  // Scroll to current time on mount and when switching to Day view on today
   useEffect(() => {
-    if (selectedDate === now.toISOString().slice(0, 10) && scrollViewRef.current) {
-      const currentHour = now.getHours();
-      setTimeout(() => {
-        scrollViewRef.current?.scrollTo({ y: Math.max(0, (currentHour - minHour - 1) * HOUR_HEIGHT), animated: false });
-      }, 100);
-    }
-  }, [selectedDate, minHour]);
+    if (currentView !== 'Day') return;
+    if (selectedDate !== now.toISOString().slice(0, 10)) return;
+    if (!scrollViewRef.current) return;
+    const currentHour = new Date().getHours();
+    const currentMin  = new Date().getMinutes();
+    const targetY = Math.max(0, (currentHour * HOUR_HEIGHT) + ((currentMin / 60) * HOUR_HEIGHT) - (minHour * HOUR_HEIGHT) - 100);
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
+    }, 150);
+  }, [selectedDate, currentView, minHour]);
 
   return {
     now, selectedDate, setSelectedDate,
