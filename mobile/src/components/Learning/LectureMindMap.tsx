@@ -2,21 +2,22 @@
  * LectureMindMap.tsx — ZenTrack Mobile
  *
  * AI-Generated Interactive Mind Map for YouTube lectures.
- * - Calls ZEN-GPT to generate a structured JSON mind map from the lecture transcript
- * - Renders it as an SVG diagram using react-native-svg (already installed)
- * - User can tap any node → auto-sends that concept as a ZEN-GPT question
- * - Central node in accent purple, branches in 6 theme colors, leaves in muted white
+ * Uses pure React Native View + absolute positioning — NO react-native-svg import.
+ * This avoids the "Tried to register two views with the same name RNSVGCircle"
+ * Metro hot-reload ghost that fires when a new file imports the SVG module.
+ *
+ * Layout: central node at screen center, branch nodes at radius 150,
+ * leaf nodes at radius 270. Connections drawn with rotated thin View elements.
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, Modal, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView, Dimensions, Platform,
+  ActivityIndicator, ScrollView, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Line, Rect, Text as SvgText, G } from 'react-native-svg';
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import { FONT_FAMILY } from '../../theme/tokens';
 
@@ -36,78 +37,95 @@ interface LectureMindMapProps {
   visible: boolean;
   onClose: () => void;
   lectureTitle: string;
-  transcript: string;    // already loaded in tutorTranscriptRef.current
+  transcript: string;
   onAskQuestion: (question: string) => void;
 }
 
-// ── Branch color palette ───────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
+
 const BRANCH_COLORS = [
-  '#a599ff', // purple
-  '#22c55e', // green
-  '#f59e0b', // amber
-  '#38bdf8', // sky blue
-  '#f472b6', // pink
-  '#fb923c', // orange
+  '#a599ff', '#22c55e', '#f59e0b', '#38bdf8', '#f472b6', '#fb923c',
 ];
 
-// ── Layout constants ───────────────────────────────────────────────────────────
 const { width: SCREEN_W } = Dimensions.get('window');
-const SVG_W = Math.max(SCREEN_W - 32, 340);
-const SVG_H = 520;
-const CENTER_X = SVG_W / 2;
-const CENTER_Y = SVG_H / 2;
-const CENTER_R = 52;
-const BRANCH_RADIUS = 165;
-const LEAF_RADIUS = 275;
+const MAP_W = SCREEN_W - 32;
+const MAP_H = 560;
+const CX = MAP_W / 2;
+const CY = MAP_H / 2;
+const BRANCH_R = 150;
+const LEAF_R = 270;
+const CENTER_NODE_R = 50;   // "radius" (half-width) of central node box
+const BRANCH_NODE_R = 32;
+const LEAF_NODE_W = 72;
+const LEAF_NODE_H = 28;
 
-// ── Angle helpers ──────────────────────────────────────────────────────────────
-function polarToXY(cx: number, cy: number, r: number, angleDeg: number) {
-  const rad = (angleDeg - 90) * (Math.PI / 180);
-  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+// ── Geometry helpers ───────────────────────────────────────────────────────────
+
+function deg2rad(deg: number) { return (deg - 90) * Math.PI / 180; }
+
+function polarXY(r: number, angleDeg: number) {
+  const rad = deg2rad(angleDeg);
+  return { x: CX + r * Math.cos(rad), y: CY + r * Math.sin(rad) };
 }
 
-function wrapText(text: string, maxLen = 14): string[] {
-  if (text.length <= maxLen) return [text];
+/** Draw a line from (x1,y1) to (x2,y2) as a thin rotated View */
+function Line({ x1, y1, x2, y2, color, opacity = 0.35 }: {
+  x1: number; y1: number; x2: number; y2: number; color: string; opacity?: number;
+}) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        left: x1,
+        top: y1,
+        width: length,
+        height: 1.5,
+        backgroundColor: color,
+        opacity,
+        transform: [{ rotate: `${angle}deg` }],
+        transformOrigin: '0 50%',
+      } as any}
+      pointerEvents="none"
+    />
+  );
+}
+
+function wrapLabel(text: string, max = 12): string[] {
+  if (text.length <= max) return [text];
   const words = text.split(' ');
   const lines: string[] = [];
   let cur = '';
   for (const w of words) {
-    if ((cur + ' ' + w).trim().length > maxLen) {
-      if (cur) lines.push(cur.trim());
-      cur = w;
-    } else {
-      cur = (cur + ' ' + w).trim();
-    }
+    if ((cur + ' ' + w).trim().length > max && cur) {
+      lines.push(cur.trim()); cur = w;
+    } else { cur = (cur + ' ' + w).trim(); }
   }
   if (cur) lines.push(cur.trim());
-  return lines.slice(0, 3); // max 3 lines
+  return lines.slice(0, 3);
 }
 
 // ── Gemini prompt ──────────────────────────────────────────────────────────────
-function buildMindMapPrompt(lectureTitle: string, transcript: string): string {
-  const excerpt = transcript ? transcript.slice(0, 6000) : '';
-  return `You are an expert educator. Analyze this lecture and generate a concise mind map.
 
-Lecture: "${lectureTitle}"
-${excerpt ? `Transcript excerpt:\n${excerpt}` : ''}
-
-Return ONLY valid JSON in this exact format (no markdown, no backticks):
+function buildPrompt(title: string, transcript: string): string {
+  const excerpt = transcript ? transcript.slice(0, 5000) : '';
+  return `Analyze this lecture and return ONLY valid JSON (no markdown, no backticks):
 {
-  "centralTopic": "short central topic (max 4 words)",
+  "centralTopic": "max 4 words",
   "branches": [
-    { "label": "Branch Name", "children": ["concept 1", "concept 2", "concept 3"] },
-    { "label": "Branch Name", "children": ["concept 1", "concept 2"] }
+    { "label": "Branch Name", "children": ["concept 1", "concept 2", "concept 3"] }
   ]
 }
+Rules: 4-6 branches, 2-4 leaf children each, all labels max 4 words.
 
-Rules:
-- 4-6 branches maximum
-- Each branch: 2-4 leaf concepts
-- Labels must be short (1-4 words each)
-- Focus on the most important concepts only`;
+Lecture: "${title}"
+${excerpt ? `Transcript:\n${excerpt}` : ''}`;
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function LectureMindMap({
   visible, onClose, lectureTitle, transcript, onAskQuestion,
@@ -118,70 +136,56 @@ export default function LectureMindMap({
   const [error, setError] = useState('');
   const [tappedNode, setTappedNode] = useState<string | null>(null);
 
-  // ── Generate map on first open ─────────────────────────────────────────────
-  const handleGenerate = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    setMapData(null);
+  const generate = useCallback(async () => {
+    setLoading(true); setError(''); setMapData(null);
     try {
       const data = await callProxy({
         model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: buildMindMapPrompt(lectureTitle, transcript) }] }],
-        generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
+        contents: [{ role: 'user', parts: [{ text: buildPrompt(lectureTitle, transcript) }] }],
+        generationConfig: { temperature: 0.35, maxOutputTokens: 900 },
       });
       const { text } = parseProxyResponse(data);
-      // Strip markdown fences if model wraps it anyway
       const cleaned = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim();
       const parsed: MindMapData = JSON.parse(cleaned);
-      if (!parsed.centralTopic || !Array.isArray(parsed.branches)) throw new Error('Invalid structure');
+      if (!parsed.centralTopic || !Array.isArray(parsed.branches)) throw new Error();
       setMapData(parsed);
-    } catch (e: any) {
-      setError('Could not generate mind map. Try again.');
-    } finally {
-      setLoading(false);
-    }
+    } catch {
+      setError('Could not generate mind map. Tap Retry.');
+    } finally { setLoading(false); }
   }, [lectureTitle, transcript]);
 
-  // Auto-generate when modal opens for the first time
   const handleOpen = useCallback(() => {
-    if (!mapData && !loading) handleGenerate();
-  }, [mapData, loading, handleGenerate]);
+    if (!mapData && !loading) generate();
+  }, [mapData, loading, generate]);
 
-  // ── Node tap handler ───────────────────────────────────────────────────────
-  const handleNodeTap = useCallback((label: string) => {
+  const handleTap = useCallback((label: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setTappedNode(label);
-    // Auto-send to ZEN-GPT after brief highlight delay
     setTimeout(() => {
       setTappedNode(null);
       onAskQuestion(`Explain "${label}" in the context of ${lectureTitle}`);
       onClose();
-    }, 350);
+    }, 320);
   }, [lectureTitle, onAskQuestion, onClose]);
 
-  // ── SVG layout computation ─────────────────────────────────────────────────
+  // Pre-compute all node positions
   const layout = useMemo(() => {
     if (!mapData) return null;
     const branches = mapData.branches.slice(0, 6);
     const bCount = branches.length;
-
     return branches.map((branch, bi) => {
       const bAngle = (360 / bCount) * bi;
-      const bPos = polarToXY(CENTER_X, CENTER_Y, BRANCH_RADIUS, bAngle);
+      const bPos = polarXY(BRANCH_R, bAngle);
       const color = BRANCH_COLORS[bi % BRANCH_COLORS.length];
-
       const leaves = branch.children.slice(0, 4).map((child, ci) => {
-        const spread = 40; // degrees spread for leaves around branch
+        const spread = 50;
         const lAngle = bAngle + (ci - (branch.children.length - 1) / 2) * (spread / Math.max(branch.children.length - 1, 1));
-        const lPos = polarToXY(CENTER_X, CENTER_Y, LEAF_RADIUS, lAngle);
-        return { label: child, pos: lPos, angle: lAngle };
+        return { label: child, pos: polarXY(LEAF_R, lAngle) };
       });
-
-      return { branch, bPos, color, leaves, bAngle };
+      return { branch, bPos, color, leaves };
     });
   }, [mapData]);
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <Modal
       visible={visible}
@@ -194,159 +198,160 @@ export default function LectureMindMap({
         {/* Header */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.headerTitle}>🗺️ Mind Map</Text>
-            <Text style={styles.headerSub} numberOfLines={1}>{lectureTitle}</Text>
+            <Text style={styles.title}>🗺️ Mind Map</Text>
+            <Text style={styles.sub} numberOfLines={1}>{lectureTitle}</Text>
           </View>
-          <TouchableOpacity style={styles.regenBtn} onPress={handleGenerate} disabled={loading}>
+          <TouchableOpacity style={styles.iconBtn} onPress={generate} disabled={loading}>
             <Ionicons name="refresh" size={16} color="#a599ff" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-            <Ionicons name="close" size={20} color="#f2f2f7" />
+          <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
+            <Ionicons name="close" size={18} color="#f2f2f7" />
           </TouchableOpacity>
         </View>
 
-        <Text style={styles.hint}>
-          {mapData ? '💡 Tap any node to ask ZEN-GPT about that concept' : ''}
-        </Text>
+        {mapData && !loading && (
+          <Text style={styles.hint}>💡 Tap any node to ask ZEN-GPT</Text>
+        )}
 
         {/* Loading */}
         {loading && (
-          <View style={styles.centerState}>
+          <View style={styles.center}>
             <ActivityIndicator size="large" color="#a599ff" />
-            <Text style={styles.loadingText}>ZEN-GPT is mapping the lecture…</Text>
+            <Text style={styles.loadText}>ZEN-GPT is mapping the lecture…</Text>
           </View>
         )}
 
         {/* Error */}
-        {!loading && error ? (
-          <View style={styles.centerState}>
-            <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryBtn} onPress={handleGenerate}>
+        {!loading && !!error && (
+          <View style={styles.center}>
+            <Text style={styles.errText}>{error}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={generate}>
               <Text style={styles.retryText}>Retry</Text>
             </TouchableOpacity>
           </View>
-        ) : null}
+        )}
 
-        {/* Mind Map SVG */}
+        {/* Map canvas — pure View, no SVG */}
         {!loading && mapData && layout && (
           <ScrollView
-            contentContainerStyle={{ alignItems: 'center', paddingVertical: 12 }}
+            contentContainerStyle={{ alignItems: 'center', paddingBottom: 24 }}
             showsVerticalScrollIndicator={false}
           >
-            <Svg width={SVG_W} height={SVG_H} style={{ overflow: 'visible' }}>
+            <View style={{ width: MAP_W, height: MAP_H }}>
 
-              {/* Lines: center → branches */}
+              {/* ── Connection lines ── */}
               {layout.map((b, bi) => (
-                <Line
-                  key={`cl-${bi}`}
-                  x1={CENTER_X} y1={CENTER_Y}
-                  x2={b.bPos.x} y2={b.bPos.y}
-                  stroke={b.color} strokeWidth={2} strokeOpacity={0.5}
-                />
+                <React.Fragment key={`lines-${bi}`}>
+                  {/* Center → Branch */}
+                  <Line
+                    x1={CX} y1={CY}
+                    x2={b.bPos.x} y2={b.bPos.y}
+                    color={b.color}
+                  />
+                  {/* Branch → Leaves */}
+                  {b.leaves.map((leaf, li) => (
+                    <Line
+                      key={`ll-${bi}-${li}`}
+                      x1={b.bPos.x} y1={b.bPos.y}
+                      x2={leaf.pos.x} y2={leaf.pos.y}
+                      color={b.color} opacity={0.22}
+                    />
+                  ))}
+                </React.Fragment>
               ))}
 
-              {/* Lines: branches → leaves */}
-              {layout.map((b, bi) =>
-                b.leaves.map((leaf, li) => (
-                  <Line
-                    key={`ll-${bi}-${li}`}
-                    x1={b.bPos.x} y1={b.bPos.y}
-                    x2={leaf.pos.x} y2={leaf.pos.y}
-                    stroke={b.color} strokeWidth={1} strokeOpacity={0.3}
-                  />
-                ))
-              )}
-
-              {/* Leaf nodes */}
+              {/* ── Leaf nodes ── */}
               {layout.map((b, bi) =>
                 b.leaves.map((leaf, li) => {
-                  const lines = wrapText(leaf.label, 12);
+                  const lines = wrapLabel(leaf.label, 11);
                   const isTapped = tappedNode === leaf.label;
+                  const h = 24 + (lines.length - 1) * 13;
                   return (
-                    <G key={`lf-${bi}-${li}`} onPress={() => handleNodeTap(leaf.label)}>
-                      <Rect
-                        x={leaf.pos.x - 38} y={leaf.pos.y - 14}
-                        width={76} height={lines.length > 1 ? 28 + (lines.length - 1) * 13 : 28}
-                        rx={8} ry={8}
-                        fill={isTapped ? b.color : 'rgba(255,255,255,0.06)'}
-                        stroke={b.color} strokeWidth={1} strokeOpacity={0.4}
-                      />
-                      {lines.map((line, li2) => (
-                        <SvgText
-                          key={li2}
-                          x={leaf.pos.x}
-                          y={leaf.pos.y - (lines.length === 1 ? 2 : (lines.length === 2 ? 8 : 12)) + li2 * 13}
-                          fontSize={9}
-                          fill={isTapped ? '#000' : '#c4c4cc'}
-                          textAnchor="middle"
-                          fontWeight="500"
-                        >
-                          {line}
-                        </SvgText>
+                    <TouchableOpacity
+                      key={`lf-${bi}-${li}`}
+                      activeOpacity={0.7}
+                      onPress={() => handleTap(leaf.label)}
+                      style={[styles.leafNode, {
+                        left: leaf.pos.x - LEAF_NODE_W / 2,
+                        top: leaf.pos.y - h / 2,
+                        width: LEAF_NODE_W,
+                        minHeight: h,
+                        borderColor: b.color,
+                        backgroundColor: isTapped ? b.color : 'rgba(255,255,255,0.05)',
+                      }]}
+                    >
+                      {lines.map((line, i) => (
+                        <Text
+                          key={i}
+                          style={[styles.leafText, { color: isTapped ? '#000' : '#c4c4cc' }]}
+                          numberOfLines={1}
+                        >{line}</Text>
                       ))}
-                    </G>
+                    </TouchableOpacity>
                   );
                 })
               )}
 
-              {/* Branch nodes */}
+              {/* ── Branch nodes ── */}
               {layout.map((b, bi) => {
-                const lines = wrapText(b.branch.label, 10);
+                const lines = wrapLabel(b.branch.label, 9);
                 const isTapped = tappedNode === b.branch.label;
                 return (
-                  <G key={`bn-${bi}`} onPress={() => handleNodeTap(b.branch.label)}>
-                    <Circle
-                      cx={b.bPos.x} cy={b.bPos.y} r={30}
-                      fill={isTapped ? b.color : `${b.color}22`}
-                      stroke={b.color} strokeWidth={1.5}
-                    />
-                    {lines.map((line, li) => (
-                      <SvgText
-                        key={li}
-                        x={b.bPos.x}
-                        y={b.bPos.y - (lines.length === 1 ? 0 : (lines.length === 2 ? 6 : 10)) + li * 13}
-                        fontSize={10}
-                        fill={isTapped ? '#000' : b.color}
-                        textAnchor="middle"
-                        fontWeight="700"
-                      >
-                        {line}
-                      </SvgText>
+                  <TouchableOpacity
+                    key={`bn-${bi}`}
+                    activeOpacity={0.75}
+                    onPress={() => handleTap(b.branch.label)}
+                    style={[styles.branchNode, {
+                      left: b.bPos.x - BRANCH_NODE_R,
+                      top: b.bPos.y - BRANCH_NODE_R,
+                      width: BRANCH_NODE_R * 2,
+                      height: BRANCH_NODE_R * 2,
+                      borderColor: b.color,
+                      backgroundColor: isTapped ? b.color : `${b.color}22`,
+                    }]}
+                  >
+                    {lines.map((line, i) => (
+                      <Text
+                        key={i}
+                        style={[styles.branchText, { color: isTapped ? '#000' : b.color }]}
+                        numberOfLines={1}
+                      >{line}</Text>
                     ))}
-                  </G>
+                  </TouchableOpacity>
                 );
               })}
 
-              {/* Central node */}
-              <G onPress={() => handleNodeTap(mapData.centralTopic)}>
-                <Circle cx={CENTER_X} cy={CENTER_Y} r={CENTER_R}
-                  fill={tappedNode === mapData.centralTopic ? '#a599ff' : '#1a1040'}
-                  stroke="#a599ff" strokeWidth={2}
-                />
-                {wrapText(mapData.centralTopic, 10).map((line, i, arr) => (
-                  <SvgText
+              {/* ── Central node ── */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => handleTap(mapData.centralTopic)}
+                style={[styles.centralNode, {
+                  left: CX - CENTER_NODE_R,
+                  top: CY - CENTER_NODE_R,
+                  width: CENTER_NODE_R * 2,
+                  height: CENTER_NODE_R * 2,
+                  backgroundColor: tappedNode === mapData.centralTopic ? '#a599ff' : '#1a1040',
+                }]}
+              >
+                {wrapLabel(mapData.centralTopic, 9).map((line, i) => (
+                  <Text
                     key={i}
-                    x={CENTER_X}
-                    y={CENTER_Y - (arr.length === 1 ? 0 : (arr.length === 2 ? 7 : 13)) + i * 14}
-                    fontSize={11}
-                    fill={tappedNode === mapData.centralTopic ? '#000' : '#ffffff'}
-                    textAnchor="middle"
-                    fontWeight="700"
-                  >
-                    {line}
-                  </SvgText>
+                    style={[styles.centralText, {
+                      color: tappedNode === mapData.centralTopic ? '#000' : '#fff',
+                    }]}
+                    numberOfLines={1}
+                  >{line}</Text>
                 ))}
-              </G>
+              </TouchableOpacity>
 
-            </Svg>
+            </View>
 
             {/* Legend */}
             <View style={styles.legend}>
               {layout.map((b, bi) => (
                 <TouchableOpacity
-                  key={bi}
-                  style={styles.legendRow}
-                  onPress={() => handleNodeTap(b.branch.label)}
+                  key={bi} style={styles.legendRow}
+                  onPress={() => handleTap(b.branch.label)}
                 >
                   <View style={[styles.legendDot, { backgroundColor: b.color }]} />
                   <Text style={styles.legendText}>{b.branch.label}</Text>
@@ -360,76 +365,57 @@ export default function LectureMindMap({
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#09090b',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-    gap: 10,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontFamily: FONT_FAMILY.bold,
-    color: '#ffffff',
-  },
-  headerSub: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.body,
-    color: '#71717a',
-    marginTop: 1,
-  },
-  hint: {
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.body,
-    color: '#52525b',
-    textAlign: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 4,
-    minHeight: 16,
-  },
-  regenBtn: {
+  container: { flex: 1, backgroundColor: '#09090b' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 6, gap: 10 },
+  title: { fontSize: 18, fontFamily: FONT_FAMILY.bold, color: '#ffffff' },
+  sub: { fontSize: 12, fontFamily: FONT_FAMILY.body, color: '#71717a', marginTop: 1 },
+  iconBtn: {
     width: 34, height: 34, borderRadius: 17,
-    backgroundColor: 'rgba(165,153,255,0.1)',
-    borderWidth: 1, borderColor: 'rgba(165,153,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center', justifyContent: 'center',
   },
-  closeBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  centerState: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, paddingHorizontal: 32,
-  },
-  loadingText: {
-    fontSize: 14, fontFamily: FONT_FAMILY.medium, color: '#71717a', textAlign: 'center',
-  },
-  errorText: {
-    fontSize: 14, fontFamily: FONT_FAMILY.medium, color: '#ef4444', textAlign: 'center',
-  },
+  hint: { fontSize: 11, fontFamily: FONT_FAMILY.body, color: '#52525b', textAlign: 'center', marginBottom: 4 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 32 },
+  loadText: { fontSize: 14, fontFamily: FONT_FAMILY.medium, color: '#71717a', textAlign: 'center' },
+  errText: { fontSize: 14, fontFamily: FONT_FAMILY.medium, color: '#ef4444', textAlign: 'center' },
   retryBtn: {
     paddingHorizontal: 24, paddingVertical: 10,
     backgroundColor: 'rgba(165,153,255,0.12)',
     borderRadius: 20, borderWidth: 1, borderColor: 'rgba(165,153,255,0.3)',
   },
-  retryText: {
-    fontSize: 14, fontFamily: FONT_FAMILY.bold, color: '#a599ff',
+  retryText: { fontSize: 14, fontFamily: FONT_FAMILY.bold, color: '#a599ff' },
+  // Node styles — all positioned absolutely inside the canvas View
+  centralNode: {
+    position: 'absolute',
+    borderRadius: 50, borderWidth: 2, borderColor: '#a599ff',
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 6,
   },
-  legend: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8,
-    justifyContent: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24,
+  centralText: { fontSize: 11, fontFamily: FONT_FAMILY.bold, textAlign: 'center' },
+  branchNode: {
+    position: 'absolute',
+    borderRadius: 32, borderWidth: 1.5,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4,
   },
+  branchText: { fontSize: 9, fontFamily: FONT_FAMILY.bold, textAlign: 'center' },
+  leafNode: {
+    position: 'absolute',
+    borderRadius: 8, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 4, paddingVertical: 3,
+  },
+  leafText: { fontSize: 8, fontFamily: FONT_FAMILY.medium, textAlign: 'center' },
+  legend: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', paddingHorizontal: 16 },
   legendRow: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 5,
+    paddingHorizontal: 9, paddingVertical: 4,
     backgroundColor: 'rgba(255,255,255,0.04)',
     borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
   },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendDot: { width: 7, height: 7, borderRadius: 3.5 },
   legendText: { fontSize: 11, fontFamily: FONT_FAMILY.medium, color: '#a1a1aa' },
 });
