@@ -743,16 +743,7 @@ export default function AnalyticsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View>
-            <TouchableOpacity 
-              style={[styles.exportBtn, { backgroundColor: 'rgba(165,153,255,0.15)', marginBottom: SPACE.lg, borderColor: colors.accentPrimary, borderWidth: 1 }]} 
-              onPress={() => navigation.navigate(SCREENS.WEEKLY_REVIEW)}
-            >
-              <Ionicons name="sparkles" size={18} color={colors.accentPrimary} />
-              <Text style={[styles.exportBtnText, { color: colors.accentPrimary, marginLeft: 8 }]}>View AI Weekly Review</Text>
-            </TouchableOpacity>
-
-          {/* â”€â”€ 1. ZEN SCORE RING â”€â”€ */}
+          {/* ── 1. ZEN SCORE RING ── */}
           <Animated.View style={[styles.heroSection, {
             opacity: animRing,
             transform: [{ scale: animRing.interpolate({ inputRange: [0,1], outputRange: [0.85,1] }) }],
@@ -964,7 +955,6 @@ export default function AnalyticsScreen() {
           {/* Removed Academic Predictor, CGPA Trend, Attendance Trend, and Export Button */}
 
           <View style={{ height: 100 }} />
-          </View>
         </ScrollView>
       </SafeAreaView>
     </ExpoLinearGradient>
