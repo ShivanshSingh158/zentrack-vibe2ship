@@ -16,7 +16,7 @@
  *   call useTheme().colors to get the live active palette.
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DARK_COLORS, LIGHT_COLORS } from '../theme/tokens';
 
@@ -73,13 +73,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     applyMode(next);
   }, [applyMode]);
 
-  const value: ThemeContextType = {
+  const value: ThemeContextType = useMemo(() => ({
     isDark: mode === 'dark',
     mode,
     colors: mode === 'dark' ? DARK_COLORS : LIGHT_COLORS,
     toggleTheme,
     setTheme,
-  };
+  }), [mode, toggleTheme, setTheme]);
 
   // Render nothing until preference is loaded — prevents a one-frame dark→light flash.
   // In practice this is <10ms (AsyncStorage is fast on device).

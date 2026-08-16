@@ -164,6 +164,11 @@ export function WellnessProvider({
       setSleepLogs([]);
       setWeightLogs([]);
     }
+    return () => {
+      unsubsRef.current.forEach(u => u());
+      unsubsRef.current = [];
+      subscribedRef.current = false;
+    };
   }, [user]);
 
   // Cleanup on unmount

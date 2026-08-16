@@ -202,8 +202,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
       snap => {
         const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Habit));
-        if (!isHabitLocked.current) setHabits(fresh);
-        writeCoreCacheMulti({ habits: fresh });
+        if (!isHabitLocked.current) {
+          setHabits(fresh);
+          writeCoreCacheMulti({ habits: fresh });
+        }
       },
       err => console.error("[CoreData] habits", err)
     ));
@@ -212,8 +214,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
       snap => {
         const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog));
-        if (!isHabitLogLocked.current) setHabitLogs(fresh);
-        writeCoreCacheMulti({ habitLogs: fresh });
+        if (!isHabitLogLocked.current) {
+          setHabitLogs(fresh);
+          writeCoreCacheMulti({ habitLogs: fresh });
+        }
       },
       err => console.error("[CoreData] habitLogs", err)
     ));
