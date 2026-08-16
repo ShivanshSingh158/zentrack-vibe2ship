@@ -76,9 +76,9 @@
     "typescript": "~5.9.2"
   },
   "scripts": {
-    "start": "expo start -c",
-    "android": "expo start --android -c",
-    "ios": "expo start --ios -c",
+    "start": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start -c",
+    "android": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --android -c",
+    "ios": "cross-env NODE_OPTIONS=--max-old-space-size=8192 expo start --ios -c",
     "web": "expo start --web"
   },
   "overrides": {
