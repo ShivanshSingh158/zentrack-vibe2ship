@@ -5,7 +5,11 @@ import * as Haptics from 'expo-haptics';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { db } from '../../services/firebase';
 import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { useMobileData, CustomEvent } from '../../contexts/MobileDataContext';
+import type { CustomEvent } from '../../contexts/MobileDataContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import { usePlannerData } from '../../contexts/domains/PlannerContext';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -47,7 +51,10 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
 }) {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors, isDark);
-  const { user, attendance, gymLogs, customEvents } = useMobileData();
+  const { user } = useCoreData();
+  const { customEvents } = usePlannerData();
+  const { attendance } = useAcademicData();
+  const { gymLogs } = useWellnessData();
   const [title, setTitle] = useState('');
   const [type, setType] = useState('exam');
   const [eventDate, setEventDate] = useState(selectedDate);

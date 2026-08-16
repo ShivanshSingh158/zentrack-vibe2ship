@@ -228,6 +228,7 @@ export function useCalendarData() {
   }, [timedDayEvents], []);
 
   const weekEvents = useDeferredMemo(() => {
+    if (currentView !== 'Week') return [];
     const [selY, selM, selD] = selectedDate.split('-').map(Number);
     const d = new Date(selY, (selM || 1) - 1, selD || 1);
     d.setDate(d.getDate() - d.getDay());
@@ -249,13 +250,14 @@ export function useCalendarData() {
       
       const dayOfWeek = cur.getDay().toString();
       const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      
       const classEvents = attendance?.flatMap((subj: any) => {
         const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[Number(dayOfWeek)] || subj.schedule?.[DAY_NAMES[cur.getDay()]] || subj.schedule?.[DAY_NAMES[cur.getDay()].toLowerCase()];
         if (!sch) return [];
         const evtList: any[] = [];
         if (sch.classes && Array.isArray(sch.classes)) {
           sch.classes.forEach((c: any, idx: number) => {
-            if (c.time) {
+            if (c.time && c.time.trim() !== '') {
               const { hour: sh, min: sm } = parseTimeTo24h(c.time);
               const endH = Math.min(23, sh + 1);
               evtList.push({ id: `${subj.id}-class-${dateStr}-${idx}`, title: `${subj.name} (Class)`, type: 'class', date: dateStr, startTime: c.time, endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}` });
@@ -264,7 +266,7 @@ export function useCalendarData() {
         }
         if (sch.labs && Array.isArray(sch.labs)) {
           sch.labs.forEach((l: any, idx: number) => {
-            if (l.time) {
+            if (l.time && l.time.trim() !== '') {
               const { hour: sh, min: sm } = parseTimeTo24h(l.time);
               const endH = Math.min(23, sh + 2);
               evtList.push({ id: `${subj.id}-lab-${dateStr}-${idx}`, title: `${subj.name} (Lab)`, type: 'lab', date: dateStr, startTime: l.time, endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}` });
@@ -310,7 +312,7 @@ export function useCalendarData() {
       });
     }
     return allWeekEvents;
-  }, [selectedDate, customEvents, tasks, attendance, gymLogs, userGymPlan, gcalEvents], []);
+  }, [currentView, selectedDate, customEvents, tasks, attendance, gymLogs, userGymPlan, gcalEvents], []);
 
   const { minHour, maxHour } = useMemo(() => {
     let min = 5; let max = 22;
@@ -338,9 +340,10 @@ export function useCalendarData() {
     const currentHour = new Date().getHours();
     const currentMin  = new Date().getMinutes();
     const targetY = Math.max(0, (currentHour * HOUR_HEIGHT) + ((currentMin / 60) * HOUR_HEIGHT) - (minHour * HOUR_HEIGHT) - 100);
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       scrollViewRef.current?.scrollTo({ y: targetY, animated: true });
-    }, 150);
+    }, 120);
+    return () => clearTimeout(timer);
   }, [selectedDate, currentView, minHour]);
 
   return {

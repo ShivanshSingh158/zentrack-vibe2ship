@@ -174,46 +174,48 @@ const handleFindFreeSlots = async () => {
     <SafeAreaView style={styles.root}>
 
       {/* ── AI Slot Result Bottom Sheet ── */}
-      <Modal
-        visible={!!aiSlotResult}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setAiSlotResult(null)}
-      >
-        <TouchableOpacity
-          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}
-          activeOpacity={1}
-          onPress={() => setAiSlotResult(null)}
+      {!!aiSlotResult && (
+        <Modal
+          visible={!!aiSlotResult}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setAiSlotResult(null)}
         >
-          <View style={{
-            backgroundColor: colors.surface || '#1c1c1e',
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            padding: 24,
-            paddingBottom: 40,
-            borderTopWidth: 1,
-            borderTopColor: colors.border || 'rgba(255,255,255,0.08)',
-          }}>
-            {/* Handle bar */}
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'center', marginBottom: 20 }} />
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
-              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 16 }}>✨</Text>
+          <TouchableOpacity
+            style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' }}
+            activeOpacity={1}
+            onPress={() => setAiSlotResult(null)}
+          >
+            <View style={{
+              backgroundColor: colors.surface || '#1c1c1e',
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              padding: 24,
+              paddingBottom: 40,
+              borderTopWidth: 1,
+              borderTopColor: colors.border || 'rgba(255,255,255,0.08)',
+            }}>
+              {/* Handle bar */}
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'center', marginBottom: 20 }} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
+                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 16 }}>✨</Text>
+                </View>
+                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 18, color: colors.textPrimary || '#fff' }}>AI Free Slot</Text>
               </View>
-              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 18, color: colors.textPrimary || '#fff' }}>AI Free Slot</Text>
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 15, color: colors.textSecondary || '#ebebf5cc', lineHeight: 22 }}>
+                {aiSlotResult}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setAiSlotResult(null)}
+                style={{ marginTop: 24, paddingVertical: 14, backgroundColor: colors.accentPrimary || '#a599ff', borderRadius: 14, alignItems: 'center' }}
+              >
+                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 15, color: '#000' }}>Got it</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 15, color: colors.textSecondary || '#ebebf5cc', lineHeight: 22 }}>
-              {aiSlotResult}
-            </Text>
-            <TouchableOpacity
-              onPress={() => setAiSlotResult(null)}
-              style={{ marginTop: 24, paddingVertical: 14, backgroundColor: colors.accentPrimary || '#a599ff', borderRadius: 14, alignItems: 'center' }}
-            >
-              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 15, color: '#000' }}>Got it</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+          </TouchableOpacity>
+        </Modal>
+      )}
 
       {/* 1.5. SUB HEADER (Month + View Selector) */}
       <View style={styles.subHeader}>
@@ -442,12 +444,14 @@ const handleFindFreeSlots = async () => {
       )}
 
       {/* Add Event Modal */}
-      <AddEventModal
-        visible={showAddModal}
-        onClose={() => setShowAddModal(false)}
-        selectedDate={selectedDate}
-        initialStartTime={initialTime}
-      />
+      {showAddModal && (
+        <AddEventModal
+          visible={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          selectedDate={selectedDate}
+          initialStartTime={initialTime}
+        />
+      )}
 
       {/* Gym Modal */}
       {showGymModal && (

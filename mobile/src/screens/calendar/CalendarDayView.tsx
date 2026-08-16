@@ -43,17 +43,6 @@ export const CalendarDayView = React.memo(function CalendarDayView({
   currentTimeMins,
 }: CalendarDayViewProps) {
 
-  // ── Auto-scroll to current time whenever this view is active ──────────────
-  useEffect(() => {
-    if (!isToday) return;
-    const timer = setTimeout(() => {
-      if (scrollViewRef.current) {
-        const targetY = Math.max(0, indicatorTop - (minHour * HOUR_HEIGHT) - 100);
-        scrollViewRef.current.scrollTo({ y: targetY, animated: true });
-      }
-    }, 200); // small delay so layout is complete
-    return () => clearTimeout(timer);
-  }, [isToday, indicatorTop, minHour]); // re-run if date changes to today
 
   // ── Helper: decide if an event is "in the past" for opacity fading ─────────
   const isPastEvent = (event: any): boolean => {
