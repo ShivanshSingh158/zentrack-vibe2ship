@@ -143,6 +143,7 @@ export async function speakWithSarvam(
    * Returns true on success, false on failure (caller switches to device TTS).
    */
   async function playChunk(chunk: string): Promise<boolean> {
+    let tmpUri: string | null = null;
     try {
       const resp = await fetch(VOICE_PROXY_URL, {
         method: 'POST',
@@ -159,7 +160,7 @@ export async function speakWithSarvam(
       const base64Audio = data?.audios?.[0];
       if (!base64Audio) throw new Error('No audio data in proxy response');
 
-      const tmpUri = `${FileSystem.documentDirectory}sara_tts_${Date.now()}.wav`;
+      tmpUri = `${FileSystem.documentDirectory}sara_tts_${Date.now()}.wav`;
       await FileSystem.writeAsStringAsync(tmpUri, base64Audio, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -177,15 +178,16 @@ export async function speakWithSarvam(
       // Wait for playback to finish before moving to next chunk
       await new Promise<void>((resolve) => {
         sound.setOnPlaybackStatusUpdate((status: any) => {
-          if (status.didJustFinish) {
+          if (status.didJustFinish || status.error) {
             _currentSound = null;
-            FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
+            if (tmpUri) FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
             resolve();
           }
         });
       });
       return true;
     } catch (err: any) {
+      if (tmpUri) FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
       console.warn('[Sarvam] Chunk TTS failed:', err.message);
       return false;
     }

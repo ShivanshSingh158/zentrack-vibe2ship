@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform } from 'react-native';
 import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withTiming, withDelay } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,7 +7,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import Svg, { Circle } from 'react-native-svg';
 
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDateWithDay } from '../utils/dateUtils';
 import { triggerLayoutAnimation } from '../theme/animations';
@@ -67,7 +67,7 @@ export default function TasksScreen() {
   const { colors, isDark } = useTheme();
   const styles = makeTasksStyles(colors);
   
-  const { tasks, user, attendance, attendanceLogs, gymLogs, userGymPlan, optimisticUpdateTask, optimisticDeleteTask } = useMobileData();
+  const { tasks, user, optimisticUpdateTask, optimisticDeleteTask } = useCoreData();
   
   // 1. Recurring Spawn Logic
   useRecurringSpawn(tasks, user?.uid);
@@ -324,25 +324,29 @@ export default function TasksScreen() {
       </Animated.View>
 
       {/* Standard Calendar Modal */}
-      <UniversalCalendarModal
-        visible={isCalendarOpen}
-        onClose={() => setIsCalendarOpen(false)}
-        selectedDate={selectedDate}
-        onDateSelect={handleDateSelect}
-        title="Jump to date"
-      />
+      {isCalendarOpen && (
+        <UniversalCalendarModal
+          visible={isCalendarOpen}
+          onClose={() => setIsCalendarOpen(false)}
+          selectedDate={selectedDate}
+          onDateSelect={handleDateSelect}
+          title="Jump to date"
+        />
+      )}
 
       {/* Advanced Reschedule Sheet */}
-      <BulkRescheduleSheet
-        visible={bulkRescheduleModal}
-        onClose={() => setBulkRescheduleModal(false)}
-        selectedTaskIds={selectedTaskIds}
-        allTasks={tasks}
-        onConfirm={(newDate, newSlot) => handleBulkReschedule(selectedTaskIds, newDate, newSlot)}
-      />
+      {bulkRescheduleModal && (
+        <BulkRescheduleSheet
+          visible={bulkRescheduleModal}
+          onClose={() => setBulkRescheduleModal(false)}
+          selectedTaskIds={selectedTaskIds}
+          allTasks={tasks}
+          onConfirm={(newDate, newSlot) => handleBulkReschedule(selectedTaskIds, newDate, newSlot)}
+        />
+      )}
 
       {editingTask && <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />}
-      {user && <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />}
+      {user && isNewTaskOpen && <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />}
 
       {/* VIEWS */}
       {viewMode === 'timeline' ? (
@@ -351,10 +355,6 @@ export default function TasksScreen() {
             tasks={selectedDateTasks} 
             onTaskPress={(t) => setEditingTask(t)} 
             colors={colors}
-            attendance={attendance}
-            attendanceLogs={attendanceLogs}
-            gymLogs={gymLogs}
-            userGymPlan={userGymPlan}
             selectedDate={selectedDate}
           />
         </Animated.View>
@@ -378,6 +378,10 @@ export default function TasksScreen() {
           scrollEnabled={selectedDateTasks.length > 0}
           bounces={selectedDateTasks.length > 0}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={Platform.OS === 'android'}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          initialNumToRender={8}
           onScroll={handleScroll}
           scrollEventThrottle={16}
           onScrollEndDrag={(e: any) => {
@@ -555,9 +559,9 @@ export default function TasksScreen() {
       )}
 
       {/* SHEETS */}
-      <TaskTemplatesSheet visible={isTemplatesSheetOpen} onClose={() => setIsTemplatesSheetOpen(false)} userId={user?.uid!} onApplyTemplate={(template) => addTaskFromTemplate(user?.uid!, template, selectedDate, tasks.length)} />
-      <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />
-      <TimeSpentSheet visible={isTimeSpentOpen} onClose={() => setIsTimeSpentOpen(false)} tasks={tasks} selectedDate={selectedDate} />
+      {isTemplatesSheetOpen && <TaskTemplatesSheet visible={isTemplatesSheetOpen} onClose={() => setIsTemplatesSheetOpen(false)} userId={user?.uid!} onApplyTemplate={(template) => addTaskFromTemplate(user?.uid!, template, selectedDate, tasks.length)} />}
+      {!!timeLogTask && <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />}
+      {isTimeSpentOpen && <TimeSpentSheet visible={isTimeSpentOpen} onClose={() => setIsTimeSpentOpen(false)} tasks={tasks} selectedDate={selectedDate} />}
 
     </SafeAreaView>
   );

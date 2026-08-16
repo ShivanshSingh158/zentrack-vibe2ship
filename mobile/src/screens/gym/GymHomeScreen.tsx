@@ -14,7 +14,8 @@ import { doc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useGymLog, todayStr, dateStrOffset, planDayIndexForDate } from '../../hooks/useGymLog';
 import { GYM_PLAN_PPL, GYM_PLAN_ARNOLD } from '../../data/gymPlan';
 import type { GymPlanDay } from '../../types/gym.types';
@@ -34,9 +35,9 @@ import { GymTemplateModal } from '../../components/Gym/GymTemplateModal';
 import { GymScheduleSettingsModal } from '../../components/Gym/GymScheduleSettingsModal';
 import WeeklyGymReport from '../../components/Gym/WeeklyGymReport';
 import { GymCardioLog } from '../../types/gym.types';
-import { useGymProfile } from '../../hooks/useGymProfile';
 import BodyMetricsSheet from '../../components/Gym/BodyMetricsSheet';
 import PRHallOfFameSheet from '../../components/Gym/PRHallOfFameSheet';
+import { useGymProfile } from '../../hooks/useGymProfile';
 import { ZenGymAiFab } from '../../components/Gym/ZenGymAiFab';
 import { handleSyncError } from '../../utils/errorUtils';
 import { getOverloadSuggestion } from '../../services/progressiveOverload';
@@ -45,7 +46,7 @@ import { setTabBarVisible } from '../../utils/tabBarScroll';
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 
-export default function GymHomeScreen() {
+export const GymHomeScreen = memo(function GymHomeScreen() {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const [selectedDate, setSelectedDate] = useState(todayStr());
@@ -55,18 +56,16 @@ export default function GymHomeScreen() {
   const pillAnim = useRef(new Animated.Value(0)).current;
   const isPillVisibleRef = useRef(false);
 
-  // When switching to the Gym module from another tab/module, always return to Today
+  // Reset scroll-linked pill animation when screen focuses
   useFocusEffect(
     useCallback(() => {
-      const today = todayStr();
-      setSelectedDate(today);
-      setWeekOffset(0);
       isPillVisibleRef.current = false;
       pillAnim.setValue(0);
     }, [pillAnim])
   );
 
-  const { gymLogs, waterLogs, sleepLogs, tasks, customEvents, attendance, habitLogs, allHabits, assignments, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan, user } = useMobileData();
+  const { gymLogs, waterLogs, sleepLogs, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan } = useWellnessData();
+  const { user } = useCoreData();
   const currentStreak = useMemo(() => calculateGymStreak(gymLogs, userGymPlan), [gymLogs, userGymPlan]);
 
   // BUG-3 FIX: Callback passed to GymNotificationModal so gym reminder time
@@ -74,9 +73,14 @@ export default function GymHomeScreen() {
   const handleGymNotifSaved = () => {
     clearScheduleCache();
     scheduleAllNotifications({
-      tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
-      waterLogs, sleepLogs,
-    }).catch(console.warn);
+      tasks: [],
+      customEvents: [],
+      attendance: [],
+      gymLogs,
+      waterLogs,
+      sleepLogs,
+      userGymPlan,
+    } as any).catch(console.warn);
   };
 
   const { log, startWorkout, resumeWorkout, endWorkout, addExercise, deleteExercise, updateSet, saveLog, addCardio, updateCardio, deleteCardio, planDay, swapDayRoutine, reorderExercise, reorderExercisesFull, triggerDeload, forceOverrideTodayPlan } = useGymLog(selectedDate);
@@ -1000,100 +1004,118 @@ export default function GymHomeScreen() {
         />
 
         {/* Modals and Overlays */}
-        <AddExerciseModal
-          visible={showAddModal}
-          onClose={() => setShowAddModal(false)}
-          onAdd={addExercise}
-          planDay={planDay}
-          existingExerciseIds={log?.exercises.map(e => e.exerciseId) || []}
-        />
-        <AddCardioModal visible={showCardioModal} onClose={() => setShowCardioModal(false)} onAdd={addCardio} />
-        <ExerciseHistoryDrawer 
-          visible={!!historyFor} 
-          exerciseId={historyFor?.id || null}
-          exerciseName={historyFor?.name || null}
-          onClose={() => setHistoryFor(null)} 
-        />
-        <LogCardioModal
-          visible={!!logCardioFor}
-          cardio={logCardioFor}
-          onClose={() => setLogCardioFor(null)}
-          onSave={(updates) => log?.cardio && updateCardio(logCardioFor!.id, updates)}
-        />
+        {showAddModal && (
+          <AddExerciseModal
+            visible={showAddModal}
+            onClose={() => setShowAddModal(false)}
+            onAdd={addExercise}
+            planDay={planDay}
+            existingExerciseIds={log?.exercises.map(e => e.exerciseId) || []}
+          />
+        )}
+        {showCardioModal && (
+          <AddCardioModal visible={showCardioModal} onClose={() => setShowCardioModal(false)} onAdd={addCardio} />
+        )}
+        {!!historyFor && (
+          <ExerciseHistoryDrawer 
+            visible={!!historyFor} 
+            exerciseId={historyFor?.id || null}
+            exerciseName={historyFor?.name || null}
+            onClose={() => setHistoryFor(null)} 
+          />
+        )}
+        {!!logCardioFor && (
+          <LogCardioModal
+            visible={!!logCardioFor}
+            cardio={logCardioFor}
+            onClose={() => setLogCardioFor(null)}
+            onSave={(updates) => log?.cardio && updateCardio(logCardioFor!.id, updates)}
+          />
+        )}
         
-        <ZenGymAiModal 
-          visible={showAiModal} 
-          onClose={() => setShowAiModal(false)}
-          workoutData={{ activeMuscles: activeMuscles.map(m => m.muscle).join(', '), doneSets, totalSets }}
-          onAddExercise={handleAiAddExercise}
-          onDeleteExercise={deleteExercise}
-          onLogSet={handleAiLogSet}
-          onGenerateWorkoutPlan={handleAiGenerateWorkoutPlan}
-          onImportMultiDayPlan={handleAiImportMultiDayPlan}
-          onAddExerciseToPlanDay={handleAiAddExerciseToPlanDay}
-          onAutoregulateDeload={triggerDeload}
-          userGymPlan={userGymPlan}
-          currentPlanDay={planDay}
-        />
+        {showAiModal && (
+          <ZenGymAiModal 
+            visible={showAiModal} 
+            onClose={() => setShowAiModal(false)}
+            workoutData={{ activeMuscles: activeMuscles.map(m => m.muscle).join(', '), doneSets, totalSets }}
+            onAddExercise={handleAiAddExercise}
+            onDeleteExercise={deleteExercise}
+            onLogSet={handleAiLogSet}
+            onGenerateWorkoutPlan={handleAiGenerateWorkoutPlan}
+            onImportMultiDayPlan={handleAiImportMultiDayPlan}
+            onAddExerciseToPlanDay={handleAiAddExerciseToPlanDay}
+            onAutoregulateDeload={triggerDeload}
+            userGymPlan={userGymPlan}
+            currentPlanDay={planDay}
+          />
+        )}
 
-        <GymScheduleSettingsModal
-          visible={showScheduleSettingsModal}
-          onClose={() => setShowScheduleSettingsModal(false)}
-          userGymPlan={userGymPlan}
-          onSaveWeekly={updateFullMasterPlan}
-          currentStartTime={log?.startTime}
-          currentEndTime={log?.endTime}
-          onSaveOverride={(start, end) => {
-            saveLog({
-              ...(log || {
-                id: `gym_${selectedDate}`,
-                userId: user?.uid || 'temp',
-                dayPlanIndex: planDayIndexForDate(selectedDate),
-                date: selectedDate,
-                exercises: [],
-                cardio: [],
-                createdAt: Date.now(),
+        {showScheduleSettingsModal && (
+          <GymScheduleSettingsModal
+            visible={showScheduleSettingsModal}
+            onClose={() => setShowScheduleSettingsModal(false)}
+            userGymPlan={userGymPlan}
+            onSaveWeekly={updateFullMasterPlan}
+            currentStartTime={log?.startTime}
+            currentEndTime={log?.endTime}
+            onSaveOverride={(start, end) => {
+              saveLog({
+                ...(log || {
+                  id: `gym_${selectedDate}`,
+                  userId: user?.uid || 'temp',
+                  dayPlanIndex: planDayIndexForDate(selectedDate),
+                  date: selectedDate,
+                  exercises: [],
+                  cardio: [],
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
+                  completed: false,
+                }),
+                startTime: start,
+                endTime: end,
                 updatedAt: Date.now(),
-                completed: false,
-              }),
-              startTime: start,
-              endTime: end,
-              updatedAt: Date.now(),
-            } as any);
-          }}
-          onNotifSaved={handleGymNotifSaved}
-        />
+              } as any);
+            }}
+            onNotifSaved={handleGymNotifSaved}
+          />
+        )}
         
-        <SwapRoutineModal
-          visible={showSwapRoutineModal}
-          selectedDate={selectedDate}
-          currentPlanDayIndex={log?.dayPlanIndex || planDay?.dayIndex}
-          onClose={() => setShowSwapRoutineModal(false)}
-          onSelectDay={(targetDayIdx) => swapDayRoutine(targetDayIdx)}
-        />
+        {showSwapRoutineModal && (
+          <SwapRoutineModal
+            visible={showSwapRoutineModal}
+            selectedDate={selectedDate}
+            currentPlanDayIndex={log?.dayPlanIndex || planDay?.dayIndex}
+            onClose={() => setShowSwapRoutineModal(false)}
+            onSelectDay={(targetDayIdx) => swapDayRoutine(targetDayIdx)}
+          />
+        )}
 
-        <GymProfileModal
-          visible={showProfileModal}
-          onClose={() => setShowProfileModal(false)}
-        />
+        {showProfileModal && (
+          <GymProfileModal
+            visible={showProfileModal}
+            onClose={() => setShowProfileModal(false)}
+          />
+        )}
         
-        <GymTemplateModal
-          visible={showTemplateModal}
-          onClose={() => setShowTemplateModal(false)}
-          onApply={async (templateId, schedulePattern) => {
-            const newCustomDays = await applyMasterTemplate(templateId, schedulePattern);
-            
-            // If today's log hasn't started, overwrite it instantly with the new template's layout.
-            if (!log?.workoutStartTime && newCustomDays) {
-              forceOverrideTodayPlan(newCustomDays);
-              setWeekOffset(prev => prev); // trigger minor re-render
-            }
-          }}
-        />
+        {showTemplateModal && (
+          <GymTemplateModal
+            visible={showTemplateModal}
+            onClose={() => setShowTemplateModal(false)}
+            onApply={async (templateId, schedulePattern) => {
+              const newCustomDays = await applyMasterTemplate(templateId, schedulePattern);
+              
+              // If today's log hasn't started, overwrite it instantly with the new template's layout.
+              if (!log?.workoutStartTime && newCustomDays) {
+                forceOverrideTodayPlan(newCustomDays);
+                setWeekOffset(prev => prev); // trigger minor re-render
+              }
+            }}
+          />
+        )}
 
         {/* Body Metrics & PR Hall */}
-        <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />
-        <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />
+        {showBodyMetrics && <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />}
+        {showPRHallOfFame && <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />}
 
       </KeyboardAvoidingView>
       </View>
@@ -1144,7 +1166,7 @@ export default function GymHomeScreen() {
       <ZenGymAiFab onPress={() => setShowAiModal(true)} />
     </View>
   );
-}
+});
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
@@ -1307,3 +1329,5 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+export default GymHomeScreen;

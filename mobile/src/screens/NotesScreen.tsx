@@ -853,7 +853,6 @@ export default function NotesScreen() {
       <FlashList
         data={uploading ? [{ id: 'uploading-temp', name: uploadFileName || 'Uploading...', type: 'file', uploading: true } as any, ...currentItems] : currentItems}
         keyExtractor={item => item.id!}
-
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           <EmptyState
