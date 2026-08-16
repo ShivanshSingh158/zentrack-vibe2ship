@@ -734,7 +734,7 @@ export default function HabitsScreen() {
         <Ionicons name="add" size={26} color={colors.background} />
       </AnimatedPressable>
 
-      {user && (
+      {user && createVisible && (
         <CreateHabitModal
           visible={createVisible}
           userId={user.uid}
@@ -742,11 +742,13 @@ export default function HabitsScreen() {
         />
       )}
 
-      <HabitReminderModal
-        visible={showReminderModal}
-        onClose={() => setShowReminderModal(false)}
-        habits={activeHabits}
-      />
+      {showReminderModal && (
+        <HabitReminderModal
+          visible={showReminderModal}
+          onClose={() => setShowReminderModal(false)}
+          habits={activeHabits}
+        />
+      )}
 
       {confettiOpts && (
         <ConfettiCannon

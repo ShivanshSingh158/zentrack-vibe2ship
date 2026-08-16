@@ -493,135 +493,148 @@ export default function AttendanceScreen() {
       {/* ── Modals ── */}
 
       {/* Timetable Modal */}
-      <TimetableModal
-        visible={isTimetableOpen}
-        onClose={() => setIsTimetableOpen(false)}
-        subjects={subjects}
-        handleAddSubject={handleAddSubject}
-        setEditSubject={setEditSubject}
-        setShowAddModal={setShowAddModal}
-        handleDeleteSubject={handleDeleteSubject}
-        handleExportCSV={handleExportCSV}
-        handleResetSemester={handleResetSemester}
-      />
+      {isTimetableOpen && (
+        <TimetableModal
+          visible={isTimetableOpen}
+          onClose={() => setIsTimetableOpen(false)}
+          subjects={subjects}
+          handleAddSubject={handleAddSubject}
+          setEditSubject={setEditSubject}
+          setShowAddModal={setShowAddModal}
+          handleDeleteSubject={handleDeleteSubject}
+          handleExportCSV={handleExportCSV}
+          handleResetSemester={handleResetSemester}
+        />
+      )}
 
       {/* History Modal */}
-      <Modal visible={!!selectedHistorySubject} animationType="slide">
-        <SafeAreaView style={styles.modalRoot}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{selectedHistorySubject?.name} History</Text>
-            <TouchableOpacity style={styles.modalHeaderBtn} onPress={() => setSelectedHistorySubject(null)}><Ionicons name="close" size={20} color="#fff" /></TouchableOpacity>
-          </View>
-          <FlatList
-            data={selectedHistorySubject ? logs.filter(l => l.subjectId === selectedHistorySubject.id) : []}
-            keyExtractor={l => l.id || ''}
-            contentContainerStyle={{ padding: SPACE.md }}
-            renderItem={({ item: l }) => (
-              <View style={styles.historyCard}>
-                <View>
-                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: l.action === 'attended' ? '#10b981' : '#ef4444' }}>
-                    {l.action === 'attended' ? '✓ Attended' : '✗ Missed'} <Text style={{ color: colors.textPrimary }}>{l.isExtra ? '(Extra) ' : ''}{l.type||'class'}</Text>
-                  </Text>
-                  <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{formatDisplayDate(l.date)} • {new Date(l.timestamp).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</Text>
+      {!!selectedHistorySubject && (
+        <Modal visible={!!selectedHistorySubject} animationType="slide">
+          <SafeAreaView style={styles.modalRoot}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{selectedHistorySubject?.name} History</Text>
+              <TouchableOpacity style={styles.modalHeaderBtn} onPress={() => setSelectedHistorySubject(null)}><Ionicons name="close" size={20} color="#fff" /></TouchableOpacity>
+            </View>
+            <FlatList
+              data={selectedHistorySubject ? logs.filter(l => l.subjectId === selectedHistorySubject.id) : []}
+              keyExtractor={l => l.id || ''}
+              contentContainerStyle={{ padding: SPACE.md }}
+              renderItem={({ item: l }) => (
+                <View style={styles.historyCard}>
+                  <View>
+                    <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: l.action === 'attended' ? '#10b981' : '#ef4444' }}>
+                      {l.action === 'attended' ? '✓ Attended' : '✗ Missed'} <Text style={{ color: colors.textPrimary }}>{l.isExtra ? '(Extra) ' : ''}{l.type||'class'}</Text>
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{formatDisplayDate(l.date)} • {new Date(l.timestamp).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => l.id && handleUndo(l.id)} style={styles.undoBtn}><Ionicons name="refresh" size={14} color={colors.textPrimary}/></TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => l.id && handleUndo(l.id)} style={styles.undoBtn}><Ionicons name="refresh" size={14} color={colors.textPrimary}/></TouchableOpacity>
-              </View>
-            )}
-            ListEmptyComponent={
-              <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: SPACE.xl }}>No logs found for this subject.</Text>
-            }
-          />
-        </SafeAreaView>
-      </Modal>
+              )}
+              ListEmptyComponent={
+                <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: SPACE.xl }}>No logs found for this subject.</Text>
+              }
+            />
+          </SafeAreaView>
+        </Modal>
+      )}
 
       {/* Extra Class Modal */}
-      <Modal visible={isExtraOpen} transparent animationType="slide">
-        <KeyboardAvoidingView style={styles.overlayBg} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.sheet}>
-            {/* Handle bar */}
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', alignSelf: 'center', marginBottom: 20 }} />
+      {isExtraOpen && (
+        <Modal visible={isExtraOpen} transparent animationType="slide">
+          <KeyboardAvoidingView style={styles.overlayBg} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <View style={styles.sheet}>
+              {/* Handle bar */}
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.12)', alignSelf: 'center', marginBottom: 20 }} />
 
-            <Text style={styles.sheetTitle}>Log Extra Class</Text>
+              <Text style={styles.sheetTitle}>Log Extra Class</Text>
 
-            {/* Subject selector — vertical full-width pills */}
-            <ScrollView style={{ maxHeight: 180, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
-              {subjects.map(s => (
-                <TouchableOpacity
-                  key={s.id}
-                  onPress={() => setExtraSubjectId(s.id!)}
-                  style={[
-                    styles.subjectSelectRow,
-                    extraSubjectId === s.id && styles.subjectSelectRowActive,
-                  ]}
-                >
-                  <View style={[styles.subjectSelectDot, extraSubjectId === s.id && { backgroundColor: '#a599ff' }]} />
-                  <Text style={[styles.subjectSelectText, extraSubjectId === s.id && { color: '#ffffff' }]}>{s.name}</Text>
-                  {extraSubjectId === s.id && <Ionicons name="checkmark" size={14} color="#a599ff" />}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Action rows — CLASS and LAB */}
-            {(['class', 'lab'] as const).map(type => (
-              <View key={type} style={styles.extraTypeRow}>
-                <Text style={styles.extraTypeLabel}>{type === 'class' ? 'Class' : 'Lab'}</Text>
-                <View style={styles.extraTypeActions}>
+              {/* Subject selector — vertical full-width pills */}
+              <ScrollView style={{ maxHeight: 180, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
+                {subjects.map(s => (
                   <TouchableOpacity
-                    style={[styles.extraActionBtn, styles.extraActionAttended, !extraSubjectId && { opacity: 0.3 }]}
-                    disabled={!extraSubjectId}
-                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'attended', selectedDate, true); setIsExtraOpen(false); }}
+                    key={s.id}
+                    onPress={() => setExtraSubjectId(s.id!)}
+                    style={[
+                      styles.subjectSelectRow,
+                      extraSubjectId === s.id && styles.subjectSelectRowActive,
+                    ]}
                   >
-                    <Ionicons name="checkmark" size={15} color="#5eda9e" />
-                    <Text style={styles.extraActionAttendedText}>Attended</Text>
+                    <View style={[styles.subjectSelectDot, extraSubjectId === s.id && { backgroundColor: '#a599ff' }]} />
+                    <Text style={[styles.subjectSelectText, extraSubjectId === s.id && { color: '#ffffff' }]}>{s.name}</Text>
+                    {extraSubjectId === s.id && <Ionicons name="checkmark" size={14} color="#a599ff" />}
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.extraActionBtn, styles.extraActionMissed, !extraSubjectId && { opacity: 0.3 }]}
-                    disabled={!extraSubjectId}
-                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'missed', selectedDate, true); setIsExtraOpen(false); }}
-                  >
-                    <Ionicons name="close" size={15} color="#ff6961" />
-                    <Text style={styles.extraActionMissedText}>Missed</Text>
-                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Action rows — CLASS and LAB */}
+              {(['class', 'lab'] as const).map(type => (
+                <View key={type} style={styles.extraTypeRow}>
+                  <Text style={styles.extraTypeLabel}>{type === 'class' ? 'Class' : 'Lab'}</Text>
+                  <View style={styles.extraTypeActions}>
+                    <TouchableOpacity
+                      style={[styles.extraActionBtn, styles.extraActionAttended, !extraSubjectId && { opacity: 0.3 }]}
+                      disabled={!extraSubjectId}
+                      onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'attended', selectedDate, true); setIsExtraOpen(false); }}
+                    >
+                      <Ionicons name="checkmark" size={15} color="#5eda9e" />
+                      <Text style={styles.extraActionAttendedText}>Attended</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.extraActionBtn, styles.extraActionMissed, !extraSubjectId && { opacity: 0.3 }]}
+                      disabled={!extraSubjectId}
+                      onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'missed', selectedDate, true); setIsExtraOpen(false); }}
+                    >
+                      <Ionicons name="close" size={15} color="#ff6961" />
+                      <Text style={styles.extraActionMissedText}>Missed</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            ))}
+              ))}
 
-            <TouchableOpacity style={styles.extraCancelBtn} onPress={() => setIsExtraOpen(false)}>
-              <Text style={styles.extraCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Custom Confirm Modal */}
-      <Modal visible={confirmConfig.visible} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', padding: SPACE.xl }}>
-          <View style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: SPACE.xl, width: '100%', maxWidth: 400 }}>
-            <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary, marginBottom: 8 }}>{confirmConfig.title}</Text>
-            <Text style={{ fontSize: 14, color: colors.textMuted, marginBottom: 24, lineHeight: 20 }}>{confirmConfig.message}</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
-              <TouchableOpacity onPress={() => setConfirmConfig(p => ({ ...p, visible: false }))} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
-                <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textMuted }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={confirmConfig.onConfirm} style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: confirmConfig.danger ? '#ef4444' : colors.accentPrimary, borderRadius: 8 }}>
-                <Text style={{ fontFamily: FONT_FAMILY.bold, color: confirmConfig.danger ? '#fff' : '#000' }}>{confirmConfig.confirmText || 'Confirm'}</Text>
+              <TouchableOpacity style={styles.extraCancelBtn} onPress={() => setIsExtraOpen(false)}>
+                <Text style={styles.extraCancelText}>Cancel</Text>
               </TouchableOpacity>
             </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
+
+      {/* Custom Confirm Modal */}
+      {confirmConfig.visible && (
+        <Modal visible={confirmConfig.visible} transparent animationType="fade">
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)', justifyContent: 'center', alignItems: 'center', padding: SPACE.xl }}>
+            <View style={{ backgroundColor: colors.surface, borderRadius: 16, borderWidth: 1, borderColor: colors.border, padding: SPACE.xl, width: '100%', maxWidth: 400 }}>
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary, marginBottom: 8 }}>{confirmConfig.title}</Text>
+              <Text style={{ fontSize: 14, color: colors.textMuted, marginBottom: 24, lineHeight: 20 }}>{confirmConfig.message}</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                <TouchableOpacity onPress={() => setConfirmConfig(p => ({ ...p, visible: false }))} style={{ paddingHorizontal: 16, paddingVertical: 10 }}>
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textMuted }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={confirmConfig.onConfirm} style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: confirmConfig.danger ? '#ef4444' : colors.accentPrimary, borderRadius: 8 }}>
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, color: confirmConfig.danger ? '#fff' : '#000' }}>{confirmConfig.confirmText || 'Confirm'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
+      
       {/* Add Subject Modal */}
-      <AddSubjectModal 
-        visible={showAddModal} 
-        onClose={() => setShowAddModal(false)} 
-        existingSubject={editSubject} 
-      />
+      {showAddModal && (
+        <AddSubjectModal 
+          visible={showAddModal} 
+          onClose={() => setShowAddModal(false)} 
+          existingSubject={editSubject} 
+        />
+      )}
 
       {/* Class Notification Preferences Modal */}
-      <ClassNotifSettingsModal
-        visible={showClassNotifModal}
-        onClose={() => setShowClassNotifModal(false)}
-      />
+      {showClassNotifModal && (
+        <ClassNotifSettingsModal
+          visible={showClassNotifModal}
+          onClose={() => setShowClassNotifModal(false)}
+        />
+      )}
 
       </View>
     </View>

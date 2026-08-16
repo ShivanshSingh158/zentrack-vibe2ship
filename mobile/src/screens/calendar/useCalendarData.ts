@@ -5,7 +5,11 @@
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { ScrollView } from 'react-native';
-import { useMobileData, CustomEvent } from '../../contexts/MobileDataContext';
+import type { CustomEvent } from '../../contexts/MobileDataContext';
+import { usePlannerData } from '../../contexts/domains/PlannerContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
@@ -15,7 +19,10 @@ import { parseTimeTo24h, parseTaskTimeSlot, HOUR_HEIGHT } from './calendarUtils'
 import { useDeferredMemo } from '../../hooks/useDeferredMemo';
 
 export function useCalendarData() {
-  const { customEvents, tasks, attendance, user, googleAccessToken, gymLogs, userGymPlan } = useMobileData();
+  const { customEvents } = usePlannerData();
+  const { tasks, user, googleAccessToken } = useCoreData();
+  const { attendance } = useAcademicData();
+  const { gymLogs, userGymPlan } = useWellnessData();
 
   // Stable reference to mount time — never changes across renders
   const nowRef = useRef(new Date());

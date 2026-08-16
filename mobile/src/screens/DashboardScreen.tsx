@@ -510,28 +510,36 @@ export default function DashboardScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <DashboardLayoutSheet 
-        visible={data.layoutSheetVisible}
-        onClose={() => data.setLayoutSheetVisible(false)}
-        layout={data.layout}
-        setLayout={data.setLayout}
-      />
-      <QuickCaptureSheet visible={data.captureVisible} onClose={() => data.setCaptureVisible(false)} />
-      <WaterLogSheet 
-        visible={data.waterLogVisible} 
-        onClose={() => data.setWaterLogVisible(false)}
-        userId={data.user?.uid || ''}
-        target={data.waterTotal}
-        onUpdateTarget={(val) => {
-          data.setWaterTotal(val);
-        }}
-      />
-      <FlashcardReviewModal
-        visible={flashcardModalVisible}
-        dueCards={dueFlashcards}
-        onClose={() => setFlashcardModalVisible(false)}
-        onSessionComplete={refreshFlashcards}
-      />
+      {data.layoutSheetVisible && (
+        <DashboardLayoutSheet 
+          visible={data.layoutSheetVisible}
+          onClose={() => data.setLayoutSheetVisible(false)}
+          layout={data.layout}
+          setLayout={data.setLayout}
+        />
+      )}
+      {data.captureVisible && (
+        <QuickCaptureSheet visible={data.captureVisible} onClose={() => data.setCaptureVisible(false)} />
+      )}
+      {data.waterLogVisible && (
+        <WaterLogSheet 
+          visible={data.waterLogVisible} 
+          onClose={() => data.setWaterLogVisible(false)}
+          userId={data.user?.uid || ''}
+          target={data.waterTotal}
+          onUpdateTarget={(val) => {
+            data.setWaterTotal(val);
+          }}
+        />
+      )}
+      {flashcardModalVisible && (
+        <FlashcardReviewModal
+          visible={flashcardModalVisible}
+          dueCards={dueFlashcards}
+          onClose={() => setFlashcardModalVisible(false)}
+          onSessionComplete={refreshFlashcards}
+        />
+      )}
     </SafeAreaView>
   );
 }
