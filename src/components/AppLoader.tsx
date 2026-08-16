@@ -8,13 +8,16 @@ interface AppLoaderProps {
 }
 
 const QUOTES = [
-  { text: "Discipline equals freedom.", author: "Jocko Willink" },
-  { text: "What you do every day matters more than what you do once in a while.", author: "Gretchen Rubin" },
-  { text: "Amateurs sit and wait for inspiration, the rest of us just get up and go to work.", author: "Stephen King" },
-  { text: "You do not rise to the level of your goals. You fall to the level of your systems.", author: "James Clear" },
-  { text: "Focus on being productive instead of busy.", author: "Tim Ferriss" },
-  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
-  { text: "Don't count the days, make the days count.", author: "Muhammad Ali" }
+  { text: "You have power over your mind, not outside events. Realize this, and you find strength.", author: "Marcus Aurelius" },
+  { text: "Until you make the unconscious conscious, it will direct your life and you will call it fate.", author: "Carl Jung" },
+  { text: "He who has a why to live can bear almost any how.", author: "Friedrich Nietzsche" },
+  { text: "There is nothing outside of yourself that can enable you to get better, stronger, or smarter.", author: "Miyamoto Musashi" },
+  { text: "Nobody cares about your excuses. Nobody is coming to save you.", author: "David Goggins" },
+  { text: "The obstacle is the way.", author: "Marcus Aurelius" },
+  { text: "We suffer more often in imagination than in reality.", author: "Seneca" },
+  { text: "No man is free who is not master of himself.", author: "Epictetus" },
+  { text: "The first principle is that you must not fool yourself and you are the easiest person to fool.", author: "Richard Feynman" },
+  { text: "Desire is a contract you make with yourself to be unhappy until you get what you want.", author: "Naval Ravikant" },
 ];
 
 export const AppLoader: React.FC<AppLoaderProps> = ({ 
