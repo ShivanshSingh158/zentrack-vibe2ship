@@ -77,21 +77,38 @@ export function useTasksData(tasks: Task[]) {
       .sort((a, b) => (a.order || 0) - (b.order || 0)),
     [tasks]);
 
-  const selectedDateTasks = useMemo(() =>
-    tasks.filter(t => t.date === selectedDate).sort((a, b) => {
-      if (a.status === 'completed' && b.status !== 'completed') return 1;
-      if (a.status !== 'completed' && b.status === 'completed') return -1;
-      if (sortBy === 'priority') {
-        const s = (p?: string) => p === 'high' || p === 'P1' ? 3 : (p === 'medium' || p === 'P2' ? 2 : 1);
-        if (s(a.priority) !== s(b.priority)) return s(b.priority) - s(a.priority);
+  const selectedDateTasks = useMemo(() => {
+    const dayTasks = tasks.filter(t => t.date === selectedDate);
+    const priorityWeight = (p?: string) => (p === 'high' || p === 'P1' ? 3 : (p === 'medium' || p === 'P2' ? 2 : 1));
+
+    // Pre-parse numerical timestamps once in O(N) to eliminate O(N log N) regex splits in sort
+    const mapped = dayTasks.map(t => {
+      let timeVal = Infinity;
+      if (t.timeSlot) {
+        const start = t.timeSlot.split(/[-–]/)[0]?.trim();
+        timeVal = parseTimeFloat(start);
       }
-      const startA = a.timeSlot?.split(/[-–]/)[0].trim() ?? null;
-      const startB = b.timeSlot?.split(/[-–]/)[0].trim() ?? null;
-      const timeA = parseTimeFloat(startA), timeB = parseTimeFloat(startB);
-      if (timeA !== timeB) return timeA - timeB;
-      return (a.order || 0) - (b.order || 0);
-    }),
-    [tasks, selectedDate, sortBy]);
+      return {
+        task: t,
+        timeVal,
+        prio: priorityWeight(t.priority),
+        isCompleted: t.status === 'completed',
+        order: t.order || 0,
+      };
+    });
+
+    mapped.sort((a, b) => {
+      if (a.isCompleted && !b.isCompleted) return 1;
+      if (!a.isCompleted && b.isCompleted) return -1;
+      if (sortBy === 'priority') {
+        if (a.prio !== b.prio) return b.prio - a.prio;
+      }
+      if (a.timeVal !== b.timeVal) return a.timeVal - b.timeVal;
+      return a.order - b.order;
+    });
+
+    return mapped.map(m => m.task);
+  }, [tasks, selectedDate, sortBy]);
 
   const upcomingTasks = useMemo(() =>
     tasks.filter(t => t.date && t.date > selectedDate && t.status !== 'completed' && (t.priority === 'high' || t.priority === 'P1'))

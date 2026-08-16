@@ -90,20 +90,20 @@ export const detectConflicts = (appContext: any): DetectedConflict[] => {
     .map((t: any) => ({ task: t, range: parseTimeSlotToRange(t.timeSlot) }))
     .filter((x: any) => x.range !== null) as { task: any; range: { startMin: number; endMin: number } }[];
 
-  for (let i = 0; i < timedTasks.length; i++) {
-    for (let j = i + 1; j < timedTasks.length; j++) {
-      const a = timedTasks[i];
-      const b = timedTasks[j];
-      if (rangesOverlap(a.range, b.range)) {
-        conflicts.push({
-          id: `task_task_overlap_${a.task.id}_${b.task.id}`,
-          type: 'task_task_overlap',
-          severity: 'critical',
-          message: `"${a.task.title}" and "${b.task.title}" overlap on the timeline.`,
-          suggestion: `Drag one task to a free time slot to resolve the conflict.`,
-          modules: ['tasks'],
-        });
-      }
+  timedTasks.sort((a, b) => a.range.startMin - b.range.startMin);
+
+  for (let i = 0; i < timedTasks.length - 1; i++) {
+    const a = timedTasks[i];
+    const b = timedTasks[i + 1];
+    if (rangesOverlap(a.range, b.range)) {
+      conflicts.push({
+        id: `task_task_overlap_${a.task.id}_${b.task.id}`,
+        type: 'task_task_overlap',
+        severity: 'critical',
+        message: `"${a.task.title}" and "${b.task.title}" overlap on the timeline.`,
+        suggestion: `Drag one task to a free time slot to resolve the conflict.`,
+        modules: ['tasks'],
+      });
     }
   }
 

@@ -56,7 +56,7 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
 
   const [selected, setSelected] = useState<{ date: string; volume: number } | null>(null);
 
-  const { grid, totalWorkouts, maxVolume } = useMemo(() => {
+  const { grid, totalWorkouts, maxVolume, volumeMap } = useMemo(() => {
     const dateStrings = getLast90Days();
     const volumeMap = new Map<string, number>();
     let maxVol = 0;
@@ -83,7 +83,7 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
   }, [data]);
 
   const volumeForDate = (dateStr: string): number => {
-    return data.find(d => d.date === dateStr)?.volume || 0;
+    return volumeMap.get(dateStr) || 0;
   };
 
   return (
