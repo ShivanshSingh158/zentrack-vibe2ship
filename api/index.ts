@@ -23,6 +23,7 @@ app.use('/api/cron-watchdog', cronWatchdog);
 app.use('/api/force-logout', forceLogout);
 app.use('/api/gemini-proxy-stream', geminiProxyStream);
 app.use('/api/gemini-proxy', geminiProxy);
+app.use('/api/voice-proxy', (req, res, next) => { req.query.action = 'tts'; geminiProxy(req, res, next); });
 app.use('/api/search', search);
 app.use('/api/send-notification', sendNotification);
 app.use('/api/send-sms', sendSms);

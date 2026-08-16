@@ -12,7 +12,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { Audio } from 'expo-av';
 import { auth } from './firebase';
 
-const VOICE_PROXY_URL = 'https://myzentrack.vercel.app/api/voice-proxy';
+const VOICE_PROXY_URL = 'https://myzentrack.vercel.app/api/gemini-proxy?action=tts';
 
 // Current playback sound ref (so we can stop it)
 let _currentSound: Audio.Sound | null = null;
