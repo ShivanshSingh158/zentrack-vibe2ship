@@ -19,7 +19,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { collection, addDoc } from 'firebase/firestore';
+import { db } from '../../services/firebase';
+import { COLLECTION } from '../../config/constants';
+import { uploadFileToCloudinary } from '../../services/cloudinary';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import { FONT_FAMILY } from '../../theme/tokens';
 
@@ -130,6 +137,264 @@ function getFallbackMindMap(title: string): MindMapData {
   };
 }
 
+function generateMindMapHtml(mapData: MindMapData, lectureTitle: string): string {
+  const branches = mapData.branches.slice(0, 6);
+  const bCount = branches.length;
+
+  const escapeXml = (unsafe: string) => (unsafe || '').replace(/[<>&'"]/g, (c) => {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+      default: return c;
+    }
+  });
+
+  const layoutData = branches.map((branch, bi) => {
+    const bAngle = (360 / bCount) * bi;
+    const bPos = polarXY(BRANCH_RADIUS, bAngle);
+    const color = BRANCH_COLORS[bi % BRANCH_COLORS.length];
+    const leafCount = Math.min(branch.children.length, 4);
+    const angleSpread = 44;
+    const leaves = branch.children.slice(0, 4).map((child, ci) => {
+      const offset = leafCount > 1 ? (ci - (leafCount - 1) / 2) * (angleSpread / (leafCount - 1)) : 0;
+      const lAngle = bAngle + offset;
+      return { label: child, pos: polarXY(LEAF_RADIUS, lAngle) };
+    });
+    return { branch, bPos, color, leaves, bAngle, bi };
+  });
+
+  let connectorsSvg = '';
+  layoutData.forEach((b) => {
+    connectorsSvg += `<line x1="${CX}" y1="${CY}" x2="${b.bPos.x}" y2="${b.bPos.y}" stroke="${b.color}" stroke-width="2.5" stroke-opacity="0.6" stroke-linecap="round" />\n`;
+    b.leaves.forEach((leaf) => {
+      connectorsSvg += `<line x1="${b.bPos.x}" y1="${b.bPos.y}" x2="${leaf.pos.x}" y2="${leaf.pos.y}" stroke="${b.color}" stroke-width="1.8" stroke-dasharray="5,5" stroke-opacity="0.4" stroke-linecap="round" />\n`;
+    });
+  });
+
+  let leavesSvg = '';
+  layoutData.forEach((b) => {
+    b.leaves.forEach((leaf) => {
+      leavesSvg += `
+        <g transform="translate(${leaf.pos.x}, ${leaf.pos.y})">
+          <rect x="-85" y="-20" width="170" height="40" rx="20" ry="20" fill="#14141e" stroke="${b.color}" stroke-width="1.5" stroke-opacity="0.75" />
+          <circle cx="-65" cy="0" r="4.5" fill="${b.color}" />
+          <text x="-52" y="4" fill="#f1f5f9" font-family="'Inter', -apple-system, sans-serif" font-size="11.5" font-weight="600">${escapeXml(leaf.label.length > 20 ? leaf.label.slice(0, 18) + '…' : leaf.label)}</text>
+        </g>
+      `;
+    });
+  });
+
+  let branchesSvg = '';
+  layoutData.forEach((b) => {
+    branchesSvg += `
+      <g transform="translate(${b.bPos.x}, ${b.bPos.y})">
+        <rect x="-90" y="-36" width="180" height="72" rx="16" ry="16" fill="#101018" stroke="${b.color}" stroke-width="2.5" />
+        <rect x="-42" y="-28" width="84" height="18" rx="9" ry="9" fill="${b.color}" fill-opacity="0.2" />
+        <text x="0" y="-15" fill="${b.color}" font-family="'Inter', -apple-system, sans-serif" font-size="10" font-weight="700" text-anchor="middle" letter-spacing="0.5">PILLAR ${b.bi + 1}</text>
+        <text x="0" y="18" fill="#ffffff" font-family="'Inter', -apple-system, sans-serif" font-size="13" font-weight="700" text-anchor="middle">${escapeXml(b.branch.label.length > 20 ? b.branch.label.slice(0, 18) + '…' : b.branch.label)}</text>
+      </g>
+    `;
+  });
+
+  const centerHubSvg = `
+    <g transform="translate(${CX}, ${CY})">
+      <rect x="-120" y="-48" width="240" height="96" rx="20" ry="20" fill="#1a1130" stroke="#a599ff" stroke-width="3" />
+      <rect x="-56" y="-38" width="112" height="18" rx="9" ry="9" fill="#a599ff" fill-opacity="0.25" />
+      <text x="0" y="-25" fill="#a599ff" font-family="'Inter', -apple-system, sans-serif" font-size="10" font-weight="800" text-anchor="middle" letter-spacing="0.8">✨ CENTRAL THEME</text>
+      <text x="0" y="16" fill="#ffffff" font-family="'Inter', -apple-system, sans-serif" font-size="15" font-weight="800" text-anchor="middle">${escapeXml(mapData.centralTopic)}</text>
+    </g>
+  `;
+
+  let breakdownHtml = '';
+  layoutData.forEach((b) => {
+    breakdownHtml += `
+      <div class="pillar-card" style="border-color: ${b.color}40; background: linear-gradient(135deg, #13131c 0%, #0d0d14 100%);">
+        <div class="pillar-header" style="color: ${b.color};">
+          <span class="pillar-tag" style="background: ${b.color}25; color: ${b.color};">Pillar ${b.bi + 1}</span>
+          <strong>${escapeXml(b.branch.label)}</strong>
+        </div>
+        <ul class="leaf-list">
+          ${b.branch.children.map(c => `<li><span class="bullet" style="background: ${b.color};"></span>${escapeXml(c)}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  });
+
+  return `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #080512;
+            color: #f1f5f9;
+            padding: 32px;
+            min-height: 100vh;
+          }
+          .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid rgba(255,255,255,0.08);
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+          }
+          .title-area h1 {
+            font-size: 24px;
+            font-weight: 800;
+            color: #ffffff;
+            letter-spacing: -0.5px;
+          }
+          .title-area p {
+            font-size: 13px;
+            color: #94a3b8;
+            margin-top: 4px;
+          }
+          .badge {
+            background: rgba(165,153,255,0.15);
+            border: 1px solid rgba(165,153,255,0.3);
+            color: #a599ff;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+          }
+          .svg-canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            border-radius: 24px;
+            background: radial-gradient(circle at 50% 50%, #16102c 0%, #080512 85%);
+            border: 1px solid rgba(255,255,255,0.08);
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            margin-bottom: 36px;
+          }
+          svg {
+            display: block;
+            width: 100%;
+            height: auto;
+          }
+          .breakdown-section {
+            max-width: 1200px;
+            margin: 0 auto;
+          }
+          .section-title {
+            font-size: 17px;
+            font-weight: 700;
+            color: #e2e8f0;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .pillar-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+          }
+          .pillar-card {
+            border: 1px solid;
+            border-radius: 14px;
+            padding: 16px;
+          }
+          .pillar-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            margin-bottom: 12px;
+          }
+          .pillar-tag {
+            font-size: 9px;
+            font-weight: 800;
+            padding: 2px 6px;
+            border-radius: 6px;
+            text-transform: uppercase;
+          }
+          .leaf-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+          }
+          .leaf-list li {
+            font-size: 12px;
+            color: #cbd5e1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .bullet {
+            width: 6px;
+            height: 6px;
+            border-radius: 3px;
+            display: inline-block;
+            flex-shrink: 0;
+          }
+          .doc-footer {
+            margin-top: 40px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #64748b;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="doc-header">
+          <div class="title-area">
+            <h1>🗺️ Concept Mind Map: ${escapeXml(mapData.centralTopic)}</h1>
+            <p>Lecture: <strong>${escapeXml(lectureTitle)}</strong></p>
+          </div>
+          <div class="badge">ZenTrack Study Engine</div>
+        </div>
+
+        <div class="svg-canvas-container">
+          <svg viewBox="0 0 1600 1600" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="#a599ff" stop-opacity="0.18" />
+                <stop offset="100%" stop-color="#080512" stop-opacity="0" />
+              </radialGradient>
+            </defs>
+            <circle cx="${CX}" cy="${CY}" r="650" fill="url(#centerGlow)" />
+            ${connectorsSvg}
+            ${leavesSvg}
+            ${branchesSvg}
+            ${centerHubSvg}
+          </svg>
+        </div>
+
+        <div class="breakdown-section">
+          <div class="section-title">
+            <span>📚 Key Conceptual Pillars & Breakdown</span>
+          </div>
+          <div class="pillar-grid">
+            ${breakdownHtml}
+          </div>
+        </div>
+
+        <div class="doc-footer">
+          <span>Exported from ZenTrack Mobile &bull; Concept Mind Map</span>
+          <span>Date: ${new Date().toLocaleDateString()}</span>
+        </div>
+      </body>
+    </html>
+  `;
+}
+
 // ── Gemini Prompt Builder ─────────────────────────────────────────────────────
 
 function buildPrompt(title: string, transcript: string): string {
@@ -165,8 +430,10 @@ export default function LectureMindMap({
   visible, onClose, lectureTitle, transcript, onAskQuestion,
 }: LectureMindMapProps) {
   const insets = useSafeAreaInsets();
+  const { user } = useCoreData();
   const [mapData, setMapData] = useState<MindMapData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState('');
   const [tappedNode, setTappedNode] = useState<string | null>(null);
 
@@ -178,6 +445,56 @@ export default function LectureMindMap({
   // Mutable refs to track gesture state
   const panOffset = useRef({ x: 0, y: 0 });
   const scaleValue = useRef(0.75);
+
+  const handleExportPdf = useCallback(async () => {
+    if (!mapData) return;
+    setExportingPdf(true);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const cleanTitle = (lectureTitle || mapData.centralTopic || 'MindMap').replace(/[/\\?%*:|"<>]/g, '_').trim();
+      const pdfFileName = `${cleanTitle}_MindMap.pdf`;
+      const htmlContent = generateMindMapHtml(mapData, lectureTitle);
+
+      const { uri } = await Print.printToFileAsync({
+        html: htmlContent,
+        base64: false,
+      });
+
+      // Save to Cloudinary & Vault storage nodes if user is logged in
+      let pdfUrl = uri;
+      let pdfSize = 80000;
+      if (user) {
+        try {
+          const uploadRes = await uploadFileToCloudinary(uri, 'application/pdf', pdfFileName);
+          if (uploadRes?.url) {
+            pdfUrl = uploadRes.url;
+            pdfSize = uploadRes.size || 80000;
+          }
+          await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
+            userId: user.uid,
+            name: pdfFileName,
+            type: 'file',
+            fileType: 'pdf',
+            url: pdfUrl,
+            size: pdfSize,
+            parentId: null, // Vault root
+            tags: [],
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          });
+        } catch (uploadErr) {
+          console.warn('[LectureMindMap] Cloudinary PDF upload fallback:', uploadErr);
+        }
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+    } catch (e: any) {
+      console.error('[LectureMindMap] PDF Export Error:', e);
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [mapData, lectureTitle, user]);
 
   const getInitialPosition = useCallback((targetScale = 0.75) => {
     return {
@@ -434,6 +751,24 @@ export default function LectureMindMap({
             </View>
             <Text style={styles.sub} numberOfLines={1}>{lectureTitle}</Text>
           </View>
+
+          {/* Export PDF Button */}
+          {mapData && !loading && (
+            <TouchableOpacity
+              style={[styles.pdfBtn, exportingPdf && { opacity: 0.6 }]}
+              onPress={handleExportPdf}
+              disabled={exportingPdf}
+            >
+              {exportingPdf ? (
+                <ActivityIndicator size="small" color="#080510" style={{ transform: [{ scale: 0.8 }] }} />
+              ) : (
+                <>
+                  <Ionicons name="document-text" size={13} color="#080510" />
+                  <Text style={styles.pdfBtnText}>Export PDF</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity style={styles.iconBtn} onPress={generate} disabled={loading}>
             <Ionicons name="refresh" size={16} color="#a599ff" />
@@ -695,6 +1030,21 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.body,
     color: '#71717a',
     marginTop: 2,
+  },
+  pdfBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#a599ff',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 2,
+  },
+  pdfBtnText: {
+    color: '#080510',
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 11.5,
   },
   iconBtn: {
     width: 34,
