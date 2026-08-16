@@ -85,7 +85,7 @@ export function useTasksData(tasks: Task[]) {
     const mapped = dayTasks.map(t => {
       let timeVal = Infinity;
       if (t.timeSlot) {
-        const start = t.timeSlot.split(/[-–]/)[0]?.trim();
+        const start = t.timeSlot.split(/[-–—•]| to /i)[0]?.trim();
         timeVal = parseTimeFloat(start);
       }
       return {

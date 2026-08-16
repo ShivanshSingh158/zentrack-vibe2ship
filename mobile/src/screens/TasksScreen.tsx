@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable } from 'react-native';
 import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withTiming, withDelay } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -57,6 +57,11 @@ function formatTimeStr(raw: string): string {
   }
   return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
 }
+
+const PROGRESS_SIZE = 44;
+const PROGRESS_STROKE = 3;
+const PROGRESS_RADIUS = (PROGRESS_SIZE - PROGRESS_STROKE) / 2;
+const PROGRESS_CIRCUM = PROGRESS_RADIUS * 2 * Math.PI;
 
 export default function TasksScreen() {
   const { colors, isDark } = useTheme();
@@ -138,32 +143,50 @@ export default function TasksScreen() {
     setSelectedDate(date);
   };
 
-  const doneCount = selectedDateTasks.filter((t) => t.status === 'completed').length;
-  
-  const now = new Date();
-  const todayStr = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-  const currentTimeFloat = now.getHours() + (now.getMinutes() / 60);
+  const { doneCount, progressPercent, progressDashoffset, nextPendingTimeStr } = useMemo(() => {
+    const done = selectedDateTasks.filter((t) => t.status === 'completed').length;
+    const total = selectedDateTasks.length;
+    const progressSize = 44;
+    const progressStroke = 3;
+    const progressRadius = (progressSize - progressStroke) / 2;
+    const progressCircum = progressRadius * 2 * Math.PI;
+    const pct = total > 0 ? done / total : 0;
+    const offset = progressCircum - pct * progressCircum;
 
-  const pendingTasksWithTime = selectedDateTasks
-    .filter(t => {
-      if (t.status !== 'pending' || !t.timeSlot) return false;
-      if (selectedDate === todayStr) {
-        return parseTimeFloat(t.timeSlot.split(/[-–]/)[0]) >= currentTimeFloat;
-      }
-      return true;
-    })
-    .sort((a, b) => parseTimeFloat(a.timeSlot) - parseTimeFloat(b.timeSlot));
+    const now = new Date();
+    const todayStr = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ].join('-');
+    const currentTimeFloat = now.getHours() + now.getMinutes() / 60;
 
-  const nextPendingTimeStr = pendingTasksWithTime.length > 0 ? formatTimeStr(pendingTasksWithTime[0].timeSlot!.split(/[-–]/)[0]) : '';
+    const pendingTasksWithTime = selectedDateTasks
+      .filter(t => {
+        if (t.status !== 'pending' || !t.timeSlot) return false;
+        if (selectedDate === todayStr) {
+          const start = t.timeSlot.split(/[-–—•]| to /i)[0]?.trim();
+          return parseTimeFloat(start) >= currentTimeFloat;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const startA = a.timeSlot?.split(/[-–—•]| to /i)[0]?.trim() || '';
+        const startB = b.timeSlot?.split(/[-–—•]| to /i)[0]?.trim() || '';
+        return parseTimeFloat(startA) - parseTimeFloat(startB);
+      });
 
-  const progressSize = 44;
-  const progressStroke = 3;
-  const progressRadius = (progressSize - progressStroke) / 2;
-  const progressCircum = progressRadius * 2 * Math.PI;
-  const progressPercent = selectedDateTasks.length > 0 ? (doneCount / selectedDateTasks.length) : 0;
-  const progressDashoffset = progressCircum - (progressPercent * progressCircum);
+    const nextStr = pendingTasksWithTime.length > 0 ? formatTimeStr(pendingTasksWithTime[0].timeSlot!.split(/[-–—•]| to /i)[0]) : '';
 
-  const renderItem = ({ item }: { item: any }) => (
+    return {
+      doneCount: done,
+      progressPercent: pct,
+      progressDashoffset: offset,
+      nextPendingTimeStr: nextStr,
+    };
+  }, [selectedDateTasks, selectedDate]);
+
+  const renderItem = useCallback(({ item }: { item: any }) => (
     <TaskRow
       task={item}
       isOverdue={item.date ? item.date < today && item.status !== 'completed' : false}
@@ -180,15 +203,19 @@ export default function TasksScreen() {
       onUpdateTask={(id, updates) => updateTask(id, updates)}
       onAddSubtask={() => setEditingTask(item)}
     />
-  );
+  ), [completeTask, isBulkEdit, selectedTaskIds, setSelectedTaskIds, setBulkRescheduleModal, setEditingTask, toggleTaskSelection, updateTask]);
+
+  const taskConflicts = useMemo(() => {
+    return conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic'));
+  }, [conflicts]);
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: '#000000' }]}>
       
       {/* PROACTIVE WIDGET */}
-      {conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic')).length > 0 && (
+      {taskConflicts.length > 0 && (
         <Animated.View style={[{ paddingHorizontal: 24, marginBottom: 16, marginTop: 8 }, headerStyle]}>
-          {conflicts.filter(c => c.modules.includes('tasks') && !c.modules.includes('academic')).map(c => (
+          {taskConflicts.map(c => (
             <View key={c.id} style={{ backgroundColor: '#fee2e2', padding: 16, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#fca5a5' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
                 <Ionicons name="warning" size={16} color="#ef4444" />
@@ -260,27 +287,27 @@ export default function TasksScreen() {
       {/* PROGRESS RING */}
       <Animated.View style={[{ paddingHorizontal: 6, marginBottom: 0 }, dateStripStyle]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0A0A0A', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E' }}>
-          <View style={{ width: progressSize, height: progressSize, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
-            <Svg width={progressSize} height={progressSize} style={{ position: 'absolute' }}>
+          <View style={{ width: PROGRESS_SIZE, height: PROGRESS_SIZE, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+            <Svg width={PROGRESS_SIZE} height={PROGRESS_SIZE} style={{ position: 'absolute' }}>
               <Circle
                 stroke="#2C2C2E"
                 fill="none"
-                cx={progressSize / 2}
-                cy={progressSize / 2}
-                r={progressRadius}
-                strokeWidth={progressStroke}
+                cx={PROGRESS_SIZE / 2}
+                cy={PROGRESS_SIZE / 2}
+                r={PROGRESS_RADIUS}
+                strokeWidth={PROGRESS_STROKE}
               />
               <AnimatedCircle
                 stroke="#FF9500"
                 fill="none"
-                cx={progressSize / 2}
-                cy={progressSize / 2}
-                r={progressRadius}
-                strokeWidth={progressStroke}
-                strokeDasharray={`${progressCircum} ${progressCircum}`}
+                cx={PROGRESS_SIZE / 2}
+                cy={PROGRESS_SIZE / 2}
+                r={PROGRESS_RADIUS}
+                strokeWidth={PROGRESS_STROKE}
+                strokeDasharray={`${PROGRESS_CIRCUM} ${PROGRESS_CIRCUM}`}
                 strokeDashoffset={progressDashoffset}
                 strokeLinecap="round"
-                transform={`rotate(-90 ${progressSize / 2} ${progressSize / 2})`}
+                transform={`rotate(-90 ${PROGRESS_SIZE / 2} ${PROGRESS_SIZE / 2})`}
               />
             </Svg>
             <Text style={{ color: '#FFFFFF', fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>{doneCount}/{selectedDateTasks.length}</Text>
@@ -360,7 +387,7 @@ export default function TasksScreen() {
             if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
           }}
           sections={[
-            ...(selectedDateTasks.length > 0 || isNewTaskOpen ? [{ title: selectedDate === todayStr ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(), data: selectedDateTasks, isSelectedDate: true }] : []),
+            ...(selectedDateTasks.length > 0 || isNewTaskOpen ? [{ title: selectedDate === today ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(), data: selectedDateTasks, isSelectedDate: true }] : []),
           ] as any}
           keyExtractor={(item: any) => item.id}
           ListEmptyComponent={

@@ -162,7 +162,7 @@ export function useDashboardData() {
 
     const parseTimeToMins = (tStr: string): number => {
       if (!tStr) return 9999;
-      const startStr = tStr.split('-')[0].trim().toLowerCase();
+      const startStr = tStr.split(/[-–—•]| to /i)[0].trim().toLowerCase();
       let h = 0; let m = 0;
       const isPM = startStr.includes('pm');
       const isAM = startStr.includes('am');
@@ -177,7 +177,7 @@ export function useDashboardData() {
 
     const getEndTimeMins = (tStr: string, type: string): number => {
       if (!tStr) return 9999;
-      const parts = tStr.split('-');
+      const parts = tStr.split(/[-–—•]| to /i);
       const hasExplicitEnd = parts.length > 1;
       const endStr = (hasExplicitEnd ? parts[1] : parts[0]).trim().toLowerCase();
       let h = 0; let m = 0;
@@ -198,7 +198,9 @@ export function useDashboardData() {
 
     const formatTimeStr = (tStr: string): string => {
       if (!tStr) return '';
-      if (tStr.includes('-')) return tStr.split('-').map(s => formatTimeStr(s.trim())).join(' - ');
+      if (tStr.search(/[-–—•]| to /i) !== -1) {
+        return tStr.split(/[-–—•]| to /i).map(s => formatTimeStr(s.trim())).join(' - ');
+      }
       const lower = tStr.toLowerCase();
       if (lower.includes('am') || lower.includes('pm')) return lower.replace(/\s+/g, '');
       const parts = tStr.split(':');

@@ -222,9 +222,16 @@ const handleFindFreeSlots = async () => {
             <TouchableOpacity 
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                const d = new Date(selectedDate);
-                d.setMonth(d.getMonth() - 1);
-                setSelectedDate(d.toISOString().split('T')[0]);
+                const [curY, curM, curD] = selectedDate.split('-').map(Number);
+                const prev = new Date(curY, (curM || 1) - 2, 1);
+                const maxDay = new Date(prev.getFullYear(), prev.getMonth() + 1, 0).getDate();
+                const targetDay = Math.min(curD || 1, maxDay);
+                const newDateStr = [
+                  prev.getFullYear(),
+                  String(prev.getMonth() + 1).padStart(2, '0'),
+                  String(targetDay).padStart(2, '0')
+                ].join('-');
+                setSelectedDate(newDateStr);
               }} 
               style={{ paddingVertical: 4, paddingHorizontal: 6 }}
               activeOpacity={0.6}
@@ -232,14 +239,21 @@ const handleFindFreeSlots = async () => {
               <Ionicons name="caret-back" size={16} color={colors.accentPrimary} />
             </TouchableOpacity>
             <Text style={[styles.monthText, { fontSize: 18, marginHorizontal: 2 }]} numberOfLines={1} adjustsFontSizeToFit>
-              {new Date(selectedDate).toLocaleString('default', { month: 'short' })} {new Date(selectedDate).getFullYear()}
+              {monthName.slice(0, 3)} {selectedLocalDate.getFullYear()}
             </Text>
             <TouchableOpacity 
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                const d = new Date(selectedDate);
-                d.setMonth(d.getMonth() + 1);
-                setSelectedDate(d.toISOString().split('T')[0]);
+                const [curY, curM, curD] = selectedDate.split('-').map(Number);
+                const next = new Date(curY, curM || 1, 1);
+                const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+                const targetDay = Math.min(curD || 1, maxDay);
+                const newDateStr = [
+                  next.getFullYear(),
+                  String(next.getMonth() + 1).padStart(2, '0'),
+                  String(targetDay).padStart(2, '0')
+                ].join('-');
+                setSelectedDate(newDateStr);
               }} 
               style={{ paddingVertical: 4, paddingHorizontal: 6 }}
               activeOpacity={0.6}
