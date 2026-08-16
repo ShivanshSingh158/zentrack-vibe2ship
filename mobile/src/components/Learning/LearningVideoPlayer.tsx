@@ -11,6 +11,9 @@ import { useWindowDimensions } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import { uploadFileToCloudinary } from '../../services/cloudinary';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
@@ -224,12 +227,12 @@ export default function LearningVideoPlayer({
                   name: `ZEN-GPT: ${activeVideoSub.title || 'Lecture Note'}${timeTag}`,
                   content: `# 🤖 ZEN-GPT Lecture Note${timeTag}\n\n**Lecture:** ${activeVideoSub.title}\n**Topic:** ${topicTitle}\n**Video URL:** ${activeVideoSub.url || ''}\n\n---\n\n${responseText.trim()}`,
                   type: 'note',
-                  folderId: null,
-                  tags: ['zengpt', 'lecture-notes', topicTitle.toLowerCase().replace(/\s+/g, '-')],
+                  parentId: null,
+                  tags: [],
                   pinned: false,
                   color: '#00c16e',
-                  createdAt: serverTimestamp(),
-                  updatedAt: serverTimestamp(),
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
                 });
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 Alert.alert('☁️ Saved to ZenNotes', 'A standalone note was also saved to your ZenNotes workspace!');
@@ -415,7 +418,7 @@ export default function LearningVideoPlayer({
     }
   };
 
-  // Export lecture notes to Notes collection
+  // Export lecture notes as PDF to Notes/Vault collection
   const handleExportToNotes = async () => {
     if (!currentNotes.trim()) {
       Alert.alert('Empty Notes', 'Please write some notes before exporting to ZenNotes.');
@@ -430,29 +433,109 @@ export default function LearningVideoPlayer({
     try {
       const topic = learningTopics?.find(t => t.subTasks?.some(s => s.id === activeVideoSub.id));
       const topicTitle = topic?.title || 'Learning';
-      const formattedContent = `# 📺 Lecture Notes: ${activeVideoSub.title || 'Video Lecture'}\n\n**Topic:** ${topicTitle}\n**Video URL:** ${activeVideoSub.url || ''}\n**Date:** ${new Date().toLocaleDateString()}\n\n---\n\n${currentNotes.trim()}`;
+      const cleanTitle = activeVideoSub.title || 'Lecture Notes';
+      const pdfFileName = `${cleanTitle.replace(/[/\\?%*:|"<>]/g, '_').trim()}.pdf`;
 
+      const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const formatContent = (text: string) => {
+        const lines = text.split('\n');
+        let html = '';
+        for (const line of lines) {
+          let processed = escapeHtml(line)
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/\[(\d{1,2}:\d{2})\]/g, '<span style="background:#a599ff;color:#000;padding:2px 6px;border-radius:4px;font-weight:600;font-size:12px;">▶ $1</span>');
+          if (/^### /.test(line)) html += `<h3>${processed.replace(/^### /, '')}</h3>\n`;
+          else if (/^## /.test(line)) html += `<h2>${processed.replace(/^## /, '')}</h2>\n`;
+          else if (/^# /.test(line)) html += `<h1>${processed.replace(/^# /, '')}</h1>\n`;
+          else if (/^- /.test(line)) html += `<li>${processed.replace(/^- /, '')}</li>\n`;
+          else if (/^\d+\. /.test(line)) html += `<li>${processed.replace(/^\d+\.\s/, '')}</li>\n`;
+          else if (line.trim() === '') html += '<br>';
+          else html += `<p>${processed}</p>\n`;
+        }
+        return html;
+      };
+
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <style>
+              @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+              * { box-sizing: border-box; margin: 0; padding: 0; }
+              body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 36px 44px; color: #1c1c1e; line-height: 1.7; background: #ffffff; }
+              .header { border-bottom: 2px solid #e5e5ea; padding-bottom: 14px; margin-bottom: 24px; }
+              .doc-title { font-size: 26px; font-weight: 700; color: #000000; margin-bottom: 6px; }
+              .meta { font-size: 13px; color: #636366; }
+              h1 { font-size: 22px; font-weight: 700; color: #000; margin: 22px 0 10px; }
+              h2 { font-size: 18px; font-weight: 600; color: #1c1c1e; margin: 18px 0 8px; }
+              h3 { font-size: 15px; font-weight: 600; color: #3a3a3c; margin: 14px 0 6px; }
+              p { margin-bottom: 12px; color: #1c1c1e; font-size: 14px; }
+              li { margin-left: 22px; margin-bottom: 6px; color: #1c1c1e; font-size: 14px; }
+              pre { background: #f2f2f7; border-left: 4px solid #a599ff; padding: 14px 18px; border-radius: 6px; margin: 16px 0; }
+              code { font-family: monospace; font-size: 13px; background: #f2f2f7; padding: 2px 4px; border-radius: 4px; color: #c0392b; }
+              .footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid #e5e5ea; font-size: 11px; color: #8e8e93; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div class="doc-title">${escapeHtml(cleanTitle)}</div>
+              <div class="meta"><strong>Topic:</strong> ${escapeHtml(topicTitle)} &bull; <strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
+            </div>
+            <div class="note-body">${formatContent(currentNotes)}</div>
+            <div class="footer">Exported from ZenTrack Study Workspace &bull; ${escapeHtml(cleanTitle)}</div>
+          </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({ html: htmlContent, base64: false });
+
+      let pdfUrl = uri;
+      let pdfSize = 50000;
+      try {
+        const uploadRes = await uploadFileToCloudinary(uri, 'application/pdf', pdfFileName);
+        if (uploadRes?.url) {
+          pdfUrl = uploadRes.url;
+          pdfSize = uploadRes.size || 50000;
+        }
+      } catch (uploadErr) {
+        console.warn('[LearningVideoPlayer] Cloudinary PDF upload fallback to local URI', uploadErr);
+      }
+
+      // Save PDF file node directly to Vault root without tags
       await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
         userId: user.uid,
-        name: `Lecture: ${activeVideoSub.title || 'Video Notes'}`,
-        content: formattedContent,
-        type: 'note',
-        folderId: null,
-        tags: ['lecture', 'learning', topicTitle.toLowerCase().replace(/\s+/g, '-')],
-        pinned: false,
-        color: '#a599ff',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        name: pdfFileName,
+        type: 'file',
+        fileType: 'pdf',
+        url: pdfUrl,
+        size: pdfSize,
+        parentId: null, // explicit null = root folder of Vault
+        tags: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
-        '🎉 Exported to ZenNotes!',
-        'Your lecture notes and timestamp bookmarks have been saved to your Notes & Cloud Storage workspace.',
-        [{ text: 'Awesome!' }]
+        '🎉 PDF Exported to ZenNotes!',
+        `"${pdfFileName}" has been generated and saved directly to your Notes & Cloud Storage workspace.\n\nWould you like to share or open it now?`,
+        [
+          { text: 'Awesome!', style: 'cancel' },
+          {
+            text: 'Share / Print',
+            onPress: async () => {
+              try {
+                await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+              } catch (e) {}
+            }
+          }
+        ]
       );
     } catch (e: any) {
-      Alert.alert('Export Failed', e?.message || 'Could not export to Notes module.');
+      Alert.alert('Export Failed', e?.message || 'Could not export PDF to Notes module.');
     } finally {
       setExporting(false);
     }

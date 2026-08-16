@@ -541,7 +541,13 @@ export default function NotesScreen() {
   const allTags = useMemo(() => {
     const tags = new Set<string>();
     storageNodes.forEach(n => {
-      if (n.tags) n.tags.forEach(t => tags.add(t));
+      if (n.tags && Array.isArray(n.tags)) {
+        n.tags.forEach(t => {
+          if (t && typeof t === 'string' && t.trim().length > 0 && t.length <= 20 && !t.includes('|')) {
+            tags.add(t.trim());
+          }
+        });
+      }
     });
     return Array.from(tags).sort();
   }, [storageNodes]);
@@ -569,7 +575,7 @@ export default function NotesScreen() {
 
   // Filter items in current folder
   const currentItems = useMemo(() => {
-    let items = storageNodes.filter(n => n.parentId === currentFolderId);
+    let items = storageNodes.filter(n => (n.parentId ?? null) === currentFolderId);
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
