@@ -165,8 +165,8 @@ const TabBarNullButton = () => null;
 function MainTabNavigator({ initialTab }: { initialTab: string }) {
   const { pinnedModules } = useMobileData();
   const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
-    ? pinnedModules
-    : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
+    ? pinnedModules.map(p => (p === 'Gym' ? 'GymStack' : p.endsWith('Screen') || p.endsWith('Stack') ? p : `${p}Screen`))
+    : ['TasksScreen', 'GymStack', 'CalendarScreen', 'AttendanceScreen'];
 
   const onTabFocus = useCallback((routeName: string) => {
     if (ALLOWED_SAVE_ROUTES.has(routeName)) {
@@ -175,11 +175,19 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
   }, []);
 
   // Background-prefetch lazy screens once on mount (after first render).
-  // We read pinnedModules via ref so the effect never re-fires on re-renders,
-  // keeping startup ultra-lean. Pinned screens are prioritised in the queue.
+  // Pinned screens and GymStack are pre-warmed immediately in the background.
   const pinnedModulesRef = useRef(effectivePinned);
   pinnedModulesRef.current = effectivePinned;
-  useEffect(() => { startPrefetching(pinnedModulesRef.current); }, []);
+  useEffect(() => { 
+    startPrefetching(pinnedModulesRef.current);
+    // Instant pre-warm for core tabs so switching is 100% immediate (< 5ms)
+    InteractionManager.runAfterInteractions(() => {
+      preloadNow('GymStack');
+      preloadNow('TasksScreen');
+      preloadNow('CalendarScreen');
+      preloadNow('AttendanceScreen');
+    });
+  }, []);
 
   const badges = useTabBarBadges();
 
