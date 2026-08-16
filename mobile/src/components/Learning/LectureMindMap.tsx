@@ -176,38 +176,42 @@ function generateMindMapHtml(mapData: MindMapData, lectureTitle: string): string
     });
   });
 
+  // SVG Leaves (Full text with zero truncation)
   let leavesSvg = '';
   layoutData.forEach((b) => {
     b.leaves.forEach((leaf) => {
       leavesSvg += `
-        <g transform="translate(${leaf.pos.x}, ${leaf.pos.y})">
-          <rect x="-85" y="-20" width="170" height="40" rx="20" ry="20" fill="#14141e" stroke="${b.color}" stroke-width="1.5" stroke-opacity="0.75" />
-          <circle cx="-65" cy="0" r="4.5" fill="${b.color}" />
-          <text x="-52" y="4" fill="#f1f5f9" font-family="'Inter', -apple-system, sans-serif" font-size="11.5" font-weight="600">${escapeXml(leaf.label.length > 20 ? leaf.label.slice(0, 18) + '…' : leaf.label)}</text>
-        </g>
+        <foreignObject x="${leaf.pos.x - 95}" y="${leaf.pos.y - 26}" width="190" height="52">
+          <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%; height:100%; display:flex; align-items:center; gap:8px; padding:6px 12px; background:#14141e; border:1.5px solid ${b.color}; border-radius:14px; box-sizing:border-box; color:#f1f5f9; font-family:'Inter',-apple-system,sans-serif; font-size:11px; font-weight:600; line-height:1.25; text-align:left; overflow:hidden;">
+            <div style="width:6px; height:6px; border-radius:50%; background:${b.color}; flex-shrink:0;"></div>
+            <div style="flex:1; word-wrap:break-word; overflow:hidden;">${escapeXml(leaf.label)}</div>
+          </div>
+        </foreignObject>
       `;
     });
   });
 
+  // SVG Branches (Pillars) (Full text with zero truncation)
   let branchesSvg = '';
   layoutData.forEach((b) => {
     branchesSvg += `
-      <g transform="translate(${b.bPos.x}, ${b.bPos.y})">
-        <rect x="-90" y="-36" width="180" height="72" rx="16" ry="16" fill="#101018" stroke="${b.color}" stroke-width="2.5" />
-        <rect x="-42" y="-28" width="84" height="18" rx="9" ry="9" fill="${b.color}" fill-opacity="0.2" />
-        <text x="0" y="-15" fill="${b.color}" font-family="'Inter', -apple-system, sans-serif" font-size="10" font-weight="700" text-anchor="middle" letter-spacing="0.5">PILLAR ${b.bi + 1}</text>
-        <text x="0" y="18" fill="#ffffff" font-family="'Inter', -apple-system, sans-serif" font-size="13" font-weight="700" text-anchor="middle">${escapeXml(b.branch.label.length > 20 ? b.branch.label.slice(0, 18) + '…' : b.branch.label)}</text>
-      </g>
+      <foreignObject x="${b.bPos.x - 100}" y="${b.bPos.y - 42}" width="200" height="84">
+        <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px 12px; background:#101018; border:2.5px solid ${b.color}; border-radius:18px; box-sizing:border-box; text-align:center; overflow:hidden;">
+          <div style="background:${b.color}25; color:${b.color}; font-size:9px; font-weight:800; padding:2px 8px; border-radius:6px; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">PILLAR ${b.bi + 1}</div>
+          <div style="color:#ffffff; font-family:'Inter',-apple-system,sans-serif; font-size:12.5px; font-weight:700; line-height:1.25; word-wrap:break-word;">${escapeXml(b.branch.label)}</div>
+        </div>
+      </foreignObject>
     `;
   });
 
+  // SVG Center Hub (Full text with zero truncation)
   const centerHubSvg = `
-    <g transform="translate(${CX}, ${CY})">
-      <rect x="-120" y="-48" width="240" height="96" rx="20" ry="20" fill="#1a1130" stroke="#a599ff" stroke-width="3" />
-      <rect x="-56" y="-38" width="112" height="18" rx="9" ry="9" fill="#a599ff" fill-opacity="0.25" />
-      <text x="0" y="-25" fill="#a599ff" font-family="'Inter', -apple-system, sans-serif" font-size="10" font-weight="800" text-anchor="middle" letter-spacing="0.8">✨ CENTRAL THEME</text>
-      <text x="0" y="16" fill="#ffffff" font-family="'Inter', -apple-system, sans-serif" font-size="15" font-weight="800" text-anchor="middle">${escapeXml(mapData.centralTopic)}</text>
-    </g>
+    <foreignObject x="${CX - 130}" y="${CY - 54}" width="260" height="108">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px 16px; background:#1a1130; border:3px solid #a599ff; border-radius:22px; box-sizing:border-box; text-align:center; box-shadow:0 0 30px rgba(165,153,255,0.3); overflow:hidden;">
+        <div style="background:#a599ff30; color:#a599ff; font-size:10px; font-weight:800; padding:2px 10px; border-radius:8px; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.8px;">✨ CENTRAL THEME</div>
+        <div style="color:#ffffff; font-family:'Inter',-apple-system,sans-serif; font-size:15px; font-weight:800; line-height:1.25; word-wrap:break-word;">${escapeXml(mapData.centralTopic)}</div>
+      </div>
+    </foreignObject>
   `;
 
   let breakdownHtml = '';
@@ -881,7 +885,7 @@ export default function LectureMindMap({
                           styles.leafText,
                           isTapped && { color: '#ffffff', fontFamily: FONT_FAMILY.bold },
                         ]}
-                        numberOfLines={2}
+                        numberOfLines={3}
                       >
                         {leaf.label}
                       </Text>
@@ -901,8 +905,8 @@ export default function LectureMindMap({
                     style={[
                       styles.branchCard,
                       {
-                        left: b.bPos.x - 78,
-                        top: b.bPos.y - 30,
+                        left: b.bPos.x - 82,
+                        top: b.bPos.y - 32,
                         borderColor: b.color,
                         backgroundColor: isTapped ? b.color : '#121217',
                         shadowColor: b.color,
@@ -919,7 +923,7 @@ export default function LectureMindMap({
                         styles.branchTitle,
                         { color: isTapped ? '#000000' : '#ffffff' },
                       ]}
-                      numberOfLines={2}
+                      numberOfLines={3}
                     >
                       {b.branch.label}
                     </Text>
@@ -1198,8 +1202,8 @@ const styles = StyleSheet.create({
   // ── Branch Pillar Style ──
   branchCard: {
     position: 'absolute',
-    width: 156,
-    minHeight: 64,
+    width: 164,
+    minHeight: 66,
     borderRadius: 18,
     borderWidth: 1.5,
     paddingHorizontal: 12,
@@ -1232,8 +1236,8 @@ const styles = StyleSheet.create({
   // ── Leaf Concept Style ──
   leafCard: {
     position: 'absolute',
-    width: 140,
-    minHeight: 48,
+    width: 152,
+    minHeight: 50,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 10,
