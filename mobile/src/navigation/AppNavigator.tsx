@@ -13,6 +13,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import {
   NavigationContainer,
   DarkTheme,
+  DefaultTheme,
   useNavigation,
   createNavigationContainerRef,
   useIsFocused,
@@ -100,6 +101,17 @@ const ZEN_DARK_THEME = {
   },
 };
 
+const ZEN_LIGHT_THEME = {
+  ...DefaultTheme,
+  colors: {
+    ...DefaultTheme.colors,
+    background: '#f2f1f6',
+    card:        'transparent',
+    border:      'transparent',
+    text:        '#1c1c1e',
+  },
+};
+
 // --- AsyncStorage Keys -------------------------------------------------------
 const NAV_ROUTE_KEY = '@zentrack_last_route';
 
@@ -163,6 +175,7 @@ const TabBarNullButton = () => null;
 
 function MainTabNavigator({ initialTab }: { initialTab: string }) {
   const { pinnedModules } = useMobileData();
+  const { colors } = useTheme();
   const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
     ? pinnedModules
     : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
@@ -207,7 +220,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
       detachInactiveScreens={true}
       screenOptions={{
         headerShown: false,
-        sceneStyle:  { backgroundColor: '#080510' },
+        sceneStyle:  { backgroundColor: colors.background },
         lazy:        true,
         freezeOnBlur: true,
         animation:   'fade',
@@ -476,18 +489,20 @@ export default function AppNavigator() {
     if (routeName) DeviceEventEmitter.emit('route_changed', routeName);
   }, []);
 
+  const { isDark, colors } = useTheme();
+
   // CRITICAL: Do not mount the navigation tree until we know the user's auth state.
   // Otherwise, React Native renders the LandingScreen in the background, and if the 
   // native splash screen hides a millisecond too early, the user sees it flash.
   if (!appReady) {
-    return <View style={{ flex: 1, backgroundColor: '#080510' }} />;
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#080510' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <NavigationContainer
         ref={navigationRef}
-        theme={ZEN_DARK_THEME}
+        theme={isDark ? ZEN_DARK_THEME : ZEN_LIGHT_THEME}
         onStateChange={onNavStateChange}
         onReady={() => {
           // Hide splash ONLY after React Native has fully painted the final tree!
@@ -497,7 +512,7 @@ export default function AppNavigator() {
         {user ? (
           !onboarded ? (
             <ErrorBoundary screenName="Onboarding">
-              <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }}>
+              <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>
                 <Stack.Screen name="Onboarding">
                   {() => <OnboardingScreen onComplete={() => setOnboarded(true)} />}
                 </Stack.Screen>
@@ -507,7 +522,7 @@ export default function AppNavigator() {
             <RootNavigatorWithSara initialTab={initialTab} />
           )
         ) : (
-          <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }}>
+          <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>
             <Stack.Screen name="Landing"        component={LandingScreen} />
             <Stack.Screen name="GuestDashboard" component={GuestDashboard} />
             <Stack.Screen name="Auth"           component={AuthScreen} />

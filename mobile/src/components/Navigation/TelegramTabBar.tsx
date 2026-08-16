@@ -68,7 +68,7 @@ function TabBarIcon({
 type TelegramTabBarProps = BottomTabBarProps & { badges?: Record<string, number> };
 
 export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: TelegramTabBarProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   // Filter routes that are actually visible
   const visibleRoutes = state.routes.filter(route => {
@@ -169,8 +169,9 @@ export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: 
       style={[
         styles.container, 
         { 
-          backgroundColor: 'rgba(11, 11, 14, 0.97)',
-          borderColor: 'rgba(255, 255, 255, 0.08)',
+          backgroundColor: isDark ? 'rgba(11, 11, 14, 0.97)' : 'rgba(255, 255, 255, 0.97)',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+          shadowColor: isDark ? '#000000' : 'rgba(0, 0, 0, 0.15)',
           left: 16,
           right: 16,
         }, 

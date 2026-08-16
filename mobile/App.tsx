@@ -23,7 +23,7 @@ import { setupNetworkListener } from './src/services/offlineSync';
 import { PortalProvider } from './src/contexts/PortalContext';
 import { registerBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
-import { ThemeProvider } from './src/contexts/ThemeContext';
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { navigationRef } from './src/navigation/AppNavigator';
@@ -63,6 +63,25 @@ console.error = (...args) => {
 };
 
 
+
+function ThemedAppContainer() {
+  const { colors } = useTheme();
+
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: colors.background }}>
+        <PortalProvider>
+          <MobileDataProvider>
+            <ErrorBoundary screenName="RootApp">
+              <AppNavigator />
+            </ErrorBoundary>
+            <OfflineIndicator />
+          </MobileDataProvider>
+        </PortalProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}
 
 export default function App() {
   const [fontsLoaded] = useFonts({
@@ -505,30 +524,9 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // AppState listener previously here removed — AppNavigator is the canonical owner of lifecycle logic.
-
-  React.useEffect(() => {
-    // Fonts are loaded, but we defer hiding the native splash screen
-    // to AppNavigator which knows when Firebase Auth is fully ready.
-  }, [fontsLoaded]);
-
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#080510' }}>
-      <SafeAreaProvider style={{ flex: 1, backgroundColor: '#080510' }}>
-        <ThemeProvider>
-          <PortalProvider>
-            <MobileDataProvider>
-              <ErrorBoundary screenName="RootApp">
-                <AppNavigator />
-              </ErrorBoundary>
-              <OfflineIndicator />
-            </MobileDataProvider>
-          </PortalProvider>
-
-          {/* SplashLoader overlay was intentionally removed here to speed up boot times.
-              The native splash screen now stays visible until the app is fully ready. */}
-        </ThemeProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ThemeProvider>
+      <ThemedAppContainer />
+    </ThemeProvider>
   );
 }

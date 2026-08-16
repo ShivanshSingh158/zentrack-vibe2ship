@@ -53,7 +53,7 @@ export default function SettingsScreen() {
   const [hasWorkspace, setHasWorkspace] = useState(!!googleAccessToken);
 
   // ── Theme ──────────────────────────────────────────────────────────────────
-  const { isDark, colors, toggleTheme } = useTheme();
+  const { isDark, mode, colors, setTheme, toggleTheme } = useTheme();
   // Build styles dynamically so they react to theme changes
   const s = makeStyles(colors);
 
@@ -265,6 +265,60 @@ export default function SettingsScreen() {
           </View>
           <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
         </AnimatedPressable>
+
+        {/* ── APPEARANCE ── */}
+        <SectionLabel text="APPEARANCE" />
+
+        <View style={s.groupCard}>
+          <View style={s.settingRow}>
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(110,86,207,0.12)' }]}>
+              <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={15} color={colors.accentPrimary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.settingTitle}>Theme</Text>
+              <Text style={s.settingSubtitle}>
+                {mode === 'dark' ? 'Obsidian Cosmos (Dark)' : mode === 'light' ? 'Frost Quartz (Light)' : 'Match Device System'}
+              </Text>
+            </View>
+          </View>
+          <View style={s.themeRow}>
+            <TouchableOpacity
+              style={[s.themeSegBtn, mode === 'dark' && s.themeSegBtnActive]}
+              activeOpacity={0.7}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setTheme('dark');
+              }}
+            >
+              <Ionicons name="moon" size={14} color={mode === 'dark' ? colors.accentPrimary : colors.textMuted} />
+              <Text style={[s.themeSegText, mode === 'dark' && s.themeSegTextActive]}>Dark</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.themeSegBtn, mode === 'light' && s.themeSegBtnActive]}
+              activeOpacity={0.7}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setTheme('light');
+              }}
+            >
+              <Ionicons name="sunny" size={14} color={mode === 'light' ? colors.accentPrimary : colors.textMuted} />
+              <Text style={[s.themeSegText, mode === 'light' && s.themeSegTextActive]}>Light</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.themeSegBtn, mode === 'system' && s.themeSegBtnActive]}
+              activeOpacity={0.7}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setTheme('system');
+              }}
+            >
+              <Ionicons name="phone-portrait-outline" size={14} color={mode === 'system' ? colors.accentPrimary : colors.textMuted} />
+              <Text style={[s.themeSegText, mode === 'system' && s.themeSegTextActive]}>System</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         {/* ── GENERAL ── */}
         <SectionLabel text="GENERAL" />
@@ -543,6 +597,38 @@ const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext')
   settingSubtitle: { fontFamily: 'Inter_400Regular',  fontSize: 11, color: colors.textTertiary, marginTop: 2, lineHeight: 15 },
 
   hairline: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 58 },
+
+  themeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  themeSegBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: colors.surface2 || colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  themeSegBtnActive: {
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accentPrimary,
+  },
+  themeSegText: {
+    fontFamily: 'Inter_500Medium',
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  themeSegTextActive: {
+    fontFamily: 'Inter_600SemiBold',
+    color: colors.accentPrimary,
+  },
 
   valueChip: {
     backgroundColor: colors.surfaceRaised, borderRadius: 8,

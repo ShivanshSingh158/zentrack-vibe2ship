@@ -17,12 +17,13 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import { Appearance, ColorSchemeName } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DARK_COLORS, LIGHT_COLORS } from '../theme/tokens';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ThemeMode = 'dark' | 'light';
+export type ThemeMode = 'dark' | 'light' | 'system';
 
 // The active color palette type (same shape as DARK_COLORS / LIGHT_COLORS)
 export type AppColors = typeof DARK_COLORS;
@@ -44,17 +45,26 @@ const THEME_STORAGE_KEY = '@zentrack_theme';
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Start dark — light mode is locked for now
   const [mode, setMode] = useState<ThemeMode>('dark');
+  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(Appearance.getColorScheme() || 'dark');
   const [loaded, setLoaded] = useState(false);
 
   // Load saved preference on mount
   useEffect(() => {
     AsyncStorage.getItem(THEME_STORAGE_KEY).then(saved => {
-      // FORCE DARK MODE for now
-      setMode('dark');
+      if (saved === 'light' || saved === 'dark' || saved === 'system') {
+        setMode(saved as ThemeMode);
+      }
       setLoaded(true);
     }).catch(() => setLoaded(true));
+  }, []);
+
+  // Listen to OS system theme changes
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      setSystemScheme(colorScheme);
+    });
+    return () => subscription.remove();
   }, []);
 
   const applyMode = useCallback(async (next: ThemeMode) => {
@@ -65,24 +75,33 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    // No-op while light mode is locked
-    console.log('Light mode is currently locked.');
+    setMode(prev => {
+      const next: ThemeMode = prev === 'dark' ? 'light' : 'dark';
+      AsyncStorage.setItem(THEME_STORAGE_KEY, next).catch(() => {});
+      return next;
+    });
   }, []);
 
   const setTheme = useCallback((next: ThemeMode) => {
     applyMode(next);
   }, [applyMode]);
 
+  const isDark = useMemo(() => {
+    if (mode === 'system') {
+      return systemScheme === 'dark';
+    }
+    return mode === 'dark';
+  }, [mode, systemScheme]);
+
   const value: ThemeContextType = useMemo(() => ({
-    isDark: mode === 'dark',
+    isDark,
     mode,
-    colors: mode === 'dark' ? DARK_COLORS : LIGHT_COLORS,
+    colors: isDark ? DARK_COLORS : LIGHT_COLORS,
     toggleTheme,
     setTheme,
-  }), [mode, toggleTheme, setTheme]);
+  }), [isDark, mode, toggleTheme, setTheme]);
 
   // Render nothing until preference is loaded — prevents a one-frame dark→light flash.
-  // In practice this is <10ms (AsyncStorage is fast on device).
   if (!loaded) return null;
 
   return (
