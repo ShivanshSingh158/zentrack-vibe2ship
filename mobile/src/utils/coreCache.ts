@@ -46,16 +46,38 @@ export async function readCoreCacheMulti(): Promise<Partial<CoreCache>> {
   }
 }
 
-// ── Write — single multiSet call after Firestore snapshot ─────────────────────
-// Only writes the keys that are provided (partial updates supported)
-export async function writeCoreCacheMulti(data: Partial<CoreCache>): Promise<void> {
+let _coreWriteTimer: ReturnType<typeof setTimeout> | null = null;
+let _pendingCoreData: Partial<CoreCache> = {};
+
+export async function flushCoreCache(): Promise<void> {
+  if (_coreWriteTimer) {
+    clearTimeout(_coreWriteTimer);
+    _coreWriteTimer = null;
+  }
+  const toWrite = _pendingCoreData;
+  _pendingCoreData = {};
+
   try {
     const pairs: [string, string][] = [];
-    if (data.tasks     !== undefined) pairs.push([KEYS.TASKS,      JSON.stringify(data.tasks)]);
-    if (data.habits    !== undefined) pairs.push([KEYS.HABITS,     JSON.stringify(data.habits)]);
-    if (data.habitLogs !== undefined) pairs.push([KEYS.HABIT_LOGS, JSON.stringify(data.habitLogs)]);
+    if (toWrite.tasks     !== undefined) pairs.push([KEYS.TASKS,      JSON.stringify(toWrite.tasks)]);
+    if (toWrite.habits    !== undefined) pairs.push([KEYS.HABITS,     JSON.stringify(toWrite.habits)]);
+    if (toWrite.habitLogs !== undefined) pairs.push([KEYS.HABIT_LOGS, JSON.stringify(toWrite.habitLogs)]);
     if (pairs.length > 0) await AsyncStorage.multiSet(pairs);
-  } catch { /* silent — cache write failure never affects the user */ }
+  } catch { /* silent */ }
+}
+
+// ── Write — debounced multiSet call to prevent JS thread blocking ────────────
+export async function writeCoreCacheMulti(data: Partial<CoreCache>, immediate = false): Promise<void> {
+  _pendingCoreData = { ..._pendingCoreData, ...data };
+
+  if (immediate) {
+    return flushCoreCache();
+  }
+
+  if (_coreWriteTimer) clearTimeout(_coreWriteTimer);
+  _coreWriteTimer = setTimeout(() => {
+    flushCoreCache();
+  }, 400);
 }
 
 // ── Invalidate — call on logout to clear stale data ──────────────────────────

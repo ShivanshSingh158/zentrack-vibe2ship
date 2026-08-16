@@ -129,8 +129,14 @@ export function CreativeProvider({
     [storageNodes]
   );
 
+  const value = useMemo(() => ({
+    storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed
+  }), [
+    storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed
+  ]);
+
   return (
-    <CreativeContext.Provider value={{ storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed }}>
+    <CreativeContext.Provider value={value}>
       {children}
     </CreativeContext.Provider>
   );

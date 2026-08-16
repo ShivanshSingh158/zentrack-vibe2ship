@@ -66,20 +66,56 @@ export async function readDomainCache<T extends Record<string, any>>(
   }
 }
 
-// ─── Generic write helper — writes only provided keys ─────────────────────────
+// Debounce state to batch disk writes and avoid JS thread blocking
+const _writeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const _pendingWrites = new Map<string, { data: Record<string, any>; keyMap: Record<string, CacheKey> }>();
+
+export async function flushDomainCache(domainKey?: string): Promise<void> {
+  const keysToFlush = domainKey ? [domainKey] : Array.from(_pendingWrites.keys());
+  for (const key of keysToFlush) {
+    const pending = _pendingWrites.get(key);
+    if (!pending) continue;
+    _pendingWrites.delete(key);
+    const timer = _writeTimers.get(key);
+    if (timer) clearTimeout(timer);
+    _writeTimers.delete(key);
+
+    try {
+      const pairs: [string, string][] = [];
+      for (const [field, cacheKey] of Object.entries(pending.keyMap)) {
+        if (pending.data[field] !== undefined) {
+          pairs.push([cacheKey, JSON.stringify(pending.data[field])]);
+        }
+      }
+      if (pairs.length > 0) await AsyncStorage.multiSet(pairs);
+    } catch { /* silent — cache write failure never affects the user */ }
+  }
+}
+
+// ─── Generic write helper — debounced by default to prevent thread blocking ───
 export async function writeDomainCache(
   data: Partial<Record<string, any>>,
-  keyMap: Record<string, CacheKey>
+  keyMap: Record<string, CacheKey>,
+  immediate = false
 ): Promise<void> {
-  try {
-    const pairs: [string, string][] = [];
-    for (const [field, key] of Object.entries(keyMap)) {
-      if (data[field] !== undefined) {
-        pairs.push([key, JSON.stringify(data[field])]);
-      }
-    }
-    if (pairs.length > 0) await AsyncStorage.multiSet(pairs);
-  } catch { /* silent — cache write failure never affects the user */ }
+  const domainKey = Object.values(keyMap).sort().join('|');
+
+  const existing = _pendingWrites.get(domainKey);
+  _pendingWrites.set(domainKey, {
+    data: { ...(existing?.data || {}), ...data },
+    keyMap: { ...(existing?.keyMap || {}), ...keyMap },
+  });
+
+  if (immediate) {
+    return flushDomainCache(domainKey);
+  }
+
+  const existingTimer = _writeTimers.get(domainKey);
+  if (existingTimer) clearTimeout(existingTimer);
+
+  _writeTimers.set(domainKey, setTimeout(() => {
+    flushDomainCache(domainKey);
+  }, 400));
 }
 
 // ─── Domain-specific helpers — typed wrappers around the generic functions ────

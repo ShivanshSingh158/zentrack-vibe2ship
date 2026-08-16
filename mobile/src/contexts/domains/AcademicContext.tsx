@@ -8,7 +8,7 @@
  * Academic screens show real data immediately, even when offline.
  * Firestore snapshots silently update the cache when online.
  */
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { InteractionManager } from 'react-native';
 import { db } from "../../services/firebase";
@@ -183,8 +183,16 @@ export function AcademicProvider({
     });
   };
 
+  const value = useMemo(() => ({
+    attendance, attendanceLogs, assignments, semesters, semesterSubjects,
+    ensureSubscribed, optimisticUpdateAttendance, optimisticAddAssignment,
+    optimisticUpdateAssignment, optimisticDeleteAssignment, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog
+  }), [
+    attendance, attendanceLogs, assignments, semesters, semesterSubjects, ensureSubscribed
+  ]);
+
   return (
-    <AcademicContext.Provider value={{ attendance, attendanceLogs, assignments, semesters, semesterSubjects, ensureSubscribed, optimisticUpdateAttendance, optimisticAddAssignment, optimisticUpdateAssignment, optimisticDeleteAssignment, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog }}>
+    <AcademicContext.Provider value={value}>
       {children}
     </AcademicContext.Provider>
   );

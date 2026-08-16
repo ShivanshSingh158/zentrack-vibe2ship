@@ -383,20 +383,22 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
     notifTimerRef.current = setTimeout(() => {
-      scheduleAllNotifications({
-        tasks: core.tasks,
-        customEvents: planner.customEvents,
-        gymLogs: wellness.gymLogs,
-        attendance: academic.attendance,
-        attendanceLogs: academic.attendanceLogs,
-        habitLogs: core.habitLogs,
-        allHabits: core.allHabits,
-        assignments: academic.assignments,
-        waterLogs: wellness.waterLogs,
-        sleepLogs: wellness.sleepLogs,
-        userGymPlan: wellness.userGymPlan,
-      }).catch(console.warn);
-    }, 3000); // 3s debounce window absorbs all burst snapshots
+      InteractionManager.runAfterInteractions(() => {
+        scheduleAllNotifications({
+          tasks: core.tasks,
+          customEvents: planner.customEvents,
+          gymLogs: wellness.gymLogs,
+          attendance: academic.attendance,
+          attendanceLogs: academic.attendanceLogs,
+          habitLogs: core.habitLogs,
+          allHabits: core.allHabits,
+          assignments: academic.assignments,
+          waterLogs: wellness.waterLogs,
+          sleepLogs: wellness.sleepLogs,
+          userGymPlan: wellness.userGymPlan,
+        }).catch(console.warn);
+      });
+    }, 3500); // 3.5s debounce window absorbs burst writes and runs off-interaction
     return () => {
       if (notifTimerRef.current) clearTimeout(notifTimerRef.current);
     };

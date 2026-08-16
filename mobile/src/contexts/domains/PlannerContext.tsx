@@ -8,7 +8,7 @@
  * Calendar and Goals screens show real data immediately, even when offline.
  * Firestore snapshots silently update the cache when online.
  */
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { InteractionManager } from 'react-native';
 import { db } from "../../services/firebase";
@@ -156,8 +156,15 @@ export function PlannerProvider({
     });
   };
 
+  const value = useMemo(() => ({
+    customEvents, goals, weeklyReviews, ensureSubscribed,
+    optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent, optimisticAddGoal, optimisticUpdateGoal
+  }), [
+    customEvents, goals, weeklyReviews, ensureSubscribed
+  ]);
+
   return (
-    <PlannerContext.Provider value={{ customEvents, goals, weeklyReviews, ensureSubscribed, optimisticAddEvent, optimisticUpdateEvent, optimisticDeleteEvent, optimisticAddGoal, optimisticUpdateGoal }}>
+    <PlannerContext.Provider value={value}>
       {children}
     </PlannerContext.Provider>
   );

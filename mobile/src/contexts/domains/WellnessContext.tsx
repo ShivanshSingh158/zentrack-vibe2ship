@@ -8,7 +8,7 @@
  * AsyncStorage instantly (~5ms). Gym screens show real data immediately,
  * even when offline. Firestore snapshots silently update the cache when online.
  */
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from "react";
 import { collection, query, where, onSnapshot, doc, setDoc } from "firebase/firestore";
 import { InteractionManager } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -338,8 +338,16 @@ export function WellnessProvider({
   // Gym screens use this to decide whether to show a skeleton vs real content.
   const gymLogsReady = gymLogs.length > 0;
 
+  const value = useMemo(() => ({
+    gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
+    waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog
+  }), [
+    gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
+    waterLogs, sleepLogs, weightLogs, ensureSubscribed
+  ]);
+
   return (
-    <WellnessContext.Provider value={{ gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate, waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog }}>
+    <WellnessContext.Provider value={value}>
       {children}
     </WellnessContext.Provider>
   );

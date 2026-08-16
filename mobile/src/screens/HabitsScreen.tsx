@@ -216,17 +216,22 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
     if (habit.costPerDay) moneySaved = daysClean * habit.costPerDay;
   }
 
-  // Calculate 15-day heatmap (for positive habits only)
+  // Calculate 15-day heatmap (for positive habits only) — O(1) indexed lookup
   const heatmapSquares = useMemo(() => {
     if (isNegative) return null;
+    const logDateMap = new Map<string, HabitLog>();
+    for (const l of habitLogs) {
+      if (l.date) logDateMap.set(l.date, l);
+    }
+
     const squares = [];
     const nowMs = new Date().getTime();
     for (let i = 14; i >= 0; i--) {
       const d = new Date(nowMs - i * 24 * 60 * 60 * 1000);
       const dateStr = d.toISOString().split('T')[0];
-      const log = habitLogs.find(l => l.date === dateStr);
+      const log = logDateMap.get(dateStr);
       let status: 'completed' | 'missed' | 'freeze' | 'future' = 'missed';
-      
+
       if (log) {
         if (log.isFreeze) status = 'freeze';
         else if (habit.targetCount && habit.targetCount > 0) {
@@ -234,14 +239,11 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
         } else {
           status = 'completed';
         }
-      } else if (dateStr > today) {
+      } else if (dateStr >= today) {
         status = 'future';
-      } else if (dateStr === today) {
-        status = 'future'; // Not completed today yet
       } else {
-        // If before start date, show as missed or neutral? Let's treat as missed to keep it simple, or neutral if we track start date.
         if (habit.startDate && dateStr < habit.startDate) {
-           status = 'future';
+          status = 'future';
         }
       }
       squares.push({ date: dateStr, status });

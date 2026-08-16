@@ -512,10 +512,19 @@ export function clearScheduleCache() {
 
 function _buildFingerprint(params: ScheduleParams): string {
   const attendanceFingerprint = (params.attendance || [])
-    .map(s => `${s.id}_${s.classesTotal}_${s.classesAttended}_${JSON.stringify(s.schedule || {})}`)
+    .map(s => `${s.id}_${s.classesTotal}_${s.classesAttended}_${s.lastUpdated || 0}`)
     .join(';');
+  const taskFingerprint = (params.tasks || [])
+    .filter(t => t.status !== 'completed')
+    .map(t => `${t.id}_${t.date}_${t.timeSlot || ''}`)
+    .join(';');
+  const eventFingerprint = (params.customEvents || [])
+    .map(e => `${e.id}_${e.date}_${e.startTime || ''}`)
+    .join(';');
+
   return [
-    params.tasks.length,
+    taskFingerprint,
+    eventFingerprint,
     (params.habitLogs || []).length,
     (params.gymLogs || []).length,
     (params.assignments || []).length,

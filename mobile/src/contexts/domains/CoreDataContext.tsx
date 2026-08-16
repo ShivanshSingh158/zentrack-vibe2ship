@@ -270,14 +270,20 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     setHabitLogs(prev => prev.filter(l => !(l.habitId === habitId && l.date === date)));
   };
 
+  const value = useMemo(() => ({
+    user, tasks, habits: activeHabits, allHabits: habits, habitLogs,
+    loading, pendingTaskCount, todayHabits,
+    pinnedModules, setPinnedModules, googleAccessToken,
+    optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
+    optimisticUpdateHabit, optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
+  }), [
+    user, tasks, activeHabits, habits, habitLogs,
+    loading, pendingTaskCount, todayHabits,
+    pinnedModules, googleAccessToken
+  ]);
+
   return (
-    <CoreDataContext.Provider value={{
-      user, tasks, habits: activeHabits, allHabits: habits, habitLogs,
-      loading, pendingTaskCount, todayHabits,
-      pinnedModules, setPinnedModules, googleAccessToken,
-      optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
-      optimisticUpdateHabit, optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
-    }}>
+    <CoreDataContext.Provider value={value}>
       {children}
     </CoreDataContext.Provider>
   );
