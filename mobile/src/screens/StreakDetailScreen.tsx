@@ -7,7 +7,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Calendar } from 'react-native-calendars';
 
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FONT_FAMILY, SPACE } from '../theme/tokens';
 import AnimatedPressable from '../components/AnimatedPressable';
@@ -50,7 +52,9 @@ export default function StreakDetailScreen() {
   const s = makeStyles(colors);
 
   const { habitId } = route.params || {};
-  const { allHabits, habitLogs, tasks, gymLogs, attendanceLogs } = useMobileData();
+  const { allHabits, habitLogs, tasks } = useCoreData();
+  const { gymLogs } = useWellnessData();
+  const { attendanceLogs } = useAcademicData();
 
   const habit = useMemo(() => allHabits?.find((h) => h.id === habitId), [allHabits, habitId]);
   const isAppStreak = !habitId;

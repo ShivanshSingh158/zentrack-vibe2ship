@@ -6,7 +6,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient, Stop, Path, G } from 'react-native-svg';
 import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { GymNavigationParamList } from '../../types/gym.types';
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -22,7 +22,7 @@ export default function GymProgressScreen() {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
-  const { gymLogs } = useMobileData();
+  const { gymLogs } = useWellnessData();
 
   const [timeRange, setTimeRange] = useState<TimeRange>('7d');
   const [selectedMuscle, setSelectedMuscle] = useState<string | null>(null);

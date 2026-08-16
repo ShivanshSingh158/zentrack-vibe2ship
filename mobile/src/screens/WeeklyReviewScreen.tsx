@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import GlassCard from '../components/ui/GlassCard';
@@ -15,7 +15,7 @@ export default function WeeklyReviewScreen() {
   const navigation = useNavigation<any>();
   const { colors } = useTheme();
   const s = makeStyles(colors);
-  const { weeklyReviews } = useMobileData();
+  const { weeklyReviews } = usePlannerData();
 
   const latestReview = useMemo(() => {
     if (!weeklyReviews || weeklyReviews.length === 0) return null;

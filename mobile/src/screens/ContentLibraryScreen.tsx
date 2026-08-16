@@ -184,52 +184,54 @@ export default function ContentLibraryScreen() {
       </ScrollView>
 
       {/* Add Modal */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <BlurView intensity={80} tint="dark" style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Log Content</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <Ionicons name="close" size={24} color={COLORS.textTertiary} />
-              </TouchableOpacity>
-            </View>
-            
-            <TextInput
-              style={styles.input}
-              placeholder="Title (e.g. Atomic Habits)"
-              placeholderTextColor={COLORS.textMuted}
-              value={newTitle}
-              onChangeText={setNewTitle}
-              autoFocus
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="URL (optional)"
-              placeholderTextColor={COLORS.textMuted}
-              value={newUrl}
-              onChangeText={setNewUrl}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
-
-            <View style={styles.typeSelector}>
-              {(['book', 'podcast', 'article', 'video'] as const).map(type => (
-                <TouchableOpacity
-                  key={type}
-                  style={[styles.typeBtn, newType === type && styles.typeBtnActive]}
-                  onPress={() => setNewType(type)}
-                >
-                  <Ionicons name={getTypeIcon(type) as any} size={18} color={newType === type ? '#000' : COLORS.textMuted} />
+      {modalVisible && (
+        <Modal visible={modalVisible} transparent animationType="slide">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <BlurView intensity={80} tint="dark" style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Log Content</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={COLORS.textTertiary} />
                 </TouchableOpacity>
-              ))}
-            </View>
+              </View>
+              
+              <TextInput
+                style={styles.input}
+                placeholder="Title (e.g. Atomic Habits)"
+                placeholderTextColor={COLORS.textMuted}
+                value={newTitle}
+                onChangeText={setNewTitle}
+                autoFocus
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="URL (optional)"
+                placeholderTextColor={COLORS.textMuted}
+                value={newUrl}
+                onChangeText={setNewUrl}
+                autoCapitalize="none"
+                keyboardType="url"
+              />
 
-            <TouchableOpacity style={styles.submitBtn} onPress={handleAdd}>
-              <Text style={styles.submitBtnText}>Add to Library</Text>
-            </TouchableOpacity>
-          </BlurView>
-        </KeyboardAvoidingView>
-      </Modal>
+              <View style={styles.typeSelector}>
+                {(['book', 'podcast', 'article', 'video'] as const).map(type => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[styles.typeBtn, newType === type && styles.typeBtnActive]}
+                    onPress={() => setNewType(type)}
+                  >
+                    <Ionicons name={getTypeIcon(type) as any} size={18} color={newType === type ? '#000' : COLORS.textMuted} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TouchableOpacity style={styles.submitBtn} onPress={handleAdd}>
+                <Text style={styles.submitBtnText}>Add to Library</Text>
+              </TouchableOpacity>
+            </BlurView>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }

@@ -8,7 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
 import { useGymLog, todayStr, planDayIndexForDate, getCustomPlanDay } from '../../hooks/useGymLog';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { GYM_PLAN, GYM_PLAN_PPL, GYM_PLAN_ARNOLD, EXERCISE_ALTERNATIVES } from '../../data/gymPlan';
 import { EXERCISE_DATABASE } from '../../data/exerciseDatabase';
 import { resolveMuscleColor, hexToRgba, canonicalizeMuscle } from '../../utils/gymUtils';
@@ -55,7 +55,7 @@ export default function ExerciseSwapScreen() {
   const date = route.params?.date || todayStr();
 
   const { log, updateExercise } = useGymLog(date);
-  const { userGymPlan, updateMasterPlan } = useMobileData();
+  const { userGymPlan, updateMasterPlan } = useWellnessData();
 
   const [activeTab, setActiveTab] = useState<'ai' | 'all'>('ai');
   const [search, setSearch] = useState('');

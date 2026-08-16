@@ -5,8 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Text as SvgText, Line, Circle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../contexts/ThemeContext';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import * as Haptics from 'expo-haptics';
 import { callProxy } from '../services/geminiProxy';
@@ -61,7 +62,7 @@ function GlassCard({ children, style }: { children?: React.ReactNode; style?: an
 export default function WellbeingDashboardScreen() {
   const { colors } = useTheme();
   const navigation = useNavigation<any>();
-  const { waterLogs } = useMobileData();
+  const { waterLogs } = useWellnessData();
 
   // Animation values
   const mountAnim = useRef(new Animated.Value(0)).current;
@@ -99,9 +100,20 @@ export default function WellbeingDashboardScreen() {
   const [aiWaterTip, setAiWaterTip] = useState<string | null>(null);
   const [isAiThinking, setIsAiThinking] = useState<boolean>(true);
 
-  // Fetch AI insights
+  // Fetch AI insights (cached per-day in AsyncStorage)
   useEffect(() => {
+    let isMounted = true;
     async function fetchAiInsights() {
+      const cacheKey = `@zentrack_daily_water_tip_${todayStr}`;
+      try {
+        const cached = await AsyncStorage.getItem(cacheKey);
+        if (cached && isMounted) {
+          setAiWaterTip(cached);
+          setIsAiThinking(false);
+          return;
+        }
+      } catch {}
+
       setIsAiThinking(true);
       try {
         const prompt = `
@@ -118,18 +130,22 @@ Water Data (ml per day): ${JSON.stringify(waterData)}
         });
         
         const rawText = resp.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (rawText) {
+        if (rawText && isMounted) {
           const parsed = JSON.parse(rawText);
-          if (parsed.waterTip) setAiWaterTip(parsed.waterTip);
+          if (parsed.waterTip) {
+            setAiWaterTip(parsed.waterTip);
+            AsyncStorage.setItem(cacheKey, parsed.waterTip).catch(() => {});
+          }
         }
       } catch (e) {
         console.error('Error fetching wellbeing AI insights', e);
       } finally {
-        setIsAiThinking(false);
+        if (isMounted) setIsAiThinking(false);
       }
     }
     fetchAiInsights();
-  }, [waterData]);
+    return () => { isMounted = false; };
+  }, [todayStr]);
 
   const waterTip = aiWaterTip || (todayWater < 2500 
     ? `You're ${2500 - todayWater}ml away from optimal hydration. Drink a glass now!` 

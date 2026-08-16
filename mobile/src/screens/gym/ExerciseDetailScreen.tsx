@@ -6,7 +6,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import YoutubeIframe from 'react-native-youtube-iframe';
 import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useGymLog, planDayIndexForDate, getCustomPlanDay } from '../../hooks/useGymLog';
 import { GYM_PLAN } from '../../data/gymPlan';
 import { resolveMuscleColor, hexToRgba, MUSCLE_CANONICAL } from '../../utils/gymUtils';
@@ -30,7 +30,7 @@ export default function ExerciseDetailScreen() {
   const exerciseId = route.params?.exerciseId;
   const date = route.params?.date || '';
   
-  const { gymLogs, userGymPlan, updateMasterPlan } = useMobileData();
+  const { gymLogs, userGymPlan, updateMasterPlan } = useWellnessData();
   const { log, updateExercise, deleteExercise } = useGymLog(date); // Only works if date is passed
 
   const currentExercise = log?.exercises?.find(e => e.exerciseId === exerciseId);

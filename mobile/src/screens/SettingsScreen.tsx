@@ -472,22 +472,24 @@ export default function SettingsScreen() {
       </ScrollView>
 
       {/* ── Sign Out Confirmation Modal ── */}
-      <Modal visible={signOutModal} transparent animationType="fade">
-        <View style={s.modalOverlay}>
-          <View style={s.confirmCard}>
-            <Text style={s.confirmTitle}>Sign out of ZenTrack?</Text>
-            <Text style={s.confirmBody}>Your data is saved. You can sign back in anytime.</Text>
-            <View style={s.confirmBtns}>
-              <AnimatedPressable style={s.confirmCancel} onPress={() => setSignOutModal(false)}>
-                <Text style={s.confirmCancelText}>Cancel</Text>
-              </AnimatedPressable>
-              <AnimatedPressable style={s.confirmDanger} onPress={handleSignOut}>
-                <Text style={s.confirmDangerText}>Sign out</Text>
-              </AnimatedPressable>
+      {signOutModal && (
+        <Modal visible={signOutModal} transparent animationType="fade">
+          <View style={s.modalOverlay}>
+            <View style={s.confirmCard}>
+              <Text style={s.confirmTitle}>Sign out of ZenTrack?</Text>
+              <Text style={s.confirmBody}>Your data is saved. You can sign back in anytime.</Text>
+              <View style={s.confirmBtns}>
+                <AnimatedPressable style={s.confirmCancel} onPress={() => setSignOutModal(false)}>
+                  <Text style={s.confirmCancelText}>Cancel</Text>
+                </AnimatedPressable>
+                <AnimatedPressable style={s.confirmDanger} onPress={handleSignOut}>
+                  <Text style={s.confirmDangerText}>Sign out</Text>
+                </AnimatedPressable>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }

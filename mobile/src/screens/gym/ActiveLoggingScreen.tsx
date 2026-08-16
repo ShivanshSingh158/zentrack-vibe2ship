@@ -12,7 +12,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE, SHADOW } from '../../theme/tokens';
 import { useGymLog, todayStr } from '../../hooks/useGymLog';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { resolveMuscleColor, hexToRgba, calculateExerciseMaxWeight, calculateExerciseAvgReps, calculateHistorical1RM } from '../../utils/gymUtils';
 import { hapticLight, hapticMedium, hapticSuccess } from '../../utils/haptics';
 import { callProxy } from '../../services/geminiProxy';
@@ -91,7 +91,7 @@ export default function ActiveLoggingScreen() {
   const [aiSwapList, setAiSwapList] = useState<any[]>([]);
   const [isAiSwapLoading, setIsAiSwapLoading] = useState(false);
 
-  const { gymLogs } = useMobileData();
+  const { gymLogs } = useWellnessData();
 
   // BUG FIX #1: Local controlled input state per set ΓÇö decoupled from log state.
   // Initialised from exercise data, but never overwritten during typing.
