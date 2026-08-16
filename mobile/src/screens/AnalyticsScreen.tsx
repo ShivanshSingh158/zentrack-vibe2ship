@@ -625,70 +625,87 @@ export default function AnalyticsScreen() {
       }, 0);
     };
 
+    const gymDateMap = new Map<string, any>();
+    for (const g of gymLogs || []) {
+      if (g.date) gymDateMap.set(g.date, g);
+    }
+
     const n = Math.min(days, 14);
     const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
     const result: { label: string; cur: number; prev: number }[] = [];
     for (let i = n - 1; i >= 0; i -= step) {
       const d = daysAgoStr(i);
       const dPrev = daysAgoStr(i + days);
-      const log  = gymLogs.find(g => g.date === d);
-      const logP = gymLogs.find(g => g.date === dPrev);
+      const log  = gymDateMap.get(d);
+      const logP = gymDateMap.get(dPrev);
       result.push({
         label: d.slice(8),
         cur:  calcVolume(log),
         prev: calcVolume(logP),
       });
-
     }
     return result;
-  }, [gymLogs, period]);
+  }, [gymLogs, period, days]);
   const maxGymVol = Math.max(...gymVolData.map(d => Math.max(d.cur, d.prev)), 5);
 
-  // â”€â”€ Heatmap dates (5 weeks) â”€â”€
+  // ── Heatmap dates (5 weeks) ──
   const heatDates = useMemo(() => daysRange(0, 35), []);
 
-  // â”€â”€ Habit completion rate per day (line) â”€â”€
+  // ── Habit completion rate per day (line) — O(1) Map indexed ──
   const habitLineData = useMemo(() => {
+    const habitDateCountMap = new Map<string, number>();
+    for (const l of habitLogs || []) {
+      if (l.date) habitDateCountMap.set(l.date, (habitDateCountMap.get(l.date) || 0) + 1);
+    }
+
     const activeCount = allHabits.filter(h => !h.archived).length || 1;
     const n = Math.min(days, 14);
     const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
     const result: { label: string; value: number }[] = [];
     for (let i = n - 1; i >= 0; i -= step) {
       const d = daysAgoStr(i);
-      const done = habitLogs.filter(l => l.date === d).length;
+      const done = habitDateCountMap.get(d) || 0;
       result.push({ label: formatDateShort(d), value: Math.round((done / activeCount) * 100) });
     }
     return result;
-  }, [habitLogs, allHabits, period]);
+  }, [habitLogs, allHabits, period, days]);
 
-  // â”€â”€â”€ Goal Progress Data â”€â”€â”€
+  // ─── Goal Progress Data — O(1) Map grouped ───
   const goalProgressData = useMemo(() => {
     if (!goals) return [];
+    const taskStatsByGoal = new Map<string, { total: number; completed: number }>();
+    for (const t of tasks || []) {
+      if (t.subject) {
+        const stats = taskStatsByGoal.get(t.subject) || { total: 0, completed: 0 };
+        stats.total++;
+        if (t.status === 'completed') stats.completed++;
+        taskStatsByGoal.set(t.subject, stats);
+      }
+    }
     return goals.map(goal => {
-      const matchingTasks = tasks.filter(t => t.subject === goal.title);
-      const total = matchingTasks.length;
-      const completed = matchingTasks.filter(t => t.status === 'completed').length;
-      const pct = total === 0 ? 0 : (completed / total) * 100;
-      return { ...goal, pct, total, completed };
+      const stats = taskStatsByGoal.get(goal.title) || { total: 0, completed: 0 };
+      const pct = stats.total === 0 ? 0 : (stats.completed / stats.total) * 100;
+      return { ...goal, pct, total: stats.total, completed: stats.completed };
     }).filter(g => g.total > 0 || g.status === 'active');
   }, [goals, tasks]);
 
-  // â”€â”€â”€ CGPA Data â”€â”€â”€
+  // ─── CGPA Data ───
   const cgpaData = useMemo(() => {
     if (!semesters) return [];
     return [...semesters].sort((a, b) => (a.order || 0) - (b.order || 0)).filter(s => s.sgpa && s.sgpa > 0);
   }, [semesters]);
 
-  // â”€â”€â”€ Attendance Trend Data â”€â”€â”€
+  // ─── Attendance Trend Data (Safe Timestamp Normalization) ───
   const attendanceTrendData = useMemo(() => {
     if (!attendanceLogs || attendanceLogs.length === 0) return [];
-    const sorted = [...attendanceLogs].sort((a, b) => a.timestamp - b.timestamp);
+    const getTs = (l: any) => typeof l.timestamp === 'number' ? l.timestamp : (l.timestamp?.toMillis?.() ?? 0);
+    const sorted = [...attendanceLogs].sort((a, b) => getTs(a) - getTs(b));
     let attended = 0; let total = 0;
     const byDate = new Map<string, number>();
     sorted.forEach(log => {
       if (log.action === 'attended') { attended++; total++; }
       else if (log.action === 'missed') { total++; }
-      if (total > 0) byDate.set(log.date, (attended / total) * 100);
+      if (total > 0 && log.date) byDate.set(log.date, (attended / total) * 100);
     });
     return Array.from(byDate.entries()).map(([date, pct]) => ({ date, pct }));
   }, [attendanceLogs]);

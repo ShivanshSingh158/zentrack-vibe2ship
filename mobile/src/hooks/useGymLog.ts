@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { InteractionManager } from 'react-native';
 import { collection, doc, setDoc, updateDoc, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 import { GymDayLog, GymExerciseLog, GymSet, GymCardioLog, GymPlanDay } from '../types/gym.types';
 
@@ -83,7 +84,8 @@ export function getCustomPlanDay(customDays: any, planIdx: number) {
 }
 
 export function useGymLog(dateStr: string) {
-  const { gymLogs, gymLogsReady, gymEnsureSubscribed, user, userGymPlan, updateMasterPlan, optimisticAddGymLog, optimisticUpdateGymLog } = useMobileData();
+  const { gymLogs, gymLogsReady, ensureSubscribed: gymEnsureSubscribed, userGymPlan, updateMasterPlan, optimisticAddGymLog, optimisticUpdateGymLog } = useWellnessData();
+  const { user } = useCoreData();
 
   useEffect(() => {
     gymEnsureSubscribed?.();

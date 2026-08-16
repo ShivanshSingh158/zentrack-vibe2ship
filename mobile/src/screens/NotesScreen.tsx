@@ -14,7 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { useMobileData, StorageNode } from '../contexts/MobileDataContext';
+import { useCreativeData } from '../contexts/domains/CreativeContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import type { StorageNode } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { uploadFileToCloudinary } from '../services/cloudinary';
 import * as DocumentPicker from 'expo-document-picker';
@@ -505,7 +507,8 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
 export default function NotesScreen() {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
-  const { storageNodes, user } = useMobileData();
+  const { storageNodes } = useCreativeData();
+  const { user } = useCoreData();
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 
   const [showFabMenu, setShowFabMenu] = useState(false);
@@ -601,12 +604,16 @@ export default function NotesScreen() {
     });
   }, [storageNodes, currentFolderId, searchQuery, sortMode, filterMode]);
 
-  // Breadcrumbs
+  // Breadcrumbs — O(1) indexed Map lookup
   const breadcrumbs = useMemo(() => {
+    const nodeMap = new Map<string, StorageNode>();
+    for (const n of storageNodes) {
+      if (n.id) nodeMap.set(n.id, n);
+    }
     const crumbs: { id: string | null; name: string }[] = [];
     let curr = currentFolderId;
     while (curr) {
-      const node = storageNodes.find(n => n.id === curr);
+      const node = nodeMap.get(curr);
       if (node) {
         crumbs.unshift({ id: node.id!, name: node.name });
         curr = node.parentId;

@@ -64,11 +64,19 @@ export function getOverloadSuggestion(
   // Parse target reps (handle "8-12" → 8)
   const targetReps = parseInt(String(targetRepsStr).split("-")[0], 10) || 8;
 
-  // Find sessions with this exercise (sorted newest-first)
-  const relevantSessions = gymLogs
-    .filter(log => Array.isArray(log.exercises) && log.exercises.some((e: any) => e.name?.toLowerCase().trim() === exercise.name.toLowerCase().trim()))
-    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
-    .slice(0, 3);
+  // Find sessions with this exercise (sorted newest-first, early-exit at 3)
+  const cleanTargetName = exercise.name.toLowerCase().trim();
+  const sortedLogs = (gymLogs || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const relevantSessions: any[] = [];
+  for (const log of sortedLogs) {
+    if (Array.isArray(log.exercises)) {
+      const hasEx = log.exercises.some((e: any) => e.name?.toLowerCase().trim() === cleanTargetName);
+      if (hasEx) {
+        relevantSessions.push(log);
+        if (relevantSessions.length === 3) break;
+      }
+    }
+  }
 
   if (relevantSessions.length < 2) return null; // Need at least 2 sessions
 

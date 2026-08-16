@@ -5,7 +5,9 @@ import BottomSheet from '../components/ui/BottomSheet';
 import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useMobileData, Assignment } from '../contexts/MobileDataContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import type { Assignment } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -26,16 +28,19 @@ const STATUS_CONFIG = {
 };
 
 const getDaysUntilDue = (dueDateStr: string) => {
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const due = new Date(dueDateStr + 'T00:00:00');
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const [y, m, d] = (dueDateStr || '').split('-').map(Number);
+  if (!y || !m || !d) return 0;
+  const due = new Date(y, m - 1, d);
   return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 };
 
 export default function AssignmentsScreen() {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
-  const { assignments, user } = useMobileData();
+  const { assignments } = useAcademicData();
+  const { user } = useCoreData();
 
   // Cap 5: PSI surface injection — 48h deadline alert
   const psiCtx = useMemo(() => ({ assignments: assignments as any[] }), [assignments]);
