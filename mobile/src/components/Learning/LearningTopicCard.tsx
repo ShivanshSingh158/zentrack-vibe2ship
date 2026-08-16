@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, SHADOW } from '../../theme/tokens';
 import { LearningTopic, LearningSubTask } from '../../contexts/MobileDataContext';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -34,6 +35,8 @@ export default function LearningTopicCard({
   loadMoreSubTasks, extractVideoId, openVideo,
   setActiveTopicId, setSubtaskModalVisible,
 }: LearningTopicCardProps) {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
   const isExpanded = expandedTopics.has(topic.id!);
   const subTasks = topic.subTasks || [];
   const completedCount = subTasks.filter(s => s.isCompleted).length;
@@ -343,44 +346,44 @@ export default function LearningTopicCard({
   );
 }
 
-const s = StyleSheet.create({
-  card: { backgroundColor: '#131314', marginBottom: 16, borderRadius: 16, padding: 16 },
+const makeStyles = (colors: any) => StyleSheet.create({
+  card: { backgroundColor: colors.surface, marginBottom: 16, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border },
   cardHeader: { padding: 0 },
-  cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#f2f2f7', flex: 1, paddingRight: 16, lineHeight: 24 },
-  cardStats: { color: '#8e8e93', fontSize: 13, fontFamily: FONT_FAMILY.medium },
-  divider: { height: 2, backgroundColor: 'rgba(255,255,255,0.03)', marginVertical: 16, borderRadius: 1 },
-  iconButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center' },
+  cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary, flex: 1, paddingRight: 16, lineHeight: 24 },
+  cardStats: { color: colors.textTertiary, fontSize: 13, fontFamily: FONT_FAMILY.medium },
+  divider: { height: 1, backgroundColor: colors.border, marginVertical: 16, borderRadius: 1 },
+  iconButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface2 || colors.surface, alignItems: 'center', justifyContent: 'center' },
   cardExpanded: { paddingTop: 16 },
-  subRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#2c2c2e' },
-  subIndex: { fontFamily: FONT_FAMILY.body, fontSize: 10, marginRight: 8, width: 16, textAlign: 'center' },
+  subRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
+  subIndex: { fontFamily: FONT_FAMILY.body, fontSize: 10, marginRight: 8, width: 16, textAlign: 'center', color: colors.textTertiary },
   checkbox: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
-  checkboxDone: { backgroundColor: '#a599ff' },
-  checkboxActive: { backgroundColor: 'rgba(165,153,255,0.1)', borderWidth: 1.5, borderColor: '#a599ff' },
-  checkboxFuture: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#3a3a3c' },
-  subTitle: { flex: 1, fontFamily: FONT_FAMILY.body, fontSize: 13, color: '#f2f2f7', marginRight: 8 },
-  subTitleActive: { fontFamily: FONT_FAMILY.bold, color: '#f2f2f7' },
-  subTitleDone: { color: '#636366' },
-  watchBtn: { backgroundColor: 'rgba(165,153,255,0.1)', borderColor: 'rgba(165,153,255,0.3)', borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 4 },
-  watchBtnText: { color: '#a599ff', fontFamily: FONT_FAMILY.medium, fontSize: 10 },
-  primaryBtn: { flex: 1, marginRight: 8, justifyContent: 'center', backgroundColor: '#a599ff', paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  primaryBtnText: { color: '#000', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
+  checkboxDone: { backgroundColor: colors.accentPrimary },
+  checkboxActive: { backgroundColor: colors.accentDim, borderWidth: 1.5, borderColor: colors.accentPrimary },
+  checkboxFuture: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.border },
+  subTitle: { flex: 1, fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textPrimary, marginRight: 8 },
+  subTitleActive: { fontFamily: FONT_FAMILY.bold, color: colors.textPrimary },
+  subTitleDone: { color: colors.textMuted },
+  watchBtn: { backgroundColor: colors.accentDim, borderColor: colors.border, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  watchBtnText: { color: colors.accentPrimary, fontFamily: FONT_FAMILY.medium, fontSize: 10 },
+  primaryBtn: { flex: 1, marginRight: 8, justifyContent: 'center', backgroundColor: colors.accentPrimary, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  primaryBtnText: { color: '#ffffff', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
   addSubBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, paddingVertical: 8 },
-  addSubText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#a599ff' },
+  addSubText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.accentPrimary },
   // Schedule Modal
-  scheduleModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
-  scheduleModalCard: { backgroundColor: '#141416', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 36, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  dragHandle: { width: 40, height: 4, backgroundColor: '#2c2c2e', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  scheduleModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  scheduleModalCard: { backgroundColor: colors.surfaceRaised || colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 36, borderWidth: 1, borderColor: colors.border },
+  dragHandle: { width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   scheduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  scheduleIconBadge: { width: 28, height: 28, borderRadius: 8, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  scheduleModalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#f2f2f7' },
-  scheduleCloseBtn: { padding: 6, backgroundColor: '#1c1c1e', borderRadius: 14 },
-  scheduleCheckpointBox: { backgroundColor: '#1c1c1e', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  scheduleCheckpointTopic: { color: '#a599ff', fontSize: 11, fontFamily: FONT_FAMILY.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
-  scheduleCheckpointTitle: { color: '#f2f2f7', fontSize: 14, fontFamily: FONT_FAMILY.bold, marginTop: 4, lineHeight: 20 },
-  scheduleOptionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#1c1c1e', padding: 14, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  scheduleOptionIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' },
-  scheduleOptionTitle: { color: '#f2f2f7', fontSize: 14, fontFamily: FONT_FAMILY.bold },
-  scheduleOptionSub: { color: '#8e8e93', fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 },
-  scheduleCancelBtn: { marginTop: 6, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1c1c1e', borderRadius: 12 },
-  scheduleCancelText: { color: '#8e8e93', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
+  scheduleIconBadge: { width: 28, height: 28, borderRadius: 8, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
+  scheduleModalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
+  scheduleCloseBtn: { padding: 6, backgroundColor: colors.surface2 || colors.surface, borderRadius: 14 },
+  scheduleCheckpointBox: { backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
+  scheduleCheckpointTopic: { color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
+  scheduleCheckpointTitle: { color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold, marginTop: 4, lineHeight: 20 },
+  scheduleOptionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.surface, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
+  scheduleOptionIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
+  scheduleOptionTitle: { color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold },
+  scheduleOptionSub: { color: colors.textMuted, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 },
+  scheduleCancelBtn: { marginTop: 6, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2 || colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
+  scheduleCancelText: { color: colors.textMuted, fontFamily: FONT_FAMILY.bold, fontSize: 14 },
 });

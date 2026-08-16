@@ -8,7 +8,7 @@
  *   - components/Learning/LearningModals.tsx       (add/edit/import modals)
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   DeviceEventEmitter, Alert, LayoutAnimation, UIManager, Platform
@@ -137,6 +137,7 @@ export default function LearningScreen() {
   const { user } = useCoreData();
   const navigation = useNavigation();
   const { colors } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
 
   // ΓöÇΓöÇ Modal state ΓöÇΓöÇ
   const [topicModalVisible, setTopicModalVisible] = useState(false);
@@ -701,14 +702,14 @@ export default function LearningScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000' },
+const makeStyles = (colors: any) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
   list: { paddingHorizontal: 8, paddingTop: 18, paddingBottom: 100 },
-  headerIconWrapper: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(165,153,255,0.12)', justifyContent: 'center', alignItems: 'center' },
-  screenTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: '#fff' },
-  searchBar: { backgroundColor: '#141416', borderRadius: 16, flexDirection: 'row', alignItems: 'center', padding: 14, gap: 8, marginBottom: 24, borderWidth: 1, borderColor: '#2c2c2e' },
-  searchText: { fontFamily: FONT_FAMILY.body, color: '#8e8e93', fontSize: 13 },
-  primaryBlockBtn: { backgroundColor: '#a599ff', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  headerIconWrapper: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accentDim, justifyContent: 'center', alignItems: 'center' },
+  screenTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: colors.textPrimary },
+  searchBar: { backgroundColor: colors.surface2 || colors.surface, borderRadius: 16, flexDirection: 'row', alignItems: 'center', padding: 14, gap: 8, marginBottom: 24, borderWidth: 1, borderColor: colors.border },
+  searchText: { fontFamily: FONT_FAMILY.body, color: colors.textMuted, fontSize: 13 },
+  primaryBlockBtn: { backgroundColor: colors.accentPrimary, paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   empty: { padding: 24, alignItems: 'center', justifyContent: 'center', marginTop: 40 },
-  emptyText: { fontFamily: FONT_FAMILY.body, color: '#8e8e93', fontSize: 13 },
+  emptyText: { fontFamily: FONT_FAMILY.body, color: colors.textMuted, fontSize: 13 },
 });

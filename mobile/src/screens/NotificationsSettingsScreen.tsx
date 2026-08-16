@@ -25,6 +25,7 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
+import { useTheme } from '../contexts/ThemeContext';
 import { scheduleAllNotifications, clearScheduleCache, sendTestNotification } from '../services/notifications';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { handleSyncError } from '../utils/errorUtils';
@@ -73,6 +74,8 @@ function displayTime(hm: string) {
 }
 
 export default function NotificationsSettingsScreen() {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
   const navigation = useNavigation<any>();
   // BUG-2 FIX: Destructure waterLogs and sleepLogs so they can be passed to
   // scheduleAllNotifications() in all call sites below.
@@ -619,17 +622,16 @@ export default function NotificationsSettingsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: COLORS.background },
+const makeStyles = (colors: any) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#1c1c1e',
+    borderBottomColor: colors.border,
   },
   backBtn: {
     width: 44, height: 44,
@@ -639,24 +641,24 @@ const s = StyleSheet.create({
   headerTitle: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   scroll: { padding: 16 },
 
   sectionLabel: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 11,
-    color: COLORS.textTertiary,
+    color: colors.textTertiary,
     letterSpacing: 0.8,
     marginBottom: 8,
     marginTop: 20,
     marginLeft: 4,
   },
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#2c2c2e',
+    borderColor: colors.border,
     overflow: 'hidden',
   },
   row: {
@@ -673,27 +675,29 @@ const s = StyleSheet.create({
   rowTitle: {
     fontFamily: 'Inter_400Regular',
     fontSize: 14,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 1,
   },
   rowSub: {
     fontFamily: 'Inter_400Regular',
     fontSize: 11,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     lineHeight: 15,
   },
-  hairline: { height: StyleSheet.hairlineWidth, backgroundColor: '#1c1c1e', marginLeft: 58 },
+  hairline: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 58 },
 
   timeChip: {
-    backgroundColor: '#2c2c2e',
+    backgroundColor: colors.surface2 || colors.surface,
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   timeChipText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13,
-    color: COLORS.accentPrimary,
+    color: colors.accentPrimary,
   },
 
   chipRow: {
@@ -706,27 +710,31 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
-    backgroundColor: '#2c2c2e',
+    backgroundColor: colors.surface2 || colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  chipActive: { backgroundColor: COLORS.accentPrimary },
-  chipText: { fontFamily: 'Inter_400Regular', fontSize: 12.5, color: COLORS.textMuted },
-  chipTextActive: { color: '#000000', fontFamily: 'Inter_600SemiBold' },
+  chipActive: { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+  chipText: { fontFamily: 'Inter_400Regular', fontSize: 12.5, color: colors.textMuted },
+  chipTextActive: { color: '#ffffff', fontFamily: 'Inter_600SemiBold' },
 
   pickerModalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.3)',
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   pickerCard: {
-    backgroundColor: '#1c1c1e',
+    backgroundColor: colors.surfaceRaised || colors.surface,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingBottom: 34,
+    borderTopWidth: 1,
+    borderColor: colors.border,
   },
   pickerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     padding: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#2c2c2e',
+    borderBottomColor: colors.border,
   },
 });

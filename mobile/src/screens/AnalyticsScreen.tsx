@@ -1022,9 +1022,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
         flex: 1, alignItems: 'center',
         paddingVertical: 8,
         borderRadius: RADIUS.full,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: colors.surface2 || colors.surface,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: colors.border,
       },
       periodBtnActive: {
         backgroundColor: colors.accentPrimary,
@@ -1035,7 +1035,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         fontSize: FONT_SIZE.sm,
         color: colors.textMuted,
       },
-      periodBtnTextActive: { color: colors.background },
+      periodBtnTextActive: { color: '#ffffff' },
 
       scrollContent: { paddingTop: 0 },
 
@@ -1074,17 +1074,17 @@ const makeStyles = (colors: any) => StyleSheet.create({
         justifyContent: 'space-between',
         width: '100%',
         marginTop: SPACE.xl,
-        backgroundColor: 'rgba(255,255,255,0.04)',
+        backgroundColor: colors.surface,
         borderRadius: RADIUS.xl,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: colors.border,
         paddingVertical: SPACE.lg,
         paddingHorizontal: 8,
       },
       summaryItem: { alignItems: 'center', flex: 1 },
       summaryVal: { fontFamily: FONT_FAMILY.bold, fontSize: 22, lineHeight: 26 },
       summaryKey: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.xs, color: colors.textMuted, marginTop: 2, marginBottom: 4 },
-      summaryDivider: { width: 1, height: 36, backgroundColor: 'rgba(255,255,255,0.08)' },
+      summaryDivider: { width: 1, height: 36, backgroundColor: colors.border },
 
       // Delta badge
       delta: {
@@ -1167,7 +1167,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       exportBtnText: {
         fontFamily: FONT_FAMILY.bold,
         fontSize: FONT_SIZE.md,
-        color: '#000',
+        color: '#ffffff',
       },
 
       // Bar chart grid
@@ -1175,7 +1175,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         position: 'absolute',
         left: 0, right: 0,
         height: StyleSheet.hairlineWidth,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: colors.border,
       },
       barLabel: {
         fontFamily: FONT_FAMILY.bold,
@@ -1196,9 +1196,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
       glassCard: {
         borderRadius: RADIUS.xxl,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: colors.border,
         overflow: 'hidden',
-        backgroundColor: 'rgba(255,255,255,0.025)',
+        backgroundColor: colors.surface,
       },
 
       // Heatmap

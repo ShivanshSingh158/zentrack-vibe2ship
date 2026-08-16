@@ -325,8 +325,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
         alignItems: 'center',
         gap: 6,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderColor: colors.border,
+        backgroundColor: colors.surface2 || colors.surface,
       },
       editPillText: {
         fontFamily: FONT_FAMILY.medium,
@@ -365,8 +365,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
       gridItem: { width: '25%', alignItems: 'center', marginBottom: SPACE.lg },
       gridIconBox: {
         width: 58, height: 58, borderRadius: 18,
-        backgroundColor: 'rgba(255,255,255,0.03)',
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: colors.surface,
+        borderWidth: 1, borderColor: colors.border,
         alignItems: 'center', justifyContent: 'center',
         overflow: 'hidden',
       },

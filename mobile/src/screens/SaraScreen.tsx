@@ -2056,7 +2056,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         flex: 1,
         fontFamily: FONT_FAMILY.body,
         fontSize: 15,
-        color: '#ffffff',
+        color: colors.textPrimary,
         maxHeight: 100,
         paddingVertical: 10,
       },
@@ -2064,15 +2064,15 @@ const makeStyles = (colors: any) => StyleSheet.create({
         width: 34,
         height: 34,
         borderRadius: 17,
-        backgroundColor: '#ffffff',
+        backgroundColor: colors.accentPrimary,
         alignItems: 'center',
         justifyContent: 'center',
       },
 
-      // ΓöÇΓöÇ Voice overlay ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── Voice overlay ────────────────────────────────────────────────────────
       voiceOverlay: {
         flex: 1,
-        backgroundColor: '#000000',
+        backgroundColor: colors.background,
         alignItems: 'center',
         justifyContent: 'center',
         paddingBottom: 60,
@@ -2119,7 +2119,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         justifyContent: 'center',
       },
       voiceControlBtnActive: {
-        backgroundColor: 'rgba(165,153,255,0.15)',
+        backgroundColor: colors.accentDim,
         borderWidth: 1,
         borderColor: colors.accentPrimary,
       },
@@ -2139,7 +2139,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         backgroundColor: '#ffffff',
       },
 
-      // ΓöÇΓöÇ Overflow menu ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── Overflow menu ────────────────────────────────────────────────────────
       menuOverlayWrapper: {
         position: 'absolute',
         top: 56,
@@ -2165,10 +2165,10 @@ const makeStyles = (colors: any) => StyleSheet.create({
       },
       menuRowText: { fontSize: 15, fontWeight: '400', color: colors.textSecondary },
 
-      // ΓöÇΓöÇ About Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+      // ── About Modal ──────────────────────────────────────────────────────────
       aboutOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.75)',
+        backgroundColor: 'rgba(0,0,0,0.6)',
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 20,
@@ -2176,11 +2176,11 @@ const makeStyles = (colors: any) => StyleSheet.create({
       aboutCard: {
         width: '100%',
         maxHeight: '88%',
-        backgroundColor: '#141416',
+        backgroundColor: colors.surfaceRaised || colors.surface,
         borderRadius: 24,
         padding: 22,
         borderWidth: 1,
-        borderColor: 'rgba(165,153,255,0.15)',
+        borderColor: colors.border,
         shadowColor: '#a599ff',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
@@ -2191,29 +2191,29 @@ const makeStyles = (colors: any) => StyleSheet.create({
         alignItems: 'center',
         marginBottom: 20,
       },
-      // Old badge kept for compat ΓÇö use aboutOrbBadge for the new design
+      // Old badge kept for compat — use aboutOrbBadge for the new design
       aboutIconBadge: {
         width: 48,
         height: 48,
         borderRadius: 24,
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: colors.surface2,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: colors.border,
       },
       aboutOrbBadge: {
         width: 56,
         height: 56,
         borderRadius: 28,
-        backgroundColor: 'rgba(165,153,255,0.10)',
+        backgroundColor: colors.accentDim,
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
         borderWidth: 1,
-        borderColor: 'rgba(165,153,255,0.30)',
-        shadowColor: '#a599ff',
+        borderColor: colors.accentPrimary,
+        shadowColor: colors.accentPrimary,
         shadowOffset: { width: 0, height: 0 },
         shadowOpacity: 0.4,
         shadowRadius: 12,
@@ -2249,7 +2249,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       aboutBody: {
         fontSize: 14,
         fontFamily: FONT_FAMILY.body,
-        color: '#A0A0A5',
+        color: colors.textMuted,
         lineHeight: 22,
       },
       // Capability row (icon badge + label + desc)
@@ -2289,12 +2289,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 5,
-        backgroundColor: 'rgba(165,153,255,0.08)',
+        backgroundColor: colors.accentDim,
         borderRadius: 20,
         paddingVertical: 5,
         paddingHorizontal: 10,
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(165,153,255,0.2)',
+        borderColor: colors.border,
       },
       aboutModuleLabel: {
         fontSize: 11,
@@ -2309,12 +2309,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
       },
       aboutStatChip: {
         flex: 1,
-        backgroundColor: 'rgba(255,255,255,0.04)',
+        backgroundColor: colors.surface2 || colors.surface,
         borderRadius: 12,
         paddingVertical: 10,
         alignItems: 'center',
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: colors.border,
       },
       aboutStatNum: {
         fontSize: 20,
@@ -2335,7 +2335,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderRadius: 12,
         alignItems: 'center',
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(255,255,255,0.12)',
+        borderColor: colors.border,
       },
       aboutCloseBtnText: {
         color: colors.textPrimary,

@@ -22,6 +22,7 @@ import type { GymPlanDay } from '../../types/gym.types';
 import { calculateGymStreak } from '../../utils/gymUtils';
 import { clearScheduleCache, scheduleAllNotifications } from '../../services/notifications';
 
+import { useTheme } from '../../contexts/ThemeContext';
 import { COLORS, SPACE, RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW } from '../../theme/tokens';
 
 import { AddExerciseModal } from '../../components/Gym/AddExerciseModal';
@@ -47,6 +48,8 @@ import { setTabBarVisible } from '../../utils/tabBarScroll';
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 
 export const GymHomeScreen = memo(function GymHomeScreen() {
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const [selectedDate, setSelectedDate] = useState(todayStr());
@@ -1168,77 +1171,77 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   );
 });
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000000' },
+const makeStyles = (colors: any) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
   scrollContent: { paddingBottom: 95, paddingTop: 48 },
   
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: colors.surfaceRaised || colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: colors.border },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  modalTitle: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
-  moveActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: 'rgba(165,153,255,0.12)', borderWidth: 1, borderColor: 'rgba(165,153,255,0.3)', paddingVertical: 10, borderRadius: 14 },
-  moveActionText: { fontSize: 13, fontWeight: '700', color: '#a599ff' },
-  posRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#2C2C2E', marginBottom: 6 },
-  posRowActive: { backgroundColor: '#a599ff' },
-  posNum: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted, width: 30 },
-  posName: { flex: 1, fontSize: 13, color: COLORS.textPrimary, marginRight: 8 },
+  modalTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
+  moveActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, borderRadius: 14 },
+  moveActionText: { fontSize: 13, fontWeight: '700', color: colors.accentPrimary },
+  posRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.surface2 || colors.surface, marginBottom: 6 },
+  posRowActive: { backgroundColor: colors.accentPrimary },
+  posNum: { fontSize: 12, fontWeight: '700', color: colors.textMuted, width: 30 },
+  posName: { flex: 1, fontSize: 13, color: colors.textPrimary, marginRight: 8 },
 
   weekStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 4, marginBottom: 2 },
   weekDaysContainer: { flexDirection: 'row', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' },
   weekNavBtn: { paddingVertical: 12, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', opacity: 0.7 },
   dayCol: { alignItems: 'center', gap: 2 },
-  dayLetter: { fontSize: 10.5, color: COLORS.textTertiary, fontFamily: 'Inter-Medium', marginBottom: 1 },
-  dayLetterActive: { color: COLORS.textPrimary },
-  dayPill: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0)' },
-  dayPillActive: { backgroundColor: COLORS.accentPrimary, borderRadius: 18, overflow: 'hidden' },
-  dayNum: { fontSize: 13, color: COLORS.textTertiary, fontFamily: 'Inter-Regular' },
-  dayNumActive: { color: '#000000', fontWeight: '700' },
+  dayLetter: { fontSize: 10.5, color: colors.textTertiary, fontFamily: 'Inter-Medium', marginBottom: 1 },
+  dayLetterActive: { color: colors.textPrimary },
+  dayPill: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
+  dayPillActive: { backgroundColor: colors.accentPrimary, borderRadius: 18, overflow: 'hidden' },
+  dayNum: { fontSize: 13, color: colors.textTertiary, fontFamily: 'Inter-Regular' },
+  dayNumActive: { color: '#ffffff', fontWeight: '700' },
 
   muscleSection: { paddingHorizontal: 8, marginBottom: 16 },
   muscleDiagramWrapper: { alignItems: 'center', paddingVertical: 8 },
   muscleLegend: { flexDirection: 'row', gap: 12, marginTop: 12, flexWrap: 'wrap', justifyContent: 'center' },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendText: { fontSize: 10, color: COLORS.textTertiary, fontFamily: 'Inter-Regular' },
+  legendText: { fontSize: 10, color: colors.textTertiary, fontFamily: 'Inter-Regular' },
 
   workoutSection: { paddingHorizontal: 8, marginBottom: 8 },
-  startBtn: { backgroundColor: '#1C1C1E', borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  startBtnText: { color: COLORS.textPrimary, fontSize: 15, fontWeight: '700', letterSpacing: 1 },
+  startBtn: { backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  startBtnText: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', letterSpacing: 1 },
 
-  completedBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.accentGreenDim, borderRadius: 16, padding: 16 },
+  completedBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.accentGreenDim, borderRadius: 16, padding: 16 },
   completedBannerLeft: { gap: 2 },
-  completedBannerTitle: { fontSize: 15, fontWeight: '700', color: COLORS.accentGreen },
-  completedBannerSub: { fontSize: 13, color: COLORS.textMuted },
-  streakBadgeInline: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14, backgroundColor: COLORS.accentAmberDim },
-  streakBadgeInlineText: { fontSize: 12, fontWeight: '700', color: COLORS.accentAmber },
+  completedBannerTitle: { fontSize: 15, fontWeight: '700', color: colors.accentGreen },
+  completedBannerSub: { fontSize: 13, color: colors.textMuted },
+  streakBadgeInline: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14, backgroundColor: colors.accentAmberDim },
+  streakBadgeInlineText: { fontSize: 12, fontWeight: '700', color: colors.accentAmber },
   
   readinessBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
 
-  activeBanner: { backgroundColor: '#1a140b', borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: '#4d3b20' },
+  activeBanner: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: colors.border },
   activeBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   activeIndicator: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#eab308' },
   activeBannerTitle: { fontSize: 10, fontWeight: '700', color: '#eab308', letterSpacing: 1 },
-  activeBannerResume: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
+  activeBannerResume: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
 
   section: { paddingHorizontal: 8, marginBottom: 12 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: COLORS.textTertiary, marginBottom: 12, marginLeft: 4, letterSpacing: 2 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.textTertiary, marginBottom: 12, marginLeft: 4, letterSpacing: 2 },
   
-  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1C1C1E', padding: 16, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  cardioSquare: { width: 20, height: 20, borderRadius: 4, backgroundColor: '#2C2C2E', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  checkboxCircle: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  checkboxCircleDone: { backgroundColor: COLORS.accentGreen, borderColor: COLORS.accentGreen },
+  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 16, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
+  cardioSquare: { width: 20, height: 20, borderRadius: 4, backgroundColor: colors.surface2 || colors.surface, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  checkboxCircle: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  checkboxCircleDone: { backgroundColor: colors.accentGreen, borderColor: colors.accentGreen },
   rowTextCol: { flex: 1, gap: 2 },
-  rowTitle: { fontSize: 14, fontWeight: '600', color: COLORS.textPrimary },
-  rowSubtitle: { fontSize: 12, color: COLORS.textMuted },
-  textStrikethrough: { textDecorationLine: 'line-through', color: COLORS.textTertiary },
+  rowTitle: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
+  rowSubtitle: { fontSize: 12, color: colors.textMuted },
+  textStrikethrough: { textDecorationLine: 'line-through', color: colors.textTertiary },
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionBtn: { padding: 8, marginHorizontal: -4 },
 
-  fabAi: { position: 'absolute', bottom: 110, right: 24, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8 },
-  fabGradient: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.accentPrimary },
+  fabAi: { position: 'absolute', bottom: 110, right: 24, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+  fabGradient: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentPrimary },
 
-  restTimerOverlay: { position: 'absolute', bottom: 110, alignSelf: 'center', backgroundColor: '#1C1C1E', borderWidth: 1, borderColor: 'rgba(52, 199, 89, 0.5)', borderRadius: 30, paddingVertical: 12, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, elevation: 10, zIndex: 9999 },
-  restTimerLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textTertiary, letterSpacing: 1 },
+  restTimerOverlay: { position: 'absolute', bottom: 110, alignSelf: 'center', backgroundColor: colors.surfaceRaised || colors.surface, borderWidth: 1, borderColor: 'rgba(52, 199, 89, 0.5)', borderRadius: 30, paddingVertical: 12, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, elevation: 10, zIndex: 9999 },
+  restTimerLabel: { fontSize: 12, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1 },
   restTimerText: { fontFamily: 'Courier', fontSize: 24, color: '#34C759', fontWeight: 'bold' },
   restTimerClose: { marginLeft: 8 },
   routineHeaderBar: {
@@ -1248,22 +1251,22 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginBottom: 12,
-    backgroundColor: '#1C1C1E',
+    backgroundColor: colors.surface,
     marginHorizontal: 8,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: colors.border,
   },
   routineInfoCol: { flex: 1, paddingRight: 8 },
-  routineLabelText: { fontSize: 10, fontWeight: '700', color: COLORS.textTertiary, letterSpacing: 1.5, marginBottom: 2 },
-  routineNameText: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
+  routineLabelText: { fontSize: 10, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1.5, marginBottom: 2 },
+  routineNameText: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
   smallSwapIconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(165,153,255,0.1)',
+    backgroundColor: colors.accentDim,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.25)',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1290,7 +1293,7 @@ const s = StyleSheet.create({
     fontSize: 21,
     fontWeight: '700',
     fontFamily: 'Inter-Bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   headerActions: {
     flexDirection: 'row',
@@ -1313,17 +1316,17 @@ const s = StyleSheet.create({
   morphBtnPill: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.09)',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.14)',
+    borderColor: colors.border,
   },
   morphBtnPillAccent: {
-    backgroundColor: 'rgba(165,153,255,0.16)',
-    borderColor: 'rgba(165,153,255,0.32)',
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accentPrimary,
   },
   headerBtnText: {
     fontSize: 8.5,
-    color: COLORS.textTertiary,
+    color: colors.textTertiary,
     fontFamily: 'Inter-Medium',
     marginTop: 1,
     textAlign: 'center',

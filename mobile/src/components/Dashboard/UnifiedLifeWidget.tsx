@@ -576,7 +576,7 @@ const makeStyles = (colors: any) =>
     xpTrack: {
       height: 6,
       borderRadius: 3,
-      backgroundColor: 'rgba(255,255,255,0.08)',
+      backgroundColor: colors.border,
       overflow: 'hidden',
     },
     xpFill: {
@@ -586,7 +586,7 @@ const makeStyles = (colors: any) =>
     captureBar: {
       marginTop: SPACE.md,
       marginBottom: SPACE.xs,
-      backgroundColor: '#161618',
+      backgroundColor: colors.surface2 || colors.surface,
       borderRadius: RADIUS.xl,
       borderWidth: 1,
       borderColor: colors.border,

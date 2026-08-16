@@ -181,7 +181,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     overflow: 'hidden' 
   },
   dayPillActive: { 
-    backgroundColor: '#a599ff', 
+    backgroundColor: colors.accentPrimary, 
   },
   dayNum: { 
     fontSize: 18, 
@@ -189,7 +189,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: FONT_FAMILY.body 
   },
   dayNumActive: { 
-    color: '#000', 
+    color: '#ffffff', 
     fontFamily: FONT_FAMILY.bold 
   },
 
@@ -258,13 +258,13 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#a599ff', // fixed to purple
+    backgroundColor: colors.accentPrimary,
     marginLeft: 0,
   },
   currentTimeLine: {
     flex: 1,
     height: 2,
-    backgroundColor: '#a599ff', // fixed to purple
+    backgroundColor: colors.accentPrimary,
   },
 
   /* 4. FAB */
@@ -275,12 +275,12 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     width: 48, // matched with Sara button
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#a599ff', // standard purple
+    backgroundColor: colors.accentPrimary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#a599ff',
+    shadowColor: colors.accentPrimary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+    shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 8,
   },
@@ -288,19 +288,21 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   /* Modal */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   modalContent: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceRaised || colors.surface,
     width: '100%',
     borderRadius: 8,
     padding: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
+    shadowOpacity: 0.2,
     shadowRadius: 10,
     elevation: 10,
   },
@@ -332,7 +334,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   weekHourText: { fontSize: 10, color: colors.textMuted, position: 'absolute', top: -7, left: 4 },
   weekGrid: { flex: 1, flexDirection: 'row' },
   weekCol: { flex: 1, borderLeftWidth: 1, borderLeftColor: colors.border, position: 'relative' },
-  weekColToday: { backgroundColor: 'rgba(165,153,255,0.04)' },
+  weekColToday: { backgroundColor: colors.accentDim },
   weekHourLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: colors.border },
   weekCurrentTimeTick: { position: 'absolute', left: 0, width: 12, height: 2, backgroundColor: colors.accentPrimary, zIndex: 10 },
   weekEventBlock: { position: 'absolute', left: 1, right: 1, borderRadius: 4, padding: 2, borderLeftWidth: 2, overflow: 'hidden' },
@@ -342,7 +344,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   monthViewContainer: { flex: 1 },
   monthEventListContainer: { flex: 1, paddingHorizontal: 8, paddingTop: 16 },
   monthEventListHeader: { fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 12, letterSpacing: 1 },
-  monthEventRow: { backgroundColor: '#1c1c1e', padding: 12, borderRadius: 12, marginBottom: 8, borderLeftWidth: 3 },
+  monthEventRow: { backgroundColor: colors.surface, padding: 12, borderRadius: 12, marginBottom: 8, borderLeftWidth: 3, borderWidth: 1, borderColor: colors.border },
   monthEventTitle: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
   monthEventTime: { fontSize: 12, color: colors.textSecondary },
   emptyText: { color: colors.textMuted, fontSize: 14, marginTop: 16, textAlign: 'center' },

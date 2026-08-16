@@ -1082,20 +1082,20 @@ const makeStyles = (colors: any) => StyleSheet.create({
       root: { flex: 1, backgroundColor: colors.background },
       vaultHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, paddingBottom: SPACE.md },
       vaultHeaderBtn: { padding: SPACE.sm },
-      vaultHeaderTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#fff' },
-      vaultHeaderMenuBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1c1c1e', alignItems: 'center', justifyContent: 'center' },
+      vaultHeaderTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
+      vaultHeaderMenuBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
 
-      storageCard: { backgroundColor: '#141416', marginHorizontal: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.lg, marginBottom: SPACE.md },
+      storageCard: { backgroundColor: colors.surface, marginHorizontal: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.lg, marginBottom: SPACE.md, borderWidth: 1, borderColor: colors.border },
       storageCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 },
-      storageCardText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#fff' },
-      storageCardSubtext: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: '#636366' },
-      storageTrack: { height: 4, backgroundColor: '#2c2c2e', borderRadius: 2, overflow: 'hidden' },
-      storageFill: { height: '100%', backgroundColor: '#a599ff', borderRadius: 2 },
+      storageCardText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
+      storageCardSubtext: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textTertiary },
+      storageTrack: { height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' },
+      storageFill: { height: '100%', backgroundColor: colors.accentPrimary, borderRadius: 2 },
 
-      filterPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: '#1c1c1e' },
-      filterPillActive: { backgroundColor: '#a599ff' },
-      filterPillText: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: '#8e8e93' },
-      filterPillTextActive: { color: '#000', fontFamily: FONT_FAMILY.bold },
+      filterPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: colors.surface2 || colors.surface, borderWidth: 1, borderColor: colors.border },
+      filterPillActive: { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+      filterPillText: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted },
+      filterPillTextActive: { color: '#ffffff', fontFamily: FONT_FAMILY.bold },
 
       list: { padding: SPACE.sm, paddingBottom: 100 },
       listItem: {
@@ -1110,22 +1110,22 @@ const makeStyles = (colors: any) => StyleSheet.create({
       emptyState: { alignItems: 'center', marginTop: 100, gap: SPACE.md },
       emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted },
 
-      actionSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-      actionSheet: { backgroundColor: '#141416', borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg, paddingBottom: SPACE.xl, paddingHorizontal: SPACE.md },
-      actionSheetHandle: { width: 40, height: 4, backgroundColor: '#2c2c2e', borderRadius: 2, alignSelf: 'center', marginVertical: SPACE.md },
+      actionSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+      actionSheet: { backgroundColor: colors.surfaceRaised || colors.surface, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg, paddingBottom: SPACE.xl, paddingHorizontal: SPACE.md, borderWidth: 1, borderColor: colors.border },
+      actionSheetHandle: { width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginVertical: SPACE.md },
       actionSheetItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.md, gap: SPACE.md },
       actionSheetIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-      actionSheetText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#fff' },
+      actionSheetText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
 
       fab: {
         position: 'absolute', bottom: 100, right: SPACE.xl,
-        width: 48, height: 48, borderRadius: 24, backgroundColor: '#a599ff',
+        width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accentPrimary,
         alignItems: 'center', justifyContent: 'center', zIndex: 20,
         ...SHADOW.md
       },
 
-      modalBg: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.6)', padding: SPACE.xl },
-      modalSheet: { backgroundColor: colors.surface, borderRadius: RADIUS.lg, padding: SPACE.xl, gap: SPACE.md },
+      modalBg: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: SPACE.xl },
+      modalSheet: { backgroundColor: colors.surface, borderRadius: RADIUS.lg, padding: SPACE.xl, gap: SPACE.md, borderWidth: 1, borderColor: colors.border },
       modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
       input: { backgroundColor: colors.surface2, borderRadius: RADIUS.md, padding: SPACE.md, fontFamily: FONT_FAMILY.body, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border },
       btn: { flex: 1, padding: SPACE.md, borderRadius: RADIUS.md, alignItems: 'center' },
@@ -1150,9 +1150,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
       tabTextActive: { color: colors.textPrimary },
       editorToolbar: { flexDirection: 'row', padding: SPACE.md, borderBottomWidth: 1, borderColor: colors.border, alignItems: 'center', gap: SPACE.md },
       editorTitleInput: { flex: 1, fontFamily: FONT_FAMILY.title, fontSize: 24, color: colors.textPrimary },
-      aiToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, borderWidth: 1, borderColor: '#C490FF' },
-      aiToggleBtnActive: { backgroundColor: '#C490FF' },
-      aiToggleText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: '#C490FF' },
+      aiToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, borderWidth: 1, borderColor: colors.accentPrimary },
+      aiToggleBtnActive: { backgroundColor: colors.accentPrimary },
+      aiToggleText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.accentPrimary },
       editorTextArea: { flex: 1, padding: SPACE.xl, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: colors.textPrimary },
       markdownPreview: { flex: 1, padding: SPACE.xl },
 
@@ -1163,23 +1163,23 @@ const makeStyles = (colors: any) => StyleSheet.create({
       aiChatArea: { flex: 1 },
       aiMsgSystem: { backgroundColor: colors.surface2, padding: SPACE.md, borderRadius: RADIUS.md, marginBottom: SPACE.sm },
       aiMsgTextSystem: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted },
-      aiQuickBtn: { backgroundColor: 'rgba(196,144,255,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: 'rgba(196,144,255,0.3)' },
-      aiQuickBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: '#C490FF' },
+      aiQuickBtn: { backgroundColor: colors.accentDim, paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: colors.accentPrimary },
+      aiQuickBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.accentPrimary },
       aiInputArea: { flexDirection: 'row', padding: SPACE.md, borderTopWidth: 1, borderColor: colors.border, gap: SPACE.sm },
       aiInput: { flex: 1, backgroundColor: colors.background, borderRadius: RADIUS.full, paddingHorizontal: SPACE.md, paddingVertical: 8, color: colors.textPrimary, fontFamily: FONT_FAMILY.body },
-      aiSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#C490FF', alignItems: 'center', justifyContent: 'center' },
+      aiSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accentPrimary, alignItems: 'center', justifyContent: 'center' },
 
       // Viewer
-      viewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)' },
-      detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACE.md, backgroundColor: '#000' },
+      viewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
+      detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACE.md, backgroundColor: colors.background },
       detailBack: { padding: SPACE.sm },
-      detailHeaderTitle: { flex: 1, textAlign: 'center', fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: '#fff' },
-      webviewLoader: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }
+      detailHeaderTitle: { flex: 1, textAlign: 'center', fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary },
+      webviewLoader: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }
     });
 
 
 const makeMarkdownStyles = (colors: any) => ({
-  // Core text — always dark on dark background
+  // Core text
   body:             { color: colors.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: 16, lineHeight: 26, backgroundColor: 'transparent' },
   paragraph:        { color: colors.textPrimary, marginBottom: 12, backgroundColor: 'transparent' },
 
@@ -1188,15 +1188,14 @@ const makeMarkdownStyles = (colors: any) => ({
   heading2:         { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 20, marginTop: 18, marginBottom: 8, backgroundColor: 'transparent' },
   heading3:         { color: colors.textSecondary, fontFamily: FONT_FAMILY.bold, fontSize: 17, marginTop: 14, marginBottom: 6, backgroundColor: 'transparent' },
 
-  // Code — CRITICAL: override the library's default white background
-  code_inline:      { backgroundColor: 'rgba(165,153,255,0.15)', fontFamily: 'monospace', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, color: '#FF9F0A', fontSize: 14 },
-  code_block:       { backgroundColor: '#1a1a2e', fontFamily: 'monospace', padding: 16, borderRadius: 10, color: '#e2e2e2', fontSize: 13, lineHeight: 20, marginVertical: 10 },
-  fence:            { backgroundColor: '#1a1a2e', fontFamily: 'monospace', padding: 16, borderRadius: 10, color: '#e2e2e2', fontSize: 13, lineHeight: 20, marginVertical: 10 },
-  // The library wraps fence/code_block in a <pre>-like container — override it too
-  pre:              { backgroundColor: '#1a1a2e', borderRadius: 10, marginVertical: 10, padding: 0 },
+  // Code
+  code_inline:      { backgroundColor: colors.accentDim, fontFamily: 'monospace', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, color: colors.accentAmber, fontSize: 14 },
+  code_block:       { backgroundColor: colors.surface2 || colors.surface, fontFamily: 'monospace', padding: 16, borderRadius: 10, color: colors.textPrimary, fontSize: 13, lineHeight: 20, marginVertical: 10 },
+  fence:            { backgroundColor: colors.surface2 || colors.surface, fontFamily: 'monospace', padding: 16, borderRadius: 10, color: colors.textPrimary, fontSize: 13, lineHeight: 20, marginVertical: 10 },
+  pre:              { backgroundColor: colors.surface2 || colors.surface, borderRadius: 10, marginVertical: 10, padding: 0 },
 
   // Blockquote
-  blockquote:       { backgroundColor: 'rgba(165,153,255,0.08)', borderLeftWidth: 3, borderLeftColor: colors.accentPrimary, paddingLeft: 14, paddingVertical: 8, marginVertical: 10, borderRadius: 4 },
+  blockquote:       { backgroundColor: colors.accentDim, borderLeftWidth: 3, borderLeftColor: colors.accentPrimary, paddingLeft: 14, paddingVertical: 8, marginVertical: 10, borderRadius: 4 },
   blockquote_text:  { color: colors.textSecondary, fontStyle: 'italic' as const, fontFamily: FONT_FAMILY.body },
 
   // Lists
