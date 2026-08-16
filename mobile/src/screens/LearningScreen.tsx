@@ -15,7 +15,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useMobileData, LearningTopic, LearningSubTask } from '../contexts/MobileDataContext';
+import type { LearningTopic, LearningSubTask } from '../contexts/MobileDataContext';
+import { useCreativeData } from '../contexts/domains/CreativeContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { FONT_FAMILY, SHADOW, RADIUS } from '../theme/tokens';
 import { useTheme } from '../contexts/ThemeContext';
 import { collection, updateDoc, doc, writeBatch, setDoc } from 'firebase/firestore';
@@ -131,7 +133,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 export default function LearningScreen() {
-  const { learningTopics, user } = useMobileData();
+  const { learningTopics } = useCreativeData();
+  const { user } = useCoreData();
   const navigation = useNavigation();
   const { colors } = useTheme();
 
@@ -669,29 +672,31 @@ export default function LearningScreen() {
         />
       )}
 
-      <LearningModals
-        user={user}
-        learningTopics={learningTopics}
-        topicModalVisible={topicModalVisible}
-        setTopicModalVisible={setTopicModalVisible}
-        topicTitle={topicTitle}
-        setTopicTitle={setTopicTitle}
-        subtaskModalVisible={subtaskModalVisible}
-        setSubtaskModalVisible={setSubtaskModalVisible}
-        activeTopicId={activeTopicId}
-        subTitle={subTitle}
-        setSubTitle={setSubTitle}
-        subUrl={subUrl}
-        setSubUrl={setSubUrl}
-        roadmapModalVisible={roadmapModalVisible}
-        setRoadmapModalVisible={setRoadmapModalVisible}
-        playlistUrl={playlistUrl}
-        setPlaylistUrl={setPlaylistUrl}
-        optionsModalVisible={optionsModalVisible}
-        setOptionsModalVisible={setOptionsModalVisible}
-        activeOptionsData={activeOptionsData}
-        setActiveOptionsData={setActiveOptionsData}
-      />
+      {(topicModalVisible || subtaskModalVisible || roadmapModalVisible || optionsModalVisible) && (
+        <LearningModals
+          user={user}
+          learningTopics={learningTopics}
+          topicModalVisible={topicModalVisible}
+          setTopicModalVisible={setTopicModalVisible}
+          topicTitle={topicTitle}
+          setTopicTitle={setTopicTitle}
+          subtaskModalVisible={subtaskModalVisible}
+          setSubtaskModalVisible={setSubtaskModalVisible}
+          activeTopicId={activeTopicId}
+          subTitle={subTitle}
+          setSubTitle={setSubTitle}
+          subUrl={subUrl}
+          setSubUrl={setSubUrl}
+          roadmapModalVisible={roadmapModalVisible}
+          setRoadmapModalVisible={setRoadmapModalVisible}
+          playlistUrl={playlistUrl}
+          setPlaylistUrl={setPlaylistUrl}
+          optionsModalVisible={optionsModalVisible}
+          setOptionsModalVisible={setOptionsModalVisible}
+          activeOptionsData={activeOptionsData}
+          setActiveOptionsData={setActiveOptionsData}
+        />
+      )}
     </SafeAreaView>
   );
 }

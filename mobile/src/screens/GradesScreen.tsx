@@ -2,7 +2,9 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Dimensions, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useMobileData, Semester, SemesterSubject } from '../contexts/MobileDataContext';
+import type { Semester, SemesterSubject } from '../contexts/MobileDataContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -20,7 +22,8 @@ const GRADE_MAP: Record<string, number> = {
 export default function GradesScreen() {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
-  const { semesters, semesterSubjects, user } = useMobileData();
+  const { semesters, semesterSubjects } = useAcademicData();
+  const { user } = useCoreData();
 
   const [semModalVisible, setSemModalVisible] = useState(false);
   const [subModalVisible, setSubModalVisible] = useState(false);
@@ -454,125 +457,131 @@ export default function GradesScreen() {
       />
 
       {/* Semester Modal */}
-      <Modal visible={semModalVisible} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>New Semester</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="E.g., Fall 2026"
-              placeholderTextColor="#8e8e93"
-              value={semName}
-              onChangeText={setSemName}
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setSemModalVisible(false)}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleAddSem} disabled={saving}>
-                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save'}</Text>
-              </TouchableOpacity>
+      {semModalVisible && (
+        <Modal visible={semModalVisible} transparent animationType="fade">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>New Semester</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="E.g., Fall 2026"
+                placeholderTextColor="#8e8e93"
+                value={semName}
+                onChangeText={setSemName}
+                autoFocus
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setSemModalVisible(false)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={handleAddSem} disabled={saving}>
+                  <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
 
       {/* Subject Modal */}
-      <Modal visible={subModalVisible} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Add Subject</Text>
-            
-            <Text style={styles.inputLabel}>Subject Name</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="E.g., Physics 101"
-              placeholderTextColor="#8e8e93"
-              value={subName}
-              onChangeText={setSubName}
-            />
+      {subModalVisible && (
+        <Modal visible={subModalVisible} transparent animationType="fade">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Add Subject</Text>
+              
+              <Text style={styles.inputLabel}>Subject Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="E.g., Physics 101"
+                placeholderTextColor="#8e8e93"
+                value={subName}
+                onChangeText={setSubName}
+              />
 
-            <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Credits</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="4"
-                  placeholderTextColor="#8e8e93"
-                  value={subCredits}
-                  onChangeText={setSubCredits}
-                  keyboardType="number-pad"
-                />
+              <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Credits</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="4"
+                    placeholderTextColor="#8e8e93"
+                    value={subCredits}
+                    onChangeText={setSubCredits}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Grade</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="A+"
+                    placeholderTextColor="#8e8e93"
+                    value={subGrade}
+                    onChangeText={setSubGrade}
+                    autoCapitalize="characters"
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Grade</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="A+"
-                  placeholderTextColor="#8e8e93"
-                  value={subGrade}
-                  onChangeText={setSubGrade}
-                  autoCapitalize="characters"
-                />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setSubModalVisible(false)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={handleAddSub} disabled={saving}>
+                  <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Add'}</Text>
+                </TouchableOpacity>
               </View>
             </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setSubModalVisible(false)}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleAddSub} disabled={saving}>
-                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Add'}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
 
       {/* Direct SGPA Modal */}
-      <Modal visible={directModalVisible} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Direct SGPA Mode</Text>
-            <Text style={{ color: '#8e8e93', fontSize: 13, fontFamily: FONT_FAMILY.body, marginBottom: 20 }}>Skip adding subjects individually. Just enter the final SGPA and total credits.</Text>
-            
-            <View style={{ flexDirection: 'row', gap: 16 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Final SGPA</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="8.5"
-                  placeholderTextColor="#8e8e93"
-                  value={directSGPA}
-                  onChangeText={setDirectSGPA}
-                  keyboardType="decimal-pad"
-                />
+      {directModalVisible && (
+        <Modal visible={directModalVisible} transparent animationType="fade">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Direct SGPA Mode</Text>
+              <Text style={{ color: '#8e8e93', fontSize: 13, fontFamily: FONT_FAMILY.body, marginBottom: 20 }}>Skip adding subjects individually. Just enter the final SGPA and total credits.</Text>
+              
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Final SGPA</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="8.5"
+                    placeholderTextColor="#8e8e93"
+                    value={directSGPA}
+                    onChangeText={setDirectSGPA}
+                    keyboardType="decimal-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>Total Credits</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="24"
+                    placeholderTextColor="#8e8e93"
+                    value={directCredits}
+                    onChangeText={setDirectCredits}
+                    keyboardType="number-pad"
+                  />
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Total Credits</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="24"
-                  placeholderTextColor="#8e8e93"
-                  value={directCredits}
-                  onChangeText={setDirectCredits}
-                  keyboardType="number-pad"
-                />
-              </View>
-            </View>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setDirectModalVisible(false)}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDirect} disabled={saving}>
-                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save SGPA'}</Text>
-              </TouchableOpacity>
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => setDirectModalVisible(false)}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.saveBtn} onPress={handleSaveDirect} disabled={saving}>
+                  <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save SGPA'}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
 
     </SafeAreaView>
   );

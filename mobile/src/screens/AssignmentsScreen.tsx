@@ -224,73 +224,75 @@ export default function AssignmentsScreen() {
       </AnimatedPressable>
 
       {/* Add/Edit Modal */}
-      <BottomSheet visible={modalVisible} onClose={() => setModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{editingId ? 'Edit Assignment' : 'New Assignment'}</Text>
-              <AnimatedPressable onPress={() => setModalVisible(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={24} color={colors.textPrimary} />
+      {modalVisible && (
+        <BottomSheet visible={modalVisible} onClose={() => setModalVisible(false)}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{editingId ? 'Edit Assignment' : 'New Assignment'}</Text>
+                <AnimatedPressable onPress={() => setModalVisible(false)} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={24} color={colors.textPrimary} />
+                </AnimatedPressable>
+              </View>
+
+              <Text style={styles.inputLabel}>Title</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="E.g., Math Homework"
+                placeholderTextColor={colors.textMuted}
+                value={title}
+                onChangeText={setTitle}
+              />
+
+              <Text style={styles.inputLabel}>Subject</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="E.g., Mathematics"
+                placeholderTextColor={colors.textMuted}
+                value={subjectName}
+                onChangeText={setSubjectName}
+              />
+
+              <Text style={styles.inputLabel}>Due Date</Text>
+              <AnimatedPressable style={styles.dateBtn} onPress={() => setShowPicker(true)}>
+                <Ionicons name="calendar-outline" size={20} color={colors.accentPrimary} />
+                <Text style={styles.dateBtnText}>{dueDate.toISOString().split('T')[0]}</Text>
+              </AnimatedPressable>
+
+              {showPicker && (
+                <DateTimePicker
+                  value={dueDate}
+                  mode="date"
+                  display="default"
+                  onChange={(event, selectedDate) => {
+                    setShowPicker(Platform.OS === 'ios');
+                    if (selectedDate) setDueDate(selectedDate);
+                  }}
+                />
+              )}
+
+              <Text style={styles.inputLabel}>Status</Text>
+              <View style={styles.statusRow}>
+                {(Object.keys(STATUS_CONFIG) as Array<keyof typeof STATUS_CONFIG>).map(k => (
+                  <AnimatedPressable 
+                    key={k} 
+                    style={[styles.statusChip, status === k && { backgroundColor: STATUS_CONFIG[k].color, borderColor: STATUS_CONFIG[k].color }]}
+                    onPress={() => setStatus(k as any)}
+                  >
+                    <Text style={[styles.statusChipText, status === k && { color: colors.background }]}>
+                      {STATUS_CONFIG[k].label}
+                    </Text>
+                  </AnimatedPressable>
+                ))}
+              </View>
+
+              <AnimatedPressable style={[styles.saveBtn, saving && { opacity: 0.5 }]} onPress={handleSave} disabled={saving}>
+                <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save'}</Text>
               </AnimatedPressable>
             </View>
-
-            <Text style={styles.inputLabel}>Title</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="E.g., Math Homework"
-              placeholderTextColor={colors.textMuted}
-              value={title}
-              onChangeText={setTitle}
-            />
-
-            <Text style={styles.inputLabel}>Subject</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="E.g., Mathematics"
-              placeholderTextColor={colors.textMuted}
-              value={subjectName}
-              onChangeText={setSubjectName}
-            />
-
-            <Text style={styles.inputLabel}>Due Date</Text>
-            <AnimatedPressable style={styles.dateBtn} onPress={() => setShowPicker(true)}>
-              <Ionicons name="calendar-outline" size={20} color={colors.accentPrimary} />
-              <Text style={styles.dateBtnText}>{dueDate.toISOString().split('T')[0]}</Text>
-            </AnimatedPressable>
-
-            {showPicker && (
-              <DateTimePicker
-                value={dueDate}
-                mode="date"
-                display="default"
-                onChange={(event, selectedDate) => {
-                  setShowPicker(Platform.OS === 'ios');
-                  if (selectedDate) setDueDate(selectedDate);
-                }}
-              />
-            )}
-
-            <Text style={styles.inputLabel}>Status</Text>
-            <View style={styles.statusRow}>
-              {(Object.keys(STATUS_CONFIG) as Array<keyof typeof STATUS_CONFIG>).map(k => (
-                <AnimatedPressable 
-                  key={k} 
-                  style={[styles.statusChip, status === k && { backgroundColor: STATUS_CONFIG[k].color, borderColor: STATUS_CONFIG[k].color }]}
-                  onPress={() => setStatus(k as any)}
-                >
-                  <Text style={[styles.statusChipText, status === k && { color: colors.background }]}>
-                    {STATUS_CONFIG[k].label}
-                  </Text>
-                </AnimatedPressable>
-              ))}
-            </View>
-
-            <AnimatedPressable style={[styles.saveBtn, saving && { opacity: 0.5 }]} onPress={handleSave} disabled={saving}>
-              <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save'}</Text>
-            </AnimatedPressable>
-          </View>
-        </KeyboardAvoidingView>
-      </BottomSheet>
+          </KeyboardAvoidingView>
+        </BottomSheet>
+      )}
     </SafeAreaView>
   );
 }
