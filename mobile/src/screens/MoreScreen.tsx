@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { triggerLayoutAnimation } from '../theme/animations';
 import { auth } from '../services/firebase';
+import { performSignOut } from '../contexts/domains/CoreDataContext';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { BlurView } from 'expo-blur';
 import { useTheme } from "../contexts/ThemeContext";
@@ -165,7 +166,7 @@ export default function MoreScreen() {
   }, [isEditing, selected, navigateWithClose]);
 
   const handleLogout = useCallback(() => {
-    auth.signOut().catch(console.warn);
+    performSignOut().catch(console.warn);
   }, []);
 
   return (

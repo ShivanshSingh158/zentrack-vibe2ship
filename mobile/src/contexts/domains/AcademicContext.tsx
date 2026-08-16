@@ -124,7 +124,6 @@ export function AcademicProvider({
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      setAttendance([]); setAttendanceLogs([]); setAssignments([]); setSemesters([]); setSemesterSubjects([]);
     }
   }, [user]);
 

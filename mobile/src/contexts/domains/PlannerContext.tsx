@@ -105,7 +105,6 @@ export function PlannerProvider({
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      setCustomEvents([]); setGoals([]); setWeeklyReviews([]);
     }
   }, [user]);
 

@@ -15,6 +15,7 @@ import { COLORS } from '../theme/tokens';
 import { useTheme } from '../contexts/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { signOut } from 'firebase/auth';
+import { performSignOut } from '../contexts/domains/CoreDataContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
@@ -115,7 +116,7 @@ export default function SettingsScreen() {
   const handleSignOut = async () => {
     setSignOutModal(false);
     await AsyncStorage.removeItem('google_workspace_token');
-    await signOut(auth);
+    await performSignOut();
   };
 
   // Sara proactive toggle — now actually reads from a context / global state

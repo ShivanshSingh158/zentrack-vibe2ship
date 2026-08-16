@@ -158,11 +158,6 @@ export function WellnessProvider({
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      setGymLogs([]);
-      setUserGymPlan(null);
-      setWaterLogs([]);
-      setSleepLogs([]);
-      setWeightLogs([]);
     }
     return () => {
       unsubsRef.current.forEach(u => u());

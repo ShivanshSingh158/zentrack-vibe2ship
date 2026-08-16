@@ -104,7 +104,6 @@ export function CreativeProvider({
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
-      setStorageNodes([]); setLearningTopics([]); setJobs([]); setContentLogs([]);
     }
   }, [user]);
 

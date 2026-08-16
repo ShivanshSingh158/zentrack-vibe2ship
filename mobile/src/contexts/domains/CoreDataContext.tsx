@@ -156,14 +156,12 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Auth state — clears all data on logout
+  // Auth state — updates user reference. NEVER wipe offline cache on passive auth changes (preserves offline mode).
   useEffect(() => {
     return onAuthStateChanged(auth, u => {
       setUser(u);
       if (!u) {
-        setTasks([]); setHabits([]); setHabitLogs([]); setFirestoreReady(false);
-        clearCoreCache();        // Clear core cache on logout
-        clearAllDomainCaches(); // Clear ALL domain caches — Wellness, Academic, Planner, Creative
+        setFirestoreReady(false);
       }
     });
   }, []);
@@ -292,4 +290,18 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     </CoreDataContext.Provider>
   );
 }
+
+/**
+ * Explicit user sign-out handler: signs out of Firebase and clears local disk caches.
+ */
+export async function performSignOut() {
+  try {
+    await auth.signOut();
+    await clearCoreCache();
+    await clearAllDomainCaches();
+  } catch (err) {
+    console.warn('[Auth] Sign out error:', err);
+  }
+}
+
 
