@@ -55,8 +55,9 @@ interface LectureMindMapProps {
 const CANVAS_SIZE = 1600;
 const CX = CANVAS_SIZE / 2;
 const CY = CANVAS_SIZE / 2;
-const BRANCH_RADIUS = 270;
-const LEAF_RADIUS = 520;
+const BRANCH_RADIUS = 285;
+const LEAF_RADIUS_INNER = 475;
+const LEAF_RADIUS_OUTER = 595;
 
 const BRANCH_COLORS = [
   '#a599ff', // Lavender Purple
@@ -157,11 +158,12 @@ function generateMindMapHtml(mapData: MindMapData, lectureTitle: string): string
     const bPos = polarXY(BRANCH_RADIUS, bAngle);
     const color = BRANCH_COLORS[bi % BRANCH_COLORS.length];
     const leafCount = Math.min(branch.children.length, 4);
-    const angleSpread = 44;
+    const angleSpread = leafCount <= 2 ? 30 : leafCount === 3 ? 42 : 50;
     const leaves = branch.children.slice(0, 4).map((child, ci) => {
       const offset = leafCount > 1 ? (ci - (leafCount - 1) / 2) * (angleSpread / (leafCount - 1)) : 0;
       const lAngle = bAngle + offset;
-      return { label: child, pos: polarXY(LEAF_RADIUS, lAngle) };
+      const leafRadius = leafCount > 2 ? (ci % 2 === 0 ? LEAF_RADIUS_OUTER : LEAF_RADIUS_INNER) : 530;
+      return { label: child, pos: polarXY(leafRadius, lAngle) };
     });
     return { branch, bPos, color, leaves, bAngle, bi };
   });
@@ -719,11 +721,12 @@ export default function LectureMindMap({
       const color = BRANCH_COLORS[bi % BRANCH_COLORS.length];
 
       const leafCount = Math.min(branch.children.length, 4);
-      const angleSpread = 44; // fan spread for leaf children
+      const angleSpread = leafCount <= 2 ? 30 : leafCount === 3 ? 42 : 50;
       const leaves = branch.children.slice(0, 4).map((child, ci) => {
         const offset = leafCount > 1 ? (ci - (leafCount - 1) / 2) * (angleSpread / (leafCount - 1)) : 0;
         const lAngle = bAngle + offset;
-        return { label: child, pos: polarXY(LEAF_RADIUS, lAngle) };
+        const leafRadius = leafCount > 2 ? (ci % 2 === 0 ? LEAF_RADIUS_OUTER : LEAF_RADIUS_INNER) : 530;
+        return { label: child, pos: polarXY(leafRadius, lAngle) };
       });
 
       return { branch, bPos, color, leaves, bAngle };
