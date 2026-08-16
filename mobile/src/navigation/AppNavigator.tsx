@@ -419,24 +419,10 @@ export default function AppNavigator() {
           await AsyncStorage.setItem('@zentrack_last_update_check', String(Date.now()));
           const update = await Updates.checkForUpdateAsync();
           if (update.isAvailable) {
-            Alert.alert(
-              'Update Available',
-              'A new version of ZenTrack is ready. Apply now?',
-              [
-                { text: 'Later', style: 'cancel' },
-                {
-                  text: 'Update',
-                  onPress: async () => {
-                    try {
-                      await Updates.fetchUpdateAsync();
-                      await Updates.reloadAsync();
-                    } catch {
-                      Alert.alert('Error', 'Could not apply update. Try again later.');
-                    }
-                  },
-                },
-              ]
-            );
+            // Silently fetch the update bundle in background.
+            // When user opens the app next time, the new version launches automatically in 0ms!
+            await Updates.fetchUpdateAsync();
+            console.log('[Updates] New bundle silently downloaded. Will apply automatically on next launch.');
           }
         } catch { /* offline -- skip silently */ }
       })();

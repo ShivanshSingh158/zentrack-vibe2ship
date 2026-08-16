@@ -23,7 +23,6 @@ import { setupNetworkListener } from './src/services/offlineSync';
 import { PortalProvider } from './src/contexts/PortalContext';
 import { registerBackgroundProactiveAgent } from './src/services/backgroundProactiveAgent';
 import { registerWeeklyReviewTask } from './src/services/backgroundTasks';
-import { UpdateBanner } from './src/components/UpdateBanner';
 import { ThemeProvider } from './src/contexts/ThemeContext';
 import { MobileDataProvider } from './src/contexts/MobileDataContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -523,7 +522,6 @@ export default function App() {
                 <AppNavigator />
               </ErrorBoundary>
               <OfflineIndicator />
-              <UpdateBanner />
             </MobileDataProvider>
           </PortalProvider>
 
