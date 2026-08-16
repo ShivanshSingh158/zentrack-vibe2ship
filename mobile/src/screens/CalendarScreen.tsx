@@ -351,8 +351,8 @@ const handleFindFreeSlots = async () => {
       )}
 
 
-      {/* 2. DATE SELECTOR (Horizontal Paging Week Strip) */}
-      {!isMonthDropdownOpen && currentView !== 'Month' && (
+      {/* 2. DATE SELECTOR (Horizontal Paging Week Strip — only in Day view) */}
+      {!isMonthDropdownOpen && currentView === 'Day' && (
         <CalendarWeekStripPager
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
@@ -386,6 +386,7 @@ const handleFindFreeSlots = async () => {
             DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
             indicatorTop={indicatorTop} selectedDate={selectedDate} nowDateStr={todayStr}
             setSelectedDate={setSelectedDate} setCurrentView={setCurrentView}
+            markedDates={markedDates}
           />
         </View>
       )}
@@ -409,9 +410,18 @@ const handleFindFreeSlots = async () => {
       {/* Event Details Sheet */}
       {showEventModal && (
         <EventDetailSheet 
+          visible={showEventModal}
           selectedEvent={selectedEvent} 
-          setShowEventModal={setShowEventModal} 
-          navigation={navigation} 
+          selectedDate={selectedDate}
+          styles={styles}
+          colors={colors}
+          onClose={() => setShowEventModal(false)}
+          onEdit={() => {
+            setShowEventModal(false);
+            if (selectedEvent) {
+              navigation.navigate('AddEvent', { event: selectedEvent });
+            }
+          }}
         />
       )}
 
@@ -426,14 +436,14 @@ const handleFindFreeSlots = async () => {
       {/* Gym Modal */}
       {showGymModal && (
         <CalendarGymModal 
-          selectedGymLog={selectedGymLog} 
-          setShowGymModal={setShowGymModal} 
+          visible={showGymModal}
+          styles={styles}
           gymStartTimeInput={gymStartTimeInput} 
           setGymStartTimeInput={setGymStartTimeInput} 
           gymEndTimeInput={gymEndTimeInput} 
           setGymEndTimeInput={setGymEndTimeInput} 
-          handleSaveGymTime={handleSaveGymTime} 
-          colors={colors} 
+          onClose={() => setShowGymModal(false)}
+          onSave={handleSaveGymTime} 
         />
       )}
 

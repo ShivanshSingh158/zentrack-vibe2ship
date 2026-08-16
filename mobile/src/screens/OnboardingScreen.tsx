@@ -226,7 +226,7 @@ function TopBadge({ identity }: { identity?: string }) {
   const identityObj = IDENTITIES.find(i => i.id === identity);
   if (!identityObj) return null;
   return (
-    <Reanimated.View sharedTransitionTag="onboarding-identity" style={styles.topBadge}>
+    <Reanimated.View style={styles.topBadge}>
       <Text style={styles.topBadgeEmoji}>{identityObj.icon}</Text>
       <Text style={styles.topBadgeLabel}>{identityObj.label}</Text>
     </Reanimated.View>
@@ -389,7 +389,7 @@ function StepDone({ identity, saving, onFinish }: { identity?: string; saving: b
       </Text>
 
       {identityObj && (
-        <Reanimated.View sharedTransitionTag="onboarding-identity" style={styles.identityConfirmBadge}>
+        <Reanimated.View style={styles.identityConfirmBadge}>
           <Text style={styles.identityConfirmEmoji}>{identityObj.icon}</Text>
           <Text style={styles.identityConfirmLabel}>{identityObj.label} • {identityObj.sub}</Text>
         </Reanimated.View>

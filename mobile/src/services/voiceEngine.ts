@@ -373,4 +373,24 @@ export function getVADState(): { isActive: boolean; lastDbLevel: number } {
   return { isActive: _vadActive, lastDbLevel: _lastAudioLevel };
 }
 
+export async function stopAndGetBase64(): Promise<string | null> {
+  _stopVAD();
+  try {
+    if (!_recording) return null;
+    await _recording.stopAndUnloadAsync();
+    const audioUri = _recording.getURI();
+    _recording = null;
+    g.__expo_audio_recording = null;
+    if (!audioUri) return null;
+    const base64Audio = await FileSystem.readAsStringAsync(audioUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    FileSystem.deleteAsync(audioUri, { idempotent: true }).catch(() => {});
+    return base64Audio;
+  } catch (err) {
+    console.error('[Voice] stopAndGetBase64 error:', err);
+    return null;
+  }
+}
+
 

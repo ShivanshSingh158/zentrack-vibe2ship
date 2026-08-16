@@ -9,7 +9,7 @@ import { COLORS } from '../../../theme/tokens';
 
 export const gymHomeStyles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
-  scrollContent: { paddingBottom: 95 },
+  scrollContent: { paddingBottom: 95, paddingTop: 8 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
@@ -22,10 +22,57 @@ export const gymHomeStyles = StyleSheet.create({
   posNum: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted, width: 30 },
   posName: { flex: 1, fontSize: 13, color: COLORS.textPrimary, marginRight: 8 },
 
+  // ── Kept for legacy refs but header is now the floatingNav ──────────────
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 14, paddingTop: 14 },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: COLORS.textPrimary, fontFamily: 'Inter-Bold' },
+  headerTitle: { fontSize: 22, fontWeight: '700', color: COLORS.textPrimary, fontFamily: 'Inter-Bold' },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   headerBtn: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+
+  // ── Floating Glassmorphism Sticky Nav Bar ────────────────────────────────
+  floatingNav: {
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  floatingNavInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingTop: 8,
+    paddingBottom: 10,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  floatingNavActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  floatingNavBtn: {
+    alignItems: 'center',
+    gap: 3,
+    minWidth: 42,
+  },
+  floatingNavBtnCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  floatingNavBtnAccent: {
+    backgroundColor: 'rgba(165,153,255,0.12)',
+    borderColor: 'rgba(165,153,255,0.28)',
+  },
+  floatingNavBtnText: {
+    fontSize: 9.5,
+    fontFamily: 'Inter-Medium',
+    color: COLORS.textTertiary,
+    letterSpacing: 0.2,
+  },
 
   weekStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 8 },
   weekDaysContainer: { flexDirection: 'row', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' },

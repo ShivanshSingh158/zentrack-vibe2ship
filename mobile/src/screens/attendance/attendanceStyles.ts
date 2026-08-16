@@ -7,9 +7,6 @@ import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 
 export const makeStyles = (colors: any) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  header: { flexDirection: 'row', justifyContent: 'flex-end', padding: SPACE.md, gap: SPACE.sm, borderBottomWidth: 1, borderColor: colors.border },
-  headerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-  headerBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary },
 
   overviewCard: { marginHorizontal: 0, marginTop: 12, marginBottom: 12, padding: SPACE.lg, backgroundColor: 'rgba(16,185,129,0.05)', borderTopWidth: 1, borderBottomWidth: 1, borderColor: 'rgba(16,185,129,0.2)' },
   overviewTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
@@ -99,4 +96,69 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   extraActionMissedText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#ff6961' },
   extraCancelBtn: { marginTop: 16, alignItems: 'center' as const, paddingVertical: 12 },
   extraCancelText: { fontFamily: FONT_FAMILY.medium, fontSize: 14, color: '#636366' },
+
+  // ── Single Morphing Sticky Header Styles ─────────────────────────────────
+  topHeaderWrapper: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    backgroundColor: 'transparent',
+  },
+  headerInner: {
+    flexDirection: 'row' as const,
+    justifyContent: 'space-between' as const,
+    alignItems: 'center' as const,
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 4,
+    backgroundColor: 'transparent',
+  },
+  headerTitle: {
+    fontSize: 21,
+    fontWeight: '700' as const,
+    fontFamily: FONT_FAMILY.bold,
+    color: colors.textPrimary,
+  },
+  headerActions: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 2,
+  },
+  morphBtn: {
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    minWidth: 36,
+  },
+  morphBtnIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    position: 'relative' as const,
+  },
+  morphBtnPill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.09)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  morphBtnPillAccent: {
+    backgroundColor: 'rgba(165,153,255,0.16)',
+    borderColor: 'rgba(165,153,255,0.32)',
+  },
+  morphBtnPillHoliday: {
+    backgroundColor: 'rgba(251,191,36,0.14)',
+    borderColor: 'rgba(251,191,36,0.35)',
+  },
+  headerBtnText: {
+    fontSize: 8.5,
+    color: colors.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+    marginTop: 1,
+    textAlign: 'center' as const,
+  },
 });

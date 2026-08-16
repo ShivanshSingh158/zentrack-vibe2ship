@@ -446,7 +446,7 @@ export default function AnalyticsScreen() {
     const totalAtt = curAttended + curMissed;
     const attendancePct = totalAtt > 0 ? (curAttended / totalAtt) * 100 : 100;
 
-    const D = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+    const D = PERIOD_DAYS[period] || 7;
     const targetTasks = D * 3;
     const targetGym = Math.round(D * (4/7));
     const targetFocus = D * 30;
@@ -831,14 +831,14 @@ export default function AnalyticsScreen() {
                 <View style={styles.legendRow}>
                   <View style={[styles.legendDot, { backgroundColor: colors.accentGreen }]} />
                   <Text style={styles.legendText}>Attended</Text>
-                  <View style={[styles.legendDot, { backgroundColor: colors.accentRose }]} />
+                  <View style={[styles.legendDot, { backgroundColor: colors.error }]} />
                   <Text style={styles.legendText}>Missed</Text>
                 </View>
               </View>
               <StackedBarChart
                 data={attendanceBarData}
                 color1={colors.accentGreen}
-                color2={colors.accentRose}
+                color2={colors.error}
                 maxVal={maxAttBar}
                 height={CHART_H}
               />

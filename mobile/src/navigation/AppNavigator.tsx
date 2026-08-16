@@ -211,7 +211,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
         sceneStyle:  { backgroundColor: '#080510' },
         lazy:        true,
         freezeOnBlur: false,
-        animation:   'shift',
+        animation:   'fade',
       }}
       backBehavior="history"
     >
@@ -245,13 +245,11 @@ function NestedScreens() {
   return (
     <ErrorBoundary screenName="Nested Screens">
       <Stack.Navigator
-        detachInactiveScreens={true}
         screenOptions={{
           header:            ({ route }) => <NestedHeader title={route.name} />,
           contentStyle:      { backgroundColor: colors.background },
           animation:         'slide_from_right',
           animationDuration: 180,
-          customAnimationOnGesture: true,
           fullScreenGestureEnabled: true,
         }}
       >
@@ -299,7 +297,7 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#080510' }}>
-      <Stack.Navigator screenOptions={{ headerShown: false }} detachInactiveScreens={true}>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="MainTabs" component={MainTabsScreen} />
         <Stack.Group screenOptions={{ presentation: 'card' }}>
           <Stack.Screen name="MoreStack" component={NestedScreens} />
@@ -515,7 +513,7 @@ export default function AppNavigator() {
         {user ? (
           !onboarded ? (
             <ErrorBoundary screenName="Onboarding">
-              <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }} detachInactiveScreens={false}>
+              <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }}>
                 <Stack.Screen name="Onboarding">
                   {() => <OnboardingScreen onComplete={() => setOnboarded(true)} />}
                 </Stack.Screen>
@@ -525,7 +523,7 @@ export default function AppNavigator() {
             <RootNavigatorWithSara initialTab={initialTab} />
           )
         ) : (
-          <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }} detachInactiveScreens={false}>
+          <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: '#080510' } }}>
             <Stack.Screen name="Landing"        component={LandingScreen} />
             <Stack.Screen name="GuestDashboard" component={GuestDashboard} />
             <Stack.Screen name="Auth"           component={AuthScreen} />

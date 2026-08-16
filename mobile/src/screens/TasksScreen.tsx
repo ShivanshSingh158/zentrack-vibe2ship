@@ -9,8 +9,10 @@ import Svg, { Circle } from 'react-native-svg';
 
 import { useMobileData } from '../contexts/MobileDataContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { formatDateWithDay, today } from '../utils/dateUtils';
+import { formatDateWithDay } from '../utils/dateUtils';
 import { triggerLayoutAnimation } from '../theme/animations';
+import { setTabBarVisible } from '../utils/tabBarScroll';
+import { today } from './tasks/taskConstants';
 
 // Extracted Hooks & Styles
 import { makeTasksStyles } from './tasks/tasksStyles';
@@ -112,6 +114,23 @@ export default function TasksScreen() {
 
   const headerStyle = useAnimatedStyle(() => ({ opacity: animHeader.value, transform: [{ translateY: -20 * (1 - animHeader.value) }] }));
   const dateStripStyle = useAnimatedStyle(() => ({ opacity: animDateStrip.value, transform: [{ translateY: 20 * (1 - animDateStrip.value) }] }));
+  const isFocused = useNavigation().isFocused();
+  const lastScrollY = React.useRef(0);
+  const handleScroll = React.useCallback((e: any) => {
+    const offsetY = e?.nativeEvent?.contentOffset?.y ?? 0;
+    // Auto-hiding bottom navigation bar on scroll (fast & smooth)
+    if (offsetY <= 35) {
+      setTabBarVisible(true);
+    } else {
+      const diff = offsetY - lastScrollY.current;
+      if (diff > 10) {
+        setTabBarVisible(false); // Scroll down -> hide
+      } else if (diff < -6) {
+        setTabBarVisible(true); // Scroll up -> show instantly
+      }
+    }
+    lastScrollY.current = offsetY;
+  }, []);
   const listStyle = useAnimatedStyle(() => ({ opacity: animList.value, transform: [{ translateY: 40 * (1 - animList.value) }], flex: 1 }));
 
   const handleDateSelect = (date: string) => {
@@ -292,7 +311,7 @@ export default function TasksScreen() {
         onClose={() => setBulkRescheduleModal(false)}
         selectedTaskIds={selectedTaskIds}
         allTasks={tasks}
-        onConfirm={handleBulkReschedule}
+        onConfirm={(newDate, newSlot) => handleBulkReschedule(selectedTaskIds, newDate, newSlot)}
       />
 
       {editingTask && <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />}
@@ -323,8 +342,23 @@ export default function TasksScreen() {
       ) : (
         <AnimatedSectionList
           style={listStyle}
-          contentContainerStyle={[styles.listContent, { paddingBottom: 140 }]}
+          contentContainerStyle={[
+            styles.listContent,
+            selectedDateTasks.length === 0 
+              ? { flexGrow: 1, justifyContent: 'center', paddingBottom: 80 } 
+              : { paddingBottom: 140 }
+          ]}
+          scrollEnabled={selectedDateTasks.length > 0}
+          bounces={selectedDateTasks.length > 0}
           showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onScrollEndDrag={(e: any) => {
+            if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
+          }}
+          onMomentumScrollEnd={(e: any) => {
+            if ((e?.nativeEvent?.contentOffset?.y ?? 0) <= 30) setTabBarVisible(true);
+          }}
           sections={[
             ...(selectedDateTasks.length > 0 || isNewTaskOpen ? [{ title: selectedDate === todayStr ? 'TODAY' : formatDateWithDay(selectedDate).toUpperCase(), data: selectedDateTasks, isSelectedDate: true }] : []),
           ] as any}
@@ -334,7 +368,8 @@ export default function TasksScreen() {
               mascot="running"
               title="All clear!"
               subtitle="No tasks for today. Add one to stay on track."
-              style={{ marginTop: 60 }}
+              mascotSize={110}
+              style={{ marginTop: 0, paddingVertical: 10 }}
             />
           }
           renderSectionHeader={({ section: { title } }: any) => (

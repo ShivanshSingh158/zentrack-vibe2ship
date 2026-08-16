@@ -2,29 +2,40 @@
  * WeeklyGymReport • ZenTrack Mobile
  * Shown on rest days (e.g. Sunday) as the full-week workout analytics dashboard.
  * Displays:
- *  - Dynamic muscle target completion rings (done / planned sets, e.g. 9/9 = 100% full circle)
- *  - Global weekly KPIs (Sessions, Total Sets, Volume) with week-over-week deltas
+ *  - Dynamic muscle target completion rings (done / planned sets)
+ *  - Global weekly KPIs (Sessions, Total Sets, Volume) with WoW deltas
+ *  - Volume Trend Line (this week vs last week SVG overlay)
+ *  - Strength Progression sparklines (est. 1RM for top 4 lifts, 4-week trend)
+ *  - Muscle Distribution donut chart
  *  - Weekly Highlights & Top Lifts
- *  - Daily Volume Distribution bar chart
  *  - Cardio & Conditioning recap
+ *  - 90-day Consistency Heatmap (4-level intensity gradient)
  *  - Untrained muscle balance alert
- *  - GYM-GPT Weekly Intelligence: Deep set/rep/volume analysis, last week comparisons,
- *    30-day mesocycle trajectory, and actionable next-cycle directives.
+ *  - GYM-GPT Weekly Intelligence (fixed: robust JSON, pre-computed stats, retry)
  *
  * Theme: Obsidian Cosmos • COLORS tokens only.
  */
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, LayoutAnimation, Image } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, RADIUS, FONT_FAMILY, FONT_SIZE } from '../../theme/tokens';
 import { canonicalizeMuscle, isValidWorkoutSession } from '../../utils/gymUtils';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
 import { GYM_PLAN } from '../../data/gymPlan';
+import VolumeTrendLine from './Charts/VolumeTrendLine';
+import StrengthProgressionChart from './Charts/StrengthProgressionChart';
+import type { ExerciseSpark } from './Charts/StrengthProgressionChart';
+import MuscleDonutChart from './Charts/MuscleDonutChart';
+import ConsistencyHeatmap from './Charts/ConsistencyHeatmap';
 import {
   getOrGenerateWeeklyGymAnalysis,
+  getCachedWeeklyGymAnalysis,
+  getWeekMondayStr,
   WeeklyGymAnalysis,
+  PrecomputedGymStats,
+  epley1RM,
 } from '../../services/weeklyGymAnalysisEngine';
 import type { GymDayLog, GymPlanDay, UserGymPlanDoc } from '../../types/gym.types';
 
@@ -386,13 +397,13 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
     return weekDates.map(date => {
       const log = weekLogs.find(l => l.date === date);
       if (!log) return 0;
-      return (log.exercises ?? []).reduce((sum, ex) => {
+      return (log.exercises ?? []).reduce((sum: number, ex: any) => {
         if (ex.skipped) return sum;
         return (
           sum +
           (ex.setsLog ?? [])
-            .filter(s => s.completed)
-            .reduce((s2, s) => s2 + (s.weight ?? 0) * (s.reps ?? 0), 0)
+            .filter((s: any) => s.completed)
+            .reduce((s2: number, s: any) => s2 + (s.weight ?? 0) * (s.reps ?? 0), 0)
         );
       }, 0);
     });
@@ -407,13 +418,172 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
   const adherenceRate = totalPlannedSets > 0 ? Math.round((totalSets / totalPlannedSets) * 100) : 100;
   const hasData = workoutDays > 0 || cardioSummary.sessions > 0;
 
+  // ── Estimated 1RM per exercise (Epley) ───────────────────────────────────
+  const exerciseEstRMs = useMemo(() => {
+    const rmMap: Record<string, number> = {};
+    for (const log of weekLogs) {
+      for (const ex of log.exercises ?? []) {
+        if (ex.skipped) continue;
+        const completed = (ex.setsLog ?? []).filter((s: any) => s.completed);
+        const maxW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
+        const maxReps = completed.find((s: any) => Number(s.weight) === maxW)?.reps || 0;
+        const rm = epley1RM(maxW, maxReps);
+        if (rm > 0 && rm > (rmMap[ex.name] || 0)) rmMap[ex.name] = rm;
+      }
+    }
+    return rmMap;
+  }, [weekLogs]);
+
+  // ── Muscle completion map for precomputed stats ───────────────────────────
+  const muscleCompletionMap = useMemo(() => {
+    const map: Record<string, { done: number; planned: number; pct: number }> = {};
+    for (const muscle of displayMuscles) {
+      const done = thisWeekMuscle[muscle]?.sets ?? 0;
+      const planned = plannedMuscleTargets[muscle] ?? done;
+      map[muscle] = { done, planned, pct: planned > 0 ? Math.round((done / planned) * 100) : 100 };
+    }
+    return map;
+  }, [displayMuscles, thisWeekMuscle, plannedMuscleTargets]);
+
+  // ── PrecomputedGymStats for AI prompt ────────────────────────────────────
+  const precomputedStats = useMemo((): PrecomputedGymStats => {
+    const volumeDeltaKg = Math.round(totalVolume - prevTotalVolume);
+    const volumeDeltaPct = prevTotalVolume > 0
+      ? Math.round(((totalVolume - prevTotalVolume) / prevTotalVolume) * 1000) / 10
+      : 0;
+    return {
+      thisWeekVolume: Math.round(totalVolume),
+      prevWeekVolume: Math.round(prevTotalVolume),
+      volumeDeltaKg,
+      volumeDeltaPct,
+      thisWeekSets: totalSets,
+      prevWeekSets: prevTotalSets,
+      sessionCount: workoutDays,
+      plannedSessions: plannedWorkoutDaysCount,
+      topLift: weeklyHighlights.topLift,
+      muscleCompletion: muscleCompletionMap,
+      untrainedMuscles,
+      estimatedOneRMs: exerciseEstRMs,
+    };
+  }, [totalVolume, prevTotalVolume, totalSets, prevTotalSets, workoutDays, plannedWorkoutDaysCount, weeklyHighlights, muscleCompletionMap, untrainedMuscles, exerciseEstRMs]);
+
+  // ── Strength Progression Data (top 4 exercises, 4-week 1RM history) ───────
+  const strengthProgressionData = useMemo((): ExerciseSpark[] => {
+    // Build 4-week date ranges (current + 3 previous weeks)
+    const ranges: { label: string; dates: string[] }[] = [];
+    for (let w = 3; w >= 0; w--) {
+      const [y, m, dayN] = weekAnchorDate.split('-').map(Number);
+      const anchor = new Date(y, m - 1, dayN);
+      anchor.setDate(anchor.getDate() - w * 7);
+      const mon = new Date(anchor);
+      mon.setDate(anchor.getDate() - ((anchor.getDay() + 6) % 7));
+      const weekDates: string[] = [];
+      for (let i = 0; i < 7; i++) {
+        const dt = new Date(mon);
+        dt.setDate(mon.getDate() + i);
+        weekDates.push(`${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`);
+      }
+      const label = w === 0 ? 'Now'
+        : w === 1 ? '-1w'
+        : w === 2 ? '-2w'
+        : '-3w';
+      ranges.push({ label, dates: weekDates });
+    }
+
+    // For each exercise, compute max est1RM per week
+    const exWeeklyRMs: Record<string, { muscle: string; weeks: number[] }> = {};
+    for (const log of gymLogs) {
+      for (const ex of log.exercises ?? []) {
+        if (ex.skipped) continue;
+        const completed = (ex.setsLog ?? []).filter((s: any) => s.completed);
+        if (!completed.length) continue;
+        const maxW = Math.max(0, ...completed.map((s: any) => Number(s.weight) || 0));
+        const maxReps = completed.find((s: any) => Number(s.weight) === maxW)?.reps || 0;
+        const rm = epley1RM(maxW, maxReps);
+        if (!exWeeklyRMs[ex.name]) {
+          exWeeklyRMs[ex.name] = { muscle: canonicalizeMuscle(ex.muscle), weeks: [0, 0, 0, 0] };
+        }
+        const weekIdx = ranges.findIndex(r => r.dates.includes(log.date));
+        if (weekIdx !== -1 && rm > exWeeklyRMs[ex.name].weeks[weekIdx]) {
+          exWeeklyRMs[ex.name].weeks[weekIdx] = rm;
+        }
+      }
+    }
+
+    const EXERCISE_COLORS: Record<string, string> = {
+      Chest: '#a599ff', Back: '#89dceb', Shoulders: '#ff9f4d',
+      Triceps: '#5eda9e', Biceps: '#b8afff', Quads: '#ff9f4d',
+      Hamstrings: '#89dceb', Abs: '#a599ff', Forearms: '#ff9f4d',
+      Glutes: '#a599ff', Traps: '#89dceb', Calves: '#5eda9e', Mixed: '#8e8e93',
+    };
+
+    return Object.entries(exWeeklyRMs)
+      .filter(([, v]) => v.weeks[3] > 0) // must have current week data
+      .sort(([, a], [, b]) => b.weeks[3] - a.weeks[3])
+      .slice(0, 4)
+      .map(([name, v]) => ({
+        name,
+        muscle: v.muscle,
+        weeks: ranges.map((r, i) => ({ label: r.label, est1RM: v.weeks[i] })),
+        currentRM: v.weeks[3],
+        prevRM: v.weeks[2] || v.weeks[1] || v.weeks[0] || 0,
+        color: EXERCISE_COLORS[v.muscle] ?? '#a599ff',
+      }));
+  }, [gymLogs, weekAnchorDate]);
+
+  // ── Heatmap data (90 days of volume) ─────────────────────────────────────
+  const heatmapData = useMemo(() => {
+    return gymLogs.map(log => {
+      const vol = (log.exercises ?? []).reduce((sum: number, ex: any) => {
+        if (ex.skipped) return sum;
+        return sum + (ex.setsLog ?? [])
+          .filter((s: any) => s.completed)
+          .reduce((s2: number, s: any) => s2 + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0);
+      }, 0);
+      return { date: log.date, volume: vol };
+    });
+  }, [gymLogs]);
+
+  // ── Muscle distribution data for donut chart ─────────────────────────────
+  const muscleDonutData = useMemo(() => {
+    const MUSCLE_COLORS_MAP: Record<string, string> = {
+      Chest: '#a599ff', Back: '#89dceb', Shoulders: '#ff9f4d',
+      Triceps: '#5eda9e', Biceps: '#b8afff', Quads: '#ff9f4d',
+      Hamstrings: '#89dceb', Abs: '#a599ff', Forearms: '#ff9f4d',
+      Glutes: '#b8afff', Traps: '#89dceb', Calves: '#5eda9e', Mixed: '#8e8e93',
+    };
+    return Object.entries(thisWeekMuscle).map(([muscle, stats]) => ({
+      muscle,
+      sets: stats.sets,
+      color: MUSCLE_COLORS_MAP[muscle] ?? '#a599ff',
+    }));
+  }, [thisWeekMuscle]);
+
+  // ── Last week daily volume for trend overlay ──────────────────────────────
+  const prevDailyVolume = useMemo(() => {
+    return prevDates.map(date => {
+      const log = prevLogs.find(l => l.date === date);
+      if (!log) return 0;
+      return (log.exercises ?? []).reduce((sum: number, ex: any) => {
+        if (ex.skipped) return sum;
+        return sum + (ex.setsLog ?? [])
+          .filter((s: any) => s.completed)
+          .reduce((s2: number, s: any) => s2 + (Number(s.weight) || 0) * (Number(s.reps) || 0), 0);
+      }, 0);
+    });
+  }, [prevLogs, prevDates]);
+
   // ── GYM-GPT Weekly Intelligence Hook & State ──────────────────────────────
   const [aiAnalysis, setAiAnalysis] = useState<WeeklyGymAnalysis | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [isAiCollapsed, setIsAiCollapsed] = useState(false);
+  const autoGeneratedWeeksRef = useRef<Set<string>>(new Set());
 
   const loadWeeklyAnalysis = useCallback(async (force = false) => {
     if (!hasData) return;
     setAiLoading(true);
+    setAiError(null);
     try {
       const res = await getOrGenerateWeeklyGymAnalysis(
         gymLogs,
@@ -421,20 +591,42 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
         userGymPlan,
         undefined,
         force,
+        precomputedStats,
       );
       if (res.analysis) {
         setAiAnalysis(res.analysis);
+      } else if (res.error) {
+        setAiError(res.error);
       }
-    } catch (e) {
+    } catch (e: any) {
+      setAiError(e?.message || 'Failed to generate analysis');
       console.warn('[WeeklyGymReport] AI load error:', e);
     } finally {
       setAiLoading(false);
     }
-  }, [gymLogs, weekAnchorDate, userGymPlan, hasData]);
+  }, [gymLogs, weekAnchorDate, userGymPlan, hasData, precomputedStats]);
 
+  // Load from cache only (instant, 0ms).
+  // NEVER auto-start Gemini generation automatically on view/render.
+  // Generation only runs when the user explicitly taps 'Generate GYM-GPT Analysis' or 'Retry'.
   useEffect(() => {
-    loadWeeklyAnalysis(false);
-  }, [loadWeeklyAnalysis]);
+    let isCurrent = true;
+    setAiLoading(false);
+    setAiError(null);
+
+    getCachedWeeklyGymAnalysis(weekAnchorDate).then((cached: WeeklyGymAnalysis | null) => {
+      if (!isCurrent) return;
+      if (cached) {
+        setAiAnalysis(cached);
+      } else {
+        setAiAnalysis(null);
+      }
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [weekAnchorDate]);
 
   return (
     <View style={st.container}>
@@ -462,7 +654,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
         </View>
       ) : (
         <>
-          {/* ── Global KPI Stats ────────────────────────────────────────────── */}
+          {/* 1. ── Global KPI Stats (Sessions, Total Sets, Total Volume) ────── */}
           <View style={st.statsRow}>
             <View style={st.statCard}>
               <Text style={st.statValue}>
@@ -494,7 +686,312 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
             </View>
           </View>
 
-          {/* ── Highlights & Top Lift Card (Subtle Obsidian Gold) ───────────── */}
+          {/* 2. ── GYM-GPT Weekly Intelligence Card (Collapsible) ────────────── */}
+          <View style={[st.aiCard, isAiCollapsed && st.aiCardCollapsed]}>
+            {/* Header with Title, Grade Badge, Sync Button, and Fold/Unfold Chevron */}
+            <TouchableOpacity
+              style={[st.aiCardHeader, isAiCollapsed && st.aiCardHeaderCollapsed]}
+              onPress={() => {
+                hapticLight();
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setIsAiCollapsed(prev => !prev);
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flex: 1, minWidth: 0 }}>
+                <View style={st.aiSparkleBadge}>
+                  <Image
+                    source={require('../../../assets/images/sara-idle.png')}
+                    style={{ width: 22, height: 22 }}
+                    resizeMode="contain"
+                  />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={st.aiSectionTitle} numberOfLines={1}>GYM-GPT • INTELLIGENCE</Text>
+                  <Text style={st.aiSectionSubtitle} numberOfLines={1}>
+                    S.A.R.A Biomechanics & Overload
+                  </Text>
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {aiAnalysis && (
+                  <View style={st.aiScoreBadge}>
+                    <Text style={st.aiScoreBadgeText}>
+                      {aiAnalysis.scoreGrade} • {aiAnalysis.score}%
+                    </Text>
+                  </View>
+                )}
+                <View style={st.aiFoldBtn}>
+                  <Ionicons
+                    name={isAiCollapsed ? 'chevron-down' : 'chevron-up'}
+                    size={14}
+                    color={COLORS.textTertiary}
+                  />
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            {/* Horizontal "Click to open" prompt with clean spacing when collapsed */}
+            {isAiCollapsed && (
+              <TouchableOpacity
+                style={st.aiCollapsedRow}
+                onPress={() => {
+                  hapticLight();
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setIsAiCollapsed(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={st.aiCollapsedLeft}>
+                  <Image
+                    source={require('../../../assets/images/sara-idle.png')}
+                    style={{ width: 14, height: 14 }}
+                    resizeMode="contain"
+                  />
+                  <Text style={st.aiClickToOpenText}>Click to open</Text>
+                  {aiAnalysis?.headline ? (
+                    <>
+                      <Text style={st.aiCollapsedDot}>•</Text>
+                      <Text style={st.aiCollapsedHeadlineText} numberOfLines={1}>
+                        {aiAnalysis.headline}
+                      </Text>
+                    </>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={12} color="#a599ff" />
+              </TouchableOpacity>
+            )}
+
+            {!isAiCollapsed && (
+              aiLoading ? (
+                <View style={st.aiLoadingState}>
+                  <ActivityIndicator size="small" color="#a599ff" />
+                  <Text style={st.aiLoadingText}>
+                    Synthesizing 30-day mesocycle & progressive overload...
+                  </Text>
+                </View>
+              ) : aiError ? (
+                <View style={st.aiErrorState}>
+                  <Ionicons name="alert-circle-outline" size={18} color={COLORS.error} />
+                  <Text style={st.aiErrorText}>Analysis failed. Check connection and retry.</Text>
+                  <TouchableOpacity
+                    style={st.aiErrorRetryBtn}
+                    onPress={() => { hapticLight(); loadWeeklyAnalysis(true); }}
+                  >
+                    <Ionicons name="refresh" size={13} color="#a599ff" />
+                    <Text style={st.aiErrorRetryText}>Retry Analysis</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : aiAnalysis ? (
+                <View style={st.aiContent}>
+                  {/* Headline & Executive Verdict */}
+                  <View style={st.aiHeroBlock}>
+                    <FormattedText
+                      text={aiAnalysis.headline}
+                      style={st.aiHeadline}
+                      boldColor="#ffffff"
+                    />
+                    <FormattedText
+                      text={aiAnalysis.verdict}
+                      style={st.aiVerdict}
+                      boldColor="#ffffff"
+                    />
+                  </View>
+
+                  {/* Directives (Numbered Luxury Action Cards) */}
+                  {aiAnalysis.nextWeekDirectives && aiAnalysis.nextWeekDirectives.length > 0 && (
+                    <View style={st.aiBlock}>
+                      <View style={st.aiBlockHeader}>
+                        <Ionicons name="flag" size={13} color="#a599ff" />
+                        <Text style={[st.aiBlockTitle, { color: '#a599ff' }]}>
+                          NEXT CYCLE DIRECTIVES
+                        </Text>
+                      </View>
+
+                      <View style={{ gap: 8, marginTop: 4 }}>
+                        {aiAnalysis.nextWeekDirectives.map((directive, idx) => (
+                          <View key={idx} style={st.aiDirectiveCard}>
+                            <View style={st.aiDirectiveNumPill}>
+                              <Text style={st.aiDirectiveNumText}>0{idx + 1}</Text>
+                            </View>
+                            <FormattedText
+                              text={directive}
+                              style={st.aiDirectiveText}
+                              boldColor="#ffffff"
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  )}
+
+                  {/* Overload Comparison vs Last Week */}
+                  <View style={st.aiBlock}>
+                    <View style={st.aiBlockHeader}>
+                      <Ionicons name="swap-horizontal" size={13} color={COLORS.accentGreen} />
+                      <Text style={[st.aiBlockTitle, { color: COLORS.accentGreen }]}>
+                        VS LAST WEEK (PROGRESSIVE OVERLOAD)
+                      </Text>
+                    </View>
+
+                    {aiAnalysis.comparisonVsLastWeek?.volumeDeltaText ? (
+                      <View style={st.aiVolumePill}>
+                        <Ionicons name="trending-up" size={12} color={COLORS.accentGreen} style={{ marginRight: 4 }} />
+                        <Text style={st.aiVolumePillText}>
+                          {aiAnalysis.comparisonVsLastWeek.volumeDeltaText}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {aiAnalysis.comparisonVsLastWeek?.keyOverloads?.map((item, idx) => (
+                      <View key={idx} style={st.aiBulletRow}>
+                        <Text style={st.aiBulletDot}>•</Text>
+                        <FormattedText
+                          text={item}
+                          style={st.aiBulletText}
+                          boldColor="#ffffff"
+                        />
+                      </View>
+                    ))}
+
+                    {aiAnalysis.comparisonVsLastWeek?.summary ? (
+                      <FormattedText
+                        text={aiAnalysis.comparisonVsLastWeek.summary}
+                        style={st.aiSubSummary}
+                        boldColor="#d1d1d6"
+                      />
+                    ) : null}
+                  </View>
+
+                  {/* 30-Day Mesocycle Dynamics & Fatigue Indicator */}
+                  <View style={st.aiBlock}>
+                    <View style={st.aiBlockHeader}>
+                      <Ionicons name="analytics" size={13} color={COLORS.accentAmber} />
+                      <Text style={[st.aiBlockTitle, { color: COLORS.accentAmber }]}>
+                        30-DAY MESOCYCLE DYNAMICS
+                      </Text>
+                    </View>
+
+                    <FormattedText
+                      text={aiAnalysis.thirtyDayTrend.trajectory}
+                      style={st.aiTrajectoryText}
+                      boldColor="#ffffff"
+                    />
+
+                    {aiAnalysis.thirtyDayTrend?.laggingMuscles?.map((item, idx) => (
+                      <View key={idx} style={st.aiBulletRow}>
+                        <Text style={[st.aiBulletDot, { color: COLORS.accentAmber }]}>⚡</Text>
+                        <FormattedText
+                          text={item}
+                          style={st.aiBulletText}
+                          boldColor="#ffffff"
+                        />
+                      </View>
+                    ))}
+
+                    {aiAnalysis.thirtyDayTrend?.fatigueIndicator ? (
+                      <View style={st.aiFatigueBox}>
+                        <Ionicons name="shield-checkmark" size={13} color={COLORS.accentAmber} />
+                        <FormattedText
+                          text={aiAnalysis.thirtyDayTrend.fatigueIndicator}
+                          style={st.aiFatigueText}
+                          boldColor={COLORS.accentAmber}
+                        />
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              ) : (
+                <View style={st.aiPromptState}>
+                  <Text style={st.aiPromptTitle}>Weekly Intelligence & Overload Report</Text>
+                  <Text style={st.aiPromptSub}>
+                    Generate S.A.R.A's AI breakdown for this week's volume progression, fatigue index, and next cycle directives.
+                  </Text>
+                  <TouchableOpacity
+                    style={st.aiGenerateBtn}
+                    onPress={() => {
+                      hapticMedium();
+                      loadWeeklyAnalysis(false);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Image
+                      source={require('../../../assets/images/sara-idle.png')}
+                      style={{ width: 18, height: 18 }}
+                      resizeMode="contain"
+                    />
+                    <Text style={st.aiGenerateBtnText}>Generate GYM-GPT Analysis</Text>
+                  </TouchableOpacity>
+                </View>
+              )
+            )}
+          </View>
+
+          {/* 3. ── Muscle Target Adherence (Dynamic Donut Circles) ───────────── */}
+          <View style={st.card}>
+            <View style={st.cardHeaderRow}>
+              <Text style={st.sectionLabel}>MUSCLE TARGET ADHERENCE</Text>
+              <View style={st.adherenceBadge}>
+                <Text style={st.adherenceBadgeText}>
+                  {adherenceRate >= 100 ? '100% Plan Hit' : `${adherenceRate}% Plan Hit`}
+                </Text>
+              </View>
+            </View>
+
+            <View style={st.muscleGrid}>
+              {displayMuscles.map(muscle => {
+                const stats = thisWeekMuscle[muscle] || { sets: 0, totalKg: 0, sessions: 0 };
+                const plannedTarget = plannedMuscleTargets[muscle] || stats.sets || 1;
+                const pct = Math.min(100, Math.round((stats.sets / plannedTarget) * 100));
+                const isComplete = stats.sets >= plannedTarget && plannedTarget > 0;
+                const color = isComplete ? COLORS.accentGreen : (MUSCLE_COLORS[muscle] ?? COLORS.accentPrimary);
+                const prev = prevWeekMuscle[muscle];
+                const delta = stats.sets - (prev?.sets ?? 0);
+
+                return (
+                  <View key={muscle} style={st.muscleCard}>
+                    <View style={st.ringWrapper}>
+                      <DonutRing pct={pct} color={color} size={66} strokeWidth={6.5} />
+                      <View style={st.ringCenter}>
+                        <Text style={[st.ringNum, { color }]}>
+                          {stats.sets}
+                          <Text style={st.ringTarget}>/{plannedTarget}</Text>
+                        </Text>
+                        <Text style={st.ringUnit}>
+                          {isComplete ? '✓ Done' : `${pct}%`}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={st.muscleName} numberOfLines={1}>
+                      {muscle}
+                    </Text>
+
+                    <View style={st.muscleChangeRow}>
+                      {delta !== 0 ? (
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontFamily: FONT_FAMILY.bold,
+                            color: delta > 0 ? COLORS.accentGreen : COLORS.error,
+                          }}
+                        >
+                          {delta > 0 ? '▲ +' : '▼ -'}{Math.abs(delta)} sets
+                        </Text>
+                      ) : (
+                        <Text style={{ fontSize: 10, color: COLORS.textTertiary }}>
+                          • on track
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* 4. ── Highlights & Top Lift Card (Subtle Obsidian Gold) ─────────── */}
           {weeklyHighlights.topLift && (
             <View style={st.highlightCard}>
               <View style={st.highlightHeader}>
@@ -558,110 +1055,20 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
             </View>
           )}
 
-          {/* ── Muscle Target Adherence (Dynamic Donut Circles) ─────────────── */}
-          <View style={st.card}>
-            <View style={st.cardHeaderRow}>
-              <Text style={st.sectionLabel}>MUSCLE TARGET ADHERENCE</Text>
-              <View style={st.adherenceBadge}>
-                <Text style={st.adherenceBadgeText}>
-                  {adherenceRate >= 100 ? '100% Plan Hit' : `${adherenceRate}% Plan Hit`}
-                </Text>
-              </View>
-            </View>
+          {/* 5. ── Volume Trends (This week vs last week line overlay) ──────── */}
+          <VolumeTrendLine thisWeek={dailyVolume} lastWeek={prevDailyVolume} height={140} />
 
-            <View style={st.muscleGrid}>
-              {displayMuscles.map(muscle => {
-                const stats = thisWeekMuscle[muscle] || { sets: 0, totalKg: 0, sessions: 0 };
-                const plannedTarget = plannedMuscleTargets[muscle] || stats.sets || 1;
-                const pct = Math.min(100, Math.round((stats.sets / plannedTarget) * 100));
-                const isComplete = stats.sets >= plannedTarget && plannedTarget > 0;
-                const color = isComplete ? COLORS.accentGreen : (MUSCLE_COLORS[muscle] ?? COLORS.accentPrimary);
-                const prev = prevWeekMuscle[muscle];
-                const delta = stats.sets - (prev?.sets ?? 0);
+          {/* 6. ── Muscle Distribution Donut ────────────────────────────────── */}
+          {muscleDonutData.length > 0 && (
+            <MuscleDonutChart data={muscleDonutData} />
+          )}
 
-                return (
-                  <View key={muscle} style={st.muscleCard}>
-                    <View style={st.ringWrapper}>
-                      <DonutRing pct={pct} color={color} size={66} strokeWidth={6.5} />
-                      <View style={st.ringCenter}>
-                        <Text style={[st.ringNum, { color }]}>
-                          {stats.sets}
-                          <Text style={st.ringTarget}>/{plannedTarget}</Text>
-                        </Text>
-                        <Text style={st.ringUnit}>
-                          {isComplete ? '✓ Done' : `${pct}%`}
-                        </Text>
-                      </View>
-                    </View>
+          {/* 7. ── Strength Progression Sparklines ─────────────────────────── */}
+          {strengthProgressionData.length > 0 && (
+            <StrengthProgressionChart exercises={strengthProgressionData} />
+          )}
 
-                    <Text style={st.muscleName} numberOfLines={1}>
-                      {muscle}
-                    </Text>
-
-                    <View style={st.muscleChangeRow}>
-                      {delta !== 0 ? (
-                        <Text
-                          style={{
-                            fontSize: 10,
-                            fontFamily: FONT_FAMILY.bold,
-                            color: delta > 0 ? COLORS.accentGreen : COLORS.error,
-                          }}
-                        >
-                          {delta > 0 ? '▲ +' : '▼ -'}{Math.abs(delta)} sets
-                        </Text>
-                      ) : (
-                        <Text style={{ fontSize: 10, color: COLORS.textTertiary }}>
-                          • on track
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* ── Daily Volume Bar Chart ──────────────────────────────────────── */}
-          <View style={st.card}>
-            <Text style={st.sectionLabel}>DAILY TRAINING VOLUME</Text>
-            <View style={st.barChart}>
-              {dailyVolume.map((vol, i) => {
-                const pct = maxDailyVol > 0 ? vol / maxDailyVol : 0;
-                const isSun = i === 6;
-                const isTrained = vol > 0;
-
-                return (
-                  <View key={i} style={st.barCol}>
-                    <View style={st.barTrack}>
-                      <View
-                        style={[
-                          st.barFill,
-                          {
-                            height: `${Math.max(4, pct * 100)}%`,
-                            backgroundColor: isSun
-                              ? 'rgba(255,255,255,0.1)'
-                              : isTrained
-                              ? COLORS.accentPrimary
-                              : 'rgba(255,255,255,0.05)',
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        st.barLabel,
-                        isTrained && { color: COLORS.textPrimary, fontFamily: FONT_FAMILY.bold },
-                      ]}
-                    >
-                      {DAY_LABELS[i]}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* ── Cardio & Conditioning (Elevated Luxury Pods Design) ─────────── */}
+          {/* 8. ── Cardio & Conditioning (Elevated Luxury Pods Design) ─────── */}
           {cardioSummary.sessions > 0 && (
             <View style={st.cardioCard}>
               <View style={st.cardioHeaderRow}>
@@ -746,7 +1153,7 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
             </View>
           )}
 
-          {/* ── Untrained Muscles Warning (if any skipped) ──────────────────── */}
+          {/* 9. ── Untrained Muscles Warning (if any skipped) ──────────────── */}
           {untrainedMuscles.length > 0 && (
             <View style={st.warningCard}>
               <View style={st.warningHeader}>
@@ -766,186 +1173,8 @@ export default function WeeklyGymReport({ gymLogs, weekAnchorDate, userGymPlan }
             </View>
           )}
 
-          {/* ── GYM-GPT Weekly Intelligence Card (High-End Design) ──────────── */}
-          <View style={st.aiCard}>
-            {/* Header with Title, Grade Badge, and Sync Button */}
-            <View style={st.aiCardHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
-                <View style={st.aiSparkleBadge}>
-                  <Ionicons name="sparkles" size={13} color="#a599ff" />
-                </View>
-                <View>
-                  <Text style={st.aiSectionTitle}>GYM-GPT • WEEKLY INTELLIGENCE</Text>
-                  <Text style={st.aiSectionSubtitle}>S.A.R.A Biomechanics & Overload Analysis</Text>
-                </View>
-              </View>
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                {aiAnalysis && (
-                  <View style={st.aiScoreBadge}>
-                    <Text style={st.aiScoreBadgeText}>
-                      {aiAnalysis.scoreGrade} • {aiAnalysis.score}/100
-                    </Text>
-                  </View>
-                )}
-                <TouchableOpacity
-                  onPress={() => {
-                    hapticMedium();
-                    loadWeeklyAnalysis(true);
-                  }}
-                  disabled={aiLoading}
-                  style={st.aiRefreshBtn}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Ionicons
-                    name="sync-outline"
-                    size={14}
-                    color={aiLoading ? COLORS.accentPrimary : COLORS.textTertiary}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {aiLoading && !aiAnalysis ? (
-              <View style={st.aiLoadingState}>
-                <ActivityIndicator size="small" color="#a599ff" />
-                <Text style={st.aiLoadingText}>
-                  Synthesizing 30-day mesocycle & progressive overload...
-                </Text>
-              </View>
-            ) : aiAnalysis ? (
-              <View style={st.aiContent}>
-                {/* 1. Headline & Executive Verdict */}
-                <View style={st.aiHeroBlock}>
-                  <FormattedText
-                    text={aiAnalysis.headline}
-                    style={st.aiHeadline}
-                    boldColor="#ffffff"
-                  />
-                  <FormattedText
-                    text={aiAnalysis.verdict}
-                    style={st.aiVerdict}
-                    boldColor="#ffffff"
-                  />
-                </View>
-
-                {/* 2. Directives (Numbered Luxury Action Cards) */}
-                {aiAnalysis.nextWeekDirectives && aiAnalysis.nextWeekDirectives.length > 0 && (
-                  <View style={st.aiBlock}>
-                    <View style={st.aiBlockHeader}>
-                      <Ionicons name="flag" size={13} color="#a599ff" />
-                      <Text style={[st.aiBlockTitle, { color: '#a599ff' }]}>
-                        NEXT CYCLE DIRECTIVES
-                      </Text>
-                    </View>
-
-                    <View style={{ gap: 8, marginTop: 4 }}>
-                      {aiAnalysis.nextWeekDirectives.map((directive, idx) => (
-                        <View key={idx} style={st.aiDirectiveCard}>
-                          <View style={st.aiDirectiveNumPill}>
-                            <Text style={st.aiDirectiveNumText}>0{idx + 1}</Text>
-                          </View>
-                          <FormattedText
-                            text={directive}
-                            style={st.aiDirectiveText}
-                            boldColor="#ffffff"
-                          />
-                        </View>
-                      ))}
-                    </View>
-                  </View>
-                )}
-
-                {/* 3. Overload Comparison vs Last Week */}
-                <View style={st.aiBlock}>
-                  <View style={st.aiBlockHeader}>
-                    <Ionicons name="swap-horizontal" size={13} color={COLORS.accentGreen} />
-                    <Text style={[st.aiBlockTitle, { color: COLORS.accentGreen }]}>
-                      VS LAST WEEK (PROGRESSIVE OVERLOAD)
-                    </Text>
-                  </View>
-
-                  {aiAnalysis.comparisonVsLastWeek?.volumeDeltaText ? (
-                    <View style={st.aiVolumePill}>
-                      <Ionicons name="trending-up" size={12} color={COLORS.accentGreen} style={{ marginRight: 4 }} />
-                      <Text style={st.aiVolumePillText}>
-                        {aiAnalysis.comparisonVsLastWeek.volumeDeltaText}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {aiAnalysis.comparisonVsLastWeek?.keyOverloads?.map((item, idx) => (
-                    <View key={idx} style={st.aiBulletRow}>
-                      <Text style={st.aiBulletDot}>•</Text>
-                      <FormattedText
-                        text={item}
-                        style={st.aiBulletText}
-                        boldColor="#ffffff"
-                      />
-                    </View>
-                  ))}
-
-                  {aiAnalysis.comparisonVsLastWeek?.summary ? (
-                    <FormattedText
-                      text={aiAnalysis.comparisonVsLastWeek.summary}
-                      style={st.aiSubSummary}
-                      boldColor="#d1d1d6"
-                    />
-                  ) : null}
-                </View>
-
-                {/* 4. 30-Day Mesocycle Dynamics & Fatigue Indicator */}
-                <View style={st.aiBlock}>
-                  <View style={st.aiBlockHeader}>
-                    <Ionicons name="analytics" size={13} color={COLORS.accentAmber} />
-                    <Text style={[st.aiBlockTitle, { color: COLORS.accentAmber }]}>
-                      30-DAY MESOCYCLE DYNAMICS
-                    </Text>
-                  </View>
-
-                  <FormattedText
-                    text={aiAnalysis.thirtyDayTrend.trajectory}
-                    style={st.aiTrajectoryText}
-                    boldColor="#ffffff"
-                  />
-
-                  {aiAnalysis.thirtyDayTrend?.laggingMuscles?.map((item, idx) => (
-                    <View key={idx} style={st.aiBulletRow}>
-                      <Text style={[st.aiBulletDot, { color: COLORS.accentAmber }]}>⚡</Text>
-                      <FormattedText
-                        text={item}
-                        style={st.aiBulletText}
-                        boldColor="#ffffff"
-                      />
-                    </View>
-                  ))}
-
-                  {aiAnalysis.thirtyDayTrend?.fatigueIndicator ? (
-                    <View style={st.aiFatigueBox}>
-                      <Ionicons name="shield-checkmark" size={13} color={COLORS.accentAmber} />
-                      <FormattedText
-                        text={aiAnalysis.thirtyDayTrend.fatigueIndicator}
-                        style={st.aiFatigueText}
-                        boldColor={COLORS.accentAmber}
-                      />
-                    </View>
-                  ) : null}
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={st.aiGenerateBtn}
-                onPress={() => {
-                  hapticLight();
-                  loadWeeklyAnalysis(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="sparkles" size={14} color="#a599ff" />
-                <Text style={st.aiGenerateBtnText}>Generate Deep Gym-GPT Analysis</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {/* 10. ── 90-Day Consistency Heatmap (AT LAST) ───────────────────── */}
+          <ConsistencyHeatmap data={heatmapData} />
         </>
       )}
 
@@ -967,8 +1196,8 @@ const st = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
-    marginTop: 4,
+    marginBottom: 10,
+    marginTop: 0,
   },
   title: {
     fontSize: 22,
@@ -1680,11 +1909,27 @@ const st = StyleSheet.create({
     fontFamily: FONT_FAMILY.body,
     lineHeight: 18,
   },
+  aiPromptState: {
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    gap: 8,
+  },
+  aiPromptTitle: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.bold,
+    color: COLORS.textPrimary,
+  },
+  aiPromptSub: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY.body,
+    lineHeight: 17,
+  },
   aiGenerateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
     backgroundColor: 'rgba(165,153,255,0.12)',
     borderWidth: 1,
     borderColor: 'rgba(165,153,255,0.3)',
@@ -1693,8 +1938,83 @@ const st = StyleSheet.create({
     marginTop: 4,
   },
   aiGenerateBtnText: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.bold,
+    color: '#a599ff',
+  },
+  aiErrorState: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 20,
+    paddingHorizontal: 12,
+  },
+  aiErrorText: {
+    fontSize: 12,
+    color: COLORS.textTertiary,
+    fontFamily: FONT_FAMILY.medium,
+    textAlign: 'center',
+  },
+  aiErrorRetryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(165,153,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(165,153,255,0.25)',
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginTop: 4,
+  },
+  aiErrorRetryText: {
     fontSize: 12,
     fontFamily: FONT_FAMILY.bold,
     color: '#a599ff',
+  },
+  aiFoldBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
+  },
+  aiCardCollapsed: {
+    paddingBottom: 12,
+  },
+  aiCardHeaderCollapsed: {
+    marginBottom: 8,
+    paddingBottom: 10,
+  },
+  aiCollapsedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 4,
+    paddingHorizontal: 2,
+  },
+  aiCollapsedLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    paddingRight: 8,
+  },
+  aiClickToOpenText: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.bold,
+    color: '#a599ff',
+    letterSpacing: 0.2,
+  },
+  aiCollapsedDot: {
+    fontSize: 11,
+    color: COLORS.textTertiary,
+  },
+  aiCollapsedHeadlineText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontFamily: FONT_FAMILY.medium,
+    flex: 1,
   },
 });

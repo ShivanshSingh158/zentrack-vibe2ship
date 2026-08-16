@@ -416,7 +416,7 @@ export default function XPConstellationScreen() {
           hitSlop={16} 
           style={styles.backBtn}
         >
-          <Text style={styles.backChevron}>‹</Text>
+          <Ionicons name="chevron-back" size={20} color="#FFFFFF" style={{ marginLeft: -1 }} />
         </Pressable>
         <Text style={styles.headerTitle}>Ascension Path</Text>
         <View style={{ width: 40 }} />
@@ -522,12 +522,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  backChevron: {
-    color: '#ffffff',
-    fontSize: 26,
-    marginTop: -2,
-    marginLeft: -2,
   },
   headerTitle: {
     color: '#ffffff',

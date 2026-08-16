@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useRef, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, ScrollView,
   Alert, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Animated
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -30,10 +30,42 @@ import { useAttendanceExport } from './attendance/useAttendanceExport';
 import { HorizontalWeekStrip } from './attendance/HorizontalWeekStrip';
 import ErrorBoundary from '../components/ErrorBoundary';
 import EmptyState from '../components/ui/EmptyState';
+import { setTabBarVisible } from '../utils/tabBarScroll';
 
 export default function AttendanceScreen() {
   const { colors } = useTheme();
   const styles = makeStyles(colors);
+  const insets = useSafeAreaInsets();
+
+  // ── Animated pill visibility: 0 at top (flat/normal), 1 on scroll (glass pills) ──
+  const pillAnim = useRef(new Animated.Value(0)).current;
+  const isPillVisibleRef = useRef(false);
+  const lastScrollY = useRef(0);
+
+  const updatePillVisibility = useCallback((offsetY: number) => {
+    const shouldShow = offsetY > 20;
+    if (shouldShow !== isPillVisibleRef.current) {
+      isPillVisibleRef.current = shouldShow;
+      Animated.timing(pillAnim, {
+        toValue: shouldShow ? 1 : 0,
+        duration: shouldShow ? 140 : 80, // Instantly disappears in 80ms on scroll-up
+        useNativeDriver: true,
+      }).start();
+    }
+
+    // Auto-hiding bottom navigation bar on scroll (fast & smooth)
+    if (offsetY <= 35) {
+      setTabBarVisible(true);
+    } else {
+      const diff = offsetY - lastScrollY.current;
+      if (diff > 10) {
+        setTabBarVisible(false); // Scroll down -> hide
+      } else if (diff < -6) {
+        setTabBarVisible(true); // Scroll up -> show instantly
+      }
+    }
+    lastScrollY.current = offsetY;
+  }, [pillAnim]);
 
   // 1. Core Data & State Hook
   const appCtx = useMobileData();
@@ -85,57 +117,100 @@ export default function AttendanceScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top']}>
-      {/* Cap 5: PSI surface banner for at-risk subjects */}
-      <SaraHUDBanner
-        message={surfaceMessage || ''}
-        visible={!!surfaceMessage}
-        onDismiss={dismissBanner}
-        actionLabel={surfaceActionLabel || undefined}
-      />
-      {/* ── Header Actions ── */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16 }}>
-        <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 26, color: colors.textPrimary }}>Attendance</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 4 }}>
-          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={{ alignItems: 'center', width: 38 }} activeOpacity={0.7}>
-            <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
-            <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter-Medium', marginTop: 2, textAlign: 'center' }}>Date</Text>
-          </TouchableOpacity>
-          {/* Holiday Toggle */}
-          <TouchableOpacity onPress={() => handleToggleHoliday(isSelectedHoliday)} style={{ alignItems: 'center', width: 44 }} activeOpacity={0.7}>
-            <Text style={{ fontSize: 14, marginBottom: 1 }}>🌴</Text>
-            <Text style={{ fontSize: 9, color: isSelectedHoliday ? '#fbbf24' : colors.textTertiary, fontFamily: 'Inter-Medium', marginTop: 2, textAlign: 'center' }}>Holiday</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setShowClassNotifModal(true)} style={{ alignItems: 'center', width: 38 }} activeOpacity={0.7}>
-            <Ionicons name="notifications-outline" size={16} color={colors.accentPrimary} />
-            <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter-Medium', marginTop: 2, textAlign: 'center' }}>Alerts</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsTimetableOpen(true)} style={{ alignItems: 'center', width: 44 }} activeOpacity={0.7}>
-            <Ionicons name="settings-outline" size={16} color={colors.textMuted} />
-            <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter-Medium', marginTop: 2, textAlign: 'center' }}>Setup</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      
-      {showDatePicker && (
-        <DateTimePicker
-          value={new Date(selectedDate + 'T00:00:00')}
-          mode="date"
-          display="default"
-          onChange={(e, date) => {
-            setShowDatePicker(false);
-            if (date) setSelectedDate(getLocalDateString(date));
-          }}
-        />
-      )}
-
+    <View style={styles.root}>
       <View style={{ flex: 1 }}>
-      <FlatList
-        data={isSelectedHoliday ? [] : todayFlatSessions}
-        keyExtractor={item => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 120 }}
-        ListHeaderComponent={
+        {/* Cap 5: PSI surface banner for at-risk subjects */}
+        <SaraHUDBanner
+          message={surfaceMessage || ''}
+          visible={!!surfaceMessage}
+          onDismiss={dismissBanner}
+          actionLabel={surfaceActionLabel || undefined}
+        />
+
+        {/* ── Single Sticky Header (Absolute below status bar, 100% Transparent Background, Morphs to Glass Pills on scroll) ── */}
+        <View style={[styles.topHeaderWrapper, { top: insets.top }]} pointerEvents="box-none">
+          <View style={styles.headerInner}>
+            <Text style={styles.headerTitle}>Attendance</Text>
+            <View style={styles.headerActions}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowDatePicker(true); }} style={styles.morphBtn} activeOpacity={0.7}>
+                <View style={styles.morphBtnIconWrap}>
+                  <Animated.View style={[styles.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="calendar-outline" size={16} color={colors.textMuted} />
+                </View>
+                <Text style={styles.headerBtnText}>Date</Text>
+              </TouchableOpacity>
+
+              {/* Holiday Toggle */}
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleToggleHoliday(isSelectedHoliday); }} style={styles.morphBtn} activeOpacity={0.7}>
+                <View style={styles.morphBtnIconWrap}>
+                  <Animated.View style={[styles.morphBtnPill, isSelectedHoliday && styles.morphBtnPillHoliday, { opacity: pillAnim }]} />
+                  <Text style={{ fontSize: 13 }}>🌴</Text>
+                </View>
+                <Text style={[styles.headerBtnText, isSelectedHoliday && { color: '#fbbf24' }]}>Holiday</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowClassNotifModal(true); }} style={styles.morphBtn} activeOpacity={0.7}>
+                <View style={styles.morphBtnIconWrap}>
+                  <Animated.View style={[styles.morphBtnPill, styles.morphBtnPillAccent, { opacity: pillAnim }]} />
+                  <Ionicons name="notifications-outline" size={16} color="#a599ff" />
+                </View>
+                <Text style={[styles.headerBtnText, { color: '#a599ff' }]}>Alerts</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsTimetableOpen(true); }} style={styles.morphBtn} activeOpacity={0.7}>
+                <View style={styles.morphBtnIconWrap}>
+                  <Animated.View style={[styles.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="settings-outline" size={16} color={colors.textMuted} />
+                </View>
+                <Text style={styles.headerBtnText}>Setup</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+        
+        {showDatePicker && (
+          <DateTimePicker
+            value={new Date(selectedDate + 'T00:00:00')}
+            mode="date"
+            display="default"
+            onChange={(e, date) => {
+              setShowDatePicker(false);
+              if (date) setSelectedDate(getLocalDateString(date));
+            }}
+          />
+        )}
+
+        <FlatList
+          data={isSelectedHoliday ? [] : todayFlatSessions}
+          keyExtractor={item => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 120, paddingTop: insets.top + 54 }}
+          onScroll={(e: any) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            updatePillVisibility(y);
+          }}
+          onScrollEndDrag={(e: any) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            if (y <= 30) {
+              setTabBarVisible(true);
+            }
+            if (y <= 20 && isPillVisibleRef.current) {
+              isPillVisibleRef.current = false;
+              Animated.timing(pillAnim, { toValue: 0, duration: 50, useNativeDriver: true }).start();
+            }
+          }}
+          onMomentumScrollEnd={(e: any) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            if (y <= 30) {
+              setTabBarVisible(true);
+            }
+            if (y <= 20 && isPillVisibleRef.current) {
+              isPillVisibleRef.current = false;
+              Animated.timing(pillAnim, { toValue: 0, duration: 50, useNativeDriver: true }).start();
+            }
+          }}
+          scrollEventThrottle={16}
+          ListHeaderComponent={
           <>
             {/* ── Semester Overview ── */}
             <View style={{ paddingHorizontal: 8, marginBottom: 8 }}>
@@ -412,7 +487,6 @@ export default function AttendanceScreen() {
           ) : null
         }
       />
-      </View>
 
       {/* ── Modals ── */}
 
@@ -547,6 +621,7 @@ export default function AttendanceScreen() {
         onClose={() => setShowClassNotifModal(false)}
       />
 
-    </SafeAreaView>
+      </View>
+    </View>
   );
 }

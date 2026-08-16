@@ -24,11 +24,13 @@ interface CalendarWeekViewProps {
   nowDateStr: string;
   setSelectedDate: (date: string) => void;
   setCurrentView: (view: 'Day'|'Week'|'Month') => void;
+  markedDates?: Record<string, { dots?: Array<{ key: string; color: string }> }>;
 }
 
 export const CalendarWeekView = React.memo(function CalendarWeekView({
   styles, colors, weekEvents, minHour, maxHour, DYNAMIC_HOURS,
-  indicatorTop, selectedDate, nowDateStr, setSelectedDate, setCurrentView
+  indicatorTop, selectedDate, nowDateStr, setSelectedDate, setCurrentView,
+  markedDates = {}
 }: CalendarWeekViewProps) {
   const weekDays = useMemo(() => {
     const [y, m, d] = selectedDate.split('-').map(Number);
@@ -57,43 +59,72 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
 
   return (
     <View style={{ flex: 1 }}>
-      {/* 7-Day Column Header Row */}
+      {/* 7-Day Column Header Row matching CalendarWeekStripPager */}
       <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border || 'rgba(255,255,255,0.06)', paddingBottom: 6, paddingTop: 4 }}>
         <View style={{ width: 40 }} />
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          {weekDays.map((wd, i) => (
-            <TouchableOpacity
-              key={i}
-              style={{ flex: 1, alignItems: 'center', gap: 2, opacity: wd.isPast ? 0.45 : 1 }}
-              onPress={() => {
-                setSelectedDate(wd.dateStr);
-                setCurrentView('Day');
-              }}
-              activeOpacity={0.7}
-            >
-              <Text style={{ fontSize: 9.5, color: colors.textMuted || '#8e8e93', fontFamily: FONT_FAMILY.bold }}>
-                {DAY_LABELS[i]}
-              </Text>
-              <View style={{
-                width: 24,
-                height: 24,
-                borderRadius: 12,
-                backgroundColor: wd.isSelected ? (colors.accentPrimary || '#a599ff') : 'transparent',
-                borderWidth: wd.isToday && !wd.isSelected ? 1.5 : 0,
-                borderColor: colors.accentPrimary || '#a599ff',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
+          {weekDays.map((wd, i) => {
+            const dots = markedDates[wd.dateStr]?.dots || [];
+            return (
+              <TouchableOpacity
+                key={i}
+                style={{ flex: 1, alignItems: 'center', gap: 3, opacity: wd.isPast ? 0.45 : 1 }}
+                onPress={() => {
+                  setSelectedDate(wd.dateStr);
+                  setCurrentView('Day');
+                }}
+                activeOpacity={0.7}
+              >
                 <Text style={{
-                  fontSize: 11.5,
+                  fontSize: 10,
+                  color: wd.isSelected ? colors.textPrimary : (colors.textMuted || '#8e8e93'),
                   fontFamily: FONT_FAMILY.bold,
-                  color: wd.isSelected ? '#000000' : (wd.isToday ? (colors.accentPrimary || '#a599ff') : colors.textPrimary),
+                  letterSpacing: 0.5,
                 }}>
-                  {wd.dateNum}
+                  {DAY_LABELS[i]}
                 </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+                <View style={{
+                  width: 36,
+                  height: 40,
+                  borderRadius: 12,
+                  backgroundColor: wd.isSelected ? (colors.accentPrimary || '#a599ff') : 'transparent',
+                  borderWidth: wd.isToday && !wd.isSelected ? 1.5 : 0,
+                  borderColor: colors.accentPrimary ? `${colors.accentPrimary}80` : '#a599ff',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                }}>
+                  <Text style={{
+                    fontSize: 14,
+                    fontFamily: wd.isSelected || wd.isToday ? FONT_FAMILY.bold : FONT_FAMILY.body,
+                    color: wd.isSelected ? '#000000' : (wd.isToday ? (colors.accentPrimary || '#a599ff') : colors.textPrimary),
+                  }}>
+                    {wd.dateNum}
+                  </Text>
+                  {/* Event Dots */}
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 2,
+                    position: 'absolute',
+                    bottom: 3,
+                  }}>
+                    {dots.slice(0, 3).map((dot, dotIdx) => (
+                      <View
+                        key={dotIdx}
+                        style={{
+                          width: 3.5,
+                          height: 3.5,
+                          borderRadius: 2,
+                          backgroundColor: wd.isSelected ? '#000000' : (dot.color || colors.accentPrimary),
+                        }}
+                      />
+                    ))}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
 

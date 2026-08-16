@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState, useMemo, memo, useCallback } from 'react';
 import WorkoutTimer from '../../components/Gym/WorkoutTimer';
 import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Animated, Image, Modal, LayoutAnimation, Dimensions } from 'react-native';
+import { BlurView } from 'expo-blur';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -39,14 +40,20 @@ import PRHallOfFameSheet from '../../components/Gym/PRHallOfFameSheet';
 import { ZenGymAiFab } from '../../components/Gym/ZenGymAiFab';
 import { handleSyncError } from '../../utils/errorUtils';
 import { getOverloadSuggestion } from '../../services/progressiveOverload';
+import { setTabBarVisible } from '../../utils/tabBarScroll';
 
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 
 export default function GymHomeScreen() {
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [weekOffset, setWeekOffset] = useState(0);
+
+  // ── Animated pill visibility: 0 at top (flat/normal), 1 on scroll (glass pills) ──
+  const pillAnim = useRef(new Animated.Value(0)).current;
+  const isPillVisibleRef = useRef(false);
 
   // When switching to the Gym module from another tab/module, always return to Today
   useFocusEffect(
@@ -54,7 +61,9 @@ export default function GymHomeScreen() {
       const today = todayStr();
       setSelectedDate(today);
       setWeekOffset(0);
-    }, [])
+      isPillVisibleRef.current = false;
+      pillAnim.setValue(0);
+    }, [pillAnim])
   );
 
   const { gymLogs, waterLogs, sleepLogs, tasks, customEvents, attendance, habitLogs, allHabits, assignments, applyMasterTemplate, userGymPlan, updateMasterPlan, updateFullMasterPlan, user } = useMobileData();
@@ -97,12 +106,39 @@ export default function GymHomeScreen() {
   const SCREEN_HEIGHT = Dimensions.get('window').height;
   const scrollViewRef = useRef<any>(null);
   const currentScrollY = useRef<number>(0);
-
   const scrollY = useRef(new Animated.Value(0)).current;
+  const lastScrollY = useRef(0);
+
+  const updatePillVisibility = useCallback((offsetY: number) => {
+    currentScrollY.current = offsetY;
+    const shouldShow = offsetY > 20;
+    if (shouldShow !== isPillVisibleRef.current) {
+      isPillVisibleRef.current = shouldShow;
+      Animated.timing(pillAnim, {
+        toValue: shouldShow ? 1 : 0,
+        duration: shouldShow ? 140 : 80, // Instantly disappears in 80ms on scroll-up
+        useNativeDriver: true,
+      }).start();
+    }
+
+    // Auto-hiding bottom navigation bar on scroll (fast & smooth)
+    if (offsetY <= 35) {
+      setTabBarVisible(true);
+    } else {
+      const diff = offsetY - lastScrollY.current;
+      if (diff > 10) {
+        setTabBarVisible(false); // Scroll down -> hide
+      } else if (diff < -6) {
+        setTabBarVisible(true); // Scroll up -> show instantly
+      }
+    }
+    lastScrollY.current = offsetY;
+  }, [pillAnim]);
+
   const headerFade = scrollY.interpolate({
     inputRange: [0, 50],
-    outputRange: [1, 0],
-    extrapolate: 'clamp'
+    outputRange: [1, 0.6],
+    extrapolate: 'clamp',
   });
 
   const animHeader = useRef(new Animated.Value(1)).current;
@@ -540,11 +576,12 @@ export default function GymHomeScreen() {
 
 
   const activeExercisesData = useMemo(() => {
+    if (planDay?.isRest) return [];
     if (!log?.exercises) return [];
     return log.exercises
       .map((ex, originalIndex) => ({ ...ex, originalIndex }))
       .filter(ex => !ex.skipped);
-  }, [log?.exercises]);
+  }, [log?.exercises, planDay?.isRest]);
 
   const renderExerciseItem = ({ item: ex, drag, isActive }: RenderItemParams<any>) => {
     const isDone = ex.setsLog.length > 0 && ex.setsLog.every((set: any) => set.completed);
@@ -711,44 +748,6 @@ export default function GymHomeScreen() {
 
   const renderHeader = () => (
     <>
-      {/* Header */}
-      <Animated.View style={[s.header, { opacity: animHeader, transform: [{ translateY: animHeader.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
-        <Text style={s.headerTitle}>Gym</Text>
-        <View style={s.headerActions}>
-          <TouchableOpacity onPress={() => { hapticMedium(); setShowSwapRoutineModal(true); }} style={s.headerBtn} activeOpacity={0.7}>
-            <Ionicons name="swap-horizontal-outline" size={16} color={COLORS.textMuted} />
-            <Text style={s.headerBtnText}>Swap</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { hapticMedium(); setShowProfileModal(true); }} style={s.headerBtn} activeOpacity={0.7}>
-            <Ionicons name="person-outline" size={16} color={COLORS.textMuted} />
-            <Text style={s.headerBtnText}>Profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { 
-            hapticMedium(); 
-            Alert.alert('Planning', 'Choose an option', [
-              { text: 'Workout Templates', onPress: () => setShowTemplateModal(true) },
-              { text: 'Schedule Settings', onPress: () => setShowScheduleSettingsModal(true) },
-              { text: 'Cancel', style: 'cancel' }
-            ]);
-          }} style={s.headerBtn} activeOpacity={0.7}>
-            <Ionicons name="document-text-outline" size={16} color={COLORS.textMuted} />
-            <Text style={s.headerBtnText}>Plan</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { hapticMedium(); setShowBodyMetrics(true); }} style={s.headerBtn} activeOpacity={0.7}>
-            <Ionicons name="body-outline" size={16} color={COLORS.textMuted} />
-            <Text style={s.headerBtnText}>Body</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { hapticMedium(); navigation.navigate('GymProgress'); }} style={s.headerBtn} activeOpacity={0.7}>
-            <Ionicons name="bar-chart-outline" size={16} color={COLORS.textMuted} />
-            <Text style={s.headerBtnText}>Stats</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { hapticMedium(); setShowAddModal(true); }} style={s.headerBtn} activeOpacity={0.7}>
-            <Ionicons name="add" size={18} color="#a599ff" />
-            <Text style={[s.headerBtnText, { color: '#a599ff' }]}>Add</Text>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-
       {/* Week Strip */}
       <Animated.View style={[s.weekStrip, { opacity: Animated.multiply(headerFade, animWeek), transform: [{ translateY: animWeek.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) }] }]}>
         <TouchableOpacity onPress={() => { hapticLight(); LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setWeekOffset(prev => prev - 1); setSelectedDate(prev => dateStrOffset(-7, prev)); }} style={s.weekNavBtn}>
@@ -879,7 +878,70 @@ export default function GymHomeScreen() {
 
   return (
     <View style={s.root}>
-      <SafeAreaView style={{ flex: 1 }} edges={['top']}>
+      <View style={{ flex: 1 }}>
+        {/* ── Single Sticky Header (Positioned right below status bar via insets.top) ── */}
+        <View style={[s.topHeaderWrapper, { top: insets.top }]} pointerEvents="box-none">
+          <View style={s.headerInner}>
+            <Text style={s.headerTitle}>Gym</Text>
+            <View style={s.headerActions}>
+              <TouchableOpacity onPress={() => { hapticMedium(); setShowSwapRoutineModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
+                <View style={s.morphBtnIconWrap}>
+                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="swap-horizontal-outline" size={16} color={COLORS.textMuted} />
+                </View>
+                <Text style={s.headerBtnText}>Swap</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { hapticMedium(); setShowProfileModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
+                <View style={s.morphBtnIconWrap}>
+                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="person-outline" size={16} color={COLORS.textMuted} />
+                </View>
+                <Text style={s.headerBtnText}>Profile</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { 
+                hapticMedium(); 
+                Alert.alert('Planning', 'Choose an option', [
+                  { text: 'Workout Templates', onPress: () => setShowTemplateModal(true) },
+                  { text: 'Schedule Settings', onPress: () => setShowScheduleSettingsModal(true) },
+                  { text: 'Cancel', style: 'cancel' }
+                ]);
+              }} style={s.morphBtn} activeOpacity={0.7}>
+                <View style={s.morphBtnIconWrap}>
+                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="document-text-outline" size={16} color={COLORS.textMuted} />
+                </View>
+                <Text style={s.headerBtnText}>Plan</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { hapticMedium(); setShowBodyMetrics(true); }} style={s.morphBtn} activeOpacity={0.7}>
+                <View style={s.morphBtnIconWrap}>
+                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="body-outline" size={16} color={COLORS.textMuted} />
+                </View>
+                <Text style={s.headerBtnText}>Body</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { hapticMedium(); navigation.navigate('GymProgress'); }} style={s.morphBtn} activeOpacity={0.7}>
+                <View style={s.morphBtnIconWrap}>
+                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="bar-chart-outline" size={16} color={COLORS.textMuted} />
+                </View>
+                <Text style={s.headerBtnText}>Stats</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => { hapticMedium(); setShowAddModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
+                <View style={s.morphBtnIconWrap}>
+                  <Animated.View style={[s.morphBtnPill, s.morphBtnPillAccent, { opacity: pillAnim }]} />
+                  <Ionicons name="add" size={18} color="#a599ff" />
+                </View>
+                <Text style={[s.headerBtnText, { color: '#a599ff' }]}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         
         <DraggableFlatList
@@ -907,17 +969,33 @@ export default function GymHomeScreen() {
             }
             reorderExercisesFull(newFullList);
           }}
-          contentContainerStyle={s.scrollContent} 
+          contentContainerStyle={[s.scrollContent, { paddingTop: insets.top + 58 }]} 
           showsVerticalScrollIndicator={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-            {
-              useNativeDriver: false, // DraggableFlatList scroll might require false for nativeEvent
-              listener: (e: any) => {
-                currentScrollY.current = e?.nativeEvent?.contentOffset?.y ?? 0;
-              }
+          onScrollOffsetChange={updatePillVisibility}
+          onScroll={(e: any) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            updatePillVisibility(y);
+          }}
+          onScrollEndDrag={(e: any) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            if (y <= 30) {
+              setTabBarVisible(true);
             }
-          )}
+            if (y <= 20 && isPillVisibleRef.current) {
+              isPillVisibleRef.current = false;
+              Animated.timing(pillAnim, { toValue: 0, duration: 50, useNativeDriver: true }).start();
+            }
+          }}
+          onMomentumScrollEnd={(e: any) => {
+            const y = e?.nativeEvent?.contentOffset?.y ?? 0;
+            if (y <= 30) {
+              setTabBarVisible(true);
+            }
+            if (y <= 20 && isPillVisibleRef.current) {
+              isPillVisibleRef.current = false;
+              Animated.timing(pillAnim, { toValue: 0, duration: 50, useNativeDriver: true }).start();
+            }
+          }}
           scrollEventThrottle={16}
         />
 
@@ -1018,18 +1096,13 @@ export default function GymHomeScreen() {
         <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />
 
       </KeyboardAvoidingView>
-      </SafeAreaView>
+      </View>
 
-      {/* ── Progressive Overload Toast ─────────────────────────────────────────
-          Surfaces automatically when an exercise is fully completed and the
-          algorithm detects the user has hit their targets 2+ sessions in a row.
-          Floats above the AI FAB, auto-dismisses after 6 seconds.
-      ─────────────────────────────────────────────────────────────────────── */}
       {overloadToast && (
         <Animated.View
           style={{
             position: 'absolute',
-            bottom: 160, // above the AI FAB
+            bottom: 160,
             left: 16,
             right: 16,
             backgroundColor: '#1a2a1a',
@@ -1068,7 +1141,6 @@ export default function GymHomeScreen() {
         </Animated.View>
       )}
 
-      {/* ZenGymAI FAB fixed to root, immune to keyboard layout jumps */}
       <ZenGymAiFab onPress={() => setShowAiModal(true)} />
     </View>
   );
@@ -1076,7 +1148,7 @@ export default function GymHomeScreen() {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000000' },
-  scrollContent: { paddingBottom: 95 },
+  scrollContent: { paddingBottom: 95, paddingTop: 48 },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
@@ -1088,18 +1160,12 @@ const s = StyleSheet.create({
   posRowActive: { backgroundColor: '#a599ff' },
   posNum: { fontSize: 12, fontWeight: '700', color: COLORS.textMuted, width: 30 },
   posName: { flex: 1, fontSize: 13, color: COLORS.textPrimary, marginRight: 8 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingBottom: 14, paddingTop: 4 },
-  headerTitle: { fontSize: 24, fontWeight: '700', color: COLORS.textPrimary, fontFamily: 'Inter-Bold', marginRight: 4 },
-  headerActions: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 4 },
-  headerBtn: { alignItems: 'center', width: 38 },
-  headerBtnText: { fontSize: 9, color: COLORS.textTertiary, fontFamily: 'Inter-Medium', marginTop: 2, textAlign: 'center' },
 
-
-  weekStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginBottom: 8 },
+  weekStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, marginTop: 4, marginBottom: 2 },
   weekDaysContainer: { flexDirection: 'row', flex: 1, justifyContent: 'space-evenly', alignItems: 'center' },
   weekNavBtn: { paddingVertical: 12, paddingHorizontal: 4, justifyContent: 'center', alignItems: 'center', opacity: 0.7 },
-  dayCol: { alignItems: 'center', gap: 6 },
-  dayLetter: { fontSize: 11, color: COLORS.textTertiary, fontFamily: 'Inter-Regular' },
+  dayCol: { alignItems: 'center', gap: 2 },
+  dayLetter: { fontSize: 10.5, color: COLORS.textTertiary, fontFamily: 'Inter-Medium', marginBottom: 1 },
   dayLetterActive: { color: COLORS.textPrimary },
   dayPill: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0)' },
   dayPillActive: { backgroundColor: COLORS.accentPrimary, borderRadius: 18, overflow: 'hidden' },
@@ -1178,5 +1244,66 @@ const s = StyleSheet.create({
     borderColor: 'rgba(165,153,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // ── Single Morphing Sticky Header Styles ─────────────────────────────────
+  topHeaderWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+    backgroundColor: 'transparent',
+  },
+  headerInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 4,
+    backgroundColor: 'transparent',
+  },
+  headerTitle: {
+    fontSize: 21,
+    fontWeight: '700',
+    fontFamily: 'Inter-Bold',
+    color: COLORS.textPrimary,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  morphBtn: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 35,
+  },
+  morphBtnIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  morphBtnPill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.09)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  morphBtnPillAccent: {
+    backgroundColor: 'rgba(165,153,255,0.16)',
+    borderColor: 'rgba(165,153,255,0.32)',
+  },
+  headerBtnText: {
+    fontSize: 8.5,
+    color: COLORS.textTertiary,
+    fontFamily: 'Inter-Medium',
+    marginTop: 1,
+    textAlign: 'center',
   },
 });

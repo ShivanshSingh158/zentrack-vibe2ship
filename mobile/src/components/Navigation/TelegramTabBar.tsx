@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { feedback } from '../../utils/haptics';
 import { FONT_FAMILY } from '../../theme/tokens';
+import { subscribeTabBarScroll, setTabBarVisible } from '../../utils/tabBarScroll';
 
 
 
@@ -27,11 +28,11 @@ function TabBarIcon({
 
   useEffect(() => {
     if (isFocused) {
-      scale.value = withSpring(0.85, { damping: 15, stiffness: 300 }, () => {
-        scale.value = withSpring(1, { damping: 12, stiffness: 200 });
+      scale.value = withSpring(0.9, { damping: 16, stiffness: 350 }, () => {
+        scale.value = withSpring(1, { damping: 14, stiffness: 280 });
       });
     }
-    opacityFocused.value = withTiming(isFocused ? 1 : 0, { duration: 250, easing: Easing.out(Easing.quad) });
+    opacityFocused.value = withTiming(isFocused ? 1 : 0, { duration: 160, easing: Easing.out(Easing.cubic) });
   }, [isFocused]);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -104,12 +105,12 @@ export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: 
   useEffect(() => {
     if (tabWidth > 0) {
       indicatorPosition.value = withTiming(targetX, {
-        duration: 300,
-        easing: Easing.out(Easing.exp), // Extra smooth, premium snap
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
       });
       indicatorWidth.value = withTiming(targetDotWidth, {
-        duration: 300,
-        easing: Easing.out(Easing.exp),
+        duration: 200,
+        easing: Easing.out(Easing.cubic),
       });
     }
   }, [targetX, targetDotWidth, tabWidth]);
@@ -123,19 +124,43 @@ export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: 
 
   // Check if the active screen wants to hide the tab bar (e.g. Learning Video Player)
   const focusedOptions = descriptors[state.routes[state.index].key].options;
-  const isHidden = focusedOptions.tabBarStyle && (focusedOptions.tabBarStyle as any).display === 'none';
+  const isScreenOptionsHidden = focusedOptions.tabBarStyle && (focusedOptions.tabBarStyle as any).display === 'none';
+
+  const [isScrollHidden, setIsScrollHidden] = useState(false);
+
+  useEffect(() => {
+    return subscribeTabBarScroll((visible) => {
+      setIsScrollHidden(!visible);
+    });
+  }, []);
+
+  // When switching tabs, always reveal the tab bar immediately
+  useEffect(() => {
+    setIsScrollHidden(false);
+    setTabBarVisible(true);
+  }, [state.index]);
+
+  const shouldHide = isScreenOptionsHidden || isScrollHidden;
 
   const translateY = useSharedValue(0);
+  const tabOpacity = useSharedValue(1);
+
   useEffect(() => {
-    translateY.value = withTiming(isHidden ? 150 : 0, {
-      duration: 350,
-      easing: Easing.out(Easing.exp),
+    translateY.value = withSpring(shouldHide ? 110 : 0, {
+      damping: 22,
+      stiffness: 340,
+      mass: 0.7,
     });
-  }, [isHidden]);
+    tabOpacity.value = withTiming(shouldHide ? 0 : 1, {
+      duration: shouldHide ? 140 : 170,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [shouldHide]);
 
   const containerAnimatedStyle = useAnimatedStyle(() => {
     return {
       transform: [{ translateY: translateY.value }],
+      opacity: tabOpacity.value,
     };
   });
 
@@ -144,7 +169,8 @@ export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: 
       style={[
         styles.container, 
         { 
-          backgroundColor: 'rgba(25, 25, 28, 0.98)',
+          backgroundColor: 'rgba(11, 11, 14, 0.97)',
+          borderColor: 'rgba(255, 255, 255, 0.08)',
           left: 16,
           right: 16,
         }, 

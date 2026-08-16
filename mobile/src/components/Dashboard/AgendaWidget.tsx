@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -29,7 +30,7 @@ export function AgendaWidget({
   const { colors } = useTheme();
   const navigation = useNavigation<any>();
 
-  const { todayTasks, todayClasses, todayGym, isGymScheduled, plannedDay, hasAgenda, formatTimeStr } = useMemo(() => {
+  const { todayTasks, todayClasses, todayGym, isGymScheduled, shouldShowGymInAgenda, plannedDay, hasAgenda, formatTimeStr } = useMemo(() => {
     const todayTasks = tasks.filter(t => t.date === todayStr);
     
     const dayOfWeek  = nowDate.getDay().toString();
@@ -57,12 +58,24 @@ export function AgendaWidget({
     const todayGym = gymLogs?.find(g => g.date === todayStr);
     const planDayIndex = WEEKDAY_TO_PLAN[nowDate.getDay()];
     
-    // Only show gym in agenda if user has explicitly imported a plan, or if they logged a workout today
     const hasUserPlan = userGymPlan?.customDays && Object.keys(userGymPlan.customDays).length > 0;
-    const plannedDay = hasUserPlan ? getCustomPlanDay(userGymPlan.customDays, planDayIndex) : null;
-    const isGymScheduled = plannedDay && !plannedDay.isRest;
+    const plannedDay = hasUserPlan 
+      ? getCustomPlanDay(userGymPlan.customDays, planDayIndex) 
+      : null;
+
+    // Strict Rest check: if planned day is rest or has no exercises
+    const isRestPlan = !plannedDay || plannedDay.isRest === true || plannedDay.name?.toLowerCase().includes('rest') || (Array.isArray(plannedDay.exercises) && plannedDay.exercises.length === 0);
+
+    // Has the user actually logged or started a real non-rest workout today?
+    const hasLoggedSets = Array.isArray(todayGym?.exercises) && todayGym.exercises.some((e: any) => Array.isArray(e.setsLog) && e.setsLog.some((s: any) => s.completed || (typeof s.reps === 'number' && s.reps > 0)));
+    const hasCompletedDuration = !!(todayGym?.workoutDurationMinutes && todayGym.workoutDurationMinutes > 0 && !todayGym?.isRestDay);
+    const hasActiveWorkoutInProgress = !!(todayGym?.workoutStartTime && !hasCompletedDuration && !todayGym?.isRestDay && !isRestPlan);
+    const hasRealWorkoutLog = hasLoggedSets || hasCompletedDuration || hasActiveWorkoutInProgress;
+    const isGymScheduled = !isRestPlan && !!(plannedDay && !plannedDay.isRest);
+    // Show gym in agenda ONLY IF: (1) user has a real active workout log today OR (2) today is a planned non-rest workout day
+    const shouldShowGymInAgenda = hasRealWorkoutLog || isGymScheduled;
     
-    const hasAgenda = todayGym || isGymScheduled || todayClasses.length > 0 || todayTasks.length > 0;
+    const hasAgenda = shouldShowGymInAgenda || todayClasses.length > 0 || todayTasks.length > 0;
 
     const formatTimeStr = (tStr: string): string => {
       if (!tStr) return '';
@@ -79,10 +92,9 @@ export function AgendaWidget({
       return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
     };
 
-    return { todayTasks, todayClasses, todayGym, isGymScheduled, plannedDay, hasAgenda, formatTimeStr };
+    return { todayTasks, todayClasses, todayGym, isGymScheduled, shouldShowGymInAgenda, plannedDay, hasAgenda, formatTimeStr };
   }, [tasks, gymLogs, userGymPlan, attendance, attendanceLogs, todayStr, nowDate]);
 
-  if (!hasAgenda) return null;
 
   const parseTimeToMins = (tStr: string): number => {
     if (!tStr) return 9999;
@@ -125,7 +137,7 @@ export function AgendaWidget({
 
   const agendaItems: any[] = [];
 
-  if (todayGym || isGymScheduled) {
+  if (shouldShowGymInAgenda) {
     const isGymCompleted = !!todayGym?.workoutDurationMinutes;
 
     let gymTimeStr = '';
@@ -140,22 +152,26 @@ export function AgendaWidget({
       gymTimeMins = parseTimeToMins(plannedDay.startTime);
     }
 
-    agendaItems.push({
-      id: 'gym-item',
-      title: todayGym?.workoutStartTime && !isGymCompleted
-        ? 'Gym Workout (In Progress)'
-        : isGymCompleted
-          ? 'Gym Workout (Completed)'
-          : `Gym: ${plannedDay?.name || 'Workout'}`,
-      timeStr: gymTimeStr,
-      timeMins: isGymCompleted ? -1 : gymTimeMins,
-      isCompleted: isGymCompleted,
-      isMissed: false,
-      isCancelled: false,
-      icon: isGymCompleted ? 'checkmark-circle' : 'barbell-outline',
-      iconColor: isGymCompleted ? colors.accentGreen : colors.textPrimary,
-      onPress: () => navigation.navigate('Gym')
-    });
+    const gymTitle = todayGym?.workoutStartTime && !isGymCompleted
+      ? 'Gym Workout (In Progress)'
+      : isGymCompleted
+        ? 'Gym Workout (Completed)'
+        : `Gym: ${plannedDay?.name || 'Workout'}`;
+
+    if (!gymTitle.toLowerCase().includes('rest')) {
+      agendaItems.push({
+        id: 'gym-item',
+        title: gymTitle,
+        timeStr: gymTimeStr,
+        timeMins: isGymCompleted ? -1 : gymTimeMins,
+        isCompleted: isGymCompleted,
+        isMissed: false,
+        isCancelled: false,
+        icon: isGymCompleted ? 'checkmark-circle' : 'barbell-outline',
+        iconColor: isGymCompleted ? colors.accentGreen : colors.textPrimary,
+        onPress: () => navigation.navigate('Gym')
+      });
+    }
   }
 
   todayClasses.forEach((c: any) => {
@@ -237,6 +253,36 @@ export function AgendaWidget({
     return a.timeMins - b.timeMins;
   });
 
+  if (agendaItems.length === 0) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Image
+          source={require('../../../assets/images/sara-running.png')}
+          style={styles.emptyMascot}
+          resizeMode="contain"
+        />
+        <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
+          Rest & Recharge
+        </Text>
+        <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+          No tasks or sessions scheduled for today. Recovery is where growth happens—take a breather or start an activity!
+        </Text>
+
+        <TouchableOpacity
+          style={[styles.emptyActionBtn, { backgroundColor: colors.accentPrimary }]}
+          activeOpacity={0.8}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            navigation.navigate('Tasks');
+          }}
+        >
+          <Ionicons name="add" size={16} color="#000000" />
+          <Text style={styles.emptyActionTextPrimary}>Add Task</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={{ marginTop: 16 }}>
       <Text style={[styles.sectionLabel, { color: colors.textTertiary }]}>TODAY'S AGENDA</Text>
@@ -303,4 +349,43 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.regular,
     fontSize: 12,
   },
+  emptyContainer: {
+    marginTop: 18,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  emptyMascot: {
+    width: 110,
+    height: 110,
+    marginBottom: 8,
+    opacity: 0.95,
+  },
+  emptyTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontFamily: FONT_FAMILY.regular,
+    fontSize: 12.5,
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: 20,
+    marginBottom: 14,
+  },
+  emptyActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 20,
+    paddingVertical: 9,
+    borderRadius: 22,
+  },
+  emptyActionTextPrimary: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 13,
+    color: '#000000',
+  },
 });
+

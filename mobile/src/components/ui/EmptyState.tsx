@@ -11,6 +11,7 @@ interface EmptyStateProps {
   mascot: MascotType;
   title: string;
   subtitle: string;
+  mascotSize?: number;
   action?: {
     label: string;
     onPress: () => void;
@@ -18,7 +19,7 @@ interface EmptyStateProps {
   style?: ViewStyle;
 }
 
-export default function EmptyState({ mascot, title, subtitle, action, style }: EmptyStateProps) {
+export default function EmptyState({ mascot, title, subtitle, mascotSize, action, style }: EmptyStateProps) {
   const { colors } = useTheme();
 
   const imageSource = mascot === 'running' 
@@ -32,7 +33,7 @@ export default function EmptyState({ mascot, title, subtitle, action, style }: E
     >
       <Image 
         source={imageSource} 
-        style={styles.mascot} 
+        style={[styles.mascot, mascotSize ? { width: mascotSize, height: mascotSize } : null]} 
         resizeMode="contain" 
       />
       
@@ -60,17 +61,16 @@ export default function EmptyState({ mascot, title, subtitle, action, style }: E
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: SPACE['2xl'],
-    marginTop: 40,
+    paddingHorizontal: SPACE.lg,
+    paddingVertical: SPACE.sm,
   },
   mascot: {
-    width: 220,
-    height: 220,
-    marginBottom: SPACE.lg,
-    opacity: 0.9,
+    width: 140,
+    height: 140,
+    marginBottom: SPACE.sm,
+    opacity: 0.95,
   },
   title: {
     fontFamily: FONT_FAMILY.bold,

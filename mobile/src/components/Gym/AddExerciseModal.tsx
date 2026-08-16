@@ -335,7 +335,7 @@ function buildCatalogue(): ExerciseCatalogEntry[] {
       restTimeSecs: defaults.rest,
 
 
-      videoId: dbEntry.videoId || '',
+      videoId: (dbEntry as any).videoId || '',
 
 
       // Pass aliases directly onto the catalogue entry to improve searching
