@@ -2,14 +2,16 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import GymHomeScreen from '../screens/gym/GymHomeScreen';
-import ActiveLoggingScreen from '../screens/gym/ActiveLoggingScreen';
-import WorkoutSummaryScreen from '../screens/gym/WorkoutSummaryScreen';
-import ExerciseDetailScreen from '../screens/gym/ExerciseDetailScreen';
-import CardioLogScreen from '../screens/gym/CardioLogScreen';
-import ExerciseSwapScreen from '../screens/gym/ExerciseSwapScreen';
-import GymProgressScreen from '../screens/gym/GymProgressScreen';
-import GymHistoryScreen from '../screens/gym/GymHistoryScreen';
+import { cacheAwareLazy } from '../utils/ModulePrefetcher';
 import { useTheme } from "../contexts/ThemeContext";
+
+const ActiveLoggingScreen  = cacheAwareLazy('ActiveLoggingScreen',  () => import('../screens/gym/ActiveLoggingScreen'));
+const WorkoutSummaryScreen = cacheAwareLazy('WorkoutSummaryScreen', () => import('../screens/gym/WorkoutSummaryScreen'));
+const ExerciseDetailScreen = cacheAwareLazy('ExerciseDetailScreen', () => import('../screens/gym/ExerciseDetailScreen'));
+const CardioLogScreen      = cacheAwareLazy('CardioLogScreen',      () => import('../screens/gym/CardioLogScreen'));
+const ExerciseSwapScreen   = cacheAwareLazy('ExerciseSwapScreen',   () => import('../screens/gym/ExerciseSwapScreen'));
+const GymProgressScreen    = cacheAwareLazy('GymProgressScreen',    () => import('../screens/gym/GymProgressScreen'));
+const GymHistoryScreen     = cacheAwareLazy('GymHistoryScreen',     () => import('../screens/gym/GymHistoryScreen'));
 
 const Stack = createNativeStackNavigator();
 
