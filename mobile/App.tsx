@@ -64,12 +64,18 @@ console.error = (...args) => {
 
 
 
+import { StatusBar } from 'expo-status-bar';
+
 function ThemedAppContainer() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider style={{ flex: 1, backgroundColor: colors.background }}>
+        <StatusBar 
+          style={isDark ? 'light' : 'dark'} 
+          backgroundColor={colors.background} 
+        />
         <PortalProvider>
           <MobileDataProvider>
             <ErrorBoundary screenName="RootApp">
