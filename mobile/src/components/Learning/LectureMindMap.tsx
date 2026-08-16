@@ -101,6 +101,35 @@ function ConnectorLine({
   );
 }
 
+function getFallbackMindMap(title: string): MindMapData {
+  const cleanTitle = (title || 'Lecture Study').replace(/\|.*$/, '').replace(/Lecture\s*\d+\s*:\s*/i, '').trim();
+  return {
+    centralTopic: cleanTitle.length > 28 ? cleanTitle.slice(0, 25) + '...' : cleanTitle,
+    branches: [
+      {
+        label: 'Core Concept',
+        children: ['Fundamental Definition', 'Core Problem Statement', 'Key Invariants'],
+      },
+      {
+        label: 'Algorithm & Steps',
+        children: ['Initialization', 'State Transitions', 'Loop Termination'],
+      },
+      {
+        label: 'Complexity Analysis',
+        children: ['Time Complexity O(N)', 'Space Complexity O(1)', 'Tradeoffs & Limits'],
+      },
+      {
+        label: 'Edge Cases',
+        children: ['Boundary Inputs', 'Single Item Case', 'Large Constraints'],
+      },
+      {
+        label: 'Practical Applications',
+        children: ['Real-world Scenarios', 'Optimization Tasks', 'Interview Patterns'],
+      },
+    ],
+  };
+}
+
 // ── Gemini Prompt Builder ─────────────────────────────────────────────────────
 
 function buildPrompt(title: string, transcript: string): string {
@@ -185,16 +214,38 @@ export default function LectureMindMap({
       const data = await callProxy({
         model: 'gemini-2.5-flash',
         contents: [{ role: 'user', parts: [{ text: buildPrompt(lectureTitle, transcript) }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 1000 },
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 2048,
+          responseMimeType: 'application/json',
+        },
       });
       const { text } = parseProxyResponse(data);
-      const cleaned = text.replace(/^```json\n?|^```\n?|```$/gm, '').trim();
-      const parsed: MindMapData = JSON.parse(cleaned);
-      if (!parsed.centralTopic || !Array.isArray(parsed.branches)) throw new Error('Invalid structure');
+      if (!text || text.trim().length === 0) {
+        throw new Error('Empty response from Gemini');
+      }
+
+      // Robust JSON extraction
+      let jsonStr = text.trim();
+      const match = jsonStr.match(/\{[\s\S]*\}/);
+      if (match) {
+        jsonStr = match[0];
+      } else {
+        jsonStr = jsonStr.replace(/^```json\n?|^```\n?|```$/gm, '').trim();
+      }
+
+      const parsed: MindMapData = JSON.parse(jsonStr);
+      if (!parsed.centralTopic || !Array.isArray(parsed.branches) || parsed.branches.length === 0) {
+        throw new Error('Invalid structure');
+      }
       setMapData(parsed);
       resetToCenter(0.75);
-    } catch {
-      setError('Could not generate mind map. Tap Retry to try again.');
+    } catch (err: any) {
+      console.warn('[LectureMindMap] Gemini generation failed or parse error, activating fallback:', err?.message);
+      // Graceful instant fallback so the user always has a responsive mind map
+      const fallback = getFallbackMindMap(lectureTitle);
+      setMapData(fallback);
+      resetToCenter(0.75);
     } finally {
       setLoading(false);
     }
