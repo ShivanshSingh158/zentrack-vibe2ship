@@ -440,8 +440,16 @@ export default function DashboardScreen() {
             if (layoutItem.id === 'quote') {
               return (
                 <Animated.View key={"quote" as any} entering={FadeInDown.delay(200).duration(400)} style={{ marginTop: 18, marginBottom: 14 }}>
-                  <Text style={s.quoteText}>"{data.quote.text}"</Text>
-                  <Text style={s.quoteAuthor}>— {data.quote.author}</Text>
+                  <Pressable
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      data.shuffleQuote();
+                    }}
+                    hitSlop={10}
+                  >
+                    <Text style={s.quoteText}>"{data.quote.text}"</Text>
+                    <Text style={s.quoteAuthor}>— {data.quote.author}</Text>
+                  </Pressable>
                 </Animated.View>
               );
             }

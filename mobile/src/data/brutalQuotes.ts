@@ -256,11 +256,22 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Get a deterministic rotating quote based on user's BFE personality.
- * Rotates sequentially every time it's called, guaranteeing no repeats until the end.
+ * Shuffles all quotes using Fisher-Yates and pops from the bag on every call,
+ * strictly guaranteeing ZERO repeats until every single quote in the collection has been shown.
  */
 export async function getDailyQuote(personality: QuotePersonality = 'consistent'): Promise<Quote> {
-  const quotes = [...BRUTAL_QUOTES, ...(PERSONALITY_QUOTES[personality] || PERSONALITY_QUOTES['consistent'])];
+  const rawQuotes = [...BRUTAL_QUOTES, ...(PERSONALITY_QUOTES[personality] || PERSONALITY_QUOTES['consistent'])];
   
+  // Deduplicate quotes strictly by text so every item in the pool is unique
+  const seen = new Set<string>();
+  const quotes: Quote[] = [];
+  for (const q of rawQuotes) {
+    if (!seen.has(q.text)) {
+      seen.add(q.text);
+      quotes.push(q);
+    }
+  }
+
   try {
     const bagKey = `@zentrack_quote_bag_${personality}`;
     const bagStr = await AsyncStorage.getItem(bagKey);
@@ -269,7 +280,7 @@ export async function getDailyQuote(personality: QuotePersonality = 'consistent'
     // Regenerate bag if empty or if quotes array size changed drastically (indices out of bounds)
     if (!Array.isArray(bag) || bag.length === 0 || bag.some(i => i >= quotes.length)) {
       bag = Array.from({ length: quotes.length }, (_, i) => i);
-      // Fisher-Yates shuffle
+      // Modern Fisher-Yates shuffle
       for (let i = bag.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [bag[i], bag[j]] = [bag[j], bag[i]];

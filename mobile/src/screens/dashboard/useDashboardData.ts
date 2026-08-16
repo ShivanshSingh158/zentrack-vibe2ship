@@ -103,20 +103,23 @@ export function useDashboardData() {
     return () => handle.cancel();
   }, []);
 
+  const shuffleQuote = React.useCallback(async () => {
+    try {
+      if (user?.uid) {
+        const fp = await getFingerprint(user.uid);
+        setQuote(await getDailyQuote(fp.streakPersonality as QuotePersonality));
+      } else {
+        setQuote(await getDailyQuote());
+      }
+    } catch {
+      setQuote(await getDailyQuote());
+    }
+  }, [user?.uid]);
+
   // ── Quote + XP load on focus ───────────────────────────────────────────────
   useFocusEffect(
     React.useCallback(() => {
-      const loadBFEQuote = async () => {
-        try {
-          if (user?.uid) {
-            const fp = await getFingerprint(user.uid);
-            setQuote(await getDailyQuote(fp.streakPersonality as QuotePersonality));
-          } else {
-            setQuote(await getDailyQuote());
-          }
-        } catch { setQuote(await getDailyQuote()); }
-      };
-      loadBFEQuote();
+      shuffleQuote();
       AsyncStorage.getItem('zentrack_xp_v1').then(v => {
         const newXp = parseInt(v || '0', 10);
         setXp(cur => {
@@ -124,7 +127,7 @@ export function useDashboardData() {
           return newXp;
         });
       });
-    }, [user?.uid])
+    }, [shuffleQuote])
   );
 
   // ── Time / greeting ────────────────────────────────────────────────────────
@@ -329,6 +332,7 @@ export function useDashboardData() {
     // Sara surface
     surfaceMessage, surfaceActionLabel, dismissBanner,
     // Setters
+    shuffleQuote,
     setXpGain, setCaptureVisible, setLayout, setLayoutSheetVisible,
     setWaterLogVisible, setWaterTotal,
   };
