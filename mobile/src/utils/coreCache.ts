@@ -66,18 +66,10 @@ export async function flushCoreCache(): Promise<void> {
   } catch { /* silent */ }
 }
 
-// ── Write — debounced multiSet call to prevent JS thread blocking ────────────
-export async function writeCoreCacheMulti(data: Partial<CoreCache>, immediate = false): Promise<void> {
+// ── Write — writes immediately to AsyncStorage for guaranteed offline persistence ───
+export async function writeCoreCacheMulti(data: Partial<CoreCache>, immediate = true): Promise<void> {
   _pendingCoreData = { ..._pendingCoreData, ...data };
-
-  if (immediate) {
-    return flushCoreCache();
-  }
-
-  if (_coreWriteTimer) clearTimeout(_coreWriteTimer);
-  _coreWriteTimer = setTimeout(() => {
-    flushCoreCache();
-  }, 400);
+  return flushCoreCache();
 }
 
 // ── Invalidate — call on logout to clear stale data ──────────────────────────

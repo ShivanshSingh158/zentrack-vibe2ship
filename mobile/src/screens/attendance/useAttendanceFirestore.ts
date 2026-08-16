@@ -40,6 +40,7 @@ interface FirestoreActionsParams {
   optimisticUpdateAttendance: (subjectId: string, partial: Partial<AttendanceSubject>) => void;
   optimisticAddAttendanceLog: (log: any) => void;
   optimisticRemoveAttendanceLog: (logId: string) => void;
+  optimisticDeleteSubject?: (subjectId: string) => void;
 }
 
 export function useAttendanceFirestore({
@@ -47,6 +48,7 @@ export function useAttendanceFirestore({
   logsBySubjectId, overrideCounts,
   setOverrideOpen, setConfirmConfig,
   optimisticUpdateAttendance, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog,
+  optimisticDeleteSubject,
 }: FirestoreActionsParams) {
 
   // ── Core log action ────────────────────────────────────────────────────────
@@ -203,6 +205,7 @@ export function useAttendanceFirestore({
       confirmText: 'Delete',
       danger: true,
       onConfirm: async () => {
+        optimisticDeleteSubject?.(id);
         const subjectLogs = logs.filter(l => l.subjectId === id);
         const batch       = writeBatch(db);
         subjectLogs.forEach(l => batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, l.id)));

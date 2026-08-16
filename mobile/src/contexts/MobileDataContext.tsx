@@ -142,7 +142,7 @@ export interface AttendanceSubject {
   id: string; userId: string; name: string;
   classesAttended: number; classesTotal: number;
   labsAttended?: number; labsTotal?: number; targetPercentage: number; schedule?: any; schemaVersion?: number;
-  lastUpdated?: number; color?: string;
+  lastUpdated?: number; color?: string; order?: number;
 }
 
 export interface AttendanceLog {
@@ -232,6 +232,8 @@ interface MobileDataContextType {
   optimisticAddGymLog: (log: GymLog) => void;
   optimisticUpdateGymLog: (logId: string, partial: Partial<GymLog>) => void;
   // Academic
+  optimisticAddSubject: (subject: AttendanceSubject) => void;
+  optimisticDeleteSubject: (subjectId: string) => void;
   optimisticUpdateAttendance: (subjectId: string, partial: Partial<AttendanceSubject>) => void;
   optimisticAddAttendanceLog: (log: any) => void;
   optimisticRemoveAttendanceLog: (logId: string) => void;
@@ -347,6 +349,8 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     optimisticAddGymLog: wellness.optimisticAddGymLog,
     optimisticUpdateGymLog: wellness.optimisticUpdateGymLog,
     // Optimistic functions — Academic
+    optimisticAddSubject: academic.optimisticAddSubject,
+    optimisticDeleteSubject: academic.optimisticDeleteSubject,
     optimisticUpdateAttendance: academic.optimisticUpdateAttendance,
     optimisticAddAttendanceLog: academic.optimisticAddAttendanceLog,
     optimisticRemoveAttendanceLog: academic.optimisticRemoveAttendanceLog,
@@ -437,6 +441,8 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   optimisticRemoveHabitLog: () => {},
   optimisticAddGymLog: () => {},
   optimisticUpdateGymLog: () => {},
+  optimisticAddSubject: () => {},
+  optimisticDeleteSubject: () => {},
   optimisticUpdateAttendance: () => {},
   optimisticAddAttendanceLog: () => {},
   optimisticRemoveAttendanceLog: () => {},

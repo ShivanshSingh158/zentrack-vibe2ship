@@ -5,8 +5,9 @@ import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { db } from '../../services/firebase';
-import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, doc, setDoc } from 'firebase/firestore';
 import { useMobileData, AttendanceSubject } from '../../contexts/MobileDataContext';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -31,7 +32,8 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
 }) {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors);
-  const { user, attendance } = useMobileData();
+  const { user } = useMobileData();
+  const { attendance, optimisticAddSubject, optimisticUpdateAttendance } = useAcademicData();
   const [name, setName] = useState('');
   const [targetPercentage, setTargetPercentage] = useState('75');
   const [schedule, setSchedule] = useState<any>(defaultSchedule);
@@ -148,8 +150,8 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
         lTot = hasLabs ? Math.max(lAtt, parseInt(labsTotal) || 0) : 0;
       }
 
-      if (existingSubject) {
-        updateDoc(doc(db, COLLECTION.ATTENDANCE, existingSubject.id!), {
+      if (existingSubject && existingSubject.id) {
+        const payload = {
           name: name.trim(),
           targetPercentage: target,
           classesAttended: cAtt,
@@ -157,9 +159,13 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
           labsAttended: lAtt,
           labsTotal: lTot,
           schedule,
-        }).catch(e => console.log('Subject update error:', e));
+        };
+        optimisticUpdateAttendance(existingSubject.id, payload);
+        updateDoc(doc(db, COLLECTION.ATTENDANCE, existingSubject.id), payload).catch(e => console.log('Subject update error:', e));
       } else {
-        addDoc(collection(db, COLLECTION.ATTENDANCE), {
+        const subId = doc(collection(db, COLLECTION.ATTENDANCE)).id;
+        const newSubject: AttendanceSubject = {
+          id: subId,
           userId: user.uid,
           name: name.trim(),
           classesAttended: cAtt,
@@ -170,7 +176,9 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
           order: attendance.length + 1,
           schedule,
           schemaVersion: SCHEMA_VERSION,
-        }).catch(e => console.log('Subject add error:', e));
+        };
+        optimisticAddSubject(newSubject);
+        setDoc(doc(db, COLLECTION.ATTENDANCE, subId), newSubject).catch(e => console.log('Subject add error:', e));
       }
       onClose();
     } catch (e) {

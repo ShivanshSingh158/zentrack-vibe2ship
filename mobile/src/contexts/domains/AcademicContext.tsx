@@ -25,6 +25,8 @@ export interface AcademicContextType {
   semesterSubjects: SemesterSubject[];
   ensureSubscribed: () => void;
   // Optimistic write helpers — WhatsApp pattern: show instantly, Firestore syncs in background.
+  optimisticAddSubject: (subject: AttendanceSubject) => void;
+  optimisticDeleteSubject: (subjectId: string) => void;
   optimisticUpdateAttendance: (subjectId: string, partial: Partial<AttendanceSubject>) => void;
   optimisticAddAssignment: (assignment: Assignment) => void;
   optimisticUpdateAssignment: (assignmentId: string, partial: Partial<Assignment>) => void;
@@ -40,6 +42,8 @@ const DEFAULT_ACADEMIC_DATA: AcademicContextType = {
   semesters: [],
   semesterSubjects: [],
   ensureSubscribed: () => {},
+  optimisticAddSubject: () => {},
+  optimisticDeleteSubject: () => {},
   optimisticUpdateAttendance: () => {},
   optimisticAddAssignment: () => {},
   optimisticUpdateAssignment: () => {},
@@ -120,7 +124,9 @@ export function AcademicProvider({
   };
 
   useEffect(() => {
-    if (!user) {
+    if (user) {
+      openSubscriptions(user.uid);
+    } else {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
@@ -134,6 +140,22 @@ export function AcademicProvider({
   };
 
   // Optimistic write helpers
+  const optimisticAddSubject = (subject: AttendanceSubject) => {
+    setAttendance(prev => {
+      const next = [subject, ...prev];
+      writeAcademicCache({ attendance: next });
+      return next;
+    });
+  };
+
+  const optimisticDeleteSubject = (subjectId: string) => {
+    setAttendance(prev => {
+      const next = prev.filter(s => s.id !== subjectId);
+      writeAcademicCache({ attendance: next });
+      return next;
+    });
+  };
+
   const optimisticUpdateAttendance = (subjectId: string, partial: Partial<AttendanceSubject>) => {
     setAttendance(prev => {
       const next = prev.map(s => s.id === subjectId ? { ...s, ...partial } : s);
@@ -184,7 +206,8 @@ export function AcademicProvider({
 
   const value = useMemo(() => ({
     attendance, attendanceLogs, assignments, semesters, semesterSubjects,
-    ensureSubscribed, optimisticUpdateAttendance, optimisticAddAssignment,
+    ensureSubscribed, optimisticAddSubject, optimisticDeleteSubject,
+    optimisticUpdateAttendance, optimisticAddAssignment,
     optimisticUpdateAssignment, optimisticDeleteAssignment, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog
   }), [
     attendance, attendanceLogs, assignments, semesters, semesterSubjects, ensureSubscribed

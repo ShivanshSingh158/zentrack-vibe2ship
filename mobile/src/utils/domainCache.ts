@@ -101,11 +101,11 @@ function getCanonicalDomain(keyMap: Record<string, CacheKey>): string {
   return vals.sort().join('|');
 }
 
-// ─── Generic write helper — debounced by default to prevent thread blocking ───
+// ─── Generic write helper — writes immediately to disk for offline persistence ───
 export async function writeDomainCache(
   data: Partial<Record<string, any>>,
   keyMap: Record<string, CacheKey>,
-  immediate = false
+  immediate = true
 ): Promise<void> {
   const domainKey = getCanonicalDomain(keyMap);
 
@@ -115,16 +115,7 @@ export async function writeDomainCache(
     keyMap: { ...(existing?.keyMap || {}), ...keyMap },
   });
 
-  if (immediate) {
-    return flushDomainCache(domainKey);
-  }
-
-  const existingTimer = _writeTimers.get(domainKey);
-  if (existingTimer) clearTimeout(existingTimer);
-
-  _writeTimers.set(domainKey, setTimeout(() => {
-    flushDomainCache(domainKey);
-  }, 400));
+  return flushDomainCache(domainKey);
 }
 
 // ─── Domain-specific helpers — typed wrappers around the generic functions ────

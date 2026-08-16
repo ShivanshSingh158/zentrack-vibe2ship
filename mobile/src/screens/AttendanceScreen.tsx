@@ -102,6 +102,7 @@ export default function AttendanceScreen() {
     optimisticUpdateAttendance: academic.optimisticUpdateAttendance,
     optimisticAddAttendanceLog: academic.optimisticAddAttendanceLog,
     optimisticRemoveAttendanceLog: academic.optimisticRemoveAttendanceLog,
+    optimisticDeleteSubject: academic.optimisticDeleteSubject,
   });
   const {
     handleLog, handleUndo, handleToggleHoliday, handleDeleteSubject,

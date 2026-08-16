@@ -158,8 +158,8 @@ export function useGymLog(dateStr: string) {
     }
     prevPlanUpdatedRef.current = currentPlanUpdatedAt;
 
-    if (!user) return;
-    if (!gymLogsReady) return;
+    if (!user && gymLogs.length === 0) return;
+    if (!gymLogsReady && gymLogs.length === 0) return;
 
     const existing = gymLogs.find(l => l.date === dateStr);
 
@@ -320,7 +320,7 @@ export function useGymLog(dateStr: string) {
       const planDay = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
 
       const newLog: GymDayLog = {
-        userId: user.uid,
+        userId: user?.uid || '',
         date: dateStr,
         dayPlanIndex: planIdx,
         exercises: planDay && !planDay.isRest ? planDay.exercises.map((e: any, idx: number) => {

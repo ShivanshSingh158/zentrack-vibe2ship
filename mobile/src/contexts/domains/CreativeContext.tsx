@@ -100,7 +100,9 @@ export function CreativeProvider({
   };
 
   useEffect(() => {
-    if (!user) {
+    if (user) {
+      openSubscriptions(user.uid);
+    } else {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
