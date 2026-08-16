@@ -63,8 +63,8 @@ export function epley1RM(weight: number, reps: number): number {
 }
 
 /**
- * Robust JSON extractor.
- * Handles: clean JSON, ```json``` code fences, JSON buried inside prose.
+ * Robust JSON extractor with auto-repair for truncated Gemini outputs.
+ * Handles: clean JSON, ```json``` code fences, JSON buried inside prose, and unclosed brackets.
  */
 function extractJson(text: string): string {
   if (!text) throw new Error('Empty response from Gemini');
@@ -84,6 +84,22 @@ function extractJson(text: string): string {
   if (firstBrace !== -1 && lastBrace > firstBrace) {
     const slice = cleaned.slice(firstBrace, lastBrace + 1);
     try { JSON.parse(slice); return slice; } catch (_) {}
+  }
+
+  // 4. Auto-repair truncated JSON (e.g. cut off mid-string or missing closing braces)
+  if (firstBrace !== -1) {
+    let candidate = cleaned.slice(firstBrace);
+    // If ending inside an unclosed string, close the string
+    const quoteCount = (candidate.match(/(?<!\\)"/g) || []).length;
+    if (quoteCount % 2 !== 0) candidate += '"';
+    // Count open vs close braces and brackets
+    const openBraces = (candidate.match(/\{/g) || []).length;
+    const closeBraces = (candidate.match(/\}/g) || []).length;
+    const openBrackets = (candidate.match(/\[/g) || []).length;
+    const closeBrackets = (candidate.match(/\]/g) || []).length;
+    for (let i = 0; i < openBrackets - closeBrackets; i++) candidate += ']';
+    for (let i = 0; i < openBraces - closeBraces; i++) candidate += '}';
+    try { JSON.parse(candidate); return candidate; } catch (_) {}
   }
 
   throw new Error(`Cannot extract JSON from response: ${text.slice(0, 200)}`);
@@ -352,7 +368,7 @@ HARD RULES: Only use numbers from the pre-computed stats block. No markdown aste
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 2000,
+          maxOutputTokens: 8192,
           responseMimeType: 'application/json',
         },
       });
