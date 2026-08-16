@@ -212,15 +212,22 @@ export function useDashboardData() {
 
     const nowMins = nowDate.getHours() * 60 + nowDate.getMinutes();
 
+    // Pre-group today's relevant attendance logs by subjectId for fast O(1) indexed access
+    const todayLogsBySubject = new Map<string, any[]>();
+    for (const l of attendanceLogs || []) {
+      if (l.date === todayStr && !l.isExtra) {
+        const arr = todayLogsBySubject.get(l.subjectId) || [];
+        arr.push(l);
+        todayLogsBySubject.set(l.subjectId, arr);
+      }
+    }
+
     // Filter out cancelled classes
     const validClasses = todayClasses.filter(c => {
-      const subLogs = (attendanceLogs || []).filter(l => 
-        l.subjectId === c.subjectId && 
-        l.date === todayStr && 
-        !l.isExtra && 
-        (c.type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type))
-      ).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      
+      const subLogs = (todayLogsBySubject.get(c.subjectId) || [])
+        .filter(l => (c.type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)))
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
       const log = subLogs[c.sessionIdx];
       return !(log && log.action === 'cancelled');
     });

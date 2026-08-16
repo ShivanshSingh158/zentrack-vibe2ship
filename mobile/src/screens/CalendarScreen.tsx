@@ -52,11 +52,13 @@ export default function CalendarScreen() {
     tasks, attendance, customEvents, gymLogs, userGymPlan
   } = data;
 
-  const currentMonthIdx = new Date(selectedDate).getMonth();
+  const [selY, selM, selD] = selectedDate.split('-').map(Number);
+  const selectedLocalDate = new Date(selY, (selM || 1) - 1, selD || 1);
+  const currentMonthIdx = selectedLocalDate.getMonth();
   const ALL_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
-  const monthName = new Date(selectedDate).toLocaleString('default', { month: 'long' });
-  const dayNameShort = new Date(selectedDate).toLocaleString('default', { weekday: 'short' });
-  const dateNum = new Date(selectedDate).getDate();
+  const monthName = selectedLocalDate.toLocaleString('default', { month: 'long' });
+  const dayNameShort = selectedLocalDate.toLocaleString('default', { weekday: 'short' });
+  const dateNum = selectedLocalDate.getDate();
 
   const toggleMonthDropdown = () => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);

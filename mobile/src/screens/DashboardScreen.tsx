@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable, StyleSheet, TouchableOpacity, BackHandler } from 'react-native';
 import Animated, {
   FadeInDown,
@@ -80,15 +80,41 @@ export default function DashboardScreen() {
     refreshFlashcards();
   }, [refreshFlashcards]);
 
-  const todayTasks = data.tasks.filter(t => t.date === data.todayStr);
-  const doneTasksCount = todayTasks.filter(t => t.status === 'completed').length;
-  
-  const habitsCompleted = data.allHabits.filter(h => {
-    const log = data.habitLogs.find(l => l.habitId === h.id && l.date === data.todayStr);
-    return log && (log.count ?? 0) >= (h.targetCount || 1);
-  }).length;
-  
-  const waterCompleted = (data.waterLogs || []).filter(w => w.date === data.todayStr).reduce((sum, log) => sum + log.amountMl, 0);
+  const { todayTasksCount, doneTasksCount, habitsCompleted, waterCompleted } = useMemo(() => {
+    let todayCount = 0;
+    let doneCount = 0;
+    for (const t of data.tasks) {
+      if (t.date === data.todayStr) {
+        todayCount++;
+        if (t.status === 'completed') doneCount++;
+      }
+    }
+
+    const todayHabitLogMap = new Map<string, number>();
+    for (const l of data.habitLogs) {
+      if (l.date === data.todayStr) {
+        todayHabitLogMap.set(l.habitId, l.count ?? 0);
+      }
+    }
+
+    let completedHabits = 0;
+    for (const h of data.allHabits) {
+      const count = todayHabitLogMap.get(h.id) ?? 0;
+      if (count >= (h.targetCount || 1)) completedHabits++;
+    }
+
+    let waterSum = 0;
+    for (const w of data.waterLogs || []) {
+      if (w.date === data.todayStr) waterSum += w.amountMl;
+    }
+
+    return {
+      todayTasksCount: todayCount,
+      doneTasksCount: doneCount,
+      habitsCompleted: completedHabits,
+      waterCompleted: waterSum,
+    };
+  }, [data.tasks, data.allHabits, data.habitLogs, data.waterLogs, data.todayStr]);
 
   // ── Floating Action Menu State & Motion (Smooth Linear / Non-Bouncy) ────────
   const [menuOpen, setMenuOpen] = useState(false);
@@ -427,7 +453,7 @@ export default function DashboardScreen() {
                     currentStreak={data.appStreak}
                     streakAtRisk={false}
                     agendaCompleted={doneTasksCount}
-                    agendaTotal={todayTasks.length}
+                    agendaTotal={todayTasksCount}
                     habitsCompleted={habitsCompleted}
                     habitsTotal={data.allHabits.length}
                     waterCompleted={waterCompleted}

@@ -247,7 +247,8 @@ export default function AttendanceScreen() {
                     const att = (s.classesAttended || 0) + (s.labsAttended || 0);
                     const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
                     const pct = tot > 0 ? Math.round((att/tot)*100) : 0;
-                    const need = Math.ceil((s.targetPercentage * tot - 100 * att) / (100 - s.targetPercentage));
+                    const targetPct = s.targetPercentage || 75;
+                    const need = Math.max(0, Math.ceil((targetPct * tot - 100 * att) / (100 - targetPct)));
                     return (
                       <Text key={s.id} style={{ fontSize: 11, color: '#fca5a5' }}>
                         • <Text style={{ fontWeight: 'bold' }}>{s.name}</Text>: {pct}% — attend {need} more to recover

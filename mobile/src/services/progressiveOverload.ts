@@ -67,7 +67,7 @@ export function getOverloadSuggestion(
   // Find sessions with this exercise (sorted newest-first)
   const relevantSessions = gymLogs
     .filter(log => Array.isArray(log.exercises) && log.exercises.some((e: any) => e.name?.toLowerCase().trim() === exercise.name.toLowerCase().trim()))
-    .sort((a, b) => b.date.localeCompare(a.date))
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
     .slice(0, 3);
 
   if (relevantSessions.length < 2) return null; // Need at least 2 sessions

@@ -64,6 +64,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   const [showTagInput, setShowTagInput] = useState(false);
 
   useEffect(() => {
+    if (!visible) return;
     AsyncStorage.getItem(TAG_STORAGE_KEY).then(raw => {
       if (raw) setTagLibrary(JSON.parse(raw));
     });

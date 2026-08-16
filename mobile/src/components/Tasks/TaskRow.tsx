@@ -24,23 +24,42 @@ interface TaskRowProps {
   onAddSubtask?: () => void;
 }
 
-/** Convert a time string (12-hr or 24-hr, single or range) to a display string like "7:30 am to 9:30 am" */
+/** Convert a time string (12-hr or 24-hr, single or range) to a clean display string like "7:30 am to 9:30 am" */
 function formatSingleTime(timeStr: string) {
   if (!timeStr) return '';
-  const [h, m] = timeStr.split(':');
-  if (!h || !m) return timeStr;
+  const upper = timeStr.trim().toUpperCase();
+  const isPM = upper.includes('PM');
+  const isAM = upper.includes('AM');
+  const cleaned = upper.replace(/[\sAPM]+$/i, '').trim();
+  const [h, m] = cleaned.split(':');
+  if (!h) return timeStr;
   let hh = parseInt(h, 10);
-  const suffix = hh >= 12 ? 'pm' : 'am';
-  if (hh === 0) hh = 12;
-  else if (hh > 12) hh -= 12;
-  return `${hh}:${m} ${suffix}`;
+  const mm = m ? parseInt(m, 10) : 0;
+  if (isNaN(hh)) return timeStr;
+
+  let suffix = 'am';
+  if (isPM) {
+    suffix = 'pm';
+    if (hh > 12) hh -= 12;
+  } else if (isAM) {
+    suffix = 'am';
+    if (hh === 0) hh = 12;
+  } else {
+    // 24-hr format
+    suffix = hh >= 12 ? 'pm' : 'am';
+    if (hh === 0) hh = 12;
+    else if (hh > 12) hh -= 12;
+  }
+
+  const mmStr = isNaN(mm) ? '00' : String(mm).padStart(2, '0');
+  return `${hh}:${mmStr} ${suffix}`;
 }
 
 function formatTime12(timeStr?: string) {
   if (!timeStr) return '';
-  if (timeStr.includes('-')) {
-    const [start, end] = timeStr.split('-');
-    return `${formatSingleTime(start.trim())} to ${formatSingleTime(end.trim())}`;
+  const parts = timeStr.split(/[-–—•]| to /i);
+  if (parts.length > 1) {
+    return `${formatSingleTime(parts[0].trim())} to ${formatSingleTime(parts[1].trim())}`;
   }
   return formatSingleTime(timeStr);
 }

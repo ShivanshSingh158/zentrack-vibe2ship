@@ -30,12 +30,18 @@ export function useRecurringSpawn(tasks: Task[], userId: string | undefined) {
       const batch = writeBatch(db);
       let spawns = 0;
 
+      // Pre-index today's existing task source IDs into a Set for O(1) lookups
+      const todayTaskSourceIds = new Set<string>();
+      for (const t of tasks) {
+        if (t.date === today) {
+          if (t.recurringSourceId) todayTaskSourceIds.add(t.recurringSourceId);
+          if (t.id) todayTaskSourceIds.add(t.id);
+        }
+      }
+
       for (const src of recurringTasks) {
         const sourceId = src.recurringSourceId || src.id!;
-        // Skip if we already have a task for today from this source
-        const existsForToday = tasks.some(t =>
-          t.date === today && (t.recurringSourceId === sourceId || t.id === sourceId)
-        );
+        const existsForToday = todayTaskSourceIds.has(sourceId);
         if (!existsForToday && src.date !== today) {
           const newRef = doc(collection(db, COLLECTION.TASKS));
           batch.set(newRef, {

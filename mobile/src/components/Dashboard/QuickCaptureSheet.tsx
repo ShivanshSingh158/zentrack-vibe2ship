@@ -10,7 +10,7 @@
  *   "at 5pm", "at 17:30", "5:30pm" — sets timeSlot
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -74,7 +74,10 @@ export default function QuickCaptureSheet({ visible, onClose }: Props) {
   const inputRef = useRef<TextInput>(null);
 
   // Parsed result (live, for tasks only)
-  const parsed = type === 'task' ? (text.length > 2 ? parseNLTask(text) : { tokens: [], text, priority: 'none' } as any) : null;
+  const parsed = useMemo(() => {
+    if (type !== 'task') return null;
+    return text.length > 2 ? parseNLTask(text) : ({ tokens: [], text, priority: 'none' } as any);
+  }, [text, type]);
   const hasChips = parsed && parsed.tokens.length > 0;
 
   const focusInput = () => {

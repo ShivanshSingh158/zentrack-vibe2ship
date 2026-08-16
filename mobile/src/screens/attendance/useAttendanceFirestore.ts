@@ -83,14 +83,15 @@ export function useAttendanceFirestore({
         ? 100
         : (((subject.classesAttended || 0) + (subject.labsAttended || 0)) / ((subject.classesTotal || 0) + (subject.labsTotal || 0))) * 100;
       const combinedAtt    = (subject.classesAttended || 0) + (subject.labsAttended || 0) + (action === 'attended' ? 1 : 0);
-      const combinedTot    = (subject.classesTotal    || 0) + (subject.labsTotal    || 0) + 1;
-      const newPct         = (combinedAtt / combinedTot) * 100;
+      const combinedTot    = (subject.classesTotal    || 0) + (subject.labsTotal    || 0) + (action === 'cancelled' ? 0 : 1);
+      const newPct         = combinedTot === 0 ? 100 : (combinedAtt / combinedTot) * 100;
 
-      if (oldPct >= (subject.targetPercentage || 75) && newPct < (subject.targetPercentage || 75)) {
+      const targetPct = subject.targetPercentage || 75;
+      if (oldPct >= targetPct && newPct < targetPct && action !== 'cancelled') {
         await Notifications.scheduleNotificationAsync({
           content: {
             title: 'Attendance Alert! ⚠️',
-            body: `${subject.name} has dropped to ${newPct.toFixed(1)}% (below your ${subject.targetPercentage}% target).`,
+            body: `${subject.name} has dropped to ${newPct.toFixed(1)}% (below your ${targetPct}% target).`,
             sound: true,
           },
           trigger: null,
@@ -141,10 +142,11 @@ export function useAttendanceFirestore({
         snap.docs.forEach(d => batch.delete(d.ref));
         await batch.commit();
       } else {
-        await addDoc(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), { userId: user.uid, date: selectedDate });
+        const batch = writeBatch(db);
+        const holidayDocRef = doc(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS));
+        batch.set(holidayDocRef, { userId: user.uid, date: selectedDate });
 
-        const dayKey         = new Date(selectedDate + 'T00:00:00').getDay().toString();
-        const cancelPromises: Promise<any>[] = [];
+        const dayKey = new Date(selectedDate + 'T00:00:00').getDay().toString();
 
         subjects.forEach(subject => {
           const sch =
@@ -160,15 +162,32 @@ export function useAttendanceFirestore({
           const classCount = sch.classes?.length || sch.classCount || 0;
           const labCount   = sch.labs?.length   || sch.labCount   || 0;
 
+          const createCancelLog = (type: 'class' | 'lab') => {
+            const logRef = doc(collection(db, COLLECTION.ATTENDANCE_LOGS));
+            const newLog = {
+              id: logRef.id,
+              userId: user.uid,
+              subjectId: subject.id,
+              subjectName: subject.name,
+              type,
+              action: 'cancelled',
+              date: selectedDate,
+              isExtra: false,
+              timestamp: Date.now(),
+            };
+            optimisticAddAttendanceLog(newLog);
+            batch.set(logRef, newLog);
+          };
+
           for (let i = 0; i < classCount; i++) {
-            if (!classLogs[i]) cancelPromises.push(handleLog(subject, 'class', 'cancelled', selectedDate));
+            if (!classLogs[i]) createCancelLog('class');
           }
           for (let i = 0; i < labCount; i++) {
-            if (!labLogs[i]) cancelPromises.push(handleLog(subject, 'lab', 'cancelled', selectedDate));
+            if (!labLogs[i]) createCancelLog('lab');
           }
         });
 
-        await Promise.all(cancelPromises);
+        await batch.commit();
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err) { console.error(err); }

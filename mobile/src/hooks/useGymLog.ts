@@ -161,17 +161,17 @@ export function useGymLog(dateStr: string) {
 
     const existing = gymLogs.find(l => l.date === dateStr);
 
+    const sortedPastGymLogs = (gymLogs || [])
+      .filter(l => l.date !== dateStr && Array.isArray(l.exercises) && l.exercises.length > 0)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
     const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
-      if (!gymLogs || gymLogs.length === 0) return null;
+      if (sortedPastGymLogs.length === 0) return null;
 
       const cleanName = (exerciseName || '').toLowerCase().trim();
-      const sorted = [...gymLogs].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-      for (const pastLog of sorted) {
-        if (pastLog.date === dateStr) continue;
-        if (!pastLog.exercises || pastLog.exercises.length === 0) continue;
-
-        const match = pastLog.exercises.find((ex: any) => {
+      for (const pastLog of sortedPastGymLogs) {
+        const match = pastLog.exercises?.find((ex: any) => {
           if (exerciseId && ex.exerciseId && ex.exerciseId === exerciseId) return true;
           if (!ex.name) return false;
           const pastName = ex.name.toLowerCase().trim();

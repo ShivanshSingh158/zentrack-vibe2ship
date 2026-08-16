@@ -216,7 +216,7 @@ export default function GymHomeScreen() {
       if (!allDone || prevExercisesDoneRef.current.has(ex.exerciseId)) return;
 
       // Mark as already triggered so we don't re-fire on re-render
-      prevExercisesDoneRef.current = new Set([...prevExercisesDoneRef.current, ex.exerciseId]);
+      prevExercisesDoneRef.current.add(ex.exerciseId);
 
       const lastCompletedWeight = Math.max(...(ex.setsLog || []).map((s: any) => s.weight || 0));
       if (lastCompletedWeight <= 0) return;

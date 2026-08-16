@@ -67,18 +67,10 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
     setTitle(newTitle);
     if (!existingEvent && newTitle.trim().length >= 3) {
       const p = parseNLEvent(newTitle.trim());
-      if (p.date) {
-        setEventDate(p.date);
-      }
-      if (p.startTime) {
-        setStartTime(p.startTime);
-      }
-      if (p.endTime) {
-        setEndTime(p.endTime);
-      }
-      if (p.type) {
-        setType(p.type);
-      }
+      if (p.date) setEventDate(p.date);
+      if (p.startTime) setStartTime(p.startTime);
+      if (p.endTime) setEndTime(p.endTime);
+      if (p.type) setType(p.type);
     }
   };
 

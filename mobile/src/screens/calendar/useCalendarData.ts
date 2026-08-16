@@ -221,14 +221,18 @@ export function useCalendarData() {
   }, [timedDayEvents], []);
 
   const weekEvents = useDeferredMemo(() => {
-    const d = new Date(selectedDate);
-    d.setDate(d.getDate() - d.getDay()); 
+    const [selY, selM, selD] = selectedDate.split('-').map(Number);
+    const d = new Date(selY, (selM || 1) - 1, selD || 1);
+    d.setDate(d.getDate() - d.getDay());
     let allWeekEvents: any[] = [];
-    
+
     for (let i = 0; i < 7; i++) {
-      const cur = new Date(d);
-      cur.setDate(d.getDate() + i);
-      const dateStr = cur.toISOString().slice(0, 10);
+      const cur = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
+      const dateStr = [
+        cur.getFullYear(),
+        String(cur.getMonth() + 1).padStart(2, '0'),
+        String(cur.getDate()).padStart(2, '0')
+      ].join('-');
       
       const events = customEvents.filter((e: any) => e.date === dateStr);
       const dayTasks = tasks.filter((t: any) => t.date === dateStr).map((t: any) => {

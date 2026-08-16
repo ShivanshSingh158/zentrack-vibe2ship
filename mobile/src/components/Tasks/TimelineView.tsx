@@ -397,7 +397,8 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
     tasks
       .filter(t => t.timeSlot)
       .forEach(t => {
-        const startText = t.timeSlot!.split(/[-•]/)[0];
+        const parts = t.timeSlot!.split(/[-–—•]| to /i);
+        const startText = parts[0];
         const f = parseTime(startText);
         if (f !== null && f <= END_HOUR) floats.push(f);
       });
@@ -442,8 +443,9 @@ export default function TimelineView({ tasks, onTaskPress, colors, attendance, a
     return tasks
       .filter(t => t.timeSlot)
       .map(task => {
-        const startText = task.timeSlot!.split(/[-•]/)[0];
-        const endText = task.timeSlot!.split(/[-•]/)[1];
+        const parts = task.timeSlot!.split(/[-–—•]| to /i);
+        const startText = parts[0];
+        const endText = parts[1];
 
         const startFloat = parseTime(startText);
         const endFloat = endText ? parseTime(endText) : (startFloat ? startFloat + 1 : null);

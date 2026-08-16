@@ -197,10 +197,13 @@ export function useAttendanceData() {
     return sessions.sort((a, b) => a.timeMins - b.timeMins);
   }, [todayScheduledSubjects, selectedDayOfWeek, selectedDate, isSelectedHoliday]);
 
-  const globalAttended = subjects.reduce((s, x) => s + (x.classesAttended || 0) + (x.labsAttended || 0), 0);
-  const globalTotal    = subjects.reduce((s, x) => s + (x.classesTotal   || 0) + (x.labsTotal    || 0), 0);
-  const globalPct      = globalTotal === 0 ? null : (globalAttended / globalTotal) * 100;
-  const globalSafe     = globalPct !== null ? globalPct >= 75 : true;
+  const { globalAttended, globalTotal, globalPct, globalSafe } = useMemo(() => {
+    const attended = subjects.reduce((s, x) => s + (x.classesAttended || 0) + (x.labsAttended || 0), 0);
+    const total    = subjects.reduce((s, x) => s + (x.classesTotal   || 0) + (x.labsTotal    || 0), 0);
+    const pct      = total === 0 ? null : (attended / total) * 100;
+    const safe     = pct !== null ? pct >= 75 : true;
+    return { globalAttended: attended, globalTotal: total, globalPct: pct, globalSafe: safe };
+  }, [subjects]);
 
   return {
     user, subjects,
