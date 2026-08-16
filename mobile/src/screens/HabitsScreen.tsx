@@ -15,7 +15,8 @@ import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { useMobileData, Habit, HabitLog } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import type { Habit, HabitLog } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { animateFadeInUp } from '../theme/animations';
 import * as Haptics from 'expo-haptics';
@@ -408,7 +409,7 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
 export default function HabitsScreen() {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
-  const { allHabits, habitLogs, user, loading, optimisticUpdateHabit, optimisticAddHabitLog, optimisticRemoveHabitLog, optimisticUpdateHabitLog } = useMobileData();
+  const { allHabits, habitLogs, user, loading, optimisticUpdateHabit, optimisticAddHabitLog, optimisticRemoveHabitLog, optimisticUpdateHabitLog } = useCoreData();
   const [createVisible, setCreateVisible] = useState(false);
   const [showReminderModal, setShowReminderModal] = useState(false);
   

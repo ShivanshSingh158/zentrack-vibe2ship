@@ -8,7 +8,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring, withSequence, w
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
 import { GymDayLog, GymNavigationParamList } from '../../types/gym.types';
 import { springs } from '../../theme/motion';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { calculateGymStreak } from '../../utils/gymUtils';
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -16,7 +16,7 @@ export default function GymHistoryScreen() {
     const { colors, isDark } = useTheme();
     const styles = makeStyles(colors);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
-  const { gymLogs } = useMobileData();
+  const { gymLogs } = useWellnessData();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Streak

@@ -13,7 +13,7 @@ import ClassNotifSettingsModal from '../components/Academic/ClassNotifSettingsMo
 import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import { useTheme } from "../contexts/ThemeContext";
 import { useSaraSurface } from '../hooks/useSaraSurface';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
 
 // --- NEW ATTENDANCE MODULE IMPORTS ---
 import { 
@@ -68,7 +68,7 @@ export default function AttendanceScreen() {
   }, [pillAnim]);
 
   // 1. Core Data & State Hook
-  const appCtx = useMobileData();
+  const academic = useAcademicData();
   const data = useAttendanceData();
   const {
     user, subjects, logs, holidays, logsBySubjectId,
@@ -93,14 +93,15 @@ export default function AttendanceScreen() {
   } = data;
 
   // --- SARA Surface ---
-  const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface("AttendanceScreen", appCtx as any);
+  const surfaceData = React.useMemo(() => ({ subjects, logs }), [subjects, logs]);
+  const { surfaceMessage, surfaceActionLabel, dismissBanner } = useSaraSurface("AttendanceScreen", surfaceData as any, user?.uid);
 
   const firestoreActions = useAttendanceFirestore({
     user, subjects, logs, selectedDate, logsBySubjectId,
     overrideCounts, setOverrideOpen, setConfirmConfig,
-    optimisticUpdateAttendance: appCtx.optimisticUpdateAttendance,
-    optimisticAddAttendanceLog: appCtx.optimisticAddAttendanceLog,
-    optimisticRemoveAttendanceLog: appCtx.optimisticRemoveAttendanceLog,
+    optimisticUpdateAttendance: academic.optimisticUpdateAttendance,
+    optimisticAddAttendanceLog: academic.optimisticAddAttendanceLog,
+    optimisticRemoveAttendanceLog: academic.optimisticRemoveAttendanceLog,
   });
   const {
     handleLog, handleUndo, handleToggleHoliday, handleDeleteSubject,

@@ -6,7 +6,9 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { collection, query, where, onSnapshot, writeBatch, doc, limit } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { useMobileData, AttendanceSubject } from '../../contexts/MobileDataContext';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import type { AttendanceSubject } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
 import { handleSyncError } from '../../utils/errorUtils';
 import {
@@ -24,7 +26,8 @@ export interface ConfirmConfig {
 }
 
 export function useAttendanceData() {
-  const { user, attendance: subjects, attendanceLogs: logs } = useMobileData();
+  const { user } = useCoreData();
+  const { attendance: subjects, attendanceLogs: logs } = useAcademicData();
 
   // ── Core data from Firestore ────────────────────────────────────────────────
 
