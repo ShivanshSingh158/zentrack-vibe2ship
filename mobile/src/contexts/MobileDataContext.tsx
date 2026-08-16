@@ -259,19 +259,37 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
   const creative = useCreativeData();
   const planner  = usePlannerData();
 
-  // WHATSAPP PATTERN: CoreDataContext (tasks, habits, habitLogs) is open immediately on Frame 0.
-  // We defer secondary domain subscriptions (wellness, academic, creative, planner) to run
-  // right after the initial frame paints and interactions settle — avoiding startup CPU congestion.
-  // Each ensureSubscribed call is idempotent — already-open subscriptions are ignored.
+  // STAGGERED SUBSCRIPTION PIPELINE:
+  // 1. Frame 0: CoreDataContext (tasks, habits, habitLogs) connects immediately to render Home.
+  // 2. Phase 1 (300ms post-boot): Wellness & Planner domains connect.
+  // 3. Phase 2 (1000ms post-boot): Academic & Creative domains connect.
+  // This eliminates the 18-collection burst while ensuring all domains are live shortly after launch.
+  // If the user navigates to any screen earlier, that screen's own ensureSubscribed() immediately connects.
   useEffect(() => {
     if (core.user) {
-      const handle = InteractionManager.runAfterInteractions(() => {
-        wellness.ensureSubscribed();
-        academic.ensureSubscribed();
-        creative.ensureSubscribed();
-        planner.ensureSubscribed();
-      });
-      return () => handle.cancel();
+      let handle1: any = null;
+      let handle2: any = null;
+
+      const t1 = setTimeout(() => {
+        handle1 = InteractionManager.runAfterInteractions(() => {
+          wellness.ensureSubscribed();
+          planner.ensureSubscribed();
+        });
+      }, 300);
+
+      const t2 = setTimeout(() => {
+        handle2 = InteractionManager.runAfterInteractions(() => {
+          academic.ensureSubscribed();
+          creative.ensureSubscribed();
+        });
+      }, 1000);
+
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        if (handle1?.cancel) handle1.cancel();
+        if (handle2?.cancel) handle2.cancel();
+      };
     }
   }, [core.user]);
 
