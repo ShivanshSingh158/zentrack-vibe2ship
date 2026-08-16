@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, initializeAuth } from 'firebase/auth';
 // @ts-ignore
 import { getReactNativePersistence } from 'firebase/auth';
-import { getFirestore, initializeFirestore, persistentLocalCache } from 'firebase/firestore';
+import { initializeFirestore, memoryLocalCache, memoryLruGarbageCollector } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -23,9 +23,9 @@ export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence ? getReactNativePersistence(AsyncStorage) : undefined
 });
 
-// Enable Offline Persistence for Firestore
+// React Native memory cache (AsyncStorage handles offline disk persistence)
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache(),
+  localCache: memoryLocalCache({ garbageCollector: memoryLruGarbageCollector() }),
   experimentalAutoDetectLongPolling: true,
 });
 
