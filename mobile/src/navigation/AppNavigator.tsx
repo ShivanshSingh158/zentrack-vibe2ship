@@ -1,5 +1,4 @@
-import 'react-native-gesture-handler';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { View, StyleSheet, Alert, DeviceEventEmitter, AppState, AppStateStatus, InteractionManager } from 'react-native';
 import { Text } from 'react-native';
 import Animated, {
@@ -165,8 +164,8 @@ const TabBarNullButton = () => null;
 function MainTabNavigator({ initialTab }: { initialTab: string }) {
   const { pinnedModules } = useMobileData();
   const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
-    ? pinnedModules.map(p => (p === 'Gym' ? 'GymStack' : p.endsWith('Screen') || p.endsWith('Stack') ? p : `${p}Screen`))
-    : ['TasksScreen', 'GymStack', 'CalendarScreen', 'AttendanceScreen'];
+    ? pinnedModules
+    : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 
   const onTabFocus = useCallback((routeName: string) => {
     if (ALLOWED_SAVE_ROUTES.has(routeName)) {
@@ -175,11 +174,16 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
   }, []);
 
   // Background-prefetch lazy screens once on mount (after first render).
-  // Pinned screens and GymStack are pre-warmed immediately in the background.
-  const pinnedModulesRef = useRef(effectivePinned);
-  pinnedModulesRef.current = effectivePinned;
+  // Map route names ('Gym', 'Tasks') to prefetch IDs ('GymStack', 'TasksScreen').
+  const prefetchIds = useMemo(() => 
+    effectivePinned.map(p => (p === 'Gym' ? 'GymStack' : p.endsWith('Screen') || p.endsWith('Stack') ? p : `${p}Screen`)),
+    [effectivePinned]
+  );
+  const prefetchIdsRef = useRef(prefetchIds);
+  prefetchIdsRef.current = prefetchIds;
+
   useEffect(() => { 
-    startPrefetching(pinnedModulesRef.current);
+    startPrefetching(prefetchIdsRef.current);
     // Instant pre-warm for core tabs so switching is 100% immediate (< 5ms)
     InteractionManager.runAfterInteractions(() => {
       preloadNow('GymStack');
