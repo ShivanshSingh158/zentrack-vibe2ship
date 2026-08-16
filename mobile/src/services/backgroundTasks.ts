@@ -16,7 +16,7 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
-    const userId = await AsyncStorage.getItem('@zentrack_uid');
+    const userId = (await AsyncStorage.getItem('@zentrack_uid')) || (await AsyncStorage.getItem('user_id'));
     if (!userId) return BackgroundFetch.BackgroundFetchResult.Failed;
 
     // Check if we already generated a review for this week
@@ -43,50 +43,38 @@ TaskManager.defineTask(WEEKLY_REVIEW_TASK, async () => {
     // Query stats for the week
     const weekStartTs = weekStart.getTime();
     
-    // 1. Tasks completed
-    const tasksQ = query(
-      collection(db, COLLECTION.TASKS),
-      where('userId', '==', userId),
-      where('status', '==', 'completed')
-    );
-    const tasksSnap = await getDocs(tasksQ);
+    // 1. Tasks completed & total within week
+    const [tasksSnap, habitsSnap, gymSnap, assignSnap] = await Promise.all([
+      getDocs(query(
+        collection(db, COLLECTION.TASKS),
+        where('userId', '==', userId),
+        where('createdAt', '>=', weekStartTs)
+      )),
+      getDocs(query(
+        collection(db, COLLECTION.HABIT_LOGS),
+        where('userId', '==', userId),
+        where('date', '>=', weekStartStr)
+      )),
+      getDocs(query(
+        collection(db, COLLECTION.GYM_LOGS),
+        where('userId', '==', userId),
+        where('date', '>=', weekStartStr)
+      )),
+      getDocs(query(
+        collection(db, COLLECTION.ASSIGNMENTS),
+        where('userId', '==', userId)
+      )),
+    ]);
+
     let completedTasks = 0;
+    let totalTasks = tasksSnap.docs.length;
     tasksSnap.forEach(d => {
-      const data = d.data();
-      const createdAt = data.createdAt?.toMillis ? data.createdAt.toMillis() : (data.createdAt || 0);
-      if (createdAt >= weekStartTs) completedTasks++;
+      if (d.data().status === 'completed') completedTasks++;
     });
 
-    const allTasksQ = query(collection(db, COLLECTION.TASKS), where('userId', '==', userId));
-    const allTasksSnap = await getDocs(allTasksQ);
-    let totalTasks = 0;
-    allTasksSnap.forEach(d => {
-      const data = d.data();
-      const createdAt = data.createdAt?.toMillis ? data.createdAt.toMillis() : (data.createdAt || 0);
-      if (createdAt >= weekStartTs) totalTasks++;
-    });
-
-    // 2. Habits logged
-    const habitsQ = query(collection(db, COLLECTION.HABIT_LOGS), where('userId', '==', userId));
-    const habitsSnap = await getDocs(habitsQ);
-    let habitsLogged = 0;
-    habitsSnap.forEach(d => {
-      const ts = d.data().timestamp;
-      if (ts >= weekStartTs) habitsLogged++;
-    });
-
-    // 3. Gym sessions
-    const gymQ = query(collection(db, COLLECTION.GYM_LOGS), where('userId', '==', userId));
-    const gymSnap = await getDocs(gymQ);
-    let gymSessions = 0;
-    gymSnap.forEach(d => {
-      const ts = d.data().timestamp;
-      if (ts >= weekStartTs) gymSessions++;
-    });
-
-    // 4. Assignments
-    const assignQ = query(collection(db, COLLECTION.ASSIGNMENTS), where('userId', '==', userId), where('status', '==', 'submitted'));
-    const assignSnap = await getDocs(assignQ);
+    const habitsLogged = habitsSnap.docs.length;
+    const gymSessions = gymSnap.docs.length;
+    
     let assignmentsSubmitted = 0;
     assignSnap.forEach(d => {
       const ts = d.data().submittedAt || 0;

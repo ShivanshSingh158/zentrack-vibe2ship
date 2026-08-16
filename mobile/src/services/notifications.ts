@@ -1474,7 +1474,7 @@ export const BACKGROUND_NOTIFICATION_SYNC_TASK = 'background-notification-sync';
 
 TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
   try {
-    const userId = await AsyncStorage.getItem('user_id');
+    const userId = (await AsyncStorage.getItem('@zentrack_uid')) || (await AsyncStorage.getItem('user_id'));
     if (!userId) return BackgroundFetch.BackgroundFetchResult.NoData;
 
     let db;

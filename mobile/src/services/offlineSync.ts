@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, addDoc, updateDoc, deleteDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, addDoc, updateDoc, deleteDoc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from './firebase';
 import NetInfo from '@react-native-community/netinfo';
@@ -170,6 +170,52 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
     }
 
     console.log(`[OfflineSync] Draining ${queue.length} operations to Firestore for ${currentUser.uid}…`);
+
+    // High-Performance Fast Path: Batch non-conflicting mutations into single round-trip
+    if (queue.length > 1 && queue.length <= 500) {
+      try {
+        const batch = writeBatch(db);
+        for (const item of queue) {
+          const dataToWrite = item.data && typeof item.data === 'object' ? { ...item.data } : item.data;
+          if (currentUser && dataToWrite && typeof dataToWrite === 'object' && !dataToWrite.userId && item.operation !== 'delete') {
+            dataToWrite.userId = currentUser.uid;
+          }
+          if (dataToWrite && typeof dataToWrite === 'object') {
+            if (dataToWrite.createdAt && typeof dataToWrite.createdAt === 'object' && Object.keys(dataToWrite.createdAt).length === 0) {
+              dataToWrite.createdAt = serverTimestamp();
+            }
+            if (dataToWrite.updatedAt && typeof dataToWrite.updatedAt === 'object' && Object.keys(dataToWrite.updatedAt).length === 0) {
+              dataToWrite.updatedAt = serverTimestamp();
+            }
+          }
+
+          if (item.operation === 'add') {
+            const newDocRef = doc(collection(db, item.collection));
+            batch.set(newDocRef, dataToWrite);
+          } else if (item.operation === 'set' && item.docId) {
+            const docRef = doc(db, item.collection, item.docId);
+            batch.set(docRef, dataToWrite, { merge: true });
+          } else if (item.operation === 'update' && item.docId) {
+            const docRef = doc(db, item.collection, item.docId);
+            batch.update(docRef, dataToWrite);
+          } else if (item.operation === 'delete' && item.docId) {
+            const docRef = doc(db, item.collection, item.docId);
+            batch.delete(docRef);
+          }
+        }
+        await batch.commit();
+        syncedCount = queue.length;
+        await AsyncStorage.removeItem(OFFLINE_QUEUE_KEY);
+        console.log(`[OfflineSync] ✓ Atomic batch synced ${syncedCount} operations in single round-trip.`);
+        await notifyQueueChange();
+        if (syncedCount > 0 && !silent) {
+          notifySyncComplete(syncedCount);
+        }
+        return syncedCount;
+      } catch (batchErr) {
+        console.warn('[OfflineSync] Batch commit failed, falling back to sequential item drain:', batchErr);
+      }
+    }
 
     const failedQueue: QueueItem[] = [];
 

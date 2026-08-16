@@ -94,13 +94,40 @@ export interface XPState {
   progress: number;  // 0.0 → 1.0 progress to next level
 }
 
+// ── In-Memory & Debounced Remote Sync ────────────────────────────────────────
+let _inMemoryXP: number | null = null;
+let _pendingFirestoreXP: number | null = null;
+let _xpSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+export async function flushXPSync(): Promise<void> {
+  if (_xpSyncTimer) {
+    clearTimeout(_xpSyncTimer);
+    _xpSyncTimer = null;
+  }
+  const xpToWrite = _pendingFirestoreXP;
+  _pendingFirestoreXP = null;
+  const uid = auth.currentUser?.uid;
+  if (uid && xpToWrite !== null) {
+    try {
+      await setDoc(doc(db, 'user_profiles', uid), { xp: xpToWrite }, { merge: true });
+    } catch (e: any) {
+      console.warn('[XP] Firestore flush failed:', e?.message);
+    }
+  }
+}
+
 // ─── Core Functions ───────────────────────────────────────────────────────────
 
-/** Get current total XP — local cache first, Firestore fallback on first launch */
+/** Get current total XP — in-memory first, local cache second, Firestore fallback */
 export async function getXP(): Promise<number> {
+  if (_inMemoryXP !== null) return _inMemoryXP;
+
   try {
     const stored = await AsyncStorage.getItem(XP_KEY);
-    if (stored !== null) return parseInt(stored, 10);
+    if (stored !== null) {
+      _inMemoryXP = parseInt(stored, 10) || 0;
+      return _inMemoryXP;
+    }
 
     // FIX #12: No local cache (fresh install or reinstall) — load from Firestore
     const uid = auth.currentUser?.uid;
@@ -108,13 +135,16 @@ export async function getXP(): Promise<number> {
       const snap = await getDoc(doc(db, 'user_profiles', uid));
       if (snap.exists()) {
         const firestoreXP = snap.data()?.xp ?? 0;
+        _inMemoryXP = firestoreXP;
         // Seed local cache so future reads are instant
         await AsyncStorage.setItem(XP_KEY, String(firestoreXP));
         return firestoreXP;
       }
     }
+    _inMemoryXP = 0;
     return 0;
   } catch {
+    _inMemoryXP = 0;
     return 0;
   }
 }
@@ -137,7 +167,7 @@ export function getLevel(xp: number): XPState {
   return {
     xp,
     level,
-    title:         LEVEL_TITLES[level] ?? 'Mythic',
+    title:         LEVEL_TITLES[level] ?? 'Apex',
     nextThreshold,
     progress,
   };
@@ -168,13 +198,17 @@ export async function awardXP(
   const previousLevel = getLevel(currentXP).level;
 
   const newXP = currentXP + totalAdded;
-  // FIX #12: Persist XP to BOTH AsyncStorage (fast reads) AND Firestore (survives reinstall)
-  await AsyncStorage.setItem(XP_KEY, String(newXP));
-  const uid = auth.currentUser?.uid;
-  if (uid) {
-    setDoc(doc(db, 'user_profiles', uid), { xp: newXP }, { merge: true })
-      .catch(e => console.warn('[XP] Firestore sync failed:', e.message));
-  }
+  _inMemoryXP = newXP;
+
+  // 1. Instant local write (0ms UI latency)
+  AsyncStorage.setItem(XP_KEY, String(newXP)).catch(() => {});
+
+  // 2. Debounced Firestore sync (2000ms) to coalesce rapid task/habit completions
+  _pendingFirestoreXP = newXP;
+  if (_xpSyncTimer) clearTimeout(_xpSyncTimer);
+  _xpSyncTimer = setTimeout(() => {
+    flushXPSync();
+  }, 2000);
 
   const newState = getLevel(newXP);
 
@@ -197,8 +231,13 @@ export async function getXPState(): Promise<XPState> {
 
 /** Reset XP (for testing / account linking) */
 export async function resetXP(): Promise<void> {
+  _inMemoryXP = 0;
+  _pendingFirestoreXP = null;
+  if (_xpSyncTimer) {
+    clearTimeout(_xpSyncTimer);
+    _xpSyncTimer = null;
+  }
   await AsyncStorage.setItem(XP_KEY, '0');
-  // FIX #12: Also reset in Firestore
   const uid = auth.currentUser?.uid;
   if (uid) {
     setDoc(doc(db, 'user_profiles', uid), { xp: 0 }, { merge: true })

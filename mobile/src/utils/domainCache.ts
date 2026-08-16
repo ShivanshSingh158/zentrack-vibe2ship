@@ -92,13 +92,22 @@ export async function flushDomainCache(domainKey?: string): Promise<void> {
   }
 }
 
+function getCanonicalDomain(keyMap: Record<string, CacheKey>): string {
+  const vals = Object.values(keyMap);
+  if (vals.some(v => v.includes('gym') || v.includes('water') || v.includes('sleep') || v.includes('weight'))) return 'wellness';
+  if (vals.some(v => v.includes('attendance') || v.includes('assignment') || v.includes('sem'))) return 'academic';
+  if (vals.some(v => v.includes('event') || v.includes('goal') || v.includes('review'))) return 'planner';
+  if (vals.some(v => v.includes('storage') || v.includes('topic') || v.includes('job') || v.includes('content'))) return 'creative';
+  return vals.sort().join('|');
+}
+
 // ─── Generic write helper — debounced by default to prevent thread blocking ───
 export async function writeDomainCache(
   data: Partial<Record<string, any>>,
   keyMap: Record<string, CacheKey>,
   immediate = false
 ): Promise<void> {
-  const domainKey = Object.values(keyMap).sort().join('|');
+  const domainKey = getCanonicalDomain(keyMap);
 
   const existing = _pendingWrites.get(domainKey);
   _pendingWrites.set(domainKey, {

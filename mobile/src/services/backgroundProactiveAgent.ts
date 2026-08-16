@@ -6,25 +6,25 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { callProxy } from './geminiProxy';
 import { COLLECTION } from '../config/constants';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 export const BACKGROUND_AI_NUDGE = 'BACKGROUND_AI_NUDGE';
 
 TaskManager.defineTask(BACKGROUND_AI_NUDGE, async () => {
   try {
-    // Wait a brief moment for Firebase Auth state to hydrate from AsyncStorage
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    const user = auth.currentUser;
-    if (!user) {
+    const userId = auth.currentUser?.uid || (await AsyncStorage.getItem('@zentrack_uid')) || (await AsyncStorage.getItem('user_id'));
+    if (!userId) {
       return BackgroundFetch.BackgroundFetchResult.NoData;
     }
 
     const todayISO = new Date().toISOString().split('T')[0];
 
     // Fetch lightweight context
-    const tasksSnap = await getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', user.uid), where('status', '==', 'pending')));
+    const tasksSnap = await getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', userId), where('status', '==', 'pending')));
     const tasks = tasksSnap.docs.map(d => ({ title: d.data().title, priority: d.data().priority, date: d.data().date, timeSlot: d.data().timeSlot }));
     
-    const habitsSnap = await getDocs(query(collection(db, COLLECTION.HABITS), where('userId', '==', user.uid)));
-    const logsSnap = await getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where('userId', '==', user.uid), where('date', '==', todayISO)));
+    const habitsSnap = await getDocs(query(collection(db, COLLECTION.HABITS), where('userId', '==', userId)));
+    const logsSnap = await getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where('userId', '==', userId), where('date', '==', todayISO)));
     const loggedHabitIds = new Set(logsSnap.docs.map(d => d.data().habitId));
     const missedHabits = habitsSnap.docs.map(d => d.data().name).filter((_, i) => !loggedHabitIds.has(habitsSnap.docs[i].id));
 
