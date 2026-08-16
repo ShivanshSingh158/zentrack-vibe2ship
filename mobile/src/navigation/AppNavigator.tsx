@@ -35,37 +35,36 @@ import { useTabBarBadges } from '../hooks/useTabBarBadges';
 import { feedback } from '../utils/haptics';
 import ErrorBoundary from '../components/ErrorBoundary';
 
-// --- Critical screens (synchronous -- always ready, zero load time) ----------
+// --- Critical screens (synchronous -- always ready on Frame 0) ----------
 import LandingScreen from '../screens/LandingScreen';
 import GuestDashboard from '../screens/GuestDashboard';
 import AuthScreen from '../screens/AuthScreen';
 import OnboardingScreen, { ONBOARDING_KEY } from '../screens/OnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
-// Pinned candidate screens -- synchronous imports so any pinned tab mounts instantly
-import TasksScreen from '../screens/TasksScreen';
-import CalendarScreen from '../screens/CalendarScreen';
-import AttendanceScreen from '../screens/AttendanceScreen';
-import MoreScreen from '../screens/MoreScreen';
-import SettingsScreen from '../screens/SettingsScreen';
-import GymStack from './GymStack';
-import SaraScreen from '../screens/SaraScreen';
-import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen';
-import XPConstellationScreen from '../screens/XPConstellationScreen';
 
-// --- Lazy screens (background-prefetched after login) ------------------------
-// These are NOT pinned by default -- loaded lazily to keep startup fast.
-const HabitsScreen             = cacheAwareLazy('HabitsScreen',             () => import('../screens/HabitsScreen'));
-const NotesScreen              = cacheAwareLazy('NotesScreen',              () => import('../screens/NotesScreen'));
-const WeeklyReviewScreen       = cacheAwareLazy('WeeklyReviewScreen',       () => import('../screens/WeeklyReviewScreen'));
-const StudyRoomScreen          = cacheAwareLazy('StudyRoomScreen',          () => import('../screens/StudyRoomScreen'));
-const AnalyticsScreen          = cacheAwareLazy('AnalyticsScreen',          () => import('../screens/AnalyticsScreen'));
-const AssignmentsScreen        = cacheAwareLazy('AssignmentsScreen',        () => import('../screens/AssignmentsScreen'));
-const GradesScreen             = cacheAwareLazy('GradesScreen',             () => import('../screens/GradesScreen'));
-const LearningScreen           = cacheAwareLazy('LearningScreen',           () => import('../screens/LearningScreen'));
-const StreakDetailScreen        = cacheAwareLazy('StreakDetailScreen',       () => import('../screens/StreakDetailScreen'));
-const AgentHistoryScreen        = cacheAwareLazy('AgentHistoryScreen',      () => import('../screens/AgentHistoryScreen'));
-const WellbeingDashboardScreen  = cacheAwareLazy('WellbeingDashboardScreen', () => import('../screens/WellbeingDashboardScreen'));
-const ContentLibraryScreen      = cacheAwareLazy('ContentLibraryScreen',     () => import('../screens/ContentLibraryScreen'));
+// --- Progressive Lazy Screens (pre-warmed in background via ModulePrefetcher) ---
+const TasksScreen                 = cacheAwareLazy('TasksScreen',                 () => import('../screens/TasksScreen'));
+const CalendarScreen              = cacheAwareLazy('CalendarScreen',              () => import('../screens/CalendarScreen'));
+const AttendanceScreen            = cacheAwareLazy('AttendanceScreen',            () => import('../screens/AttendanceScreen'));
+const GymStack                    = cacheAwareLazy('GymStack',                    () => import('./GymStack'));
+const MoreScreen                  = cacheAwareLazy('MoreScreen',                  () => import('../screens/MoreScreen'));
+const SettingsScreen              = cacheAwareLazy('SettingsScreen',              () => import('../screens/SettingsScreen'));
+const NotificationsSettingsScreen = cacheAwareLazy('NotificationsSettingsScreen', () => import('../screens/NotificationsSettingsScreen'));
+const XPConstellationScreen       = cacheAwareLazy('XPConstellationScreen',       () => import('../screens/XPConstellationScreen'));
+const SaraScreen                  = cacheAwareLazy('SaraScreen',                  () => import('../screens/SaraScreen'));
+
+const HabitsScreen                = cacheAwareLazy('HabitsScreen',                () => import('../screens/HabitsScreen'));
+const NotesScreen                 = cacheAwareLazy('NotesScreen',                 () => import('../screens/NotesScreen'));
+const WeeklyReviewScreen          = cacheAwareLazy('WeeklyReviewScreen',          () => import('../screens/WeeklyReviewScreen'));
+const StudyRoomScreen             = cacheAwareLazy('StudyRoomScreen',             () => import('../screens/StudyRoomScreen'));
+const AnalyticsScreen             = cacheAwareLazy('AnalyticsScreen',             () => import('../screens/AnalyticsScreen'));
+const AssignmentsScreen           = cacheAwareLazy('AssignmentsScreen',           () => import('../screens/AssignmentsScreen'));
+const GradesScreen                = cacheAwareLazy('GradesScreen',             () => import('../screens/GradesScreen'));
+const LearningScreen              = cacheAwareLazy('LearningScreen',           () => import('../screens/LearningScreen'));
+const StreakDetailScreen           = cacheAwareLazy('StreakDetailScreen',          () => import('../screens/StreakDetailScreen'));
+const AgentHistoryScreen           = cacheAwareLazy('AgentHistoryScreen',          () => import('../screens/AgentHistoryScreen'));
+const WellbeingDashboardScreen     = cacheAwareLazy('WellbeingDashboardScreen',    () => import('../screens/WellbeingDashboardScreen'));
+const ContentLibraryScreen         = cacheAwareLazy('ContentLibraryScreen',        () => import('../screens/ContentLibraryScreen'));
 
 // --- Navigators --------------------------------------------------------------
 const Stack = createNativeStackNavigator();
@@ -118,33 +117,21 @@ const ALLOWED_SAVE_ROUTES = new Set([
 // --- SARA FAB visibility -----------------------------------------------------
 const SARA_VISIBLE_ROUTES = new Set(['Home', 'Tasks', 'Analytics']);
 
-// --- Screens that are ALWAYS synchronously available -------------------------
-// When these are in pinnedModules, they mount at launch with Home: 0ms tap cost.
-// Using staggered delays so they silently render in the background one by one!
-const SYNC_SCREEN_MAP: Record<string, React.ComponentType<any>> = {
-  Tasks:      TasksScreen,
-  Attendance: AttendanceScreen,
-  Gym:        GymStack,
-  Calendar:   CalendarScreen,
-};
-
-// --- Lazy screen map for non-sync screens ------------------------------------
-const LAZY_COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
-  Habits:       HabitsScreen,
-  Analytics:    AnalyticsScreen,
-  WeeklyReview: WeeklyReviewScreen,
-  StudyRoom:    StudyRoomScreen,
-  Notes:        NotesScreen,
-  Assignments:  AssignmentsScreen,
-  Grades:       GradesScreen,
-  Learning:     LearningScreen,
-  ContentLibrary: ContentLibraryScreen,
-};
-
-// Full combined map (sync screens first for priority)
+// --- Full Component Map for Bottom Tabs --------------------------------------
 const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
-  ...SYNC_SCREEN_MAP,
-  ...LAZY_COMPONENT_MAP,
+  Tasks:          TasksScreen,
+  Attendance:     AttendanceScreen,
+  Gym:            GymStack,
+  Calendar:       CalendarScreen,
+  Habits:         HabitsScreen,
+  Analytics:      AnalyticsScreen,
+  WeeklyReview:   WeeklyReviewScreen,
+  StudyRoom:      StudyRoomScreen,
+  Notes:          NotesScreen,
+  Assignments:    AssignmentsScreen,
+  Grades:         GradesScreen,
+  Learning:       LearningScreen,
+  ContentLibrary: ContentLibraryScreen,
 };
 
 // --- Nested screen header ----------------------------------------------------
@@ -217,8 +204,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
     >
       <Tab.Screen name="Home" component={SafeDashboard} options={{ lazy: false }} />
       {Object.keys(COMPONENT_MAP).map((modId) => {
-        const isPinned     = effectivePinned.includes(modId);
-        const isSyncScreen = modId in SYNC_SCREEN_MAP;
+        const isPinned = effectivePinned.includes(modId);
         return (
           <Tab.Screen
             key={modId}
@@ -229,12 +215,12 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
               tabBarButton:    TabBarNullButton,
             } : {
               tabBarItemStyle: { paddingVertical: 10 },
-              lazy: false,
+              lazy: true, // Progressive boot: background pre-warmed via startPrefetching
             }}
           />
         );
       })}
-      <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} options={{ lazy: false }} />
+      <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} options={{ lazy: true }} />
     </Tab.Navigator>
   );
 }

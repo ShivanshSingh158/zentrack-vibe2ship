@@ -21,6 +21,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { InteractionManager } from "react-native";
 import { User } from "firebase/auth";
 import { UserGymPlanDoc, GymPlanDay } from "../types/gym.types";
 import { scheduleAllNotifications } from "../services/notifications";
@@ -258,18 +259,21 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
   const creative = useCreativeData();
   const planner  = usePlannerData();
 
-  // WHATSAPP PATTERN: Open ALL subscriptions synchronously when user becomes available.
-  // useMemo runs during render (unlike useEffect which runs after).
-  // This means by the time any child screen reads from these contexts on its FIRST render,
-  // the Firestore listeners are already open and the cached data is already seeding.
-  // Without this, the first render after login has empty arrays even with cached data.
+  // WHATSAPP PATTERN: CoreDataContext (tasks, habits, habitLogs) is open immediately on Frame 0.
+  // We defer secondary domain subscriptions (wellness, academic, creative, planner) to run
+  // right after the initial frame paints and interactions settle — avoiding startup CPU congestion.
   // Each ensureSubscribed call is idempotent — already-open subscriptions are ignored.
-  if (core.user) {
-    wellness.ensureSubscribed();
-    academic.ensureSubscribed();
-    creative.ensureSubscribed();
-    planner.ensureSubscribed();
-  }
+  useEffect(() => {
+    if (core.user) {
+      const handle = InteractionManager.runAfterInteractions(() => {
+        wellness.ensureSubscribed();
+        academic.ensureSubscribed();
+        creative.ensureSubscribed();
+        planner.ensureSubscribed();
+      });
+      return () => handle.cancel();
+    }
+  }, [core.user]);
 
 
   const value = useMemo<MobileDataContextType>(() => ({
