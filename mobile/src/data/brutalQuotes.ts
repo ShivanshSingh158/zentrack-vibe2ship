@@ -484,29 +484,40 @@ export async function getDailyQuote(personality: QuotePersonality = 'consistent'
 
   try {
     const bagKey = `@zentrack_quote_bag_${personality}`;
-    const bagStr = await AsyncStorage.getItem(bagKey);
+    const poolSizeKey = `@zentrack_quote_pool_size_${personality}`;
+
+    const [bagStr, storedSizeStr] = await Promise.all([
+      AsyncStorage.getItem(bagKey),
+      AsyncStorage.getItem(poolSizeKey),
+    ]);
+
     let bag: number[] = bagStr ? JSON.parse(bagStr) : [];
+    const storedSize = storedSizeStr ? parseInt(storedSizeStr, 10) : 0;
     
-    // Regenerate bag if empty or if quotes array size changed drastically (indices out of bounds)
-    if (!Array.isArray(bag) || bag.length === 0 || bag.some(i => i >= quotes.length)) {
+    // Regenerate and reshuffle full bag if empty, corrupted, or if the quotes collection size changed
+    if (!Array.isArray(bag) || bag.length === 0 || storedSize !== quotes.length || bag.some(i => i >= quotes.length || typeof i !== 'number')) {
       bag = Array.from({ length: quotes.length }, (_, i) => i);
-      // Modern Fisher-Yates shuffle
+      // Modern Fisher-Yates unbiased shuffle
       for (let i = bag.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [bag[i], bag[j]] = [bag[j], bag[i]];
       }
+      await AsyncStorage.setItem(poolSizeKey, String(quotes.length));
     }
     
-    // Pop the next unique index
-    const currentIndex = bag.pop()!;
+    // Pop the next guaranteed unique index
+    const currentIndex = bag.pop();
     
     // Save the remaining bag for next time
     await AsyncStorage.setItem(bagKey, JSON.stringify(bag));
     
-    return quotes[currentIndex];
+    if (typeof currentIndex === 'number' && quotes[currentIndex]) {
+      return quotes[currentIndex];
+    }
+    return quotes[Math.floor(Math.random() * quotes.length)] || quotes[0];
   } catch (e) {
     // Fallback to random if storage fails
-    return quotes[Math.floor(Math.random() * quotes.length)];
+    return quotes[Math.floor(Math.random() * quotes.length)] || quotes[0];
   }
 }
 
