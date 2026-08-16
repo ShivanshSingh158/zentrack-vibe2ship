@@ -16,7 +16,7 @@
 
 // FIX #4: Static import ΓÇö eliminates ~50-100ms dynamic resolution overhead on every AI call
 import NetInfo from '@react-native-community/netinfo';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { signInAnonymously } from 'firebase/auth';
 import { auth } from './firebase';
 
 const RAW_KEYS = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
@@ -29,7 +29,27 @@ if (GEMINI_KEYS.length > 0) {
   console.log(`[GeminiProxy] No local keys found. Running in secure Vercel Proxy Mode (Production/APK ready).`);
 }
 
-// Round-robin index ΓÇö cycles through keys to spread load
+/**
+ * Gets a valid Firebase ID token for authenticating with the Vercel backend proxy.
+ * If user is guest/unauthenticated, automatically signs in anonymously to obtain a valid token.
+ */
+async function getValidAuthToken(): Promise<string | null> {
+  try {
+    let user = auth.currentUser;
+    if (!user) {
+      const cred = await signInAnonymously(auth);
+      user = cred.user;
+    }
+    if (user) {
+      return await user.getIdToken();
+    }
+  } catch (err) {
+    console.warn('[GeminiProxy] Failed to obtain Firebase ID token for proxy:', err);
+  }
+  return null;
+}
+
+// Round-robin index ── cycles through keys to spread load
 let keyIndex = 0;
 
 function getNextKey(): string | null {
@@ -102,7 +122,7 @@ export async function callProxy(options: ProxyCallOptions): Promise<any> {
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30-second strict timeout
 
     try {
-      const token = (!key && auth.currentUser) ? await auth.currentUser.getIdToken() : null;
+      const token = !key ? await getValidAuthToken() : null;
       const headers: any = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
       
