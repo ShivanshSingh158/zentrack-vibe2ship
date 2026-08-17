@@ -1005,6 +1005,7 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 - **OPTIMIZED** `src/contexts/MobileDataContext.tsx` — Exported domain-specific hooks (`useCoreData`, `useAcademicData`, `useWellnessData`, `useCreativeData`, `usePlannerData`) directly from `MobileDataContext.tsx` to enable fine-grained, zero-overhead subscriptions and eliminate cross-screen re-render cascades.
 - **OPTIMIZED** `src/components/Tasks/TaskRow.tsx` — Added strict custom comparator `areTaskRowPropsEqual` to `React.memo` preventing unneeded cell re-renders during bulk actions, filtering, and unrelated context updates.
 - **OPTIMIZED** `src/agent/intentClassifier.ts` — Compacted task payload serialization in `buildSelectiveContext()` (filtering to essential id, title, priority, date, timeSlot, subtasks), reducing S.A.R.A mobile AI prompt token overhead by ~50% and improving Gemini API response latency.
+- **OPTIMIZED** `src/services/offlineSync.ts` — Upgraded offline write queue with deterministic document IDs, in-flight mutation coalescing for rapid multi-updates, exponential backoff retry delays (1.5s, 3s, 6s... up to 30s), and Internet reachability verification via NetInfo reconnect listener.
 - **VERIFIED** — `npx tsc --noEmit` compiles with 0 errors.
 
 

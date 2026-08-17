@@ -13,15 +13,19 @@ let isSyncing = false;
 // not on every cold boot (which also calls syncOfflineQueue once).
 let wasOfflineInSession = false;
 
-interface QueueItem {
+export interface OfflineQueueItem {
   id: string;
   collection: string;
   operation: 'add' | 'update' | 'delete' | 'set';
   data: any;
   docId?: string;
-  timestamp: number;
-  retries?: number;
+  createdAt: number;
+  retryCount: number;
+  lastAttemptAt?: number;
 }
+
+// Backward-compatible alias
+export type QueueItem = OfflineQueueItem;
 
 // ── Listener Registry ───────────────────────────────────────────────────────
 // OfflineIndicator subscribes here so it gets live queue-count updates and
@@ -61,25 +65,21 @@ export async function getQueueCount(): Promise<number> {
   try {
     const raw = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
     if (!raw) return 0;
-    const queue: QueueItem[] = JSON.parse(raw);
+    const queue: OfflineQueueItem[] = JSON.parse(raw);
     return queue.length;
   } catch {
     return 0;
   }
 }
 
-// ── Write Queueing ──────────────────────────────────────────────────────────
+// ── Write Queueing & Coalescing ──────────────────────────────────────────────
 
 /**
  * Queues ANY Firestore write operation to be executed when the network reconnects.
  *
- * Use this for ALL write operations so offline users never lose data:
- *   - Tasks (CRUD)
- *   - Habit logs
- *   - Note saves
- *   - Goal updates
- *   - Gym logs (via queueGymLogOffline wrapper below)
- *   - Any other Firestore collection
+ * Implements idempotent deterministic IDs and rapid-mutation coalescing:
+ *   - If the same document has a pending 'update' or 'set', merges data in-place
+ *     to prevent redundant network round-trips and race conditions.
  */
 export async function queueWrite(
   collectionName: string,
@@ -89,7 +89,7 @@ export async function queueWrite(
 ) {
   try {
     const existingStr = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
-    const queue: QueueItem[] = existingStr ? JSON.parse(existingStr) : [];
+    let queue: OfflineQueueItem[] = existingStr ? JSON.parse(existingStr) : [];
 
     const currentUser = auth.currentUser;
     const payload = data && typeof data === 'object' ? { ...data } : data;
@@ -97,14 +97,48 @@ export async function queueWrite(
       payload.userId = currentUser.uid;
     }
 
+    const now = Date.now();
+    const deterministicId = docId
+      ? `${collectionName}_${docId}_${operation}`
+      : `${collectionName}_auto_${now}_${Math.random().toString(36).substring(7)}`;
+
+    // ── Coalesce rapid updates to the same document ──
+    if (docId && (operation === 'update' || operation === 'set')) {
+      const existingIndex = queue.findIndex(
+        q => q.collection === collectionName && q.docId === docId && (q.operation === 'update' || q.operation === 'set')
+      );
+
+      if (existingIndex !== -1) {
+        const prev = queue[existingIndex];
+        const mergedData =
+          typeof prev.data === 'object' && typeof payload === 'object'
+            ? { ...prev.data, ...payload }
+            : payload;
+
+        queue[existingIndex] = {
+          ...prev,
+          data: mergedData,
+          operation: operation === 'set' ? 'set' : prev.operation,
+          createdAt: now,
+          retryCount: 0,
+        };
+
+        await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+        console.log(`[OfflineSync] Coalesced update for ${collectionName}/${docId}. Queue size: ${queue.length}`);
+        await notifyQueueChange();
+        if (auth.currentUser) syncOfflineQueue(true);
+        return;
+      }
+    }
+
     queue.push({
-      id: Date.now().toString() + Math.random().toString(36).substring(7),
+      id: deterministicId,
       collection: collectionName,
       operation,
       data: payload,
       docId,
-      timestamp: Date.now(),
-      retries: 0,
+      createdAt: now,
+      retryCount: 0,
     });
 
     await AsyncStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
@@ -227,11 +261,21 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
       }
     }
 
-    const failedQueue: QueueItem[] = [];
+    const failedQueue: OfflineQueueItem[] = [];
+    const now = Date.now();
 
     // Process sequentially to maintain causality (add before update, etc.)
     for (const item of queue) {
       try {
+        // Exponential backoff check: delay retries by 1.5s, 3s, 6s...
+        if (item.retryCount > 0 && item.lastAttemptAt) {
+          const backoffDelay = Math.min(30000, 1500 * Math.pow(2, item.retryCount - 1));
+          if (now - item.lastAttemptAt < backoffDelay) {
+            failedQueue.push(item);
+            continue;
+          }
+        }
+
         const dataToWrite = item.data && typeof item.data === 'object' ? { ...item.data } : item.data;
         if (uid && dataToWrite && typeof dataToWrite === 'object' && !dataToWrite.userId && item.operation !== 'delete') {
           dataToWrite.userId = uid;
@@ -260,14 +304,14 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
           await deleteDoc(docRef);
         }
         syncedCount++;
-        console.log(`[OfflineSync] ✓ Synced ${item.operation} on ${item.collection}`);
+        console.log(`[OfflineSync] ✓ Synced ${item.operation} on ${item.collection} (id: ${item.id})`);
       } catch (e: any) {
         console.warn(`[OfflineSync] ✗ Write failed for item ${item.id} in ${item.collection}:`, e?.message || e);
         const isPermissionError = e?.message?.includes('permission') || e?.code?.includes('permission');
-        const retries = (item.retries || 0) + 1;
+        const retryCount = (item.retryCount || 0) + 1;
         // Keep in queue for transient network drops; discard persistent authorization errors or corrupted items (>3 retries)
-        if (!isPermissionError && retries < 4) {
-          failedQueue.push({ ...item, retries });
+        if (!isPermissionError && retryCount < 4) {
+          failedQueue.push({ ...item, retryCount, lastAttemptAt: Date.now() });
         } else {
           console.warn(`[OfflineSync] Discarding un-syncable queue item ${item.id} (${item.collection}) to prevent queue lock.`);
         }
@@ -306,7 +350,7 @@ export function setupNetworkListener(): () => void {
     if (state.isConnected === false) {
       // Device just went offline — remember this for the current session
       wasOfflineInSession = true;
-    } else if (state.isConnected === true && wasOfflineInSession) {
+    } else if (state.isConnected === true && state.isInternetReachable !== false && wasOfflineInSession) {
       // Came back online after being offline — drain and show toast
       syncOfflineQueue();
     }
