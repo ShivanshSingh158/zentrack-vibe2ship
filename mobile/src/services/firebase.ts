@@ -1,8 +1,14 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, initializeAuth } from 'firebase/auth';
+import { GoogleAuthProvider, initializeAuth } from 'firebase/auth';
 // @ts-ignore
 import { getReactNativePersistence } from 'firebase/auth';
-import { initializeFirestore, memoryLocalCache, memoryLruGarbageCollector } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentSingleTabManager,
+  memoryLocalCache,
+  memoryLruGarbageCollector
+} from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const firebaseConfig = {
@@ -23,9 +29,16 @@ export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence ? getReactNativePersistence(AsyncStorage) : undefined
 });
 
-// React Native memory cache (AsyncStorage handles offline disk persistence)
+// Configure Firestore local cache with graceful fallback
+let localCacheSetting: any;
+try {
+  localCacheSetting = persistentLocalCache({ tabManager: persistentSingleTabManager({}) });
+} catch {
+  localCacheSetting = memoryLocalCache({ garbageCollector: memoryLruGarbageCollector() });
+}
+
 export const db = initializeFirestore(app, {
-  localCache: memoryLocalCache({ garbageCollector: memoryLruGarbageCollector() }),
+  localCache: localCacheSetting,
   experimentalAutoDetectLongPolling: true,
 });
 

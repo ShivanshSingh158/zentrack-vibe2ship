@@ -1,103 +1,76 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
-import { BarChart3, TrendingUp, Dumbbell, Book, Flame, Wifi, WifiOff, CheckCircle, Clock } from 'lucide-react';
+import {
+  BarChart3, TrendingUp, TrendingDown, Dumbbell, Book, Flame,
+  CheckCircle, Clock, Sparkles, Calendar, Award, Zap,
+  ChevronRight, RefreshCw, Layers, School, Activity
+} from 'lucide-react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, RadarChart, Radar, PolarGrid, PolarAngleAxis,
-  PolarRadiusAxis, Legend,
+  LineChart, Line, AreaChart, Area, CartesianGrid, Legend
 } from 'recharts';
 import { AIInsightsPanel } from '../learning/AIInsightsPanel';
 import { ErrorBoundary } from '../../components/ErrorBoundary';
 
-// Lazy-load WeeklyReviewModule so its init (Gemini keys, Firebase, etc.)
-// never crashes the 30-day Analytics tab even if Weekly Review fails to load.
+// Lazy-load WeeklyReviewModule
 const WeeklyReviewModule = lazy(() =>
   import('../review/WeeklyReviewModule').then(m => ({ default: m.WeeklyReviewModule }))
 );
 
-// ─── Safe number helpers ───────────────────────────────────────────────────────
-/** Converts any value to a finite number, defaulting to `fallback` (0) on bad input */
-const safeNum = (v: any, fallback = 0): number => {
-  const n = Number(v);
-  return isFinite(n) ? n : fallback;
-};
+type Period = '7d' | '30d' | '90d';
+const PERIOD_DAYS: Record<Period, number> = { '7d': 7, '30d': 30, '90d': 90 };
+const PERIOD_LABELS: Record<Period, string> = { '7d': 'This Week (7D)', '30d': 'This Month (30D)', '90d': 'This Semester (90D)' };
 
-/** Clamps a value between min and max */
-const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+// Helper: Days ago date string
+function daysAgoStr(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return getLocalDateString(d);
+}
 
-// ─── Date helpers ─────────────────────────────────────────────────────────────
-function getLast30Days(): string[] {
-  const days: string[] = [];
-  const today = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    days.push(getLocalDateString(d));
+// ── Delta Badge Component ──
+const DeltaBadge = ({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: string }) => {
+  if (prev === 0 && cur === 0) {
+    return <span className="analytics-delta-pill neutral">0%</span>;
   }
-  return days;
-}
+  const diff = cur - prev;
+  const pct = prev > 0 ? Math.round((diff / prev) * 100) : (cur > 0 ? 100 : 0);
+  const up = diff >= 0;
 
-/**
- * Convert a YYYY-MM-DD string to a short label like "16 Jun".
- * Parses the string manually to avoid timezone shifts (new Date('2026-01-01')
- * is UTC midnight which can roll back a day in UTC+5:30).
- */
-function getWeekLabel(dateStr: string): string {
-  if (!dateStr || typeof dateStr !== 'string') return '';
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) return dateStr;
-  const [, m, d] = parts;
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const monthIdx = parseInt(m, 10) - 1;
-  if (monthIdx < 0 || monthIdx > 11) return dateStr;
-  return `${parseInt(d, 10)} ${months[monthIdx]}`;
-}
-
-// ─── Stat Card ────────────────────────────────────────────────────────────────
-const StatCard = ({
-  icon, label, value, sub, color,
-}: {
-  icon: React.ReactNode; label: string; value: string | number; sub?: string; color: string;
-}) => (
-  <div style={{
-    background: 'rgba(255,255,255,0.04)', backdropFilter: 'blur(12px)',
-    border: '1px solid rgba(255,255,255,0.08)',
-    borderRadius: '1rem', padding: '1rem 1.5rem',
-    display: 'flex', alignItems: 'center', gap: '1rem', transition: 'all 0.2s',
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08)'
-  }}>
-    <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: `${color}20`, 
-display: 'flex', alignItems: 'center', justifyContent: 'center', color, flexShrink: 0 }}>
-      {icon}
-    </div>
-    <div style={{ overflow: 'hidden' }}>
-      <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2.5rem', fontWeight: 400, color: color, lineHeight: 1 }}>{value}</div>
-      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginTop: '0.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
-      {sub && <div style={{ fontSize: '0.65rem', color, marginTop: '0.1rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
-    </div>
-  </div>
-);
-
-// ─── Chart fallback (shown when a chart fails to render) ──────────────────────
-const ChartFallback = ({ name }: { name: string }) => (
-  <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.85rem', flexDirection: 'column', gap: '0.5rem' }}>
-    <span>⚠️</span>
-    <span>{name} chart could not render.</span>
-  </div>
-);
-
-// ─── Tooltip style ─────────────────────────────────────────────────────────────
-const TOOLTIP_STYLE = {
-  background: 'var(--bg-surface)',
-  border: '1px solid var(--border-subtle)',
-  borderRadius: '8px',
-  color: 'var(--text-primary)',
+  return (
+    <span className={`analytics-delta-pill ${up ? 'positive' : 'negative'}`}>
+      {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
+      {up ? '+' : ''}{pct}%{unit ? ` ${unit}` : ''}
+    </span>
+  );
 };
 
-// ─── Main Module ──────────────────────────────────────────────────────────────
-// Wrap the entire module in an ErrorBoundary at the export level so that ANY crash
-// (hooks, Recharts internals, etc.) is caught here — never reaches App.tsx's boundary.
+// ── Custom Dark Recharts Tooltip ──
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={{
+      background: 'rgba(20, 20, 22, 0.95)',
+      border: '1px solid #242428',
+      borderRadius: '8px',
+      padding: '0.55rem 0.75rem',
+      boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+      fontSize: '0.76rem',
+      color: '#ffffff'
+    }}>
+      <div style={{ fontWeight: 600, marginBottom: '0.3rem', color: '#a599ff' }}>{label}</div>
+      {payload.map((p: any, i: number) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: p.color || '#fff' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: p.color || '#fff' }} />
+          <span>{p.name}:</span>
+          <span style={{ fontWeight: 700 }}>{p.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 export const AnalyticsModule = () => (
   <ErrorBoundary name="Analytics">
     <AnalyticsModuleInner />
@@ -106,601 +79,678 @@ export const AnalyticsModule = () => (
 
 const AnalyticsModuleInner = () => {
   const {
-    tasks: todoData,
-    dailyLogs: logData,
+    tasks: rawTasks,
     habitLogs: rawHabitLogs,
-    gymLogs: gymData,
+    gymLogs: rawGymLogs,
     attendanceSubjects,
-    pomodoroSessions,
+    attendanceLogs: rawAttendanceLogs,
+    allHabits = [],
     isLoading,
   } = useGlobalData();
 
-  const [activeTab, setActiveTab] = useState<'30day' | 'weekly'>('30day');
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [period, setPeriod] = useState<Period>('7d');
+  const [activeTab, setActiveTab] = useState<'overview' | 'insights' | 'review'>('overview');
 
-  const last30 = useMemo(() => getLast30Days(), []);
+  const days = PERIOD_DAYS[period];
+  const curStart = daysAgoStr(days - 1);
+  const prevStart = daysAgoStr(days * 2 - 1);
+  const prevEnd = daysAgoStr(days);
 
-  // Guard: ensure rawHabitLogs is always an array with valid date fields
-  const habitLogs = useMemo(() => {
-    if (!Array.isArray(rawHabitLogs)) return [];
-    return rawHabitLogs.filter((data: any) => data && typeof data.date === 'string' && data.date >= last30[0]);
-  }, [rawHabitLogs, last30]);
+  // Guards for data lists
+  const tasks = useMemo(() => Array.isArray(rawTasks) ? rawTasks : [], [rawTasks]);
+  const habitLogs = useMemo(() => Array.isArray(rawHabitLogs) ? rawHabitLogs : [], [rawHabitLogs]);
+  const gymLogs = useMemo(() => Array.isArray(rawGymLogs) ? rawGymLogs : [], [rawGymLogs]);
+  const attendanceLogs = useMemo(() => Array.isArray(rawAttendanceLogs) ? rawAttendanceLogs : [], [rawAttendanceLogs]);
 
-  // Guard: ensure todoData is always a valid array
-  const safeTodos = useMemo(() => (Array.isArray(todoData) ? todoData : []), [todoData]);
-  // Guard: ensure attendanceSubjects is always a valid array
-  const safeAttendance = useMemo(() => (Array.isArray(attendanceSubjects) ? attendanceSubjects : []), [attendanceSubjects]);
-  // Guard: ensure pomodoroSessions is always a valid array
-  const safePomodoroSessions = useMemo(() => (Array.isArray(pomodoroSessions) ? pomodoroSessions : []), [pomodoroSessions]);
-  // Guard: ensure gymData is always a valid array
-  const safeGymData = useMemo(() => (Array.isArray(gymData) ? gymData.filter(g => g && typeof g.date === 'string') : []), [gymData]);
-  const safeDailyLogs = useMemo(() => (Array.isArray(logData) ? logData : []), [logData]);
+  // ── 1. Core Computed Stats & ZenScore (Mobile Math Formula Parity) ──
+  const stats = useMemo(() => {
+    let curTasks = 0, prevTasks = 0;
+    let curFocus = 0, prevFocus = 0;
 
-  useEffect(() => {
-    const onOnline = () => setIsOnline(true);
-    const onOffline = () => setIsOnline(false);
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
+    for (const t of tasks) {
+      if (t.status !== 'completed') continue;
+      const d = (t.completedAt || t.date || '').slice(0, 10);
+      if (d >= curStart) {
+        curTasks++;
+        curFocus += (t.actualMinutes || t.estimatedMinutes || 25);
+      } else if (d >= prevStart && d <= prevEnd) {
+        prevTasks++;
+        prevFocus += (t.actualMinutes || t.estimatedMinutes || 25);
+      }
+    }
+
+    let curHabits = 0, prevHabits = 0;
+    for (const l of habitLogs) {
+      if (!l.date) continue;
+      if (l.date >= curStart) curHabits++;
+      else if (l.date >= prevStart && l.date <= prevEnd) prevHabits++;
+    }
+
+    let curGym = 0, prevGym = 0;
+    for (const g of gymLogs) {
+      if (!g.date) continue;
+      if (g.date >= curStart) curGym++;
+      else if (g.date >= prevStart && g.date <= prevEnd) prevGym++;
+    }
+
+    let curAttended = 0, curMissed = 0;
+    let prevAttended = 0, prevMissed = 0;
+    for (const l of attendanceLogs) {
+      if (!l.date) continue;
+      if (l.date >= curStart) {
+        if (l.action === 'attended') curAttended++;
+        else if (l.action === 'missed') curMissed++;
+      } else if (l.date >= prevStart && l.date <= prevEnd) {
+        if (l.action === 'attended') prevAttended++;
+        else if (l.action === 'missed') prevMissed++;
+      }
+    }
+
+    const totalAtt = curAttended + curMissed;
+    const attendancePct = totalAtt > 0 ? (curAttended / totalAtt) * 100 : 100;
+
+    // Weighted Formula Targets
+    const targetTasks = days * 3;
+    const targetGym = Math.max(1, Math.round(days * (4 / 7)));
+    const targetFocus = days * 30; // 30 mins/day target
+    const targetHabits = days * 2;
+
+    const calcScore = (tCount: number, gCount: number, fMins: number, hCount: number, totAtt: number, attPct: number) => {
+      const tScore = Math.min(25, (tCount / targetTasks) * 25);
+      const gScore = targetGym > 0 ? Math.min(30, (gCount / targetGym) * 30) : 30;
+      const fScore = Math.min(25, (fMins / targetFocus) * 25);
+      const hScore = Math.min(20, (hCount / targetHabits) * 20);
+
+      let base = tScore + gScore + fScore + hScore;
+      let attMod = 0;
+      if (totAtt > 0) {
+        if (attPct >= 90) attMod = 5;
+        else if (attPct < 50) attMod = -10;
+      }
+      return Math.max(0, Math.min(100, Math.round(base + attMod)));
     };
-  }, []);
 
-  useEffect(() => {
-    if (!isLoading) setLastUpdated(new Date());
-  }, [isLoading, logData?.length, safeTodos.length]);
+    const zenScore = calcScore(curTasks, curGym, curFocus, curHabits, totalAtt, attendancePct);
+    const prevTotalAtt = prevAttended + prevMissed;
+    const prevAttendancePct = prevTotalAtt > 0 ? (prevAttended / prevTotalAtt) * 100 : 100;
+    const prevZen = calcScore(prevTasks, prevGym, prevFocus, prevHabits, prevTotalAtt, prevAttendancePct);
 
-  // ── 1. Task Metrics ────────────────────────────────────────────────────────
-  const todoMetrics = useMemo(() => {
-    try {
-      // strictly scope to the last 30 days
-      const recentTodos = safeTodos.filter(t => t?.date && t.date >= last30[0]);
-      const total = recentTodos.length;
-      const completed = recentTodos.filter(t => t?.status === 'completed').length;
-      const rate = total > 0 ? clamp(Math.round((completed / total) * 100), 0, 100) : 0;
-      const daily = last30.map(date => {
-        const dayTodos = recentTodos.filter(t => t?.date === date);
-        const done = dayTodos.filter(t => t?.status === 'completed').length;
-        return { date: getWeekLabel(date), total: dayTodos.length, completed: done };
-      });
-      return { total, completed, rate, daily };
-    } catch (e) {
-      console.error('[Analytics] todoMetrics error:', e);
-      return { total: 0, completed: 0, rate: 0, daily: last30.map(d => ({ date: getWeekLabel(d), total: 0, completed: 0 })) };
+    // Best streak lookup in last 90 days
+    const activeDates = new Set<string>();
+    for (const t of tasks) {
+      if (t.status === 'completed' && t.completedAt) activeDates.add(t.completedAt.slice(0, 10));
     }
-  }, [safeTodos, last30]);
+    for (const g of gymLogs) { if (g.date) activeDates.add(g.date); }
+    for (const l of habitLogs) { if (l.date) activeDates.add(l.date); }
 
-  // ── Week-over-Week Metrics ────────────────────────────────────────────────
-  const weekOverWeekMetrics = useMemo(() => {
-    try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const msPerDay = 24 * 60 * 60 * 1000;
-      
-      const getRangeCount = (dataList: any[], dateField: string, filterFn: (d: any) => boolean) => {
-        let thisWeek = 0, lastWeek = 0;
-        dataList.forEach(d => {
-          if (!d || typeof d[dateField] !== 'string') return;
-          const dt = new Date(d[dateField] + 'T00:00:00');
-          if (isNaN(dt.getTime())) return;
-          const diffDays = Math.floor((today.getTime() - dt.getTime()) / msPerDay);
-          if (diffDays >= 0 && diffDays < 7 && filterFn(d)) thisWeek++;
-          else if (diffDays >= 7 && diffDays < 14 && filterFn(d)) lastWeek++;
-        });
-        return { thisWeek, lastWeek, diff: thisWeek - lastWeek };
-      };
-
-      const tasks = getRangeCount(safeTodos, 'date', d => d.status === 'completed');
-      const habits = getRangeCount(habitLogs, 'date', () => true);
-      const gym = getRangeCount(safeGymData, 'date', () => true);
-
-      return { tasks, habits, gym };
-    } catch (e) {
-      console.error('[Analytics] weekOverWeekMetrics error:', e);
-      return { 
-        tasks: { thisWeek: 0, lastWeek: 0, diff: 0 }, 
-        habits: { thisWeek: 0, lastWeek: 0, diff: 0 }, 
-        gym: { thisWeek: 0, lastWeek: 0, diff: 0 } 
-      };
+    let best = 0, run = 0;
+    for (let i = 0; i < 90; i++) {
+      const d = daysAgoStr(i);
+      if (activeDates.has(d)) {
+        run++;
+        best = Math.max(best, run);
+      } else {
+        run = 0;
+      }
     }
-  }, [safeTodos, habitLogs, safeGymData]);
 
-  // ── 2. Gym Strength Progression ───────────────────────────────────────────
-  const gymProgressionMetrics = useMemo(() => {
-    try {
-      // Use undefined instead of null — Recharts handles undefined better with connectNulls
-      // null values cause internal minified-function errors in Recharts' domain calculator
-      const chartData = last30.map(date => ({
-        date: getWeekLabel(date),
-        bench: undefined as number | undefined,
-        squat: undefined as number | undefined,
-        deadlift: undefined as number | undefined,
-        rawDate: date,
-      }));
+    return {
+      curTasks, prevTasks,
+      curGym, prevGym,
+      curFocus, prevFocus,
+      curHabits, prevHabits,
+      curAttended, curMissed,
+      attendancePct: Math.round(attendancePct),
+      zenScore, prevZen,
+      bestStreak: best
+    };
+  }, [tasks, habitLogs, gymLogs, attendanceLogs, period, curStart, prevStart, prevEnd, days]);
 
-      let lastBench = 0, lastSquat = 0, lastDeadlift = 0;
+  // ── 2. Task Completion Dual-Bar Chart Data (This vs Prev) ──
+  const taskChartData = useMemo(() => {
+    const taskDateCounts = new Map<string, number>();
+    for (const t of tasks) {
+      if (t.status !== 'completed') continue;
+      const d = (t.completedAt || t.date || '').slice(0, 10);
+      if (d) taskDateCounts.set(d, (taskDateCounts.get(d) || 0) + 1);
+    }
 
-      const sortedGym = [...safeGymData].sort((a, b) => {
-        const ta = new Date(a.date + 'T00:00:00').getTime();
-        const tb = new Date(b.date + 'T00:00:00').getTime();
-        return (isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb);
+    const n = Math.min(days, 14);
+    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const result = [];
+    for (let i = n - 1; i >= 0; i -= step) {
+      const d = daysAgoStr(i);
+      const dPrev = daysAgoStr(i + days);
+      result.push({
+        label: d.slice(5), // "MM-DD"
+        current: taskDateCounts.get(d) || 0,
+        previous: taskDateCounts.get(dPrev) || 0,
       });
+    }
+    return result;
+  }, [tasks, days]);
 
-      sortedGym.forEach(log => {
-        if (!log || !log.date || log.date < last30[0]) return;
-        const idx = chartData.findIndex(d => d.rawDate === log.date);
-        if (idx === -1) return;
+  // ── 3. Habit Consistency Area Chart Data ──
+  const habitChartData = useMemo(() => {
+    const habitDateCounts = new Map<string, number>();
+    for (const l of habitLogs) {
+      if (l.date) habitDateCounts.set(l.date, (habitDateCounts.get(l.date) || 0) + 1);
+    }
 
-        const exercises = Array.isArray(log.exercises) ? log.exercises : [];
-        exercises.forEach((ex: any) => {
-          if (!ex || typeof ex.name !== 'string') return;
-          const name = ex.name.toLowerCase();
-          const safeLog = Array.isArray(ex.setsLog) ? ex.setsLog : [];
-          const weights = safeLog
-            .map((s: any) => safeNum(s?.weight))
-            .filter((w: number) => w > 0 && isFinite(w));
-          const maxWeight = weights.length > 0 ? Math.max(...weights) : 0;
-          if (maxWeight > 0 && isFinite(maxWeight)) {
-            if (name.includes('bench') || name.includes('chest press') || name.includes('barbell press') || name.includes('db press') || name.includes('dumbbell press') || name.includes('fly')) chartData[idx].bench = Math.max(chartData[idx].bench ?? 0, maxWeight);
-            if (name.includes('squat') || name.includes('leg press') || name.includes('hack')) chartData[idx].squat = Math.max(chartData[idx].squat ?? 0, maxWeight);
-            if (name.includes('deadlift') || name.includes('rdl') || name.includes('romanian') || name.includes('good morning')) chartData[idx].deadlift = Math.max(chartData[idx].deadlift ?? 0, maxWeight);
+    const activeCount = Math.max(allHabits.filter((h: any) => !h.archived).length, 1);
+    const n = Math.min(days, 14);
+    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const result = [];
+    for (let i = n - 1; i >= 0; i -= step) {
+      const d = daysAgoStr(i);
+      const done = habitDateCounts.get(d) || 0;
+      const rate = Math.min(100, Math.round((done / activeCount) * 100));
+      result.push({
+        label: d.slice(5),
+        rate,
+        completed: done
+      });
+    }
+    return result;
+  }, [habitLogs, allHabits, days]);
+
+  // ── 4. Attendance Stacked Bar Chart Data ──
+  const attendanceChartData = useMemo(() => {
+    const attMap = new Map<string, { attended: number; missed: number }>();
+    for (const l of attendanceLogs) {
+      if (!l.date) continue;
+      const entry = attMap.get(l.date) || { attended: 0, missed: 0 };
+      if (l.action === 'attended') entry.attended++;
+      else if (l.action === 'missed') entry.missed++;
+      attMap.set(l.date, entry);
+    }
+
+    const buckets = days <= 7 ? 7 : days <= 30 ? 6 : 8;
+    const step = days <= 7 ? 1 : days <= 30 ? 5 : 11;
+    const result = [];
+    for (let b = buckets - 1; b >= 0; b--) {
+      const startDay = b * step + step - 1;
+      const endDay = b * step;
+      const startStr = daysAgoStr(startDay);
+      let attended = 0, missed = 0;
+      for (let i = startDay; i >= endDay; i--) {
+        const targetDate = daysAgoStr(i);
+        const dayCounts = attMap.get(targetDate);
+        if (dayCounts) {
+          attended += dayCounts.attended;
+          missed += dayCounts.missed;
+        }
+      }
+      result.push({
+        label: startStr.slice(5),
+        attended,
+        missed,
+      });
+    }
+    return result;
+  }, [attendanceLogs, days]);
+
+  // ── 5. Gym Volume & Big 3 Strength Progression ──
+  const gymChartData = useMemo(() => {
+    const gymDateMap = new Map<string, any>();
+    for (const g of gymLogs) {
+      if (g.date) gymDateMap.set(g.date, g);
+    }
+
+    const n = Math.min(days, 14);
+    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
+    const result = [];
+
+    for (let i = n - 1; i >= 0; i -= step) {
+      const d = daysAgoStr(i);
+      const log = gymDateMap.get(d);
+      let volume = 0;
+      let maxWeight = 0;
+
+      if (log?.exercises) {
+        for (const ex of log.exercises) {
+          const sets = ex.setsLog || ex.sets || [];
+          for (const s of sets) {
+            if (s.completed || s.weight) {
+              const w = Number(s.weight) || 0;
+              const r = Number(s.reps) || 0;
+              volume += (w * r);
+              maxWeight = Math.max(maxWeight, w);
+            }
           }
-        });
-      });
-
-      // Carry last-known value forward for continuous lines
-      chartData.forEach(d => {
-        if (d.bench !== undefined) lastBench = d.bench; else if (lastBench > 0) d.bench = lastBench;
-        if (d.squat !== undefined) lastSquat = d.squat; else if (lastSquat > 0) d.squat = lastSquat;
-        if (d.deadlift !== undefined) lastDeadlift = d.deadlift; else if (lastDeadlift > 0) d.deadlift = lastDeadlift;
-      });
-
-      return chartData;
-    } catch (e) {
-      console.error('[Analytics] gymProgressionMetrics error:', e);
-      return last30.map(d => ({ date: getWeekLabel(d), bench: undefined, squat: undefined, deadlift: undefined, rawDate: d }));
-    }
-  }, [safeGymData, last30]);
-
-  // ── 3. Attendance Radar ───────────────────────────────────────────────────
-  const attendanceRadarData = useMemo(() => {
-    try {
-      return safeAttendance
-        .filter(sub => sub && typeof sub.name === 'string')
-        .map(sub => {
-          const attended = safeNum(sub.classesAttended);
-          const missed = safeNum(sub.classesMissed);
-          const total = attended + missed;
-          const rate = total > 0 ? clamp(Math.round((attended / total) * 100), 0, 100) : 0;
-          return {
-            subject: String(sub.name).substring(0, 12) + (String(sub.name).length > 12 ? '…' : ''),
-            attendance: rate,
-            fullMark: 100,
-          };
-        });
-    } catch (e) {
-      console.error('[Analytics] attendanceRadarData error:', e);
-      return [];
-    }
-  }, [safeAttendance]);
-
-  // ── 4. Habit Heatmap ──────────────────────────────────────────────────────
-  const habitHeatmapData = useMemo(() => {
-    try {
-      const counts: Record<string, number> = {};
-      habitLogs.forEach(log => {
-        if (log?.date && typeof log.date === 'string') {
-          counts[log.date] = (counts[log.date] || 0) + 1;
         }
+      }
+
+      result.push({
+        label: d.slice(5),
+        volume: Math.round(volume),
+        maxWeight,
       });
-      return last30.map(date => ({
-        date: getWeekLabel(date),
-        fullDate: date,
-        count: safeNum(counts[date]),
-      }));
-    } catch (e) {
-      console.error('[Analytics] habitHeatmapData error:', e);
-      return last30.map(d => ({ date: getWeekLabel(d), fullDate: d, count: 0 }));
     }
-  }, [habitLogs, last30]);
+    return result;
+  }, [gymLogs, days]);
 
-  const habitMetrics = useMemo(() => {
-    try {
-      return {
-        totalChecked: habitLogs.length,
-        daysWithActivity: new Set(habitLogs.map(l => l.date).filter(Boolean)).size,
-      };
-    } catch (e) {
-      return { totalChecked: 0, daysWithActivity: 0 };
+  // ── 6. 35-Day (5-Week) Contribution Heatmap Data ──
+  const heatmapCells = useMemo(() => {
+    const taskDateCounts = new Map<string, number>();
+    for (const t of tasks) {
+      if (t.status === 'completed' && t.completedAt) {
+        const d = t.completedAt.slice(0, 10);
+        taskDateCounts.set(d, (taskDateCounts.get(d) || 0) + 1);
+      }
     }
-  }, [habitLogs]);
+    const gymDateMap = new Set<string>();
+    for (const g of gymLogs) { if (g.date) gymDateMap.add(g.date); }
+    const habitDateCounts = new Map<string, number>();
+    for (const l of habitLogs) {
+      if (l.date) habitDateCounts.set(l.date, (habitDateCounts.get(l.date) || 0) + 1);
+    }
 
-  // ── Learning Progress ─────────────────────────────────────────────────────
-  const learningChartData = useMemo(() => {
-    try {
-      return last30.map(date => {
-        const dLog = safeDailyLogs.find(l => l.date === date);
-        const watchSeconds = safeNum(dLog?.daily_watch_seconds);
-        return {
-          date: getWeekLabel(date),
-          watchMinutes: Math.round(watchSeconds / 60),
-        };
+    const cells = [];
+    for (let i = 34; i >= 0; i--) {
+      const dateStr = daysAgoStr(i);
+      const tCount = taskDateCounts.get(dateStr) || 0;
+      const gCount = gymDateMap.has(dateStr) ? 1 : 0;
+      const hCount = (habitDateCounts.get(dateStr) || 0) > 0 ? 1 : 0;
+      const total = tCount + gCount + hCount;
+
+      let level = 'level-0';
+      if (total === 1) level = 'level-1';
+      else if (total === 2) level = 'level-2';
+      else if (total >= 3) level = 'level-3';
+
+      cells.push({
+        date: dateStr,
+        displayDate: dateStr.slice(5),
+        total,
+        tCount,
+        gCount,
+        level,
       });
-    } catch (e) {
-      console.error('[Analytics] learningChartData error:', e);
-      return last30.map(d => ({ date: getWeekLabel(d), watchMinutes: 0 }));
     }
-  }, [safeDailyLogs, last30]);
+    return cells;
+  }, [tasks, gymLogs, habitLogs]);
 
-  // ── 5. Pomodoro Time-of-Day Distribution ──────────────────────────────────
-  const pomodoroHeatmapMetrics = useMemo(() => {
-    try {
-      const hours = Array.from({ length: 24 }, (_, i) => ({
-        hour: `${String(i).padStart(2, '0')}:00`,
-        minutes: 0,
-      }));
+  // SVG Ring Math
+  const RING_SIZE = 180;
+  const RING_R = 70;
+  const CIRC = 2 * Math.PI * RING_R;
+  const strokeOffset = CIRC - (stats.zenScore / 100) * CIRC;
 
-      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-
-      safePomodoroSessions.forEach(session => {
-        if (!session) return;
-        // Handle both plain numbers and Firestore Timestamp objects
-        const rawTs = session.timestamp;
-        const ts: number = rawTs && typeof rawTs === 'object' && 'toMillis' in rawTs
-          ? (rawTs as any).toMillis()
-          : safeNum(rawTs);
-
-        if (ts < cutoff) return;
-
-        const date = new Date(ts);
-        if (isNaN(date.getTime())) return;
-
-        const hour = date.getHours(); // 0 to 23
-        if (hour >= 0 && hour < 24) {
-          hours[hour].minutes += safeNum(session.durationMinutes, 25);
-        }
-      });
-
-      return hours;
-    } catch (e) {
-      console.error('[Analytics] pomodoroHeatmapMetrics error:', e);
-      return Array.from({ length: 24 }, (_, i) => ({ hour: `${String(i).padStart(2, '0')}:00`, minutes: 0 }));
-    }
-  }, [safePomodoroSessions]);
-
-  // ── AI Summary Data ───────────────────────────────────────────────────────
-  const aiUserData = useMemo(() => ({
-    tasks: safeTodos,
-    habits: habitLogs,
-    attendance: safeAttendance,
-    gym: safeGymData,
-    summary: {
-      completedTasks: todoMetrics.completed,
-      habitDays: habitMetrics.daysWithActivity,
-    },
-  }), [safeTodos, habitLogs, safeAttendance, safeGymData, todoMetrics, habitMetrics]);
-
-  // ── Loading State ─────────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div className="learning-container">
-        <div className="learning-header">
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <BarChart3 size={24} className="logo-icon" /> Analytics
-          </h1>
+  return (
+    <div className="analytics-module-root">
+      {/* ── TOP HERO HEADER BAR ── */}
+      <div className="analytics-header-bar">
+        <div className="analytics-header-left">
+          <h1 className="analytics-hero-title">Productivity Analytics & ZenScore</h1>
+          <div className="analytics-live-badge">
+            <span className="analytics-live-dot" />
+            <span>Live Sync</span>
+          </div>
         </div>
-        <div className="skeleton" style={{ height: '200px', borderRadius: 'var(--radius-lg)', marginTop: '1rem' }} />
+
+        <div className="analytics-header-actions">
+          {/* Period Selector (7D / 30D / 90D) */}
+          <div className="analytics-period-selector">
+            <button
+              type="button"
+              className={`analytics-period-btn ${period === '7d' ? 'active' : ''}`}
+              onClick={() => setPeriod('7d')}
+            >
+              7D (Week)
+            </button>
+            <button
+              type="button"
+              className={`analytics-period-btn ${period === '30d' ? 'active' : ''}`}
+              onClick={() => setPeriod('30d')}
+            >
+              30D (Month)
+            </button>
+            <button
+              type="button"
+              className={`analytics-period-btn ${period === '90d' ? 'active' : ''}`}
+              onClick={() => setPeriod('90d')}
+            >
+              90D (Semester)
+            </button>
+          </div>
+
+          {/* Module Sub-tabs */}
+          <button
+            type="button"
+            className={`analytics-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('overview')}
+          >
+            <Activity size={14} />
+            <span>Overview</span>
+          </button>
+
+          <button
+            type="button"
+            className={`analytics-tab-btn ${activeTab === 'insights' ? 'active' : ''}`}
+            onClick={() => setActiveTab('insights')}
+          >
+            <Sparkles size={14} color="#a599ff" />
+            <span>AI Insights</span>
+          </button>
+
+          <button
+            type="button"
+            className={`analytics-tab-btn ${activeTab === 'review' ? 'active' : ''}`}
+            onClick={() => setActiveTab('review')}
+          >
+            <Calendar size={14} />
+            <span>Weekly Review</span>
+          </button>
+        </div>
       </div>
-    );
-  }
 
-    // ─── Render ──────────────────────────────────────────────────────────────────────────────────
-    return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-          <style>{`
-            .topic-card {
-              background: rgba(255,255,255,0.03) !important;
-              backdrop-filter: blur(12px) !important;
-              border: 1px solid rgba(255,255,255,0.08) !important;
-              border-radius: 1rem !important;
-              padding: 1.25rem !important;
-            }
-            .topic-card h3 {
-              font-family: 'Instrument Serif', serif !important;
-              font-size: 1rem !important;
-              font-weight: 400 !important;
-              color: white !important;
-              margin-bottom: 1rem !important;
-              display: flex !important;
-              align-items: center !important;
-              gap: 0.5rem !important;
-            }
-            .recharts-cartesian-axis-tick-value {
-              fill: rgba(255,255,255,0.35) !important;
-              font-size: 0.65rem !important;
-            }
-            .recharts-cartesian-grid-horizontal line, .recharts-cartesian-grid-vertical line {
-              stroke: rgba(255,255,255,0.05) !important;
-            }
-            .recharts-polar-grid-angle line, .recharts-polar-grid-concentric polygon {
-              stroke: rgba(255,255,255,0.05) !important;
-            }
-            .recharts-polar-angle-axis-tick-value, .recharts-polar-radius-axis-tick-value {
-              fill: rgba(255,255,255,0.35) !important;
-              font-size: 0.65rem !important;
-            }
-          `}</style>
-          <svg style={{ height: 0, width: 0, position: 'absolute' }}>
-            <defs>
-              <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#a78bfa" />
-                <stop offset="100%" stopColor="#b8afff" />
-              </linearGradient>
-            </defs>
-          </svg>
-        {/* Tab bar */}
-        <div style={{ display: 'flex', gap: '0.5rem', padding: '0.75rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-surface)', flexShrink: 0, zIndex: 10 }}>
-          {(['30day', 'weekly'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                style={{
-                  padding: '0.3rem 0.875rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
-                  background: activeTab === tab ? 'rgba(167,139,250,0.12)' : 'rgba(255,255,255,0.05)',
-                  color: activeTab === tab ? '#a78bfa' : 'rgba(255,255,255,0.5)',
-                  border: activeTab === tab ? '1px solid rgba(167,139,250,0.25)' : '1px solid rgba(255,255,255,0.08)',
-                  transition: 'all 0.15s',
-                }}
-              >
-                {tab === '30day' ? '30-Day Overview' : 'Weekly Review'}
-              </button>
-          ))}
-        </div>
+      {activeTab === 'overview' ? (
+        <>
+          {/* ── HERO ZEN SCORE & DELTA SECTION ── */}
+          <div className="analytics-hero-card">
+            {/* ZenScore Progress Ring */}
+            <div className="analytics-ring-box">
+              <svg width={RING_SIZE} height={RING_SIZE} style={{ transform: 'rotate(-90deg)' }}>
+                <defs>
+                  <linearGradient id="zenRingGrad" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#a599ff" />
+                    <stop offset="100%" stopColor="#38bdf8" />
+                  </linearGradient>
+                </defs>
+                <circle
+                  cx={RING_SIZE / 2}
+                  cy={RING_SIZE / 2}
+                  r={RING_R}
+                  stroke="rgba(255, 255, 255, 0.07)"
+                  strokeWidth="12"
+                  fill="none"
+                />
+                <circle
+                  cx={RING_SIZE / 2}
+                  cy={RING_SIZE / 2}
+                  r={RING_R}
+                  stroke="url(#zenRingGrad)"
+                  strokeWidth="12"
+                  fill="none"
+                  strokeDasharray={CIRC}
+                  strokeDashoffset={strokeOffset}
+                  strokeLinecap="round"
+                  style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1)' }}
+                />
+              </svg>
 
-        {activeTab === 'weekly' ? (
-          <ErrorBoundary name="Weekly Review">
-            <Suspense fallback={
-              <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div className="skeleton" style={{ height: '120px', borderRadius: 'var(--radius-lg)' }} />
-                <div className="skeleton" style={{ height: '180px', borderRadius: 'var(--radius-lg)' }} />
-              </div>
-            }>
-              <WeeklyReviewModule />
-            </Suspense>
-          </ErrorBoundary>
-        ) : (
-          <div className="learning-container">
-            {/* Header */}
-            <div className="learning-header">
-              <div style={{ flex: 1 }}>
-                <h1 style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2rem', fontWeight: 400, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <BarChart3 size={28} style={{ color: '#a78bfa' }} /> Analytics &amp; Insights
-                </h1>
-                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.9rem', marginTop: '0.25rem' }}>
-                  Live 30-day overview tailored to your core metrics.
-                </p>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.8rem', color: isOnline ? '#10b981' : '#ef4444' }}>
-                {isOnline ? <Wifi size={14} /> : <WifiOff size={14} />}
-                <span>{isOnline ? 'Live Sync' : 'Offline'}</span>
-                {isOnline && <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981', animation: 'pulse 2s infinite' }} />}
-                {lastUpdated && (
-                  <span style={{ color: 'var(--text-muted)', marginLeft: '0.25rem' }}>
-                    · {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                )}
+              <div className="analytics-ring-inner">
+                <div className="analytics-ring-score">{stats.zenScore}</div>
+                <div className="analytics-ring-label">ZenScore</div>
+                <div className="analytics-ring-delta">
+                  {stats.zenScore >= stats.prevZen ? `+${stats.zenScore - stats.prevZen}` : `${stats.zenScore - stats.prevZen}`} vs prev
+                </div>
               </div>
             </div>
 
-            {/* Stat Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem', maxWidth: '100%' }}>
-              <StatCard icon={<CheckCircle size={22} />} label="Tasks Completed" value={todoMetrics.completed} sub={`${todoMetrics.rate}% completion rate`} color="#34d399" />
-              <StatCard icon={<Flame size={22} />} label="Habit Check-ins" value={habitMetrics.totalChecked} sub={`${habitMetrics.daysWithActivity} active days`} color="#a78bfa" />
-              <StatCard icon={<Dumbbell size={22} />} label="Gym Sessions" value={safeGymData.filter((d: any) => d.date >= last30[0]).length} sub={`${weekOverWeekMetrics.gym.diff > 0 ? '+' : ''}${weekOverWeekMetrics.gym.diff} this week`} color="#f59e0b" />
-              <StatCard icon={<Book size={22} />} label="Subjects Tracked" value={safeAttendance.length} sub="Attendance health" color="#b8afff" />
-            </div>
-
-            {/* Week-over-Week Comparison */}
-            <div style={{ marginTop: '1.25rem', marginBottom: '0.5rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                <TrendingUp size={18} /> Week-over-Week Comparison
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-                {[
-                  { label: 'Tasks Completed', icon: <CheckCircle size={16} />, color: '#7c3aed', data: weekOverWeekMetrics.tasks },
-                  { label: 'Habits Logged', icon: <Flame size={16} />, color: '#ef4444', data: weekOverWeekMetrics.habits },
-                  { label: 'Gym Sessions', icon: <Dumbbell size={16} />, color: '#f97316', data: weekOverWeekMetrics.gym },
-                ].map(metric => (
-                  <div key={metric.label} style={{ padding: '0.8rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <div style={{ color: metric.color, display: 'flex' }}>{metric.icon}</div>
-                      <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{metric.label}</div>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-                      <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metric.data.thisWeek}</div>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 600, color: metric.data.diff > 0 ? '#10b981' : metric.data.diff < 0 ? '#ef4444' : 'var(--text-muted)' }}>
-                        {metric.data.diff > 0 ? `+${metric.data.diff}` : metric.data.diff < 0 ? metric.data.diff : 'same'}
-                      </div>
-                    </div>
+            {/* 6 Summary Stat Cards Grid */}
+            <div className="analytics-summary-grid">
+              {/* Tasks Done */}
+              <div className="analytics-stat-card">
+                <div className="analytics-stat-card-top">
+                  <div className="analytics-stat-icon-box" style={{ background: 'rgba(94, 218, 158, 0.12)', color: '#5eda9e' }}>
+                    <CheckCircle size={16} />
                   </div>
-                ))}
+                  <DeltaBadge cur={stats.curTasks} prev={stats.prevTasks} />
+                </div>
+                <div className="analytics-stat-val">{stats.curTasks}</div>
+                <div className="analytics-stat-label">Tasks Completed</div>
               </div>
-            </div>
 
-            {/* AI Insights */}
-            <div style={{ marginTop: '1rem' }}>
-              <ErrorBoundary name="AI Insights">
-                <AIInsightsPanel userData={aiUserData} />
-              </ErrorBoundary>
-            </div>
-
-            {/* Charts Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 400px), 1fr))', gap: '1.25rem', marginTop: '1rem' }}>
-
-              {/* 1. Habit Heatmap */}
-              <div className="topic-card" style={{ padding: '1.5rem', gridColumn: '1 / -1' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                  <Flame size={18} /> Habit Consistency (Last 30 Days)
-                </h3>
-                <ErrorBoundary name="Habit Heatmap">
-                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                    {habitHeatmapData.map((d, i) => (
-                      <div
-                        key={i}
-                        title={`${d.fullDate}: ${d.count} habit${d.count !== 1 ? 's' : ''}`}
-                        style={{
-                          width: '24px', height: '24px', borderRadius: '4px',
-                          background: d.count === 0
-                            ? 'var(--bg-surface-hover)'
-                            : `rgba(16, 185, 129, ${Math.min(0.2 + d.count * 0.2, 1)})`,
-                          border: '1px solid rgba(255,255,255,0.05)',
-                          transition: 'all 0.2s', cursor: 'pointer',
-                        }}
-                      />
-                    ))}
+              {/* Gym Sessions */}
+              <div className="analytics-stat-card">
+                <div className="analytics-stat-card-top">
+                  <div className="analytics-stat-icon-box" style={{ background: 'rgba(165, 153, 255, 0.12)', color: '#a599ff' }}>
+                    <Dumbbell size={16} />
                   </div>
-                </ErrorBoundary>
+                  <DeltaBadge cur={stats.curGym} prev={stats.prevGym} />
+                </div>
+                <div className="analytics-stat-val">{stats.curGym}d</div>
+                <div className="analytics-stat-label">Gym Sessions</div>
               </div>
 
-              {/* 2. Gym Strength Progression */}
-              <div className="topic-card" style={{ padding: '1.5rem' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                  <Dumbbell size={18} /> Strength Progression (Max kg)
-                </h3>
-                <ErrorBoundary name="Gym Chart" fallback={<ChartFallback name="Gym Strength" />}>
-                  {gymProgressionMetrics.some(d => d.bench !== undefined || d.squat !== undefined || d.deadlift !== undefined) ? (
-                    <div className="analytics-chart-container">
-                      <div className="analytics-chart-inner">
-                        <ResponsiveContainer width="100%" height={260}>
-                          <LineChart data={gymProgressionMetrics.map(d => ({ ...d, bench: d.bench ?? 0, squat: d.squat ?? 0, deadlift: d.deadlift ?? 0 }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                            <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
-                            <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} allowDecimals={false} domain={[0, 'auto']} />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} />
-                            <Legend wrapperStyle={{ fontSize: '12px' }} />
-                            <Line type="monotone" dataKey="bench" stroke="#a599ff" strokeWidth={3} name="Bench Press" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
-                            <Line type="monotone" dataKey="squat" stroke="#ef4444" strokeWidth={3} name="Squat" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
-                            <Line type="monotone" dataKey="deadlift" stroke="#10b981" strokeWidth={3} name="Deadlift" dot={{ r: 3 }} activeDot={{ r: 6 }} connectNulls />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  ) : (
-                    <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                      No gym data recorded in the last 30 days.
-                    </div>
-                  )}
-                </ErrorBoundary>
-              </div>
-
-              {/* 3. Learning Progress */}
-              <div className="topic-card" style={{ padding: '1.5rem' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                  <Book size={18} /> Learning (Video Minutes)
-                </h3>
-                <ErrorBoundary name="Learning Chart" fallback={<ChartFallback name="Learning Progress" />}>
-                  <div className="analytics-chart-container">
-                    <div className="analytics-chart-inner">
-                      <ResponsiveContainer width="100%" height={260}>
-                        <BarChart data={learningChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                          <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
-                          <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-                          <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={{ color: '#a599ff' }} />
-                            <Bar dataKey="watchMinutes" name="Minutes Watched" fill="url(#barGradient)" radius={[4, 4, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
+              {/* Focus Time */}
+              <div className="analytics-stat-card">
+                <div className="analytics-stat-card-top">
+                  <div className="analytics-stat-icon-box" style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8' }}>
+                    <Clock size={16} />
                   </div>
-                </ErrorBoundary>
+                  <DeltaBadge cur={stats.curFocus} prev={stats.prevFocus} />
+                </div>
+                <div className="analytics-stat-val">
+                  {stats.curFocus >= 60 ? `${(stats.curFocus / 60).toFixed(1)}h` : `${stats.curFocus}m`}
+                </div>
+                <div className="analytics-stat-label">Focus Time</div>
               </div>
 
-              {/* 4. Attendance Radar */}
-              <div className="topic-card" style={{ padding: '1.5rem' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                  <Book size={18} /> Subject Attendance Health (%)
-                </h3>
-                {attendanceRadarData.length > 2 ? (
-                  <ErrorBoundary name="Attendance Radar" fallback={<ChartFallback name="Attendance Radar" />}>
-                    <div className="analytics-chart-container">
-                      <div className="analytics-chart-inner">
-                        <ResponsiveContainer width="100%" height={260}>
-                          <RadarChart cx="50%" cy="50%" outerRadius="70%" data={attendanceRadarData}>
-                            <PolarGrid stroke="var(--border-subtle)" />
-                            <PolarAngleAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
-                            <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-                              <Radar name="Attendance %" dataKey="attendance" stroke="url(#barGradient)" fill="url(#barGradient)" fillOpacity={0.5} />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} />
-                          </RadarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </ErrorBoundary>
-                ) : attendanceRadarData.length > 0 ? (
-                  // Bar chart fallback when <3 subjects (RadarChart needs ≥3 points)
-                  <ErrorBoundary name="Attendance Bar" fallback={<ChartFallback name="Attendance" />}>
-                    <div className="analytics-chart-container">
-                      <div className="analytics-chart-inner">
-                        <ResponsiveContainer width="100%" height={260}>
-                          <BarChart data={attendanceRadarData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                            <XAxis dataKey="subject" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} />
-                            <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} domain={[0, 100]} />
-                            <Tooltip contentStyle={TOOLTIP_STYLE} />
-                              <Bar dataKey="attendance" fill="url(#barGradient)" radius={[4, 4, 0, 0]} name="Attendance %" />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  </ErrorBoundary>
-                ) : (
-                  <div style={{ height: '260px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                    No attendance data available.
+              {/* Best Streak */}
+              <div className="analytics-stat-card">
+                <div className="analytics-stat-card-top">
+                  <div className="analytics-stat-icon-box" style={{ background: 'rgba(251, 191, 36, 0.12)', color: '#fbbf24' }}>
+                    <Flame size={16} />
                   </div>
-                )}
+                  <span className="analytics-delta-pill positive">🔥 High</span>
+                </div>
+                <div className="analytics-stat-val">{stats.bestStreak}d</div>
+                <div className="analytics-stat-label">Best Streak</div>
               </div>
 
-              {/* 4. Task Completion Trend */}
-              <div className="topic-card" style={{ padding: '1.5rem' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                  <TrendingUp size={18} /> Task Completion Trend
-                </h3>
-                <ErrorBoundary name="Task Chart" fallback={<ChartFallback name="Task Completion" />}>
-                  <ResponsiveContainer width="100%" height={260}>
-                    <BarChart data={todoMetrics.daily} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                      <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={4} />
-                      <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} allowDecimals={false} domain={[0, 'auto']} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} />
-                        <Bar dataKey="completed" fill="url(#barGradient)" radius={[4, 4, 0, 0]} name="Completed Tasks" />
-                        <Bar dataKey="total" fill="rgba(167,139,250,0.15)" radius={[4, 4, 0, 0]} name="Total Added" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ErrorBoundary>
+              {/* Habits Completed */}
+              <div className="analytics-stat-card">
+                <div className="analytics-stat-card-top">
+                  <div className="analytics-stat-icon-box" style={{ background: 'rgba(165, 153, 255, 0.12)', color: '#a599ff' }}>
+                    <Zap size={16} />
+                  </div>
+                  <DeltaBadge cur={stats.curHabits} prev={stats.prevHabits} />
+                </div>
+                <div className="analytics-stat-val">{stats.curHabits}</div>
+                <div className="analytics-stat-label">Habits Checked</div>
               </div>
 
-              {/* 5. Deep Work Time-of-Day Heatmap */}
-              <div className="topic-card" style={{ padding: '1.5rem', gridColumn: '1 / -1' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                  <Clock size={18} /> Deep Work Time-of-Day Heatmap
-                </h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '1rem' }}>
-                  Total focus minutes grouped by hour over the last 30 days.
-                </p>
-                <ErrorBoundary name="Focus Chart" fallback={<ChartFallback name="Deep Work" />}>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={pomodoroHeatmapMetrics} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                      <XAxis dataKey="hour" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} interval={2} />
-                      <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 10 }} allowDecimals={false} />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
-                        <Bar dataKey="minutes" fill="url(#barGradient)" radius={[4, 4, 0, 0]} name="Focus Minutes" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ErrorBoundary>
+              {/* Classes Attended */}
+              <div className="analytics-stat-card">
+                <div className="analytics-stat-card-top">
+                  <div className="analytics-stat-icon-box" style={{ background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8' }}>
+                    <School size={16} />
+                  </div>
+                  <span className="analytics-delta-pill neutral">{stats.attendancePct}%</span>
+                </div>
+                <div className="analytics-stat-val">{stats.curAttended}</div>
+                <div className="analytics-stat-label">Classes Attended</div>
               </div>
-
             </div>
           </div>
-        )}
-      </div>
+
+          {/* ── CHARTS 2X2 GRID ── */}
+          <div className="analytics-charts-grid">
+            {/* Chart 1: Task Completion (This vs Prev) */}
+            <div className="analytics-chart-card">
+              <div className="analytics-chart-header">
+                <div>
+                  <h3 className="analytics-chart-title">Task Completion Trend</h3>
+                  <div className="analytics-chart-subtitle">Comparing current vs previous {period}</div>
+                </div>
+                <div className="analytics-chart-legend">
+                  <div className="analytics-legend-item">
+                    <span className="analytics-legend-dot" style={{ background: '#a599ff' }} />
+                    <span>Current</span>
+                  </div>
+                  <div className="analytics-legend-item">
+                    <span className="analytics-legend-dot" style={{ background: 'rgba(165, 153, 255, 0.35)' }} />
+                    <span>Previous</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ width: '100%', height: 230 }}>
+                <ResponsiveContainer>
+                  <BarChart data={taskChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} allowDecimals={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="current" name="Current Period" fill="#a599ff" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="previous" name="Previous Period" fill="rgba(165, 153, 255, 0.35)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Chart 2: Habit Consistency (%) */}
+            <div className="analytics-chart-card">
+              <div className="analytics-chart-header">
+                <div>
+                  <h3 className="analytics-chart-title">Habit Consistency</h3>
+                  <div className="analytics-chart-subtitle">% of active habits completed per day</div>
+                </div>
+                <div className="analytics-chart-legend">
+                  <div className="analytics-legend-item">
+                    <span className="analytics-legend-dot" style={{ background: '#38bdf8' }} />
+                    <span>Completion Rate (%)</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ width: '100%', height: 230 }}>
+                <ResponsiveContainer>
+                  <AreaChart data={habitChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="habitAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#38bdf8" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} domain={[0, 100]} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area
+                      type="monotone"
+                      dataKey="rate"
+                      name="Consistency Rate (%)"
+                      stroke="#38bdf8"
+                      strokeWidth={2.5}
+                      fill="url(#habitAreaGrad)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Chart 3: Attendance Ratio Stacked Bars */}
+            <div className="analytics-chart-card">
+              <div className="analytics-chart-header">
+                <div>
+                  <h3 className="analytics-chart-title">Class Attendance Ratio</h3>
+                  <div className="analytics-chart-subtitle">Attended vs missed classes across interval</div>
+                </div>
+                <div className="analytics-chart-legend">
+                  <div className="analytics-legend-item">
+                    <span className="analytics-legend-dot" style={{ background: '#5eda9e' }} />
+                    <span>Attended</span>
+                  </div>
+                  <div className="analytics-legend-item">
+                    <span className="analytics-legend-dot" style={{ background: '#ff6961' }} />
+                    <span>Missed</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ width: '100%', height: 230 }}>
+                <ResponsiveContainer>
+                  <BarChart data={attendanceChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} allowDecimals={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="attended" name="Attended" stackId="a" fill="#5eda9e" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="missed" name="Missed" stackId="a" fill="#ff6961" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            {/* Chart 4: Gym Strength & Volume */}
+            <div className="analytics-chart-card">
+              <div className="analytics-chart-header">
+                <div>
+                  <h3 className="analytics-chart-title">Gym Total Volume Progression</h3>
+                  <div className="analytics-chart-subtitle">Total workout volume (weight × reps in kg/lbs)</div>
+                </div>
+                <div className="analytics-chart-legend">
+                  <div className="analytics-legend-item">
+                    <span className="analytics-legend-dot" style={{ background: '#fbbf24' }} />
+                    <span>Volume</span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ width: '100%', height: 230 }}>
+                <ResponsiveContainer>
+                  <BarChart data={gymChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#8e8e93" fontSize={11} tickLine={false} />
+                    <YAxis stroke="#8e8e93" fontSize={11} tickLine={false} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="volume" name="Workout Volume" fill="#fbbf24" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+          {/* ── 35-DAY ACTIVITY HEATMAP ── */}
+          <div className="analytics-heatmap-card">
+            <div className="analytics-chart-header">
+              <div>
+                <h3 className="analytics-chart-title">35-Day Productivity Contribution Heatmap</h3>
+                <div className="analytics-chart-subtitle">Density of completed tasks, gym logs, and habit streaks</div>
+              </div>
+            </div>
+
+            <div className="analytics-heatmap-grid">
+              {heatmapCells.map((cell, idx) => (
+                <div
+                  key={idx}
+                  className={`analytics-heatmap-cell ${cell.level}`}
+                  title={`${cell.date}: ${cell.total} actions logged (${cell.tCount} tasks, ${cell.gCount} gym)`}
+                >
+                  <span className="analytics-heatmap-date">{cell.displayDate}</span>
+                  {cell.total > 0 && <span className="analytics-heatmap-count">{cell.total}</span>}
+                </div>
+              ))}
+            </div>
+
+            <div className="analytics-heatmap-footer">
+              <span>{heatmapCells.reduce((acc, c) => acc + c.total, 0)} total logged actions across 35 days</span>
+              <div className="analytics-heatmap-legend">
+                <span>Less</span>
+                <span className="analytics-heatmap-key-sq" style={{ background: 'rgba(255,255,255,0.05)' }} />
+                <span className="analytics-heatmap-key-sq" style={{ background: 'rgba(165,153,255,0.22)' }} />
+                <span className="analytics-heatmap-key-sq" style={{ background: 'rgba(165,153,255,0.5)' }} />
+                <span className="analytics-heatmap-key-sq" style={{ background: '#a599ff' }} />
+                <span>More</span>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : activeTab === 'insights' ? (
+        <div style={{ marginTop: '0.5rem' }}>
+          <AIInsightsPanel />
+        </div>
+      ) : (
+        <div style={{ marginTop: '0.5rem' }}>
+          <Suspense fallback={<div className="notes-empty-state">Loading Weekly Review...</div>}>
+            <WeeklyReviewModule />
+          </Suspense>
+        </div>
+      )}
+    </div>
   );
 };

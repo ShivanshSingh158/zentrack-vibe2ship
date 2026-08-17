@@ -1,0 +1,484 @@
+/* ==========================================================================
+   ZenTrack Habits & Streaks Stylesheet — Obsidian Cosmos & Frost Quartz Theme
+   PC Full-Screen Optimized Layout (Zero Dead Space & Lifted Vertical Rhythm)
+   ========================================================================== */
+
+:root {
+  --hb-bg-base: #000000;
+  --hb-bg-surface: #141416;
+  --hb-bg-surface-elevated: #1c1c1f;
+  --hb-bg-surface-subtle: #18181b;
+  --hb-border-subtle: #242428;
+  --hb-border-hover: rgba(165, 153, 255, 0.35);
+  --hb-accent-purple: #a599ff;
+  --hb-accent-purple-light: #b8afff;
+  --hb-accent-cyan: #38bdf8;
+  --hb-accent-emerald: #5eda9e;
+  --hb-accent-amber: #fbbf24;
+  --hb-accent-rose: #ff6961;
+  --hb-text-primary: #ffffff;
+  --hb-text-secondary: #f2f2f7;
+  --hb-text-tertiary: #8e8e93;
+}
+
+/* ── ROOT CONTAINER ── */
+.hb-module-root {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 0 4rem 0;
+  color: var(--hb-text-primary);
+  box-sizing: border-box;
+}
+
+/* ── TOP HERO HEADER BAR ── */
+.hb-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.hb-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.hb-hero-title {
+  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--hb-text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.hb-stats-subtitle {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.82rem;
+  color: var(--hb-text-tertiary);
+  font-weight: 500;
+}
+
+.hb-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.hb-filter-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--hb-bg-surface);
+  border: 1px solid var(--hb-border-subtle);
+  color: var(--hb-text-secondary);
+  padding: 0.42rem 0.85rem;
+  border-radius: 9999px;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.hb-filter-pill-btn:hover {
+  background: var(--hb-bg-surface-elevated);
+  border-color: var(--hb-border-hover);
+  color: var(--hb-text-primary);
+  transform: translateY(-1px);
+}
+
+.hb-filter-pill-btn.active {
+  background: rgba(165, 153, 255, 0.15);
+  border-color: rgba(165, 153, 255, 0.4);
+  color: var(--hb-accent-purple);
+  font-weight: 600;
+}
+
+.hb-primary-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--hb-accent-purple);
+  color: #000000;
+  border: none;
+  padding: 0.46rem 1.15rem;
+  border-radius: 9999px;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(165, 153, 255, 0.25);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.hb-primary-add-btn:hover {
+  background: var(--hb-accent-purple-light);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(165, 153, 255, 0.35);
+}
+
+/* ── SUMMARY METRICS QUAD-CARDS ROW ── */
+.hb-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .hb-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.hb-metric-card {
+  background: var(--hb-bg-surface);
+  border: 1px solid var(--hb-border-subtle);
+  border-radius: 14px;
+  padding: 0.95rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hb-metric-card:hover {
+  background: var(--hb-bg-surface-elevated);
+  border-color: var(--hb-border-hover);
+  transform: translateY(-1px);
+}
+
+.hb-metric-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--hb-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hb-metric-value {
+  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.1;
+}
+
+.hb-metric-subtext {
+  font-size: 0.74rem;
+  color: var(--hb-text-tertiary);
+  font-weight: 500;
+}
+
+/* ── HABITS INTERACTIVE LIST / GRID ── */
+.hb-habits-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.hb-habit-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--hb-bg-surface);
+  border: 1px solid var(--hb-border-subtle);
+  border-radius: 14px;
+  padding: 0.95rem 1.25rem;
+  gap: 1rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.hb-habit-card:hover {
+  background: var(--hb-bg-surface-elevated);
+  border-color: var(--hb-border-hover);
+  transform: translateY(-1px);
+}
+
+.hb-habit-card.completed {
+  border-color: rgba(94, 218, 158, 0.3);
+  background: rgba(94, 218, 158, 0.03);
+}
+
+.hb-habit-card.negative-relapsed {
+  border-color: rgba(255, 105, 97, 0.35);
+  background: rgba(255, 105, 97, 0.03);
+}
+
+/* Left Group */
+.hb-card-left {
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Check / Progress Trigger */
+.hb-check-trigger {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.hb-check-trigger:hover {
+  border-color: var(--hb-accent-purple);
+  transform: scale(1.08);
+}
+
+.hb-check-trigger.completed {
+  background: var(--hb-accent-emerald);
+  border-color: var(--hb-accent-emerald);
+  color: #000000;
+  box-shadow: 0 0 12px rgba(94, 218, 158, 0.4);
+}
+
+.hb-check-trigger.quantitative {
+  border-radius: 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--hb-text-primary);
+  width: auto;
+  min-width: 44px;
+  padding: 0 0.5rem;
+  height: 32px;
+}
+
+.hb-check-trigger.quantitative.completed {
+  background: rgba(94, 218, 158, 0.15);
+  border-color: var(--hb-accent-emerald);
+  color: var(--hb-accent-emerald);
+}
+
+/* Emoji Avatar */
+.hb-avatar-box {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.hb-habit-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.hb-habit-name {
+  font-size: 0.98rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hb-habit-name.completed {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.hb-habit-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-size: 0.76rem;
+  color: var(--hb-text-tertiary);
+  flex-wrap: wrap;
+}
+
+.hb-streak-badge {
+  font-weight: 600;
+  color: var(--hb-accent-amber);
+}
+
+.hb-saved-badge {
+  font-weight: 600;
+  color: var(--hb-accent-emerald);
+  background: rgba(94, 218, 158, 0.12);
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+}
+
+.hb-clean-badge {
+  font-weight: 600;
+  color: var(--hb-accent-rose);
+}
+
+/* Right Group: 15-Day Heatmap & Menu */
+.hb-card-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+.hb-micro-heatmap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hb-heat-square {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  transition: all 0.15s ease;
+}
+
+.hb-heat-square.completed {
+  background: var(--hb-accent-purple);
+  box-shadow: 0 0 4px rgba(165, 153, 255, 0.4);
+}
+
+.hb-heat-square.freeze {
+  background: var(--hb-accent-cyan);
+  box-shadow: 0 0 4px rgba(56, 189, 248, 0.4);
+}
+
+.hb-heat-square.missed {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.hb-heat-square.future {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Negative Habit Relapse Action Button */
+.hb-relapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(255, 105, 97, 0.12);
+  border: 1px solid rgba(255, 105, 97, 0.3);
+  color: var(--hb-accent-rose);
+  padding: 0.35rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hb-relapse-btn:hover {
+  background: rgba(255, 105, 97, 0.22);
+  transform: translateY(-1px);
+}
+
+.hb-relapse-btn.relapsed {
+  background: var(--hb-bg-surface-elevated);
+  border-color: var(--hb-border-subtle);
+  color: var(--hb-text-tertiary);
+}
+
+.hb-card-delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--hb-text-tertiary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hb-card-delete-btn:hover {
+  color: var(--hb-accent-rose);
+  background: rgba(255, 105, 97, 0.1);
+}
+
+/* ── MODAL STUDIO STYLES ── */
+.hb-type-switcher {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.hb-type-choice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--hb-border-subtle);
+  background: var(--hb-bg-surface);
+  color: var(--hb-text-secondary);
+  font-weight: 600;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hb-type-choice.active-pos {
+  border-color: var(--hb-accent-purple);
+  background: rgba(165, 153, 255, 0.12);
+  color: var(--hb-accent-purple);
+}
+
+.hb-type-choice.active-neg {
+  border-color: var(--hb-accent-rose);
+  background: rgba(255, 105, 97, 0.12);
+  color: var(--hb-accent-rose);
+}
+
+.hb-preset-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.hb-preset-chip {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--hb-bg-surface-elevated);
+  border: 1px solid var(--hb-border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.15rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hb-preset-chip:hover, .hb-preset-chip.active {
+  border-color: var(--hb-accent-purple);
+  background: rgba(165, 153, 255, 0.15);
+  transform: scale(1.08);
+}

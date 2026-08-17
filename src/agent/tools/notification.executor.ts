@@ -4,7 +4,8 @@
 import { addDoc, collection, updateDoc, doc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { addEventToGoogleCalendar, deleteGoogleCalendarEvent } from '../../services/googleCalendar';
-import { sendPushNotification } from '../../services/fcm';
+import { sendSystemNotification } from '../../utils/notifications';
+import { toast } from 'sonner';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { logApi, logWebSocket } from '../../utils/networkLogger';
 import { recordApprovalRejection, recordApprovalTimeout, recordApprovalGrant, recordEmailSent, recordGhostTaskCreated } from '../../services/agentMemoryPersistence';
@@ -61,18 +62,14 @@ case 'send_reminder': {
           createdAt: Date.now()
         });
 
-        // Client-side fallback: fire push notification after delay
-        // This works as long as the browser tab stays open during the delay.
+        // Client-side fallback: fire local notification after delay
         if (delayMs <= 30 * 60 * 1000) { // Only for reminders <= 30 minutes
-          setTimeout(async () => {
+          setTimeout(() => {
             try {
-              await sendPushNotification({
-                userIds: [user.uid],
-                title: '⏰ Reminder',
-                body: args.message
-              });
+              sendSystemNotification('⏰ Reminder', { body: args.message });
+              toast(`⏰ Reminder: ${args.message}`);
             } catch (e) {
-              console.warn('[send_reminder] Client-side FCM fallback failed:', e);
+              console.warn('[send_reminder] Local notification failed:', e);
             }
           }, delayMs);
         }
@@ -85,11 +82,8 @@ case 'send_reminder': {
 
 case 'send_notification': {
       try {
-        await sendPushNotification({
-          userIds: [user.uid],
-          title: args.title,
-          body: args.message
-        });
+        sendSystemNotification(args.title, { body: args.message });
+        toast(`${args.title}: ${args.message}`);
 
         // ✅ FEAT-7 FIX: Persist notification to Firestore history so users can
         // review past agent notifications in a notification history modal.

@@ -4,7 +4,6 @@
 import { addDoc, collection, updateDoc, doc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { addEventToGoogleCalendar, deleteGoogleCalendarEvent } from '../../services/googleCalendar';
-import { sendPushNotification } from '../../services/fcm';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { logApi, logWebSocket } from '../../utils/networkLogger';
 import { recordApprovalRejection, recordApprovalTimeout, recordApprovalGrant, recordEmailSent, recordGhostTaskCreated } from '../../services/agentMemoryPersistence';
@@ -89,22 +88,10 @@ case 'navigate_to_module': {
     }
 
 case 'open_gym_workout': {
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('agent-navigate', {
-          detail: {
-            route: '/gym',
-            subView: args.showLogs ? 'logs' : 'plan',
-            day: args.day || 'today',
-          }
-        }));
-      }
-      logApi('POST', '/api/v1/navigate/gym', { day: args.day }, 'success');
-      const gymSchedule = appContext.gymSchedule;
-      const workoutName = gymSchedule?.isRest ? 'Rest Day' : (gymSchedule?.name || 'Workout');
       return {
         success: true,
-        data: { route: '/gym', day: args.day || 'today', workout: workoutName },
-        message: `✅ Opened Gym module. Today's workout: ${workoutName}.`
+        data: { route: '/home' },
+        message: `ℹ️ The Gym module has been removed from the platform.`
       };
     }
 

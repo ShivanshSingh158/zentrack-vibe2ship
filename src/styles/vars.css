@@ -12,47 +12,43 @@
 
 :root {
   /* ── Typefaces ── */
-  /* CRITICAL: Playfair Display for headings/display (matches mobile FONT_FAMILY.serif) */
   --font-display: 'Playfair Display', Georgia, serif;
   --font-sans:    'Inter', system-ui, -apple-system, sans-serif;
   --font-mono:    'JetBrains Mono', 'Fira Code', monospace;
   --font-serif:   'Playfair Display', Georgia, serif;
 
-  /* ── Base Palette — Obsidian Cosmos ──
-     MATCHES mobile tokens.ts exactly:
-       background: #000000
-       surface:    #1c1c1d
-       surface2:   #2c2c2e                                     */
-
-  /* TRUE BLACK — was #000000 */
+  /* ── Base Palette — Obsidian Cosmos (Mobile Tokens v2) ── */
   --color-bg:          #000000;
-  --color-surface:     #1c1c1d;
-  --color-surface-2:   #2c2c2e;
-  --color-surface-3:   #141415;
+  --color-surface:     #141416;
+  --color-surface-2:   #1c1c1f;
+  --color-surface-3:   #18181b;
+  --color-surface-raised: #18181b;
 
-  /* Borders — purple-tinted, not blue */
-  --color-border:       rgba(165, 153, 255, 0.10);
-  --color-border-hover: rgba(165, 153, 255, 0.22);
+  /* Borders */
+  --color-border:       #242428;
+  --color-border-hover: #2e2e34;
+  --border-glow:        rgba(165, 153, 255, 0.40);
 
   /* Compatibility aliases */
   --bg-base:           var(--color-bg);
   --bg-surface:        var(--color-surface);
   --bg-surface-hover:  var(--color-surface-2);
-  --bg-surface-active: rgba(58, 54, 80, 0.90);
-  --bg-surface-2:      #141415;
-  --bg-elevated:       var(--color-surface-2);
+  --bg-surface-active: var(--color-surface-3);
+  --bg-surface-2:      var(--color-surface-2);
+  --bg-elevated:       var(--color-surface-raised);
   --border-subtle:     var(--color-border);
   --border-hover:      var(--color-border-hover);
-  --border-glow:       rgba(165, 153, 255, 0.32);
 
-  /* ── Text — crisp white on black ──
-     MATCHES mobile: textPrimary #ffffff, textSecondary #f2f2f7, textMuted #8e8e93 */
+  /* ── Text — Crisp white on black ──
+     MATCHES mobile: textPrimary #ffffff, textSecondary #f2f2f7, textMuted #8e8e93, textTertiary #636366 */
   --color-text-1:   #ffffff;
-  --color-text-2:   rgba(242, 242, 247, 0.80);
+  --color-text-2:   #f2f2f7;
   --color-text-3:   #8e8e93;
+  --color-text-4:   #636366;
   --text-primary:   var(--color-text-1);
   --text-secondary: var(--color-text-2);
   --text-muted:     var(--color-text-3);
+  --text-tertiary:  var(--color-text-4);
 
   /* ── Typography Scale ── */
   --text-xs:   0.72rem;   /*  ~10px */

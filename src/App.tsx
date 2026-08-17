@@ -95,15 +95,6 @@ const AgentNavigator = () => {
           }));
         }, 600);
       }
-
-      // For gym module: fire sub-view event
-      if (detail.route === '/gym' && detail.subView) {
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('agent-gym-subview', {
-            detail: { subView: detail.subView, day: detail.day }
-          }));
-        }, 400);
-      }
     };
 
     window.addEventListener('agent-navigate', handler);
@@ -226,7 +217,6 @@ const CalendarModule = lazyWithRetry(() => import('./features/calendar').then(m 
 const NotesModule = lazyWithRetry(() => import('./features/notes').then(m => ({ default: m.NotesModule })), 'NotesModule');
 const GoalsModule = lazyWithRetry(() => import('./features/goals').then(m => ({ default: m.GoalsModule })), 'GoalsModule');
 const AnalyticsModule = lazyWithRetry(() => import('./features/analytics/AnalyticsModule').then(m => ({ default: m.AnalyticsModule })), 'AnalyticsModule');
-const GymModule = lazyWithRetry(() => import('./features/gym').then(m => ({ default: m.GymModule })), 'GymModule');
 const JobTracker = lazyWithRetry(() => import('./features/jobs/JobTracker').then(m => ({ default: m.JobTracker })), 'JobTracker');
 const HabitsModule = lazyWithRetry(() => import('./features/habits/HabitsModule').then(m => ({ default: m.HabitsModule })), 'HabitsModule');
 const LearningChecklistModule = lazyWithRetry(() => import('./features/learning/LearningChecklistModule').then(m => ({ default: m.LearningChecklistModule })), 'LearningChecklistModule');
@@ -280,7 +270,6 @@ const AnimatedRoutes = () => {
         <Route path="/notes"       element={<PageTransition><ErrorBoundary name="Notes"><Suspense fallback={<PageLoader />}><NotesModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/goals"       element={<PageTransition><ErrorBoundary name="Goals"><Suspense fallback={<PageLoader />}><GoalsModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/analytics"   element={<PageTransition><ErrorBoundary name="Analytics"><Suspense fallback={<PageLoader />}><AnalyticsModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/gym"         element={<PageTransition><ErrorBoundary name="Gym"><Suspense fallback={<PageLoader />}><GymModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/jobs"        element={<PageTransition><ErrorBoundary name="Jobs"><Suspense fallback={<PageLoader />}><JobTracker /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/habits"      element={<PageTransition><ErrorBoundary name="Habits"><Suspense fallback={<PageLoader />}><HabitsModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/learning"    element={<PageTransition><ErrorBoundary name="Learning"><Suspense fallback={<PageLoader />}><LearningChecklistModule /></Suspense></ErrorBoundary></PageTransition>} />
@@ -307,8 +296,8 @@ const DataReadyGate: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   return (
     <AnimatePresence mode="wait">
       {isLoading ? (
-        <motion.div key="data-loader" exit={{ opacity: 0, transition: { duration: 0.5, ease: 'easeInOut' } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#030712' }}>
-          <AppLoader title="Syncing your data..." subtitle="Loading tasks, habits and calendar" />
+        <motion.div key="data-loader" exit={{ opacity: 0, transition: { duration: 0.5, ease: 'easeInOut' } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#000000' }}>
+          <AppLoader title="ZenTrack" subtitle="Syncing workspace data" />
         </motion.div>
       ) : (
         <motion.div
@@ -428,12 +417,16 @@ function App() {
         if (currentUser && !prevUserRef.current) {
           runModelHealthCheck().catch(err => console.error('Model health check failed:', err));
 
-          import('./services/fcm').then(({ registerFCMToken, onForegroundMessage }) => {
-            registerFCMToken();
-            onForegroundMessage(({ title, body }) => {
-              import('sonner').then(({ toast }) => toast(body, { description: title }));
-            });
-          });
+          // Unregister any legacy FCM service workers
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(regs => {
+              regs.forEach(reg => {
+                if (reg.scope.includes('firebase') || reg.active?.scriptURL.includes('firebase-messaging')) {
+                  reg.unregister();
+                }
+              });
+            }).catch(() => {});
+          }
 
           import('firebase/firestore').then(({ doc, getDoc, setDoc }) => {
             const userRef = doc(db, 'users', currentUser.uid);
@@ -556,8 +549,8 @@ function App() {
   return (
     <AnimatePresence mode="wait">
       {showSolarLoader ? (
-        <motion.div key="solar-loader" exit={{ opacity: 1, transition: { duration: 0 } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#030712' }}>
-          <AppLoader />
+        <motion.div key="solar-loader" exit={{ opacity: 1, transition: { duration: 0 } }} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: '#000000' }}>
+          <AppLoader title="ZenTrack" subtitle="Authenticating session" />
         </motion.div>
       ) : authPhase === 'authenticated' && user ? (
         <motion.div 

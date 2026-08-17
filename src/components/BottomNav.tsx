@@ -55,7 +55,13 @@ export const BottomNav: React.FC = () => {
         className={({ isActive }) => `bottom-nav-item ${isActive ? 'active' : ''}`}
       >
         {location.pathname === app.route && <div className="bottom-nav-indicator" />}
-        <img src={app.img} alt={app.name} style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+        {app.isLucide ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {app.icon}
+          </div>
+        ) : (
+          <img src={(app as any).img} alt={app.name} style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+        )}
         <span>{app.name}</span>
       </NavLink>
     );

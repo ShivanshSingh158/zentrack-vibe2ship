@@ -1,0 +1,336 @@
+/* ==========================================================================
+   ZenTrack Assignments & Coursework Stylesheet — Obsidian Cosmos & Frost Quartz Theme
+   PC Full-Screen Optimized Layout (Zero Dead Space & Lifted Vertical Rhythm)
+   ========================================================================== */
+
+:root {
+  --as-bg-base: #000000;
+  --as-bg-surface: #141416;
+  --as-bg-surface-elevated: #1c1c1f;
+  --as-bg-surface-subtle: #18181b;
+  --as-border-subtle: #242428;
+  --as-border-hover: rgba(165, 153, 255, 0.35);
+  --as-accent-purple: #a599ff;
+  --as-accent-purple-light: #b8afff;
+  --as-accent-cyan: #38bdf8;
+  --as-accent-emerald: #5eda9e;
+  --as-accent-amber: #fbbf24;
+  --as-accent-rose: #ff6961;
+  --as-text-primary: #ffffff;
+  --as-text-secondary: #f2f2f7;
+  --as-text-tertiary: #8e8e93;
+}
+
+/* ── ROOT CONTAINER ── */
+.as-module-root {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 0 4rem 0;
+  color: var(--as-text-primary);
+  box-sizing: border-box;
+}
+
+/* ── TOP HERO HEADER BAR ── */
+.as-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  width: 100%;
+}
+
+.as-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.as-hero-title {
+  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  font-size: 1.75rem;
+  font-weight: 600;
+  color: var(--as-text-primary);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.as-stats-subtitle {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.82rem;
+  color: var(--as-text-tertiary);
+  font-weight: 500;
+}
+
+.as-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.as-filter-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--as-bg-surface);
+  border: 1px solid var(--as-border-subtle);
+  color: var(--as-text-secondary);
+  padding: 0.42rem 0.85rem;
+  border-radius: 9999px;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+}
+
+.as-filter-pill-btn:hover {
+  background: var(--as-bg-surface-elevated);
+  border-color: var(--as-border-hover);
+  color: var(--as-text-primary);
+  transform: translateY(-1px);
+}
+
+.as-filter-pill-btn.active {
+  background: rgba(165, 153, 255, 0.15);
+  border-color: rgba(165, 153, 255, 0.4);
+  color: var(--as-accent-purple);
+  font-weight: 600;
+}
+
+.as-primary-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--as-accent-purple);
+  color: #000000;
+  border: none;
+  padding: 0.46rem 1.15rem;
+  border-radius: 9999px;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(165, 153, 255, 0.25);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.as-primary-add-btn:hover {
+  background: var(--as-accent-purple-light);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(165, 153, 255, 0.35);
+}
+
+/* ── SUMMARY METRICS QUAD-CARDS ── */
+.as-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.85rem;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .as-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.as-metric-card {
+  background: var(--as-bg-surface);
+  border: 1px solid var(--as-border-subtle);
+  border-radius: 14px;
+  padding: 0.95rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.as-metric-card:hover {
+  background: var(--as-bg-surface-elevated);
+  border-color: var(--as-border-hover);
+  transform: translateY(-1px);
+}
+
+.as-metric-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--as-text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.as-metric-value {
+  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.1;
+}
+
+.as-metric-subtext {
+  font-size: 0.74rem;
+  color: var(--as-text-tertiary);
+  font-weight: 500;
+}
+
+/* ── ASSIGNMENT CARDS LIST ── */
+.as-assignments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.as-assignment-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--as-bg-surface);
+  border: 1px solid var(--as-border-subtle);
+  border-radius: 14px;
+  padding: 1rem 1.25rem;
+  gap: 1rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.as-assignment-card:hover {
+  background: var(--as-bg-surface-elevated);
+  border-color: var(--as-border-hover);
+  transform: translateY(-1px);
+}
+
+.as-assignment-card.overdue {
+  border-color: rgba(255, 105, 97, 0.35);
+  background: rgba(255, 105, 97, 0.03);
+}
+
+.as-card-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.as-card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.as-subject-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.15rem 0.55rem;
+  border-radius: 6px;
+  background: rgba(165, 153, 255, 0.12);
+  border: 1px solid rgba(165, 153, 255, 0.25);
+  color: var(--as-accent-purple);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.as-weightage-tag {
+  font-size: 0.72rem;
+  color: var(--as-text-tertiary);
+  font-weight: 500;
+}
+
+.as-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+}
+
+.as-card-desc {
+  font-size: 0.8rem;
+  color: var(--as-text-tertiary);
+  margin: 0;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 650px;
+}
+
+.as-card-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.75rem;
+  color: var(--as-text-tertiary);
+  margin-top: 0.15rem;
+}
+
+.as-deadline-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+}
+
+.as-deadline-pill.overdue {
+  background: rgba(255, 105, 97, 0.12);
+  border: 1px solid rgba(255, 105, 97, 0.3);
+  color: var(--as-accent-rose);
+}
+
+.as-deadline-pill.due-soon {
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: var(--as-accent-amber);
+}
+
+.as-deadline-pill.normal {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--as-text-secondary);
+}
+
+.as-deadline-pill.done {
+  background: rgba(94, 218, 158, 0.12);
+  border: 1px solid rgba(94, 218, 158, 0.3);
+  color: var(--as-accent-emerald);
+}
+
+/* Right Side: Status Selector & Actions */
+.as-card-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.as-status-dropdown {
+  background: var(--as-bg-surface-elevated);
+  border: 1px solid var(--as-border-subtle);
+  color: #ffffff;
+  padding: 0.38rem 0.75rem;
+  border-radius: 8px;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.as-status-dropdown:hover {
+  border-color: var(--as-border-hover);
+}

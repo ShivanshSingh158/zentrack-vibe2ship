@@ -243,11 +243,13 @@ mobile/
     ├── theme/
     │   ├── tokens.ts                      COLORS, RADIUS, SPACE, FONT_FAMILY, SHADOW (design system)
     │   ├── animations.ts                  Reanimated animation presets
-    │   └── motion.ts                      Timing/easing constants
+    │   ├── motion.ts                      Timing/easing constants
+    │   └── (See ../.agents/DESIGN_SYSTEM_UNIFORMITY.md for cross-platform icon/color spec)
     ├── types/
     │   └── gym.types.ts                   GymPlanDay, GymExercise TypeScript interfaces
     └── utils/
         ├── haptics.ts                     feedback.tap/commit/success/warning
+        ├── errorUtils.ts                  Non-blocking transient sync error handler + cloud log
         ├── coreCache.ts                   AsyncStorage cache for tasks/habits/habitLogs (stale-while-revalidate boot)
         └── domainCache.ts                 AsyncStorage cache for ALL 4 domain contexts — Wellness/Academic/Planner/Creative
 ```

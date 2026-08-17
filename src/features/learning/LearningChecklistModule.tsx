@@ -1,1263 +1,720 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { createPortal } from 'react-dom';
-import YouTube from 'react-youtube';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  Plus, Check, ChevronDown, ChevronRight, BookOpen, Trash2,
-  FileText, Search, X, Play, GripVertical,
-  Eye, EyeOff, SkipForward, SkipBack, Bell, Edit3,
-  ListPlus, Link as LinkIcon, Loader, Gauge, Minimize2, MessageSquare,
+  Plus, Search, Sparkles, BookOpen, Link as LinkIcon, Eye, EyeOff,
+  GraduationCap, RefreshCw, X, CheckCircle2
 } from 'lucide-react';
-import { LectureChatPanel } from './LectureChatPanel';
-import { toast } from 'sonner';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
-import type { LearningTopic, LearningSubTask } from '../../types/index';
-import { playPopSound } from '../../utils/sound';
-import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import type { LearningTopic, LearningSubTask } from '../../types';
+import { TopicCard } from './TopicCard';
+import { LectureTheaterModal } from './LectureTheaterModal';
+import { ScheduleStudyModal } from './ScheduleStudyModal';
+import { PlaylistImportModal } from './PlaylistImportModal';
+import { PredefinedRoadmapsModal } from './PredefinedRoadmapsModal';
 import { CurriculumBuilderModal } from './CurriculumBuilderModal';
-import { PREDEFINED_ROADMAPS } from '../../data/roadmaps';
-import { TopicBody } from './TopicCard';
-import {
-  CW_KEY, EXPANDED_KEY, SPEED_KEY, SPEEDS, TS_KEY, UNDO_DELAY,
-  progressColor, extractYoutubeId, formatDuration,
-  sanitize, uniqueId, extractPlaylistId, fetchYouTubePlaylist
-} from './learningHelpers';
+import { playPopSound } from '../../utils/sound';
+import { toast } from 'sonner';
+import { uniqueId } from './learningHelpers';
 
-// â”€â”€ VideoPlayerModal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-const VideoPlayerModal = React.memo(({ playing, total, idx, onClose, onMinimize, onMarkWatched, onNavigate, onSaveVideoNote, topicName, completedTopicNames, totalProgress }: {
-  playing: any;
-  total: number;
-  idx: number;
-  onClose: () => void;
-  onMinimize: () => void;
-  onMarkWatched: (topicId: string, subtaskId: string) => void;
-  onNavigate: (delta: number) => void;
-  onSaveVideoNote: (topicId: string, subtaskId: string, note: string) => void;
-  topicName: string;
-  completedTopicNames?: string[];
-  totalProgress?: { completed: number; total: number };
-}) => {
-  const hasPrev = idx > 0;
-  const hasNext = idx < total - 1;
-  const progressPct = total > 0 ? ((playing.watchedCount) / total) * 100 : 0;
-
-  const [speed, setSpeed] = useState<number>(() => {
-    try { return Number(localStorage.getItem(SPEED_KEY)) || 1; } catch { return 1; }
-  });
-  const playerRef = useRef<any>(null);
-
-  const [showNotes, setShowNotes] = useState(false);
-  const [showChat, setShowChat] = useState(false);
-  const [chatAutoTrigger, setChatAutoTrigger] = useState<string | null>(null);
-  const [focusMode, setFocusMode] = useState(false);
-  const [noteText, setNoteText] = useState('');
-
-  const handleTriggerQuiz = useCallback(() => {
-    onMarkWatched(playing.topicId, playing.subtaskId);
-    setShowChat(true);
-    setShowNotes(false);
-    setChatAutoTrigger("I just finished watching this video. Generate a 3-question rapid-fire quiz to test my knowledge on the core concepts. Label the questions Q1, Q2, and Q3. Do NOT reveal the answers yet.");
-  }, [onMarkWatched, playing.topicId, playing.subtaskId]);
-
-  useEffect(() => {
-    // âœ… FIX: Add opt-out via localStorage + guard for short videos (< 15 min)
-    const checkinEnabled = localStorage.getItem('zen_video_checkin_enabled') !== 'false';
-    const videoDurationMin = playing.videoDurationSeconds ? playing.videoDurationSeconds / 60 : 999;
-    if (!checkinEnabled || videoDurationMin < 15) return; // skip check-in for short videos
-
-    // 5-minute proactive check-in
-    const timer = setTimeout(() => {
-      setShowChat(true);
-      setShowNotes(false);
-      setChatAutoTrigger("I'm a few minutes into this video. Give me a brief proactive check-in summary of what we've covered so far and ask if I have any questions.");
-    }, 5 * 60 * 1000);
-    return () => clearTimeout(timer);
-  }, [playing.videoId]);
-
-  // Load existing note for this video
-  useEffect(() => {
-    // We'll pass current note via playing in a future improvement; for now load from parent
-    setNoteText('');
-  }, [playing.subtaskId]);
-
-  const handleSpeedChange = (s: number) => {
-    setSpeed(s);
-    if (playerRef.current?.setPlaybackRate) {
-      playerRef.current.setPlaybackRate(s);
-    }
-    try { localStorage.setItem(SPEED_KEY, String(s)); } catch { }
-  };
-
-  // â”€â”€ Study time tracker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  useEffect(() => {
-    const onFs = () => {
-      if (document.fullscreenElement) screen.orientation?.lock?.('landscape').catch(() => { });
-      else screen.orientation?.unlock?.();
-    };
-    document.addEventListener('fullscreenchange', onFs);
-    document.addEventListener('webkitfullscreenchange', onFs);
-    return () => {
-      document.removeEventListener('fullscreenchange', onFs);
-      document.removeEventListener('webkitfullscreenchange', onFs);
-      screen.orientation?.unlock?.();
-    };
-  }, []);
-
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      // Don't trigger hotkeys if the user is typing in chat or notes
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
-      if (e.key === 'Escape' && !showNotes && !showChat) onClose();
-      if ((e.key === 'ArrowRight' || e.key === 'n') && hasNext && !showNotes && !showChat) onNavigate(1);
-      if ((e.key === 'ArrowLeft' || e.key === 'p') && hasPrev && !showNotes && !showChat) onNavigate(-1);
-      if (e.key === 'Enter' && !showNotes && !showChat) handleTriggerQuiz();
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [playing, hasNext, hasPrev, onClose, onMarkWatched, onNavigate, showNotes, showChat]);
-
-  const resumeTs = (() => {
-    try {
-      const s = Number(localStorage.getItem(TS_KEY(playing.videoId)) || '0');
-      if (s > 3) {
-        const m = Math.floor(s / 60);
-        const sec = String(s % 60).padStart(2, '0');
-        return `${m}:${sec}`;
-      }
-    } catch { }
-    return null;
-  })();
-
-  return createPortal(
-    <div onClick={() => !focusMode && onMinimize()} style={{ position: 'fixed', inset: 0, zIndex: 99999, background: focusMode ? '#000' : 'rgba(0,0,0,0.96)', backdropFilter: focusMode ? 'none' : 'blur(8px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: focusMode ? '0' : '0.75rem', transition: 'all 0.3s' }}>
-      {/* Playlist progress rail â€” always at very top */}
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: '3px', background: 'rgba(255,255,255,0.08)', zIndex: 100000 }}>
-        <div style={{ height: '100%', width: `${progressPct}%`, background: 'linear-gradient(90deg,#a599ff,#8b5cf6)', transition: 'width 0.5s ease', borderRadius: '0 2px 2px 0' }} />
-      </div>
-
-      <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: (showChat || showNotes) && !focusMode ? '1450px' : '1100px', display: 'flex', flexDirection: 'column', gap: focusMode ? '0' : '0.75rem', height: focusMode ? '100vh' : 'auto', transition: 'all 0.3s' }}>
-        {/* Header */}
-        {!focusMode && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.35)', fontWeight: 700, background: 'rgba(255,255,255,0.07)', padding: '0.1rem 0.45rem', borderRadius: '99px', flexShrink: 0 }}>#{idx + 1} of {total}</span>
-                {resumeTs && <span style={{ fontSize: '0.58rem', color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '0.1rem 0.4rem', borderRadius: '99px', flexShrink: 0 }}>â± Resuming from {resumeTs}</span>}
-              </div>
-              <div style={{ fontSize: '0.95rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '0.15rem' }}>{playing.title}</div>
-            </div>
-            {/* Speed controls */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', background: '#212121', borderRadius: '16px', padding: '0.3rem 0.5rem', border: '1px solid #303030', flexShrink: 0 }}>
-              <Gauge size={12} color="#8e8e8e" />
-              {SPEEDS.map(s => (
-                <button key={s} onClick={() => handleSpeedChange(s)}
-                  style={{ padding: '0.18rem 0.4rem', borderRadius: '12px', border: 'none', background: speed === s ? '#ececec' : 'transparent', color: speed === s ? '#212121' : '#8e8e8e', cursor: 'pointer', fontSize: '0.68rem', fontWeight: 600, transition: 'all 150ms ease' }}>
-                  {s}x
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setFocusMode(v => !v)}
-              title="Focus Mode"
-              style={{ flexShrink: 0, background: focusMode ? '#2f2f2f' : 'transparent', border: `1px solid ${focusMode ? '#424242' : '#303030'}`, borderRadius: '8px', width: '36px', height: '36px', color: focusMode ? '#ececec' : '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
-              <Eye size={15} />
-            </button>
-            {/* Notes toggle */}
-            <button onClick={() => { setShowNotes(v => !v); setShowChat(false); }}
-              title="Video notes"
-              style={{ flexShrink: 0, background: showNotes ? '#2f2f2f' : 'transparent', border: `1px solid ${showNotes ? '#424242' : '#303030'}`, borderRadius: '8px', width: '36px', height: '36px', color: showNotes ? '#ececec' : '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
-              <FileText size={15} />
-            </button>
-            {/* AI Chat toggle */}
-            <button onClick={() => { setShowChat(v => !v); setShowNotes(false); }}
-              title="Ask ZEN-GPT about this lecture"
-              style={{ flexShrink: 0, background: showChat ? '#2f2f2f' : 'transparent', border: `1px solid ${showChat ? '#424242' : '#303030'}`, borderRadius: '8px', width: '36px', height: '36px', color: showChat ? '#ececec' : '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', transition: 'all 0.15s' }}>
-              <MessageSquare size={15} />
-            </button>
-            <button onClick={onMinimize} title="Minimize to PiP" style={{ flexShrink: 0, background: 'transparent', border: '1px solid #303030', borderRadius: '8px', width: '36px', height: '36px', color: '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}>
-              <Minimize2 size={16} />
-            </button>
-            <button onClick={onClose} title="Close Player" style={{ flexShrink: 0, background: 'transparent', border: '1px solid #303030', borderRadius: '8px', width: '36px', height: '36px', color: '#8e8e8e', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.color = '#f87171'} onMouseLeave={e => e.currentTarget.style.color = '#8e8e8e'}>
-              <X size={16} />
-            </button>
-          </div>
-        )}
-
-        {/* Player + optional notes panel side by side on wide screens */}
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flex: focusMode ? 1 : 'none' }}>
-          <div
-            style={{
-              flex: 1, position: 'relative', aspectRatio: focusMode ? 'auto' : '16/9', height: focusMode ? '100%' : 'auto',
-              background: '#000', borderRadius: focusMode ? '0' : '12px', overflow: 'hidden', boxShadow: '0 25px 80px rgba(0,0,0,0.9)', minWidth: 0, transition: 'all 0.3s'
-            }}>
-            <YouTube
-              videoId={playing.videoId}
-              onReady={(e: any) => {
-                playerRef.current = e.target;
-                e.target.setPlaybackRate(speed);
-              }}
-              opts={{
-                width: '100%',
-                height: '100%',
-                playerVars: {
-                  autoplay: 1,
-                  modestbranding: 1,
-                  rel: 0,
-                  start: Number(localStorage.getItem(`zt_vid_time_${playing.videoId}`)) || undefined,
-                },
-              }}
-              onStateChange={(e: any) => {
-                if (e?.target?.getCurrentTime) {
-                  const time = Math.floor(e.target.getCurrentTime());
-                  if (time > 0) {
-                    localStorage.setItem(`zt_vid_time_${playing.videoId}`, time.toString());
-                  }
-                }
-              }}
-              iframeClassName="w-full h-full absolute inset-0 border-0"
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}
-            />
-          </div>
-          {/* Gemini AI chat sidebar */}
-          {showChat && (
-            <LectureChatPanel
-              videoId={playing.videoId}
-              videoTitle={playing.title}
-              topicName={topicName}
-              onClose={() => setShowChat(false)}
-              isFullscreen={focusMode}
-              progressPct={Math.round(progressPct)}
-              completedTopics={completedTopicNames}
-              totalProgress={totalProgress}
-              autoTriggerMessage={chatAutoTrigger}
-              onAutoTriggerComplete={() => setChatAutoTrigger(null)}
-            />
-          )}
-          {/* In-video notes panel */}
-          {showNotes && (
-            <div style={{ width: focusMode ? '320px' : '240px', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem', height: focusMode ? '100%' : 'auto', maxHeight: focusMode ? '100%' : '280px', background: focusMode ? 'rgba(255,255,255,0.03)' : 'transparent', padding: focusMode ? '1.5rem 1rem' : '0', borderRadius: focusMode ? '12px' : '0', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: '0.68rem', color: '#818cf8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>ðŸ“ Video Notes</div>
-                {focusMode && (
-                  <button onClick={() => setShowNotes(false)} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-              <textarea
-                autoFocus
-                value={noteText}
-                onChange={e => setNoteText(e.target.value)}
-                placeholder={`e.g. 12:30 - key concept\n24:00 - revisit this`}
-                style={{ flex: 1, minHeight: focusMode ? 'auto' : '200px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '0.65rem', color: '#e4e4e7', fontSize: '0.8rem', resize: 'none', outline: 'none', lineHeight: 1.5 }}
-              />
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button onClick={async () => {
-                  const min = 0;
-                  const sec = "00";
-                  setNoteText(prev => prev + (prev && !prev.endsWith('\n') ? '\n' : '') + `[${min}:${sec}] `);
-                }} title="Insert current timestamp" style={{ padding: '0.45rem 0.6rem', borderRadius: '7px', border: '1px solid rgba(99,102,241,0.5)', background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  â± Time
-                </button>
-                <button onClick={() => { onSaveVideoNote(playing.topicId, playing.subtaskId, noteText); toast.success('Notes saved'); }}
-                  style={{ flex: 1, padding: '0.45rem', borderRadius: '7px', border: 'none', background: '#7c3aed', color: '#fff', fontWeight: 700, fontSize: '0.78rem', cursor: 'pointer' }}>
-                  Save Notes
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Controls */}
-        {!focusMode && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <button onClick={() => onNavigate(-1)} disabled={!hasPrev}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '24px', border: '1px solid #424242', background: 'transparent', color: hasPrev ? '#ececec' : 'rgba(255,255,255,0.2)', cursor: hasPrev ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s' }}
-                onMouseEnter={e => { if (hasPrev) e.currentTarget.style.background = '#2f2f2f'; }}
-                onMouseLeave={e => { if (hasPrev) e.currentTarget.style.background = 'transparent'; }}>
-                <SkipBack size={14} /> Prev
-              </button>
-              <button onClick={() => { if (hasNext) { onMarkWatched(playing.topicId, playing.subtaskId); onNavigate(1); } else { handleTriggerQuiz(); } }}
-                style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', padding: '0.55rem 1rem', borderRadius: '24px', border: 'none', background: '#ececec', color: '#1a1a1a', cursor: 'pointer', fontSize: '0.88rem', fontWeight: 700, minHeight: '44px', transition: 'all 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.opacity = '0.9'}
-                onMouseLeave={e => e.currentTarget.style.opacity = '1'}>
-                <Check size={15} strokeWidth={2.5} /> Mark Watched{hasNext ? ' & Next' : ' & Quiz'}
-              </button>
-              <button onClick={() => onNavigate(1)} disabled={!hasNext}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', padding: '0.55rem 0.85rem', borderRadius: '24px', border: '1px solid #424242', background: 'transparent', color: hasNext ? '#ececec' : 'rgba(255,255,255,0.2)', cursor: hasNext ? 'pointer' : 'default', fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s' }}
-                onMouseEnter={e => { if (hasNext) e.currentTarget.style.background = '#2f2f2f'; }}
-                onMouseLeave={e => { if (hasNext) e.currentTarget.style.background = 'transparent'; }}>
-                Next <SkipForward size={14} />
-              </button>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.2)' }}>â† â†’ navigate Â· Enter mark watched Â· Esc close</div>
-              <div style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.25)' }}>{playing.watchedCount}/{total} watched Â· {Math.round(progressPct)}%</div>
-            </div>
-          </>
-        )}
-
-        {/* Escape overlay for Focus Mode */}
-        {focusMode && (
-          <div style={{ position: 'fixed', top: '1rem', right: '1rem', zIndex: 1000000, opacity: 0, transition: 'opacity 0.3s', display: 'flex', gap: '0.5rem' }} className="hover:opacity-100">
-            {!showNotes && !showChat && (
-              <button onClick={() => { setShowNotes(true); setShowChat(false); }} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#fff', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <FileText size={15} /> Notes
-              </button>
-            )}
-            {!showChat && !showNotes && (
-              <button onClick={() => { setShowChat(true); setShowNotes(false); }} style={{ background: 'rgba(168,85,247,0.2)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#c4b5fd', fontWeight: 'bold', border: '1px solid rgba(168,85,247,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <MessageSquare size={15} /> AI Chat
-              </button>
-            )}
-            <button onClick={() => setFocusMode(false)} style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(4px)', padding: '0.5rem 1rem', borderRadius: '8px', color: '#fff', fontWeight: 'bold', border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer' }}>
-              Exit Focus Mode
-            </button>
-          </div>
-        )}
-      </div>
-    </div>,
-    document.body
-  );
-});
-VideoPlayerModal.displayName = 'VideoPlayerModal';
-
-
-
-// â”€â”€ Main Module â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-export const LearningChecklistModule = () => {
+export function LearningChecklistModule() {
   const [topics, setTopics] = useState<LearningTopic[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [hideCompleted, setHideCompleted] = useState(false);
+  const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+
+
+  // Modal states
+  const [showAddTopicModal, setShowAddTopicModal] = useState(false);
   const [newTopicTitle, setNewTopicTitle] = useState('');
+  const [newTopicDesc, setNewTopicDesc] = useState('');
+
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [showRoadmapsModal, setShowRoadmapsModal] = useState(false);
   const [showCurriculumBuilder, setShowCurriculumBuilder] = useState(false);
 
-  const [expandedTopicId, setExpandedTopicId] = useState<string | null>(() => {
-    try { return localStorage.getItem(EXPANDED_KEY) || null; } catch { return null; }
-  });
-  const setAndPersistExpanded = useCallback((id: string | null) => {
-    setExpandedTopicId(id);
-    try { id ? localStorage.setItem(EXPANDED_KEY, id) : localStorage.removeItem(EXPANDED_KEY); } catch { }
-  }, []);
+  // Active Schedule modal
+  const [schedulingData, setSchedulingData] = useState<{ topic: LearningTopic; subtask: LearningSubTask } | null>(null);
 
-  const [expandedCategories, setExpandedCategories] = useState<{ [key: string]: boolean }>({});
-  const [newSubtaskText, setNewSubtaskText] = useState<{ [key: string]: string }>({});
-  const [searchQuery, setSearchQuery] = useState(() => sessionStorage.getItem('learningSearch') || '');
-  const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
-  const [editingContext, setEditingContext] = useState<{ type: 'topic' | 'subtask'; topicId: string; subtaskId?: string } | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string }>({ isOpen: false, id: '' });
-  const [editNotes, setEditNotes] = useState('');
-  const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [isImportingYt, setIsImportingYt] = useState(false);
-  const [showRoadmapHub, setShowRoadmapHub] = useState(false);
-  const [importingRoadmapId, setImportingRoadmapId] = useState<string | null>(null);
-  const [playing, setPlaying] = useState<any>(null);
-  const [isPipMode, setIsPipMode] = useState(false);
-  const [continueWatching, setContinueWatching] = useState<{ topicId: string; subtaskId: string; videoId: string; title: string; topicTitle: string; timestamp?: number } | null>(() => {
-    try { return JSON.parse(localStorage.getItem(CW_KEY) || 'null'); } catch { return null; }
-  });
-  // Undo delete queue: { topicId, subtask, timer }
-  const undoQueueRef = useRef<{ topicId: string; subtask: LearningSubTask; timerId: number } | null>(null);
+  // Active Lecture Theater state
+  const [theaterPlaying, setTheaterPlaying] = useState<{
+    topicId: string;
+    subtaskId: string;
+    videoId: string;
+    title: string;
+    url?: string;
+    notes?: string;
+    isCompleted?: boolean;
+    watchedCount: number;
+  } | null>(null);
 
-  // â”€â”€ Custom Playlist Editor State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const [editModeTopics, setEditModeTopics] = useState<Set<string>>(new Set());
-  const [addVideoState, setAddVideoState] = useState<any>(null);
-  const [mergePanelState, setMergePanelState] = useState<any>(null);
-  const [renamingSubtask, setRenamingSubtask] = useState<{ topicId: string; subtaskId: string; title: string } | null>(null);
-  const [bulkDeleteState, setBulkDeleteState] = useState<Set<string>>(new Set());
-
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const user = auth.currentUser;
-
-  useEffect(() => { sessionStorage.setItem('learningSearch', searchQuery); }, [searchQuery]);
-
+  // Firestore listener
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); searchInputRef.current?.focus(); } };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, []);
+    const user = auth.currentUser;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-  useEffect(() => {
-    if (!user) return;
-    setIsLoading(true);
-    const q = query(collection(db, 'learning_topics'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, snap => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearningTopic));
-      data.sort((a, b) => a.order !== undefined && b.order !== undefined ? a.order - b.order : b.createdAt - a.createdAt);
-      setTopics(data);
-      setIsLoading(false);
-      // Clear continueWatching if the referenced playlist was deleted
-      setContinueWatching(prev => {
-        if (!prev) return null;
-        const stillExists = data.some(t => t.id === prev.topicId);
-        if (!stillExists) { try { localStorage.removeItem(CW_KEY); } catch { } return null; }
-        return prev;
-      });
-    }, err => { console.error(err); toast.error('Failed to load topics'); setIsLoading(false); });
-    return () => unsub();
-  }, [user]);
+    const q = query(
+      collection(db, 'learning_topics'),
+      where('userId', '==', user.uid)
+    );
 
-  // â”€â”€ Video Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const loaded: LearningTopic[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          loaded.push({
+            id: docSnap.id,
+            userId: data.userId,
+            title: data.title || 'Untitled Topic',
+            description: data.description || '',
+            notes: data.notes || '',
+            subTasks: data.subTasks || [],
+            createdAt: data.createdAt || Date.now(),
+            order: data.order ?? 0,
+            lastStudiedAt: data.lastStudiedAt,
+            timeSpentMinutes: data.timeSpentMinutes,
+          });
+        });
 
-  const handlePlayVideo = useCallback((videoId: string, subtaskId: string, topicId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
+        // Sort by order or createdAt
+        loaded.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        setTopics(loaded);
+        setLoading(false);
 
-    const videos = topic.subTasks
-      .map(st => {
-        const id = st.url ? extractYoutubeId(st.url) : st.resources?.map((r: any) => extractYoutubeId(r.url)).find(Boolean);
-        return id ? { videoId: id, subtaskId: st.id, topicId, title: st.text } : null;
-      })
-      .filter(Boolean) as Array<{ videoId: string; subtaskId: string; topicId: string; title: string }>;
-
-    const indexInPlaylist = Math.max(0, videos.findIndex(v => v.subtaskId === subtaskId));
-    const watchedCount = topic.subTasks.filter(st => st.status === 'completed').length;
-    const current = videos[indexInPlaylist] || { videoId, subtaskId, topicId, title: 'Lecture' };
-    const nextPlaying = {
-      ...current,
-      watchedCount,
-      totalCount: videos.length || 1,
-      indexInPlaylist
-    };
-
-    setPlaying(nextPlaying);
-    setIsPipMode(false);
-
-    const bookmark = { topicId, subtaskId, videoId, title: current.title, topicTitle: topic.title };
-    setContinueWatching(bookmark);
-    try { localStorage.setItem(CW_KEY, JSON.stringify(bookmark)); } catch { }
-  }, [topics]);
-
-  // â”€â”€ Agent-triggered lecture opening â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // in App.tsx when the user asks the AI to "open lecture X".
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as {
-        topicTitle?: string;
-        lectureTitle?: string;
-      };
-      if (!detail) return;
-
-      // Find the matching topic (fuzzy match on title)
-      const lowerTopic = (detail.topicTitle || '').toLowerCase();
-      const lowerLecture = (detail.lectureTitle || '').toLowerCase();
-
-      // Find best matching topic
-      let targetTopic = topics.find(t =>
-        lowerTopic && t.title?.toLowerCase().includes(lowerTopic)
-      ) || (lowerTopic ? null : topics[0]);
-
-      if (!targetTopic && lowerLecture) {
-        // Search all topics for the lecture
-        targetTopic = topics.find(t =>
-          t.subTasks?.some(st => (st.text || st.title || '').toLowerCase().includes(lowerLecture))
-        );
-      }
-
-      if (!targetTopic) {
-        toast.info(`Couldn't find topic "${detail.topicTitle || detail.lectureTitle}". Try searching manually.`);
-        return;
-      }
-
-      // Expand the topic
-      setAndPersistExpanded(targetTopic.id!);
-
-      if (lowerLecture) {
-        // Find matching lecture within the topic
-        const matchingSubtask = targetTopic.subTasks?.find(st =>
-          (st.text || st.title || '').toLowerCase().includes(lowerLecture)
-        );
-
-        if (matchingSubtask) {
-          // Delay slightly so topic expands first
-          setTimeout(() => {
-            const videoId = matchingSubtask.url
-              ? extractYoutubeId(matchingSubtask.url)
-              : matchingSubtask.resources?.map((r: any) => extractYoutubeId(r.url)).find(Boolean);
-
-            if (videoId) {
-              handlePlayVideo(videoId, matchingSubtask.id, targetTopic!.id!);
-              toast.success(`ðŸŽ¬ Opening: "${matchingSubtask.text || matchingSubtask.title}"`);
-            } else {
-              toast.info(`Found lecture but no video URL. Topic expanded.`);
-            }
-          }, 300);
-        } else {
-          toast.info(`Topic found. Couldn't find lecture "${detail.lectureTitle}" â€” topic expanded for you.`);
+        // Auto-expand first topic if none expanded
+        if (loaded.length > 0 && expandedTopics.size === 0) {
+          setExpandedTopics(new Set([loaded[0].id!]));
         }
-      } else {
-        toast.success(`ðŸ“š Opened topic: "${targetTopic.title}"`);
+      },
+      (err) => {
+        console.error('Learning topics error:', err);
+        setLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Listen for agent-open-lecture custom event
+  useEffect(() => {
+    const handler = (e: any) => {
+      const { topicTitle, lectureTitle } = e.detail || {};
+      if (!topicTitle && !lectureTitle) return;
+
+      const matchedTopic = topics.find(
+        t => t.title.toLowerCase().includes((topicTitle || '').toLowerCase())
+      );
+      if (matchedTopic) {
+        setExpandedTopics(prev => new Set([...prev, matchedTopic.id!]));
+        if (lectureTitle) {
+          const matchedSub = matchedTopic.subTasks?.find(s =>
+            (s.title || (s as any).text || '').toLowerCase().includes(lectureTitle.toLowerCase())
+          );
+          if (matchedSub && matchedSub.url) {
+            const vidId = matchedSub.url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/)?.[1];
+            if (vidId) {
+              setTheaterPlaying({
+                topicId: matchedTopic.id!,
+                subtaskId: matchedSub.id,
+                videoId: vidId,
+                title: matchedSub.title,
+                url: matchedSub.url,
+                notes: matchedSub.notes,
+                isCompleted: matchedSub.isCompleted,
+                watchedCount: matchedTopic.subTasks.filter(s => s.isCompleted).length,
+              });
+            }
+          }
+        }
       }
     };
 
     window.addEventListener('agent-open-lecture', handler);
     return () => window.removeEventListener('agent-open-lecture', handler);
-  }, [topics, handlePlayVideo]);
-
-  // â”€â”€ Agent-triggered YouTube search & play (from search_and_play_youtube tool) â”€â”€
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail as {
-        videoId: string;
-        title?: string;
-        channelTitle?: string;
-        query?: string;
-      };
-      if (!detail?.videoId) return;
-
-      // Immediately open the player with the video â€” no playlist context needed
-      setPlaying({
-        videoId: detail.videoId,
-        subtaskId: '__agent_search__',
-        topicId: '__agent_search__',
-        title: detail.title || detail.query || 'Agent Search Result',
-        watchedCount: 0,
-        totalCount: 1,
-        indexInPlaylist: 0,
-      });
-      setIsPipMode(false);
-
-      toast.success(`ðŸŽ¬ Now playing: "${detail.title || detail.query}"`, { duration: 4000 });
-    };
-
-    window.addEventListener('agent-play-video', handler);
-    return () => window.removeEventListener('agent-play-video', handler);
-  }, []);
-
-
-
-  const handleResumePlaylist = useCallback((topicId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-
-    const firstVideo = topic.subTasks.find(st => {
-      if (st.status === 'completed') return false;
-      if (st.url && extractYoutubeId(st.url)) return true;
-      return st.resources?.some(r => extractYoutubeId(r.url));
-    });
-
-    if (!firstVideo) {
-      toast.info('No unwatched videos in this topic.');
-      return;
-    }
-
-    const videoId = firstVideo.url ? extractYoutubeId(firstVideo.url) : firstVideo.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
-    if (videoId) handlePlayVideo(videoId, firstVideo.id, topicId);
-  }, [handlePlayVideo, topics]);
-
-  const closePlayer = useCallback(() => {
-    setPlaying(null);
-    setIsPipMode(false);
-  }, []);
-
-  const handlePlayerNavigate = useCallback((delta: number) => {
-    if (!playing) return;
-    const topic = topics.find(t => t.id === playing.topicId);
-    if (!topic) return;
-
-    const videos = topic.subTasks
-      .map(st => {
-        const id = st.url ? extractYoutubeId(st.url) : st.resources?.map(r => extractYoutubeId(r.url)).find(Boolean);
-        return id ? { videoId: id, subtaskId: st.id, topicId: topic.id!, title: st.text } : null;
-      })
-      .filter(Boolean) as Array<{ videoId: string; subtaskId: string; topicId: string; title: string }>;
-
-    const nextIndex = playing.indexInPlaylist + delta;
-    if (nextIndex < 0 || nextIndex >= videos.length) return;
-    const next = videos[nextIndex];
-    setPlaying({
-      ...next,
-      watchedCount: topic.subTasks.filter(st => st.status === 'completed').length,
-      totalCount: videos.length,
-      indexInPlaylist: nextIndex
-    });
-  }, [playing, topics]);
-
-  const handleMarkWatched = useCallback(async (topicId: string, subtaskId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const st = topic.subTasks.find(s => s.id === subtaskId);
-    if (!st || (st.isCompleted || st.status === 'completed')) return;
-    const updated = topic.subTasks.map(s => s.id === subtaskId ? { ...s, isCompleted: true, status: 'completed' } : s);
-    playPopSound();
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
-    catch { toast.error('Failed to mark watched'); }
   }, [topics]);
 
-  // â”€â”€ Mark doubt (flag lecture for review) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // â”€â”€ Study time tracker: called by VideoPlayerModal on close â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  // â”€â”€ Save video note from player modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleSaveVideoNote = useCallback(async (topicId: string, subtaskId: string, note: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, notes: note } : st);
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); } catch (err) { console.error('[Learning] Failed to save video note to Firestore:', err); }
-  }, [topics]);
-
-  // â”€â”€ Pin / Unpin subtask â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-  const handleTogglePin = useCallback(async (topicId: string, subtaskId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, pinned: !st.pinned, pinnedAt: !st.pinned ? Date.now() : undefined } : st);
-    // Move pinned to top
-    const pinned = updated.filter(s => s.pinned).sort((a, b) => (b.pinnedAt || 0) - (a.pinnedAt || 0));
-    const unpinned = updated.filter(s => !s.pinned);
-    const sorted = [...pinned, ...unpinned];
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: sorted } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(sorted) }); } catch (err) { console.error('[Learning] Failed to save pin state to Firestore:', err); }
-  }, [topics]);
-
-  // â”€â”€ Custom Playlist Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-  const toggleEditMode = useCallback((topicId: string) => {
-    setEditModeTopics(prev => {
+  // Expand / Collapse toggles
+  const handleToggleExpand = (topicId: string) => {
+    setExpandedTopics(prev => {
       const next = new Set(prev);
-      if (next.has(topicId)) {
-        next.delete(topicId);
-        if (mergePanelState?.topicId === topicId) setMergePanelState(null);
-        if (addVideoState?.topicId === topicId) setAddVideoState(null);
-        setRenamingSubtask(null);
-        // Clear bulk selections for this topic when exiting edit mode
-        setBulkDeleteState(prevBulk => {
-          const topicSubTaskIds = new Set(topics.find(t => t.id === topicId)?.subTasks.map(s => s.id) || []);
-          const next = new Set(prevBulk);
-          topicSubTaskIds.forEach(id => next.delete(id));
-          return next;
-        });
-      } else {
-        next.add(topicId);
-      }
+      if (next.has(topicId)) next.delete(topicId);
+      else next.add(topicId);
       return next;
     });
-  }, [mergePanelState, addVideoState, topics]);
+  };
 
-  const handleSubTaskReorder = useCallback(async (topicId: string, fromIndex: number, toIndex: number) => {
+  // Subtask completed toggle
+  const handleToggleSubtask = async (topicId: string, subtaskId: string) => {
     const topic = topics.find(t => t.id === topicId);
     if (!topic) return;
-    if (fromIndex === toIndex) return;
-    const items = Array.from(topic.subTasks);
-    const [moved] = items.splice(fromIndex, 1);
-    items.splice(toIndex, 0, moved);
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: items } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(items) }); }
-    catch { toast.error('Failed to save order'); }
-  }, [topics]);
 
-  const handleAddSingleVideo = useCallback(async (topicId: string, url: string, customTitle?: string) => {
-    const videoId = extractYoutubeId(url);
-    if (!videoId) { toast.error('Invalid YouTube URL'); return; }
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    if (topic.subTasks.some(st => st.url === url || (st.url && extractYoutubeId(st.url) === videoId))) {
-      toast.error('Video already in this playlist'); return;
-    }
-    let title = customTitle?.trim() || '';
-    if (!title) {
-      title = await fetchVideoTitle(url);
-      if (!title) title = `Video (${videoId})`;
-    }
-    const newST: LearningSubTask = {
-      id: uniqueId(), title: title, category: 'Videos', status: 'pending',
-      url, resources: [{ title: 'Watch Video', url, type: 'video' }],
-    };
-    const updated = [...topic.subTasks, newST];
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try {
-      await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) });
-      toast.success(`"${title}" added!`);
-      setAddVideoState(null);
-    } catch { toast.error('Failed to add video'); }
-  }, [topics]);
+    const sub = topic.subTasks?.find(s => s.id === subtaskId);
+    const willComplete = !sub?.isCompleted;
 
-  const handleFetchMergePlaylist = useCallback(async () => {
-    if (!mergePanelState?.url.trim()) return;
-    const playlistId = extractPlaylistId(mergePanelState.url);
-    if (!playlistId) { toast.error('Invalid playlist URL'); return; }
-    setMergePanelState((prev: any) => prev ? { ...prev, loading: true } : null);
-    // Animated loading messages so users know it's working (not broken)
-    const loadingMsgs = ['Connecting to YouTubeâ€¦', 'Fetching playlist pagesâ€¦', 'Extracting videosâ€¦', 'Almost doneâ€¦'];
-    let msgIdx = 0;
-    setMergePanelState((prev: any) => prev ? { ...prev, _loadingMsg: loadingMsgs[0] } : null);
-    const msgInterval = window.setInterval(() => {
-      msgIdx = Math.min(msgIdx + 1, loadingMsgs.length - 1);
-      setMergePanelState((prev: any) => prev ? { ...prev, _loadingMsg: loadingMsgs[msgIdx] } : null);
-    }, 2500);
-    try {
-      const data = await fetchYouTubePlaylist(playlistId);
-      clearInterval(msgInterval);
-      const topic = topics.find(t => t.id === mergePanelState.topicId);
-      const existingVideoIds = new Set(
-        (topic?.subTasks || []).map(st => st.url ? extractYoutubeId(st.url) : null).filter(Boolean)
-      );
-      const total = data.videos.length;
-      const videos: MergeVideo[] = data.videos
-        .filter((v: any) => !existingVideoIds.has(extractYoutubeId(v.link)))
-        .map((v: any) => ({ id: uniqueId(), title: v.title, url: v.link }));
-      const selected = new Set(videos.map((v: MergeVideo) => v.id));
-      setMergePanelState((prev: any) => prev ? { ...prev, videos, selected, loading: false, _total: total, _loadingMsg: undefined } : null);
-      if (videos.length === 0) toast.info('All videos from this playlist are already in the topic!');
-      else toast.success(`Found ${videos.length} new video${videos.length !== 1 ? 's' : ''}!`);
-    } catch (err: any) {
-      clearInterval(msgInterval);
-      toast.error(err.message || 'Failed to fetch playlist');
-      setMergePanelState((prev: any) => prev ? { ...prev, loading: false, _loadingMsg: undefined } : null);
-    }
-  }, [mergePanelState, topics]);
-
-  const handleMergeSelected = useCallback(async () => {
-    if (!mergePanelState) return;
-    const { topicId, videos, selected } = mergePanelState;
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const toAdd: LearningSubTask[] = (videos as MergeVideo[])
-      .filter(v => selected.has(v.id))
-      .map(v => ({ id: uniqueId(), title: v.title, category: 'Videos', status: 'pending', url: v.url, resources: [{ title: 'Watch Video', url: v.url, type: 'video' }] }));
-    if (toAdd.length === 0) { toast.error('Select at least one video'); return; }
-    const updated = [...topic.subTasks, ...toAdd];
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try {
-      await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) });
-      toast.success(`Added ${toAdd.length} video${toAdd.length > 1 ? 's' : ''} to your playlist!`);
-      setMergePanelState(null);
-    } catch { toast.error('Failed to merge videos'); }
-  }, [topics, mergePanelState]);
-
-  const handleStartRename = useCallback((topicId: string, subtaskId: string, title: string) => {
-    setRenamingSubtask({ topicId, subtaskId, title });
-  }, []);
-
-  const handleSaveRename = useCallback(async (newTitle: string) => {
-    if (!renamingSubtask || !newTitle.trim()) { setRenamingSubtask(null); return; }
-    const { topicId, subtaskId } = renamingSubtask;
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, title: newTitle.trim() } : st);
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try {
-      await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) });
-      toast.success('Renamed');
-    } catch { toast.error('Failed to rename'); }
-    setRenamingSubtask(null);
-  }, [topics, renamingSubtask]);
-
-  const toggleBulkDelete = useCallback((subTaskId: string) => {
-    setBulkDeleteState(prev => {
-      const next = new Set(prev);
-      next.has(subTaskId) ? next.delete(subTaskId) : next.add(subTaskId);
-      return next;
-    });
-  }, []);
-
-  const instantDeleteSubTask = useCallback((topicId: string, subTaskId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const subtask = topic.subTasks.find(st => st.id === subTaskId);
-    if (!subtask) return;
-    // Optimistic remove
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: t.subTasks.filter(st => st.id !== subTaskId) } : t));
-    // Cancel any pending undo first
-    if (undoQueueRef.current) {
-      clearTimeout(undoQueueRef.current.timerId);
-      // Commit previous pending delete
-      const prev = undoQueueRef.current;
-      updateDoc(doc(db, 'learning_topics', prev.topicId), {
-        subTasks: sanitize(topics.find(t => t.id === prev.topicId)?.subTasks.filter(st => st.id !== prev.subtask.id) || []),
-      }).catch(() => { });
-    }
-    // Show undo toast
-    const toastId = toast(
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-        <span style={{ flex: 1, fontSize: '0.85rem' }}>ðŸ—‘ <strong>{subtask.text.slice(0, 30)}{subtask.text.length > 30 ? 'â€¦' : ''}</strong> deleted</span>
-        <button
-          onClick={() => {
-            // Undo: re-insert
-            clearTimeout(undoQueueRef.current?.timerId);
-            undoQueueRef.current = null;
-            setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: [...t.subTasks, subtask] } : t));
-            toast.dismiss(toastId);
-            toast.success('Undo successful!');
-          }}
-          style={{ padding: '0.25rem 0.6rem', borderRadius: '6px', background: '#a599ff', border: 'none', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem', flexShrink: 0 }}
-        >Undo</button>
-      </div>,
-      { duration: UNDO_DELAY, id: `del-${subTaskId}` }
+    const updatedSubtasks = (topic.subTasks || []).map(s =>
+      s.id === subtaskId ? { ...s, isCompleted: willComplete } : s
     );
-    // Commit to Firestore after undo window
-    const timerId = window.setTimeout(async () => {
-      undoQueueRef.current = null;
-      const currentTopic = topics.find(t => t.id === topicId);
-      const finalList = (currentTopic?.subTasks || []).filter(st => st.id !== subTaskId);
-      try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(finalList) }); }
-      catch { toast.error('Failed to delete'); }
-    }, UNDO_DELAY + 100);
-    undoQueueRef.current = { topicId, subtask, timerId };
-  }, [topics]);
 
-  const handleBulkDelete = useCallback(async (topicId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const updated = topic.subTasks.filter(st => !bulkDeleteState.has(st.id));
-    if (updated.length === topic.subTasks.length) return;
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
     try {
-      await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) });
-      setBulkDeleteState(prev => {
-        const next = new Set(prev);
-        topic.subTasks.forEach(st => next.delete(st.id));
-        return next;
+      await updateDoc(doc(db, 'learning_topics', topicId), {
+        subTasks: updatedSubtasks,
+        lastStudiedAt: Date.now(),
       });
-      toast.success('Deleted selected videos');
+
+      if (willComplete) {
+        playPopSound();
+        toast.success(`🎉 Completed "${sub?.title}"! (+25 XP)`);
+      }
+    } catch (err: any) {
+      toast.error('Failed to update task: ' + err.message);
     }
-    catch { toast.error('Failed to bulk delete'); }
-  }, [topics, bulkDeleteState]);
-
-
-
-  // â”€â”€ CRUD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-  const handleAddTopic = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !newTopicTitle.trim()) return;
-    if (topics.some(t => t.title.toLowerCase() === newTopicTitle.trim().toLowerCase())) { toast.error('Topic already exists'); return; }
-    const newTopic: Omit<LearningTopic, 'id'> = { userId: user.uid, title: newTopicTitle.trim(), subTasks: [], createdAt: Date.now(), lastStudiedAt: Date.now(), order: topics.length };
-    // Optimistic update
-    const tempId = uniqueId();
-    setTopics(prev => [...prev, { ...newTopic, id: tempId }]);
-    setNewTopicTitle('');
-    try {
-      const ref = await addDoc(collection(db, 'learning_topics'), sanitize(newTopic));
-      setAndPersistExpanded(ref.id);
-    }
-    catch { toast.error('Failed to add topic'); setTopics(prev => prev.filter(t => t.id !== tempId)); }
   };
 
-  const importPredefinedRoadmap = async (roadmap: typeof PREDEFINED_ROADMAPS[0]) => {
+  // Pin subtask toggle
+  const handleTogglePin = async (topicId: string, subtaskId: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    const updatedSubtasks = (topic.subTasks || []).map(s =>
+      s.id === subtaskId ? { ...s, pinned: !s.pinned, pinnedAt: !s.pinned ? Date.now() : undefined } : s
+    );
+
+    try {
+      await updateDoc(doc(db, 'learning_topics', topicId), {
+        subTasks: updatedSubtasks,
+      });
+    } catch (err: any) {
+      toast.error('Failed to pin task: ' + err.message);
+    }
+  };
+
+  // Delete subtask
+  const handleDeleteSubtask = async (topicId: string, subtaskId: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    const updatedSubtasks = (topic.subTasks || []).filter(s => s.id !== subtaskId);
+    try {
+      await updateDoc(doc(db, 'learning_topics', topicId), {
+        subTasks: updatedSubtasks,
+      });
+      toast.success('Lecture removed');
+    } catch (err: any) {
+      toast.error('Failed to delete task: ' + err.message);
+    }
+  };
+
+  // Add subtask to topic
+  const handleAddSubtask = async (topicId: string, title: string, url?: string, estimatedHours?: number) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    const newSub: LearningSubTask = {
+      id: uniqueId(),
+      title,
+      url,
+      isCompleted: false,
+      estimatedHours,
+      timeSpentMinutes: 0,
+    };
+
+    const updatedSubtasks = [...(topic.subTasks || []), newSub];
+    try {
+      await updateDoc(doc(db, 'learning_topics', topicId), {
+        subTasks: updatedSubtasks,
+      });
+      toast.success(`Added "${title}"`);
+    } catch (err: any) {
+      toast.error('Failed to add lecture: ' + err.message);
+    }
+  };
+
+  // Edit topic title
+  const handleEditTopicTitle = async (topicId: string, newTitle: string) => {
+    try {
+      await updateDoc(doc(db, 'learning_topics', topicId), {
+        title: newTitle,
+      });
+      toast.success('Topic renamed');
+    } catch (err: any) {
+      toast.error('Failed to rename topic');
+    }
+  };
+
+  // Edit subtask title
+  const handleEditSubtaskTitle = async (topicId: string, subtaskId: string, newTitle: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    const updatedSubtasks = (topic.subTasks || []).map(s =>
+      s.id === subtaskId ? { ...s, title: newTitle } : s
+    );
+
+    try {
+      await updateDoc(doc(db, 'learning_topics', topicId), {
+        subTasks: updatedSubtasks,
+      });
+      toast.success('Lecture renamed');
+    } catch (err: any) {
+      toast.error('Failed to rename lecture');
+    }
+  };
+
+  // Delete entire topic
+  const handleDeleteTopic = async (topicId: string) => {
+    if (!window.confirm('Are you sure you want to delete this entire learning topic?')) return;
+    try {
+      await deleteDoc(doc(db, 'learning_topics', topicId));
+      toast.success('Topic deleted');
+    } catch (err: any) {
+      toast.error('Failed to delete topic');
+    }
+  };
+
+  // Create new topic
+  const handleCreateTopic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTopicTitle.trim()) return;
+
+    const user = auth.currentUser;
     if (!user) return;
-    if (topics.some(t => t.title === roadmap.title)) { toast.error(`"${roadmap.title}" already imported.`); return; }
-    setImportingRoadmapId(roadmap.id);
-    const subTasks: LearningSubTask[] = [];
-    roadmap.modules.forEach(mod => mod.items.forEach(item => {
-      const task: LearningSubTask = { id: uniqueId(), title: item.text, category: mod.category, status: 'pending' };
-      if (item.url) task.url = item.url;
-      subTasks.push(task);
+
+    try {
+      const newDoc = await addDoc(collection(db, 'learning_topics'), {
+        userId: user.uid,
+        title: newTopicTitle.trim(),
+        description: newTopicDesc.trim(),
+        subTasks: [],
+        createdAt: Date.now(),
+        order: topics.length,
+      });
+
+      setExpandedTopics(prev => new Set([...prev, newDoc.id]));
+      setNewTopicTitle('');
+      setNewTopicDesc('');
+      setShowAddTopicModal(false);
+      toast.success('🎉 Created new learning topic!');
+    } catch (err: any) {
+      toast.error('Failed to create topic: ' + err.message);
+    }
+  };
+
+  // Import Playlist handler
+  const handleImportPlaylist = async (title: string, lectures: { title: string; url: string }[]) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const subTasks: LearningSubTask[] = lectures.map(l => ({
+      id: uniqueId(),
+      title: l.title,
+      url: l.url,
+      isCompleted: false,
+      timeSpentMinutes: 0,
     }));
-    const newTopic: Omit<LearningTopic, 'id'> = { userId: user.uid, title: roadmap.title, subTasks, createdAt: Date.now(), lastStudiedAt: Date.now(), order: topics.length, timeSpentMs: 0 };
-    try { await addDoc(collection(db, 'learning_topics'), sanitize(newTopic)); toast.success(`Imported!`); setShowRoadmapHub(false); }
-    catch { toast.error('Failed to import'); }
-    finally { setImportingRoadmapId(null); }
+
+    const newDoc = await addDoc(collection(db, 'learning_topics'), {
+      userId: user.uid,
+      title,
+      description: `Imported playlist with ${lectures.length} lectures`,
+      subTasks,
+      createdAt: Date.now(),
+      order: topics.length,
+    });
+
+    setExpandedTopics(prev => new Set([...prev, newDoc.id]));
   };
 
-  const handleImportYoutube = async () => {
-    if (!user || !youtubeUrl.trim()) return;
-    const playlistId = extractPlaylistId(youtubeUrl);
-    if (!playlistId) { toast.error("Invalid YouTube Playlist URL"); return; }
-    setIsImportingYt(true);
-    try {
-      const data = await fetchYouTubePlaylist(playlistId);
-      if (topics.some(t => t.title === data.title)) { toast.error(`"${data.title}" already imported.`); return; }
-      const subTasks: LearningSubTask[] = data.videos.map((v: any) => ({ id: uniqueId(), title: v.title, category: 'Videos', status: 'pending', url: v.link, resources: [{ title: 'Watch Video', url: v.link, type: 'video' }] }));
-      const newTopic: Omit<LearningTopic, 'id'> = { userId: user.uid, title: data.title, subTasks, createdAt: Date.now(), lastStudiedAt: Date.now(), order: topics.length, timeSpentMs: 0 };
-      await addDoc(collection(db, 'learning_topics'), sanitize(newTopic));
-      toast.success(`Imported ${data.videos.length} videos!`);
-      setYoutubeUrl(''); setShowRoadmapHub(false);
-    } catch (err: any) { toast.error(err.message || 'Failed to fetch playlist'); }
-    finally { setIsImportingYt(false); }
-  };
-
-  const handleDeleteTopic = (id: string, e: React.MouseEvent) => { e.stopPropagation(); setDeleteConfirm({ isOpen: true, id }); };
-  const confirmDeleteTopic = async () => {
-    try { await deleteDoc(doc(db, 'learning_topics', deleteConfirm.id)); if (expandedTopicId === deleteConfirm.id) setAndPersistExpanded(null); setDeleteConfirm({ isOpen: false, id: '' }); }
-    catch { toast.error('Failed to delete topic'); }
-  };
-
-  const handlePublishCurriculum = async (draftTopics: any[]) => {
+  // Import Predefined Roadmap handler
+  const handleImportRoadmap = async (title: string, lectures: { title: string; url: string; category?: string }[]) => {
+    const user = auth.currentUser;
     if (!user) return;
+
+    const subTasks: LearningSubTask[] = lectures.map(l => ({
+      id: uniqueId(),
+      title: l.title,
+      url: l.url,
+      category: l.category,
+      isCompleted: false,
+      timeSpentMinutes: 0,
+    }));
+
+    const newDoc = await addDoc(collection(db, 'learning_topics'), {
+      userId: user.uid,
+      title,
+      description: `Curated learning path (${lectures.length} steps)`,
+      subTasks,
+      createdAt: Date.now(),
+      order: topics.length,
+    });
+
+    setExpandedTopics(prev => new Set([...prev, newDoc.id]));
+  };
+
+  // Publish from Curriculum Builder modal
+  const handlePublishCurriculum = async (drafts: any[]) => {
+    const user = auth.currentUser;
+    if (!user || drafts.length === 0) return;
+
+    const batch = writeBatch(db);
+    let orderIndex = topics.length;
+
+    drafts.forEach(d => {
+      const newRef = doc(collection(db, 'learning_topics'));
+      const subTasks: LearningSubTask[] = (d.videos || []).map((v: any) => ({
+        id: uniqueId(),
+        title: v.title,
+        url: v.url,
+        isCompleted: false,
+        timeSpentMinutes: 0,
+      }));
+
+      batch.set(newRef, {
+        userId: user.uid,
+        title: d.title,
+        description: 'AI Generated Curriculum Module',
+        subTasks,
+        createdAt: Date.now(),
+        order: orderIndex++,
+      });
+    });
+
+    await batch.commit();
+    setShowCurriculumBuilder(false);
+    toast.success(`🎉 Published ${drafts.length} topics to your Learning path!`);
+  };
+
+  // Play video in Theater
+  const handlePlayVideo = (videoId: string, subtaskId: string, topicId: string, subtaskTitle: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    const sub = topic?.subTasks?.find(s => s.id === subtaskId);
+
+    setTheaterPlaying({
+      topicId,
+      subtaskId,
+      videoId,
+      title: subtaskTitle,
+      url: sub?.url,
+      notes: sub?.notes,
+      isCompleted: sub?.isCompleted,
+      watchedCount: topic?.subTasks?.filter(s => s.isCompleted).length || 0,
+    });
+  };
+
+  // Save Video Note from Theater
+  const handleSaveVideoNote = async (topicId: string, subtaskId: string, note: string) => {
+    const topic = topics.find(t => t.id === topicId);
+    if (!topic) return;
+
+    const updatedSubtasks = (topic.subTasks || []).map(s =>
+      s.id === subtaskId ? { ...s, notes: note } : s
+    );
+
     try {
-      let currentOrder = topics.length;
-      for (const draft of draftTopics) {
-        const subTasks: LearningSubTask[] = draft.videos.map((v: any) => {
-          const isYt = v.url.includes('youtube.com') || v.url.includes('youtu.be');
-          return {
-            id: uniqueId(),
-            title: v.title,
-            category: isYt ? 'Videos' : 'Reading',
-            status: 'pending',
-            url: v.url,
-            resources: [{ title: isYt ? 'Watch Video' : 'Read Article', url: v.url, type: isYt ? 'video' : 'article' }]
-          };
+      await updateDoc(doc(db, 'learning_topics', topicId), {
+        subTasks: updatedSubtasks,
+      });
+      if (theaterPlaying && theaterPlaying.subtaskId === subtaskId) {
+        setTheaterPlaying(prev => (prev ? { ...prev, notes: note } : null));
+      }
+    } catch (err: any) {
+      console.error('Save note error:', err);
+    }
+  };
+
+  // Navigate video in Theater
+  const handleTheaterNavigate = (delta: number) => {
+    if (!theaterPlaying) return;
+    const topic = topics.find(t => t.id === theaterPlaying.topicId);
+    if (!topic || !topic.subTasks) return;
+
+    const currentIndex = topic.subTasks.findIndex(s => s.id === theaterPlaying.subtaskId);
+    const nextIndex = currentIndex + delta;
+    if (nextIndex >= 0 && nextIndex < topic.subTasks.length) {
+      const nextSub = topic.subTasks[nextIndex];
+      const vidId = nextSub.url?.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([^&?]+)/)?.[1];
+      if (vidId) {
+        setTheaterPlaying({
+          topicId: topic.id!,
+          subtaskId: nextSub.id,
+          videoId: vidId,
+          title: nextSub.title,
+          url: nextSub.url,
+          notes: nextSub.notes,
+          isCompleted: nextSub.isCompleted,
+          watchedCount: topic.subTasks.filter(s => s.isCompleted).length,
         });
-
-        const newTopic: Omit<LearningTopic, 'id'> = {
-          userId: user.uid,
-          title: draft.title,
-          subTasks,
-          createdAt: Date.now(),
-          lastStudiedAt: Date.now(),
-          order: currentOrder++,
-          timeSpentMs: 0
-        };
-        await addDoc(collection(db, 'learning_topics'), sanitize(newTopic));
       }
-      toast.success(`Published ${draftTopics.length} new topics successfully!`);
-      setShowCurriculumBuilder(false);
-    } catch (err) {
-      toast.error('Failed to publish curriculum');
     }
   };
 
-  const handleAddSubTask = async (topicId: string, e: React.FormEvent) => {
-    e.preventDefault();
-    const text = newSubtaskText[topicId]?.trim();
-    if (!text) return;
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    const newST: LearningSubTask = { id: uniqueId(), text, status: 'pending' };
-    const updated = [...topic.subTasks, newST];
-    // Optimistic
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    setNewSubtaskText(prev => ({ ...prev, [topicId]: '' }));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
-    catch { toast.error('Failed to add task'); setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: topic.subTasks } : t)); }
-  };
-
-  const toggleSubTask = useCallback(async (topicId: string, subTaskId: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    let newStatus = false;
-    const updated = topic.subTasks.map(st => { if (st.id === subTaskId) { newStatus = !(st.isCompleted || st.status === 'completed'); return { ...st, isCompleted: newStatus, status: newStatus ? 'completed' : 'pending' }; } return st; });
-    if (newStatus) playPopSound();
-    setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-    try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated), lastStudiedAt: Date.now() }); }
-    catch { toast.error('Failed to update'); setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: topic.subTasks } : t)); }
-  }, [topics]);
-
-  // Subtask deletion is always instant (no confirm dialog needed)
-  const deleteSubTask = instantDeleteSubTask;
-
-  const toggleCategory = useCallback((topicId: string, category: string) => {
-    setExpandedCategories(prev => ({ ...prev, [`${topicId}-${category}`]: !prev[`${topicId}-${category}`] }));
-  }, []);
-
-  const openNotesModal = useCallback((topicId: string, subtaskId?: string) => {
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    if (subtaskId) {
-      const st = topic.subTasks.find(s => s.id === subtaskId);
-      // Always reinitialize editNotes from current data to prevent state leak
-      setEditNotes(st?.notes || '');
-      setEditingContext({ type: 'subtask', topicId, subtaskId });
-    } else {
-      setEditNotes(topic.notes || '');
-      setEditingContext({ type: 'topic', topicId });
-    }
-  }, [topics]);
-
-  const saveNotes = async () => {
-    if (!editingContext) return;
-    const { type, topicId, subtaskId } = editingContext;
-    const topic = topics.find(t => t.id === topicId);
-    if (!topic) return;
-    if (type === 'subtask' && subtaskId) {
-      const updated = topic.subTasks.map(st => st.id === subtaskId ? { ...st, notes: editNotes } : st);
-      setTopics(prev => prev.map(t => t.id === topicId ? { ...t, subTasks: updated } : t));
-      try { await updateDoc(doc(db, 'learning_topics', topicId), { subTasks: sanitize(updated) }); toast.success('Saved'); }
-      catch { toast.error('Failed to save'); }
-    } else {
-      try { await updateDoc(doc(db, 'learning_topics', topicId), { notes: editNotes }); toast.success('Saved'); }
-      catch { toast.error('Failed to save'); }
-    }
-    setEditingContext(null);
-  };
-
+  // Filtering topics and subtasks
   const filteredTopics = useMemo(() => {
-    return topics.map(topic => {
-      if (!searchQuery.trim() && !showIncompleteOnly) return topic;
-      let isTopicMatch = true;
-      let filtered = topic.subTasks || [];
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        isTopicMatch = topic.title.toLowerCase().includes(q);
-        // âœ… FIX: use (st.text || st.title || '') â€” imported playlists only have `title`, not `text`
-        filtered = filtered.filter(st => (st.text || st.title || '').toLowerCase().includes(q) || st.category?.toLowerCase().includes(q) || st.notes?.toLowerCase().includes(q));
-        if (isTopicMatch && filtered.length === 0) filtered = topic.subTasks;
-      }
-      if (showIncompleteOnly) filtered = filtered.filter(st => st.status !== 'completed');
-      if (isTopicMatch || filtered.length > 0) return { ...topic, subTasks: filtered };
-      return null;
-    }).filter(Boolean) as LearningTopic[];
-  }, [topics, searchQuery, showIncompleteOnly]);
+    return topics
+      .map(topic => {
+        let matchingSubs = topic.subTasks || [];
 
+        if (hideCompleted) {
+          matchingSubs = matchingSubs.filter(s => !s.isCompleted);
+        }
 
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          const topicMatches = topic.title.toLowerCase().includes(q);
+          if (!topicMatches) {
+            matchingSubs = matchingSubs.filter(s => (s.title || (s as any).text || '').toLowerCase().includes(q));
+            if (matchingSubs.length === 0) return null;
+          }
+        }
 
-  // Fix: Only show Continue Watching if the video is not already completed
-  const validCW = useMemo(() => {
-    if (!continueWatching) return null;
-    const topic = topics.find(t => t.id === continueWatching.topicId);
-    if (!topic) return null;
-    const st = topic.subTasks.find(s => s.id === continueWatching.subtaskId);
-    if (!st || st.status === 'completed') return null; // Don't show if already watched
-    return continueWatching;
-  }, [continueWatching, topics]);
+        return {
+          ...topic,
+          subTasks: matchingSubs,
+        };
+      })
+      .filter(Boolean) as LearningTopic[];
+  }, [topics, searchQuery, hideCompleted]);
+
+  // Compute total stats
+  const totalStats = useMemo(() => {
+    let completed = 0;
+    let total = 0;
+    topics.forEach(t => {
+      (t.subTasks || []).forEach(s => {
+        total++;
+        if (s.isCompleted) completed++;
+      });
+    });
+    const pct = total > 0 ? (completed / total) * 100 : 0;
+    return { completed, total, pct };
+  }, [topics]);
 
   return (
-    <div className="learning-container">
-
-      {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="lp-header">
-        <div className="lp-header-left">
-          <h1 className="lp-title">Learning Paths</h1>
-          <p className="lp-subtitle">Build your curriculum from any YouTube playlist</p>
+    <div className="learning-module-root">
+      {/* ── TOP HERO HEADER BAR ── */}
+      <div className="learning-header-bar">
+        <div className="learning-header-left">
+          <h1 className="learning-hero-title">Learning Checklist</h1>
+          <span className="learning-stats-subtitle">
+            {topics.length} Topics · {totalStats.completed}/{totalStats.total} Lectures ({totalStats.pct.toFixed(0)}%)
+          </span>
         </div>
-        <div className="lp-header-right">
-          <button className="lp-btn-ghost hide-on-mobile" onClick={() => setShowCurriculumBuilder(true)}>
-            <BookOpen size={14} /> Curriculum Builder
-          </button>
-          <button className="lp-btn-ghost" onClick={() => setShowRoadmapHub(true)}>
-            <Plus size={14} /> Quick Import
-          </button>
+
+        {/* Header Action Pills */}
+        <div className="learning-header-actions">
           <button
-            className={`lp-btn-icon${showIncompleteOnly ? ' active' : ''}`}
-            onClick={() => setShowIncompleteOnly(v => !v)}
-            title={showIncompleteOnly ? 'Show all' : 'Incomplete only'}
+            type="button"
+            className="learning-action-pill-btn ai-curriculum-pill"
+            onClick={() => setShowCurriculumBuilder(true)}
+            title="AI Multi-Module Curriculum Generator"
           >
-            {showIncompleteOnly ? <EyeOff size={15} /> : <Eye size={15} />}
+            <Sparkles size={14} color="#5eda9e" />
+            <span>AI Curriculum</span>
           </button>
-          <div className="lp-search-wrap">
-            <Search size={13} className="lp-search-icon" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search playlists..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="lp-search-input"
-            />
-            {searchQuery && (
-              <button className="lp-search-clear" onClick={() => setSearchQuery('')}>
-                <X size={12} />
-              </button>
-            )}
-          </div>
+
+          <button
+            type="button"
+            className="learning-action-pill-btn roadmaps-pill"
+            onClick={() => setShowRoadmapsModal(true)}
+            title="Predefined Engineering Roadmaps"
+          >
+            <BookOpen size={14} color="#38bdf8" />
+            <span>Roadmaps</span>
+          </button>
+
+          <button
+            type="button"
+            className="learning-action-pill-btn playlist-pill"
+            onClick={() => setShowPlaylistModal(true)}
+            title="Import YouTube Playlist"
+          >
+            <LinkIcon size={14} color="#a599ff" />
+            <span>Import Playlist</span>
+          </button>
+
+          <button
+            type="button"
+            className={`learning-action-pill-btn ${hideCompleted ? 'active-filter' : ''}`}
+            onClick={() => setHideCompleted(prev => !prev)}
+            title={hideCompleted ? 'Show completed lectures' : 'Hide completed lectures'}
+          >
+            {hideCompleted ? <EyeOff size={14} color="#5eda9e" /> : <Eye size={14} />}
+            <span>{hideCompleted ? 'Hidden' : 'Hide Completed'}</span>
+          </button>
+
+          <button
+            type="button"
+            className="learning-primary-add-btn"
+            onClick={() => setShowAddTopicModal(true)}
+          >
+            <Plus size={15} strokeWidth={2.5} />
+            <span>New Topic</span>
+          </button>
         </div>
       </div>
 
-      {/* â”€â”€ Continue Watching strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {validCW && !playing && (
-        <div className="lp-cw-strip">
-          <div className="lp-cw-icon">
-            <Play size={12} fill="currentColor" />
-          </div>
-          <div className="lp-cw-info">
-            <span className="lp-cw-label">Continue &middot; <span className="lp-cw-topic">{validCW.topicTitle}</span></span>
-            <span className="lp-cw-title">{validCW.title}</span>
-          </div>
-          {(() => {
-            try {
-              const s = Number(localStorage.getItem(TS_KEY(validCW.videoId)) || '0');
-              if (s > 5) {
-                const m = Math.floor(s / 60);
-                const sec = String(s % 60).padStart(2, '0');
-                return <span className="lp-cw-ts">{m}:{sec}</span>;
-              }
-            } catch { }
-            return null;
-          })()}
-          <button
-            className="lp-cw-resume"
-            onClick={() => handlePlayVideo(validCW.videoId, validCW.subtaskId, validCW.topicId)}
-          >
-            <Play size={11} fill="currentColor" /> Resume
-          </button>
-          <button className="lp-cw-dismiss" onClick={() => { setContinueWatching(null); try { localStorage.removeItem(CW_KEY); } catch { } }}>
-            <X size={12} />
-          </button>
-        </div>
-      )}
-
-      {/* â”€â”€ Create topic row â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="lp-create-row">
+      {/* ── SEARCH & FILTER ROW ── */}
+      <div className="learning-search-bar">
+        <Search size={15} className="search-icon" />
         <input
           type="text"
-          placeholder="New topic (e.g. System Design, React 19...)"
-          value={newTopicTitle}
-          onChange={e => setNewTopicTitle(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && handleAddTopic(e)}
-          className="lp-create-input"
+          className="learning-search-input"
+          placeholder="Search learning topics, courses, or specific lecture titles..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
         />
-        <button
-          onClick={handleAddTopic}
-          disabled={!newTopicTitle.trim()}
-          className="lp-btn-create"
-        >
-          <Plus size={14} /> Create
-        </button>
+        {searchQuery && (
+          <button type="button" className="search-clear-btn" onClick={() => setSearchQuery('')}>
+            <X size={14} />
+          </button>
+        )}
       </div>
 
-      {/* â”€â”€ Topic list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      {isLoading ? (
-        <div className="lp-list">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="lp-skeleton-row">
-              <div className="lp-skeleton-line wide" />
-              <div className="lp-skeleton-line narrow" />
+      {/* ── TOPICS STACK ── */}
+      <div className="learning-topics-container">
+        {loading ? (
+          <div className="learning-loading-state">
+            <RefreshCw size={24} className="lp-spin" color="#a599ff" />
+            <p>Loading your learning path...</p>
+          </div>
+        ) : filteredTopics.length === 0 ? (
+          <div className="learning-empty-state">
+            <div className="empty-icon-wrap">
+              <GraduationCap size={36} color="#a599ff" />
             </div>
-          ))}
-        </div>
-      ) : filteredTopics.length === 0 ? (
-        <div className="lp-empty">
-          <BookOpen size={32} style={{ color: 'rgba(165,153,255,0.3)', marginBottom: '0.75rem' }} />
-          <p>{searchQuery || showIncompleteOnly ? 'No matching topics.' : 'No topics yet. Import a playlist or create one!'}</p>
-        </div>
-      ) : (
-        <div className="lp-list">
-          {filteredTopics.map((topic) => {
-            const isExpanded = searchQuery.trim() !== '' || expandedTopicId === topic.id;
-            const orig = topics.find(t => t.id === topic.id);
-            const total = (orig?.subTasks || []).length;
-            const done = (orig?.subTasks || []).filter(st => st.status === 'completed').length;
-            const progress = total === 0 ? 0 : Math.round((done / total) * 100);
-            const daysSince = topic.lastStudiedAt ? (Date.now() - topic.lastStudiedAt) / 86400000 : 0;
-            const needsReview = daysSince > 14 && progress >= 50 && progress < 100;
-            const isEditMode = editModeTopics.has(topic.id!);
-            const hasUnwatchedVideos = (orig?.subTasks || []).some(st => {
-              if (st.status === 'completed') return false;
-              if (st.url && extractYoutubeId(st.url)) return true;
-              return (st.resources || []).some(r => extractYoutubeId(r.url));
-            });
+            <h3 className="empty-title">
+              {searchQuery ? 'No matching lectures found' : 'Your Learning Path is Empty'}
+            </h3>
+            <p className="empty-desc">
+              {searchQuery
+                ? `No topics match "${searchQuery}". Try a different keyword.`
+                : 'Create your first topic or import an industry standard roadmap below.'}
+            </p>
+            <div className="empty-action-row">
+              <button
+                type="button"
+                className="learning-primary-add-btn"
+                onClick={() => setShowAddTopicModal(true)}
+              >
+                <Plus size={15} /> Create Topic
+              </button>
+              <button
+                type="button"
+                className="learning-action-pill-btn"
+                onClick={() => setShowRoadmapsModal(true)}
+              >
+                <BookOpen size={14} color="#a599ff" /> Browse Roadmaps
+              </button>
+              <button
+                type="button"
+                className="learning-action-pill-btn"
+                onClick={() => setShowPlaylistModal(true)}
+              >
+                <LinkIcon size={14} color="#a599ff" /> Import YouTube Course
+              </button>
+            </div>
+          </div>
+        ) : (
+          filteredTopics.map(topic => (
+            <TopicCard
+              key={topic.id}
+              topic={topic}
+              isExpanded={expandedTopics.has(topic.id!)}
+              onToggleExpand={() => handleToggleExpand(topic.id!)}
+              onToggleSubtask={handleToggleSubtask}
+              onTogglePin={handleTogglePin}
+              onDeleteSubtask={handleDeleteSubtask}
+              onPlayVideo={handlePlayVideo}
+              onOpenSchedule={(top, sub) => setSchedulingData({ topic: top, subtask: sub })}
+              onAddSubtask={handleAddSubtask}
+              onDeleteTopic={handleDeleteTopic}
+              onEditTopicTitle={handleEditTopicTitle}
+              onEditSubtaskTitle={handleEditSubtaskTitle}
+            />
+          ))
+        )}
+      </div>
 
-            return (
-              <div key={topic.id} className={`lp-row${isExpanded ? ' lp-row--open' : ''}${isEditMode ? ' lp-row--edit' : ''}`}>
-                <div
-                  className="lp-row-header"
-                  onClick={() => setAndPersistExpanded(isExpanded ? null : topic.id!)}
-                >
-                  <button
-                    className={`lp-chevron${isExpanded ? ' lp-chevron--open' : ''}`}
-                    onClick={e => { e.stopPropagation(); setAndPersistExpanded(isExpanded ? null : topic.id!); }}
-                    aria-expanded={isExpanded}
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                  <div className="lp-row-info">
-                    <div className="lp-row-title-line">
-                      <span className="lp-row-title">{topic.title}</span>
-                      {needsReview && (
-                        <span className="lp-badge lp-badge--review"><Bell size={8} /> Review</span>
-                      )}
-                      {isEditMode && (
-                        <span className="lp-badge lp-badge--edit">Editing</span>
-                      )}
-                    </div>
-                    <div className="lp-row-meta">
-                      {done}/{total} &middot; {progress}%{topic.timeSpentMs && topic.timeSpentMs > 0 ? ` \u00b7 ${formatDuration(topic.timeSpentMs)}` : ''}
-                    </div>
-                    <div className="lp-row-progress-bg">
-                      <div className="lp-row-progress-fill" style={{ width: `${progress}%` }} />
-                    </div>
-                  </div>
-                  <div className="lp-row-actions" onClick={e => e.stopPropagation()}>
-                    {hasUnwatchedVideos && !isEditMode && (
-                      <button
-                        className="lp-act-btn lp-act-btn--primary"
-                        onClick={e => { e.stopPropagation(); if (!isExpanded) setAndPersistExpanded(topic.id!); handleResumePlaylist(topic.id!); }}
-                        title="Resume playlist"
-                      >
-                        <Play size={10} fill="currentColor" /> Continue
-                      </button>
-                    )}
-                    <button
-                      className={`lp-act-btn${isEditMode ? ' lp-act-btn--active' : ''}`}
-                      onClick={() => { if (!isExpanded) setAndPersistExpanded(topic.id!); toggleEditMode(topic.id!); }}
-                      title={isEditMode ? 'Exit Edit Mode' : 'Edit Playlist'}
-                    >
-                      <Edit3 size={11} /> {isEditMode ? 'Done' : 'Edit'}
-                    </button>
-                    <button className="lp-act-icon" onClick={() => openNotesModal(topic.id!)} title="Notes">
-                      <FileText size={14} />
-                    </button>
-                    <button className="lp-act-icon lp-act-icon--danger" onClick={e => handleDeleteTopic(topic.id!, e)} title="Delete">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+      {/* ── MODALS ── */}
+
+      {/* 1. Add New Topic Modal */}
+      {showAddTopicModal && (
+        <div className="lp-modal-overlay" onClick={() => setShowAddTopicModal(false)}>
+          <div className="lp-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="lp-modal-header">
+              <div className="lp-modal-header-left">
+                <div className="lp-modal-icon-badge">
+                  <GraduationCap size={18} color="#a599ff" />
                 </div>
-                <div style={{ display: isExpanded ? 'block' : 'none', overflow: 'hidden' }}>
-                  {isExpanded && (
-                    <TopicBody
-                      topic={topic}
-                      expandedCategories={expandedCategories}
-                      toggleCategory={toggleCategory}
-                      toggleSubTask={toggleSubTask}
-                      openNotesModal={openNotesModal}
-                      deleteSubTask={deleteSubTask}
-                      handleAddSubTask={handleAddSubTask}
-                      newSubtaskText={newSubtaskText}
-                      setNewSubtaskText={setNewSubtaskText}
-                      onPlayVideo={handlePlayVideo}
-                      isEditMode={isEditMode}
-                      onToggleEdit={() => toggleEditMode(topic.id!)}
-                      addVideoState={addVideoState}
-                      setAddVideoState={setAddVideoState}
-                      onAddSingleVideo={handleAddSingleVideo}
-                      mergePanelState={mergePanelState}
-                      setMergePanelState={setMergePanelState}
-                      onFetchMerge={handleFetchMergePlaylist}
-                      onMergeSelected={handleMergeSelected}
-                      renamingSubtask={renamingSubtask}
-                      onStartRename={handleStartRename}
-                      onSaveRename={handleSaveRename}
-                      onCancelRename={() => setRenamingSubtask(null)}
-                      instantDeleteSubTask={instantDeleteSubTask}
-                      bulkDeleteState={bulkDeleteState}
-                      toggleBulkDelete={toggleBulkDelete}
-                      handleBulkDelete={handleBulkDelete}
-                      onSubTaskReorder={handleSubTaskReorder}
-                      onTogglePin={handleTogglePin}
-                    />
-                  )}
+                <div>
+                  <h3 className="lp-modal-title">Create Learning Topic</h3>
+                  <p className="lp-modal-subtitle">Add a new course or subject to your checklist</p>
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+              <button type="button" className="lp-modal-close-btn" onClick={() => setShowAddTopicModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
 
-      {/* Notes Modal â€” lightweight plain textarea */}
-      {editingContext && (
-        <div className="notes-modal-overlay" onClick={() => setEditingContext(null)}>
-          <div className="notes-modal-content" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
-            <div className="notes-modal-header">
-              <div>
-                <h2 style={{ fontSize: '1.15rem', margin: 0 }}>{editingContext.type === 'topic' ? 'Topic Notes' : 'Video Notes'}</h2>
+            <form onSubmit={handleCreateTopic}>
+              <div className="lp-input-group">
+                <label className="lp-input-label">Topic / Course Title *</label>
+                <input
+                  type="text"
+                  className="lp-text-input"
+                  placeholder="e.g. Distributed Systems in Go"
+                  value={newTopicTitle}
+                  onChange={e => setNewTopicTitle(e.target.value)}
+                  autoFocus
+                  required
+                />
               </div>
-              <button className="btn-icon" onClick={() => setEditingContext(null)}><X size={17} /></button>
-            </div>
-            <div className="notes-modal-body">
-              <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.5rem' }}>
-                {editingContext.type === 'topic' ? 'Notes (Markdown supported)' : 'Quick notes â€” timestamps, key concepts'}
-              </label>
-              <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)}
-                placeholder={editingContext.type === 'topic' ? 'Write notes, code snippets...' : 'e.g. 12:30 - important concept, 24:00 - demo'}
-                style={{ width: '100%', minHeight: '180px', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontFamily: editingContext.type === 'topic' ? 'monospace' : 'inherit', resize: 'vertical', boxSizing: 'border-box', fontSize: '0.9rem' }} />
-            </div>
-            <div className="notes-modal-footer">
-              <button className="btn-secondary" onClick={() => setEditingContext(null)}>Cancel</button>
-              <button className="btn-primary" onClick={saveNotes}>Save</button>
-            </div>
+
+              <div className="lp-input-group">
+                <label className="lp-input-label">Description (Optional)</label>
+                <textarea
+                  className="lp-textarea-input"
+                  placeholder="Goal, target deadline, syllabus notes..."
+                  value={newTopicDesc}
+                  onChange={e => setNewTopicDesc(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              <div className="lp-modal-footer">
+                <button type="button" className="lp-btn-cancel" onClick={() => setShowAddTopicModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="lp-btn-primary" disabled={!newTopicTitle.trim()}>
+                  Create Topic
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      <ConfirmDialog open={deleteConfirm.isOpen} title="Delete Topic" message="Delete this topic and all its videos? This cannot be undone."
-        onConfirm={confirmDeleteTopic}
-        onCancel={() => setDeleteConfirm({ isOpen: false, id: '' })} />
+      {/* 2. YouTube Playlist Import Modal */}
+      {showPlaylistModal && (
+        <PlaylistImportModal
+          onImport={handleImportPlaylist}
+          onClose={() => setShowPlaylistModal(false)}
+        />
+      )}
 
-      {/* Curriculum Builder Modal */}
+      {/* 3. Predefined Roadmaps Modal */}
+      {showRoadmapsModal && (
+        <PredefinedRoadmapsModal
+          onImportRoadmap={handleImportRoadmap}
+          onClose={() => setShowRoadmapsModal(false)}
+        />
+      )}
+
+      {/* 4. Curriculum Builder Modal */}
       {showCurriculumBuilder && (
         <CurriculumBuilderModal
           onClose={() => setShowCurriculumBuilder(false)}
@@ -1265,85 +722,35 @@ export const LearningChecklistModule = () => {
         />
       )}
 
-      {/* Roadmap Hub */}
-      {showRoadmapHub && createPortal(
-        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, backdropFilter: 'blur(4px)', background: 'rgba(9,9,11,0.85)', padding: '1rem' }} onClick={() => setShowRoadmapHub(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: '620px', maxHeight: '88vh', overflowY: 'auto', background: 'linear-gradient(145deg,rgba(24,24,27,0.97),rgba(9,9,11,0.99))', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 25px 50px rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', borderRadius: '20px', padding: 0 }}>
-            <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <h2 style={{ fontSize: '1.3rem', fontWeight: 600, margin: 0, background: 'linear-gradient(135deg,#fff,#a1a1aa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Import Learning Path</h2>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.1rem' }}>YouTube playlists or curated roadmaps</p>
-              </div>
-              <button className="btn-icon" onClick={() => setShowRoadmapHub(false)} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '50%', padding: '0.45rem' }}><X size={15} /></button>
-            </div>
-            <div style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-              {/* YouTube import */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}><Play size={13} /></div>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>YouTube Playlist</h3>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '0.9rem', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <input type="url" placeholder="https://youtube.com/playlist?list=..." value={youtubeUrl} onChange={e => setYoutubeUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleImportYoutube()}
-                    style={{ flex: 1, minWidth: '180px', padding: '0.65rem 0.9rem', borderRadius: '9px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.25)', color: 'var(--text-primary)', fontSize: '0.85rem', outline: 'none' }} />
-                  <button className="btn-primary" onClick={handleImportYoutube} disabled={isImportingYt || !youtubeUrl.trim()}
-                    style={{ padding: '0.65rem 1.1rem', borderRadius: '9px', background: 'linear-gradient(135deg,#ef4444,#f43f5e)', fontWeight: 600 }}>
-                    {isImportingYt ? 'Importing...' : 'Import'}
-                  </button>
-                </div>
-              </div>
-              {/* Roadmaps */}
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '7px', background: 'rgba(99,102,241,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#818cf8' }}><BookOpen size={13} /></div>
-                  <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>Curated Roadmaps</h3>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-                  {PREDEFINED_ROADMAPS.map(roadmap => (
-                    <div key={roadmap.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '0.85rem 1rem', borderRadius: '11px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.92rem', color: '#e4e4e7' }}>{roadmap.title}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{roadmap.description}</div>
-                      </div>
-                      <button className="btn-primary" onClick={() => importPredefinedRoadmap(roadmap)} disabled={importingRoadmapId === roadmap.id}
-                        style={{ padding: '0.42rem 0.85rem', fontSize: '0.8rem', borderRadius: '9px', background: 'linear-gradient(135deg,#7c3aed,#8b5cf6)', flexShrink: 0, marginLeft: '0.75rem' }}>
-                        {importingRoadmapId === roadmap.id ? '...' : 'Import'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {/* 5. Schedule Study Modal */}
+      {schedulingData && (
+        <ScheduleStudyModal
+          topic={schedulingData.topic}
+          subtask={schedulingData.subtask}
+          onClose={() => setSchedulingData(null)}
+        />
       )}
 
-      {/* Video Player */}
-      {playing && !isPipMode && (() => {
-        // Compute completed topic names and overall progress for AI context
-        const completedTopicNames = topics
-          .filter(t => t.subTasks.every(s => s.status === 'completed'))
-          .map(t => t.title)
-          .slice(-5);
-        const totalCompleted = topics.reduce((acc, t) => acc + t.subTasks.filter(s => s.status === 'completed').length, 0);
-        const totalVideos = topics.reduce((acc, t) => acc + t.subTasks.length, 0);
-        return (
-          <VideoPlayerModal
-            playing={playing}
-            total={playing.totalCount}
-            idx={playing.indexInPlaylist}
-            onClose={closePlayer}
-            onMinimize={() => setIsPipMode(true)}
-            onMarkWatched={handleMarkWatched}
-            onNavigate={handlePlayerNavigate}
-            onSaveVideoNote={handleSaveVideoNote}
-            topicName={topics.find(t => t.id === playing.topicId)?.title || ''}
-            completedTopicNames={completedTopicNames}
-            totalProgress={{ completed: totalCompleted, total: totalVideos }}
-          />
-        );
-      })()}
+      {/* 6. Lecture Theater Modal (Video + ZEN-GPT + Transcript + Notes) */}
+      {theaterPlaying && (
+        <LectureTheaterModal
+          playing={theaterPlaying}
+          total={topics.find(t => t.id === theaterPlaying.topicId)?.subTasks?.length || 1}
+          idx={
+            topics
+              .find(t => t.id === theaterPlaying.topicId)
+              ?.subTasks?.findIndex(s => s.id === theaterPlaying.subtaskId) ?? 0
+          }
+          topicName={topics.find(t => t.id === theaterPlaying.topicId)?.title || 'Course'}
+          onClose={() => setTheaterPlaying(null)}
+          onMinimize={() => setTheaterPlaying(null)}
+          onMarkWatched={handleToggleSubtask}
+          onNavigate={handleTheaterNavigate}
+          onSaveVideoNote={handleSaveVideoNote}
+        />
+      )}
     </div>
   );
-};
+}
+
+export default LearningChecklistModule;

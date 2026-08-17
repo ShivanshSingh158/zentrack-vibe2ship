@@ -1,14 +1,23 @@
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
-import { Play, Pause, RotateCcw, X, Zap, CloudRain, CloudDrizzle, Trees, Waves, VolumeX, Check } from 'lucide-react';
+import {
+  Play, Pause, RotateCcw, X, Zap, CloudRain, CloudDrizzle,
+  Trees, Waves, VolumeX, Check, Maximize2, Timer as TimerIcon
+} from 'lucide-react';
 import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import type { LearningSubTask } from '../../types/index';
 import { playPopSound } from '../../utils/sound';
 import { ParticleFlowBackground } from '../ui/ParticleFlowBackground';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export const FocusModeOverlay = () => {
-  const { state, focusMode, toggleFocusMode, pauseTimer, resumeTimer, resetTimer, dismissTimer, formatTime, setAmbientSound, setDuration } = usePomodoroContext();
+  const {
+    state, focusMode, setFocusMode, toggleFocusMode,
+    pauseTimer, resumeTimer, resetTimer, dismissTimer,
+    formatTime, setAmbientSound, setDuration
+  } = usePomodoroContext();
+
   const [subTasks, setSubTasks] = useState<LearningSubTask[]>([]);
   const [sessionType, setSessionType] = useState<string>('Focus');
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -79,12 +88,10 @@ export const FocusModeOverlay = () => {
     }
   };
 
-  // Track the initial timeLeft when a session starts — so progress is always
-  // relative to the actual session duration (not DEFAULT_DURATION of 25min).
+  // Track the initial timeLeft when a session starts
   const sessionDurationRef = useRef<number>(25 * 60);
   const prevTaskIdRef = useRef<string | null>(null);
   useLayoutEffect(() => {
-    // When a new task starts (taskId changes from null or changes), snapshot the current timeLeft
     if (state.taskId && state.taskId !== prevTaskIdRef.current) {
       sessionDurationRef.current = state.timeLeft;
       prevTaskIdRef.current = state.taskId;
@@ -92,8 +99,7 @@ export const FocusModeOverlay = () => {
     if (!state.taskId) prevTaskIdRef.current = null;
   });
 
-  if (!focusMode) return null;
-
+  // Background gradient for focus overlay
   let bgGradient = 'radial-gradient(ellipse at center, rgba(10, 10, 14, 0.97) 0%, rgba(5, 5, 8, 1) 100%)';
   if (state.ambientSound === 'rain') bgGradient = 'radial-gradient(ellipse at center, rgba(15, 23, 42, 0.95) 0%, rgba(2, 6, 23, 1) 100%)';
   if (state.ambientSound === 'soft-rain') bgGradient = 'radial-gradient(ellipse at center, rgba(16, 25, 36, 0.95) 0%, rgba(3, 8, 16, 1) 100%)';
@@ -101,173 +107,491 @@ export const FocusModeOverlay = () => {
   if (state.ambientSound === 'waves') bgGradient = 'radial-gradient(ellipse at center, rgba(15, 35, 45, 0.95) 0%, rgba(5, 15, 25, 1) 100%)';
 
   return (
-    <div className="focus-overlay hide-on-mobile" style={{ background: bgGradient, transition: 'background 1s ease' }}>
-      <ParticleFlowBackground speedMultiplier={state.isRunning ? 1.0 : 0.2} opacity={0.3} />
-      <audio ref={audioRef} />
-      {isYoutube && focusMode && (
-        <iframe
-          width="0"
-          height="0"
-          src={`https://www.youtube-nocookie.com/embed/${audioSources[state.ambientSound].split(':')[1]}?autoplay=1&loop=1&playlist=${audioSources[state.ambientSound].split(':')[1]}`}
-          frameBorder="0"
-          allow="autoplay"
-          style={{ display: 'none' }}
-        ></iframe>
-      )}
-      
-      <div className="focus-content" style={{ width: '100%', maxWidth: '800px', height: '100%', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        
-        {/* Top Header */}
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-          <div className="focus-brand">
-            <Zap size={24} />
-            <span style={{ fontSize: '0.9rem' }}>Deep Focus</span>
-          </div>
-          
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            {/* Ambient Sound Controls */}
-            <div className="ambient-controls" style={{ display: 'flex', gap: '0.5rem', background: 'rgba(255,255,255,0.05)', padding: '0.4rem', borderRadius: '99px', marginRight: '1rem' }}>
-              <button className={`ambient-btn ${state.ambientSound === 'none' ? 'active' : ''}`} onClick={() => setAmbientSound('none')} title="No Sound"><VolumeX size={16} /></button>
-              <button className={`ambient-btn ${state.ambientSound === 'rain' ? 'active' : ''}`} onClick={() => setAmbientSound('rain')} title="Heavy Rain"><CloudRain size={16} /></button>
-              <button className={`ambient-btn ${state.ambientSound === 'soft-rain' ? 'active' : ''}`} onClick={() => setAmbientSound('soft-rain')} title="Soft Rain"><CloudDrizzle size={16} /></button>
-              <button className={`ambient-btn ${state.ambientSound === 'forest' ? 'active' : ''}`} onClick={() => setAmbientSound('forest')} title="Forest"><Trees size={16} /></button>
-              <button className={`ambient-btn ${state.ambientSound === 'waves' ? 'active' : ''}`} onClick={() => setAmbientSound('waves')} title="Waves"><Waves size={16} /></button>
+    <>
+      {/* ── 1. FLOATING MINI-TIMER PILL (When timer is running in background) ── */}
+      <AnimatePresence>
+        {!focusMode && state.taskId && state.timeLeft > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.9 }}
+            transition={{ type: 'spring', stiffness: 450, damping: 30 }}
+            style={{
+              position: 'fixed',
+              bottom: '84px',
+              right: '24px',
+              zIndex: 9990,
+              background: 'rgba(20, 20, 24, 0.92)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(165, 153, 255, 0.35)',
+              borderRadius: '9999px',
+              padding: '0.45rem 0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.65rem',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6), 0 0 20px rgba(165, 153, 255, 0.25)',
+              cursor: 'pointer',
+            }}
+            onClick={() => setFocusMode(true)}
+          >
+            {/* Pulsing Timer Icon Indicator */}
+            <div
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '50%',
+                background: state.isRunning ? 'rgba(165, 153, 255, 0.2)' : 'rgba(255, 255, 255, 0.08)',
+                border: state.isRunning ? '1px solid #a599ff' : '1px solid rgba(255, 255, 255, 0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: state.isRunning ? '#a599ff' : '#ffffff',
+              }}
+            >
+              <TimerIcon size={14} className={state.isRunning ? 'animate-pulse' : ''} />
             </div>
 
-            <button className="focus-close" onClick={toggleFocusMode} title="Exit Focus Mode" style={{ position: 'static' }}>
-              <X size={20} />
+            {/* Live Ticking Time */}
+            <span
+              style={{
+                fontFamily: "var(--font-sans, 'Inter', sans-serif)",
+                fontSize: '0.95rem',
+                fontWeight: 700,
+                color: '#ffffff',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {formatTime(state.timeLeft)}
+            </span>
+
+            {/* Task Name Preview */}
+            <span
+              style={{
+                fontSize: '0.78rem',
+                color: '#8e8e93',
+                maxWidth: '130px',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                fontWeight: 500,
+              }}
+            >
+              {state.taskText}
+            </span>
+
+            {/* Mini Play / Pause Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                state.isRunning ? pauseTimer() : resumeTimer();
+              }}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: 'none',
+                borderRadius: '50%',
+                width: '24px',
+                height: '24px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#ffffff',
+                cursor: 'pointer',
+              }}
+              title={state.isRunning ? 'Pause' : 'Resume'}
+            >
+              {state.isRunning ? <Pause size={11} /> : <Play size={11} />}
             </button>
-          </div>
-        </div>
 
-        {state.taskId ? (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2.5rem', flex: 1, justifyContent: 'center', width: '100%' }}>
-            
-            {/* Session Type Tabs */}
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', padding: '0.3rem', background: 'rgba(255,255,255,0.03)', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)' }}>
-              {(['Focus', 'Short Break', 'Long Break']).map(tab => {
-                const isActive = (sessionType === tab);
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => { setSessionType(tab); if(tab === 'Focus') setDuration(25); else if(tab === 'Short Break') setDuration(5); else setDuration(15); }}
-                    style={{
-                      padding: '0.3rem 0.875rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
-                      background: isActive ? 'rgba(167,139,250,0.12)' : 'transparent',
-                      color: isActive ? '#a78bfa' : 'rgba(255,255,255,0.5)',
-                      border: isActive ? '1px solid rgba(167,139,250,0.25)' : '1px solid transparent',
-                      transition: 'all 0.15s',
-                    }}
-                  >
-                    {tab}
-                  </button>
-                )
-              })}
-            </div>
+            {/* Expand to Full Focus Mode */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setFocusMode(true);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#a599ff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: '2px',
+              }}
+              title="Expand Focus Mode"
+            >
+              <Maximize2 size={13} />
+            </button>
 
-            <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.35)' }}>
-              {sessionType} MODE
-            </div>
+            {/* Dismiss */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissTimer();
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#8e8e93',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                padding: '2px',
+              }}
+              title="Dismiss Timer"
+            >
+              <X size={13} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            {/* Timer Ring */}
-            <div className="focus-timer-ring" style={{
-              position: 'relative',
-              width: '280px',
-              height: '280px',
+      {/* ── 2. FULLSCREEN FOCUS MODE OVERLAY ── */}
+      <AnimatePresence>
+        {focusMode && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="focus-overlay"
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 99999,
+              background: bgGradient,
+              transition: 'background 1s ease',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.03)',
-              boxShadow: state.isRunning ? '0 0 40px rgba(167,139,250,0.1)' : 'none',
-              transition: 'all 0.5s ease'
-            }}>
-              <svg width="280" height="280" style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)', pointerEvents: 'none' }}>
-                <circle cx="140" cy="140" r="136" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
-                <circle 
-                  cx="140" cy="140" r="136" 
-                  fill="none" 
-                  stroke="#a78bfa" 
-                  strokeWidth="4" 
-                  strokeLinecap="round"
-                  strokeDasharray="150 60"
-                  style={{
-                    transformOrigin: 'center',
-                    animation: state.isRunning ? 'spin 10s linear infinite' : 'none',
-                    opacity: state.isRunning ? 1 : 0.3,
-                    transition: 'opacity 0.5s ease',
-                    filter: 'drop-shadow(0 0 8px rgba(167,139,250,0.5))'
-                  }}
-                />
-              </svg>
-              <div className="focus-timer-text" style={{ fontSize: '5rem', display: 'flex', alignItems: 'center', gap: '1.5rem', position: 'relative', zIndex: 10 }}>
-                {!state.isRunning && (
-                  <button className="btn-icon" onClick={() => setDuration(Math.max(1, Math.floor(state.timeLeft / 60) - 5))} style={{ fontSize: '1.5rem', fontWeight: 700, opacity: 0.5, color: 'white', padding: '0.5rem' }}>-5</button>
-                )}
-                <span style={{
-                  fontFamily: "'Instrument Serif', serif", 
-                  fontWeight: 400, 
-                  fontSize: '4rem',
-                  color: 'white',
-                  letterSpacing: '-0.04em',
-                  transition: 'all 0.5s ease'
-                }}>{formatTime(state.timeLeft)}</span>
-                {!state.isRunning && (
-                  <button className="btn-icon" onClick={() => setDuration(Math.floor(state.timeLeft / 60) + 5)} style={{ fontSize: '1.5rem', fontWeight: 700, opacity: 0.5, color: 'white', padding: '0.5rem' }}>+5</button>
-                )}
+            }}
+          >
+            <ParticleFlowBackground speedMultiplier={state.isRunning ? 1.0 : 0.2} opacity={0.3} />
+            <audio ref={audioRef} />
+            {isYoutube && (
+              <iframe
+                width="0"
+                height="0"
+                src={`https://www.youtube-nocookie.com/embed/${audioSources[state.ambientSound].split(':')[1]}?autoplay=1&loop=1&playlist=${audioSources[state.ambientSound].split(':')[1]}`}
+                frameBorder="0"
+                allow="autoplay"
+                style={{ display: 'none' }}
+                title="Ambient Sound"
+              />
+            )}
+
+            <div
+              className="focus-content"
+              style={{
+                width: '100%',
+                maxWidth: '800px',
+                height: '100%',
+                padding: '2rem',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                position: 'relative',
+                zIndex: 2,
+              }}
+            >
+              {/* Top Header */}
+              <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+                <div className="focus-brand" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#a599ff' }}>
+                  <Zap size={22} color="#a599ff" />
+                  <span style={{ fontSize: '0.95rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Deep Focus</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {/* Ambient Sound Controls */}
+                  <div className="ambient-controls" style={{ display: 'flex', gap: '0.4rem', background: 'rgba(255,255,255,0.06)', padding: '0.35rem 0.6rem', borderRadius: '99px' }}>
+                    <button className={`ambient-btn ${state.ambientSound === 'none' ? 'active' : ''}`} onClick={() => setAmbientSound('none')} title="No Sound"><VolumeX size={15} /></button>
+                    <button className={`ambient-btn ${state.ambientSound === 'rain' ? 'active' : ''}`} onClick={() => setAmbientSound('rain')} title="Heavy Rain"><CloudRain size={15} /></button>
+                    <button className={`ambient-btn ${state.ambientSound === 'soft-rain' ? 'active' : ''}`} onClick={() => setAmbientSound('soft-rain')} title="Soft Rain"><CloudDrizzle size={15} /></button>
+                    <button className={`ambient-btn ${state.ambientSound === 'forest' ? 'active' : ''}`} onClick={() => setAmbientSound('forest')} title="Forest"><Trees size={15} /></button>
+                    <button className={`ambient-btn ${state.ambientSound === 'waves' ? 'active' : ''}`} onClick={() => setAmbientSound('waves')} title="Waves"><Waves size={15} /></button>
+                  </div>
+
+                  {/* Exit / Minimize button */}
+                  <button
+                    type="button"
+                    onClick={toggleFocusMode}
+                    title="Minimize Focus Mode"
+                    style={{
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      color: '#ffffff',
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
-            </div>
 
-            {/* Controls */}
-            <div className="focus-controls" style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-              <button onClick={resetTimer} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '999px', color: 'rgba(255,255,255,0.6)', padding: '0.75rem 2rem', fontSize: '0.9rem', cursor: 'pointer' }} title="Reset Timer">
-                Reset
-              </button>
-              <button
-                onClick={() => state.isRunning ? pauseTimer() : resumeTimer()}
-                style={{ background: 'linear-gradient(135deg, #a78bfa, #b8afff)', borderRadius: '999px', border: 'none', color: 'white', padding: '0.75rem 2rem', fontSize: '0.9rem', cursor: 'pointer', fontWeight: 600 }}
-              >
-                {state.isRunning ? 'Pause' : 'Start'}
-              </button>
-              <button onClick={() => { dismissTimer(); toggleFocusMode(); }} style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '999px', color: 'rgba(255,255,255,0.6)', padding: '0.75rem 2rem', fontSize: '0.9rem', cursor: 'pointer' }} title="Dismiss & Exit">
-                Skip
-              </button>
-            </div>
+              {state.taskId ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2rem', flex: 1, justifyContent: 'center', width: '100%' }}>
+                  {/* Session Type Tabs */}
+                  <div style={{ display: 'flex', gap: '0.5rem', padding: '0.3rem', background: 'rgba(255,255,255,0.04)', borderRadius: '999px', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(12px)' }}>
+                    {(['Focus', 'Short Break', 'Long Break']).map(tab => {
+                      const isActive = (sessionType === tab);
+                      return (
+                        <button
+                          key={tab}
+                          type="button"
+                          onClick={() => {
+                            setSessionType(tab);
+                            if (tab === 'Focus') setDuration(25);
+                            else if (tab === 'Short Break') setDuration(5);
+                            else setDuration(15);
+                          }}
+                          style={{
+                            padding: '0.35rem 0.95rem',
+                            borderRadius: '999px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            background: isActive ? 'rgba(165,153,255,0.18)' : 'transparent',
+                            color: isActive ? '#a599ff' : 'rgba(255,255,255,0.5)',
+                            border: isActive ? '1px solid rgba(165,153,255,0.35)' : '1px solid transparent',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {tab}
+                        </button>
+                      );
+                    })}
+                  </div>
 
-            {/* Task Info & Subtasks */}
-            <div style={{ width: '100%', maxWidth: '600px', background: 'rgba(255,255,255,0.03)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '1rem', padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', marginTop: '2rem' }}>
-              <div style={{ fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.15em', color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>CURRENTLY FOCUSING ON</div>
-              <div className="focus-task-name" style={{ fontFamily: "'Instrument Serif', serif", fontSize: '2rem', fontWeight: 400, color: 'white', letterSpacing: '-0.02em', textAlign: 'center' }}>{state.taskText}</div>
-              
-              {subTasks.length > 0 && (
-                <div style={{ width: '100%', marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {subTasks.map(st => (
-                    <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '0.75rem 1rem', background: 'rgba(255,255,255,0.03)', borderRadius: '12px', opacity: st.status === 'completed' ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-                      <button 
-                        className={`todo-checkbox ${st.status === 'completed' ? 'checked' : ''}`}
-                        onClick={() => toggleSubTask(st.id)}
-                        style={{ width: '20px', height: '20px' }}
+                  {/* Timer Ring Visualizer */}
+                  <div
+                    style={{
+                      position: 'relative',
+                      width: '280px',
+                      height: '280px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: '50%',
+                      background: 'rgba(255,255,255,0.02)',
+                      boxShadow: state.isRunning ? '0 0 50px rgba(165,153,255,0.15)' : 'none',
+                      transition: 'all 0.5s ease',
+                    }}
+                  >
+                    <svg width="280" height="280" style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)', pointerEvents: 'none' }}>
+                      <circle cx="140" cy="140" r="134" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
+                      <circle
+                        cx="140"
+                        cy="140"
+                        r="134"
+                        fill="none"
+                        stroke="#a599ff"
+                        strokeWidth="4"
+                        strokeLinecap="round"
+                        strokeDasharray="180 80"
+                        style={{
+                          transformOrigin: 'center',
+                          animation: state.isRunning ? 'spin 8s linear infinite' : 'none',
+                          opacity: state.isRunning ? 1 : 0.35,
+                          transition: 'opacity 0.5s ease',
+                          filter: 'drop-shadow(0 0 10px rgba(165,153,255,0.6))',
+                        }}
+                      />
+                    </svg>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', position: 'relative', zIndex: 10 }}>
+                      {!state.isRunning && (
+                        <button
+                          type="button"
+                          onClick={() => setDuration(Math.max(1, Math.floor(state.timeLeft / 60) - 5))}
+                          style={{ background: 'none', border: 'none', fontSize: '1.1rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '0.5rem' }}
+                        >
+                          -5
+                        </button>
+                      )}
+
+                      <span
+                        style={{
+                          fontFamily: "var(--font-display, 'Playfair Display', Georgia, serif)",
+                          fontWeight: 600,
+                          fontSize: '4.25rem',
+                          color: '#ffffff',
+                          letterSpacing: '-0.03em',
+                          lineHeight: 1,
+                        }}
                       >
-                        {st.status === 'completed' && <Check size={12} strokeWidth={3} />}
-                      </button>
-                      <span style={{ fontSize: '1rem', color: st.status === 'completed' ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: st.status === 'completed' ? 'line-through' : 'none' }}>
-                        {st.text}
+                        {formatTime(state.timeLeft)}
                       </span>
+
+                      {!state.isRunning && (
+                        <button
+                          type="button"
+                          onClick={() => setDuration(Math.floor(state.timeLeft / 60) + 5)}
+                          style={{ background: 'none', border: 'none', fontSize: '1.1rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)', cursor: 'pointer', padding: '0.5rem' }}
+                        >
+                          +5
+                        </button>
+                      )}
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Controls */}
+                  <div style={{ display: 'flex', gap: '0.85rem' }}>
+                    <button
+                      type="button"
+                      onClick={resetTimer}
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        borderRadius: '9999px',
+                        color: 'rgba(255,255,255,0.7)',
+                        padding: '0.65rem 1.75rem',
+                        fontSize: '0.88rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Reset
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => state.isRunning ? pauseTimer() : resumeTimer()}
+                      style={{
+                        background: '#a599ff',
+                        borderRadius: '9999px',
+                        border: 'none',
+                        color: '#000000',
+                        padding: '0.65rem 2.25rem',
+                        fontSize: '0.92rem',
+                        cursor: 'pointer',
+                        fontWeight: 700,
+                        boxShadow: '0 4px 16px rgba(165, 153, 255, 0.35)',
+                      }}
+                    >
+                      {state.isRunning ? 'Pause' : 'Resume'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => { dismissTimer(); setFocusMode(false); }}
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.12)',
+                        borderRadius: '9999px',
+                        color: 'rgba(255,255,255,0.7)',
+                        padding: '0.65rem 1.75rem',
+                        fontSize: '0.88rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Skip
+                    </button>
+                  </div>
+
+                  {/* Task Info & Subtasks */}
+                  <div
+                    style={{
+                      width: '100%',
+                      maxWidth: '560px',
+                      background: 'rgba(255,255,255,0.03)',
+                      backdropFilter: 'blur(12px)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '16px',
+                      padding: '1.5rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                    }}
+                  >
+                    <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.4)', fontWeight: 700 }}>
+                      CURRENTLY FOCUSING ON
+                    </div>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-display, 'Playfair Display', Georgia, serif)",
+                        fontSize: '1.65rem',
+                        fontWeight: 600,
+                        color: '#ffffff',
+                        textAlign: 'center',
+                        lineHeight: 1.25,
+                      }}
+                    >
+                      {state.taskText}
+                    </div>
+
+                    {subTasks.length > 0 && (
+                      <div style={{ width: '100%', marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {subTasks.map(st => (
+                          <div
+                            key={st.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.75rem',
+                              padding: '0.6rem 0.85rem',
+                              background: 'rgba(255,255,255,0.03)',
+                              borderRadius: '10px',
+                              opacity: st.status === 'completed' ? 0.5 : 1,
+                              transition: 'opacity 0.2s',
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className={`todo-checkbox ${st.status === 'completed' ? 'checked' : ''}`}
+                              onClick={() => toggleSubTask(st.id)}
+                              style={{ width: '18px', height: '18px' }}
+                            >
+                              {st.status === 'completed' && <Check size={11} strokeWidth={3} />}
+                            </button>
+                            <span style={{ fontSize: '0.88rem', color: st.status === 'completed' ? '#8e8e93' : '#ffffff', textDecoration: st.status === 'completed' ? 'line-through' : 'none' }}>
+                              {st.text}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: '1rem', textAlign: 'center' }}>
+                  <TimerIcon size={44} color="#a599ff" />
+                  <h3 style={{ fontSize: '1.5rem', fontWeight: 600, color: '#ffffff', margin: 0 }}>Ready to focus?</h3>
+                  <p style={{ fontSize: '0.9rem', color: '#8e8e93', margin: 0 }}>Start a timer directly from any task on your list.</p>
+                  <button
+                    type="button"
+                    onClick={() => setFocusMode(false)}
+                    style={{
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: '9999px',
+                      color: '#ffffff',
+                      padding: '0.5rem 1.5rem',
+                      fontSize: '0.85rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      marginTop: '1rem',
+                    }}
+                  >
+                    Return to App
+                  </button>
                 </div>
               )}
             </div>
-
-          </div>
-        ) : (
-          <div className="focus-empty" style={{ margin: 'auto' }}>
-            <p style={{ fontSize: '1.5rem', color: 'var(--text-primary)', marginBottom: '1rem' }}>Ready to focus?</p>
-            <p style={{ fontSize: '1rem', color: 'var(--text-muted)' }}>Start a Pomodoro from your To-Do list or Learning path.</p>
-            <button className="btn-secondary" onClick={toggleFocusMode} style={{ marginTop: '2rem', margin: '2rem auto 0 auto' }}>Return to App</button>
-          </div>
+          </motion.div>
         )}
-      </div>
-    </div>
+      </AnimatePresence>
+    </>
   );
 };

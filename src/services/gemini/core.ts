@@ -82,9 +82,19 @@ if (typeof window !== 'undefined') {
             throw new Error('PERSONAL_TOKEN_UNAVAILABLE: OAuth token expired or not present. Rotating to shared key.');
           }
         } else if (headers.get('x-goog-api-key') === 'proxy_dummy_key') {
-          // 🔄 Proxy routing: Send to /api/gemini-proxy with Firebase Auth Token
+          // 🔄 Proxy routing: Send to Vercel Gemini Proxy with Firebase Auth Token
           const { auth } = await import('../firebase');
-          const token = await auth.currentUser?.getIdToken();
+          const { signInAnonymously } = await import('firebase/auth');
+          
+          let token = await auth.currentUser?.getIdToken();
+          if (!token) {
+            try {
+              const cred = await signInAnonymously(auth);
+              token = await cred.user.getIdToken();
+            } catch (authErr) {
+              console.warn('[GeminiProxy] Anonymous sign in failed:', authErr);
+            }
+          }
           if (!token) throw new Error('Not logged in to Firebase');
 
           const url = new URL(urlString);
@@ -98,12 +108,16 @@ if (typeof window !== 'undefined') {
           const bodyObj = JSON.parse(bodyStr);
           bodyObj.model = model;
 
-          return originalFetch('/api/gemini-proxy', {
+          const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+          const proxyEndpoint = isLocal ? 'https://myzentrack.vercel.app/api/gemini-proxy' : '/api/gemini-proxy';
+
+          return originalFetch(proxyEndpoint, {
             ...init,
             headers,
             body: JSON.stringify(bodyObj)
           });
         }
+
       }
     } catch (e: any) {
       // If our own typed error, re-throw so callWithFallback catches it correctly

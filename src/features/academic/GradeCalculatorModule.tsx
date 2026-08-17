@@ -1,70 +1,84 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import type { User } from 'firebase/auth';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc
+} from 'firebase/firestore';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { db, auth } from '../../services/firebase';
-import { Calculator, Plus, Trash2, Edit2, TrendingUp, Target, Check, X } from 'lucide-react';
+import {
+  GraduationCap, Plus, Trash2, Edit2, TrendingUp, Target,
+  Check, X, Award, ChevronDown, ChevronUp, BookOpen, Layers,
+  School, Sparkles, AlertCircle, FileText, CheckCircle2, RotateCcw
+} from 'lucide-react';
 import { toast } from 'sonner';
-import type { Semester, SemesterSubject } from '../../types/index';
-import {  Bar, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid, Line, ComposedChart, Area } from 'recharts';
-import { useSubjects } from '../../hooks/useSubjects';
+import {
+  ComposedChart, Bar, Line, Area, XAxis, YAxis, ResponsiveContainer,
+  Tooltip, CartesianGrid
+} from 'recharts';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 
-// Standard 10-point grading scale (A+ = 10, no O)
+export interface Semester {
+  id?: string;
+  userId: string;
+  name: string;
+  order: number;
+  sgpa?: number | null;
+  totalCredits?: number | null;
+  createdAt?: number;
+}
+
+export interface SemesterSubject {
+  id?: string;
+  userId: string;
+  semesterId: string;
+  name: string;
+  credits: number;
+  grade?: string;
+}
+
+// Standard 10-point scale
 const GRADE_OPTIONS = [
-  { label: 'A+', points: 10 },
-  { label: 'A',  points: 9  },
-  { label: 'B+', points: 8  },
-  { label: 'B',  points: 7  },
-  { label: 'C',  points: 6  },
-  { label: 'D',  points: 5  },
-  { label: 'F',  points: 0  },
+  { label: 'A+', points: 10, color: '#5eda9e' },
+  { label: 'A', points: 9, color: '#5eda9e' },
+  { label: 'B+', points: 8, color: '#a599ff' },
+  { label: 'B', points: 7, color: '#a599ff' },
+  { label: 'C', points: 6, color: '#38bdf8' },
+  { label: 'D', points: 5, color: '#fbbf24' },
+  { label: 'F', points: 0, color: '#ff6961' },
 ];
+
 const GRADE_MAP: Record<string, number> = Object.fromEntries(
   GRADE_OPTIONS.map(g => [g.label, g.points])
 );
-
-const gradeColor = (gp: number | null | undefined) => {
-  if (gp == null) return 'var(--text-muted)';
-  if (gp >= 9) return '#10b981';
-  if (gp >= 7) return '#a599ff';
-  if (gp >= 5) return '#f59e0b';
-  return '#ef4444';
-};
 
 export const GradeCalculatorModule = () => {
   const [user, setUser] = useState<User | null>(null);
   const [semesters, setSemesters] = useState<Semester[]>([]);
   const [subjects, setSubjects] = useState<SemesterSubject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeSemId, setActiveSemId] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
-  // New semester inline
-  const [showAddSem, setShowAddSem] = useState(false);
+  // Modals & Forms
+  const [isAddSemModalOpen, setIsAddSemModalOpen] = useState(false);
   const [newSemName, setNewSemName] = useState('');
-  const semInputRef = useRef<HTMLInputElement>(null);
+  const [activeSemForCourse, setActiveSemForCourse] = useState<string | null>(null);
+  const [courseName, setCourseName] = useState('');
+  const [courseCredits, setCourseCredits] = useState('4');
+  const [courseGrade, setCourseGrade] = useState('A+');
+  const [editingCourse, setEditingCourse] = useState<SemesterSubject | null>(null);
 
-  // Inline add/edit subject row
-  const [editingSubId, setEditingSubId] = useState<string | null>(null);
-  const [showInlineForm, setShowInlineForm] = useState(false);
-  const [subName, setSubName]     = useState('');
-  const [subCredits, setSubCredits] = useState('4');
-  const [subGrade, setSubGrade]   = useState('A+');
-  const subNameRef = useRef<HTMLInputElement>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{type: 'semester'|'subject', id: string} | null>(null);
-
-  // Target CGPA
-  const [targetCGPA, setTargetCGPA] = useState('9.0');
-  const [targetCredits, setTargetCredits] = useState('24');
-
-  // Direct SGPA inline
-  const [showDirectForm, setShowDirectForm] = useState(false);
+  // Direct SGPA Modal
+  const [directSem, setDirectSem] = useState<Semester | null>(null);
   const [directSGPA, setDirectSGPA] = useState('');
   const [directCredits, setDirectCredits] = useState('24');
 
-  // Timetable subjects for suggestions
-  const { subjects: timetableSubjects } = useSubjects();
+  // Target Simulator
+  const [targetCGPA, setTargetCGPA] = useState('9.0');
+  const [targetCredits, setTargetCredits] = useState('24');
+
+  // Delete Confirm Dialog
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'semester' | 'subject'; id: string } | null>(null);
+
+  // Expanded Semesters
+  const [expandedSems, setExpandedSems] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, u => setUser(u));
@@ -73,89 +87,107 @@ export const GradeCalculatorModule = () => {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'semesters'), where('userId', '==', user.uid));
-    return onSnapshot(q, snap => {
+    setIsLoading(true);
+
+    const semQ = query(collection(db, 'semesters'), where('userId', '==', user.uid));
+    const unsubSem = onSnapshot(semQ, snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Semester));
       data.sort((a, b) => (a.order || 0) - (b.order || 0));
       setSemesters(data);
-      if (data.length > 0) {
-        setActiveSemId(prev => prev && data.find(s => s.id === prev) ? prev : data[data.length - 1].id!);
-      }
+      setExpandedSems(new Set(data.map(s => s.id!)));
       setIsLoading(false);
     });
-  }, [user]);
 
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'semester_subjects'), where('userId', '==', user.uid));
-    return onSnapshot(q, snap => {
+    const subQ = query(collection(db, 'semester_subjects'), where('userId', '==', user.uid));
+    const unsubSub = onSnapshot(subQ, snap => {
       setSubjects(snap.docs.map(d => ({ id: d.id, ...d.data() } as SemesterSubject)));
     });
+
+    return () => {
+      unsubSem();
+      unsubSub();
+    };
   }, [user]);
 
-  const activeSemSubjects = useMemo(() =>
-    subjects.filter(s => s.semesterId === activeSemId),
-    [subjects, activeSemId]
-  );
-
-  const calculateSGPA = (semSubjects: SemesterSubject[]) => {
-    const graded = semSubjects.filter(s => s.grade && GRADE_MAP[s.grade] != null);
+  // SGPA Calculation Function
+  const calculateSGPA = (semSubs: SemesterSubject[]) => {
+    const graded = semSubs.filter(s => s.grade && GRADE_MAP[s.grade] != null);
     if (graded.length === 0) return null;
-    let totalCredits = 0, totalPoints = 0;
+    let totalCredits = 0;
+    let totalPoints = 0;
     graded.forEach(s => {
       const gp = GRADE_MAP[s.grade!];
       totalCredits += s.credits;
-      totalPoints  += s.credits * gp;
+      totalPoints += s.credits * gp;
     });
     return totalCredits > 0 ? totalPoints / totalCredits : null;
   };
 
+  // Progression & CGPA Data Model
   const cgpaData = useMemo(() => {
-    let cumCredits = 0, cumPoints = 0;
-    return semesters.map(sem => {
+    let cumCredits = 0;
+    let cumPoints = 0;
+
+    return semesters.map((sem, idx) => {
       const isDirect = sem.sgpa != null && sem.totalCredits != null;
-      let sgpa = null;
-      let credits = 0;
+      let sgpa: number | null = null;
+      let semCredits = 0;
 
       if (isDirect) {
         sgpa = sem.sgpa!;
-        credits = sem.totalCredits!;
-        cumCredits += credits;
-        cumPoints += credits * sgpa;
+        semCredits = sem.totalCredits!;
+        cumCredits += semCredits;
+        cumPoints += semCredits * sgpa;
       } else {
         const semSubs = subjects.filter(s => s.semesterId === sem.id);
-        sgpa = calculateSGPA(semSubs);
+        const calc = calculateSGPA(semSubs);
+        sgpa = calc ? parseFloat(calc.toFixed(2)) : null;
+
         semSubs.forEach(s => {
           if (s.grade && GRADE_MAP[s.grade] != null) {
             cumCredits += s.credits;
-            cumPoints  += s.credits * GRADE_MAP[s.grade!];
+            cumPoints += s.credits * GRADE_MAP[s.grade!];
           }
         });
-        credits = semSubs.reduce((acc, sub) => acc + sub.credits, 0);
+        semCredits = semSubs.reduce((acc, sub) => acc + sub.credits, 0);
       }
 
-      const cgpa = cumCredits > 0 ? cumPoints / cumCredits : null;
+      const cgpa = cumCredits > 0 ? parseFloat((cumPoints / cumCredits).toFixed(2)) : null;
+
       return {
-        name: sem.name,
-        sgpa:  sgpa  ? parseFloat(sgpa.toFixed(2))  : null,
-        cgpa:  cgpa  ? parseFloat(cgpa.toFixed(2))  : null,
-        credits,
+        id: sem.id,
+        name: sem.name || `Semester ${idx + 1}`,
+        calcSgpa: sgpa,
+        calcCgpa: cgpa,
+        credits: semCredits,
       };
     });
   }, [semesters, subjects]);
 
-  const activeSemester = semesters.find(s => s.id === activeSemId);
-  const isDirectMode = activeSemester?.sgpa != null && activeSemester?.totalCredits != null;
+  // Overall Global CGPA & Credits
+  const currentCGPA = cgpaData.length > 0 ? cgpaData[cgpaData.length - 1].calcCgpa : null;
+  const totalCumulativeCredits = useMemo(() => {
+    let creds = 0;
+    for (const sem of semesters) {
+      if (sem.totalCredits != null) {
+        creds += sem.totalCredits;
+      } else {
+        const semSubs = subjects.filter(s => s.semesterId === sem.id);
+        creds += semSubs.reduce((acc, s) => acc + s.credits, 0);
+      }
+    }
+    return creds;
+  }, [semesters, subjects]);
 
-  const currentCGPA = cgpaData.length > 0 ? cgpaData[cgpaData.length - 1].cgpa : null;
-  const currentSGPA = isDirectMode ? activeSemester!.sgpa : (activeSemId ? calculateSGPA(activeSemSubjects) : null);
-
-  const whatDoINeed = useMemo(() => {
+  // Target SGPA Simulator Math ("What Do I Need?")
+  const targetNeeded = useMemo(() => {
     if (!currentCGPA || semesters.length < 1) return null;
     const target = parseFloat(targetCGPA);
-    if (isNaN(target) || target > 10) return null;
-    let totalCredits = 0, totalPoints = 0;
-    
+    if (isNaN(target) || target > 10 || target <= 0) return null;
+
+    let totalCredits = 0;
+    let totalPoints = 0;
+
     semesters.forEach(sem => {
       if (sem.sgpa != null && sem.totalCredits != null) {
         totalCredits += sem.totalCredits;
@@ -165,607 +197,593 @@ export const GradeCalculatorModule = () => {
         semSubs.forEach(s => {
           if (s.grade && GRADE_MAP[s.grade] != null) {
             totalCredits += s.credits;
-            totalPoints  += s.credits * GRADE_MAP[s.grade!];
+            totalPoints += s.credits * GRADE_MAP[s.grade!];
           }
         });
       }
     });
 
-    const nextCredits = parseInt(targetCredits) || 24;
+    const nextCredits = parseInt(targetCredits, 10) || 24;
+    if (nextCredits <= 0) return null;
+
     const neededPoints = target * (totalCredits + nextCredits) - totalPoints;
     const neededSGPA = neededPoints / nextCredits;
-    return { neededSGPA: Math.max(0, Math.min(10, neededSGPA)), achievable: neededSGPA <= 10, nextCredits };
-  }, [currentCGPA, targetCGPA, targetCredits, subjects, semesters]);
 
-  // ── Handlers ──────────────────────────────────────────────
+    return {
+      neededSGPA: parseFloat(neededSGPA.toFixed(2)),
+      achievable: neededSGPA <= 10.0 && neededSGPA >= 0,
+    };
+  }, [currentCGPA, targetCGPA, targetCredits, semesters, subjects]);
 
+  // ── Handlers ──
   const handleAddSemester = async () => {
     if (!user || !newSemName.trim()) return;
-    setIsSaving(true);
     try {
-      const docRef = await addDoc(collection(db, 'semesters'), {
-        userId: user.uid, name: newSemName.trim(),
-        order: semesters.length + 1, createdAt: Date.now(),
+      await addDoc(collection(db, 'semesters'), {
+        userId: user.uid,
+        name: newSemName.trim(),
+        order: semesters.length,
+        createdAt: Date.now(),
       });
-      setActiveSemId(docRef.id);
+      toast.success(`Created "${newSemName}"`);
       setNewSemName('');
-      setShowAddSem(false);
-      toast.success('Semester added!');
-    } catch (err: any) { toast.error(err.message); }
-    finally { setIsSaving(false); }
+      setIsAddSemModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to create semester');
+    }
   };
 
-  const openAddRow = () => {
-    setEditingSubId(null);
-    setSubName('');
-    setSubCredits('4');
-    setSubGrade('A+');
-    setShowInlineForm(true);
-    setTimeout(() => subNameRef.current?.focus(), 50);
-  };
-
-  const openEditRow = (sub: SemesterSubject) => {
-    setEditingSubId(sub.id!);
-    setSubName(sub.name);
-    setSubCredits(String(sub.credits));
-    setSubGrade(sub.grade || 'A+');
-    setShowInlineForm(true);
-    setTimeout(() => subNameRef.current?.focus(), 50);
-  };
-
-  const cancelInlineForm = () => {
-    setShowInlineForm(false);
-    setEditingSubId(null);
-    setSubName('');
-    setSubCredits('4');
-    setSubGrade('A+');
-  };
-
-  const handleSaveSubject = async () => {
-    if (!user || !activeSemId) return;
-    const name = subName.trim();
-    if (!name) { toast.error('Enter a subject name'); subNameRef.current?.focus(); return; }
-    const credits = parseInt(subCredits) || 4;
-    const grade = subGrade;
-    const gradePoints = GRADE_MAP[grade] ?? null;
-
-    setIsSaving(true);
+  const handleSaveCourse = async () => {
+    if (!user || !courseName.trim() || !activeSemForCourse) return;
     try {
-      const data = { userId: user.uid, semesterId: activeSemId, name, credits, grade, gradePoints };
-      if (editingSubId) {
-        await updateDoc(doc(db, 'semester_subjects', editingSubId), data);
-        toast.success('Updated!');
+      if (editingCourse?.id) {
+        await updateDoc(doc(db, 'semester_subjects', editingCourse.id), {
+          name: courseName.trim(),
+          credits: parseInt(courseCredits, 10) || 4,
+          grade: courseGrade,
+        });
+        toast.success(`Updated ${courseName}`);
       } else {
-        await addDoc(collection(db, 'semester_subjects'), data);
-        toast.success('Subject added!');
+        await addDoc(collection(db, 'semester_subjects'), {
+          userId: user.uid,
+          semesterId: activeSemForCourse,
+          name: courseName.trim(),
+          credits: parseInt(courseCredits, 10) || 4,
+          grade: courseGrade,
+        });
+        toast.success(`Added ${courseName}`);
       }
-      cancelInlineForm();
-    } catch (err: any) { toast.error(err.message); }
-    finally { setIsSaving(false); }
+      setCourseName('');
+      setCourseCredits('4');
+      setCourseGrade('A+');
+      setEditingCourse(null);
+      setActiveSemForCourse(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to save course');
+    }
   };
 
   const handleSaveDirectSGPA = async () => {
-    if (!activeSemId) return;
+    if (!directSem?.id) return;
     const sgpaVal = parseFloat(directSGPA);
-    const creditsVal = parseInt(directCredits);
-    if (isNaN(sgpaVal) || sgpaVal < 0 || sgpaVal > 10) { toast.error('Invalid SGPA'); return; }
-    if (isNaN(creditsVal) || creditsVal <= 0) { toast.error('Invalid credits'); return; }
-    
-    setIsSaving(true);
+    const credVal = parseInt(directCredits, 10);
+    if (isNaN(sgpaVal) || sgpaVal < 0 || sgpaVal > 10) {
+      toast.error('SGPA must be between 0 and 10');
+      return;
+    }
     try {
-      await updateDoc(doc(db, 'semesters', activeSemId), { sgpa: sgpaVal, totalCredits: creditsVal });
-      toast.success('Direct SGPA saved!');
-      setShowDirectForm(false);
-    } catch (err: any) { toast.error(err.message); }
-    finally { setIsSaving(false); }
+      await updateDoc(doc(db, 'semesters', directSem.id), {
+        sgpa: sgpaVal,
+        totalCredits: credVal || 24,
+      });
+      toast.success(`Updated SGPA for ${directSem.name}`);
+      setDirectSem(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update direct SGPA');
+    }
   };
 
-  const handleClearDirectSGPA = async () => {
-    if (!activeSemId) return;
-    setIsSaving(true);
-    try {
-      await updateDoc(doc(db, 'semesters', activeSemId), { sgpa: null, totalCredits: null });
-      toast.success('Reverted to subjects mode');
-    } catch (err: any) { toast.error(err.message); }
-    finally { setIsSaving(false); }
+  const toggleExpand = (semId: string) => {
+    setExpandedSems(prev => {
+      const next = new Set(prev);
+      if (next.has(semId)) next.delete(semId);
+      else next.add(semId);
+      return next;
+    });
   };
-
-  const handleDeleteSemester = async (id: string) => {
-    try {
-      const semSubs = subjects.filter(s => s.semesterId === id);
-      await Promise.all(semSubs.map(s => deleteDoc(doc(db, 'semester_subjects', s.id!))));
-      await deleteDoc(doc(db, 'semesters', id));
-      if (activeSemId === id) setActiveSemId(semesters.find(s => s.id !== id)?.id || null);
-      toast.success('Semester deleted!');
-    } catch (err: any) { toast.error(err.message); }
-  };
-
-  const handleDeleteSubject = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'semester_subjects', id));
-      toast.success('Deleted!');
-    } catch (err: any) { toast.error(err.message); }
-  };
-
-  if (isLoading) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading...</div>;
-
-  const activeSGPA  = currentSGPA;
-  const semesterRow = cgpaData.find(d => d.name === semesters.find(s => s.id === activeSemId)?.name);
-  const semCredits  = semesterRow?.credits ?? activeSemSubjects.reduce((a, s) => a + s.credits, 0);
 
   return (
-    <div>
+    <div className="gr-module-root">
+      {/* ── TOP HERO HEADER BAR ── */}
+      <div className="gr-header-bar">
+        <div className="gr-header-left">
+          <h1 className="gr-hero-title">Grade Calculator & CGPA Planner</h1>
+          <span className="gr-stats-subtitle">
+            {currentCGPA ? `${currentCGPA} Cumulative GPA` : 'No grades yet'} · {totalCumulativeCredits} Total Credits
+          </span>
+        </div>
 
-      {/* ── Header ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ fontSize: '1.6rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-            <Calculator size={26} style={{ color: '#f59e0b' }} /> GPA Calculator
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '0.2rem' }}>Track grades · Calculate SGPA &amp; CGPA</p>
+        <div className="gr-header-actions">
+          <button
+            type="button"
+            className="gr-primary-add-btn"
+            onClick={() => {
+              setNewSemName(`Semester ${semesters.length + 1}`);
+              setIsAddSemModalOpen(true);
+            }}
+          >
+            <Plus size={15} strokeWidth={2.5} />
+            <span>Add Semester</span>
+          </button>
         </div>
       </div>
 
-      {/* ── Overview Cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
-
-        {/* CGPA */}
-        <div style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>CGPA (Cumulative)</div>
-          <div style={{ fontSize: '2.8rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: gradeColor(currentCGPA) }}>
-            {currentCGPA != null ? currentCGPA.toFixed(2) : '—'}
+      {/* ── TOP HERO ROW (CGPA Hero Banner & Target Simulator) ── */}
+      <div className="gr-hero-row">
+        {/* Cumulative GPA Hero Banner */}
+        <div className="gr-cgpa-banner">
+          <div className="gr-cgpa-left">
+            <span className="gr-cgpa-label">CUMULATIVE GPA (CGPA)</span>
+            <span className="gr-cgpa-value" style={{ color: currentCGPA && currentCGPA >= 8.5 ? '#5eda9e' : (currentCGPA && currentCGPA >= 7.0 ? '#a599ff' : '#ffffff') }}>
+              {currentCGPA !== null ? currentCGPA.toFixed(2) : '--'}
+            </span>
+            <span className="gr-cgpa-subtext">
+              {semesters.length} {semesters.length === 1 ? 'Semester' : 'Semesters'} · {totalCumulativeCredits} Total Credits
+            </span>
           </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>out of 10.00</div>
+
+          <div className="gr-cgpa-icon-box">
+            <GraduationCap size={28} />
+          </div>
         </div>
 
-        {/* SGPA */}
-        <div style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', textAlign: 'center' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-            SGPA · {semesters.find(s => s.id === activeSemId)?.name ?? '—'}
+        {/* "What Do I Need?" Target Simulator */}
+        <div className="gr-simulator-card">
+          <div className="gr-sim-top">
+            <h3 className="gr-sim-title">What Do I Need? (Target Planner)</h3>
+            <Target size={16} color="var(--gr-accent-purple)" />
           </div>
-          <div style={{ fontSize: '2.8rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: gradeColor(activeSGPA) }}>
-            {activeSGPA != null ? activeSGPA.toFixed(2) : '—'}
-          </div>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{semCredits} credits this sem</div>
-        </div>
 
-        {/* What do I need */}
-        <div style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-            <Target size={13} /> Target CGPA
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
-            <input type="number" step="0.1" min="0" max="10" value={targetCGPA}
-              onChange={e => setTargetCGPA(e.target.value)}
-              title="Target CGPA"
-              style={{ width: '65px', padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', textAlign: 'center', fontSize: '1rem', fontWeight: 700 }} />
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>in next</span>
-            <input type="number" min="1" value={targetCredits}
-              onChange={e => setTargetCredits(e.target.value)}
-              title="Remaining Credits"
-              style={{ width: '55px', padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', textAlign: 'center', fontSize: '0.9rem', fontWeight: 600 }} />
-            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>cr</span>
-          </div>
-          {whatDoINeed && currentCGPA && (
-            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: whatDoINeed.achievable ? '#10b981' : '#ef4444' }}>
-              {whatDoINeed.achievable
-                ? `Need avg SGPA ≥ ${whatDoINeed.neededSGPA.toFixed(2)} for ${whatDoINeed.nextCredits} cr`
-                : `❌ Not achievable with ${whatDoINeed.nextCredits} cr`}
-            </div>
-          )}
-          {!currentCGPA && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Add grades to see projection</div>}
-        </div>
-      </div>
-
-      {/* ── GPA Trend Chart ── */}
-      {cgpaData.length > 0 && cgpaData.some(d => d.sgpa !== null) && (
-        <div style={{ background: 'var(--bg-surface)', padding: '1.25rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', marginBottom: '1.5rem' }}>
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <TrendingUp size={16} /> GPA Trend
-          </h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <ComposedChart data={cgpaData} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="sgpaGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#a599ff" stopOpacity={0.9} />
-                  <stop offset="100%" stopColor="#2563eb" stopOpacity={0.1} />
-                </linearGradient>
-                <linearGradient id="cgpaGlow" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                </linearGradient>
-                <filter id="lineShadow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#10b981" floodOpacity="0.4" />
-                </filter>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="name" tickFormatter={(val) => String(val).replace(/semester /i, 'Sem ')} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} dy={8} />
-              <YAxis domain={[0, 10]} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} dx={-5} />
-              <Tooltip
-                contentStyle={{ background: 'rgba(9, 7, 18, 0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', fontSize: '0.85rem', backdropFilter: 'blur(10px)' }}
-                itemStyle={{ fontWeight: 600 }}
-                formatter={(val: any, name: any) => [typeof val === 'number' ? val.toFixed(2) : '—', String(name ?? '').toUpperCase()]}
-                cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+          <div className="gr-sim-inputs-row">
+            <div className="gr-sim-input-box">
+              <span className="gr-sim-input-label">Target CGPA</span>
+              <input
+                type="number"
+                min="5"
+                max="10"
+                step="0.1"
+                className="gr-sim-input"
+                value={targetCGPA}
+                onChange={e => setTargetCGPA(e.target.value)}
               />
-              <Area type="monotone" dataKey="cgpa" fill="url(#cgpaGlow)" stroke="none" />
-              <Bar dataKey="sgpa" fill="url(#sgpaGradient)" radius={[4, 4, 0, 0]} maxBarSize={45} name="SGPA" />
-              <Line type="monotone" dataKey="cgpa" stroke="#10b981" strokeWidth={3} filter="url(#lineShadow)" dot={{ fill: '#10b981', r: 4, strokeWidth: 2, stroke: '#090712' }} activeDot={{ r: 6, fill: '#fff', stroke: '#10b981', strokeWidth: 2 }} name="CGPA" />
-            </ComposedChart>
-          </ResponsiveContainer>
-          {/* Legend */}
-          <div style={{ display: 'flex', gap: '1.25rem', marginTop: '0.5rem', fontSize: '0.75rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 12, height: 12, background: '#a599ff', borderRadius: 2, display: 'inline-block' }} /> SGPA (bars)</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}><span style={{ width: 12, height: 2, background: '#10b981', display: 'inline-block' }} /> CGPA (line)</span>
+            </div>
+
+            <div className="gr-sim-input-box">
+              <span className="gr-sim-input-label">Next Sem Credits</span>
+              <input
+                type="number"
+                min="1"
+                max="40"
+                className="gr-sim-input"
+                value={targetCredits}
+                onChange={e => setTargetCredits(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {targetNeeded ? (
+            <div className={`gr-sim-badge ${targetNeeded.achievable ? 'achievable' : 'unachievable'}`}>
+              {targetNeeded.achievable ? (
+                <>
+                  <Check size={14} strokeWidth={2.5} />
+                  <span>Achievable: Need {targetNeeded.neededSGPA.toFixed(2)} SGPA in next semester</span>
+                </>
+              ) : (
+                <>
+                  <AlertCircle size={14} />
+                  <span>Unattainable in 1 sem (Needs {targetNeeded.neededSGPA.toFixed(2)} SGPA &gt; 10.0)</span>
+                </>
+              )}
+            </div>
+          ) : (
+            <span style={{ fontSize: '0.76rem', color: 'var(--gr-text-tertiary)' }}>
+              Add completed semester grades to compute target forecasts.
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── ACADEMIC PROGRESSION CHART (COMPOSED RECHARTS) ── */}
+      {cgpaData.some(d => d.calcSgpa !== null) && (
+        <div className="gr-chart-card">
+          <div className="gr-chart-header">
+            <h3 className="gr-chart-title">Academic Progression (SGPA vs CGPA Trend)</h3>
+            <div className="gr-chart-legend">
+              <div className="gr-legend-item">
+                <div className="gr-legend-dot" style={{ background: '#a599ff' }} />
+                <span>SGPA (Semester)</span>
+              </div>
+              <div className="gr-legend-item">
+                <div className="gr-legend-dot" style={{ background: '#38bdf8' }} />
+                <span>CGPA (Cumulative)</span>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ width: '100%', height: 210 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={cgpaData} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="name" stroke="#8e8e93" fontSize={11} tickLine={false} />
+                <YAxis domain={[0, 10]} ticks={[0, 2.5, 5, 7.5, 10]} stroke="#8e8e93" fontSize={11} tickLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    background: '#141416',
+                    border: '1px solid #242428',
+                    borderRadius: '10px',
+                    fontSize: '0.8rem',
+                    color: '#fff'
+                  }}
+                />
+                <Bar dataKey="calcSgpa" name="SGPA" fill="#a599ff" radius={[6, 6, 0, 0]} maxBarSize={32} />
+                <Area type="monotone" dataKey="calcCgpa" name="CGPA" stroke="#38bdf8" fill="rgba(56,189,248,0.12)" strokeWidth={2.5} dot={{ fill: '#38bdf8', r: 4 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
           </div>
         </div>
       )}
 
-      {/* ── Grading Scale Reference ── */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1.25rem' }}>
-        {GRADE_OPTIONS.map(g => (
-          <span key={g.label} style={{
-            padding: '0.2rem 0.6rem', borderRadius: '999px', fontSize: '0.72rem', fontWeight: 700,
-            background: `${gradeColor(g.points)}18`, color: gradeColor(g.points),
-            border: `1px solid ${gradeColor(g.points)}40`,
-          }}>
-            {g.label} = {g.points}
-          </span>
-        ))}
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', marginLeft: '0.25rem' }}>pts</span>
-      </div>
-
-      {/* ── Semester Tabs + Add Semester ── */}
-      <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {semesters.map(sem => {
-          const sd = cgpaData.find(d => d.name === sem.name);
-          const isActive = activeSemId === sem.id;
-          return (
-            <div key={sem.id} style={{ 
-              display: 'flex', alignItems: 'center', 
-              background: isActive ? 'var(--accent-primary)' : 'rgba(255,255,255,0.03)',
-              border: `1px solid ${isActive ? 'var(--accent-primary)' : 'rgba(255,255,255,0.08)'}`,
-              borderRadius: '8px', overflow: 'hidden',
-              boxShadow: isActive ? '0 4px 12px rgba(245, 158, 11, 0.2)' : 'none',
-              transition: 'all 0.2s'
-            }}>
-              <button
-                onClick={() => { setActiveSemId(sem.id!); cancelInlineForm(); }}
-                style={{
-                  padding: '0.5rem 0.75rem', fontSize: '0.82rem',
-                  fontWeight: isActive ? 700 : 600, cursor: 'pointer',
-                  background: 'transparent',
-                  color: isActive ? '#000' : 'var(--text-secondary)',
-                  border: 'none',
-                  display: 'flex', alignItems: 'center', gap: '0.4rem'
-                }}
-              >
-                {sem.name}
-                {sd?.sgpa != null && (
-                  <span style={{ 
-                    opacity: 0.9, fontSize: '0.7rem', fontWeight: 800,
-                    background: isActive ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.1)', 
-                    padding: '0.1rem 0.35rem', borderRadius: '4px' 
-                  }}>
-                    {sd.sgpa.toFixed(1)}
-                  </span>
-                )}
-              </button>
-              <div style={{ width: '1px', height: '60%', background: isActive ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.06)' }} />
-              <button 
-                onClick={() => setConfirmDelete({type: 'semester', id: sem.id!})}
-                style={{ 
-                  padding: '0.5rem 0.6rem', background: 'transparent', border: 'none', 
-                  color: isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.3)', 
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'color 0.2s, background 0.2s'
-                }} 
-                title="Delete semester"
-                onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.color = isActive ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.3)'; e.currentTarget.style.background = 'transparent'; }}
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          );
-        })}
-
-        {showAddSem ? (
-          <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.05)', border: '1px solid var(--accent-primary)', borderRadius: '8px', overflow: 'hidden' }}>
-            <input
-              ref={semInputRef} autoFocus type="text" value={newSemName}
-              onChange={e => setNewSemName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleAddSemester(); if (e.key === 'Escape') setShowAddSem(false); }}
-              placeholder="e.g., Semester 3"
-              style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', width: '130px' }}
-            />
-            <button onClick={handleAddSemester} disabled={isSaving}
-              style={{ padding: '0.5rem 0.75rem', fontSize: '0.82rem', fontWeight: 600, background: 'var(--accent-primary)', color: '#000', border: 'none', cursor: 'pointer' }}>
-              {isSaving ? '...' : 'Add'}
-            </button>
-            <button onClick={() => setShowAddSem(false)} style={{ padding: '0.5rem', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <X size={15} />
+      {/* ── SEMESTER & COURSE BREAKDOWN ── */}
+      <div className="gr-semesters-list">
+        {semesters.length === 0 ? (
+          <div className="notes-empty-state">
+            <GraduationCap size={32} color="var(--gr-accent-purple)" />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>No semesters added</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--gr-text-tertiary)', margin: 0 }}>
+              Add your semesters and course grades to calculate SGPA, CGPA, and future targets.
+            </p>
+            <button
+              type="button"
+              className="gr-primary-add-btn"
+              onClick={() => {
+                setNewSemName('Semester 1');
+                setIsAddSemModalOpen(true);
+              }}
+              style={{ marginTop: '0.5rem' }}
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              <span>Add Semester 1</span>
             </button>
           </div>
         ) : (
-          <button onClick={() => { setShowAddSem(true); setTimeout(() => semInputRef.current?.focus(), 50); }}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.82rem', fontWeight: 600, padding: '0.5rem 0.85rem', borderRadius: '8px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px dashed rgba(255,255,255,0.15)', cursor: 'pointer', transition: 'all 0.2s' }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#fff'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
-          >
-            <Plus size={14} /> Add Semester
-          </button>
+          semesters.map((sem, idx) => {
+            const semSubs = subjects.filter(s => s.semesterId === sem.id);
+            const semData = cgpaData.find(d => d.id === sem.id);
+            const isExpanded = expandedSems.has(sem.id!);
+
+            return (
+              <div key={sem.id} className="gr-semester-card">
+                <div className="gr-sem-top">
+                  <div className="gr-sem-title-box">
+                    <button
+                      type="button"
+                      className="att-card-action-btn"
+                      onClick={() => toggleExpand(sem.id!)}
+                    >
+                      {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                    <h3 className="gr-sem-title">{sem.name || `Semester ${idx + 1}`}</h3>
+                    <span className="gr-sem-sgpa-pill">
+                      {semData?.calcSgpa ? `${semData.calcSgpa.toFixed(2)} SGPA` : 'Pending'}
+                    </span>
+                    <span className="gr-sem-credits">
+                      {semData?.credits || 0} Credits
+                    </span>
+                  </div>
+
+                  <div className="gr-sem-actions">
+                    {/* Direct Override Button */}
+                    <button
+                      type="button"
+                      className="att-card-action-btn"
+                      onClick={() => {
+                        setDirectSGPA(sem.sgpa ? String(sem.sgpa) : '');
+                        setDirectCredits(sem.totalCredits ? String(sem.totalCredits) : '24');
+                        setDirectSem(sem);
+                      }}
+                      title="Direct SGPA Override"
+                    >
+                      Direct SGPA
+                    </button>
+
+                    {/* Add Course Button */}
+                    <button
+                      type="button"
+                      className="att-primary-add-btn"
+                      style={{ padding: '0.35rem 0.85rem', fontSize: '0.76rem' }}
+                      onClick={() => {
+                        setCourseName('');
+                        setCourseCredits('4');
+                        setCourseGrade('A+');
+                        setEditingCourse(null);
+                        setActiveSemForCourse(sem.id!);
+                      }}
+                    >
+                      <Plus size={13} strokeWidth={2.5} />
+                      <span>Add Course</span>
+                    </button>
+
+                    {/* Delete Semester */}
+                    <button
+                      type="button"
+                      className="hb-card-delete-btn"
+                      onClick={() => setDeleteConfirm({ type: 'semester', id: sem.id! })}
+                      title="Delete Semester"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Courses List */}
+                {isExpanded && (
+                  <div className="gr-courses-table">
+                    {semSubs.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '1rem 0', color: 'var(--gr-text-tertiary)', fontSize: '0.8rem' }}>
+                        {sem.sgpa != null ? (
+                          <span>Direct SGPA configured ({sem.sgpa} SGPA, {sem.totalCredits} credits). Add courses if you wish to track individual grades.</span>
+                        ) : (
+                          <span>No courses added yet. Click "+ Add Course" to enter subject grades.</span>
+                        )}
+                      </div>
+                    ) : (
+                      semSubs.map(sub => {
+                        const gp = GRADE_MAP[sub.grade || 'A+'] ?? 10;
+                        const gradeColorHex = GRADE_OPTIONS.find(g => g.label === sub.grade)?.color || '#a599ff';
+                        const points = sub.credits * gp;
+
+                        return (
+                          <div key={sub.id} className="gr-course-row">
+                            <div className="gr-course-info">
+                              <span className="gr-course-name">{sub.name}</span>
+                              <span className="gr-course-credits-badge">{sub.credits} Credits</span>
+                            </div>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                              <span
+                                className="gr-grade-pill"
+                                style={{
+                                  background: `${gradeColorHex}18`,
+                                  color: gradeColorHex,
+                                  border: `1px solid ${gradeColorHex}35`
+                                }}
+                              >
+                                {sub.grade || 'A+'} ({gp})
+                              </span>
+
+                              <span className="gr-grade-points">{points} GP</span>
+
+                              <button
+                                type="button"
+                                className="att-card-action-btn"
+                                onClick={() => {
+                                  setCourseName(sub.name);
+                                  setCourseCredits(String(sub.credits));
+                                  setCourseGrade(sub.grade || 'A+');
+                                  setEditingCourse(sub);
+                                  setActiveSemForCourse(sem.id!);
+                                }}
+                              >
+                                <Edit2 size={13} />
+                              </button>
+
+                              <button
+                                type="button"
+                                className="hb-card-delete-btn"
+                                onClick={() => setDeleteConfirm({ type: 'subject', id: sub.id! })}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
         )}
       </div>
 
-      {/* ── Subjects Table ── */}
-      {activeSemId && (
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-          {/* Table Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1.25rem', borderBottom: '1px solid var(--border-subtle)', background: 'rgba(255,255,255,0.02)' }}>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 600 }}>
-              {semesters.find(s => s.id === activeSemId)?.name} — Subjects
-            </h3>
-            {!showInlineForm && !isDirectMode && (
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                {!activeSemester?.sgpa && (
-                  <button className="btn-secondary" onClick={() => setShowDirectForm(true)}
-                    style={{ fontSize: '0.82rem', padding: '0.45rem 0.85rem' }}>
-                    Set Direct SGPA
-                  </button>
-                )}
-                <button className="btn-primary" onClick={openAddRow}
-                  style={{ fontSize: '0.82rem', padding: '0.45rem 0.85rem' }}>
-                  <Plus size={14} /> Add Subject
-                </button>
-              </div>
-            )}
-            {isDirectMode && (
-              <button className="btn-secondary" onClick={handleClearDirectSGPA}
-                style={{ fontSize: '0.82rem', padding: '0.45rem 0.85rem', color: '#ef4444', borderColor: '#ef444440' }}>
-                Clear Direct SGPA
+      {/* ── ADD SEMESTER MODAL ── */}
+      {isAddSemModalOpen && (
+        <div className="notes-modal-overlay" onClick={() => setIsAddSemModalOpen(false)}>
+          <div className="notes-modal-content" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">Add Semester</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setIsAddSemModalOpen(false)}>
+                <X size={18} />
               </button>
-            )}
-          </div>
+            </div>
 
-          {showDirectForm && !isDirectMode && (
-            <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border-subtle)', background: 'rgba(124,58,237,0.06)' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-primary)' }}>Enter Direct SGPA</div>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <label style={{ fontSize: '0.76rem', color: 'var(--gr-text-tertiary)', fontWeight: 600 }}>
+              SEMESTER TITLE
+              <input
+                type="text"
+                placeholder="e.g. Semester 6, Fall 2026"
+                className="notes-search-bar notes-search-input"
+                style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                value={newSemName}
+                onChange={e => setNewSemName(e.target.value)}
+                autoFocus
+              />
+            </label>
+
+            <div className="notes-modal-footer">
+              <button type="button" className="gr-action-pill-btn" onClick={() => setIsAddSemModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" className="gr-primary-add-btn" onClick={handleAddSemester}>
+                Create Semester
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD / EDIT COURSE MODAL ── */}
+      {activeSemForCourse && (
+        <div className="notes-modal-overlay" onClick={() => setActiveSemForCourse(null)}>
+          <div className="notes-modal-content" style={{ maxWidth: '480px' }} onClick={e => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">{editingCourse ? 'Edit Course Grade' : 'Add Course Grade'}</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setActiveSemForCourse(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <label style={{ fontSize: '0.76rem', color: 'var(--gr-text-tertiary)', fontWeight: 600 }}>
+                COURSE NAME
                 <input
-                  type="number" step="0.01" min="0" max="10" placeholder="SGPA (e.g. 9.5)" value={directSGPA}
+                  type="text"
+                  placeholder="e.g. Operating Systems, Advanced AI"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                  value={courseName}
+                  onChange={e => setCourseName(e.target.value)}
+                  autoFocus
+                />
+              </label>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <label style={{ fontSize: '0.76rem', color: 'var(--gr-text-tertiary)', fontWeight: 600 }}>
+                  CREDITS
+                  <input
+                    type="number"
+                    min="1"
+                    max="12"
+                    className="notes-search-bar notes-search-input"
+                    style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                    value={courseCredits}
+                    onChange={e => setCourseCredits(e.target.value)}
+                  />
+                </label>
+
+                <label style={{ fontSize: '0.76rem', color: 'var(--gr-text-tertiary)', fontWeight: 600 }}>
+                  GRADE (10-POINT SCALE)
+                  <select
+                    value={courseGrade}
+                    onChange={e => setCourseGrade(e.target.value)}
+                    className="notes-search-bar"
+                    style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem', color: '#fff' }}
+                  >
+                    {GRADE_OPTIONS.map(g => (
+                      <option key={g.label} value={g.label} style={{ background: '#141416' }}>
+                        {g.label} ({g.points} Points)
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div className="notes-modal-footer">
+              <button type="button" className="gr-action-pill-btn" onClick={() => setActiveSemForCourse(null)}>
+                Cancel
+              </button>
+              <button type="button" className="gr-primary-add-btn" onClick={handleSaveCourse}>
+                {editingCourse ? 'Save Changes' : 'Add Course'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DIRECT SGPA OVERRIDE MODAL ── */}
+      {directSem && (
+        <div className="notes-modal-overlay" onClick={() => setDirectSem(null)}>
+          <div className="notes-modal-content" style={{ maxWidth: '440px' }} onClick={e => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">Direct SGPA ({directSem.name})</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setDirectSem(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <label style={{ fontSize: '0.76rem', color: 'var(--gr-text-tertiary)', fontWeight: 600 }}>
+                SGPA (0 - 10)
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.01"
+                  placeholder="e.g. 9.45"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                  value={directSGPA}
                   onChange={e => setDirectSGPA(e.target.value)}
-                  style={{ width: '130px', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid var(--accent-primary)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.88rem', outline: 'none' }}
+                  autoFocus
                 />
+              </label>
+
+              <label style={{ fontSize: '0.76rem', color: 'var(--gr-text-tertiary)', fontWeight: 600 }}>
+                TOTAL CREDITS
                 <input
-                  type="number" min="1" placeholder="Total Credits" value={directCredits}
+                  type="number"
+                  min="1"
+                  max="40"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                  value={directCredits}
                   onChange={e => setDirectCredits(e.target.value)}
-                  style={{ width: '130px', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.88rem', outline: 'none' }}
                 />
-                <button className="btn-primary" onClick={handleSaveDirectSGPA} disabled={isSaving} style={{ padding: '0.4rem 0.85rem', fontSize: '0.82rem' }}>
-                  {isSaving ? '...' : 'Save'}
-                </button>
-                <button className="btn-secondary" onClick={() => setShowDirectForm(false)} style={{ padding: '0.4rem 0.85rem', fontSize: '0.82rem' }}>
-                  Cancel
-                </button>
-              </div>
+              </label>
             </div>
-          )}
 
-          {isDirectMode ? (
-            <div style={{ padding: '3rem 1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-              <div style={{ fontSize: '3rem', fontWeight: 700, fontFamily: 'var(--font-display)', color: gradeColor(activeSemester!.sgpa!), marginBottom: '0.5rem' }}>
-                {activeSemester!.sgpa!.toFixed(2)}
-              </div>
-              <p style={{ fontSize: '0.9rem' }}>Using Direct SGPA ({activeSemester!.totalCredits} credits)</p>
-            </div>
-          ) : (
-            <>
-              <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
-              <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
-                  {['Subject Name', 'Credits', 'Grade', 'Points', 'Weighted', ''].map(h => (
-                    <th key={h} style={{
-                      padding: '0.6rem 1rem', textAlign: 'left',
-                      borderBottom: '1px solid var(--border-subtle)',
-                      color: 'var(--text-muted)', fontSize: '0.75rem',
-                      fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
-                    }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {/* Inline add/edit form row */}
-                {showInlineForm && (
-                  <tr style={{ background: 'rgba(124,58,237,0.06)', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '0.6rem 0.75rem' }}>
-                      <input
-                        ref={subNameRef}
-                        type="text"
-                        value={subName}
-                        onChange={e => setSubName(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSaveSubject(); if (e.key === 'Escape') cancelInlineForm(); }}
-                        placeholder="Subject name…"
-                        list="gpa-subject-suggestions"
-                        style={{
-                          width: '100%', padding: '0.4rem 0.6rem', borderRadius: '6px',
-                          border: '1px solid var(--accent-primary)',
-                          background: 'var(--bg-base)', color: 'var(--text-primary)',
-                          fontSize: '0.88rem', outline: 'none',
-                        }}
-                      />
-                      <datalist id="gpa-subject-suggestions">
-                        {timetableSubjects.map(s => <option key={s.id} value={s.name} />)}
-                      </datalist>
-                    </td>
-                    <td style={{ padding: '0.6rem 0.5rem' }}>
-                      <input
-                        type="number" min="1" max="10" value={subCredits}
-                        onChange={e => setSubCredits(e.target.value)}
-                        onKeyDown={e => { if (e.key === 'Enter') handleSaveSubject(); if (e.key === 'Escape') cancelInlineForm(); }}
-                        style={{
-                          width: '56px', padding: '0.4rem 0.5rem', borderRadius: '6px',
-                          border: '1px solid var(--border-subtle)',
-                          background: 'var(--bg-base)', color: 'var(--text-primary)',
-                          fontSize: '0.88rem', outline: 'none', textAlign: 'center',
-                        }}
-                      />
-                    </td>
-                    <td style={{ padding: '0.6rem 0.5rem' }}>
-                      <select
-                        value={subGrade}
-                        onChange={e => setSubGrade(e.target.value)}
-                        style={{
-                          padding: '0.4rem 0.5rem', borderRadius: '6px',
-                          border: '1px solid var(--border-subtle)',
-                          background: 'var(--bg-base)', color: gradeColor(GRADE_MAP[subGrade] ?? null),
-                          fontSize: '0.88rem', fontWeight: 700, outline: 'none', cursor: 'pointer',
-                        }}
-                      >
-                        {GRADE_OPTIONS.map(g => (
-                          <option key={g.label} value={g.label}>{g.label} ({g.points})</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td style={{ padding: '0.6rem 0.75rem', fontWeight: 700, color: gradeColor(GRADE_MAP[subGrade] ?? null) }}>
-                      {GRADE_MAP[subGrade] ?? '—'}
-                    </td>
-                    <td style={{ padding: '0.6rem 0.75rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      {GRADE_MAP[subGrade] != null ? ((GRADE_MAP[subGrade] ?? 0) * (parseInt(subCredits) || 0)).toFixed(1) : '—'}
-                    </td>
-                    <td style={{ padding: '0.6rem 0.75rem' }}>
-                      <div style={{ display: 'flex', gap: '0.4rem' }}>
-                        <button
-                          className="btn-primary"
-                          onClick={handleSaveSubject}
-                          disabled={isSaving}
-                          style={{ padding: '0.35rem 0.6rem', fontSize: '0.8rem' }}
-                          title="Save (Enter)"
-                        >
-                          {isSaving ? '...' : <><Check size={13} /> {editingSubId ? 'Update' : 'Save'}</>}
-                        </button>
-                        <button className="btn-icon" onClick={cancelInlineForm} title="Cancel (Escape)">
-                          <X size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )}
-
-                {/* Existing subjects */}
-                {activeSemSubjects.length === 0 && !showInlineForm ? (
-                  <tr>
-                    <td colSpan={6} style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                      No subjects yet — click <strong>Add Subject</strong> above to get started.
-                    </td>
-                  </tr>
-                ) : (
-                  activeSemSubjects.map(sub => {
-                    const gp = GRADE_MAP[sub.grade || ''];
-                    const isEditing = editingSubId === sub.id;
-                    return (
-                      <tr key={sub.id}
-                        style={{
-                          borderBottom: '1px solid var(--border-subtle)',
-                          background: isEditing ? 'rgba(124,58,237,0.04)' : 'transparent',
-                          transition: 'background 0.15s',
-                        }}
-                      >
-                        <td style={{ padding: '0.7rem 1rem', fontWeight: 500, fontSize: '0.9rem' }}>{sub.name}</td>
-                        <td style={{ padding: '0.7rem 1rem', color: 'var(--text-secondary)' }}>{sub.credits}</td>
-                        <td style={{ padding: '0.7rem 1rem' }}>
-                          <span style={{
-                            padding: '0.15rem 0.55rem', borderRadius: '4px', fontSize: '0.82rem',
-                            fontWeight: 700, background: `${gradeColor(gp ?? null)}18`,
-                            color: gradeColor(gp ?? null),
-                          }}>
-                            {sub.grade || '—'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '0.7rem 1rem', fontWeight: 700, color: gradeColor(gp ?? null) }}>
-                          {gp != null ? gp : '—'}
-                        </td>
-                        <td style={{ padding: '0.7rem 1rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                          {gp != null ? (gp * sub.credits).toFixed(1) : '—'}
-                        </td>
-                        <td style={{ padding: '0.7rem 1rem' }}>
-                          <div style={{ display: 'flex', gap: '0.25rem' }}>
-                            <button className="btn-icon" onClick={() => openEditRow(sub)} title="Edit">
-                              <Edit2 size={13} />
-                            </button>
-                            <button className="btn-icon danger" onClick={() => setConfirmDelete({type: 'subject', id: sub.id!})} title="Delete">
-                              <Trash2 size={13} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-
-                {/* Totals row */}
-                {activeSemSubjects.length > 0 && (
-                  <tr style={{ background: 'rgba(255,255,255,0.03)', borderTop: '2px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '0.75rem 1rem', fontWeight: 700, fontSize: '0.9rem' }}>Semester Total</td>
-                    <td style={{ padding: '0.75rem 1rem', fontWeight: 700 }}>
-                      {activeSemSubjects.reduce((s, sub) => s + sub.credits, 0)} cr
-                    </td>
-                    <td colSpan={2} style={{ padding: '0.75rem 1rem' }}>
-                      <span style={{ fontWeight: 700, color: gradeColor(activeSGPA), fontSize: '1rem' }}>
-                        SGPA: {activeSGPA != null ? activeSGPA.toFixed(2) : '—'}
-                      </span>
-                    </td>
-                    <td colSpan={2} style={{ padding: '0.75rem 1rem' }}>
-                      <span style={{ fontWeight: 700, color: gradeColor(currentCGPA), fontSize: '0.9rem' }}>
-                        CGPA: {currentCGPA != null ? currentCGPA.toFixed(2) : '—'}
-                      </span>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Add button at bottom when form is not open */}
-          {!showInlineForm && (
-            <div style={{ padding: '0.6rem 1rem', borderTop: '1px solid var(--border-subtle)' }}>
-              <button
-                onClick={openAddRow}
-                style={{
-                  background: 'transparent', border: 'none', color: 'var(--text-muted)',
-                  cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.35rem',
-                  padding: '0.3rem 0', width: '100%', transition: 'color 0.15s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent-primary)')}
-                onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}
-              >
-                <Plus size={14} /> Add subject
+            <div className="notes-modal-footer">
+              <button type="button" className="gr-action-pill-btn" onClick={() => setDirectSem(null)}>
+                Cancel
+              </button>
+              <button type="button" className="gr-primary-add-btn" onClick={handleSaveDirectSGPA}>
+                Save SGPA
               </button>
             </div>
-          )}
-          </>
-          )}
+          </div>
         </div>
       )}
 
-      {/* No semesters yet */}
-      {semesters.length === 0 && !showAddSem && (
-        <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-          <Calculator size={40} style={{ opacity: 0.3, marginBottom: '1rem' }} />
-          <p style={{ marginBottom: '1rem' }}>No semesters yet. Add your first semester to get started.</p>
-          <button className="btn-primary" onClick={() => setShowAddSem(true)}>
-            <Plus size={16} /> Add First Semester
-          </button>
-        </div>
-      )}
+      {/* ── DELETE CONFIRM DIALOG ── */}
       <ConfirmDialog
-        open={!!confirmDelete}
-        title={confirmDelete?.type === 'semester' ? 'Delete Semester' : 'Delete Subject'}
-        message={confirmDelete?.type === 'semester' ? 'Delete this semester and all its subjects? This cannot be undone.' : 'Delete this subject? This cannot be undone.'}
-        confirmLabel="Delete"
-        danger
-        onConfirm={() => { if (confirmDelete) { confirmDelete.type === 'semester' ? handleDeleteSemester(confirmDelete.id) : handleDeleteSubject(confirmDelete.id); } setConfirmDelete(null); }}
-        onCancel={() => setConfirmDelete(null)}
+        isOpen={!!deleteConfirm}
+        title={`Delete ${deleteConfirm?.type === 'semester' ? 'Semester' : 'Course'}`}
+        message={`Are you sure you want to delete this ${deleteConfirm?.type === 'semester' ? 'semester and all its course records' : 'course grade'}?`}
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={async () => {
+          if (!deleteConfirm) return;
+          try {
+            if (deleteConfirm.type === 'semester') {
+              await deleteDoc(doc(db, 'semesters', deleteConfirm.id));
+              toast.success('Semester deleted');
+            } else {
+              await deleteDoc(doc(db, 'semester_subjects', deleteConfirm.id));
+              toast.success('Course deleted');
+            }
+          } catch (err) {
+            console.error(err);
+            toast.error('Failed to delete');
+          }
+          setDeleteConfirm(null);
+        }}
+        onCancel={() => setDeleteConfirm(null)}
       />
     </div>
   );

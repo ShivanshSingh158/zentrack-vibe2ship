@@ -48,3 +48,6 @@ export const progressColor = (pct: number) => {
 };
 
 export { fetchYouTubePlaylist, extractPlaylistId } from '../../services/youtube';
+export { fetchVideoTranscript, transcriptToPlainText, formatSeconds } from '../../services/youtubeTranscriptService';
+export type { TranscriptCue, TranscriptResult } from '../../services/youtubeTranscriptService';
+

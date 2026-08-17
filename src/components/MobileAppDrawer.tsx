@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { X, LayoutGrid, Edit2, Check } from 'lucide-react';
+import {
+  X, LayoutGrid, Edit2, Check,
+  BookOpen, CheckSquare, Calendar, StickyNote, Target, Dumbbell, Zap, GraduationCap,
+  FileText, Award, Briefcase, BarChart3
+} from 'lucide-react';
 
 interface MobileAppDrawerProps {
   isOpen: boolean;
@@ -11,18 +15,17 @@ interface MobileAppDrawerProps {
 }
 
 export const MOBILE_APPS = [
-  { name: 'Tasks', img: 'https://upload.wikimedia.org/wikipedia/commons/5/5b/Google_Tasks_2021.svg', route: '/tasks' },
-  { name: 'Calendar', img: 'https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg', route: '/calendar' },
-  { name: 'Notes', img: 'https://img.icons8.com/color/96/000000/google-keep.png', route: '/notes' },
-  { name: 'Analytics', img: 'https://img.icons8.com/color/96/000000/google-analytics.png', route: '/analytics' },
-  { name: 'Assignments', img: 'https://img.icons8.com/color/96/000000/google-classroom.png', route: '/assignments' },
-  { name: 'Goals', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Trophy/3D/trophy_3d.png', route: '/goals' },
-  { name: 'Habits', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Counterclockwise%20arrows%20button/3D/counterclockwise_arrows_button_3d.png', route: '/habits' },
-  { name: 'Jobs', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Briefcase/3D/briefcase_3d.png', route: '/jobs' },
-  { name: 'Learning', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Brain/3D/brain_3d.png', route: '/learning' },
-  { name: 'Attendance', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Graduation%20cap/3D/graduation_cap_3d.png', route: '/attendance' },
-  { name: 'Grades', img: 'https://img.icons8.com/color/96/000000/exam.png', route: '/grades' },
-  { name: 'Gym', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Person%20lifting%20weights/3D/person_lifting_weights_3d.png', route: '/gym' },
+  { name: 'Tasks', icon: <CheckSquare size={26} color="#a599ff" strokeWidth={2.2} />, route: '/tasks', isLucide: true },
+  { name: 'Calendar', icon: <Calendar size={26} color="#38bdf8" strokeWidth={2.2} />, route: '/calendar', isLucide: true },
+  { name: 'Notes', icon: <StickyNote size={26} color="#fad7a1" strokeWidth={2.2} />, route: '/notes', isLucide: true },
+  { name: 'Goals', icon: <Target size={26} color="#818cf8" strokeWidth={2.2} />, route: '/goals', isLucide: true },
+  { name: 'Habits', icon: <Zap size={26} color="#f59e0b" strokeWidth={2.2} />, route: '/habits', isLucide: true },
+  { name: 'Learning', icon: <BookOpen size={26} color="#5eda9e" strokeWidth={2.2} />, route: '/learning', isLucide: true },
+  { name: 'Attendance', icon: <GraduationCap size={26} color="#38bdf8" strokeWidth={2.2} />, route: '/attendance', isLucide: true },
+  { name: 'Assignments', icon: <FileText size={26} color="#f472b6" strokeWidth={2.2} />, route: '/assignments', isLucide: true },
+  { name: 'Jobs', icon: <Briefcase size={26} color="#fbbf24" strokeWidth={2.2} />, route: '/jobs', isLucide: true },
+  { name: 'Grades', icon: <Award size={26} color="#a599ff" strokeWidth={2.2} />, route: '/grades', isLucide: true },
+  { name: 'Analytics', icon: <BarChart3 size={26} color="#38bdf8" strokeWidth={2.2} />, route: '/analytics', isLucide: true },
 ];
 
 export const MobileAppDrawer: React.FC<MobileAppDrawerProps> = ({ isOpen, onClose, pinnedApps, onTogglePin }) => {
@@ -160,8 +163,13 @@ export const MobileAppDrawer: React.FC<MobileAppDrawerProps> = ({ isOpen, onClos
                       onPointerDown={(e) => (e.currentTarget.style.transform = 'scale(0.95)')}
                       onPointerUp={(e) => (e.currentTarget.style.transform = 'scale(1)')}
                       onPointerLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-                    >
-                      <img src={app.img} alt={app.name} style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                      {app.isLucide ? (
+                        <div style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px' }}>
+                          {app.icon}
+                        </div>
+                      ) : (
+                        <img src={(app as any).img} alt={app.name} style={{ width: '40px', height: '40px', objectFit: 'contain' }} />
+                      )}
                       <span style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.8)', fontWeight: 500 }}>
                         {app.name}
                       </span>

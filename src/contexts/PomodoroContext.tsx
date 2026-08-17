@@ -9,7 +9,6 @@ import {
 import { db, auth } from '../services/firebase';
 import { getLocalDateString } from '../utils/dateUtils';
 import { sendSystemNotification } from '../utils/notifications';
-import { sendPushNotification } from '../services/fcm';
 
 
 interface PomodoroState {
@@ -32,6 +31,7 @@ interface PomodoroContextType {
   dismissTimer: () => void;
   formatTime: (seconds: number) => string;
   focusMode: boolean;
+  setFocusMode: (mode: boolean) => void;
   toggleFocusMode: () => void;
   setAmbientSound: (sound: 'none' | 'rain' | 'soft-rain' | 'forest' | 'waves') => void;
   setDuration: (minutes: number) => void;
@@ -208,18 +208,6 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
       const elapsed = elapsedRef.current > 0 ? elapsedRef.current : Math.round((sessionStartTimeRef.current > 0 ? (Date.now() - sessionStartTimeRef.current) / 60000 : 25));
       syncTimeToLearning(state.learningTopicId, state.learningSubTaskId, elapsed);
 
-      // ── FCM Push Notification ───────────────────────────────────────────────────
-      const user = auth.currentUser;
-      if (user) {
-        sendPushNotification({
-          userIds: [user.uid],
-          title: '✅ Pomodoro Complete!',
-          body: `“${state.taskText}” — ${elapsed} min focused. Take a well-earned break.`,
-          tag: 'pomodoro-done',
-          url: '/',
-        }).catch(() => { /* non-critical */ });
-      }
-
       elapsedRef.current = 0;
       sessionStartTimeRef.current = 0;
       setState(prev => {
@@ -302,6 +290,8 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
       saveState(newState);
       return newState;
     });
+    setFocusMode(true);
+    toast.success(`Focus timer started for "${taskText}"`);
   }, [saveState]);
 
   const pauseTimer  = useCallback(() => {
@@ -377,7 +367,7 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
   return (
     <PomodoroContext.Provider value={{
       state, startTimer, pauseTimer, resumeTimer, resetTimer,
-      dismissTimer, formatTime, focusMode, toggleFocusMode,
+      dismissTimer, formatTime, focusMode, setFocusMode, toggleFocusMode,
       setAmbientSound, setDuration,
     }}>
       {children}

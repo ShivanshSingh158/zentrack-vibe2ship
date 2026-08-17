@@ -4,7 +4,6 @@
 import { addDoc, collection, updateDoc, doc, deleteDoc, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { addEventToGoogleCalendar, deleteGoogleCalendarEvent } from '../../services/googleCalendar';
-import { sendPushNotification } from '../../services/fcm';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { logApi, logWebSocket } from '../../utils/networkLogger';
 import { recordApprovalRejection, recordApprovalTimeout, recordApprovalGrant, recordEmailSent, recordGhostTaskCreated } from '../../services/agentMemoryPersistence';

@@ -26,7 +26,8 @@ The web app calls Gemini **directly** through `/api/gemini-proxy` (Vercel server
 ```
 zentrack-vibe2ship/
 ├── .agents/
-│   └── SYSTEM_ARCHITECTURE.md     ← THIS FILE (single source of truth)
+│   ├── SYSTEM_ARCHITECTURE.md         ← THIS FILE (single source of truth)
+│   └── DESIGN_SYSTEM_UNIFORMITY.md    ← Universal Design System, Icon & Color Uniformity Spec
 ├── api/                            Vercel Serverless Functions (server-side only, never bundled)
 │   ├── gemini-proxy.js             CRITICAL: Gemini API proxy + Firebase auth + rate limiting + Sarvam TTS
 │   ├── gemini-proxy-stream.js      Streaming Gemini proxy variant

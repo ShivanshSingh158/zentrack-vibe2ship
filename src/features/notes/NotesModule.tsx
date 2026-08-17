@@ -1,9 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, doc, deleteDoc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { uploadFileToCloudinary } from '../../services/cloudinary';
 import type { StorageNode } from '../../types/index';
-import { Folder, File as FileIcon, FileText, Image as ImageIcon, Trash2, X, ChevronRight, ChevronDown, Upload, ArrowLeft, MoreVertical, Edit2, Move, Search, HardDrive, Sparkles, List, MessageSquare, Download, AlignLeft, Columns, Eye, Loader2, User, Bot } from 'lucide-react';
+import {
+  Folder, FileText, Image as ImageIcon, Trash2, X, ChevronRight,
+  Upload, ArrowLeft, MoreVertical, Edit2, Move, Search, Sparkles,
+  Download, AlignLeft, Columns, Eye, Loader2, Plus, File, Check,
+  FolderPlus, CheckSquare, Square, RefreshCw, FileDown, Pin
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import ReactMarkdown from 'react-markdown';
@@ -13,23 +18,22 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import html2pdf from 'html2pdf.js';
 import { startNoteAIChat } from '../../services/gemini';
-// import { extractTextFromPdf, extractTextFromDocx } from '../../services/documentParser';
 import { NotesEditor } from './NotesEditor';
-import { NotesAIPanel, extractMarkdownBlocks, TypingDots, type ChatMessage } from './NotesAIPanel';
+import { NotesAIPanel, extractMarkdownBlocks, type ChatMessage } from './NotesAIPanel';
 
 export const NotesModule = () => {
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [nodes, setNodes] = useState<StorageNode[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
-  
+
   // Search & Sort States
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'newest'|'oldest'|'name-asc'|'name-desc'|'size-desc'>('newest');
+  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'name-asc' | 'name-desc' | 'size-desc'>('newest');
 
   // Drag & Drop State
   const [isDraggingOver, setIsDraggingOver] = useState(false);
-  const dragCounter = useRef(0);
+  const [dragTargetFolderId, setDragTargetFolderId] = useState<string | null>(null);
 
   // Bulk Select State
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -38,24 +42,25 @@ export const NotesModule = () => {
 
   // Modals & Viewer States
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string }>({ isOpen: false, id: '' });
   const [newFolderModal, setNewFolderModal] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-  
-  // Context Menu States
+
+  // Context Menu & Move States
   const [contextMenuNode, setContextMenuNode] = useState<StorageNode | null>(null);
   const [renameModal, setRenameModal] = useState<{ isOpen: boolean; node: StorageNode | null; newName: string }>({ isOpen: false, node: null, newName: '' });
   const [moveModal, setMoveModal] = useState<{ isOpen: boolean; node: StorageNode | null }>({ isOpen: false, node: null });
-  
+
   // Note Editor State
   const [activeNote, setActiveNote] = useState<StorageNode | null>(null);
-  const [saveStatus, setSaveStatus] = useState<'saved'|'saving'|'error'>('saved');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const activeNoteRef = useRef<StorageNode | null>(null);
 
   // Note Enhancements State
-  const [viewMode, setViewMode] = useState<'split'|'edit'|'preview'>('split');
+  const [viewMode, setViewMode] = useState<'split' | 'edit' | 'preview'>('split');
   const [showAiPanel, setShowAiPanel] = useState(false);
-  const [chatHistory, setChatHistory] = useState<{role: 'user'|'model', text: string, model?: string}[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiQuestion, setAiQuestion] = useState('');
   const [isAiExpanded, setIsAiExpanded] = useState(false);
@@ -63,33 +68,24 @@ export const NotesModule = () => {
 
   // File Viewer State
   const [viewingFile, setViewingFile] = useState<StorageNode | null>(null);
-  const [documentText, setDocumentText] = useState('');
-  const [isExtracting, setIsExtracting] = useState(false);
 
   useEffect(() => {
     activeNoteRef.current = activeNote;
   }, [activeNote]);
 
-  // Lock main body scroll when in full-screen editor or viewer
+  // Lock main body scroll when in studio editor or file viewer
   useEffect(() => {
     if (activeNote || viewingFile) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
-
-    if (showAiPanel) {
-      document.body.classList.add('ai-panel-open');
-    } else {
-      document.body.classList.remove('ai-panel-open');
-    }
-
     return () => {
       document.body.style.overflow = '';
-      document.body.classList.remove('ai-panel-open');
     };
-  }, [activeNote, viewingFile, showAiPanel]);
+  }, [activeNote, viewingFile]);
 
+  // Load Storage Nodes from Firestore
   useEffect(() => {
     const user = auth.currentUser;
     if (!user) return;
@@ -106,7 +102,6 @@ export const NotesModule = () => {
           setIsAdmin(false);
         }
       } catch (err) {
-        console.error("Failed to fetch user admin status", err);
         setIsAdmin(false);
       } finally {
         const q = query(collection(db, 'storage_nodes'), where('userId', '==', user.uid));
@@ -130,25 +125,22 @@ export const NotesModule = () => {
   }, []);
 
   // Filtering and Sorting
-  const filteredNodes = React.useMemo(() => {
+  const filteredNodes = useMemo(() => {
     let result = nodes;
-    
-    // If searching globally, ignore current folder logic
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter(n => 
-        n.name.toLowerCase().includes(q) || 
+      result = result.filter(n =>
+        n.name.toLowerCase().includes(q) ||
         (n.type === 'note' && n.content?.toLowerCase().includes(q))
       );
     } else {
-      // Otherwise, show only current directory
       result = result.filter(n => n.parentId === currentFolderId);
     }
 
-    // Sort
     result.sort((a, b) => {
-      if (sortBy === 'newest') return b.createdAt - a.createdAt;
-      if (sortBy === 'oldest') return a.createdAt - b.createdAt;
+      if (sortBy === 'newest') return (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt);
+      if (sortBy === 'oldest') return (a.createdAt || 0) - (b.createdAt || 0);
       if (sortBy === 'name-asc') return a.name.localeCompare(b.name);
       if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
       if (sortBy === 'size-desc') return (b.size || 0) - (a.size || 0);
@@ -184,23 +176,7 @@ export const NotesModule = () => {
     return crumbs;
   };
 
-  const getParentPath = (parentId: string | null) => {
-    if (!parentId) return 'My Storage';
-    const crumbs = [];
-    let curr: string | null | undefined = parentId;
-    while (curr) {
-      const node = nodes.find(n => n.id === curr);
-      if (node) {
-        crumbs.unshift(node.name);
-        curr = node.parentId;
-      } else {
-        break;
-      }
-    }
-    crumbs.unshift('My Storage');
-    return crumbs.join(' / ');
-  };
-
+  // Create Folder
   const handleCreateFolder = async () => {
     if (!newFolderName.trim()) return;
     try {
@@ -221,1302 +197,751 @@ export const NotesModule = () => {
     }
   };
 
-  const handleNewNote = () => {
-    const newNote: StorageNode = {
-      userId: auth.currentUser!.uid,
-      type: 'note',
-      name: '',
-      content: '',
-      parentId: currentFolderId,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    setActiveNote(newNote);
-  };
-
-  const handleSaveNote = useCallback(async (silent = false) => {
-    const noteToSave = activeNoteRef.current;
-    if (!noteToSave) return;
-    
-    setSaveStatus('saving');
+  // Create New Note
+  const handleCreateNote = async () => {
     try {
-      const noteData = { ...noteToSave, updatedAt: Date.now() };
-      if (noteData.id) {
-        const { id, ...data } = noteData;
-        await updateDoc(doc(db, 'storage_nodes', id), data);
-        setSaveStatus('saved');
-        if (!silent) toast.success('Saved');
-      } else {
-        if (!noteData.name.trim() && !noteData.content?.trim()) {
-          setSaveStatus('saved');
-          return;
-        }
-        const dRef = await addDoc(collection(db, 'storage_nodes'), {
-           ...noteData,
-           name: noteData.name || 'Untitled Note'
-        });
-        const savedNote = { ...noteData, id: dRef.id };
-        setActiveNote(savedNote);
-        setSaveStatus('saved');
-        if (!silent) toast.success('Note created');
-      }
+      const newNoteData = {
+        userId: auth.currentUser!.uid,
+        type: 'note' as const,
+        name: 'Untitled Note',
+        content: '# New Note\n\nStart writing here...',
+        parentId: currentFolderId,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      const docRef = await addDoc(collection(db, 'storage_nodes'), newNoteData);
+      const createdNote: StorageNode = { id: docRef.id, ...newNoteData };
+      setActiveNote(createdNote);
+      setChatHistory([]);
+      setShowAiPanel(false);
+      toast.success("Note created");
     } catch (err) {
       console.error(err);
-      setSaveStatus('error');
-      if (!silent) toast.error('Failed to save note');
+      toast.error("Failed to create note");
     }
-  }, []);
-
-  useEffect(() => {
-    if (!activeNote) return;
-    const isNewAndEmpty = !activeNote.id && !activeNote.name.trim() && !activeNote.content?.trim();
-    if (isNewAndEmpty) return;
-
-    setSaveStatus('saving');
-    const timer = setTimeout(() => {
-      handleSaveNote(true);
-    }, 1500);
-    return () => clearTimeout(timer);
-  }, [activeNote?.content, activeNote?.name, handleSaveNote]);
-
-
-  const handleExport = (format: 'md' | 'txt' | 'pdf') => {
-    if (!activeNote?.content) {
-      toast.error('Note is empty.');
-      return;
-    }
-
-    if (format === 'pdf') {
-      const parsedHtml = document.querySelector('#hidden-pdf-export-content')?.innerHTML || activeNote.content;
-      
-      const element = document.createElement('div');
-      element.innerHTML = `
-        <div style="font-family: 'Inter', system-ui, sans-serif; padding: 40px; background: white; color: black; max-width: 800px; margin: 0 auto;">
-          <style>
-            /* Force light mode for PDF export */
-            .markdown-body { color: #1f2328 !important; background: transparent !important; font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif !important; font-size: 14px; line-height: 1.4; word-wrap: break-word; }
-            .markdown-body h1, .markdown-body h2, .markdown-body h3, .markdown-body h4, .markdown-body h5, .markdown-body h6 { color: #1f2328 !important; margin-top: 16px; margin-bottom: 8px; font-weight: 600; line-height: 1.25; }
-            .markdown-body h1 { font-size: 2em; padding-bottom: .3em; border-bottom: 1px solid #d0d7de; }
-            .markdown-body h2 { font-size: 1.5em; padding-bottom: .3em; border-bottom: 1px solid #d0d7de; }
-            .markdown-body p, .markdown-body blockquote, .markdown-body ul, .markdown-body ol, .markdown-body dl, .markdown-body table, .markdown-body pre, .markdown-body details { margin-top: 0; margin-bottom: 8px; }
-            .markdown-body p:empty { display: none; }
-            .markdown-body blockquote { padding: 0 1em; color: #656d76 !important; border-left: .25em solid #d0d7de; margin: 0 0 8px 0; }
-            .markdown-body ul, .markdown-body ol { padding-left: 2em; }
-            .markdown-body code, .markdown-body tt { padding: .2em .4em; margin: 0; font-size: 85%; background-color: rgba(175,184,193,0.2) !important; border-radius: 6px; font-family: ui-monospace,SFMono-Regular,SF Mono,Menlo,Consolas,Liberation Mono,monospace; }
-            .markdown-body pre { padding: 16px; overflow: auto; font-size: 85%; line-height: 1.45; background-color: #f6f8fa !important; border-radius: 6px; }
-            .markdown-body pre code { display: inline; max-width: auto; padding: 0; margin: 0; overflow: visible; line-height: inherit; word-wrap: normal; background-color: transparent !important; border: 0; }
-            .markdown-body table { display: block; width: 100%; width: max-content; max-width: 100%; overflow: auto; margin-top: 0; margin-bottom: 16px; border-spacing: 0; border-collapse: collapse; }
-            .markdown-body table th { font-weight: 600; }
-            .markdown-body table th, .markdown-body table td { padding: 6px 13px; border: 1px solid #d0d7de; }
-            .markdown-body table tr { background-color: #ffffff; border-top: 1px solid #hsla(210,18%,87%,1); }
-            .markdown-body table tr:nth-child(2n) { background-color: #f6f8fa; }
-            
-            /* Clean up UI elements that shouldn't be printed */
-            .btn-primary, .btn-secondary, button { display: none !important; }
-          </style>
-          
-          <h1 style="border-bottom: 2px solid #e1e4e8; padding-bottom: 12px; margin-bottom: 24px; font-size: 28px; font-weight: 700; color: #1a1a1a;">
-            ${activeNote.name || 'Untitled Note'}
-          </h1>
-          <div class="markdown-body">
-            ${parsedHtml}
-          </div>
-        </div>
-      `;
-      const opt = {
-        margin:       0.5,
-        filename:     `${activeNote.name || 'Note'}.pdf`,
-        image:        { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' as const }
-      };
-      toast.success('Generating PDF...');
-      html2pdf().set(opt).from(element).save();
-      return;
-    }
-
-    const safeContent = activeNote.content || '';
-    const content = format === 'md' ? safeContent : safeContent.replace(/[#_*~`]/g, '');
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${activeNote.name || 'note'}.${format}`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
+  // Debounced Auto-Save
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
-    noteAiSession.current = null;
-    setChatHistory([]);
-  }, [activeNote?.id, viewingFile?.id]);
+    if (!activeNote || !activeNote.id) return;
+    setSaveStatus('saving');
 
-  const sendChatMessage = async (prompt: string) => {
-    if (!prompt.trim()) return;
-    
-    if (!noteAiSession.current) {
-      const contentToAnalyze = activeNote?.content || documentText || '';
-      const title = activeNote?.name || viewingFile?.name || '';
-      noteAiSession.current = startNoteAIChat(title, contentToAnalyze);
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        const noteRef = doc(db, 'storage_nodes', activeNote.id!);
+        await updateDoc(noteRef, {
+          name: activeNote.name,
+          content: activeNote.content || '',
+          updatedAt: Date.now()
+        });
+        setSaveStatus('saved');
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+        setSaveStatus('error');
+      }
+    }, 800);
+
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [activeNote?.content, activeNote?.name]);
+
+  // File Upload via Cloudinary
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const uploadedFiles = e.target.files;
+    if (!uploadedFiles || uploadedFiles.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      for (let i = 0; i < uploadedFiles.length; i++) {
+        const file = uploadedFiles[i];
+        setUploadProgress(Math.round(((i + 1) / uploadedFiles.length) * 100));
+
+        let fileType: 'pdf' | 'docx' | 'image' | 'file' = 'file';
+        if (file.type.includes('pdf')) fileType = 'pdf';
+        else if (file.type.includes('word') || file.name.endsWith('.docx')) fileType = 'docx';
+        else if (file.type.startsWith('image/')) fileType = 'image';
+
+        const secureUrl = await uploadFileToCloudinary(file);
+
+        await addDoc(collection(db, 'storage_nodes'), {
+          userId: auth.currentUser!.uid,
+          type: 'file',
+          fileType,
+          name: file.name,
+          url: secureUrl,
+          size: file.size,
+          mimeType: file.type,
+          parentId: currentFolderId,
+          createdAt: Date.now(),
+          updatedAt: Date.now()
+        });
+      }
+      toast.success("Files uploaded successfully");
+    } catch (err) {
+      console.error(err);
+      toast.error("File upload failed");
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(null);
+      e.target.value = '';
     }
-    
-    setChatHistory(prev => [...prev, { role: 'user', text: prompt }]);
+  };
+
+  // AI Chat Handlers for Notes Studio
+  const handleAiAction = async (promptText: string) => {
+    if (!promptText.trim() || isAiLoading) return;
+
+    const userMsg: ChatMessage = { role: 'user', text: promptText };
+    setChatHistory(prev => [...prev, userMsg]);
     setIsAiLoading(true);
     setAiQuestion('');
-    
+
     try {
-      let fullText = '';
-      const result = await noteAiSession.current.sendMessageStream(prompt, (chunk: string) => {
-        fullText = chunk;
-        setChatHistory(prev => {
-          const newHistory = [...prev];
-          if (newHistory[newHistory.length - 1]?.role === 'model') {
-            newHistory[newHistory.length - 1].text = fullText;
-          } else {
-            newHistory.push({ role: 'model', text: fullText });
-          }
-          return newHistory;
-        });
-      });
-      
-      setChatHistory(prev => {
-        const newHistory = [...prev];
-        if (newHistory[newHistory.length - 1]?.role === 'model') {
-          newHistory[newHistory.length - 1].model = result.model;
-        }
-        return newHistory;
-      });
-    } catch (err: any) {
-      toast.error(err.message || 'AI request failed');
+      if (!noteAiSession.current) {
+        const initialContext = `Note Title: "${activeNote?.name || 'Untitled'}"\n\nNote Content:\n${activeNote?.content || '(empty)'}`;
+        noteAiSession.current = await startNoteAIChat(initialContext);
+      }
+
+      const result = await noteAiSession.current.sendMessage(promptText);
+      const responseText = result.response.text();
+
+      setChatHistory(prev => [...prev, { role: 'model', text: responseText, model: 'gemini-2.5-flash' }]);
+    } catch (err) {
+      console.error("AI Note Chat Error:", err);
+      setChatHistory(prev => [...prev, {
+        role: 'model',
+        text: "⚠️ I encountered an error communicating with Gemini. Please verify your connection or try again."
+      }]);
     } finally {
       setIsAiLoading(false);
     }
   };
 
-  const handleAiAction = (action: 'summarize' | 'concepts' | 'flashcards' | 'question') => {
-    if (action === 'question') {
-      if (!aiQuestion.trim()) { toast.error('Please enter a question.'); return; }
-      sendChatMessage(aiQuestion);
-    } else if (action === 'summarize') {
-      sendChatMessage(
-        'Produce a complete, exhaustive analysis of this document. Include: (1) A rich multi-paragraph Executive Summary grounded entirely in the document content — minimum 3 detailed paragraphs, (2) The Central Thesis or Main Argument, (3) ALL Key Points with direct quotes or close paraphrases — do not artificially limit the number, (4) Methodology or Approach used (if applicable), (5) All Limitations, Caveats, or Assumptions stated in the document, (6) Key Data, Statistics, or Findings with exact values, (7) End with "Document Coverage: [X] pages analyzed, [Y] key concepts identified". Be exhaustive. Write as much as this document demands.'
-      );
-    } else if (action === 'concepts') {
-      sendChatMessage(
-        'Extract and define EVERY important term, concept, formula, and definition in this document — miss nothing, not even minor but important terms. For each concept: (1) Give the EXACT definition as stated in the document (not your interpretation), (2) Group related concepts under clear thematic headers, (3) Reproduce all equations and mathematical notations exactly as they appear with LaTeX formatting, (4) Note page/section references for each concept, (5) Include all acronyms with full expansions, (6) Identify cross-concept relationships and dependencies. Be exhaustive and surgical in your extraction.'
-      );
-    } else if (action === 'flashcards') {
-      sendChatMessage(
-        'Generate 15-20 high-yield flashcards sourced directly from this document. For each card: Q: [question testing deep understanding, not just recall] A: [precise, complete answer from document] Source: "[exact quote from doc] (Page N)". Include a mix of: definition cards, comparison cards, cause-effect cards, application/calculation cards, and tricky edge case cards. Difficulty: 30% basic recall, 40% application, 30% deep understanding. End with a personalised Study Tip based on this content\'s specific structure and difficulty.'
-      );
-    }
-  };
-
-  const handleAnalyzeDocument = async () => {
-    if (!viewingFile || !viewingFile.url) return;
-    setShowAiPanel(true);
-    if (documentText) return; // Already extracted
-
-    setIsExtracting(true);
-    setChatHistory([]);
-    try {
-      let text = '';
-
-      if (viewingFile.fileType === 'pdf') {
-        // ── Real PDF text extraction using pdf.js ──────────────────────────────
-        // Dynamically import pdfjs-dist to avoid SSR issues
-        const pdfjsLib = await import('pdfjs-dist');
-        
-        // Set the worker — use the bundled fake worker for Vite compatibility
-        pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-          'pdfjs-dist/build/pdf.worker.min.js',
-          import.meta.url
-        ).toString();
-
-        // Fetch the PDF as ArrayBuffer (supports cross-origin via CORS)
-        let pdfData: ArrayBuffer;
-        try {
-          const resp = await fetch(viewingFile.url, { mode: 'cors' });
-          if (!resp.ok) throw new Error(`Fetch failed: ${resp.status}`);
-          pdfData = await resp.arrayBuffer();
-        } catch (fetchErr) {
-          // Some storage URLs don't support CORS — try loading directly by URL
-          const loadTask = pdfjsLib.getDocument({ url: viewingFile.url, withCredentials: false });
-          const pdfDoc = await loadTask.promise;
-          const pages: string[] = [];
-          for (let i = 1; i <= pdfDoc.numPages; i++) {
-            const page = await pdfDoc.getPage(i);
-            const content = await page.getTextContent();
-            const pageText = content.items
-              .map((item: any) => ('str' in item ? item.str : ''))
-              .join(' ')
-              .trim();
-            if (pageText) pages.push(`--- Page ${i} ---\n${pageText}`);
-          }
-          text = pages.join('\n\n');
-          if (!text.trim()) throw new Error('No readable text found in PDF. It may be a scanned image PDF.');
-          setDocumentText(text);
-          toast.success(`Extracted ${pdfDoc.numPages} pages. Ready for AI analysis!`);
-          return;
-        }
-
-        // Load from ArrayBuffer
-        const loadTask = pdfjsLib.getDocument({ data: pdfData });
-        const pdfDoc = await loadTask.promise;
-        const pages: string[] = [];
-
-        for (let i = 1; i <= pdfDoc.numPages; i++) {
-          const page = await pdfDoc.getPage(i);
-          const content = await page.getTextContent();
-          // Reconstruct natural reading order: join items, detect line breaks by y-position
-          let lastY: number | null = null;
-          let lineBuffer: string[] = [];
-          const pageLines: string[] = [];
-
-          for (const item of content.items) {
-            if (!('str' in item)) continue;
-            const str = (item as any).str;
-            const y = (item as any).transform?.[5] ?? 0;
-
-            if (lastY !== null && Math.abs(y - lastY) > 5) {
-              // New line detected
-              if (lineBuffer.join('').trim()) pageLines.push(lineBuffer.join(''));
-              lineBuffer = [];
-            }
-            lineBuffer.push(str);
-            lastY = y;
-          }
-          if (lineBuffer.join('').trim()) pageLines.push(lineBuffer.join(''));
-
-          const pageText = pageLines.join('\n').trim();
-          if (pageText) pages.push(`--- Page ${i} of ${pdfDoc.numPages} ---\n${pageText}`);
-        }
-
-        text = pages.join('\n\n');
-        if (!text.trim()) {
-          throw new Error('No readable text found in PDF. It may be a scanned image-only PDF without embedded text.');
-        }
-        toast.success(`✅ Extracted ${pdfDoc.numPages} pages from PDF. AI is ready!`);
-
-      } else if (viewingFile.fileType === 'docx') {
-        // ── DOCX extraction via mammoth (if available) or raw XML parsing ─────
-        try {
-          const mammoth = await import('mammoth');
-          const resp = await fetch(viewingFile.url, { mode: 'cors' });
-          const arrayBuffer = await resp.arrayBuffer();
-          const result = await mammoth.extractRawText({ arrayBuffer });
-          text = result.value;
-        } catch (_) {
-          // Fallback: fetch the raw docx and extract what we can from XML
-          const resp = await fetch(viewingFile.url, { mode: 'cors' });
-          const buffer = await resp.arrayBuffer();
-          // Try to decode as text — may get XML with w:t tags
-          const rawText = new TextDecoder('utf-8', { fatal: false }).decode(buffer);
-          const matches = rawText.match(/<w:t[^>]*>([^<]+)<\/w:t>/g) || [];
-          text = matches.map(m => m.replace(/<[^>]+>/g, '')).join(' ');
-        }
-        if (!text.trim()) throw new Error('No readable text found in DOCX file.');
-        toast.success('✅ DOCX extracted. AI is ready!');
-      }
-
-      if (!text.trim()) throw new Error('No text could be extracted from this document.');
-      setDocumentText(text);
-    } catch (err: any) {
-      console.error('[DocumentAI] Extraction failed:', err);
-      toast.error(`Extraction failed: ${err.message || 'Unknown error'}`);
-      setShowAiPanel(false);
-    } finally {
-      setIsExtracting(false);
-    }
-  };
-
-  const closeFileViewer = () => {
-    setViewingFile(null);
-    setShowAiPanel(false);
-    setDocumentText('');
-    setChatHistory([]);
-    noteAiSession.current = null;
-  };
-
-  const handleApplyMarkdown = (markdown: string, mode: 'replace' | 'append') => {
+  const handleApplyMarkdown = (content: string, type: 'replace' | 'append') => {
     if (!activeNote) return;
-    if (mode === 'replace') {
-      setActiveNote({ ...activeNote, content: markdown });
-      toast.success('Note content replaced.');
+    if (type === 'replace') {
+      setActiveNote({ ...activeNote, content });
     } else {
-      const newContent = (activeNote.content || '') + '\n\n' + markdown;
+      const newContent = (activeNote.content || '') + '\n\n' + content;
       setActiveNote({ ...activeNote, content: newContent });
-      toast.success('Appended to note.');
     }
   };
 
+  // Export Note as PDF or Markdown
+  const handleExport = (format: 'md' | 'txt' | 'pdf') => {
+    if (!activeNote) return;
 
-  const processFileUpload = async (file: File) => {
-    // 50MB limit
-    if (file.size > 50 * 1024 * 1024) {
-      toast.error('File too large. Maximum size is 50MB.');
-      return;
-    }
-
-    setIsUploading(true);
-    const loadingToast = toast.loading(`Uploading ${file.name}...`);
-
-    try {
-      // Use Cloudinary for fast, reliable uploads (no Firebase Storage rules needed)
-      const result = await Promise.race([
-        uploadFileToCloudinary(file),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Upload timed out after 2 minutes. Please try again with a smaller file or check your connection.')), 120000)
-        ),
-      ]);
-
-      const format = file.name.split('.').pop()?.toLowerCase() || '';
-      let fileType: 'pdf' | 'docx' | 'image' | 'other' = 'other';
-      if (format === 'pdf' || file.type === 'application/pdf') fileType = 'pdf';
-      else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(format) || file.type.startsWith('image/')) fileType = 'image';
-      else if (format === 'docx' || file.name.endsWith('.docx')) fileType = 'docx';
-
-      await addDoc(collection(db, 'storage_nodes'), {
-        userId: auth.currentUser!.uid,
-        type: 'file',
-        name: file.name,
-        parentId: currentFolderId,
-        fileType,
-        size: result.size,
-        url: result.url,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
+    if (format === 'md' || format === 'txt') {
+      const element = document.createElement("a");
+      const file = new Blob([activeNote.content || ''], { type: 'text/plain' });
+      element.href = URL.createObjectURL(file);
+      element.download = `${activeNote.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${format}`;
+      document.body.appendChild(element);
+      element.click();
+      document.body.removeChild(element);
+      toast.success(`Exported as .${format.toUpperCase()}`);
+    } else if (format === 'pdf') {
+      const element = document.getElementById('hidden-pdf-export-content');
+      if (!element) {
+        toast.error("Export failed: Render element not found");
+        return;
+      }
+      const opt = {
+        margin: [15, 15],
+        filename: `${activeNote.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      };
+      toast.loading("Generating PDF...", { id: 'pdf-toast' });
+      html2pdf().from(element).set(opt).save().then(() => {
+        toast.success("PDF Downloaded", { id: 'pdf-toast' });
+      }).catch((e: any) => {
+        console.error(e);
+        toast.error("PDF generation failed", { id: 'pdf-toast' });
       });
-
-      toast.success(`${file.name} uploaded successfully!`, { id: loadingToast });
-    } catch (err: any) {
-      console.error('Upload error:', err);
-      toast.error(err.message || 'Failed to upload file', { id: loadingToast });
-    } finally {
-      setIsUploading(false);
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      await processFileUpload(file);
-    }
-    if (e.target) e.target.value = ''; // reset
-  };
-
-  // Drag and Drop Handlers
-  const onDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounter.current += 1;
-    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
-      setIsDraggingOver(true);
-    }
-  };
-  const onDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounter.current -= 1;
-    if (dragCounter.current === 0) {
-      setIsDraggingOver(false);
-    }
-  };
-  const onDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
-  const onDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    dragCounter.current = 0;
-    setIsDraggingOver(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      await processFileUpload(file);
-    }
-  };
-
-  const handleRename = async () => {
-    if (!renameModal.node || !renameModal.newName.trim()) return;
+  // Delete Node (Single)
+  const handleDeleteNode = async (id: string) => {
     try {
-      await updateDoc(doc(db, 'storage_nodes', renameModal.node.id!), { 
-        name: renameModal.newName.trim(), 
-        updatedAt: Date.now() 
-      });
-      toast.success('Renamed successfully');
-      setRenameModal({ isOpen: false, node: null, newName: '' });
-      setContextMenuNode(null);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to rename');
-    }
-  };
-
-  const handleMove = async (targetFolderId: string | null) => {
-    if (!moveModal.node) return;
-    try {
-      await updateDoc(doc(db, 'storage_nodes', moveModal.node.id!), { 
-        parentId: targetFolderId, 
-        updatedAt: Date.now() 
-      });
-      toast.success('Moved successfully');
-      setMoveModal({ isOpen: false, node: null });
-      setContextMenuNode(null);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to move item');
-    }
-  };
-
-  const confirmDeleteNode = async () => {
-    try {
-      await deleteDoc(doc(db, 'storage_nodes', deleteConfirm.id));
-      if (activeNote?.id === deleteConfirm.id) setActiveNote(null);
-      if (viewingFile?.id === deleteConfirm.id) setViewingFile(null);
-      toast.success('Deleted');
+      await deleteDoc(doc(db, 'storage_nodes', id));
+      toast.success("Item deleted");
       setDeleteConfirm({ isOpen: false, id: '' });
-      setContextMenuNode(null);
+      if (activeNote?.id === id) setActiveNote(null);
+      if (viewingFile?.id === id) setViewingFile(null);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to delete');
+      toast.error("Failed to delete item");
     }
   };
 
-  const confirmBulkDelete = async () => {
+  // Bulk Delete
+  const handleBulkDelete = async () => {
     try {
-      const promises = selectedIds.map(id => deleteDoc(doc(db, 'storage_nodes', id)));
-      await Promise.all(promises);
-      toast.success(`${selectedIds.length} items deleted`);
+      for (const id of selectedIds) {
+        await deleteDoc(doc(db, 'storage_nodes', id));
+      }
+      toast.success(`Deleted ${selectedIds.length} items`);
       setSelectedIds([]);
       setIsSelectMode(false);
       setBulkDeleteConfirm(false);
-      if (activeNote && selectedIds.includes(activeNote.id!)) setActiveNote(null);
-      if (viewingFile && selectedIds.includes(viewingFile.id!)) setViewingFile(null);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to delete items');
+      toast.error("Bulk delete failed");
     }
   };
 
+  // Rename Node
+  const handleRenameNode = async () => {
+    if (!renameModal.node || !renameModal.newName.trim()) return;
+    try {
+      await updateDoc(doc(db, 'storage_nodes', renameModal.node.id!), {
+        name: renameModal.newName.trim(),
+        updatedAt: Date.now()
+      });
+      toast.success("Renamed successfully");
+      setRenameModal({ isOpen: false, node: null, newName: '' });
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to rename");
+    }
+  };
+
+  // Format Helper
   const formatSize = (bytes?: number) => {
-    if (!bytes) return '0 KB';
-    const mb = bytes / (1024 * 1024);
-    const gb = mb / 1024;
-    if (gb >= 1) return `${gb.toFixed(2)} GB`;
-    if (mb >= 1) return `${mb.toFixed(1)} MB`;
-    return `${Math.round(bytes / 1024)} KB`;
+    if (!bytes) return '';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const CLOUDINARY_LIMIT_BYTES = 25 * 1024 * 1024 * 1024; // 25 GB free tier
-  const totalUsedBytes = React.useMemo(() => {
-    return nodes.reduce((sum, node) => sum + (node.size || 0), 0);
-  }, [nodes]);
-  const usedPercent = Math.min(100, Math.max(0, (totalUsedBytes / CLOUDINARY_LIMIT_BYTES) * 100));
-
-  const getFileIcon = (node: StorageNode) => {
-    if (node.type === 'folder') return <Folder size={32} style={{ color: '#fbbf24' }} />;
-    if (node.type === 'note') return <FileText size={32} style={{ color: '#7c3aed' }} />;
-    if (node.fileType === 'pdf') return <FileText size={32} style={{ color: '#ef4444' }} />;
-    if (node.fileType === 'docx') return <FileText size={32} style={{ color: '#a599ff' }} />;
-    if (node.fileType === 'image') return <ImageIcon size={32} style={{ color: '#10b981' }} />;
-    return <FileIcon size={32} style={{ color: 'var(--text-muted)' }} />;
+  const formatDate = (timestamp?: number) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
-  if (isLoading) return <div style={{ padding: '2rem' }}>Loading Storage...</div>;
+  return (
+    <div className="notes-module-root">
+      {/* ── TOP HERO HEADER BAR ── */}
+      <div className="notes-header-bar">
+        <div className="notes-header-left">
+          <h1 className="notes-hero-title">Notes Vault</h1>
+          <span className="notes-stats-subtitle">
+            {folders.length} {folders.length === 1 ? 'folder' : 'folders'} · {files.length} {files.length === 1 ? 'document' : 'documents'}
+          </span>
+        </div>
 
-  if (!isAdmin) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', padding: '2rem', textAlign: 'center', background: 'var(--bg-base)' }}>
-        <div style={{ background: 'var(--bg-surface)', padding: '3rem', borderRadius: 'var(--radius-lg)', border: '1px solid #fbbf24', boxShadow: '0 10px 40px rgba(251, 191, 36, 0.15)', maxWidth: '500px' }}>
-          <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'center' }}>
-            <div style={{ background: 'rgba(251, 191, 36, 0.1)', padding: '1rem', borderRadius: '50%' }}>
-              <HardDrive size={48} style={{ color: '#fbbf24' }} />
-            </div>
-          </div>
-          <h2 style={{ fontSize: '1.8rem', fontWeight: 700, marginBottom: '1rem', color: '#fbbf24' }}>Premium Storage</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '1.1rem', lineHeight: 1.6, marginBottom: '2rem' }}>
-            This feature is only for admin as it costs premium. It solves your one-way storage place for notes, personal documents, and access from anywhere.
-          </p>
-          <button className="btn-primary" style={{ background: '#fbbf24', color: '#000', fontWeight: 600, border: 'none', padding: '0.75rem 2rem' }} disabled>
-            Locked
+        <div className="notes-header-actions">
+          {/* New Folder */}
+          <button
+            type="button"
+            className="notes-action-pill-btn folder-pill"
+            onClick={() => setNewFolderModal(true)}
+          >
+            <FolderPlus size={14} color="#fad7a1" />
+            <span>New Folder</span>
+          </button>
+
+          {/* Upload File */}
+          <label className="notes-action-pill-btn upload-pill" style={{ cursor: 'pointer' }}>
+            <Upload size={14} color="#38bdf8" />
+            <span>{isUploading ? `Uploading ${uploadProgress || ''}%` : 'Upload File'}</span>
+            <input
+              type="file"
+              multiple
+              style={{ display: 'none' }}
+              onChange={handleFileUpload}
+              disabled={isUploading}
+            />
+          </label>
+
+          {/* Select Mode */}
+          <button
+            type="button"
+            className={`notes-action-pill-btn ${isSelectMode ? 'active-filter' : ''}`}
+            onClick={() => {
+              setIsSelectMode(!isSelectMode);
+              setSelectedIds([]);
+            }}
+          >
+            <CheckSquare size={14} />
+            <span>{isSelectMode ? 'Cancel Selection' : 'Select'}</span>
+          </button>
+
+          {/* Sort Selector */}
+          <select
+            className="notes-action-pill-btn notes-sort-select"
+            value={sortBy}
+            onChange={(e: any) => setSortBy(e.target.value)}
+          >
+            <option value="newest">Sort: Newest</option>
+            <option value="oldest">Sort: Oldest</option>
+            <option value="name-asc">Sort: A to Z</option>
+            <option value="name-desc">Sort: Z to A</option>
+            <option value="size-desc">Sort: Size</option>
+          </select>
+
+          {/* Primary CTA: + New Note */}
+          <button
+            type="button"
+            className="notes-primary-add-btn"
+            onClick={handleCreateNote}
+          >
+            <Plus size={15} strokeWidth={2.5} />
+            <span>New Note</span>
           </button>
         </div>
       </div>
-    );
-  }
 
-  // Render Note Editor
-  if (activeNote) {
-    return (
-      <div 
-        data-lenis-prevent="true"
-        style={{ 
-        flex: 1, 
-        display: 'flex', 
-        overflow: 'hidden', 
-        ...(isAiExpanded ? {
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
-          background: 'var(--bg-base)'
-        } : {
-          position: 'absolute',
-          inset: 0,
-          zIndex: 10,
-          background: 'var(--bg-base)'
-        })
-      }}>
-        <NotesEditor 
-          activeNote={activeNote}
-          setActiveNote={setActiveNote}
-          saveStatus={saveStatus}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-          handleSaveNote={handleSaveNote}
-          handleExport={handleExport}
-          showAiPanel={showAiPanel}
-          setShowAiPanel={setShowAiPanel}
-          onClose={() => { handleSaveNote(); setActiveNote(null); setShowAiPanel(false); }}
-        />
-        <NotesAIPanel 
-          showAiPanel={showAiPanel}
-          isAiExpanded={isAiExpanded}
-          setShowAiPanel={setShowAiPanel}
-          setIsAiExpanded={setIsAiExpanded}
-          handleAiAction={handleAiAction}
-          aiQuestion={aiQuestion}
-          setAiQuestion={setAiQuestion}
-          isAiLoading={isAiLoading}
-          chatHistory={chatHistory as any}
-          hasActiveNote={!!activeNote}
-          onApplyMarkdown={handleApplyMarkdown}
-        />
-      </div>
-    );
-  }
-
-  const renderChatMessage = (msg: ChatMessage, idx: number) => {
-    const isModel = msg.role === 'model';
-    const blocks = isModel ? extractMarkdownBlocks(msg.text) : [];
-    
-    // Strip markdown code block wrappers so it renders normally
-    let displayText = msg.text || '';
-    if (isModel) {
-      displayText = displayText.replace(/```(?:markdown)?\n/g, '\n').replace(/```/g, '\n');
-    }
-
-    return (
-      <div key={idx} style={{ marginBottom: '1rem', background: !isModel ? 'var(--bg-surface-hover)' : 'transparent', padding: '0.75rem', borderRadius: '8px' }}>
-        <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: !isModel ? 'var(--text-primary)' : 'var(--accent-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          {isModel ? <Sparkles size={14} /> : <User size={14} />}
-          {!isModel ? 'You' : 'Zen AI'}
+      {/* ── SEARCH & BREADCRUMBS NAVIGATION ROW ── */}
+      <div className="notes-nav-row">
+        {/* Search */}
+        <div className="notes-search-bar">
+          <Search size={15} color="var(--notes-text-tertiary)" />
+          <input
+            type="text"
+            className="notes-search-input"
+            placeholder="Search all notes, tags, Markdown text, or uploaded files..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              style={{ background: 'transparent', border: 'none', color: 'var(--notes-text-tertiary)', cursor: 'pointer' }}
+            >
+              <X size={14} />
+            </button>
+          )}
         </div>
-        <div className="markdown-body" style={{ fontSize: '0.9rem' }}>
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{displayText}</ReactMarkdown>
-        </div>
-        {isModel && msg.model && (
-          <div style={{ marginTop: '0.5rem', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'right', fontStyle: 'italic', opacity: 0.8 }}>
-            Powered by {msg.model.includes('flash') ? '⚡' : '🧠'} {msg.model.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-          </div>
-        )}
-        {blocks.length > 0 && activeNote && (
-          <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Generated Note Actions</div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn-primary" style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', gap: '0.4rem' }} onClick={() => handleApplyMarkdown(blocks.join('\n\n'), 'replace')}>
-                <Edit2 size={14} /> Replace Note
-              </button>
-              <button className="btn-secondary" style={{ flex: 1, padding: '0.4rem', fontSize: '0.8rem', display: 'flex', justifyContent: 'center', gap: '0.4rem' }} onClick={() => handleApplyMarkdown(blocks.join('\n\n'), 'append')}>
-                <AlignLeft size={14} /> Append
-              </button>
-            </div>
+
+        {/* Breadcrumb Path */}
+        {!searchQuery && (
+          <div className="notes-breadcrumbs">
+            {getBreadcrumbs().map((crumb, idx, arr) => (
+              <React.Fragment key={crumb.id || 'root'}>
+                <button
+                  type="button"
+                  className={`notes-crumb-btn ${idx === arr.length - 1 ? 'active' : ''}`}
+                  onClick={() => setCurrentFolderId(crumb.id)}
+                >
+                  {idx === 0 ? <Folder size={13} /> : null}
+                  <span>{crumb.name}</span>
+                </button>
+                {idx < arr.length - 1 && <span className="notes-crumb-sep">/</span>}
+              </React.Fragment>
+            ))}
           </div>
         )}
       </div>
-    );
-  };
 
+      {/* ── BULK ACTION TOOLBAR ── */}
+      {isSelectMode && (
+        <div className="notes-bulk-bar">
+          <div className="notes-bulk-info">
+            <CheckSquare size={16} />
+            <span>{selectedIds.length} item(s) selected</span>
+          </div>
 
-  // Render File Viewer Modal
-  if (viewingFile) {
-    return (
-      <div 
-        data-lenis-prevent="true"
-        style={{ 
-        display: 'flex', 
-        height: '100%', 
-        overflow: 'hidden',
-        ...(isAiExpanded ? {
-          position: 'fixed',
-          inset: 0,
-          zIndex: 9999,
-          background: 'var(--bg-base)'
-        } : {
-          position: 'absolute',
-          inset: 0,
-          zIndex: 10,
-          background: 'var(--bg-base)'
-        })
-      }}>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', transition: 'all 0.3s' }}>
-          <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <button className="btn-icon" onClick={closeFileViewer}><ArrowLeft size={18} /></button>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>{viewingFile.name}</h2>
-            </div>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <a href={viewingFile.url} target="_blank" rel="noreferrer" className="btn-secondary" style={{ textDecoration: 'none' }}>Download Original</a>
-              {(viewingFile.fileType === 'pdf' || viewingFile.fileType === 'docx') && (
-                <button 
+          <div className="notes-bulk-actions">
+            <button
+              type="button"
+              className="notes-bulk-btn"
+              onClick={() => {
+                if (selectedIds.length === filteredNodes.length) {
+                  setSelectedIds([]);
+                } else {
+                  setSelectedIds(filteredNodes.map(n => n.id!));
+                }
+              }}
+            >
+              {selectedIds.length === filteredNodes.length ? 'Deselect All' : 'Select All'}
+            </button>
+
+            {selectedIds.length > 0 && (
+              <button
+                type="button"
+                className="notes-bulk-btn danger"
+                onClick={() => setBulkDeleteConfirm(true)}
+              >
+                <Trash2 size={13} />
+                <span>Delete Selected</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── FOLDERS SHELF ── */}
+      {folders.length > 0 && !searchQuery && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          <div className="notes-section-title">Folders</div>
+          <div className="notes-folders-grid">
+            {folders.map(folder => {
+              const childCount = nodes.filter(n => n.parentId === folder.id).length;
+              const isSelected = selectedIds.includes(folder.id!);
+
+              return (
+                <div
+                  key={folder.id}
+                  className={`notes-folder-card ${dragTargetFolderId === folder.id ? 'drag-over' : ''} ${isSelected ? 'selected' : ''}`}
                   onClick={() => {
-                    if (showAiPanel) {
-                      setShowAiPanel(false);
+                    if (isSelectMode) {
+                      setSelectedIds(prev => isSelected ? prev.filter(i => i !== folder.id) : [...prev, folder.id!]);
                     } else {
-                      handleAnalyzeDocument();
+                      setCurrentFolderId(folder.id!);
                     }
                   }}
-                  className="btn-primary" 
-                  style={{ padding: '0.5rem 0.75rem', display: 'flex', gap: '0.4rem', alignItems: 'center', background: showAiPanel ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'var(--bg-surface)', color: showAiPanel ? '#fff' : 'var(--accent-primary)', border: '1px solid var(--accent-primary)' }}
                 >
-                  <Sparkles size={16} /> {showAiPanel ? 'Close AI' : 'Analyze Document'}
-                </button>
-              )}
-            </div>
-          </div>
-          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', padding: '1rem', background: 'var(--bg-base)' }}>
-            {viewingFile.fileType === 'image' && (
-              <img src={viewingFile.url} alt={viewingFile.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
-            )}
-            {viewingFile.fileType === 'pdf' && (
-              <iframe data-lenis-prevent="true" src={viewingFile.url} width="100%" height="100%" style={{ border: 'none', borderRadius: '8px', background: 'white', pointerEvents: 'auto' }} title={viewingFile.name} />
-            )}
-            {viewingFile.fileType === 'docx' && (
-              <iframe 
-                data-lenis-prevent="true"
-                src={`https://docs.google.com/viewer?url=${encodeURIComponent(viewingFile.url!)}&embedded=true`} 
-                width="100%" 
-                height="100%" 
-                style={{ border: 'none', borderRadius: '8px', background: 'white', pointerEvents: 'auto' }} 
-                title={viewingFile.name} 
-              />
-            )}
-            {viewingFile.fileType === 'other' && (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
-                <FileIcon size={64} style={{ margin: '0 auto 1rem auto', opacity: 0.5 }} />
-                <p>No preview available for this file type.</p>
-                <a href={viewingFile.url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent-primary)', textDecoration: 'underline', marginTop: '1rem', display: 'inline-block' }}>Download File</a>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* AI Panel for File Viewer */}
-        <div style={{ width: showAiPanel ? (isAiExpanded ? '40%' : '350px') : '0px', transition: 'width 0.3s ease', background: 'var(--bg-surface)', borderLeft: showAiPanel ? '1px solid var(--border-subtle)' : 'none', display: 'flex', flexDirection: 'column', overflow: 'hidden', flexShrink: 0, position: 'relative', top: 0, right: 0, bottom: 0, zIndex: 1 }}>
-          <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Sparkles size={18} style={{ color: 'var(--accent-primary)' }} />
-              <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0, whiteSpace: 'nowrap' }}>Document AI</h3>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn-icon" onClick={() => setIsAiExpanded(!isAiExpanded)} title={isAiExpanded ? "Collapse" : "Expand"}>
-                {isAiExpanded ? <Columns size={16} /> : <Eye size={16} />}
-              </button>
-              <button className="btn-icon" onClick={() => { setShowAiPanel(false); setIsAiExpanded(false); }}>
-                <X size={16} />
-              </button>
-            </div>
-          </div>
-          
-          <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderBottom: '1px solid var(--border-subtle)' }}>
-            <button className="btn-secondary" onClick={() => handleAiAction('summarize')} disabled={isAiLoading || isExtracting} style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-start', padding: '0.75rem', whiteSpace: 'nowrap' }}>
-              <AlignLeft size={16} /> Summarize Document
-            </button>
-            <button className="btn-secondary" onClick={() => handleAiAction('concepts')} disabled={isAiLoading || isExtracting} style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-start', padding: '0.75rem', whiteSpace: 'nowrap' }}>
-              <List size={16} /> Extract Key Concepts
-            </button>
-            <button className="btn-secondary" onClick={() => handleAiAction('flashcards')} disabled={isAiLoading || isExtracting} style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-start', padding: '0.75rem', whiteSpace: 'nowrap' }}>
-              <Sparkles size={16} /> Generate Flashcards
-            </button>
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <input 
-                type="text" 
-                value={aiQuestion} 
-                onChange={e => setAiQuestion(e.target.value)}
-                placeholder="Ask about this document..."
-                onKeyDown={e => e.key === 'Enter' && handleAiAction('question')}
-                style={{ flex: 1, padding: '0.5rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', outline: 'none' }}
-              />
-              <button className="btn-primary" onClick={() => handleAiAction('question')} disabled={isAiLoading || isExtracting || !aiQuestion.trim()} style={{ padding: '0.5rem' }}>
-                <MessageSquare size={16} />
-              </button>
-            </div>
-          </div>
-
-          <div 
-            data-lenis-prevent="true" 
-            onWheel={(e) => e.stopPropagation()}
-            style={{ flex: 1, padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}
-            className="ai-chat-scroll"
-          >
-            {isExtracting ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', gap: '1rem', textAlign: 'center' }}>
-                <Loader2 size={24} className="animate-spin" />
-                <span>Extracting text from {viewingFile.fileType?.toUpperCase() || 'DOCUMENT'}...<br/><small style={{opacity:0.7}}>(This may take a moment for large files)</small></span>
-              </div>
-            ) : chatHistory.length === 0 && !isAiLoading ? (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', textAlign: 'center', opacity: 0.6 }}>
-                <Sparkles size={48} style={{ marginBottom: '1rem', opacity: 0.5 }} />
-                <p>Use AI to summarize, extract concepts, or generate flashcards directly from this document.</p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {chatHistory.map((msg, idx) => renderChatMessage(msg, idx))}
-                {isAiLoading && (
-                  <div style={{ 
-                    display: 'flex', flexDirection: 'column', 
-                    alignItems: 'flex-start', 
-                    marginBottom: '1.25rem', padding: '0 0.5rem',
-                    animation: 'fadeIn 0.3s ease-out'
-                  }}>
-                    <div style={{ 
-                      display: 'flex', alignItems: 'center', gap: '0.5rem', 
-                      marginBottom: '0.35rem', 
-                      color: 'var(--accent-primary)', 
-                      fontSize: '0.85rem', fontWeight: 600,
-                    }}>
-                      <Bot size={14} /> Zen AI
+                  <div className="notes-folder-left">
+                    <div className="notes-folder-icon-box">
+                      <Folder size={17} />
                     </div>
-                    <div className="markdown-body chat-markdown" style={{ 
-                      background: 'transparent',
-                      padding: '0 0.5rem',
-                      borderRadius: '0',
-                      maxWidth: '90%'
-                    }}>
-                      <TypingDots />
+                    <div className="notes-folder-meta">
+                      <span className="notes-folder-name" title={folder.name}>{folder.name}</span>
+                      <span className="notes-folder-count">{childCount} {childCount === 1 ? 'item' : 'items'}</span>
                     </div>
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
-  // Helper to render Context Menu
-  const renderContextMenu = () => {
-    if (!contextMenuNode) return null;
-    return (
-      <div 
-        className="context-menu" 
-        onClick={(e) => e.stopPropagation()} 
-        onMouseLeave={() => setContextMenuNode(null)}
-        style={{ position: 'absolute', right: '10px', top: '40px', backgroundColor: '#111827', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '0.5rem', zIndex: 9999, boxShadow: '0 10px 40px rgba(0,0,0,0.8)', minWidth: '150px' }}
-      >
-        <button className="menu-btn" onClick={() => { setRenameModal({ isOpen: true, node: contextMenuNode, newName: contextMenuNode.name }); setContextMenuNode(null); }}>
-          <Edit2 size={14} /> Rename
-        </button>
-        <button className="menu-btn" onClick={() => { setMoveModal({ isOpen: true, node: contextMenuNode }); setContextMenuNode(null); }}>
-          <Move size={14} /> Move To...
-        </button>
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border-subtle)', margin: '0.25rem 0' }} />
-        <button className="menu-btn text-danger" onClick={() => { setDeleteConfirm({ isOpen: true, id: contextMenuNode.id! }); setContextMenuNode(null); }}>
-          <Trash2 size={14} /> Delete
-        </button>
-      </div>
-    );
-  };
-
-  // Helper to render Move Folder Tree
-  const renderMoveTree = (parentId: string | null, depth: number = 0) => {
-    const children = nodes.filter(n => n.type === 'folder' && n.parentId === parentId);
-    if (children.length === 0) return null;
-    return children.map(folder => {
-      // Don't allow moving a folder into itself or its own children
-      if (folder.id === moveModal.node?.id) return null;
-      return (
-        <div key={folder.id}>
-          <button 
-            className="menu-btn" 
-            style={{ paddingLeft: `${depth * 1.5 + 1}rem`, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            onClick={() => handleMove(folder.id!)}
-          >
-            <Folder size={14} style={{ color: '#fbbf24' }} /> {folder.name}
-          </button>
-          {renderMoveTree(folder.id!, depth + 1)}
-        </div>
-      );
-    });
-  };
-
-  // Main Drive UI
-  return (
-    <div 
-      style={{ padding: '0.5rem', paddingBottom: '120px', height: '100%', width: '100%', overflowY: 'auto', position: 'relative' }}
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-    >
-      {isDraggingOver && (
-        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(99, 102, 241, 0.1)', border: '4px dashed var(--accent-primary)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '1rem', backdropFilter: 'blur(4px)' }}>
-          <div style={{ background: 'var(--bg-surface)', padding: '2rem 4rem', borderRadius: '1rem', boxShadow: '0 10px 30px rgba(0,0,0,0.5)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-            <Upload size={48} style={{ color: 'var(--accent-primary)' }} />
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 600 }}>Drop files here to upload</h2>
-            <p style={{ color: 'var(--text-muted)' }}>They will be instantly uploaded to {getBreadcrumbs()[getBreadcrumbs().length - 1].name}</p>
+                  {!isSelectMode && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{ opacity: 0.6 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRenameModal({ isOpen: true, node: folder, newName: folder.name });
+                      }}
+                      title="Folder Options"
+                    >
+                      <MoreVertical size={14} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Toolbar */}
-      <div className="storage-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.25rem', fontWeight: 600 }}>
-          {searchQuery ? (
-            <span style={{ color: 'var(--text-primary)' }}>Search Results</span>
-          ) : (
-            getBreadcrumbs().map((crumb, idx, arr) => (
-              <React.Fragment key={crumb.id || 'root'}>
-                <button 
-                  onClick={() => setCurrentFolderId(crumb.id)}
-                  style={{ background: 'none', border: 'none', color: idx === arr.length - 1 ? 'var(--text-primary)' : 'var(--text-secondary)', cursor: 'pointer', fontSize: 'inherit', fontWeight: 'inherit', padding: 0 }}
-                >
-                  {crumb.name}
-                </button>
-                {idx < arr.length - 1 && <ChevronRight size={18} style={{ color: 'var(--text-muted)' }} />}
-              </React.Fragment>
-            ))
-          )}
+      {/* ── NOTES & DOCUMENTS GRID ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+        <div className="notes-section-title">
+          {searchQuery ? `Search Results (${files.length})` : 'Documents & Notes'}
         </div>
-        
-        <div className="storage-actions" style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'nowrap', overflow: 'visible' }}>
-          {isSelectMode ? (
-            <>
-              <button className="storage-action-btn" onClick={() => { setIsSelectMode(false); setSelectedIds([]); }}>
-                Cancel Selection
-              </button>
-              {selectedIds.length > 0 && (
-                <button className="storage-action-btn" style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.3)' }} onClick={() => setBulkDeleteConfirm(true)}>
-                  <Trash2 size={16} /> Delete Selected ({selectedIds.length})
-                </button>
-              )}
-            </>
-          ) : (
-            <button className="storage-action-btn" onClick={() => setIsSelectMode(true)}>
-              Select Items
-            </button>
-          )}
 
-          <div style={{ position: 'relative' }} className="storage-search-container">
-            <Search size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input 
-              type="text" 
-              placeholder="Search all files..." 
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              style={{ padding: '0.5rem 1rem 0.5rem 2.25rem', background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', color: 'var(--text-primary)', fontSize: '0.9rem', width: '200px' }}
-            />
-            {searchQuery && (
-              <X size={14} style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => setSearchQuery('')} />
-            )}
+        {isLoading ? (
+          <div className="notes-empty-state">
+            <Loader2 size={24} className="lp-spin" color="var(--notes-accent-purple)" />
+            <span>Loading your vault...</span>
           </div>
-          
-          <div className="dropdown-container" style={{ position: 'relative', flexShrink: 0 }}>
-            <div 
-              className="storage-sort-select"
-              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'space-between' }}
+        ) : files.length === 0 ? (
+          <div className="notes-empty-state">
+            <div className="notes-empty-icon">
+              <FileText size={28} />
+            </div>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>No documents found</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--notes-text-tertiary)', maxWidth: 360, margin: 0 }}>
+              {searchQuery ? 'No notes matched your search filter.' : 'Create a new Markdown note or upload files to organize your study materials.'}
+            </p>
+            <button
+              type="button"
+              className="notes-primary-add-btn"
+              onClick={handleCreateNote}
+              style={{ marginTop: '0.5rem' }}
             >
-              <span>
-                {sortBy === 'newest' ? 'Newest First' : 
-                 sortBy === 'oldest' ? 'Oldest First' : 
-                 sortBy === 'name-asc' ? 'Name (A-Z)' : 
-                 sortBy === 'name-desc' ? 'Name (Z-A)' : 
-                 'Largest Size'}
-              </span>
-              <ChevronDown size={14} />
-            </div>
-            <div className="dropdown-menu" style={{ display: 'none', position: 'absolute', top: '100%', right: 0, width: '100%', minWidth: '150px', paddingTop: '0.5rem', zIndex: 100 }}>
-              <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.5rem', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
-                {['newest', 'oldest', 'name-asc', 'name-desc', 'size-desc'].map(val => (
-                  <div 
-                    key={val}
-                    onClick={() => setSortBy(val)}
-                    className="menu-btn"
-                    style={{ color: sortBy === val ? 'var(--accent-primary)' : 'var(--text-secondary)' }}
-                  >
-                    {val === 'newest' ? 'Newest First' : 
-                     val === 'oldest' ? 'Oldest First' : 
-                     val === 'name-asc' ? 'Name (A-Z)' : 
-                     val === 'name-desc' ? 'Name (Z-A)' : 
-                     'Largest Size'}
-                  </div>
-                ))}
-              </div>
-            </div>
+              <Plus size={14} strokeWidth={2.5} />
+              <span>Create Note</span>
+            </button>
           </div>
+        ) : (
+          <div className="notes-nodes-grid">
+            {files.map(node => {
+              const isNote = node.type === 'note';
+              const isPdf = node.fileType === 'pdf';
+              const isDocx = node.fileType === 'docx';
+              const isImg = node.fileType === 'image';
+              const isSelected = selectedIds.includes(node.id!);
 
-          <button className="storage-action-btn" onClick={() => { setNewFolderName(''); setNewFolderModal(true); }}>
-            <Folder size={16} /> New Folder
-          </button>
-          <button className="storage-action-btn" onClick={handleNewNote}>
-            <FileText size={16} /> New Note
-          </button>
-          <label className={`storage-action-btn storage-upload-btn ${isUploading ? 'disabled' : ''}`} style={{ cursor: isUploading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
-            <Upload size={16} /> {isUploading ? 'Uploading...' : 'Upload File'}
-            <input type="file" style={{ display: 'none' }} onChange={handleFileUpload} disabled={isUploading} accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.webp,.gif" />
-          </label>
-        </div>
-      </div>
+              // Word count estimate for note
+              const wordCount = isNote && node.content ? node.content.trim().split(/\s+/).length : 0;
+              const cleanSnippet = isNote && node.content ? node.content.replace(/^#+\s+/gm, '').trim() : '';
 
-      {/* Grid View */}
-      {filteredNodes.length === 0 ? (
-        <div className="empty-state" style={{ marginTop: '4rem', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          <Folder size={48} style={{ color: 'var(--border-hover)', marginBottom: '1rem' }} />
-          <h3>{searchQuery ? 'No matching files found' : 'This folder is empty'}</h3>
-          {!searchQuery && (
-            <>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Create a new folder, add a markdown note, or drag and drop files here.</p>
-              <div style={{ display: 'flex', gap: '0.75rem' }}>
-                <button className="btn-secondary" onClick={() => { setNewFolderName(''); setNewFolderModal(true); }}>
-                  <Folder size={16} /> New Subfolder
-                </button>
-                <label className={`btn-primary ${isUploading ? 'disabled' : ''}`} style={{ cursor: isUploading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Upload size={16} /> {isUploading ? 'Uploading...' : 'Upload File Here'}
-                  <input type="file" style={{ display: 'none' }} onChange={handleFileUpload} disabled={isUploading} accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.webp,.gif" />
-                </label>
-              </div>
-            </>
-          )}
-        </div>
-      ) : (
-        <div onClick={() => setContextMenuNode(null)}>
-          {folders.length > 0 && (
-            <div style={{ marginBottom: '2rem' }}>
-              <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>Folders</h4>
-              <div className="storage-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
-                {folders.map(folder => (
-                  <div 
-                    key={folder.id} 
-                    className="storage-node"
-                    onClick={() => {
-                      if (isSelectMode) {
-                        if (selectedIds.includes(folder.id!)) setSelectedIds(selectedIds.filter(id => id !== folder.id));
-                        else setSelectedIds([...selectedIds, folder.id!]);
-                      } else {
-                        setCurrentFolderId(folder.id!);
-                      }
-                    }}
-                    style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '1rem', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', transition: 'border-color 0.2s', position: 'relative' }}
-                  >
-                    {isSelectMode && (
-                      <input 
-                        type="checkbox" 
-                        className="storage-checkbox" 
-                        onClick={(e) => e.stopPropagation()} 
-                        checked={selectedIds.includes(folder.id!)} 
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedIds([...selectedIds, folder.id!]);
-                          else setSelectedIds(selectedIds.filter(id => id !== folder.id));
-                        }} 
-                      />
-                    )}
-                    <Folder size={24} style={{ color: '#fbbf24', flexShrink: 0 }} />
-                    <span style={{ fontSize: '0.95rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{folder.name}</span>
-                    <button 
-                      className="more-btn btn-icon" 
-                      onClick={(e) => { e.stopPropagation(); setContextMenuNode(folder); }} 
-                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem' }}
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-                    {contextMenuNode?.id === folder.id && renderContextMenu()}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {files.length > 0 && (
-            <div>
-              <h4 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>Files & Notes</h4>
-              <div className="storage-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '1rem' }}>
-                {files.map(file => (
-                  <div 
-                    key={file.id} 
-                    className={`storage-node file-card ${activeNote?.id === file.id ? 'active' : ''}`}
-                    onClick={() => {
-                      if (isSelectMode) {
-                        if (selectedIds.includes(file.id!)) setSelectedIds(selectedIds.filter(id => id !== file.id));
-                        else setSelectedIds([...selectedIds, file.id!]);
-                      } else {
-                        file.type === 'note' ? setActiveNote(file) : setViewingFile(file);
-                      }
-                    }}
-                    style={{ cursor: 'pointer', overflow: 'visible', position: 'relative' }}
-                  >
-                    {isSelectMode && (
-                      <input 
-                        type="checkbox" 
-                        className="storage-checkbox" 
-                        onClick={(e) => e.stopPropagation()} 
-                        checked={selectedIds.includes(file.id!)} 
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedIds([...selectedIds, file.id!]);
-                          else setSelectedIds(selectedIds.filter(id => id !== file.id));
-                        }} 
-                        style={{ position: 'absolute', left: '0.5rem', top: '0.5rem', zIndex: 10 }}
-                      />
-                    )}
-                    {file.type !== 'note' && (
-                        <div style={{ height: '120px', background: 'rgba(0,0,0,0.2)', display: 'flex', justifyContent: 'center', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.05)', borderTopLeftRadius: '0.75rem', borderTopRightRadius: '0.75rem' }}>
-                          {getFileIcon(file)}
-                        </div>
-                    )}
-                    <div style={{ padding: '0.875rem' }}>
-                        <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '1.2rem', color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '0.25rem' }}>{file.name || 'Untitled Note'}</div>
-                        <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                          {file.type === 'note' ? (file.content ? file.content.substring(0, 60) + '...' : 'Empty note...') : formatSize(file.size)}
-                        </div>
-                        <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', marginTop: '0.4rem' }}>
-                          {new Date(file.updatedAt).toLocaleDateString()}
-                        </div>
+              return (
+                <div
+                  key={node.id}
+                  className={`notes-node-card ${isSelected ? 'selected' : ''}`}
+                  onClick={() => {
+                    if (isSelectMode) {
+                      setSelectedIds(prev => isSelected ? prev.filter(i => i !== node.id) : [...prev, node.id!]);
+                    } else if (isNote) {
+                      setActiveNote(node);
+                      noteAiSession.current = null;
+                      setChatHistory([]);
+                      setShowAiPanel(false);
+                    } else {
+                      setViewingFile(node);
+                    }
+                  }}
+                >
+                  {/* Top Bar with Icon & Actions */}
+                  <div className="notes-node-card-top">
+                    <div className={`notes-node-type-icon ${isNote ? 'note' : isPdf ? 'pdf' : isDocx ? 'docx' : isImg ? 'image' : 'note'}`}>
+                      {isNote ? <FileText size={17} /> : isPdf ? <FileDown size={17} /> : isImg ? <ImageIcon size={17} /> : <File size={17} />}
                     </div>
-                    <button 
-                      className="more-btn btn-icon" 
-                      onClick={(e) => { e.stopPropagation(); setContextMenuNode(file); }} 
-                      style={{ position: 'absolute', right: '0.5rem', top: '0.5rem', background: 'var(--bg-surface)', borderRadius: '50%', padding: '0.4rem', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)', cursor: 'pointer' }}
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-                    {contextMenuNode?.id === file.id && renderContextMenu()}
+
+                    {!isSelectMode && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          style={{ width: 26, height: 26, opacity: 0.6 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setRenameModal({ isOpen: true, node, newName: node.name });
+                          }}
+                          title="Rename"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          style={{ width: 26, height: 26, opacity: 0.6 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirm({ isOpen: true, id: node.id! });
+                          }}
+                          title="Delete"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* Global Styles for this module */}
-      <style>{`
-        .storage-node:hover { border-color: var(--accent-primary) !important; }
-        .more-btn { opacity: 0.5; transition: opacity 0.2s, color 0.2s, background 0.2s; }
-        .storage-node:hover .more-btn { opacity: 1; }
-        .more-btn:hover { color: var(--text-primary) !important; background: var(--bg-base) !important; }
-        .menu-btn { width: 100%; text-align: left; padding: 0.5rem 0.75rem; background: none; border: none; color: var(--text-secondary); cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
-        .menu-btn:hover { background: var(--bg-base); color: var(--text-primary); }
-        .menu-btn.text-danger:hover { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-        .storage-checkbox { width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent-primary); }
-        .dropdown-container:hover .dropdown-menu { display: block !important; }
+                  {/* Body Content */}
+                  <div className="notes-node-card-content">
+                    <h4 className="notes-node-title">{node.name}</h4>
+                    {isNote && cleanSnippet && (
+                      <p className="notes-node-snippet">{cleanSnippet}</p>
+                    )}
+                  </div>
 
-        .storage-action-btn {
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          color: var(--text-secondary);
-          padding: 0.5rem 0.75rem;
-          border-radius: var(--radius-md);
-          font-size: 0.85rem;
-          font-weight: 500;
-          display: flex;
-          align-items: center;
-          gap: 0.4rem;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          white-space: nowrap;
-          flex-shrink: 0;
-        }
-        .storage-action-btn:hover {
-          background: rgba(255, 255, 255, 0.08);
-          border-color: rgba(255, 255, 255, 0.15);
-          color: var(--text-primary);
-        }
-        .storage-upload-btn {
-          background: rgba(124, 58, 237, 0.15) !important;
-          color: #a78bfa !important;
-          border: 1px solid rgba(124, 58, 237, 0.3) !important;
-        }
-        .storage-upload-btn:hover {
-          background: rgba(124, 58, 237, 0.25) !important;
-          color: #ddd6fe !important;
-          border-color: rgba(124, 58, 237, 0.5) !important;
-        }
-        .storage-search-container input, .storage-sort-select {
-          padding: 0.5rem 1rem !important;
-          font-size: 0.85rem !important;
-          border-radius: var(--radius-md) !important;
-          background: rgba(255, 255, 255, 0.03) !important;
-          border: 1px solid rgba(255, 255, 255, 0.08) !important;
-          color: var(--text-primary) !important;
-          transition: all 0.2s ease;
-          flex-shrink: 0;
-        }
-        .storage-sort-select {
-          width: auto !important;
-          min-width: 120px;
-        }
+                  {/* Footer Meta */}
+                  <div className="notes-node-card-bottom">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      {isNote ? (
+                        <span className="notes-node-tag-badge">Markdown · {wordCount} words</span>
+                      ) : (
+                        <span className="notes-node-size-badge">{formatSize(node.size)}</span>
+                      )}
+                    </div>
 
-        /* Custom Scrollbar for AI Chat */
-        .ai-chat-scroll {
-          /* Fallback for Firefox */
-          scrollbar-width: thin;
-          scrollbar-color: rgba(130, 170, 255, 0.15) transparent;
-          overscroll-behavior: contain;
-        }
-        .ai-chat-scroll::-webkit-scrollbar { width: 6px; }
-        .ai-chat-scroll::-webkit-scrollbar-track { background: transparent; }
-        .ai-chat-scroll::-webkit-scrollbar-thumb { background: rgba(130, 170, 255, 0.15); border-radius: 10px; }
-        .ai-chat-scroll::-webkit-scrollbar-thumb:hover { background: rgba(130, 170, 255, 0.3); }
-
-        /* Desktop Only Spacious Button Styles */
-        @media (min-width: 768px) {
-          .storage-actions { gap: 1rem !important; }
-
-
-          .storage-search-container input {
-            padding-left: 2.5rem !important;
-          }
-          .storage-search-container input:focus, .storage-sort-select:focus {
-            background: rgba(255, 255, 255, 0.06) !important;
-            border-color: rgba(255, 255, 255, 0.2) !important;
-            outline: none;
-          }
-        }
-        .notes-toolbar-btn {
-          background: rgba(255, 255, 255, 0.06);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 0.5rem;
-          color: rgba(255, 255, 255, 0.55);
-          padding: 0.4rem 0.6rem;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          gap: 0.3rem;
-        }
-        .notes-toolbar-btn:hover, .notes-toolbar-btn.active {
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
-        }
-        .file-card {
-          background: rgba(255, 255, 255, 0.03) !important;
-          border: 1px solid rgba(255, 255, 255, 0.07) !important;
-          border-radius: 0.75rem !important;
-          margin-bottom: 0.4rem;
-          transition: all 0.2s ease !important;
-        }
-        .file-card:hover {
-          border-color: rgba(255, 255, 255, 0.14) !important;
-          background: rgba(255, 255, 255, 0.05) !important;
-        }
-        .file-card.active {
-          border-color: rgba(167, 139, 250, 0.3) !important;
-          background: rgba(167, 139, 250, 0.06) !important;
-        }
-      `}</style>
-
-      {/* Storage Usage Indicator */}
-      <div className="hide-on-mobile" style={{ position: 'fixed', bottom: '6rem', right: '2rem', background: 'var(--bg-surface)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)', boxShadow: '0 4px 20px rgba(0,0,0,0.5)', zIndex: 50, minWidth: '250px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', fontSize: '0.85rem' }}>
-          <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}><HardDrive size={14} /> Storage Usage</span>
-          <span style={{ color: 'var(--text-muted)' }}>{formatSize(totalUsedBytes)} / 25 GB</span>
-        </div>
-        <div style={{ height: '6px', background: 'var(--bg-base)', borderRadius: '3px', overflow: 'hidden', marginBottom: '0.25rem' }}>
-          <div style={{ height: '100%', width: `${usedPercent}%`, background: usedPercent > 90 ? '#ef4444' : 'var(--accent-primary)', transition: 'width 0.3s' }}></div>
-        </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right' }}>
-          {usedPercent.toFixed(1)}% used (Cloudinary Free Tier)
-        </div>
+                    <span>{formatDate(node.updatedAt || node.createdAt)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Rename Modal */}
-      {renameModal.isOpen && (
-        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setRenameModal({ isOpen: false, node: null, newName: '' }); }}>
-          <div className="bottom-sheet-mobile" style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Rename Item</h2>
-              <button className="btn-icon" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}><X size={20} /></button>
-            </div>
-            <div style={{ padding: '1.5rem' }}>
-              <input 
-                type="text" 
-                value={renameModal.newName}
-                onChange={e => setRenameModal({ ...renameModal, newName: e.target.value })}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); }}
-                autoFocus
-                style={{ width: '100%', padding: '0.75rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)', marginBottom: '1rem' }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button className="btn-secondary" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}>Cancel</button>
-                <button className="btn-primary" onClick={handleRename} disabled={!renameModal.newName.trim()}>Save</button>
+      {/* ── FULLSCREEN 3-PANE NOTE STUDIO ── */}
+      {activeNote && (
+        <div className="notes-studio-overlay">
+          <div style={{ display: 'flex', flex: 1, height: '100%', overflow: 'hidden' }}>
+            <NotesEditor
+              activeNote={activeNote}
+              setActiveNote={setActiveNote}
+              saveStatus={saveStatus}
+              viewMode={viewMode}
+              setViewMode={setViewMode}
+              handleSaveNote={() => {}}
+              handleExport={handleExport}
+              showAiPanel={showAiPanel}
+              setShowAiPanel={setShowAiPanel}
+              onClose={() => setActiveNote(null)}
+            />
+
+            {/* ChatGPT-Style Note AI Companion */}
+            {showAiPanel && (
+              <div className="notes-studio-ai-pane">
+                <NotesAIPanel
+                  showAiPanel={showAiPanel}
+                  isAiExpanded={isAiExpanded}
+                  setShowAiPanel={setShowAiPanel}
+                  setIsAiExpanded={setIsAiExpanded}
+                  handleAiAction={handleAiAction}
+                  aiQuestion={aiQuestion}
+                  setAiQuestion={setAiQuestion}
+                  isAiLoading={isAiLoading}
+                  chatHistory={chatHistory}
+                  hasActiveNote={!!activeNote}
+                  onApplyMarkdown={handleApplyMarkdown}
+                  noteTitle={activeNote.name}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── DOCUMENT & FILE VIEWER MODAL ── */}
+      {viewingFile && (
+        <div className="notes-modal-overlay" onClick={() => setViewingFile(null)}>
+          <div
+            className="notes-modal-content"
+            style={{ maxWidth: '90vw', height: '88vh', padding: '1rem' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="notes-modal-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                <FileText size={18} color="var(--notes-accent-purple)" />
+                <h3 className="notes-modal-title">{viewingFile.name}</h3>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                {viewingFile.url && (
+                  <a
+                    href={viewingFile.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="notes-action-pill-btn"
+                    download
+                  >
+                    <Download size={13} />
+                    <span>Download</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="notes-modal-close-btn"
+                  onClick={() => setViewingFile(null)}
+                >
+                  <X size={18} />
+                </button>
               </div>
             </div>
+
+            <div style={{ flex: 1, background: '#09090b', borderRadius: '12px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {viewingFile.fileType === 'image' ? (
+                <img
+                  src={viewingFile.url}
+                  alt={viewingFile.name}
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                />
+              ) : viewingFile.fileType === 'pdf' ? (
+                <iframe
+                  src={viewingFile.url}
+                  title={viewingFile.name}
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              ) : (
+                <iframe
+                  src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(viewingFile.url || '')}`}
+                  title={viewingFile.name}
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Move Modal */}
-      {moveModal.isOpen && (
-        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setMoveModal({ isOpen: false, node: null }); }}>
-          <div className="bottom-sheet-mobile" style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden', display: 'flex', flexDirection: 'column', maxHeight: '80vh' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Move Item To...</h2>
-              <button className="btn-icon" onClick={() => setMoveModal({ isOpen: false, node: null })}><X size={20} /></button>
-            </div>
-            <div style={{ padding: '1rem', overflowY: 'auto', flex: 1 }}>
-              <button 
-                className="menu-btn" 
-                style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', background: moveModal.node?.parentId === null ? 'var(--bg-base)' : 'transparent' }}
-                onClick={() => handleMove(null)}
-              >
-                <Folder size={16} /> My Storage (Root)
-              </button>
-              {renderMoveTree(null, 1)}
-            </div>
-            <div style={{ padding: '1rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'flex-end' }}>
-               <button className="btn-secondary" onClick={() => setMoveModal({ isOpen: false, node: null })}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* New Folder Modal */}
+      {/* ── CREATE FOLDER MODAL ── */}
       {newFolderModal && (
-        <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setNewFolderModal(false); }}>
-          <div className="bottom-sheet-mobile" style={{ width: '100%', maxWidth: '400px', background: 'var(--bg-base)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
-            <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.1rem', fontWeight: 600 }}>Create New Folder</h2>
-              <button className="btn-icon" onClick={() => setNewFolderModal(false)}><X size={20} /></button>
+        <div className="notes-modal-overlay" onClick={() => setNewFolderModal(false)}>
+          <div className="notes-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">Create New Folder</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setNewFolderModal(false)}>
+                <X size={18} />
+              </button>
             </div>
-            <div style={{ padding: '1.5rem' }}>
-              <input 
-                type="text" 
-                placeholder="Folder Name" 
-                value={newFolderName}
-                onChange={e => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCreateFolder(); }}
-                autoFocus
-                style={{ width: '100%', padding: '0.75rem', background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: 'var(--text-primary)', marginBottom: '1rem' }}
-              />
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button className="btn-secondary" onClick={() => setNewFolderModal(false)}>Cancel</button>
-                <button className="btn-primary" onClick={handleCreateFolder} disabled={!newFolderName.trim()}>Create</button>
-              </div>
+
+            <input
+              type="text"
+              className="notes-search-bar notes-search-input"
+              style={{ width: '100%', borderRadius: 10, padding: '0.65rem 0.85rem' }}
+              placeholder="Folder Name (e.g. Distributed Systems)..."
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleCreateFolder()}
+              autoFocus
+            />
+
+            <div className="notes-modal-footer">
+              <button type="button" className="notes-action-pill-btn" onClick={() => setNewFolderModal(false)}>
+                Cancel
+              </button>
+              <button type="button" className="notes-primary-add-btn" onClick={handleCreateFolder}>
+                Create Folder
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      <ConfirmDialog 
-        open={deleteConfirm.isOpen}
+      {/* ── RENAME MODAL ── */}
+      {renameModal.isOpen && (
+        <div className="notes-modal-overlay" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}>
+          <div className="notes-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">Rename Item</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <input
+              type="text"
+              className="notes-search-bar notes-search-input"
+              style={{ width: '100%', borderRadius: 10, padding: '0.65rem 0.85rem' }}
+              value={renameModal.newName}
+              onChange={e => setRenameModal({ ...renameModal, newName: e.target.value })}
+              onKeyDown={e => e.key === 'Enter' && handleRenameNode()}
+              autoFocus
+            />
+
+            <div className="notes-modal-footer">
+              <button type="button" className="notes-action-pill-btn" onClick={() => setRenameModal({ isOpen: false, node: null, newName: '' })}>
+                Cancel
+              </button>
+              <button type="button" className="notes-primary-add-btn" onClick={handleRenameNode}>
+                Save Name
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── CONFIRM DELETE MODALS ── */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
         title="Delete Item"
-        message="Are you sure you want to delete this? If it's a folder, all contents inside will be orphaned or deleted."
-        onConfirm={confirmDeleteNode}
+        message="Are you sure you want to delete this document from your vault? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={() => handleDeleteNode(deleteConfirm.id)}
         onCancel={() => setDeleteConfirm({ isOpen: false, id: '' })}
       />
 
-      <ConfirmDialog 
-        open={bulkDeleteConfirm}
+      <ConfirmDialog
+        isOpen={bulkDeleteConfirm}
         title="Delete Selected Items"
-        message={`Are you sure you want to delete ${selectedIds.length} item(s)? Folders will be deleted along with their internal references.`}
-        onConfirm={confirmBulkDelete}
+        message={`Are you sure you want to delete ${selectedIds.length} selected items?`}
+        confirmText="Delete All"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={handleBulkDelete}
         onCancel={() => setBulkDeleteConfirm(false)}
       />
     </div>

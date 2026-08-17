@@ -4,8 +4,7 @@ import { auth } from '../services/firebase';
 
 /**
  * useClassNotifications — polls every 60s to check if any class starts
- * within the next 10 minutes. Fires both a local Web Notification and an
- * FCM push so the alert works even if the device screen is locked.
+ * within the next 10 minutes. Fires a local Web Notification alert.
  *
  * The hook is intentionally lightweight:
  *  - No Firestore reads (subjects come from GlobalDataContext, already loaded)

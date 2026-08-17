@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'framer-motion';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Home, LayoutGrid, LogOut, Volume2, VolumeX, User as UserIcon, Mic, Edit2, Check } from 'lucide-react';
+import {
+  Home, LayoutGrid, LogOut, Volume2, VolumeX, User as UserIcon, Mic, Edit2, Check,
+  BookOpen, CheckSquare, Calendar, StickyNote, Target, Dumbbell, Zap, GraduationCap,
+  FileText, Award, Briefcase, BarChart3
+} from 'lucide-react';
 import { auth } from '../services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import type { User } from 'firebase/auth';
@@ -12,17 +16,17 @@ import { useVoice } from '../contexts/VoiceContext';
 import '../styles/dock.css';
 
 const ALL_APPS = [
-  { name: 'Tasks', img: 'https://upload.wikimedia.org/wikipedia/commons/5/5b/Google_Tasks_2021.svg', route: '/tasks' },
-  { name: 'Calendar', img: 'https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg', route: '/calendar' },
-  { name: 'Notes', img: 'https://img.icons8.com/color/96/000000/google-keep.png', route: '/notes' },
-  { name: 'Goals', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Trophy/3D/trophy_3d.png', route: '/goals' },
-  { name: 'Analytics', img: 'https://img.icons8.com/color/96/000000/google-analytics.png', route: '/analytics' },
-  { name: 'Habits', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Counterclockwise%20arrows%20button/3D/counterclockwise_arrows_button_3d.png', route: '/habits' },
-  { name: 'Learning', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Brain/3D/brain_3d.png', route: '/learning' },
-  { name: 'Assignments', img: 'https://img.icons8.com/color/96/000000/google-classroom.png', route: '/assignments' },
-  { name: 'Jobs', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Briefcase/3D/briefcase_3d.png', route: '/jobs' },
-  { name: 'Attendance', img: 'https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Graduation%20cap/3D/graduation_cap_3d.png', route: '/attendance' },
-  { name: 'Grades', img: 'https://img.icons8.com/color/96/000000/exam.png', route: '/grades' },
+  { name: 'Tasks', icon: <CheckSquare size={22} color="#a599ff" strokeWidth={2.2} />, route: '/tasks', isLucide: true },
+  { name: 'Calendar', icon: <Calendar size={22} color="#38bdf8" strokeWidth={2.2} />, route: '/calendar', isLucide: true },
+  { name: 'Notes', icon: <StickyNote size={22} color="#fad7a1" strokeWidth={2.2} />, route: '/notes', isLucide: true },
+  { name: 'Goals', icon: <Target size={22} color="#818cf8" strokeWidth={2.2} />, route: '/goals', isLucide: true },
+  { name: 'Habits', icon: <Zap size={22} color="#f59e0b" strokeWidth={2.2} />, route: '/habits', isLucide: true },
+  { name: 'Learning', icon: <BookOpen size={22} color="#5eda9e" strokeWidth={2.2} />, route: '/learning', isLucide: true },
+  { name: 'Attendance', icon: <GraduationCap size={22} color="#38bdf8" strokeWidth={2.2} />, route: '/attendance', isLucide: true },
+  { name: 'Assignments', icon: <FileText size={22} color="#f472b6" strokeWidth={2.2} />, route: '/assignments', isLucide: true },
+  { name: 'Jobs', icon: <Briefcase size={22} color="#fbbf24" strokeWidth={2.2} />, route: '/jobs', isLucide: true },
+  { name: 'Grades', icon: <Award size={22} color="#a599ff" strokeWidth={2.2} />, route: '/grades', isLucide: true },
+  { name: 'Analytics', icon: <BarChart3 size={22} color="#38bdf8" strokeWidth={2.2} />, route: '/analytics', isLucide: true },
 ];
 
 interface FloatingDockProps {
@@ -41,9 +45,14 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
   const [pinnedApps, setPinnedApps] = useState<string[]>(() => {
     const saved = localStorage.getItem('desktop_pinned_apps');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((name: string) => name !== 'Gym');
+        }
+      } catch (e) {}
     }
-    return ['Tasks', 'Calendar', 'Notes', 'Goals', 'Gym'];
+    return ['Tasks', 'Calendar', 'Notes', 'Goals', 'Learning'];
   });
 
   useEffect(() => {
@@ -231,7 +240,13 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
                                 <Check size={12} />
                               </motion.div>
                             )}
-                            <img src={app.img} alt={app.name} style={{ opacity: isEditing && !isPinned ? 0.3 : 1, transition: 'opacity 0.3s' }} />
+                            {app.isLucide ? (
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', opacity: isEditing && !isPinned ? 0.3 : 1, transition: 'opacity 0.3s' }}>
+                                {app.icon}
+                              </div>
+                            ) : (
+                              <img src={(app as any).img} alt={app.name} style={{ opacity: isEditing && !isPinned ? 0.3 : 1, transition: 'opacity 0.3s' }} />
+                            )}
                             <span style={{ color: isEditing && !isPinned ? 'rgba(255,255,255,0.3)' : undefined, transition: 'color 0.3s' }}>{app.name}</span>
                           </motion.div>
                         );

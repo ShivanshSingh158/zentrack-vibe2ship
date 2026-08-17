@@ -1,20 +1,39 @@
-import { useState, useEffect, useMemo } from 'react';
-import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import type { User } from 'firebase/auth';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc
+} from 'firebase/firestore';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { db, auth } from '../../services/firebase';
-import { ClipboardList, Plus, X, Calendar, AlertTriangle, Check, Clock, FileText, Edit2, Trash2, BookOpen, ListChecks } from 'lucide-react';
+import {
+  ClipboardList, Plus, X, Calendar, AlertTriangle, Check,
+  Clock, FileText, Edit2, Trash2, BookOpen, ListChecks,
+  Sparkles, CheckCircle2, AlertCircle, Layers, School, ChevronRight
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
-import type { Assignment } from '../../types/index';
 import { useSubjects } from '../../hooks/useSubjects';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 
+export interface Assignment {
+  id?: string;
+  userId: string;
+  title: string;
+  subjectName: string;
+  dueDate: string;
+  status: 'not_started' | 'in_progress' | 'submitted' | 'graded';
+  weightage?: number | null;
+  maxMarks?: number | null;
+  obtainedMarks?: number | null;
+  description?: string;
+  createdAt?: number;
+  updatedAt?: number;
+}
+
 const STATUS_CONFIG = {
-  not_started: { label: 'Not Started', color: '#6b7280', bg: 'rgba(107,114,128,0.1)', icon: Clock },
-  in_progress: { label: 'In Progress', color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', icon: Edit2 },
-  submitted: { label: 'Submitted', color: '#a599ff', bg: 'rgba(165,153,255,0.1)', icon: FileText },
-  graded: { label: 'Graded', color: '#10b981', bg: 'rgba(16,185,129,0.1)', icon: Check },
+  not_started: { label: 'Not Started', color: '#6b7280', bg: 'rgba(107,114,128,0.12)', border: 'rgba(107,114,128,0.3)' },
+  in_progress: { label: 'In Progress', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.3)' },
+  submitted: { label: 'Submitted', color: '#38bdf8', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.3)' },
+  graded: { label: 'Graded', color: '#5eda9e', bg: 'rgba(94,218,158,0.12)', border: 'rgba(94,218,158,0.3)' },
 };
 
 const getDaysUntilDue = (dueDate: string) => {
@@ -23,34 +42,18 @@ const getDaysUntilDue = (dueDate: string) => {
   return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 };
 
-const getUrgencyColor = (daysLeft: number, status: string) => {
-  if (status === 'submitted' || status === 'graded') return 'var(--text-muted)';
-  if (daysLeft < 0) return '#ef4444';
-  if (daysLeft <= 2) return '#f59e0b';
-  if (daysLeft <= 7) return '#eab308';
-  return '#10b981';
-};
-
-const getUrgencyLabel = (daysLeft: number, status: string) => {
-  if (status === 'submitted') return 'Submitted';
-  if (status === 'graded') return 'Graded';
-  if (daysLeft < 0) return `Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) !== 1 ? 's' : ''}`;
-  if (daysLeft === 0) return 'Due Today!';
-  if (daysLeft === 1) return 'Due Tomorrow';
-  return `${daysLeft} days left`;
-};
-
 export const AssignmentModule = () => {
   const [user, setUser] = useState<User | null>(null);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterSubject, setFilterSubject] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'dueDate' | 'subject' | 'status'>('dueDate');
 
-  // Form state
+  // Filters & States
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState<Assignment | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Form Fields
   const [formTitle, setFormTitle] = useState('');
   const [formSubject, setFormSubject] = useState('');
   const [formCustomSubject, setFormCustomSubject] = useState('');
@@ -58,134 +61,97 @@ export const AssignmentModule = () => {
   const [formWeightage, setFormWeightage] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formStatus, setFormStatus] = useState<Assignment['status']>('not_started');
-  const [formGrade, setFormGrade] = useState('');
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [formMaxMarks, setFormMaxMarks] = useState('');
   const [formObtainedMarks, setFormObtainedMarks] = useState('');
 
-  // Timetable subjects from Attendance module
+  // Timetable subjects for suggestions
   const { subjects: timetableSubjects } = useSubjects();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    const unsub = onAuthStateChanged(auth, u => setUser(u));
     return () => unsub();
   }, []);
 
   useEffect(() => {
     if (!user) return;
+    setIsLoading(true);
+
     const q = query(collection(db, 'assignments'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, (snap) => {
+    const unsub = onSnapshot(q, snap => {
       const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment));
       setAssignments(data);
       setIsLoading(false);
-    }, (err) => {
+    }, err => {
       console.error(err);
       toast.error('Failed to load assignments');
       setIsLoading(false);
     });
+
     return () => unsub();
   }, [user]);
 
-  // Merge timetable subjects + any custom subjects already used in assignments
+  // Merge Timetable subjects + custom ones
   const allSubjectNames = useMemo(() => {
-    const timetableNames = timetableSubjects.map(s => s.name);
+    const timetableNames = (timetableSubjects || []).map(s => s.name);
     const usedNames = assignments.map(a => a.subjectName).filter(Boolean);
     const merged = new Set([...timetableNames, ...usedNames]);
     return Array.from(merged).sort();
   }, [timetableSubjects, assignments]);
 
-  // The effective subject for saving (select or custom input)
   const effectiveSubject = formSubject === '__custom__' ? formCustomSubject : formSubject;
 
+  // Filtered & Sorted Assignments
   const filteredAssignments = useMemo(() => {
     let filtered = [...assignments];
-    if (filterStatus !== 'all') filtered = filtered.filter(a => a.status === filterStatus);
-    if (filterSubject !== 'all') filtered = filtered.filter(a => a.subjectName === filterSubject);
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(a => a.status === statusFilter);
+    }
 
     filtered.sort((a, b) => {
-      if (sortBy === 'dueDate') return a.dueDate.localeCompare(b.dueDate);
-      if (sortBy === 'subject') return a.subjectName.localeCompare(b.subjectName);
+      const aDays = getDaysUntilDue(a.dueDate);
+      const bDays = getDaysUntilDue(b.dueDate);
       const statusOrder = { not_started: 0, in_progress: 1, submitted: 2, graded: 3 };
-      return statusOrder[a.status] - statusOrder[b.status];
+      if (a.status === 'graded' && b.status !== 'graded') return 1;
+      if (b.status === 'graded' && a.status !== 'graded') return -1;
+      return aDays - bDays;
     });
-    return filtered;
-  }, [assignments, filterStatus, filterSubject, sortBy]);
 
+    return filtered;
+  }, [assignments, statusFilter]);
+
+  // Summary Metrics
   const stats = useMemo(() => {
     const total = assignments.length;
+    const active = assignments.filter(a => a.status === 'not_started' || a.status === 'in_progress').length;
     const overdue = assignments.filter(a => getDaysUntilDue(a.dueDate) < 0 && a.status !== 'submitted' && a.status !== 'graded').length;
-    const dueSoon = assignments.filter(a => { const d = getDaysUntilDue(a.dueDate); return d >= 0 && d <= 7 && a.status !== 'submitted' && a.status !== 'graded'; }).length;
-    const submitted = assignments.filter(a => a.status === 'submitted' || a.status === 'graded').length;
-    return { total, overdue, dueSoon, submitted };
+    const dueSoon = assignments.filter(a => {
+      const d = getDaysUntilDue(a.dueDate);
+      return d >= 0 && d <= 7 && a.status !== 'submitted' && a.status !== 'graded';
+    }).length;
+    const completed = assignments.filter(a => a.status === 'submitted' || a.status === 'graded').length;
+
+    return { total, active, overdue, dueSoon, completed };
   }, [assignments]);
 
-  const resetForm = () => {
-    setFormTitle(''); setFormSubject(''); setFormCustomSubject('');
+  // ── Handlers ──
+  const handleOpenAddModal = () => {
+    setEditingAssignment(null);
+    setFormTitle('');
+    setFormSubject(allSubjectNames[0] || '');
+    setFormCustomSubject('');
     setFormDueDate(getLocalDateString(new Date()));
-    setFormWeightage(''); setFormDescription(''); setFormStatus('not_started');
-    setFormGrade(''); setFormMaxMarks(''); setFormObtainedMarks('');
-    setEditingId(null);
+    setFormWeightage('');
+    setFormDescription('');
+    setFormStatus('not_started');
+    setFormMaxMarks('');
+    setFormObtainedMarks('');
+    setIsModalOpen(true);
   };
 
-  const handleSave = async () => {
-    const subjectToSave = effectiveSubject.trim();
-    if (!user || !formTitle.trim() || !subjectToSave) {
-      toast.error('Title and Subject are required');
-      return;
-    }
-    try {
-      const data: any = {
-        userId: user.uid,
-        title: formTitle.trim(),
-        subjectName: subjectToSave,
-        description: formDescription.trim(),
-        dueDate: formDueDate,
-        weightage: formWeightage ? parseFloat(formWeightage) : null,
-        status: formStatus,
-        grade: formGrade || null,
-        maxMarks: formMaxMarks ? parseFloat(formMaxMarks) : null,
-        obtainedMarks: formObtainedMarks ? parseFloat(formObtainedMarks) : null,
-        updatedAt: Date.now(),
-      };
-
-      if (editingId) {
-        await updateDoc(doc(db, 'assignments', editingId), data);
-        toast.success('Assignment updated!');
-      } else {
-        data.createdAt = Date.now();
-        await addDoc(collection(db, 'assignments'), data);
-        toast.success('Assignment added!');
-      }
-      resetForm();
-      setShowAddModal(false);
-    } catch (err: any) {
-      toast.error(`Failed: ${err.message}`);
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'assignments', id));
-      toast.success('Deleted!');
-    } catch (err: any) {
-      toast.error(`Failed: ${err.message}`);
-    }
-  };
-
-  const handleStatusChange = async (id: string, newStatus: Assignment['status']) => {
-    try {
-      await updateDoc(doc(db, 'assignments', id), { status: newStatus, updatedAt: Date.now() });
-      toast.success(`Status → ${STATUS_CONFIG[newStatus].label}`);
-    } catch (err: any) {
-      toast.error(`Failed: ${err.message}`);
-    }
-  };
-
-  const openEdit = (a: Assignment) => {
+  const handleOpenEditModal = (a: Assignment) => {
+    setEditingAssignment(a);
     setFormTitle(a.title);
-    // If the subject is in the timetable list use it; otherwise use custom
-    const inTimetable = timetableSubjects.some(s => s.name === a.subjectName);
-    if (inTimetable) {
+    if (allSubjectNames.includes(a.subjectName)) {
       setFormSubject(a.subjectName);
       setFormCustomSubject('');
     } else {
@@ -196,299 +162,452 @@ export const AssignmentModule = () => {
     setFormWeightage(a.weightage ? String(a.weightage) : '');
     setFormDescription(a.description || '');
     setFormStatus(a.status);
-    setFormGrade(a.grade || '');
     setFormMaxMarks(a.maxMarks ? String(a.maxMarks) : '');
     setFormObtainedMarks(a.obtainedMarks ? String(a.obtainedMarks) : '');
-    setEditingId(a.id!);
-    setShowAddModal(true);
+    setIsModalOpen(true);
   };
 
-  if (isLoading) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading Assignments...</div>;
+  const handleSaveAssignment = async () => {
+    if (!user || !formTitle.trim() || !effectiveSubject.trim()) {
+      toast.error('Please enter a title and subject');
+      return;
+    }
+
+    try {
+      const data: Partial<Assignment> = {
+        userId: user.uid,
+        title: formTitle.trim(),
+        subjectName: effectiveSubject.trim(),
+        dueDate: formDueDate,
+        status: formStatus,
+        weightage: formWeightage ? parseFloat(formWeightage) : null,
+        description: formDescription.trim(),
+        maxMarks: formMaxMarks ? parseFloat(formMaxMarks) : null,
+        obtainedMarks: formObtainedMarks ? parseFloat(formObtainedMarks) : null,
+        updatedAt: Date.now(),
+      };
+
+      if (editingAssignment?.id) {
+        await updateDoc(doc(db, 'assignments', editingAssignment.id), data);
+        toast.success(`Updated "${formTitle}"`);
+      } else {
+        await addDoc(collection(db, 'assignments'), { ...data, createdAt: Date.now() });
+        toast.success(`Created "${formTitle}"`);
+      }
+
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to save assignment');
+    }
+  };
+
+  const handleStatusChange = async (assignment: Assignment, nextStatus: Assignment['status']) => {
+    try {
+      await updateDoc(doc(db, 'assignments', assignment.id!), {
+        status: nextStatus,
+        updatedAt: Date.now(),
+      });
+      toast.success(`Marked as ${STATUS_CONFIG[nextStatus].label}`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update status');
+    }
+  };
 
   return (
-    <div className="page-pad">
-      {/* Header */}
-      <div className="page-header">
-        <div className="page-header-info">
-          <h1>
-            <ClipboardList size={26} style={{ color: '#8b5cf6' }} />
-            Assignment Tracker
-          </h1>
-          <p className="subtitle">Track all your assignments, submissions, and grades.</p>
+    <div className="as-module-root">
+      {/* ── TOP HERO HEADER BAR ── */}
+      <div className="as-header-bar">
+        <div className="as-header-left">
+          <h1 className="as-hero-title">Assignments & Coursework</h1>
+          <span className="as-stats-subtitle">
+            {stats.active} pending · {stats.dueSoon} due soon · {stats.completed} completed
+          </span>
         </div>
-        <div className="page-header-actions">
-          <button className="btn-primary" onClick={() => { resetForm(); setShowAddModal(true); }}>
-            <Plus size={16} /> New Assignment
+
+        <div className="as-header-actions">
+          {/* Status Filter Pills */}
+          <button
+            type="button"
+            className={`as-filter-pill-btn ${statusFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('all')}
+          >
+            <span>All ({assignments.length})</span>
+          </button>
+
+          <button
+            type="button"
+            className={`as-filter-pill-btn ${statusFilter === 'not_started' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('not_started')}
+          >
+            <span>⏳ Not Started ({assignments.filter(a => a.status === 'not_started').length})</span>
+          </button>
+
+          <button
+            type="button"
+            className={`as-filter-pill-btn ${statusFilter === 'in_progress' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('in_progress')}
+          >
+            <span>⚡ In Progress ({assignments.filter(a => a.status === 'in_progress').length})</span>
+          </button>
+
+          <button
+            type="button"
+            className={`as-filter-pill-btn ${statusFilter === 'submitted' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('submitted')}
+          >
+            <span>📤 Submitted ({assignments.filter(a => a.status === 'submitted').length})</span>
+          </button>
+
+          <button
+            type="button"
+            className={`as-filter-pill-btn ${statusFilter === 'graded' ? 'active' : ''}`}
+            onClick={() => setStatusFilter('graded')}
+          >
+            <span>✅ Graded ({assignments.filter(a => a.status === 'graded').length})</span>
+          </button>
+
+          {/* New Assignment Solid CTA */}
+          <button
+            type="button"
+            className="as-primary-add-btn"
+            onClick={handleOpenAddModal}
+          >
+            <Plus size={15} strokeWidth={2.5} />
+            <span>New Assignment</span>
           </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', marginBottom: '1.75rem' }}>
-        <div className="stat-card stat-purple">
-          <div className="stat-icon" style={{ background: 'rgba(124,58,237,0.1)' }}><ClipboardList size={18} style={{ color: '#a855f7' }} /></div>
-          <div className="stat-value" style={{ color: 'var(--accent-primary)' }}>{stats.total}</div>
-          <div className="stat-label">Total</div>
+      {/* ── SUMMARY METRICS QUAD-CARDS ── */}
+      <div className="as-metrics-grid">
+        <div className="as-metric-card">
+          <div className="as-metric-top">
+            <span>Total Tracked</span>
+            <ClipboardList size={14} color="var(--as-accent-purple)" />
+          </div>
+          <span className="as-metric-value">{stats.total}</span>
+          <span className="as-metric-subtext">{stats.active} in active development</span>
         </div>
-        <div className={`stat-card stat-red ${stats.overdue > 0 ? 'bg-danger-subtle' : ''}`} style={stats.overdue > 0 ? { borderColor: 'rgba(239,68,68,0.3)' } : {}}>
-          <div className="stat-icon" style={{ background: 'rgba(239,68,68,0.1)' }}><AlertTriangle size={18} style={{ color: '#f87171' }} /></div>
-          <div className="stat-value" style={{ color: '#ef4444' }}>{stats.overdue}</div>
-          <div className="stat-label">Overdue</div>
+
+        <div className="as-metric-card">
+          <div className="as-metric-top">
+            <span>Due This Week</span>
+            <Clock size={14} color="var(--as-accent-amber)" />
+          </div>
+          <span className="as-metric-value" style={{ color: 'var(--as-accent-amber)' }}>
+            {stats.dueSoon}
+          </span>
+          <span className="as-metric-subtext">Due within the next 7 days</span>
         </div>
-        <div className="stat-card stat-amber">
-          <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.1)' }}><Clock size={18} style={{ color: '#fbbf24' }} /></div>
-          <div className="stat-value" style={{ color: '#f59e0b' }}>{stats.dueSoon}</div>
-          <div className="stat-label">Due This Week</div>
+
+        <div className="as-metric-card">
+          <div className="as-metric-top">
+            <span>Overdue</span>
+            <AlertTriangle size={14} color="var(--as-accent-rose)" />
+          </div>
+          <span className="as-metric-value" style={{ color: stats.overdue > 0 ? 'var(--as-accent-rose)' : '#ffffff' }}>
+            {stats.overdue}
+          </span>
+          <span className="as-metric-subtext">{stats.overdue > 0 ? 'Urgent action required' : 'All clear & on schedule'}</span>
         </div>
-        <div className="stat-card stat-green">
-          <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.1)' }}><Check size={18} style={{ color: '#34d399' }} /></div>
-          <div className="stat-value" style={{ color: '#10b981' }}>{stats.submitted}</div>
-          <div className="stat-label">Submitted</div>
+
+        <div className="as-metric-card">
+          <div className="as-metric-top">
+            <span>Completed & Graded</span>
+            <CheckCircle2 size={14} color="var(--as-accent-emerald)" />
+          </div>
+          <span className="as-metric-value" style={{ color: 'var(--as-accent-emerald)' }}>
+            {stats.completed}
+          </span>
+          <span className="as-metric-subtext">Submitted or officially evaluated</span>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="filter-bar">
-        <span className="filter-label">Filters</span>
-        <select className="filter-select" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
-          <option value="all">All Statuses</option>
-          <option value="not_started">Not Started</option>
-          <option value="in_progress">In Progress</option>
-          <option value="submitted">Submitted</option>
-          <option value="graded">Graded</option>
-        </select>
-        <select className="filter-select" value={filterSubject} onChange={e => setFilterSubject(e.target.value)}>
-          <option value="all">All Subjects</option>
-          {allSubjectNames.map(s => <option key={s} value={s}>{s}</option>)}
-        </select>
-        <span className="filter-divider" />
-        <span className="filter-label">Sort</span>
-        <select className="filter-select" value={sortBy} onChange={e => setSortBy(e.target.value as any)}>
-          <option value="dueDate">Due Date</option>
-          <option value="subject">Subject</option>
-          <option value="status">Status</option>
-        </select>
-      </div>
+      {/* ── ASSIGNMENTS LIST ── */}
+      <div className="as-assignments-list">
+        {filteredAssignments.length === 0 ? (
+          <div className="notes-empty-state">
+            <ClipboardList size={32} color="var(--as-accent-purple)" />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>No assignments found</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--as-text-tertiary)', margin: 0 }}>
+              {statusFilter === 'all'
+                ? 'Create coursework items and deadlines to track submissions and grades.'
+                : `No assignments matching the "${statusFilter}" filter.`}
+            </p>
+            <button
+              type="button"
+              className="as-primary-add-btn"
+              onClick={handleOpenAddModal}
+              style={{ marginTop: '0.5rem' }}
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              <span>Create Assignment</span>
+            </button>
+          </div>
+        ) : (
+          filteredAssignments.map((assignment) => {
+            const daysLeft = getDaysUntilDue(assignment.dueDate);
+            const isDone = assignment.status === 'submitted' || assignment.status === 'graded';
+            const isOverdue = daysLeft < 0 && !isDone;
+            const isDueSoon = daysLeft >= 0 && daysLeft <= 2 && !isDone;
 
-      {/* Assignment Cards */}
-      {filteredAssignments.length === 0 ? (
-        <div style={{ padding: '4rem 2rem', textAlign: 'center', background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)', border: '1px dashed var(--border-subtle)' }}>
-          <ClipboardList size={48} style={{ color: 'var(--text-muted)', marginBottom: '1rem', opacity: 0.5 }} />
-          <h3 style={{ fontSize: '1.1rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.5rem' }}>No assignments yet</h3>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Click "New Assignment" to add your first one.</p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          {filteredAssignments.map(a => {
-            const daysLeft = getDaysUntilDue(a.dueDate);
-            const urgencyColor = getUrgencyColor(daysLeft, a.status);
-            const urgencyLabel = getUrgencyLabel(daysLeft, a.status);
-            const sc = STATUS_CONFIG[a.status];
-            const StatusIcon = sc.icon;
+            let deadlineClass = 'normal';
+            let deadlineText = `${daysLeft} days left`;
+            if (isDone) {
+              deadlineClass = 'done';
+              deadlineText = assignment.status === 'graded' ? 'Graded' : 'Submitted';
+            } else if (isOverdue) {
+              deadlineClass = 'overdue';
+              deadlineText = `Overdue by ${Math.abs(daysLeft)}d`;
+            } else if (daysLeft === 0) {
+              deadlineClass = 'due-soon';
+              deadlineText = 'Due Today!';
+            } else if (daysLeft === 1) {
+              deadlineClass = 'due-soon';
+              deadlineText = 'Due Tomorrow';
+            }
 
             return (
-              <div key={a.id} style={{
-                background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)',
-                padding: '1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap',
-                borderLeft: `4px solid ${urgencyColor}`,
-                transition: 'transform 0.15s, box-shadow 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 8px 25px rgba(0,0,0,0.15)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
-                {/* Status badge */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem', minWidth: '80px' }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: sc.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <StatusIcon size={18} style={{ color: sc.color }} />
+              <div
+                key={assignment.id}
+                className={`as-assignment-card ${isOverdue ? 'overdue' : ''}`}
+              >
+                <div className="as-card-left">
+                  <div className="as-card-header-row">
+                    <span className="as-subject-pill">{assignment.subjectName}</span>
+                    {assignment.weightage ? (
+                      <span className="as-weightage-tag">• Weight: {assignment.weightage}%</span>
+                    ) : null}
+                    {assignment.obtainedMarks != null && assignment.maxMarks != null ? (
+                      <span className="as-weightage-tag">• Score: {assignment.obtainedMarks}/{assignment.maxMarks}</span>
+                    ) : null}
                   </div>
-                  <select
-                    value={a.status}
-                    onChange={e => handleStatusChange(a.id!, e.target.value as Assignment['status'])}
-                    style={{ fontSize: '0.7rem', background: 'transparent', border: 'none', color: sc.color, fontWeight: 600, cursor: 'pointer', textAlign: 'center', outline: 'none' }}
-                  >
-                    <option value="not_started">Not Started</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="graded">Graded</option>
-                  </select>
-                </div>
 
-                {/* Main content */}
-                <div style={{ flex: 1, minWidth: '200px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                    <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '9999px', background: 'rgba(139,92,246,0.1)', color: '#8b5cf6', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-                      {a.subjectName}
+                  <h3 className="as-card-title">{assignment.title}</h3>
+
+                  {assignment.description ? (
+                    <p className="as-card-desc">{assignment.description}</p>
+                  ) : null}
+
+                  <div className="as-card-meta-row">
+                    <span className={`as-deadline-pill ${deadlineClass}`}>
+                      <Clock size={11} />
+                      <span>{deadlineText}</span>
                     </span>
-                    {a.weightage && (
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{a.weightage}% weightage</span>
-                    )}
-                  </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{a.title}</div>
-                  {a.description && <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>{a.description}</div>}
-                  {a.status === 'graded' && a.obtainedMarks != null && a.maxMarks != null && (
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#10b981', marginTop: '0.25rem' }}>
-                      Score: {a.obtainedMarks}/{a.maxMarks} {a.grade && `(${a.grade})`}
-                    </div>
-                  )}
-                </div>
-
-                {/* Due date & urgency */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem', minWidth: '120px' }}>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Calendar size={14} /> {formatDisplayDate(a.dueDate)}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: urgencyColor, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    {daysLeft < 0 && a.status !== 'submitted' && a.status !== 'graded' && <AlertTriangle size={12} />}
-                    {urgencyLabel}
+                    <span>•</span>
+                    <span>Due: {formatDisplayDate(assignment.dueDate)}</span>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                  {a.status !== 'submitted' && a.status !== 'graded' && (
-                    <button
-                      className="btn-secondary"
-                      title="Add as today's task"
-                      style={{ fontSize: '0.72rem', padding: '0.25rem 0.55rem', display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)', whiteSpace: 'nowrap' }}
-                      onClick={async () => {
-                        if (!user) return;
-                        await addDoc(collection(db, 'todos'), {
-                          userId: user.uid,
-                          title: a.title,
-                          date: getLocalDateString(new Date()),
-                          status: 'pending',
-                          priority: 'high',
-                          isRecurring: false,
-                          subtasks: [],
-                          subject: a.subjectName,
-                          createdAt: Date.now(),
-                          order: Date.now(),
-                        });
-                        toast.success('Added to today\'s tasks!');
-                      }}
-                    >
-                      <ListChecks size={12} /> + Tasks
-                    </button>
-                  )}
-                  <button className="btn-icon" onClick={() => openEdit(a)} title="Edit"><Edit2 size={14} /></button>
-                  <button className="btn-icon danger" onClick={() => setConfirmDeleteId(a.id!)} title="Delete"><Trash2 size={14} /></button>
+                {/* Right Side: Status Dropdown & Actions */}
+                <div className="as-card-right">
+                  <select
+                    className="as-status-dropdown"
+                    value={assignment.status}
+                    onChange={(e) => handleStatusChange(assignment, e.target.value as Assignment['status'])}
+                    style={{
+                      background: STATUS_CONFIG[assignment.status].bg,
+                      color: STATUS_CONFIG[assignment.status].color,
+                      borderColor: STATUS_CONFIG[assignment.status].border,
+                    }}
+                  >
+                    <option value="not_started" style={{ background: '#141416', color: '#fff' }}>⏳ Not Started</option>
+                    <option value="in_progress" style={{ background: '#141416', color: '#fff' }}>⚡ In Progress</option>
+                    <option value="submitted" style={{ background: '#141416', color: '#fff' }}>📤 Submitted</option>
+                    <option value="graded" style={{ background: '#141416', color: '#fff' }}>✅ Graded</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    className="att-card-action-btn"
+                    onClick={() => handleOpenEditModal(assignment)}
+                    title="Edit Assignment"
+                  >
+                    <Edit2 size={13} />
+                  </button>
+
+                  <button
+                    type="button"
+                    className="hb-card-delete-btn"
+                    onClick={() => setDeleteConfirmId(assignment.id!)}
+                    title="Delete Assignment"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
 
-      {/* Add/Edit Modal */}
-      {showAddModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.75rem' }}>
-          <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '550px', maxHeight: '90vh', overflowY: 'auto', padding: 'clamp(1rem, 4vw, 2rem)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 600 }}>{editingId ? 'Edit Assignment' : 'New Assignment'}</h2>
-              <button className="btn-icon" onClick={() => { setShowAddModal(false); resetForm(); }}><X size={20} /></button>
+      {/* ── COURSEWORK STUDIO MODAL ── */}
+      {isModalOpen && (
+        <div className="notes-modal-overlay" onClick={() => setIsModalOpen(false)}>
+          <div className="notes-modal-content" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">{editingAssignment ? 'Edit Assignment' : 'New Assignment'}</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setIsModalOpen(false)}>
+                <X size={18} />
+              </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>Title *</label>
-                <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)} placeholder="e.g., DBMS ER Diagram Assignment" className="todo-input" style={{ width: '100%', padding: '0.6rem' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <label style={{ fontSize: '0.76rem', color: 'var(--as-text-tertiary)', fontWeight: 600 }}>
+                ASSIGNMENT TITLE
+                <input
+                  type="text"
+                  placeholder="e.g. CPU Scheduling Simulator, Midterm Project"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                  value={formTitle}
+                  onChange={(e) => setFormTitle(e.target.value)}
+                  autoFocus
+                />
+              </label>
+
+              {/* Subject Selection */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                <span style={{ fontSize: '0.76rem', color: 'var(--as-text-tertiary)', fontWeight: 600 }}>SUBJECT / COURSE</span>
+                <select
+                  value={formSubject}
+                  onChange={(e) => setFormSubject(e.target.value)}
+                  className="notes-search-bar"
+                  style={{ width: '100%', borderRadius: 8, color: '#fff' }}
+                >
+                  {allSubjectNames.map((s) => (
+                    <option key={s} value={s} style={{ background: '#141416' }}>{s}</option>
+                  ))}
+                  <option value="__custom__" style={{ background: '#141416' }}>+ Custom Subject...</option>
+                </select>
+
+                {formSubject === '__custom__' && (
+                  <input
+                    type="text"
+                    placeholder="Enter custom subject name"
+                    className="notes-search-bar notes-search-input"
+                    style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                    value={formCustomSubject}
+                    onChange={(e) => setFormCustomSubject(e.target.value)}
+                  />
+                )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>
-                    Subject *
-                    {timetableSubjects.length > 0 && (
-                      <span style={{ marginLeft: '0.5rem', fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>
-                        <BookOpen size={10} style={{ display: 'inline', verticalAlign: 'middle' }} /> from timetable
-                      </span>
-                    )}
-                  </label>
+              {/* Due Date & Weightage */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <label style={{ fontSize: '0.76rem', color: 'var(--as-text-tertiary)', fontWeight: 600 }}>
+                  DUE DATE
+                  <input
+                    type="date"
+                    className="notes-search-bar notes-search-input"
+                    style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem', colorScheme: 'dark' }}
+                    value={formDueDate}
+                    onChange={(e) => setFormDueDate(e.target.value)}
+                  />
+                </label>
+
+                <label style={{ fontSize: '0.76rem', color: 'var(--as-text-tertiary)', fontWeight: 600 }}>
+                  WEIGHTAGE (%)
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="e.g. 15"
+                    className="notes-search-bar notes-search-input"
+                    style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                    value={formWeightage}
+                    onChange={(e) => setFormWeightage(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              {/* Status & Marks */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                <label style={{ fontSize: '0.76rem', color: 'var(--as-text-tertiary)', fontWeight: 600 }}>
+                  STATUS
                   <select
-                    value={formSubject}
-                    onChange={e => { setFormSubject(e.target.value); if (e.target.value !== '__custom__') setFormCustomSubject(''); }}
-                    className="todo-input"
-                    style={{ width: '100%', padding: '0.6rem' }}
+                    value={formStatus}
+                    onChange={(e) => setFormStatus(e.target.value as Assignment['status'])}
+                    className="notes-search-bar"
+                    style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem', color: '#fff' }}
                   >
-                    <option value="">— Select Subject —</option>
-                    {timetableSubjects.length > 0 && (
-                      <optgroup label="📅 From Timetable">
-                        {timetableSubjects.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                      </optgroup>
-                    )}
-                    <option value="__custom__">✏️ Other / Custom…</option>
+                    <option value="not_started" style={{ background: '#141416' }}>⏳ Not Started</option>
+                    <option value="in_progress" style={{ background: '#141416' }}>⚡ In Progress</option>
+                    <option value="submitted" style={{ background: '#141416' }}>📤 Submitted</option>
+                    <option value="graded" style={{ background: '#141416' }}>✅ Graded</option>
                   </select>
-                  {formSubject === '__custom__' && (
+                </label>
+
+                <div style={{ display: 'flex', gap: '0.45rem' }}>
+                  <label style={{ fontSize: '0.76rem', color: 'var(--as-text-tertiary)', fontWeight: 600, flex: 1 }}>
+                    SCORE
                     <input
-                      type="text"
-                      value={formCustomSubject}
-                      onChange={e => setFormCustomSubject(e.target.value)}
-                      placeholder="Type subject name…"
-                      className="todo-input"
-                      style={{ width: '100%', padding: '0.5rem', marginTop: '0.4rem' }}
-                      autoFocus
+                      type="number"
+                      placeholder="Obt"
+                      className="notes-search-bar notes-search-input"
+                      style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                      value={formObtainedMarks}
+                      onChange={(e) => setFormObtainedMarks(e.target.value)}
                     />
-                  )}
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>Due Date *</label>
-                  <input type="date" value={formDueDate} onChange={e => setFormDueDate(e.target.value)} className="todo-input" style={{ width: '100%', padding: '0.6rem' }} />
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>Weightage (%)</label>
-                  <input type="number" value={formWeightage} onChange={e => setFormWeightage(e.target.value)} placeholder="e.g., 10" className="todo-input" style={{ width: '100%', padding: '0.6rem' }} min="0" max="100" />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>Status</label>
-                  <select value={formStatus} onChange={e => setFormStatus(e.target.value as Assignment['status'])} className="todo-input" style={{ width: '100%', padding: '0.6rem' }}>
-                    <option value="not_started">Not Started</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="graded">Graded</option>
-                  </select>
+                  </label>
+                  <label style={{ fontSize: '0.76rem', color: 'var(--as-text-tertiary)', fontWeight: 600, flex: 1 }}>
+                    OUT OF
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      className="notes-search-bar notes-search-input"
+                      style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                      value={formMaxMarks}
+                      onChange={(e) => setFormMaxMarks(e.target.value)}
+                    />
+                  </label>
                 </div>
               </div>
 
-              <div>
-                <label style={{ fontSize: '0.85rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>Description</label>
-                <textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Assignment details..." className="todo-input" style={{ width: '100%', padding: '0.6rem', minHeight: '80px', resize: 'vertical' }} />
-              </div>
+              {/* Description */}
+              <label style={{ fontSize: '0.76rem', color: 'var(--as-text-tertiary)', fontWeight: 600 }}>
+                DESCRIPTION / NOTES
+                <textarea
+                  rows={2}
+                  placeholder="Additional guidelines, rubric, or submission link..."
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem', resize: 'vertical' }}
+                  value={formDescription}
+                  onChange={(e) => setFormDescription(e.target.value)}
+                />
+              </label>
+            </div>
 
-              {formStatus === 'graded' && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1rem', background: 'rgba(16,185,129,0.05)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                  <div>
-                    <label style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>Obtained</label>
-                    <input type="number" value={formObtainedMarks} onChange={e => setFormObtainedMarks(e.target.value)} className="todo-input" style={{ width: '100%', padding: '0.5rem' }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>Max Marks</label>
-                    <input type="number" value={formMaxMarks} onChange={e => setFormMaxMarks(e.target.value)} className="todo-input" style={{ width: '100%', padding: '0.5rem' }} />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-secondary)', marginBottom: '0.25rem', display: 'block' }}>Grade</label>
-                    <input type="text" value={formGrade} onChange={e => setFormGrade(e.target.value)} placeholder="A+" className="todo-input" style={{ width: '100%', padding: '0.5rem' }} />
-                  </div>
-                </div>
-              )}
-
-              <button className="btn-primary" onClick={handleSave} style={{ marginTop: '0.5rem', justifyContent: 'center', padding: '0.75rem' }}>
-                {editingId ? 'Update Assignment' : 'Add Assignment'}
+            <div className="notes-modal-footer">
+              <button type="button" className="as-filter-pill-btn" onClick={() => setIsModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" className="as-primary-add-btn" onClick={handleSaveAssignment}>
+                {editingAssignment ? 'Save Changes' : 'Create Assignment'}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── DELETE CONFIRM DIALOG ── */}
       <ConfirmDialog
-        open={!!confirmDeleteId}
+        isOpen={!!deleteConfirmId}
         title="Delete Assignment"
-        message="Are you sure you want to delete this assignment? This cannot be undone."
-        confirmLabel="Delete"
-        danger
-        onConfirm={() => { if (confirmDeleteId) handleDelete(confirmDeleteId); setConfirmDeleteId(null); }}
-        onCancel={() => setConfirmDeleteId(null)}
+        message="Are you sure you want to permanently delete this assignment?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={async () => {
+          if (deleteConfirmId) {
+            await deleteDoc(doc(db, 'assignments', deleteConfirmId));
+            toast.success('Assignment deleted');
+            setDeleteConfirmId(null);
+          }
+        }}
+        onCancel={() => setDeleteConfirmId(null)}
       />
     </div>
   );

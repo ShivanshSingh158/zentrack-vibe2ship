@@ -47,9 +47,6 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
   if (location.pathname.startsWith('/todo')) {
     baseColor = '#b8afff'; glowColor = '#a599ff';
     gradientColors = '#a599ff, #b8afff, #93c5fd';
-  } else if (location.pathname.startsWith('/gym')) {
-    baseColor = '#f87171'; glowColor = '#ef4444';
-    gradientColors = '#ef4444, #f87171, #fca5a5';
   } else if (location.pathname.startsWith('/attendance')) {
     baseColor = '#34d399'; glowColor = '#10b981';
     gradientColors = '#10b981, #34d399, #6ee7b7';
@@ -294,7 +291,6 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
 
   if (!supported) return null;
 
-  const isGym = location.pathname.startsWith('/gym');
   const bottomPosition = 'calc(85px + env(safe-area-inset-bottom, 0px))';
 
   return (
@@ -313,7 +309,7 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
       }}
       style={inline ? {
         position: 'relative',
-        display: isGym ? 'none' : 'flex',
+        display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
@@ -325,7 +321,7 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
         bottom: bottomPosition,
         right: '2rem',
         zIndex: 200,
-        display: isGym ? 'none' : 'flex',
+        display: 'flex',
         flexDirection: 'column',
         alignItems: 'flex-end',
         gap: '0.5rem',
@@ -366,7 +362,6 @@ export const VoiceQuickCaptureWidget = ({ inline = false }: VoiceQuickCaptureWid
           <div style={{ position: 'absolute', top: '50%', left: '50%', zIndex: 0, pointerEvents: 'auto' }}>
             {[
               { icon: <CheckSquare size={20} />, label: 'Todo', color: '#a599ff', route: '/todo' },
-              { icon: <Dumbbell size={20} />, label: 'Gym', color: '#ef4444', route: '/gym' },
               { icon: <GraduationCap size={20} />, label: 'Attendance', color: '#10b981', route: '/attendance' },
               { icon: <Moon size={20} />, label: 'Sleep', color: '#6366f1', route: '/log' },
             ].map((item: any, index, arr) => {

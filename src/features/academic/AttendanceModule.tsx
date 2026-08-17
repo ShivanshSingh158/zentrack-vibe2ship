@@ -1,29 +1,22 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   collection, query, where, onSnapshot, addDoc, updateDoc,
-  doc, writeBatch, limit as firestoreLimit, getDocs,
+  doc, writeBatch, deleteDoc, getDocs
 } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth';
-import type { User } from 'firebase/auth';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { db, auth } from '../../services/firebase';
 import {
-  Check, X, RotateCcw, Edit2, GraduationCap, Plus, History,
-  PieChart, Calendar, Settings, Palmtree, AlertTriangle, Download,
-  RefreshCw, ChevronDown, ChevronUp,
+  GraduationCap, Check, X, RotateCcw, Plus, Calendar,
+  Settings, Download, Trash2, Edit2, AlertTriangle, Sparkles,
+  ChevronRight, RefreshCw, Layers, School, Clock, CheckCircle2,
+  CalendarDays, Flame, AlertCircle, FileText, Palmtree, MoreVertical
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { playPopSound } from '../../utils/sound';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
-import { CustomDatePicker } from '../../components/ui/CustomDatePicker';
-import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
-// ── Schema Version (migration guard — prevents re-running migration on every load) ──
-const SCHEMA_VERSION = 1;
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-
+// ── Constants & Helpers ──
 export interface AttendanceSubject {
   id?: string;
   userId: string;
@@ -35,10 +28,7 @@ export interface AttendanceSubject {
   targetPercentage: number;
   order: number;
   schedule: Record<string, { classCount: number; labCount: number }>;
-  schemaVersion?: number;
 }
-
-// ── Constants ─────────────────────────────────────────────────────────────────
 
 const defaultSchedule: Record<string, { classCount: number; labCount: number }> = {
   '0': { classCount: 0, labCount: 0 },
@@ -50,10 +40,8 @@ const defaultSchedule: Record<string, { classCount: number; labCount: number }> 
   '6': { classCount: 0, labCount: 0 },
 };
 
-const DAY_NAMES  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const DAY_SHORT  = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 function getWeekDates(dateStr: string): string[] {
   const d = new Date(dateStr + 'T00:00:00');
@@ -65,896 +53,1177 @@ function getWeekDates(dateStr: string): string[] {
   });
 }
 
-const calculateStatus = (attended: number, total: number, target: number) => {
-  attended = attended || 0;
-  total    = total    || 0;
-  target   = target   || 75;
-  if (total === 0) return { pct: 100, safe: true, bunkInfo: 'No classes yet', urgency: 'safe' as const };
-  const pct   = (attended / total) * 100;
-  const safe  = pct >= target;
-  const nearEdge = pct >= target - 5 && pct < target;
-  let bunkInfo = '';
-  let urgency: 'safe' | 'warning' | 'danger' = 'safe';
-  if (safe) {
+// Bunk Math Calculator
+export function calculateBunkMath(attended: number, total: number, target = 75) {
+  if (total === 0) return { status: 'safe' as const, count: 0, text: 'No classes yet', urgency: 'safe' as const };
+  const pct = (attended / total) * 100;
+
+  if (pct >= target) {
     const safeToMiss = Math.floor((attended * 100 / target) - total);
     if (safeToMiss > 0) {
-      bunkInfo = `✓ Can skip ${safeToMiss} more class${safeToMiss > 1 ? 'es' : ''}`;
-      urgency  = nearEdge ? 'warning' : 'safe';
-    } else {
-      bunkInfo = '⚠️ On the edge — 0 skips left';
-      urgency  = 'warning';
+      return {
+        status: 'safe' as const,
+        count: safeToMiss,
+        text: `✓ Can miss ${safeToMiss} more ${safeToMiss === 1 ? 'class' : 'classes'}`,
+        urgency: 'safe' as const,
+      };
     }
+    return {
+      status: 'warning' as const,
+      count: 0,
+      text: '⚠️ 0 misses left — attend next class',
+      urgency: 'warning' as const,
+    };
   } else {
-    const needToAttend = Math.ceil((target * total - 100 * attended) / (100 - target));
-    bunkInfo = `⚠️ Attend next ${needToAttend} to reach ${target}%`;
-    urgency  = 'danger';
+    const needed = Math.ceil((target * total - 100 * attended) / (100 - target));
+    return {
+      status: 'danger' as const,
+      count: needed,
+      text: `⚠️ Attend ${needed} more ${needed === 1 ? 'class' : 'classes'} to reach ${target}%`,
+      urgency: 'danger' as const,
+    };
   }
-  return { pct, safe, bunkInfo, urgency };
-};
-
-const getProgressColor = (urgency: string) =>
-  urgency === 'danger' ? '#ef4444' : urgency === 'warning' ? '#f59e0b' : '#10b981';
-
-// ── Main Component ─────────────────────────────────────────────────────────────
+}
 
 export const AttendanceModule = () => {
-  const [user, setUser]         = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [subjects, setSubjects] = useState<AttendanceSubject[]>([]);
-  const [logs, setLogs]         = useState<any[]>([]);
+  const [logs, setLogs] = useState<any[]>([]);
   const [holidays, setHolidays] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString(new Date()));
-  const [editingId, setEditingId]   = useState<string | null>(null);
-  const [editName, setEditName]     = useState('');
   const [isTimetableModalOpen, setIsTimetableModalOpen] = useState(false);
-  const [isHistoryModalOpen, setIsHistoryModalOpen]     = useState(false);
-  const [isExtraOpen, setIsExtraOpen]                   = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId]           = useState<string | null>(null);
-  const [confirmResetSemester, setConfirmResetSemester] = useState(false);
-  const [dismissedWarnings, setDismissedWarnings]       = useState<Set<string>>(new Set());
-  const [extraSubjectId, setExtraSubjectId]             = useState('');
-  const [overrideOpen, setOverrideOpen]                 = useState<string | null>(null);
-  const [overrideCounts, setOverrideCounts]             = useState({ classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 });
+  const [selectedHistorySubject, setSelectedHistorySubject] = useState<AttendanceSubject | null>(null);
+  const [isExtraOpen, setIsExtraOpen] = useState(false);
+  const [extraSubjectId, setExtraSubjectId] = useState('');
+  const [overrideSubject, setOverrideSubject] = useState<AttendanceSubject | null>(null);
+  const [overrideCounts, setOverrideCounts] = useState({ classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 });
+  const [editSubjectModal, setEditSubjectModal] = useState<{ isOpen: boolean; subject: AttendanceSubject | null }>({ isOpen: false, subject: null });
+  const [subjectForm, setSubjectForm] = useState({ name: '', targetPercentage: 75 });
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
 
-  // Debounce refs for schedule table — prevents Firestore write on every keypress
-  const scheduleDebounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  // ── Auth ──
+  // Listen to Auth & Firestore Subscriptions
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
-    return () => unsub();
+    const unsubAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (!currentUser) {
+        setSubjects([]);
+        setLogs([]);
+        setHolidays([]);
+        setIsLoading(false);
+      }
+    });
+    return () => unsubAuth();
   }, []);
 
-  // ── Prevent Background Scrolling when Modals are Open ──
-  useEffect(() => {
-    if (isTimetableModalOpen || isHistoryModalOpen || isExtraOpen || confirmDeleteId || confirmResetSemester) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [isTimetableModalOpen, isHistoryModalOpen, isExtraOpen, confirmDeleteId, confirmResetSemester]);
-
-  // ── Subjects (with schemaVersion migration guard) ──
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'attendance_subjects'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, async (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as AttendanceSubject));
-      const batch = writeBatch(db);
-      let needsCommit = false;
-      data.forEach(sub => {
-        // Only migrate subjects that have not yet been marked with current schemaVersion
-        if ((sub.schemaVersion || 0) < SCHEMA_VERSION) {
-          const updates: Record<string, any> = { schemaVersion: SCHEMA_VERSION };
-          if (!sub.schedule) updates.schedule = defaultSchedule;
-          batch.update(doc(db, 'attendance_subjects', sub.id!), updates);
-          needsCommit = true;
-        }
-      });
-      if (needsCommit) await batch.commit();
+    setIsLoading(true);
+
+    const subQ = query(collection(db, 'attendance_subjects'), where('userId', '==', user.uid));
+    const unsubSub = onSnapshot(subQ, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as AttendanceSubject[];
       data.sort((a, b) => (a.order || 0) - (b.order || 0));
       setSubjects(data);
       setIsLoading(false);
-    }, (err) => {
-      console.error('Subjects listener error:', err);
-      toast.error('Failed to load subjects');
-      setIsLoading(false);
     });
-    return () => unsub();
+
+    const logQ = query(collection(db, 'attendance_logs'), where('userId', '==', user.uid));
+    const unsubLog = onSnapshot(logQ, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setLogs(data);
+    });
+
+    const holQ = query(collection(db, 'attendance_holidays'), where('userId', '==', user.uid));
+    const unsubHol = onSnapshot(holQ, (snap) => {
+      const data = snap.docs.map(d => d.data().date);
+      setHolidays(data);
+    });
+
+    return () => {
+      unsubSub();
+      unsubLog();
+      unsubHol();
+    };
   }, [user]);
 
-  // ── Logs — limited to 300 (full semester is ~150–200 max) ──
-  useEffect(() => {
-    if (!user) return;
-    const qLogs = query(
-      collection(db, 'attendance_logs'),
-      where('userId', '==', user.uid),
-      firestoreLimit(300),
-    );
-    const unsub = onSnapshot(qLogs, (snap) => {
-      const allLogs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      allLogs.sort((a: any, b: any) => (b.timestamp || 0) - (a.timestamp || 0));
-      setLogs(allLogs);
-    }, (err) => {
-      console.error('Logs listener error:', err);
-      toast.error('Failed to load attendance logs');
-    });
-    return () => unsub();
-  }, [user]);
+  // Derived Data
+  const selectedDayOfWeek = String(new Date(selectedDate + 'T00:00:00').getDay());
+  const isSelectedHoliday = holidays.includes(selectedDate);
+  const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
+  const todayStr = getLocalDateString(new Date());
 
-  // ── Holidays ──
-  useEffect(() => {
-    if (!user) return;
-    const q = query(collection(db, 'attendance_holidays'), where('userId', '==', user.uid));
-    const unsub = onSnapshot(q, (snap) => {
-      setHolidays(snap.docs.map(d => (d.data() as any).date as string));
-    });
-    return () => unsub();
-  }, [user]);
-
-  // ── Memoized log index — O(1) per-subject lookups instead of 3 × .filter() per card ──
+  // Group logs by subject
   const logsBySubjectId = useMemo(() => {
     const map: Record<string, any[]> = {};
-    for (const log of logs) {
-      if (!map[log.subjectId]) map[log.subjectId] = [];
-      map[log.subjectId].push(log);
+    for (const l of logs) {
+      if (!map[l.subjectId]) map[l.subjectId] = [];
+      map[l.subjectId].push(l);
     }
     return map;
   }, [logs]);
 
-  // ── Derived State ──
-  const selectedDayOfWeek  = new Date(selectedDate + 'T00:00:00').getDay().toString();
-  const isSelectedHoliday  = holidays.includes(selectedDate);
-  const today              = getLocalDateString(new Date());
-  const weekDates          = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
+  // Semester Global Totals
+  const { globalAttended, globalTotal, globalPct } = useMemo(() => {
+    let attended = 0;
+    let total = 0;
+    for (const s of subjects) {
+      attended += (s.classesAttended || 0) + (s.labsAttended || 0);
+      total += (s.classesTotal || 0) + (s.labsTotal || 0);
+    }
+    const pct = total > 0 ? Math.round((attended / total) * 100) : null;
+    return { globalAttended: attended, globalTotal: total, globalPct: pct };
+  }, [subjects]);
 
-  const todayScheduledSubjects = useMemo(() =>
-    subjects.filter(s => {
-      const sch = s.schedule?.[selectedDayOfWeek] || s.schedule?.[Number(selectedDayOfWeek)] || s.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || s.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
-      return sch && (
-        (sch.classes && sch.classes.length > 0) || 
-        (sch.labs && sch.labs.length > 0) ||
-        sch.classCount > 0 || 
-        sch.labCount > 0
-      );
-    }),
-    [subjects, selectedDayOfWeek, selectedDate],
-  );
+  // Today's Scheduled Sessions
+  const todaySessions = useMemo(() => {
+    const sessions: Array<{
+      id: string;
+      subject: AttendanceSubject;
+      type: 'class' | 'lab';
+      idx: number;
+      timeStr: string;
+    }> = [];
 
+    for (const s of subjects) {
+      const daySched = s.schedule?.[selectedDayOfWeek] || defaultSchedule[selectedDayOfWeek];
+      const classCount = daySched?.classCount || 0;
+      const labCount = daySched?.labCount || 0;
 
-
-  const warningSubjects = useMemo(() =>
-    subjects.filter(s => {
-      const totalAtt = (s.classesAttended || 0) + (s.labsAttended || 0);
-      const totalCls = (s.classesTotal || 0) + (s.labsTotal || 0);
-      if (totalCls === 0) return false;
-      return (totalAtt / totalCls) * 100 < (s.targetPercentage || 75);
-    }).filter(s => !dismissedWarnings.has(s.id!)),
-    [subjects, dismissedWarnings],
-  );
-
-  const globalAttended = subjects.reduce((s, x) => s + (x.classesAttended || 0) + (x.labsAttended || 0), 0);
-  const globalTotal    = subjects.reduce((s, x) => s + (x.classesTotal    || 0) + (x.labsTotal    || 0), 0);
-  const globalPct      = globalTotal === 0 ? 100 : (globalAttended / globalTotal) * 100;
-  const globalSafe     = globalPct >= 75;
-  const chartData      = [
-    { name: 'Attended', value: globalAttended,                          color: '#10b981' },
-    { name: 'Missed',   value: Math.max(0, globalTotal - globalAttended), color: '#ef4444' },
-  ];
-
-  // ── Handlers ──
-
-  const handleAddSubject = async () => {
-    if (!user) { toast.error('Not logged in'); return; }
-    try {
-      await addDoc(collection(db, 'attendance_subjects'), {
-        userId: user.uid, name: 'New Subject',
-        classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0,
-        targetPercentage: 75, order: subjects.length + 1,
-        schedule: defaultSchedule, schemaVersion: SCHEMA_VERSION,
-      });
-      toast.success('Subject added!');
-    } catch (err: any) { toast.error(`Failed: ${err.message}`); }
-  };
-
-  const handleDeleteSubject = async (id: string) => {
-    if (!user) return;
-    try {
-      const subjectLogs = logs.filter(l => l.subjectId === id);
-      const batch = writeBatch(db);
-      subjectLogs.forEach(l => batch.delete(doc(db, 'attendance_logs', l.id)));
-      batch.delete(doc(db, 'attendance_subjects', id));
-      await batch.commit();
-      toast.success('Subject and logs deleted');
-    } catch (err: any) { toast.error(`Failed: ${err.message}`); }
-  };
-
-  const saveSubjectName = async (id: string) => {
-    if (!editName.trim()) { setEditingId(null); return; }
-    try {
-      await updateDoc(doc(db, 'attendance_subjects', id), { name: editName.trim() });
-      setEditingId(null);
-      toast.success('Name updated!');
-    } catch (err: any) { toast.error(`Failed: ${err.message}`); }
-  };
-
-  const handleLog = async (
-    subject: AttendanceSubject,
-    type: 'class' | 'lab',
-    action: 'attended' | 'missed',
-    logDate: string = selectedDate,
-    isExtra = false,
-  ) => {
-    if (!user || !subject.id) return;
-    const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
-    const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
-    const newAttended = (subject[attendedKey] || 0) + (action === 'attended' ? 1 : 0);
-    const newTotal    = (subject[totalKey]    || 0) + 1;
-    try {
-      playPopSound();
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'attendance_subjects', subject.id), { [attendedKey]: newAttended, [totalKey]: newTotal });
-      const logRef = doc(collection(db, 'attendance_logs'));
-      batch.set(logRef, {
-        userId: user.uid, subjectId: subject.id, subjectName: subject.name,
-        type, action, date: logDate, isExtra, timestamp: Date.now(),
-      });
-      await batch.commit();
-      toast.success(`${action === 'attended' ? '✓ Attended' : '✗ Missed'} — ${subject.name}`);
-    } catch (err: any) { toast.error(`Failed to log: ${err.message}`); }
-  };
-
-  const handleUndo = async (logId: string) => {
-    if (!user) return;
-    const logToUndo = logs.find(l => l.id === logId);
-    if (!logToUndo) { toast.error('Log entry not found.'); return; }
-    const subject = subjects.find(s => s.id === logToUndo.subjectId);
-    if (!subject) { toast.error('Subject was deleted.'); return; }
-    const type        = logToUndo.type || 'class';
-    const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
-    const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
-    const newAttended = Math.max(0, (subject[attendedKey] || 0) - (logToUndo.action === 'attended' ? 1 : 0));
-    const newTotal    = Math.max(0, (subject[totalKey]    || 0) - 1);
-    try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'attendance_subjects', subject.id!), { [attendedKey]: newAttended, [totalKey]: newTotal });
-      batch.delete(doc(db, 'attendance_logs', logId));
-      await batch.commit();
-      toast.success(`Undone — reverted for ${subject.name}`);
-    } catch (err: any) { toast.error(`Undo failed: ${err.message}`); }
-  };
-
-  // Debounced — prevents Firestore write on every keypress in schedule table
-  const handleUpdateSchedule = useCallback((subId: string, dayIdx: string, field: 'classCount' | 'labCount', value: number) => {
-    const key = `${subId}-${dayIdx}-${field}`;
-    clearTimeout(scheduleDebounceRef.current[key]);
-    scheduleDebounceRef.current[key] = setTimeout(async () => {
-      const sub = subjects.find(s => s.id === subId);
-      if (!sub) return;
-      const newSchedule = { ...sub.schedule };
-      if (!newSchedule[dayIdx]) newSchedule[dayIdx] = { classCount: 0, labCount: 0 };
-      
-      const arrField = field === 'classCount' ? 'classes' : 'labs';
-      const currentArr = newSchedule[dayIdx][arrField] || [];
-      const newValue = Math.max(0, value);
-      
-      let newArr = [...currentArr];
-      if (newValue > newArr.length) {
-        newArr = [...newArr, ...Array.from({ length: newValue - newArr.length }).map(() => ({}))];
-      } else if (newValue < newArr.length) {
-        newArr = newArr.slice(0, newValue);
+      for (let i = 0; i < classCount; i++) {
+        sessions.push({
+          id: `${s.id}-class-${i}`,
+          subject: s,
+          type: 'class',
+          idx: i,
+          timeStr: `${9 + sessions.length}:00 AM - ${10 + sessions.length}:00 AM`,
+        });
       }
 
-      newSchedule[dayIdx] = { ...newSchedule[dayIdx], [field]: newValue, [arrField]: newArr };
-      
-      try {
-        await updateDoc(doc(db, 'attendance_subjects', subId), { schedule: newSchedule });
-      } catch (err: any) { toast.error(`Schedule update failed: ${err.message}`); }
-    }, 500);
-  }, [subjects]);
+      for (let i = 0; i < labCount; i++) {
+        sessions.push({
+          id: `${s.id}-lab-${i}`,
+          subject: s,
+          type: 'lab',
+          idx: i,
+          timeStr: `${10 + sessions.length}:15 AM - ${12 + sessions.length}:15 PM`,
+        });
+      }
+    }
+    return sessions;
+  }, [subjects, selectedDayOfWeek]);
+
+  // At-Risk Warning Subjects
+  const warningSubjects = useMemo(() => {
+    return subjects.filter(s => {
+      const att = (s.classesAttended || 0) + (s.labsAttended || 0);
+      const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
+      const target = s.targetPercentage || 75;
+      const pct = tot > 0 ? (att / tot) * 100 : 100;
+      return pct < target && !dismissedWarnings.has(s.id!);
+    });
+  }, [subjects, dismissedWarnings]);
+
+  // ── Handlers ──
+  const handleLogSession = async (
+    subject: AttendanceSubject,
+    type: 'class' | 'lab',
+    action: 'attended' | 'missed' | 'cancelled',
+    date = selectedDate,
+    isExtra = false
+  ) => {
+    if (!user) return;
+    try {
+      playPopSound();
+
+      // 1. Add Log
+      await addDoc(collection(db, 'attendance_logs'), {
+        userId: user.uid,
+        subjectId: subject.id,
+        subjectName: subject.name,
+        type,
+        action,
+        date,
+        isExtra,
+        timestamp: Date.now(),
+      });
+
+      // 2. Update Subject Totals (if not cancelled)
+      if (action !== 'cancelled') {
+        const isAttended = action === 'attended';
+        const subRef = doc(db, 'attendance_subjects', subject.id!);
+
+        if (type === 'class') {
+          await updateDoc(subRef, {
+            classesTotal: (subject.classesTotal || 0) + 1,
+            classesAttended: (subject.classesAttended || 0) + (isAttended ? 1 : 0),
+          });
+        } else {
+          await updateDoc(subRef, {
+            labsTotal: (subject.labsTotal || 0) + 1,
+            labsAttended: (subject.labsAttended || 0) + (isAttended ? 1 : 0),
+          });
+        }
+      }
+
+      toast.success(`Marked ${subject.name} as ${action}`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to log attendance');
+    }
+  };
+
+  const handleUndoLog = async (logId: string) => {
+    if (!user) return;
+    try {
+      const targetLog = logs.find(l => l.id === logId);
+      if (!targetLog) return;
+
+      const subject = subjects.find(s => s.id === targetLog.subjectId);
+      if (subject && targetLog.action !== 'cancelled') {
+        const subRef = doc(db, 'attendance_subjects', subject.id!);
+        const isAtt = targetLog.action === 'attended';
+
+        if (targetLog.type === 'lab') {
+          await updateDoc(subRef, {
+            labsTotal: Math.max(0, (subject.labsTotal || 0) - 1),
+            labsAttended: Math.max(0, (subject.labsAttended || 0) - (isAtt ? 1 : 0)),
+          });
+        } else {
+          await updateDoc(subRef, {
+            classesTotal: Math.max(0, (subject.classesTotal || 0) - 1),
+            classesAttended: Math.max(0, (subject.classesAttended || 0) - (isAtt ? 1 : 0)),
+          });
+        }
+      }
+
+      await deleteDoc(doc(db, 'attendance_logs', logId));
+      toast.success('Undid attendance record');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to undo');
+    }
+  };
 
   const handleToggleHoliday = async () => {
     if (!user) return;
     try {
       if (isSelectedHoliday) {
-        const q    = query(collection(db, 'attendance_holidays'), where('userId', '==', user.uid), where('date', '==', selectedDate));
+        const q = query(collection(db, 'attendance_holidays'), where('userId', '==', user.uid), where('date', '==', selectedDate));
         const snap = await getDocs(q);
         const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
+        snap.forEach(d => batch.delete(d.ref));
         await batch.commit();
-        toast.success('Holiday removed');
+        toast.success(`Removed holiday for ${formatDisplayDate(selectedDate)}`);
       } else {
-        await addDoc(collection(db, 'attendance_holidays'), { userId: user.uid, date: selectedDate });
-        toast.success('Marked as holiday 🌴');
+        await addDoc(collection(db, 'attendance_holidays'), {
+          userId: user.uid,
+          date: selectedDate,
+          createdAt: Date.now(),
+        });
+        toast.success(`Marked ${formatDisplayDate(selectedDate)} as Holiday 🌴`);
       }
-    } catch { toast.error('Failed to update holiday'); }
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to toggle holiday');
+    }
+  };
+
+  const handleSaveSubject = async () => {
+    if (!user || !subjectForm.name.trim()) return;
+    try {
+      if (editSubjectModal.subject?.id) {
+        await updateDoc(doc(db, 'attendance_subjects', editSubjectModal.subject.id), {
+          name: subjectForm.name.trim(),
+          targetPercentage: Number(subjectForm.targetPercentage) || 75,
+        });
+        toast.success('Subject updated');
+      } else {
+        await addDoc(collection(db, 'attendance_subjects'), {
+          userId: user.uid,
+          name: subjectForm.name.trim(),
+          classesAttended: 0,
+          classesTotal: 0,
+          labsAttended: 0,
+          labsTotal: 0,
+          targetPercentage: Number(subjectForm.targetPercentage) || 75,
+          order: subjects.length,
+          schedule: defaultSchedule,
+        });
+        toast.success('Subject created');
+      }
+      setEditSubjectModal({ isOpen: false, subject: null });
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to save subject');
+    }
+  };
+
+  const handleApplyOverride = async () => {
+    if (!overrideSubject?.id) return;
+    try {
+      await updateDoc(doc(db, 'attendance_subjects', overrideSubject.id), {
+        classesAttended: Number(overrideCounts.classesAttended) || 0,
+        classesTotal: Number(overrideCounts.classesTotal) || 0,
+        labsAttended: Number(overrideCounts.labsAttended) || 0,
+        labsTotal: Number(overrideCounts.labsTotal) || 0,
+      });
+      toast.success(`Updated counts for ${overrideSubject.name}`);
+      setOverrideSubject(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to update counts');
+    }
   };
 
   const handleExportCSV = () => {
-    const rows = [['Date', 'Subject', 'Type', 'Action', 'Extra', 'Time']];
-    [...logs]
-      .sort((a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0))
-      .forEach((log: any) => {
-        rows.push([
-          log.date || '', log.subjectName || '', log.type || 'class',
-          log.action || '', log.isExtra ? 'Yes' : 'No',
-          log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : '',
-        ]);
-      });
-    const csv  = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+    let csv = 'Subject,Class Attended,Class Total,Lab Attended,Lab Total,Overall %\n';
+    for (const s of subjects) {
+      const att = (s.classesAttended || 0) + (s.labsAttended || 0);
+      const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
+      const pct = tot > 0 ? Math.round((att / tot) * 100) : 100;
+      csv += `"${s.name}",${s.classesAttended || 0},${s.classesTotal || 0},${s.labsAttended || 0},${s.labsTotal || 0},${pct}%\n`;
+    }
     const blob = new Blob([csv], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `attendance_${getLocalDateString(new Date())}.csv`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `attendance_report_${getLocalDateString(new Date())}.csv`;
     a.click();
-    URL.revokeObjectURL(url);
-    toast.success('CSV exported!');
+    toast.success('Exported attendance CSV report');
   };
-
-  const handleResetSemester = async () => {
-    if (!user) return;
-    try {
-      const batch = writeBatch(db);
-      subjects.forEach(s => {
-        if (s.id) batch.update(doc(db, 'attendance_subjects', s.id), { classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 });
-      });
-      logs.forEach(l => batch.delete(doc(db, 'attendance_logs', l.id)));
-      await batch.commit();
-      toast.success('Semester reset! All counts cleared.');
-      setConfirmResetSemester(false);
-    } catch (err: any) { toast.error(`Reset failed: ${err.message}`); }
-  };
-
-  const handleApplyOverride = async (subId: string) => {
-    try {
-      await updateDoc(doc(db, 'attendance_subjects', subId), {
-        classesAttended: Math.max(0, overrideCounts.classesAttended),
-        classesTotal:    Math.max(0, overrideCounts.classesTotal),
-        labsAttended:    Math.max(0, overrideCounts.labsAttended),
-        labsTotal:       Math.max(0, overrideCounts.labsTotal),
-      });
-      toast.success('Counts corrected!');
-      setOverrideOpen(null);
-    } catch (err: any) { toast.error(`Failed: ${err.message}`); }
-  };
-
-  // ── Loading State ──
-  if (isLoading) return <div style={{ padding: '2rem', color: 'var(--text-muted)' }}>Loading Attendance Data...</div>;
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="page-pad" style={{ padding: '1.25rem 1.5rem', display: 'flex', flexDirection: 'column' }}>
-
-      {/* ── Header ── */}
-      <div className="page-header" style={{ marginBottom: '0.75rem' }}>
-        <div className="page-header-info">
-          <h1><GraduationCap size={22} className="icon-blue" /> Attendance Tracker</h1>
-          <p className="subtitle att-desktop-only" style={{ display: 'flex' }}>Log classes · Track progress · Stay above target.</p>
+    <div className="att-module-root">
+      {/* ── TOP HERO HEADER BAR ── */}
+      <div className="att-header-bar">
+        <div className="att-header-left">
+          <h1 className="att-hero-title">Class Attendance & Timetable</h1>
+          <span className="att-stats-subtitle">
+            {globalPct !== null ? `${globalPct}% overall` : 'No classes'} · {globalAttended}/{globalTotal} attended
+          </span>
         </div>
-        <div className="page-header-actions att-header-actions">
-          <CustomDatePicker 
-            value={selectedDate} 
-            onChange={setSelectedDate}
-            style={{ width: '160px', zIndex: 10 }}
-          />
+
+        <div className="att-header-actions">
+          {/* Date Picker Button */}
           <button
-            className={`btn-secondary att-header-btn${isSelectedHoliday ? ' active' : ''}`}
+            type="button"
+            className="att-action-pill-btn"
+            onClick={() => setSelectedDate(todayStr)}
+          >
+            <Calendar size={14} />
+            <span>{selectedDate === todayStr ? 'Today' : formatDisplayDate(selectedDate)}</span>
+          </button>
+
+          {/* Holiday Toggle */}
+          <button
+            type="button"
+            className={`att-action-pill-btn ${isSelectedHoliday ? 'active-holiday' : ''}`}
             onClick={handleToggleHoliday}
-            style={{ color: isSelectedHoliday ? '#10b981' : undefined }}
-            title={isSelectedHoliday ? 'Remove holiday' : 'Mark as holiday'}
           >
-            <Palmtree size={14} />
-            <span className="att-btn-label">{isSelectedHoliday ? 'Holiday ✓' : 'Holiday'}</span>
+            <span>🌴</span>
+            <span>{isSelectedHoliday ? 'Holiday (Off)' : 'Mark Holiday'}</span>
           </button>
+
+          {/* Timetable Setup */}
           <button
-            className={`btn-secondary att-header-btn${isExtraOpen ? ' active' : ''}`}
-            onClick={() => setIsExtraOpen(o => !o)}
-            title="Log extra/makeup class"
+            type="button"
+            className="att-action-pill-btn"
+            onClick={() => setIsTimetableModalOpen(true)}
           >
-            <Plus size={14} />
-            <span className="att-btn-label">Extra</span>
-          </button>
-          <button className="btn-secondary att-header-btn" onClick={() => setIsHistoryModalOpen(true)} title="Log history">
-            <History size={14} />
-            <span className="att-btn-label">History</span>
-          </button>
-          <button className="btn-secondary att-header-btn" onClick={() => setIsTimetableModalOpen(true)} title="Timetable settings">
             <Settings size={14} />
-            <span className="att-btn-label">Timetable</span>
+            <span>Setup Timetable</span>
+          </button>
+
+          {/* Export CSV */}
+          <button
+            type="button"
+            className="att-action-pill-btn"
+            onClick={handleExportCSV}
+          >
+            <Download size={14} />
+            <span>Export</span>
+          </button>
+
+          {/* Extra Class Solid CTA */}
+          <button
+            type="button"
+            className="att-primary-add-btn"
+            onClick={() => {
+              if (subjects.length > 0) {
+                setExtraSubjectId(subjects[0].id!);
+                setIsExtraOpen(true);
+              } else {
+                toast.info('Please add subjects first');
+              }
+            }}
+          >
+            <Plus size={15} strokeWidth={2.5} />
+            <span>Extra Class</span>
           </button>
         </div>
       </div>
 
-      {/* ── Extra Class Inline Dropdown ── */}
-      {isExtraOpen && (
-        <div className="att-extra-dropdown">
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              value={extraSubjectId}
-              onChange={e => setExtraSubjectId(e.target.value)}
-              style={{ flex: 1, minWidth: '140px', padding: '0.38rem 0.5rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.82rem' }}
-            >
-              <option value="">Select Subject...</option>
-              {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            {(['class', 'lab'] as const).map(t =>
-              (['attended', 'missed'] as const).map(a => {
-                const sub = subjects.find(s => s.id === extraSubjectId);
+      {/* ── SEMESTER OVERVIEW & AT-RISK WARNING ROW ── */}
+      <div className="att-overview-row">
+        {/* Meter Card */}
+        <div className="att-overview-card">
+          <div className="att-overview-top">
+            <h3 className="att-overview-title">Semester Overview</h3>
+            <span className="att-overview-stat-text">{globalAttended}/{globalTotal} total classes</span>
+          </div>
+
+          <div className="att-overview-meter-box">
+            <span className="att-overview-big-pct" style={{
+              color: globalPct !== null ? (globalPct >= 75 ? '#5eda9e' : (globalPct >= 70 ? '#fbbf24' : '#ff6961')) : '#8e8e93'
+            }}>
+              {globalPct !== null ? `${globalPct}%` : '--%'}
+            </span>
+
+            <div className="att-progress-track">
+              <div
+                className="att-progress-fill"
+                style={{
+                  width: `${Math.min(100, globalPct || 0)}%`,
+                  background: globalPct !== null ? (globalPct >= 75 ? '#5eda9e' : (globalPct >= 70 ? '#fbbf24' : '#ff6961')) : 'rgba(255,255,255,0.1)'
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* At-Risk Warning Card */}
+        {warningSubjects.length > 0 ? (
+          <div className="att-warning-card">
+            <div className="att-warning-header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <AlertTriangle size={16} />
+                <span>Low Attendance Warning ({warningSubjects.length})</span>
+              </div>
+              <button
+                type="button"
+                className="att-card-action-btn"
+                onClick={() => setDismissedWarnings(new Set(warningSubjects.map(s => s.id!)))}
+              >
+                Dismiss
+              </button>
+            </div>
+
+            <div className="att-warning-list">
+              {warningSubjects.map(s => {
+                const att = (s.classesAttended || 0) + (s.labsAttended || 0);
+                const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
+                const pct = tot > 0 ? Math.round((att / tot) * 100) : 0;
+                const bunk = calculateBunkMath(att, tot, s.targetPercentage || 75);
+
                 return (
-                  <button key={`${t}-${a}`}
-                    className="btn-secondary"
-                    disabled={!extraSubjectId}
-                    onClick={() => { if (sub) { handleLog(sub, t, a, selectedDate, true); setExtraSubjectId(''); setIsExtraOpen(false); } else toast.error('Select a subject first'); }}
-                    style={{ fontSize: '0.78rem', padding: '0.32rem 0.6rem', color: a === 'attended' ? '#10b981' : '#ef4444', border: `1px solid ${a === 'attended' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`, opacity: extraSubjectId ? 1 : 0.5, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                  >
-                    {a === 'attended' ? <Check size={12} /> : <X size={12} />} {t === 'class' ? 'Class' : 'Lab'}
-                  </button>
+                  <div key={s.id} className="att-warning-item">
+                    • <strong>{s.name}</strong>: {pct}% — {bunk.text}
+                  </div>
                 );
-              })
-            )}
-            <button onClick={() => { setIsExtraOpen(false); setExtraSubjectId(''); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.2rem', display: 'flex' }}><X size={14} /></button>
+              })}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* ── Warning Alerts Banner ── */}
-      {warningSubjects.length > 0 && (
-        <div className="att-warning-banner">
-          <AlertTriangle size={16} style={{ flexShrink: 0, color: '#f59e0b', marginTop: '0.1rem' }} />
-          <div style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: '0.35rem', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600, flexShrink: 0 }}>Low Attendance:</span>
-            {warningSubjects.map(s => {
-              const totalAtt = (s.classesAttended || 0) + (s.labsAttended || 0);
-              const totalCls = (s.classesTotal    || 0) + (s.labsTotal    || 0);
-              const pct      = totalCls > 0 ? Math.round((totalAtt / totalCls) * 100) : 0;
-              const need     = Math.ceil((s.targetPercentage * totalCls - 100 * totalAtt) / (100 - s.targetPercentage));
-              return (
-                <span key={s.id} style={{ background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: '6px', padding: '0.15rem 0.6rem', fontSize: '0.75rem', color: '#fca5a5' }}>
-                  <strong>{s.name}</strong> {pct}% — {need} more to recover
-                </span>
-              );
-            })}
+        ) : (
+          <div className="att-overview-card" style={{ justifyContent: 'center' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#5eda9e' }}>
+              <CheckCircle2 size={20} />
+              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>All subjects meet the target percentage!</span>
+            </div>
           </div>
-          <button onClick={() => setDismissedWarnings(new Set(warningSubjects.map(s => s.id!)))}
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: '0.1rem', flexShrink: 0 }}>
-            <X size={14} />
-          </button>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* ── Week Strip ── */}
+      {/* ── 7-DAY HORIZONTAL WEEK STRIP ── */}
       <div className="att-week-strip">
-        {weekDates.map((date, i) => {
-          const daySubjScheduled = subjects.filter(s => {
-            const sch = s.schedule?.[i.toString()];
-            return sch && ((sch.classes && sch.classes.length > 0) || (sch.labs && sch.labs.length > 0) || sch.classCount > 0 || sch.labCount > 0);
-          });
-          const totalSessions = daySubjScheduled.reduce((sum, s) => {
-            const sch = s.schedule?.[i.toString()];
-            return sum + (sch?.classes?.length || sch?.classCount || 0) + (sch?.labs?.length || sch?.labCount || 0);
-          }, 0);
-          const dayLogs   = logs.filter(l => l.date === date && !l.isExtra);
-          const isHol     = holidays.includes(date);
-          const isToday   = date === today;
-          const isSel     = date === selectedDate;
-          const allLogged = totalSessions > 0 && dayLogs.length >= totalSessions;
+        {weekDates.map(dateStr => {
+          const d = new Date(dateStr + 'T00:00:00');
+          const dayName = DAY_SHORT[d.getDay()];
+          const dayNum = d.getDate();
+          const isSelected = dateStr === selectedDate;
+          const isToday = dateStr === todayStr;
+          const isHol = holidays.includes(dateStr);
+
           return (
-            <button
-              key={date}
-              onClick={() => setSelectedDate(date)}
-              className="att-week-pill"
-              style={{
-                background: isSel ? 'var(--accent-primary)' : isToday ? 'rgba(99,102,241,0.12)' : 'var(--bg-surface)',
-                border: `1px solid ${isSel ? 'var(--accent-primary)' : isToday ? 'rgba(99,102,241,0.35)' : 'var(--border-subtle)'}`,
-                color: isSel ? '#fff' : 'var(--text-primary)',
-                borderRadius: '10px', padding: '0.45rem 0.4rem', cursor: 'pointer',
-                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.1rem',
-                minWidth: '42px', flex: 1, transition: 'all 0.15s ease',
-              }}
+            <div
+              key={dateStr}
+              className={`att-day-card ${isSelected ? 'active-day' : ''} ${isToday ? 'is-today' : ''}`}
+              onClick={() => setSelectedDate(dateStr)}
             >
-              <span style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.7 }}>{DAY_SHORT[i]}</span>
-              <span style={{ fontSize: '0.72rem', fontWeight: 700 }}>
-                {isHol ? '🌴' : allLogged ? '✓' : totalSessions > 0 ? totalSessions : '·'}
+              <span className="att-day-name">{dayName}</span>
+              <span className="att-day-number">{dayNum}</span>
+              <span className="att-day-badge">
+                {isHol ? '🌴 Off' : isToday ? 'Today' : ''}
               </span>
-            </button>
+            </div>
           );
         })}
       </div>
 
-      {/* ── Top Row: Overview only ── */}
-      <div className="att-overview-desktop" style={{ marginBottom: '1.25rem' }}>
-        <div className="panel panel-green attendance-summary-panel">
-          <div className="panel-body" style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
-            <div style={{ flex: 1 }}>
-              <h2 className="overview-title" style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <PieChart size={15} /> <span>Semester Overview</span>
-              </h2>
-              <div className="global-pct" style={{ fontSize: '2.6rem', fontFamily: 'var(--font-display)', fontWeight: 700, color: globalSafe ? '#10b981' : '#ef4444', lineHeight: 1 }}>
-                {Math.round(globalPct)}%
-              </div>
-              <div className="global-total" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
-                {globalAttended} / {globalTotal} attended
-              </div>
-              <div style={{ marginTop: '0.45rem', height: '4px', borderRadius: '2px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', borderRadius: '2px', width: `${Math.min(100, globalPct)}%`, background: globalSafe ? '#10b981' : '#ef4444', transition: 'width 0.5s ease' }} />
-              </div>
-            </div>
-            <div className="pie-chart-container" style={{ width: '100px', height: '100px' }}>
-              {globalTotal > 0 && (
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsPieChart>
-                    <Pie data={chartData} innerRadius={32} outerRadius={44} paddingAngle={4} dataKey="value" stroke="none">
-                      {chartData.map((entry, idx) => <Cell key={`cell-${idx}`} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: '8px' }} />
-                  </RechartsPieChart>
-                </ResponsiveContainer>
-              )}
-            </div>
+      {/* ── TODAY'S SCHEDULED SESSIONS ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div className="att-section-header">
+          <h3 className="att-section-title">
+            {selectedDate === todayStr ? "Today's Schedule" : `Schedule for ${formatDisplayDate(selectedDate)}`}
+          </h3>
+        </div>
+
+        {isSelectedHoliday ? (
+          <div className="notes-empty-state">
+            <span style={{ fontSize: '2.5rem' }}>🌴</span>
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>Holiday</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--att-text-tertiary)', margin: 0 }}>
+              Enjoy your day off! No classes scheduled for this date.
+            </p>
           </div>
-        </div>
-      </div>
+        ) : todaySessions.length === 0 ? (
+          <div className="notes-empty-state">
+            <CheckCircle2 size={32} color="var(--att-accent-purple)" />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>No classes scheduled</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--att-text-tertiary)', margin: 0 }}>
+              No lectures or labs assigned to this day in your timetable.
+            </p>
+          </div>
+        ) : (
+          <div className="att-sessions-list">
+            {todaySessions.map(session => {
+              const { subject, type, idx } = session;
+              const subLogs = logsBySubjectId[subject.id!] || [];
+              let matchingLog = null;
+              let matchIdx = 0;
 
-      {/* Mobile-only slim stats bar */}
-      <div className="att-mobile-stats">
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.6rem', color: globalSafe ? '#10b981' : '#ef4444', lineHeight: 1 }}>
-          {Math.round(globalPct)}%
-        </div>
-        <div style={{ height: '4px', flex: 1, borderRadius: '2px', background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
-          <div style={{ height: '100%', borderRadius: '2px', width: `${Math.min(100, globalPct)}%`, background: globalSafe ? '#10b981' : '#ef4444', transition: 'width 0.5s ease' }} />
-        </div>
-        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-          {globalAttended}/{globalTotal}
-        </div>
-      </div>
+              for (const l of subLogs) {
+                if (l.date === selectedDate && !l.isExtra && (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type))) {
+                  if (matchIdx === idx) {
+                    matchingLog = l;
+                    break;
+                  }
+                  matchIdx++;
+                }
+              }
 
-      {/* ── Daily Schedule ── */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2 style={{ fontSize: '1.05rem', fontWeight: 600 }}>
-          Schedule — {formatDisplayDate(selectedDate)}
-        </h2>
-        <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '0.18rem 0.6rem', borderRadius: '999px' }}>
-          {DAY_NAMES[parseInt(selectedDayOfWeek)]}
-        </div>
-      </div>
+              return (
+                <div key={session.id} className="att-session-row">
+                  <div className="att-session-left">
+                    <div className={`att-session-icon-box ${type}`}>
+                      {type === 'lab' ? <Layers size={18} /> : <School size={18} />}
+                    </div>
 
-      {isSelectedHoliday ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '300px', padding: '3rem 2rem', background: 'rgba(16,185,129,0.05)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
-          <Palmtree size={44} style={{ color: '#10b981', margin: '0 auto 0.85rem', opacity: 0.85 }} />
-          <h3 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '0.4rem' }}>Holiday / Leave</h3>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>This day is marked as a holiday.</p>
-          <button className="btn-secondary" onClick={handleToggleHoliday} style={{ color: '#ef4444' }}>Remove Holiday Mark</button>
-        </div>
-      ) : todayScheduledSubjects.length === 0 ? (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '300px', padding: '3rem 2rem', background: 'rgba(16,185,129,0.05)', border: '1px dashed rgba(16,185,129,0.3)', borderRadius: 'var(--radius-lg)', textAlign: 'center' }}>
-          <Palmtree size={44} style={{ color: '#10b981', margin: '0 auto 0.85rem', opacity: 0.85 }} />
-          <h3 style={{ fontSize: '1.15rem', fontWeight: 600, marginBottom: '0.4rem' }}>No classes scheduled!</h3>
-          <p style={{ color: 'var(--text-muted)' }}>Enjoy your free time. Set up your timetable to see classes here.</p>
-          {subjects.length === 0 && (
-            <button className="btn-primary" onClick={() => setIsTimetableOpen(true)} style={{ marginTop: '1.25rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Settings size={16} /> Setup Timetable
-            </button>
-          )}
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(330px, 1fr))', gap: '1.25rem' }}>
-          {todayScheduledSubjects.map(subject => {
-            const sch             = subject.schedule?.[selectedDayOfWeek] || subject.schedule?.[Number(selectedDayOfWeek)] || subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || subject.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()] || { classCount: 0, labCount: 0 };
-            const subLogs         = logsBySubjectId[subject.id!] || [];
-            const classLogsToday  = subLogs.filter(l => l.date === selectedDate && !l.isExtra && (l.type === 'class' || !l.type)).sort((a: any, b: any) => a.timestamp - b.timestamp);
-            const labLogsToday    = subLogs.filter(l => l.date === selectedDate && !l.isExtra && l.type === 'lab').sort((a: any, b: any) => a.timestamp - b.timestamp);
-            const recentLogs      = subLogs.slice(0, 5);
-            const classStatus     = calculateStatus(subject.classesAttended, subject.classesTotal, subject.targetPercentage);
-            const labStatus       = calculateStatus(subject.labsAttended,    subject.labsTotal,    subject.targetPercentage);
-            const classCount      = sch.classes?.length || sch.classCount || 0;
-            const labCount        = sch.labs?.length || sch.labCount || 0;
-            const totalSessions   = classCount + labCount;
-            const totalLogged     = classLogsToday.length + labLogsToday.length;
-            const isDoneForToday  = totalSessions > 0 && totalLogged >= totalSessions;
-
-            // Desktop projection (uses a rough 12-week estimate for remaining semester)
-            const totalAtt       = (subject.classesAttended || 0) + (subject.labsAttended || 0);
-            const totalCls       = (subject.classesTotal    || 0) + (subject.labsTotal    || 0);
-            const sessPerWeek    = Object.values(subject.schedule || {}).reduce((s: any, d: any) => s + (d?.classes?.length || d?.classCount || 0) + (d?.labs?.length || d?.labCount || 0), 0);
-            const weeksLeft      = 12;
-            const remaining      = sessPerWeek * weeksLeft;
-            const bestCase       = totalCls + remaining > 0 ? Math.round(((totalAtt + remaining) / (totalCls + remaining)) * 100) : 0;
-            const worstCase      = totalCls + remaining > 0 ? Math.round((totalAtt / (totalCls + remaining)) * 100) : 0;
-            const target         = subject.targetPercentage || 75;
-
-            return (
-              <div key={subject.id} style={{
-                background: 'var(--bg-surface)',
-                border: `1px solid ${isDoneForToday ? 'rgba(16,185,129,0.35)' : 'var(--border-subtle)'}`,
-                borderRadius: '12px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem',
-                boxShadow: isDoneForToday ? '0 0 0 1px rgba(16,185,129,0.12)' : 'none',
-                transition: 'border-color 0.3s, box-shadow 0.3s',
-              }}>
-                {/* Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>{subject.name}</h3>
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      Target: {target}% &nbsp;•&nbsp; Attend all: <span style={{ color: bestCase >= target ? '#10b981' : '#ef4444' }}>{bestCase}%</span> &nbsp;•&nbsp; Miss all: <span style={{ color: worstCase >= target ? '#10b981' : '#ef4444' }}>{worstCase}%</span>
+                    <div className="att-session-info">
+                      <span className="att-session-name">{subject.name}</span>
+                      <div className="att-session-meta">
+                        <span className={`att-type-tag ${type}`}>{type}</span>
+                        <span>•</span>
+                        <span>{session.timeStr}</span>
+                      </div>
                     </div>
                   </div>
-                  {isDoneForToday && (
-                    <span style={{ fontSize: '0.65rem', fontWeight: 700, background: 'rgba(16,185,129,0.15)', color: '#10b981', padding: '0.15rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(16,185,129,0.3)' }}>✓ Done</span>
-                  )}
-                </div>
 
-                {/* Progress Bars Row */}
-                <div style={{ display: 'flex', gap: '1.25rem', fontSize: '0.75rem' }}>
-                  {classCount > 0 && (
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem', alignItems: 'baseline' }}>
-                        <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.7rem' }}>CLASSES <strong style={{ color: classStatus.safe ? '#10b981' : '#ef4444' }}>{Math.round(classStatus.pct)}%</strong></span>
-                        <span style={{ color: getProgressColor(classStatus.urgency), fontSize: '0.65rem' }}>{classStatus.bunkInfo}</span>
-                      </div>
-                      <div style={{ height: '4px', background: 'rgba(255,255,255,0.07)', borderRadius: '2px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(100, classStatus.pct)}%`, background: getProgressColor(classStatus.urgency), borderRadius: '2px', transition: 'width 0.5s ease' }} />
-                      </div>
-                    </div>
-                  )}
-                  {labCount > 0 && (
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.2rem', alignItems: 'baseline' }}>
-                        <span style={{ color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.7rem' }}>LABS <strong style={{ color: labStatus.safe ? '#10b981' : '#ef4444' }}>{Math.round(labStatus.pct)}%</strong></span>
-                        <span style={{ color: getProgressColor(labStatus.urgency), fontSize: '0.65rem' }}>{labStatus.bunkInfo}</span>
-                      </div>
-                      <div style={{ height: '4px', background: 'rgba(255,255,255,0.07)', borderRadius: '2px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${Math.min(100, labStatus.pct)}%`, background: getProgressColor(labStatus.urgency), borderRadius: '2px', transition: 'width 0.5s ease' }} />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Today's Schedule Time Slots */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginTop: '0.25rem' }}>
-                  {/* Class Slots */}
-                  {Array.from({ length: classCount }).map((_, idx) => {
-                    const session = sch.classes?.[idx];
-                    const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Class ${idx + 1}`;
-                    const logForSession = classLogsToday[idx];
-                    return (
-                      <div key={`class-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.4rem 0.6rem', borderRadius: '8px', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-primary)' }}>{timeStr}</span>
-                        {logForSession ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{ fontSize: '0.72rem', color: logForSession.action === 'attended' ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                              {logForSession.action === 'attended' ? '✓ Attended' : '✗ Missed'}
-                            </span>
-                            <button onClick={() => handleUndo(logForSession.id)} className="btn-secondary" style={{ padding: '0.1rem 0.3rem', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
-                              <RotateCcw size={10} /> Undo
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '0.35rem' }}>
-                            <button onClick={() => handleLog(subject, 'class', 'attended')} className="btn-secondary btn-sm btn-success-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}><Check size={12} /> Attended</button>
-                            <button onClick={() => handleLog(subject, 'class', 'missed')} className="btn-secondary btn-sm btn-danger-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}><X size={12} /> Missed</button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                  
-                  {/* Lab Slots */}
-                  {Array.from({ length: labCount }).map((_, idx) => {
-                    const session = sch.labs?.[idx];
-                    const timeStr = session?.time ? [session.time, session.room].filter(Boolean).join(' • ') : `Lab ${idx + 1}`;
-                    const logForSession = labLogsToday[idx];
-                    return (
-                      <div key={`lab-${idx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.15)', padding: '0.4rem 0.6rem', borderRadius: '8px', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-primary)' }}><strong style={{color: 'var(--accent-primary)', fontSize: '0.7rem', textTransform: 'uppercase'}}>Lab</strong> &nbsp;{timeStr}</span>
-                        {logForSession ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <span style={{ fontSize: '0.72rem', color: logForSession.action === 'attended' ? '#10b981' : '#ef4444', fontWeight: 600 }}>
-                              {logForSession.action === 'attended' ? '✓ Attended' : '✗ Missed'}
-                            </span>
-                            <button onClick={() => handleUndo(logForSession.id)} className="btn-secondary" style={{ padding: '0.1rem 0.3rem', fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
-                              <RotateCcw size={10} /> Undo
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '0.35rem' }}>
-                            <button onClick={() => handleLog(subject, 'lab', 'attended')} className="btn-secondary btn-sm btn-success-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}><Check size={12} /> Attended</button>
-                            <button onClick={() => handleLog(subject, 'lab', 'missed')} className="btn-secondary btn-sm btn-danger-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}><X size={12} /> Missed</button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* ── Timetable Modal ── */}
-      {isTimetableModalOpen && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem' }}
-             onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
-          <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '900px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            {/* Modal Header */}
-            <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-              <div style={{ flex: '1 1 200px' }}>
-                <h2 style={{ fontSize: '1.15rem', fontWeight: 600 }}>Configure Timetable & Subjects</h2>
-                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Schedule changes auto-save with a short delay.</p>
-              </div>
-              <div style={{ display: 'flex', gap: '0.6rem', flex: '1 1 auto', justifyContent: 'flex-end' }}>
-                <button className="btn-primary" style={{ flex: '1 1 auto', justifyContent: 'center' }} onClick={handleAddSubject}><Plus size={14} /> Add Subject</button>
-                <button className="btn-icon" onClick={() => setIsTimetableModalOpen(false)}><X size={19} /></button>
-              </div>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ overflowY: 'auto', overscrollBehavior: 'contain', flex: 1, padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-              {subjects.map(subject => (
-                <div key={subject.id} style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-md)', padding: '0.9rem' }}>
-                  {/* Subject Header */}
-                  {/* Subject Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem', flexWrap: 'nowrap', gap: '0.4rem', width: '100%', height: '28px' }}>
-                    {editingId === subject.id ? (
-                      <input autoFocus type="text" value={editName} onChange={e => setEditName(e.target.value)}
-                        onBlur={() => saveSubjectName(subject.id!)} onKeyDown={e => e.key === 'Enter' && saveSubjectName(subject.id!)}
-                        className="todo-input" style={{ flex: '1', minWidth: '80px', height: '26px', padding: '0 0.3rem', fontSize: '0.85rem', boxSizing: 'border-box' }} />
+                  {/* Actions */}
+                  <div className="att-session-actions">
+                    {matchingLog ? (
+                      <button
+                        type="button"
+                        className="att-log-btn undo"
+                        onClick={() => handleUndoLog(matchingLog.id)}
+                      >
+                        <span style={{
+                          color: matchingLog.action === 'attended' ? '#5eda9e' : matchingLog.action === 'missed' ? '#ff6961' : '#8e8e93'
+                        }}>
+                          {matchingLog.action === 'attended' ? '✓ Present' : matchingLog.action === 'missed' ? '✗ Absent' : 'Cancelled'}
+                        </span>
+                        <RotateCcw size={12} />
+                      </button>
                     ) : (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: 600, fontSize: '0.9rem', color: 'var(--accent-primary)', flex: '1', minWidth: 0, height: '100%' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subject.name}</span>
-                        <button onClick={() => { setEditingId(subject.id!); setEditName(subject.name); }} className="btn-icon" style={{ opacity: 0.5, width: '24px', height: '24px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Edit2 size={12} /></button>
+                      <>
+                        <button
+                          type="button"
+                          className="att-log-btn present"
+                          onClick={() => handleLogSession(subject, type, 'attended')}
+                        >
+                          <Check size={13} strokeWidth={2.5} />
+                          <span>Present</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="att-log-btn absent"
+                          onClick={() => handleLogSession(subject, type, 'missed')}
+                        >
+                          <X size={13} strokeWidth={2.5} />
+                          <span>Absent</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="att-log-btn cancelled"
+                          onClick={() => handleLogSession(subject, type, 'cancelled')}
+                          title="Class Cancelled"
+                        >
+                          <X size={14} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── SUBJECT BREAKDOWN GRID ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+        <div className="att-section-header">
+          <h3 className="att-section-title">Subject Breakdown & Bunk Budget</h3>
+          <button
+            type="button"
+            className="att-card-action-btn"
+            onClick={() => {
+              setSubjectForm({ name: '', targetPercentage: 75 });
+              setEditSubjectModal({ isOpen: true, subject: null });
+            }}
+          >
+            <Plus size={13} /> Add Subject
+          </button>
+        </div>
+
+        {subjects.length === 0 ? (
+          <div className="notes-empty-state">
+            <GraduationCap size={32} color="var(--att-accent-purple)" />
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>No subjects configured</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--att-text-tertiary)', margin: 0 }}>
+              Add your courses and timetable to start tracking attendance and bunk budgets.
+            </p>
+            <button
+              type="button"
+              className="att-primary-add-btn"
+              onClick={() => {
+                setSubjectForm({ name: '', targetPercentage: 75 });
+                setEditSubjectModal({ isOpen: true, subject: null });
+              }}
+              style={{ marginTop: '0.5rem' }}
+            >
+              <Plus size={14} strokeWidth={2.5} />
+              <span>Add First Subject</span>
+            </button>
+          </div>
+        ) : (
+          <div className="att-subjects-grid">
+            {subjects.map(subject => {
+              const att = (subject.classesAttended || 0) + (subject.labsAttended || 0);
+              const tot = (subject.classesTotal || 0) + (subject.labsTotal || 0);
+              const totalPct = tot > 0 ? Math.round((att / tot) * 100) : 100;
+              const bunk = calculateBunkMath(att, tot, subject.targetPercentage || 75);
+
+              const clsPct = (subject.classesTotal || 0) > 0
+                ? Math.round(((subject.classesAttended || 0) / subject.classesTotal) * 100)
+                : 100;
+              const labPct = (subject.labsTotal || 0) > 0
+                ? Math.round(((subject.labsAttended || 0) / subject.labsTotal) * 100)
+                : 100;
+
+              return (
+                <div key={subject.id} className="att-subject-card">
+                  <div className="att-subject-card-top">
+                    <h4 className="att-subject-name">{subject.name}</h4>
+                    <span className="att-subject-total-pct" style={{
+                      color: totalPct >= (subject.targetPercentage || 75) ? '#5eda9e' : (totalPct >= (subject.targetPercentage || 75) - 5 ? '#fbbf24' : '#ff6961')
+                    }}>
+                      {tot > 0 ? `${totalPct}%` : '--%'}
+                    </span>
+                  </div>
+
+                  {/* Dual Class & Lab Bars */}
+                  <div className="att-subject-bars">
+                    {/* Class Progress */}
+                    <div className="att-sub-bar-row">
+                      <span className="att-sub-bar-tag" style={{ background: 'rgba(165,153,255,0.15)', color: '#a599ff' }}>CLASS</span>
+                      <div className="att-progress-track">
+                        <div className="att-progress-fill" style={{ width: `${Math.min(100, clsPct)}%`, background: '#a599ff' }} />
+                      </div>
+                      <span className="att-sub-bar-count">{subject.classesAttended || 0}/{subject.classesTotal || 0}</span>
+                    </div>
+
+                    {/* Lab Progress */}
+                    {(subject.labsTotal || 0) > 0 && (
+                      <div className="att-sub-bar-row">
+                        <span className="att-sub-bar-tag" style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>LAB</span>
+                        <div className="att-progress-track">
+                          <div className="att-progress-fill" style={{ width: `${Math.min(100, labPct)}%`, background: '#38bdf8' }} />
+                        </div>
+                        <span className="att-sub-bar-count">{subject.labsAttended || 0}/{subject.labsTotal || 0}</span>
                       </div>
                     )}
-                    <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center', flexWrap: 'nowrap', flexShrink: 0, height: '100%' }}>
-                      <div style={{ display: 'flex', gap: '0.2rem', alignItems: 'center', height: '100%' }}>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>Target%</label>
-                        <input type="number" value={subject.targetPercentage}
-                          onChange={async (e) => {
-                            const val = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
-                            await updateDoc(doc(db, 'attendance_subjects', subject.id!), { targetPercentage: val });
-                          }}
-                          style={{ width: '40px', height: '26px', padding: '0', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', textAlign: 'center', fontSize: '0.8rem', boxSizing: 'border-box' }} />
-                      </div>
-                      <button className="btn-secondary" style={{ fontSize: '0.7rem', color: '#818cf8', height: '26px', padding: '0 0.4rem', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.15rem', boxSizing: 'border-box' }}
-                        onClick={() => {
-                          if (overrideOpen === subject.id) { setOverrideOpen(null); return; }
-                          setOverrideOpen(subject.id!);
-                          setOverrideCounts({ classesAttended: subject.classesAttended || 0, classesTotal: subject.classesTotal || 0, labsAttended: subject.labsAttended || 0, labsTotal: subject.labsTotal || 0 });
-                        }}>
-                        {overrideOpen === subject.id ? <ChevronUp size={12} /> : <ChevronDown size={12} />} Fix
-                      </button>
-                      <button className="btn-icon danger" style={{ width: '26px', height: '26px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }} onClick={() => setConfirmDeleteId(subject.id!)}><X size={14} /></button>
-                    </div>
                   </div>
 
-                  {/* Manual Override Panel */}
-                  {overrideOpen === subject.id && (
-                    <div style={{ marginBottom: '0.85rem', padding: '0.7rem', background: 'rgba(129,140,248,0.06)', border: '1px solid rgba(129,140,248,0.2)', borderRadius: '10px', display: 'flex', flexWrap: 'wrap', gap: '0.65rem', alignItems: 'flex-end' }}>
-                      {[
-                        { label: 'Classes Attended', key: 'classesAttended' as const },
-                        { label: 'Classes Total',    key: 'classesTotal'    as const },
-                        { label: 'Labs Attended',    key: 'labsAttended'    as const },
-                        { label: 'Labs Total',       key: 'labsTotal'       as const },
-                      ].map(({ label, key }) => (
-                        <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', flex: '1 1 45%' }}>
-                          <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{label}</label>
-                          <input type="number" value={overrideCounts[key]} min={0}
-                            onChange={e => setOverrideCounts(p => ({ ...p, [key]: parseInt(e.target.value) || 0 }))}
-                            style={{ width: '100%', padding: '0.28rem', borderRadius: '6px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', textAlign: 'center' }} />
-                        </div>
-                      ))}
-                      <button className="btn-primary" style={{ fontSize: '0.8rem', padding: '0.38rem 0.9rem', width: '100%' }} onClick={() => handleApplyOverride(subject.id!)}>Apply Override</button>
-                    </div>
-                  )}
+                  {/* Bunk Budget Pill */}
+                  <div className={`att-bunk-badge ${bunk.status}`}>
+                    {bunk.text}
+                  </div>
 
-                  {/* Schedule Table (no Start Times row) */}
-                  <div style={{ overflowX: 'auto', margin: '0 -0.4rem', padding: '0 0.4rem' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
-                      <thead>
-                        <tr>
-                          <th style={{ padding: '0.25rem', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 500, textAlign: 'left', fontSize: '0.75rem', whiteSpace: 'nowrap', width: 'auto' }}>Type</th>
-                          {DAY_NAMES.map(day => (
-                            <th key={day} style={{ padding: '0.25rem 0.1rem', borderBottom: '1px solid var(--border-subtle)', color: 'var(--text-muted)', fontWeight: 500, fontSize: '0.7rem' }}>{day.substring(0, 3)}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(['classCount', 'labCount'] as const).map(field => (
-                          <tr key={field}>
-                            <td style={{ padding: '0.25rem', fontWeight: 600, textAlign: 'left', fontSize: '0.75rem' }}>{field === 'classCount' ? 'Classes' : 'Labs'}</td>
-                            {Object.keys(defaultSchedule).map(dayIdx => {
-                              const arrField = field === 'classCount' ? 'classes' : 'labs';
-                              const currentVal = subject.schedule?.[dayIdx]?.[arrField]?.length ?? subject.schedule?.[dayIdx]?.[field] ?? 0;
-                              return (
-                                <td key={dayIdx} style={{ padding: '0.2rem 0.1rem' }}>
-                                  <input type="number" min="0" max="10"
-                                    defaultValue={currentVal}
-                                    onChange={e => handleUpdateSchedule(subject.id!, dayIdx, field, parseInt(e.target.value) || 0)}
-                                    style={{ width: '100%', minWidth: '0', padding: '0.25rem 0', textAlign: 'center', borderRadius: '4px', border: '1px solid var(--border-subtle)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.85rem' }} />
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  {/* Card Footer */}
+                  <div className="att-subject-card-footer">
+                    <button
+                      type="button"
+                      className="att-card-action-btn"
+                      onClick={() => setSelectedHistorySubject(subject)}
+                    >
+                      <FileText size={12} />
+                      <span>History</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="att-card-action-btn"
+                      onClick={() => {
+                        setOverrideCounts({
+                          classesAttended: subject.classesAttended || 0,
+                          classesTotal: subject.classesTotal || 0,
+                          labsAttended: subject.labsAttended || 0,
+                          labsTotal: subject.labsTotal || 0,
+                        });
+                        setOverrideSubject(subject);
+                      }}
+                    >
+                      <Settings size={12} />
+                      <span>Override</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="att-card-action-btn"
+                      onClick={() => {
+                        setSubjectForm({ name: subject.name, targetPercentage: subject.targetPercentage || 75 });
+                        setEditSubjectModal({ isOpen: true, subject });
+                      }}
+                    >
+                      <Edit2 size={12} />
+                      <span>Edit</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── TIMETABLE SETUP STUDIO MODAL ── */}
+      {isTimetableModalOpen && (
+        <div className="notes-modal-overlay" onClick={() => setIsTimetableModalOpen(false)}>
+          <div
+            className="notes-modal-content"
+            style={{ maxWidth: '780px', maxHeight: '85vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">Weekly Timetable Setup</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setIsTimetableModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <p style={{ fontSize: '0.8rem', color: 'var(--att-text-tertiary)', margin: 0 }}>
+                Configure the number of classes and labs for each day of the week (Mon–Sat).
+              </p>
+
+              {subjects.map(sub => (
+                <div
+                  key={sub.id}
+                  style={{
+                    background: 'var(--att-bg-surface-elevated)',
+                    border: '1px solid var(--att-border-subtle)',
+                    borderRadius: 12,
+                    padding: '0.85rem'
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
+                    <span style={{ fontWeight: 600, color: '#ffffff' }}>{sub.name}</span>
+                    <button
+                      type="button"
+                      className="att-card-action-btn"
+                      style={{ color: 'var(--att-accent-rose)' }}
+                      onClick={() => setDeleteConfirmId(sub.id!)}
+                    >
+                      <Trash2 size={13} />
+                      <span>Delete</span>
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.45rem' }}>
+                    {['1', '2', '3', '4', '5', '6'].map(dayKey => {
+                      const daySched = sub.schedule?.[dayKey] || { classCount: 0, labCount: 0 };
+                      return (
+                        <div
+                          key={dayKey}
+                          style={{
+                            background: 'var(--att-bg-surface)',
+                            border: '1px solid var(--att-border-subtle)',
+                            borderRadius: 8,
+                            padding: '0.45rem',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--att-text-tertiary)', marginBottom: '0.3rem' }}>
+                            {DAY_SHORT[Number(dayKey)]}
+                          </div>
+
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <label style={{ fontSize: '0.65rem', color: '#a599ff' }}>
+                              Class:
+                              <input
+                                type="number"
+                                min="0"
+                                max="5"
+                                value={daySched.classCount || 0}
+                                onChange={async (e) => {
+                                  const val = parseInt(e.target.value, 10) || 0;
+                                  const updated = {
+                                    ...sub.schedule,
+                                    [dayKey]: { ...daySched, classCount: val }
+                                  };
+                                  await updateDoc(doc(db, 'attendance_subjects', sub.id!), { schedule: updated });
+                                }}
+                                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--att-border-subtle)', color: '#fff', borderRadius: 4, textAlign: 'center', padding: '2px 0' }}
+                              />
+                            </label>
+
+                            <label style={{ fontSize: '0.65rem', color: '#38bdf8' }}>
+                              Lab:
+                              <input
+                                type="number"
+                                min="0"
+                                max="3"
+                                value={daySched.labCount || 0}
+                                onChange={async (e) => {
+                                  const val = parseInt(e.target.value, 10) || 0;
+                                  const updated = {
+                                    ...sub.schedule,
+                                    [dayKey]: { ...daySched, labCount: val }
+                                  };
+                                  await updateDoc(doc(db, 'attendance_subjects', sub.id!), { schedule: updated });
+                                }}
+                                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--att-border-subtle)', color: '#fff', borderRadius: 4, textAlign: 'center', padding: '2px 0' }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Modal Footer */}
-            <div style={{ padding: '0.9rem 1.5rem', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', background: 'var(--bg-base)' }}>
-              <button className="btn-secondary" style={{ color: '#10b981', fontSize: '0.82rem', flex: '1 1 auto', justifyContent: 'center' }} onClick={handleExportCSV}>
-                <Download size={14} /> Export CSV
-              </button>
-              <button className="btn-secondary" style={{ color: '#ef4444', fontSize: '0.82rem', flex: '1 1 auto', justifyContent: 'center' }} onClick={() => setConfirmResetSemester(true)}>
-                <RefreshCw size={14} /> Reset Semester
+            <div className="notes-modal-footer">
+              <button
+                type="button"
+                className="att-primary-add-btn"
+                onClick={() => setIsTimetableModalOpen(false)}
+              >
+                Done
               </button>
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
-      {/* ── Full History Modal ── */}
-      {isHistoryModalOpen && createPortal(
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0.5rem' }}
-             onWheel={e => e.stopPropagation()} onTouchMove={e => e.stopPropagation()}>
-          <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-lg)', width: '100%', maxWidth: '580px', maxHeight: '88vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ padding: '1.2rem 1.5rem', borderBottom: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.05rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}><History size={17} /> Full Log History ({logs.length})</h2>
-              <button className="btn-icon" onClick={() => setIsHistoryModalOpen(false)}><X size={19} /></button>
+      {/* ── SUBJECT HISTORY MODAL ── */}
+      {selectedHistorySubject && (
+        <div className="notes-modal-overlay" onClick={() => setSelectedHistorySubject(null)}>
+          <div
+            className="notes-modal-content"
+            style={{ maxWidth: '580px', maxHeight: '80vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">{selectedHistorySubject.name} Log History</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setSelectedHistorySubject(null)}>
+                <X size={18} />
+              </button>
             </div>
-            <div style={{ overflowY: 'auto', flex: 1, padding: '0.85rem' }}>
-              {logs.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2.5rem' }}>No logs yet.</div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
-                  {logs.map(log => (
-                    <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)', padding: '0.55rem 0.85rem', borderRadius: '10px', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      <div>
-                        <div style={{ fontSize: '0.82rem', fontWeight: 500 }}>
-                          <span style={{ color: log.action === 'attended' ? '#10b981' : '#ef4444' }}>{log.action === 'attended' ? '✓ Attended' : '✗ Missed'}</span>
-                          {log.isExtra ? ' (Extra) ' : ' '}{log.type || 'class'} · <strong>{log.subjectName}</strong>
-                        </div>
-                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                          {formatDisplayDate(log.date)} · {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </div>
-                      </div>
-                      <button className="btn-secondary btn-xs" onClick={() => handleUndo(log.id)} style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}><RotateCcw size={10} /> Undo</button>
-                    </div>
-                  ))}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {(logsBySubjectId[selectedHistorySubject.id!] || []).length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--att-text-tertiary)', fontSize: '0.85rem' }}>
+                  No attendance logs recorded for this subject yet.
                 </div>
+              ) : (
+                logsBySubjectId[selectedHistorySubject.id!].map(l => (
+                  <div
+                    key={l.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'var(--att-bg-surface-elevated)',
+                      border: '1px solid var(--att-border-subtle)',
+                      borderRadius: 10,
+                      padding: '0.65rem 0.85rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                      <span style={{
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        color: l.action === 'attended' ? '#5eda9e' : l.action === 'missed' ? '#ff6961' : '#8e8e93'
+                      }}>
+                        {l.action === 'attended' ? '✓ Attended' : l.action === 'missed' ? '✗ Missed' : 'Cancelled'} {l.isExtra ? '(Extra)' : ''} {l.type || 'class'}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--att-text-tertiary)' }}>
+                        {formatDisplayDate(l.date)} • {new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="att-log-btn undo"
+                      onClick={() => handleUndoLog(l.id)}
+                    >
+                      <RotateCcw size={12} />
+                      <span>Undo</span>
+                    </button>
+                  </div>
+                ))
               )}
             </div>
           </div>
-        </div>,
-        document.body
+        </div>
       )}
 
-      {/* ── Confirm Dialogs ── */}
+      {/* ── EXTRA CLASS MODAL ── */}
+      {isExtraOpen && (
+        <div className="notes-modal-overlay" onClick={() => setIsExtraOpen(false)}>
+          <div className="notes-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">Log Extra Session</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setIsExtraOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              <label style={{ fontSize: '0.78rem', color: 'var(--att-text-tertiary)', fontWeight: 600 }}>
+                SELECT SUBJECT
+                <select
+                  value={extraSubjectId}
+                  onChange={e => setExtraSubjectId(e.target.value)}
+                  className="notes-search-bar"
+                  style={{ width: '100%', marginTop: '0.35rem', color: '#fff', borderRadius: 8 }}
+                >
+                  {subjects.map(s => (
+                    <option key={s.id} value={s.id} style={{ background: '#141416' }}>{s.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              {/* Class & Lab Buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.35rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#a599ff' }}>Extra Lecture</span>
+                  <div style={{ display: 'flex', gap: '0.45rem' }}>
+                    <button
+                      type="button"
+                      className="att-log-btn present"
+                      onClick={() => {
+                        const targetSub = subjects.find(s => s.id === extraSubjectId);
+                        if (targetSub) handleLogSession(targetSub, 'class', 'attended', selectedDate, true);
+                        setIsExtraOpen(false);
+                      }}
+                    >
+                      Present
+                    </button>
+                    <button
+                      type="button"
+                      className="att-log-btn absent"
+                      onClick={() => {
+                        const targetSub = subjects.find(s => s.id === extraSubjectId);
+                        if (targetSub) handleLogSession(targetSub, 'class', 'missed', selectedDate, true);
+                        setIsExtraOpen(false);
+                      }}
+                    >
+                      Absent
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#38bdf8' }}>Extra Practical / Lab</span>
+                  <div style={{ display: 'flex', gap: '0.45rem' }}>
+                    <button
+                      type="button"
+                      className="att-log-btn present"
+                      onClick={() => {
+                        const targetSub = subjects.find(s => s.id === extraSubjectId);
+                        if (targetSub) handleLogSession(targetSub, 'lab', 'attended', selectedDate, true);
+                        setIsExtraOpen(false);
+                      }}
+                    >
+                      Present
+                    </button>
+                    <button
+                      type="button"
+                      className="att-log-btn absent"
+                      onClick={() => {
+                        const targetSub = subjects.find(s => s.id === extraSubjectId);
+                        if (targetSub) handleLogSession(targetSub, 'lab', 'missed', selectedDate, true);
+                        setIsExtraOpen(false);
+                      }}
+                    >
+                      Absent
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MANUAL OVERRIDE MODAL ── */}
+      {overrideSubject && (
+        <div className="notes-modal-overlay" onClick={() => setOverrideSubject(null)}>
+          <div className="notes-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">Manual Count Override ({overrideSubject.name})</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setOverrideSubject(null)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
+                Classes Attended:
+                <input
+                  type="number"
+                  min="0"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  value={overrideCounts.classesAttended}
+                  onChange={e => setOverrideCounts({ ...overrideCounts, classesAttended: parseInt(e.target.value, 10) || 0 })}
+                />
+              </label>
+
+              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
+                Classes Total:
+                <input
+                  type="number"
+                  min="0"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  value={overrideCounts.classesTotal}
+                  onChange={e => setOverrideCounts({ ...overrideCounts, classesTotal: parseInt(e.target.value, 10) || 0 })}
+                />
+              </label>
+
+              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
+                Labs Attended:
+                <input
+                  type="number"
+                  min="0"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  value={overrideCounts.labsAttended}
+                  onChange={e => setOverrideCounts({ ...overrideCounts, labsAttended: parseInt(e.target.value, 10) || 0 })}
+                />
+              </label>
+
+              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
+                Labs Total:
+                <input
+                  type="number"
+                  min="0"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  value={overrideCounts.labsTotal}
+                  onChange={e => setOverrideCounts({ ...overrideCounts, labsTotal: parseInt(e.target.value, 10) || 0 })}
+                />
+              </label>
+            </div>
+
+            <div className="notes-modal-footer">
+              <button type="button" className="att-action-pill-btn" onClick={() => setOverrideSubject(null)}>
+                Cancel
+              </button>
+              <button type="button" className="att-primary-add-btn" onClick={handleApplyOverride}>
+                Save Counts
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ADD/EDIT SUBJECT MODAL ── */}
+      {editSubjectModal.isOpen && (
+        <div className="notes-modal-overlay" onClick={() => setEditSubjectModal({ isOpen: false, subject: null })}>
+          <div className="notes-modal-content" onClick={e => e.stopPropagation()}>
+            <div className="notes-modal-header">
+              <h3 className="notes-modal-title">{editSubjectModal.subject ? 'Edit Subject' : 'Add Subject'}</h3>
+              <button type="button" className="notes-modal-close-btn" onClick={() => setEditSubjectModal({ isOpen: false, subject: null })}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
+                Subject Name:
+                <input
+                  type="text"
+                  placeholder="e.g. Distributed Systems"
+                  className="notes-search-bar notes-search-input"
+                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  value={subjectForm.name}
+                  onChange={e => setSubjectForm({ ...subjectForm, name: e.target.value })}
+                  autoFocus
+                />
+              </label>
+
+              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
+                Target Attendance Percentage: ({subjectForm.targetPercentage}%)
+                <input
+                  type="range"
+                  min="50"
+                  max="95"
+                  step="5"
+                  value={subjectForm.targetPercentage}
+                  onChange={e => setSubjectForm({ ...subjectForm, targetPercentage: parseInt(e.target.value, 10) })}
+                  style={{ width: '100%', accentColor: 'var(--att-accent-purple)', marginTop: '0.35rem' }}
+                />
+              </label>
+            </div>
+
+            <div className="notes-modal-footer">
+              <button type="button" className="att-action-pill-btn" onClick={() => setEditSubjectModal({ isOpen: false, subject: null })}>
+                Cancel
+              </button>
+              <button type="button" className="att-primary-add-btn" onClick={handleSaveSubject}>
+                Save Subject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DELETE CONFIRM DIALOG ── */}
       <ConfirmDialog
-        open={!!confirmDeleteId}
+        isOpen={!!deleteConfirmId}
         title="Delete Subject"
-        message="Delete this subject and all its logs? This cannot be undone."
-        confirmLabel="Delete"
-        danger
-        onConfirm={() => { if (confirmDeleteId) handleDeleteSubject(confirmDeleteId); setConfirmDeleteId(null); }}
-        onCancel={() => setConfirmDeleteId(null)}
-      />
-      <ConfirmDialog
-        open={confirmResetSemester}
-        title="Reset Semester"
-        message="This will permanently delete ALL attendance logs and reset all subject counts to 0. This CANNOT be undone."
-        confirmLabel="Reset Everything"
-        danger
-        onConfirm={handleResetSemester}
-        onCancel={() => setConfirmResetSemester(false)}
+        message="Are you sure you want to delete this subject and its timetable schedule?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={async () => {
+          if (deleteConfirmId) {
+            await deleteDoc(doc(db, 'attendance_subjects', deleteConfirmId));
+            toast.success('Subject deleted');
+            setDeleteConfirmId(null);
+          }
+        }}
+        onCancel={() => setDeleteConfirmId(null)}
       />
     </div>
   );
