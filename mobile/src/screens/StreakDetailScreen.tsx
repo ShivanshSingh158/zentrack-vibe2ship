@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Calendar } from 'react-native-calendars';
+import { StatusBar } from 'expo-status-bar';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
@@ -48,8 +49,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 export default function StreakDetailScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { colors } = useTheme();
-  const s = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const s = makeStyles(colors, isDark);
 
   const { habitId } = route.params || {};
   const { allHabits, habitLogs, tasks } = useCoreData();
@@ -58,7 +59,7 @@ export default function StreakDetailScreen() {
 
   const habit = useMemo(() => allHabits?.find((h) => h.id === habitId), [allHabits, habitId]);
   const isAppStreak = !habitId;
-  const activeColor = habit ? (habit.color || colors.accentPrimary) : '#ff9f4d';
+  const activeColor = habit ? (habit.color || colors.accentPrimary) : (isDark ? '#ff9f4d' : colors.accentAmber);
 
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const [inspectedDate, setInspectedDate] = useState<string>(todayStr);
@@ -126,7 +127,7 @@ export default function StreakDetailScreen() {
     const marks: any = {};
     const successStyle = {
       container: { backgroundColor: activeColor, borderRadius: 8 },
-      text: { color: '#000000', fontFamily: FONT_FAMILY.bold, fontWeight: '700' as const },
+      text: { color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold, fontWeight: '700' as const },
     };
 
     if (habitId) {
@@ -155,7 +156,7 @@ export default function StreakDetailScreen() {
             container: {
               ...existing.customStyles.container,
               borderWidth: 2,
-              borderColor: '#ffffff',
+              borderColor: isDark ? '#ffffff' : colors.textPrimary,
             },
             text: existing.customStyles.text,
           },
@@ -175,10 +176,11 @@ export default function StreakDetailScreen() {
     }
 
     return marks;
-  }, [habitId, habitLogs, tasks, gymLogs, activeColor, inspectedDate, colors.accentPrimary]);
+  }, [habitId, habitLogs, tasks, gymLogs, activeColor, inspectedDate, colors.accentPrimary, isDark, colors.textPrimary]);
 
   return (
     <SafeAreaView style={s.root} edges={['top', 'bottom']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       {/* ── iOS Minimal Top Navigation Bar ── */}
       <View style={s.navBar}>
         <AnimatedPressable
@@ -193,7 +195,7 @@ export default function StreakDetailScreen() {
         </AnimatedPressable>
 
         <View style={s.liveStatusPill}>
-          <View style={[s.liveDot, { backgroundColor: currentStreak > 0 ? '#ff9f4d' : '#8e8e93' }]} />
+          <View style={[s.liveDot, { backgroundColor: currentStreak > 0 ? (isDark ? '#ff9f4d' : colors.accentAmber) : colors.textMuted }]} />
           <Text style={s.liveStatusText}>
             {currentStreak > 0 ? 'Active Streak' : 'Resting'}
           </Text>
@@ -205,10 +207,10 @@ export default function StreakDetailScreen() {
         <View style={s.heroSection}>
           <View style={s.flameOrb}>
             <LinearGradient
-              colors={['rgba(255,159,77,0.25)', 'rgba(255,159,77,0.05)']}
+              colors={isDark ? ['rgba(255,159,77,0.25)', 'rgba(255,159,77,0.05)'] : ['rgba(217,119,6,0.18)', 'rgba(217,119,6,0.04)']}
               style={s.flameOrbGlow}
             />
-            <Ionicons name="flame" size={36} color="#ff9f4d" />
+            <Ionicons name="flame" size={36} color={isDark ? '#ff9f4d' : colors.accentAmber} />
           </View>
 
           <View style={s.streakCountRow}>
@@ -224,7 +226,7 @@ export default function StreakDetailScreen() {
           <View style={s.heroProgressWrapper}>
             <View style={s.heroProgressBarTrack}>
               <LinearGradient
-                colors={['#ff9f4d', '#a599ff']}
+                colors={isDark ? ['#ff9f4d', '#a599ff'] : [colors.accentAmber, colors.accentPrimary]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={[s.heroProgressBarFill, { width: `${Math.min(100, Math.max(6, milestoneInfo.progress * 100))}%` }]}
@@ -295,8 +297,8 @@ export default function StreakDetailScreen() {
             <Text style={s.sectionHeader}>Activity Breakdown</Text>
             <View style={s.insetCard}>
               <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(255,159,77,0.15)' }]}>
-                  <Ionicons name="barbell" size={16} color="#ff9f4d" />
+                <View style={[s.tableIconSquircle, { backgroundColor: colors.accentAmberDim }]}>
+                  <Ionicons name="barbell" size={16} color={isDark ? "#ff9f4d" : colors.accentAmber} />
                 </View>
                 <Text style={s.tableTitle}>Fitness & Gym</Text>
                 <Text style={s.tableValue}>{gymSessionsCount} <Text style={s.tableValueUnit}>sessions</Text></Text>
@@ -305,8 +307,8 @@ export default function StreakDetailScreen() {
               <View style={s.tableDivider} />
 
               <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(56,189,248,0.15)' }]}>
-                  <Ionicons name="school" size={16} color="#38bdf8" />
+                <View style={[s.tableIconSquircle, { backgroundColor: colors.accentBlueDim }]}>
+                  <Ionicons name="school" size={16} color={isDark ? "#38bdf8" : colors.accentBlue} />
                 </View>
                 <Text style={s.tableTitle}>Academic Attendance</Text>
                 <Text style={s.tableValue}>{classesAttendedCount} <Text style={s.tableValueUnit}>classes</Text></Text>
@@ -315,8 +317,8 @@ export default function StreakDetailScreen() {
               <View style={s.tableDivider} />
 
               <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(94,218,158,0.15)' }]}>
-                  <Ionicons name="leaf" size={16} color="#5eda9e" />
+                <View style={[s.tableIconSquircle, { backgroundColor: colors.accentGreenDim }]}>
+                  <Ionicons name="leaf" size={16} color={isDark ? "#5eda9e" : colors.accentGreen} />
                 </View>
                 <Text style={s.tableTitle}>Daily Habits</Text>
                 <Text style={s.tableValue}>{habitCompletionsCount} <Text style={s.tableValueUnit}>checked</Text></Text>
@@ -325,8 +327,8 @@ export default function StreakDetailScreen() {
               <View style={s.tableDivider} />
 
               <View style={s.tableRow}>
-                <View style={[s.tableIconSquircle, { backgroundColor: 'rgba(165,153,255,0.15)' }]}>
-                  <Ionicons name="checkmark-circle" size={16} color="#a599ff" />
+                <View style={[s.tableIconSquircle, { backgroundColor: colors.accentDim }]}>
+                  <Ionicons name="checkmark-circle" size={16} color={colors.accentPrimary} />
                 </View>
                 <Text style={s.tableTitle}>Tasks Completed</Text>
                 <Text style={s.tableValue}>{tasksCompletedCount} <Text style={s.tableValueUnit}>finished</Text></Text>
@@ -348,14 +350,14 @@ export default function StreakDetailScreen() {
             theme={{
               backgroundColor: 'transparent',
               calendarBackground: 'transparent',
-              textSectionTitleColor: '#8e8e93',
+              textSectionTitleColor: colors.textTertiary,
               selectedDayBackgroundColor: activeColor,
-              selectedDayTextColor: '#000000',
+              selectedDayTextColor: isDark ? '#000000' : '#FFFFFF',
               todayTextColor: activeColor,
-              dayTextColor: '#ffffff',
-              textDisabledColor: 'rgba(255,255,255,0.12)',
-              monthTextColor: '#ffffff',
-              arrowColor: '#ffffff',
+              dayTextColor: colors.textPrimary,
+              textDisabledColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+              monthTextColor: colors.textPrimary,
+              arrowColor: colors.textPrimary,
               textDayFontFamily: FONT_FAMILY.medium,
               textMonthFontFamily: FONT_FAMILY.bold,
               textDayHeaderFontFamily: FONT_FAMILY.mono,
@@ -370,7 +372,7 @@ export default function StreakDetailScreen() {
               <Text style={s.inspectionDateText}>
                 {inspectedDate === todayStr ? 'Today’s Summary' : formatDisplayDate(inspectedDate)}
               </Text>
-              <View style={[s.statusDot, { backgroundColor: inspectedData.hasActivity ? '#5eda9e' : '#8e8e93' }]} />
+              <View style={[s.statusDot, { backgroundColor: inspectedData.hasActivity ? colors.accentGreen : colors.textMuted }]} />
             </View>
 
             {inspectedData.hasActivity ? (
@@ -408,11 +410,11 @@ export default function StreakDetailScreen() {
   );
 }
 
-const makeStyles = (colors: any) =>
+const makeStyles = (colors: any, isDark: boolean = true) =>
   StyleSheet.create({
     root: {
       flex: 1,
-      backgroundColor: '#000000',
+      backgroundColor: colors.background,
     },
     navBar: {
       paddingHorizontal: 16,
@@ -436,12 +438,12 @@ const makeStyles = (colors: any) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      backgroundColor: '#1c1c1e',
+      backgroundColor: isDark ? '#1c1c1e' : colors.surface,
       paddingHorizontal: 10,
       paddingVertical: 5,
       borderRadius: 14,
       borderWidth: 0.5,
-      borderColor: 'rgba(255,255,255,0.1)',
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
     },
     liveDot: {
       width: 6,
@@ -451,7 +453,7 @@ const makeStyles = (colors: any) =>
     liveStatusText: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 11,
-      color: '#8e8e93',
+      color: colors.textTertiary,
     },
     scroll: {
       paddingHorizontal: 16,
@@ -469,12 +471,12 @@ const makeStyles = (colors: any) =>
       width: 68,
       height: 68,
       borderRadius: 34,
-      backgroundColor: '#1c1c1e',
+      backgroundColor: isDark ? '#1c1c1e' : colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 12,
       borderWidth: 0.5,
-      borderColor: 'rgba(255,159,77,0.3)',
+      borderColor: isDark ? 'rgba(255,159,77,0.3)' : 'rgba(217,119,6,0.3)',
       position: 'relative',
     },
     flameOrbGlow: {
@@ -491,20 +493,20 @@ const makeStyles = (colors: any) =>
     streakLargeNumber: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 60,
-      color: '#ffffff',
+      color: colors.textPrimary,
       lineHeight: 68,
       letterSpacing: -1,
     },
     streakUnitLabel: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 14,
-      color: '#ff9f4d',
+      color: isDark ? '#ff9f4d' : colors.accentAmber,
       letterSpacing: 1.5,
     },
     heroTierTitle: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 14,
-      color: '#8e8e93',
+      color: colors.textTertiary,
       marginTop: 2,
     },
     heroProgressWrapper: {
@@ -516,7 +518,7 @@ const makeStyles = (colors: any) =>
     heroProgressBarTrack: {
       width: '100%',
       height: 6,
-      backgroundColor: '#2c2c2e',
+      backgroundColor: isDark ? '#2c2c2e' : '#E2E1EA',
       borderRadius: 3,
       overflow: 'hidden',
       marginBottom: 8,
@@ -528,14 +530,14 @@ const makeStyles = (colors: any) =>
     heroProgressSubtext: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 12,
-      color: '#8e8e93',
+      color: colors.textTertiary,
     },
 
     // iOS Inset Card Architecture
     sectionHeader: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 12,
-      color: '#8e8e93',
+      color: colors.textTertiary,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
       marginLeft: 12,
@@ -543,11 +545,11 @@ const makeStyles = (colors: any) =>
       marginTop: 10,
     },
     insetCard: {
-      backgroundColor: '#1c1c1e',
+      backgroundColor: isDark ? '#1c1c1e' : colors.surface,
       borderRadius: 16,
       overflow: 'hidden',
       borderWidth: 0.5,
-      borderColor: '#2c2c2e',
+      borderColor: isDark ? '#2c2c2e' : colors.border,
       marginBottom: 16,
     },
 
@@ -564,30 +566,30 @@ const makeStyles = (colors: any) =>
     matrixLabel: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 10,
-      color: '#8e8e93',
+      color: colors.textTertiary,
       letterSpacing: 0.5,
       marginBottom: 4,
     },
     matrixNumber: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 20,
-      color: '#ffffff',
+      color: colors.textPrimary,
     },
     matrixUnit: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 12,
-      color: '#8e8e93',
+      color: colors.textTertiary,
       fontWeight: '400',
     },
     matrixDividerV: {
       width: 0.5,
       height: '70%',
-      backgroundColor: '#2c2c2e',
+      backgroundColor: isDark ? '#2c2c2e' : colors.border,
     },
     matrixDividerH: {
       height: 0.5,
       width: '100%',
-      backgroundColor: '#2c2c2e',
+      backgroundColor: isDark ? '#2c2c2e' : colors.border,
     },
 
     // Table
@@ -608,24 +610,24 @@ const makeStyles = (colors: any) =>
     tableTitle: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 14,
-      color: '#ffffff',
+      color: colors.textPrimary,
       flex: 1,
     },
     tableValue: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 14,
-      color: '#ffffff',
+      color: colors.textPrimary,
     },
     tableValueUnit: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 12,
-      color: '#8e8e93',
+      color: colors.textTertiary,
       fontWeight: '400',
     },
     tableDivider: {
       height: 0.5,
       marginLeft: 58,
-      backgroundColor: '#2c2c2e',
+      backgroundColor: isDark ? '#2c2c2e' : colors.border,
     },
 
     // Awards
@@ -649,12 +651,12 @@ const makeStyles = (colors: any) =>
       borderWidth: 1.5,
     },
     awardRingUnlocked: {
-      backgroundColor: 'rgba(255,159,77,0.12)',
-      borderColor: '#ff9f4d',
+      backgroundColor: isDark ? 'rgba(255,159,77,0.12)' : 'rgba(217,119,6,0.12)',
+      borderColor: isDark ? '#ff9f4d' : colors.accentAmber,
     },
     awardRingLocked: {
-      backgroundColor: '#1c1c1e',
-      borderColor: '#2c2c2e',
+      backgroundColor: isDark ? '#1c1c1e' : colors.surface2,
+      borderColor: isDark ? '#2c2c2e' : colors.border,
     },
     awardEmoji: {
       fontSize: 20,
@@ -662,12 +664,12 @@ const makeStyles = (colors: any) =>
     awardDays: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 11,
-      color: '#8e8e93',
+      color: colors.textTertiary,
     },
     awardLabel: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 9,
-      color: '#636366',
+      color: colors.textTertiary,
       marginTop: 1,
       textAlign: 'center',
     },
@@ -685,7 +687,7 @@ const makeStyles = (colors: any) =>
     inspectionDateText: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 13,
-      color: '#ffffff',
+      color: colors.textPrimary,
     },
     statusDot: {
       width: 8,
@@ -698,17 +700,17 @@ const makeStyles = (colors: any) =>
     inspectionItem: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 12,
-      color: '#8e8e93',
+      color: colors.textSecondary,
       lineHeight: 18,
     },
     boldWhite: {
       fontFamily: FONT_FAMILY.bold,
-      color: '#ffffff',
+      color: colors.textPrimary,
     },
     inspectionEmptyText: {
       fontFamily: FONT_FAMILY.medium,
       fontSize: 12,
-      color: '#636366',
+      color: colors.textMuted,
       fontStyle: 'italic',
     },
   });

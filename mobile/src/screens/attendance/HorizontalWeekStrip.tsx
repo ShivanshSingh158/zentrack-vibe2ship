@@ -24,13 +24,13 @@ interface HorizontalWeekStripProps {
   logs?: any[];
 }
 
-export function HorizontalWeekStrip({
+export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
   selectedDate,
   onSelectDate,
   holidays = [],
   today,
 }: HorizontalWeekStripProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const flatListRef = useRef<FlatList>(null);
   const [pageWidth, setPageWidth] = useState(Dimensions.get('window').width - 16);
   const [currentPage, setCurrentPage] = useState(INITIAL_PAGE);
@@ -130,9 +130,9 @@ export function HorizontalWeekStrip({
                   styles.dayCol,
                   isSel && { backgroundColor: PURPLE_ACCENT },
                   isToday && !isSel && {
-                    backgroundColor: 'rgba(165, 153, 255, 0.16)',
+                    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.16)' : 'rgba(108, 92, 231, 0.12)',
                     borderWidth: 1,
-                    borderColor: 'rgba(165, 153, 255, 0.45)',
+                    borderColor: isDark ? 'rgba(165, 153, 255, 0.45)' : 'rgba(108, 92, 231, 0.35)',
                   },
                 ]}
                 activeOpacity={0.7}
@@ -140,7 +140,7 @@ export function HorizontalWeekStrip({
                 <Text
                   style={{
                     fontSize: 11,
-                    color: isSel ? '#000000' : (isToday ? PURPLE_ACCENT : colors.textTertiary),
+                    color: isSel ? (isDark ? '#000000' : '#FFFFFF') : (isToday ? PURPLE_ACCENT : colors.textMuted),
                     marginBottom: 2,
                     fontWeight: isSel ? '700' : (isToday ? '600' : '400'),
                   }}
@@ -150,7 +150,7 @@ export function HorizontalWeekStrip({
                 <Text
                   style={{
                     fontSize: 13,
-                    color: isSel ? '#000000' : (isToday ? PURPLE_ACCENT : colors.textTertiary),
+                    color: isSel ? (isDark ? '#000000' : '#FFFFFF') : (isToday ? PURPLE_ACCENT : colors.textPrimary),
                     fontWeight: isSel ? '700' : (isToday ? '600' : '400'),
                   }}
                 >
@@ -162,7 +162,7 @@ export function HorizontalWeekStrip({
         </View>
       );
     },
-    [anchorSunday, pageWidth, holidays, selectedDate, today, PURPLE_ACCENT, colors.textTertiary, onSelectDate]
+    [anchorSunday, pageWidth, holidays, selectedDate, today, PURPLE_ACCENT, colors.textMuted, colors.textPrimary, isDark, onSelectDate]
   );
 
   return (
@@ -196,7 +196,7 @@ export function HorizontalWeekStrip({
       />
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

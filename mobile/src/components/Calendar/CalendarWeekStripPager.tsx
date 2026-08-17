@@ -23,6 +23,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, RADIUS } from '../../theme/tokens';
+import { formatLocalDateStr } from '../../utils/dateUtils';
 
 const TOTAL_WEEKS = 21;
 const INITIAL_PAGE = 10;
@@ -44,7 +45,7 @@ export function CalendarWeekStripPager({ selectedDate, onSelectDate, markedDates
   const anchorSunday = useMemo(() => {
     try {
       const today = new Date();
-      const [y, m, d] = (selectedDate || today.toISOString().slice(0, 10)).split('-').map(Number);
+      const [y, m, d] = (selectedDate || formatLocalDateStr(today)).split('-').map(Number);
       const target = new Date(y, m - 1, d);
       target.setHours(0, 0, 0, 0);
       const day = target.getDay();
@@ -59,7 +60,7 @@ export function CalendarWeekStripPager({ selectedDate, onSelectDate, markedDates
     }
   }, []);
 
-  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayStr = useMemo(() => formatLocalDateStr(new Date()), []);
 
   // Sync pager when selectedDate changes externally
   useEffect(() => {
@@ -174,7 +175,7 @@ export function CalendarWeekStripPager({ selectedDate, onSelectDate, markedDates
                         key={idx}
                         style={[
                           styles.dot,
-                          { backgroundColor: isSelected ? '#000000' : dot.color || colors.accentPrimary },
+                          { backgroundColor: isSelected ? (isDark ? '#000000' : '#FFFFFF') : dot.color || colors.accentPrimary },
                         ]}
                       />
                     ))}
@@ -186,7 +187,7 @@ export function CalendarWeekStripPager({ selectedDate, onSelectDate, markedDates
         </View>
       );
     },
-    [anchorSunday, pageWidth, todayStr, selectedDate, markedDates, styles, colors.accentPrimary, onSelectDate]
+    [anchorSunday, pageWidth, todayStr, selectedDate, markedDates, styles, colors.accentPrimary, isDark, onSelectDate]
   );
 
   return (
@@ -275,7 +276,7 @@ const makeStyles = (colors: any, isDark: boolean) =>
       fontFamily: FONT_FAMILY.bold,
     },
     dayNumSelected: {
-      color: '#000000',
+      color: isDark ? '#000000' : '#FFFFFF',
       fontFamily: FONT_FAMILY.bold,
     },
     dotsRow: {

@@ -18,8 +18,8 @@ interface Props {
 }
 
 export default function TaskTemplatesSheet({ visible, onClose, userId, onApplyTemplate }: Props) {
-  const { colors } = useTheme();
-  const s = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const s = makeStyles(colors, isDark);
   
   const [templates, setTemplates] = useState<TaskTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -259,16 +259,20 @@ export default function TaskTemplatesSheet({ visible, onClose, userId, onApplyTe
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  sheetContent: {
+    padding: SPACE.lg,
+    paddingBottom: SPACE.xxl,
+  },
   header: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: SPACE.sm,
-    marginBottom: SPACE.xs,
+    marginBottom: SPACE.lg,
   },
   title: {
     fontFamily: FONT_FAMILY.title,
-    fontSize: FONT_SIZE.xl,
+    fontSize: FONT_SIZE.lg,
     color: colors.textPrimary,
   },
   subtitle: {
@@ -281,7 +285,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     maxHeight: 400,
   },
   templateCard: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.surface2,
     borderRadius: RADIUS.lg,
     padding: SPACE.md,
     marginBottom: SPACE.md,
@@ -328,7 +332,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.surface2,
     borderRadius: RADIUS.md,
     padding: SPACE.md,
     color: colors.textPrimary,
@@ -349,7 +353,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: 'rgba(255,255,255,0.02)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : colors.surface2,
   },
   priorityText: {
     fontFamily: FONT_FAMILY.bold,

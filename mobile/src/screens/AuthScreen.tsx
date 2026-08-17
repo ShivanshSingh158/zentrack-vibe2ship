@@ -1,5 +1,5 @@
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, Animated, Dimensions, Image, Platform
@@ -35,7 +35,7 @@ try {
 
 export default function AuthScreen() {
     const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const [loading, setLoading] = useState(false);
   const [skipLoading, setSkipLoading] = useState(false);
   const [error, setError] = useState('');
@@ -172,7 +172,7 @@ export default function AuthScreen() {
           {Platform.OS === 'ios' && (
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+              buttonStyle={isDark ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
               cornerRadius={RADIUS.full}
               style={{ width: '100%', height: 50, marginTop: SPACE.xs }}
               onPress={async () => {
@@ -213,78 +213,83 @@ export default function AuthScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
       root: {
         flex: 1,
         backgroundColor: colors.background,
       },
       content: {
         flex: 1,
-        paddingHorizontal: 6,
+        paddingHorizontal: 24,
         justifyContent: 'space-between',
-        paddingTop: 6,
+        paddingTop: 12,
         paddingBottom: 48,
       },
       topHeader: {
-        marginTop: 24,
+        marginTop: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
       },
       brand: {
         fontFamily: FONT_FAMILY.bold,
-        fontSize: FONT_SIZE.xs,
-        color: colors.textMuted,
+        fontSize: 12,
+        color: colors.textPrimary,
         letterSpacing: 2,
-        marginBottom: 4,
       },
       step: {
         fontFamily: FONT_FAMILY.body,
-        fontSize: 12,
+        fontSize: 11,
         color: colors.textMuted,
-        opacity: 0.7,
+        letterSpacing: 1,
       },
       mainBlock: {
         justifyContent: 'center',
-        marginBottom: 40,
+        marginBottom: 32,
       },
       headline: {
         fontFamily: FONT_FAMILY.title,
-        fontSize: 40,
+        fontSize: 38,
         color: colors.textPrimary,
-        lineHeight: 46,
-        marginBottom: 16,
+        lineHeight: 44,
+        marginBottom: 12,
       },
       sub: {
         fontFamily: FONT_FAMILY.body,
-        fontSize: FONT_SIZE.base,
-        color: colors.textMuted,
-        lineHeight: 24,
-        marginBottom: 48,
+        fontSize: 15,
+        color: colors.textSecondary,
+        lineHeight: 22,
+        marginBottom: 36,
       },
       errorBox: {
-        backgroundColor: 'rgba(239,68,68,0.1)',
-        borderRadius: RADIUS.sm,
+        backgroundColor: isDark ? 'rgba(255,105,97,0.12)' : 'rgba(220,38,38,0.10)',
+        borderRadius: RADIUS.md,
         padding: 12,
         borderWidth: 1,
-        borderColor: 'rgba(239,68,68,0.3)',
-        marginBottom: 24,
+        borderColor: isDark ? 'rgba(255,105,97,0.3)' : 'rgba(220,38,38,0.25)',
+        marginBottom: 20,
       },
       errorText: {
         fontFamily: FONT_FAMILY.body,
         fontSize: FONT_SIZE.sm,
-        color: '#ef4444',
+        color: colors.error,
       },
       btnContainer: {
         width: '100%',
-        marginBottom: 24,
+        marginBottom: 16,
       },
       googleBtn: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: '#ffffff',
-        borderRadius: RADIUS.md,
+        borderRadius: RADIUS.lg,
         paddingVertical: 16,
         width: '100%',
         gap: 12,
+        borderWidth: 1,
+        borderColor: isDark ? '#ffffff' : colors.border,
+        ...SHADOW.sm,
       },
       googleLogo: {
         width: 20,
@@ -293,7 +298,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       },
       googleBtnText: {
         fontFamily: FONT_FAMILY.bold,
-        fontSize: FONT_SIZE.base,
+        fontSize: 15,
         color: '#1a1a1a',
       },
       legalText: {

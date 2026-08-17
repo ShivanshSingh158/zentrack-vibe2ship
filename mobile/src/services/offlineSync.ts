@@ -150,8 +150,18 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
       return 0;
     }
 
-    const currentUser = auth.currentUser;
-    if (!currentUser) {
+    let uid = auth.currentUser?.uid;
+    if (!uid) {
+      try {
+        const rawUser = await AsyncStorage.getItem('@zentrack_optimistic_user');
+        if (rawUser) {
+          const parsed = JSON.parse(rawUser);
+          if (parsed?.uid) uid = parsed.uid;
+        }
+      } catch {}
+    }
+
+    if (!uid) {
       // Defer drain until user authentication is fully hydrated
       isSyncing = false;
       return 0;
@@ -169,7 +179,7 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
       return 0;
     }
 
-    console.log(`[OfflineSync] Draining ${queue.length} operations to Firestore for ${currentUser.uid}…`);
+    console.log(`[OfflineSync] Draining ${queue.length} operations to Firestore for ${uid}…`);
 
     // High-Performance Fast Path: Batch non-conflicting mutations into single round-trip
     if (queue.length > 1 && queue.length <= 500) {
@@ -177,8 +187,8 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
         const batch = writeBatch(db);
         for (const item of queue) {
           const dataToWrite = item.data && typeof item.data === 'object' ? { ...item.data } : item.data;
-          if (currentUser && dataToWrite && typeof dataToWrite === 'object' && !dataToWrite.userId && item.operation !== 'delete') {
-            dataToWrite.userId = currentUser.uid;
+          if (uid && dataToWrite && typeof dataToWrite === 'object' && !dataToWrite.userId && item.operation !== 'delete') {
+            dataToWrite.userId = uid;
           }
           if (dataToWrite && typeof dataToWrite === 'object') {
             if (dataToWrite.createdAt && typeof dataToWrite.createdAt === 'object' && Object.keys(dataToWrite.createdAt).length === 0) {
@@ -223,8 +233,8 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
     for (const item of queue) {
       try {
         const dataToWrite = item.data && typeof item.data === 'object' ? { ...item.data } : item.data;
-        if (currentUser && dataToWrite && typeof dataToWrite === 'object' && !dataToWrite.userId && item.operation !== 'delete') {
-          dataToWrite.userId = currentUser.uid;
+        if (uid && dataToWrite && typeof dataToWrite === 'object' && !dataToWrite.userId && item.operation !== 'delete') {
+          dataToWrite.userId = uid;
         }
 
         // Restore serialized sentinel timestamps if parsed as empty object

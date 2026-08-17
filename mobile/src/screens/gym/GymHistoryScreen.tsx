@@ -11,10 +11,11 @@ import { springs } from '../../theme/motion';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { calculateGymStreak } from '../../utils/gymUtils';
 import { useTheme } from "../../contexts/ThemeContext";
+import { StatusBar } from 'expo-status-bar';
 
 export default function GymHistoryScreen() {
     const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const { gymLogs } = useWellnessData();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -90,6 +91,7 @@ export default function GymHistoryScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
@@ -105,8 +107,8 @@ export default function GymHistoryScreen() {
         <Animated.View style={[styles.streakCard, streakStyle]}>
           <View style={styles.streakLeft}>
             <View style={styles.streakBadge}>
-              <Ionicons name="flame" size={20} color="#FFD166" style={{ marginRight: 6 }} />
-              <Text style={styles.streakBadgeText}>{streak}</Text>
+              <Ionicons name="flame" size={20} color={isDark ? '#FFD166' : '#D97706'} style={{ marginRight: 6 }} />
+              <Text style={[styles.streakBadgeText, { color: isDark ? '#FFD166' : '#D97706' }]}>{streak}</Text>
             </View>
             <View>
               <Text style={styles.streakTitle}>Day Streak</Text>
@@ -156,8 +158,12 @@ export default function GymHistoryScreen() {
                         style={[
                           styles.square,
                           day.isFuture && { backgroundColor: 'transparent' },
-                          !day.isFuture && day.intensity === 0 && { backgroundColor: '#2C2C2E' },
-                          !day.isFuture && day.intensity > 0 && { backgroundColor: `rgba(196, 144, 255, ${day.intensity})` }
+                          !day.isFuture && day.intensity === 0 && { backgroundColor: isDark ? '#2C2C2E' : '#E2E1EA' },
+                          !day.isFuture && day.intensity > 0 && {
+                            backgroundColor: isDark
+                              ? `rgba(196, 144, 255, ${day.intensity})`
+                              : `rgba(108, 92, 231, ${day.intensity})`
+                          }
                         ]}
                       />
                     ))}
@@ -170,10 +176,10 @@ export default function GymHistoryScreen() {
           {/* Legend */}
           <View style={styles.legendRow}>
             <Text style={styles.legendText}>Less</Text>
-            <View style={[styles.legendSquare, { backgroundColor: '#2C2C2E' }]} />
-            <View style={[styles.legendSquare, { backgroundColor: 'rgba(196, 144, 255, 0.3)' }]} />
-            <View style={[styles.legendSquare, { backgroundColor: 'rgba(196, 144, 255, 0.6)' }]} />
-            <View style={[styles.legendSquare, { backgroundColor: 'rgba(196, 144, 255, 1.0)' }]} />
+            <View style={[styles.legendSquare, { backgroundColor: isDark ? '#2C2C2E' : '#E2E1EA' }]} />
+            <View style={[styles.legendSquare, { backgroundColor: isDark ? 'rgba(196, 144, 255, 0.3)' : 'rgba(108, 92, 231, 0.3)' }]} />
+            <View style={[styles.legendSquare, { backgroundColor: isDark ? 'rgba(196, 144, 255, 0.6)' : 'rgba(108, 92, 231, 0.6)' }]} />
+            <View style={[styles.legendSquare, { backgroundColor: isDark ? 'rgba(196, 144, 255, 1.0)' : 'rgba(108, 92, 231, 1.0)' }]} />
             <Text style={styles.legendText}>More</Text>
           </View>
         </View>
@@ -182,22 +188,22 @@ export default function GymHistoryScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1, backgroundColor: colors.background },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
       header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.xl, paddingTop: Platform.OS === 'ios' ? 10 : 20, paddingBottom: SPACE.md },
       backBtn: { padding: SPACE.xs },
       headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
       
       content: { padding: SPACE.xl, paddingBottom: 100 },
 
-      streakCard: { backgroundColor: '#1C1C1E', borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...SHADOW.md },
+      streakCard: { backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: RADIUS.lg, padding: SPACE.lg, marginBottom: SPACE.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, ...SHADOW.md },
       streakLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
-      streakBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 140, 0, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 140, 0, 0.3)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: RADIUS.full },
-      streakBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#FFD166' },
+      streakBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255, 140, 0, 0.15)' : 'rgba(217, 119, 6, 0.12)', borderWidth: 1, borderColor: isDark ? 'rgba(255, 140, 0, 0.3)' : 'rgba(217, 119, 6, 0.25)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: RADIUS.full },
+      streakBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 16 },
       streakTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
       streakSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted },
 
-      heatmapCard: { backgroundColor: '#1C1C1E', borderRadius: RADIUS.lg, padding: SPACE.lg, ...SHADOW.md },
+      heatmapCard: { backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: RADIUS.lg, padding: SPACE.lg, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, ...SHADOW.md },
       heatmapTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginBottom: SPACE.xl },
       
       gridContainer: { flexDirection: 'row' },

@@ -4,7 +4,7 @@ import { collection, doc, setDoc, updateDoc, serverTimestamp, deleteField } from
 import { db } from '../services/firebase';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
-import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
+import { GYM_PLAN, GYM_PLAN_ARNOLD, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 import { GymDayLog, GymExerciseLog, GymSet, GymCardioLog, GymPlanDay } from '../types/gym.types';
 
 function debounce<T extends (...args: any[]) => any>(fn: T, ms: number) {
@@ -78,9 +78,18 @@ export function planDayIndexForDate(dateStr: string) {
 export function getCustomPlanDay(customDays: any, planIdx: number) {
   if (!customDays) return null;
   if (Array.isArray(customDays)) {
-    return customDays.find(d => d && d.dayIndex === planIdx);
+    return customDays.find(d => d && (d.dayIndex === planIdx || Number(d.dayIndex) === Number(planIdx))) || null;
   }
-  return customDays[planIdx];
+  return customDays[planIdx] || customDays[String(planIdx)] || null;
+}
+
+export function resolvePlanDay(userGymPlan: any, planIdx: number): GymPlanDay {
+  const rawCustom = getCustomPlanDay(userGymPlan?.customDays, planIdx);
+  const customHasExercises = rawCustom && Array.isArray(rawCustom.exercises) && rawCustom.exercises.length > 0;
+  if (rawCustom && (rawCustom.isRest || customHasExercises)) {
+    return rawCustom;
+  }
+  return GYM_PLAN.find((d: GymPlanDay) => d.dayIndex === planIdx) || GYM_PLAN_ARNOLD.find((d: GymPlanDay) => d.dayIndex === planIdx) || GYM_PLAN[0];
 }
 
 export function useGymLog(dateStr: string) {
@@ -93,7 +102,7 @@ export function useGymLog(dateStr: string) {
 
   const debouncedSyncMasterPlan = useRef(
     debounce((newExercises: GymExerciseLog[], planDayIndex: number) => {
-      const existingPlan = getCustomPlanDay(userGymPlan?.customDays, planDayIndex) || GYM_PLAN.find(d => d.dayIndex === planDayIndex);
+      const existingPlan = resolvePlanDay(userGymPlan, planDayIndex);
       updateMasterPlan(planDayIndex, {
         dayIndex: planDayIndex,
         name: existingPlan?.name || `Day ${planDayIndex}`,
@@ -131,7 +140,6 @@ export function useGymLog(dateStr: string) {
     return () => { cancelled = true; };
   }, [dateStr]);
 
-  const hasInitialised = useRef(false);
   const prevDateStrRef = useRef<string | null>(null);
   const prevPlanUpdatedRef = useRef<number | null>(null);
 
@@ -140,7 +148,6 @@ export function useGymLog(dateStr: string) {
       setLog(null);
       logRef.current = null;
       localWriteAtRef.current = 0;
-      hasInitialised.current = false;
     }
     prevDateStrRef.current = dateStr;
 
@@ -153,49 +160,54 @@ export function useGymLog(dateStr: string) {
         setLog(null);
         logRef.current = null;
         localWriteAtRef.current = 0;
-        hasInitialised.current = false;
       }
     }
     prevPlanUpdatedRef.current = currentPlanUpdatedAt;
 
-    if (!user && gymLogs.length === 0) return;
-    if (!gymLogsReady && gymLogs.length === 0) return;
+    const planIdx = planDayIndexForDate(dateStr);
+    const planDay = resolvePlanDay(userGymPlan, planIdx);
 
-    const existing = gymLogs.find(l => l.date === dateStr);
+    const existing = (gymLogs || []).find(l => l.date === dateStr);
 
     const sortedPastGymLogs = (gymLogs || [])
       .filter(l => l.date !== dateStr && Array.isArray(l.exercises) && l.exercises.length > 0)
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-    const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
-      if (sortedPastGymLogs.length === 0) return null;
+    const pastExerciseHistoryMap = new Map<string, { reps: number | null; weight: number | null; completed: boolean }[]>();
 
-      const cleanName = (exerciseName || '').toLowerCase().trim();
-
-      for (const pastLog of sortedPastGymLogs) {
-        const match = pastLog.exercises?.find((ex: any) => {
-          if (exerciseId && ex.exerciseId && ex.exerciseId === exerciseId) return true;
-          if (!ex.name) return false;
-          const pastName = ex.name.toLowerCase().trim();
-          if (pastName === cleanName) return true;
-          if (pastName.includes(cleanName) || cleanName.includes(pastName)) return true;
-          return false;
-        });
-
-        if (match?.setsLog?.length > 0) {
-          // Filter for sets that have ACTUAL recorded non-zero weight or reps
-          const validSets = match.setsLog.filter((s: any) =>
-            s.completed ||
-            (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ||
-            (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0)
-          );
-
-          if (validSets.length > 0) {
-            return match.setsLog as { reps: number | null; weight: number | null; completed: boolean }[];
+    for (let i = 0; i < sortedPastGymLogs.length; i++) {
+      const pastLog = sortedPastGymLogs[i];
+      if (Array.isArray(pastLog.exercises)) {
+        for (let j = 0; j < pastLog.exercises.length; j++) {
+          const ex = pastLog.exercises[j];
+          if (ex.setsLog && ex.setsLog.length > 0) {
+            const validSets = ex.setsLog.filter((s: any) =>
+              s.completed ||
+              (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ||
+              (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0)
+            );
+            if (validSets.length > 0) {
+              if (ex.exerciseId && !pastExerciseHistoryMap.has(ex.exerciseId)) {
+                pastExerciseHistoryMap.set(ex.exerciseId, ex.setsLog);
+              }
+              const cleanName = (ex.name || '').toLowerCase().trim();
+              if (cleanName && !pastExerciseHistoryMap.has(cleanName)) {
+                pastExerciseHistoryMap.set(cleanName, ex.setsLog);
+              }
+            }
           }
         }
       }
+    }
 
+    const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
+      if (exerciseId && pastExerciseHistoryMap.has(exerciseId)) {
+        return pastExerciseHistoryMap.get(exerciseId)!;
+      }
+      const cleanName = (exerciseName || '').toLowerCase().trim();
+      if (cleanName && pastExerciseHistoryMap.has(cleanName)) {
+        return pastExerciseHistoryMap.get(cleanName)!;
+      }
       return null;
     };
 
@@ -208,55 +220,13 @@ export function useGymLog(dateStr: string) {
           ? existing.updatedAt
           : (existing.updatedAt as any)?.toMillis?.() ?? 0;
       const localTs: number = logRef.current?.updatedAt ?? 0;
-      if (logRef.current && existingTs <= localTs) {
+      if (logRef.current && existingTs <= localTs && (logRef.current.exercises?.length ?? 0) > 0) {
         return; // Firestore snapshot is older than local state — skip
       }
 
-      const planIdx = planDayIndexForDate(dateStr);
-      const planDay = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
-
       let patchedExercises: GymExerciseLog[] = [];
 
-      const hasLoggedSets = (existing.exercises || []).some((ex: any) =>
-        (ex.setsLog || []).some((s: any) => s.completed || (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0))
-      );
-
-      // If workout has not started and is not completed (and no real logged sets), ALWAYS sync with the latest planDay definition
-      if (!existing.workoutStartTime && !existing.completed && !hasLoggedSets) {
-        if (planDay?.isRest) {
-          patchedExercises = [];
-        } else if (planDay && planDay.exercises) {
-          patchedExercises = planDay.exercises.map((e: any, idx: number) => {
-            const lastSets = getLastSessionSets(e.id, e.name);
-            const lastValidSet = lastSets && lastSets.length > 0
-              ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
-              : null;
-
-            return {
-              _idx: idx,
-              exerciseId: e.id,
-              name: e.name,
-              targetSets: e.targetSets,
-              targetReps: e.targetReps,
-              muscle: e.muscle,
-              videoId: e.videoId,
-              restTimeSecs: e.restTimeSecs,
-              lastSessionSets: lastSets ?? undefined,
-              setsLog: Array.from({ length: e.targetSets }, (_, i) => {
-                const lastSet = lastSets?.[i] || lastValidSet;
-                return {
-                  setNumber: i + 1,
-                  reps: lastSet?.reps ?? null,
-                  weight: lastSet?.weight ?? null,
-                  completed: false,
-                };
-              }),
-            };
-          });
-        }
-      }
-
-      if (patchedExercises.length === 0 && (!planDay?.isRest) && existing.exercises && existing.exercises.length > 0) {
+      if (existing.exercises && existing.exercises.length > 0) {
         patchedExercises = existing.exercises.map((ex, idx) => {
           const lastSets = getLastSessionSets(ex.exerciseId, ex.name);
           const lastValidSet = lastSets && lastSets.length > 0
@@ -264,7 +234,7 @@ export function useGymLog(dateStr: string) {
             : null;
 
           let patchedVideoId = ex.videoId;
-          if (!patchedVideoId && planDay) {
+          if (!patchedVideoId && planDay && Array.isArray(planDay.exercises)) {
             const planEx = planDay.exercises.find((pe: any) => pe.id === ex.exerciseId || pe.name === ex.name);
             if (planEx?.videoId) {
               patchedVideoId = planEx.videoId;
@@ -289,41 +259,8 @@ export function useGymLog(dateStr: string) {
             setsLog: patchedSetsLog,
           };
         });
-      }
-
-      // Sync log exercise order with master plan if workout is not started
-      if (!existing.workoutStartTime && planDay && !planDay.isRest && patchedExercises.length > 0) {
-        patchedExercises.sort((a, b) => {
-          const aIndex = planDay.exercises.findIndex((e: any) => e.name === a.name);
-          const bIndex = planDay.exercises.findIndex((e: any) => e.name === b.name);
-          if (aIndex === -1 && bIndex === -1) return 0;
-          if (aIndex === -1) return 1;
-          if (bIndex === -1) return -1;
-          return aIndex - bIndex;
-        });
-        patchedExercises.forEach((ex, idx) => ex._idx = idx);
-      }
-
-      let patchedLog = { 
-        ...existing, 
-        dayPlanIndex: !existing.workoutStartTime && !existing.completed ? planIdx : existing.dayPlanIndex,
-        exercises: patchedExercises 
-      } as GymDayLog;
-      if (!patchedLog.cardio) {
-        patchedLog.cardio = [];
-      }
-      setLog(patchedLog);
-    } else if (gymLogsReady) {
-      if (hasInitialised.current) return;
-      hasInitialised.current = true;
-      const planIdx = planDayIndexForDate(dateStr);
-      const planDay = getCustomPlanDay(userGymPlan?.customDays, planIdx) || GYM_PLAN.find(d => d.dayIndex === planIdx);
-
-      const newLog: GymDayLog = {
-        userId: user?.uid || '',
-        date: dateStr,
-        dayPlanIndex: planIdx,
-        exercises: planDay && !planDay.isRest ? planDay.exercises.map((e: any, idx: number) => {
+      } else if (planDay && !planDay.isRest && Array.isArray(planDay.exercises) && planDay.exercises.length > 0) {
+        patchedExercises = planDay.exercises.map((e: any, idx: number) => {
           const lastSets = getLastSessionSets(e.id, e.name);
           const lastValidSet = lastSets && lastSets.length > 0
             ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
@@ -349,14 +286,60 @@ export function useGymLog(dateStr: string) {
               };
             }),
           };
-        }) : [],
+        });
+      }
+
+      let patchedLog = { 
+        ...existing, 
+        dayPlanIndex: existing.dayPlanIndex ?? planIdx,
+        exercises: patchedExercises 
+      } as GymDayLog;
+      if (!patchedLog.cardio) {
+        patchedLog.cardio = [];
+      }
+      setLog(patchedLog);
+    } else {
+      // No existing record in Firestore -> create log from planDay
+      const newExercises = (planDay && !planDay.isRest && Array.isArray(planDay.exercises)) ? planDay.exercises.map((e: any, idx: number) => {
+        const lastSets = getLastSessionSets(e.id, e.name);
+        const lastValidSet = lastSets && lastSets.length > 0
+          ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
+          : null;
+
+        return {
+          _idx: idx,
+          exerciseId: e.id,
+          name: e.name,
+          targetSets: e.targetSets,
+          targetReps: e.targetReps,
+          muscle: e.muscle,
+          videoId: e.videoId,
+          restTimeSecs: e.restTimeSecs,
+          lastSessionSets: lastSets ?? undefined,
+          setsLog: Array.from({ length: e.targetSets }, (_, i) => {
+            const lastSet = lastSets?.[i] || lastValidSet;
+            return {
+              setNumber: i + 1,
+              reps: lastSet?.reps ?? null,
+              weight: lastSet?.weight ?? null,
+              completed: false,
+            };
+          }),
+        };
+      }) : [];
+
+      const newLog: GymDayLog = {
+        userId: user?.uid || '',
+        date: dateStr,
+        dayPlanIndex: planIdx,
+        exercises: newExercises,
         cardio: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
       setLog(newLog);
     }
-  }, [gymLogsReady, gymLogs, dateStr, user?.uid, reloadKey, userGymPlan?.updatedAt]);
+  }, [gymLogsReady, gymLogs, dateStr, user?.uid, reloadKey, userGymPlan]);
 
 
 
@@ -370,7 +353,7 @@ export function useGymLog(dateStr: string) {
 
   const planIdx = planDayIndexForDate(dateStr);
   const activePlanIdx = log?.dayPlanIndex ?? planIdx;
-  const planDay = getCustomPlanDay(userGymPlan?.customDays, activePlanIdx) || GYM_PLAN.find(d => d.dayIndex === activePlanIdx);
+  const planDay = resolvePlanDay(userGymPlan, activePlanIdx);
 
   const saveLog = useCallback((updatedLog: GymDayLog) => {
     if (!user) return;

@@ -18,6 +18,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
 import { useMobileData, LearningSubTask } from '../../contexts/MobileDataContext';
 import { fetchVideoTranscript, TranscriptCue, TranscriptResult } from '../../services/youtubeTranscriptService';
 import { generateFlashcardsFromContext, saveFlashcardsToFirestore } from '../../services/flashcardService';
@@ -69,6 +70,11 @@ export default function LearningVideoPlayer({
   aiLoading, sendAiMessage, generateQuiz, currentNotes, setCurrentNotes,
   saveNotes, closeVideo, resetChatHistory, onSelectLecture,
 }: LearningVideoPlayerProps) {
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const mdStylesModel = useMemo(() => makeMdStylesModel(colors, isDark), [colors, isDark]);
+  const mdStylesUser = useMemo(() => makeMdStylesUser(colors, isDark), [colors, isDark]);
+
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const [appState, setAppState] = useState(AppState.currentState);
@@ -596,35 +602,35 @@ export default function LearningVideoPlayer({
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
 
             <TouchableOpacity
-              style={[s.controlBtn, aiChatVisible && { backgroundColor: '#a599ff' }]}
+              style={[s.controlBtn, aiChatVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
               onPress={() => {
                 setAiChatVisible(!aiChatVisible);
                 setNotesVisible(false);
                 setTranscriptVisible(false);
               }}
             >
-              <Ionicons name="chatbubbles" size={18} color={aiChatVisible ? '#000' : '#f2f2f7'} />
+              <Ionicons name="chatbubbles" size={18} color={aiChatVisible ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary} />
             </TouchableOpacity>
             <TouchableOpacity
-              style={[s.controlBtn, notesVisible && { backgroundColor: '#a599ff' }]}
+              style={[s.controlBtn, notesVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
               onPress={() => {
                 setNotesVisible(!notesVisible);
                 setAiChatVisible(false);
                 setTranscriptVisible(false);
               }}
             >
-              <Ionicons name="document-text" size={18} color={notesVisible ? '#000' : '#f2f2f7'} />
+              <Ionicons name="document-text" size={18} color={notesVisible ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary} />
             </TouchableOpacity>
             {/* Transcript button */}
             <TouchableOpacity
-              style={[s.controlBtn, transcriptVisible && { backgroundColor: '#a599ff' }]}
+              style={[s.controlBtn, transcriptVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
               onPress={() => {
                 setTranscriptVisible(!transcriptVisible);
                 setAiChatVisible(false);
                 setNotesVisible(false);
               }}
             >
-              <Ionicons name="receipt-outline" size={18} color={transcriptVisible ? '#000' : '#f2f2f7'} />
+              <Ionicons name="receipt-outline" size={18} color={transcriptVisible ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary} />
             </TouchableOpacity>
 
             {/* ── Flashcard generate button ────────────────────────────────────
@@ -636,7 +642,7 @@ export default function LearningVideoPlayer({
               disabled={generatingCards}
             >
               {generatingCards
-                ? <ActivityIndicator size="small" color="#a599ff" style={{ transform: [{ scale: 0.7 }] }} />
+                ? <ActivityIndicator size="small" color={colors.accentPrimary} style={{ transform: [{ scale: 0.7 }] }} />
                 : <Text style={{ fontSize: 14 }}>🃏</Text>
               }
             </TouchableOpacity>
@@ -645,7 +651,7 @@ export default function LearningVideoPlayer({
                 Opens LectureMindMap modal with AI-generated SVG diagram.
                 Enabled once transcript cues are loaded. */}
             <TouchableOpacity
-              style={[s.controlBtn, { paddingHorizontal: 8 }, mindMapVisible && { backgroundColor: '#a599ff' }]}
+              style={[s.controlBtn, { paddingHorizontal: 8 }, mindMapVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
               onPress={() => setMindMapVisible(true)}
             >
               <Text style={{ fontSize: 14 }}>🗺️</Text>
@@ -658,7 +664,7 @@ export default function LearningVideoPlayer({
                   setIsChatFullScreen(true);
                 }}
               >
-                <Ionicons name="expand" size={16} color="#a599ff" />
+                <Ionicons name="expand" size={16} color={colors.accentPrimary} />
               </TouchableOpacity>
             )}
             {aiChatVisible && (
@@ -666,7 +672,7 @@ export default function LearningVideoPlayer({
                 style={[s.controlBtn, { paddingHorizontal: 8 }]}
                 onPress={() => setHistoryModalVisible(true)}
               >
-                <Ionicons name="time-outline" size={16} color="#a599ff" />
+                <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
               </TouchableOpacity>
             )}
             {aiChatVisible && resetChatHistory && (
@@ -683,13 +689,13 @@ export default function LearningVideoPlayer({
                   );
                 }}
               >
-                <Ionicons name="trash-outline" size={16} color="#71717a" />
+                <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
               </TouchableOpacity>
             )}
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity style={s.controlBtn} onPress={closeVideo}>
-              <Ionicons name="close" size={18} color="#f2f2f7" />
+              <Ionicons name="close" size={18} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
         </View>
@@ -713,18 +719,18 @@ export default function LearningVideoPlayer({
 
       {/* AI Chat Panel */}
       {!isPip && !isFocusMode && aiChatVisible && (
-        <View style={[s.aiPanel, isChatFullScreen && { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: '#000000' }]}>
+        <View style={[s.aiPanel, isChatFullScreen && { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: colors.background }]}>
           {isChatFullScreen && (
             <View style={{ paddingTop: Math.max(insets.top, 20), paddingBottom: 10, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', zIndex: 110, position: 'absolute', top: 0, left: 0, right: 0 }}>
               <TouchableOpacity
-                style={{ position: 'absolute', left: 20, top: Math.max(insets.top, 20), backgroundColor: '#18181b', width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}
+                style={{ position: 'absolute', left: 20, top: Math.max(insets.top, 20), backgroundColor: isDark ? '#18181b' : colors.surface, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
                 onPress={() => setHistoryModalVisible(true)}
               >
-                <Ionicons name="time-outline" size={16} color="#a599ff" />
+                <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
               </TouchableOpacity>
               {resetChatHistory && (
                 <TouchableOpacity
-                  style={{ position: 'absolute', left: 62, top: Math.max(insets.top, 20), backgroundColor: '#18181b', width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ position: 'absolute', left: 62, top: Math.max(insets.top, 20), backgroundColor: isDark ? '#18181b' : colors.surface, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
                   onPress={() => {
                     Alert.alert(
                       'Clear Lecture Chat?',
@@ -736,15 +742,15 @@ export default function LearningVideoPlayer({
                     );
                   }}
                 >
-                  <Ionicons name="trash-outline" size={16} color="#71717a" />
+                  <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
                 </TouchableOpacity>
               )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#18181b', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, gap: 6 }}>
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#22c55e' }} />
-                <Text style={{ color: '#ffffff', fontSize: 12.5, fontFamily: FONT_FAMILY.bold, letterSpacing: 0.2 }}>ZEN-GPT</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#18181b' : colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, gap: 6 }}>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isDark ? '#22c55e' : '#059669' }} />
+                <Text style={{ color: colors.textPrimary, fontSize: 12.5, fontFamily: FONT_FAMILY.bold, letterSpacing: 0.2 }}>ZEN-GPT</Text>
               </View>
-              <TouchableOpacity style={{ position: 'absolute', right: 20, top: Math.max(insets.top, 20), backgroundColor: '#18181b', width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setIsChatFullScreen(false); }}>
-                <Ionicons name="close" size={18} color="#ffffff" />
+              <TouchableOpacity style={{ position: 'absolute', right: 20, top: Math.max(insets.top, 20), backgroundColor: isDark ? '#18181b' : colors.surface, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setIsChatFullScreen(false); }}>
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
           )}
@@ -759,25 +765,25 @@ export default function LearningVideoPlayer({
                   <View style={s.assistantContainer}>
                     <View style={s.assistantHeader}>
                       <View style={s.assistantAvatar}>
-                        <Ionicons name="sparkles" size={11} color="#00c16e" />
+                        <Ionicons name="sparkles" size={11} color={isDark ? '#00c16e' : '#059669'} />
                       </View>
                       <Text style={s.assistantName}>ZEN-GPT</Text>
                       <TouchableOpacity style={{ marginLeft: 6, padding: 4 }} onPress={() => Clipboard.setStringAsync(item.text)}>
-                        <Ionicons name="copy-outline" size={13} color="#71717a" />
+                        <Ionicons name="copy-outline" size={13} color={colors.textMuted} />
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={{ marginLeft: 6, paddingVertical: 2, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(0,193,110,0.12)', borderRadius: 6, borderWidth: 1, borderColor: 'rgba(0,193,110,0.25)' }}
+                        style={{ marginLeft: 6, paddingVertical: 2, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.10)', borderRadius: 6, borderWidth: 1, borderColor: isDark ? 'rgba(0,193,110,0.25)' : 'rgba(5,150,105,0.25)' }}
                         onPress={() => handleExportResponseToNotes(item.text)}
                       >
-                        <Ionicons name="document-text-outline" size={11} color="#00c16e" />
-                        <Text style={{ color: '#00c16e', fontSize: 10.5, fontFamily: FONT_FAMILY.bold }}>+ Notes</Text>
+                        <Ionicons name="document-text-outline" size={11} color={isDark ? '#00c16e' : '#059669'} />
+                        <Text style={{ color: isDark ? '#00c16e' : '#059669', fontSize: 10.5, fontFamily: FONT_FAMILY.bold }}>+ Notes</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        style={{ marginLeft: 6, paddingVertical: 2, paddingHorizontal: 6, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(165,153,255,0.12)', borderRadius: 6, borderWidth: 1, borderColor: 'rgba(165,153,255,0.2)' }}
+                        style={{ marginLeft: 6, paddingVertical: 2, paddingHorizontal: 6, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', borderRadius: 6, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.25)' }}
                         onPress={() => handleGenerateFlashcards(item.text)}
                       >
-                        <Ionicons name="flash-outline" size={11} color="#a599ff" />
-                        <Text style={{ color: '#a599ff', fontSize: 10.5, fontFamily: FONT_FAMILY.bold }}>+ Flashcards</Text>
+                        <Ionicons name="flash-outline" size={11} color={colors.accentPrimary} />
+                        <Text style={{ color: colors.accentPrimary, fontSize: 10.5, fontFamily: FONT_FAMILY.bold }}>+ Flashcards</Text>
                       </TouchableOpacity>
                     </View>
                     <View style={s.markdownWrapper}>
@@ -795,13 +801,13 @@ export default function LearningVideoPlayer({
               <View style={[s.chatBubble, s.chatBubbleModel]}>
                 <View style={s.assistantHeader}>
                   <View style={s.assistantAvatar}>
-                    <Ionicons name="sparkles" size={11} color="#00c16e" />
+                    <Ionicons name="sparkles" size={11} color={isDark ? '#00c16e' : '#059669'} />
                   </View>
                   <Text style={s.assistantName}>ZEN-GPT</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingLeft: 4 }}>
-                  <ActivityIndicator size="small" color="#00c16e" />
-                  <Text style={{ color: '#71717a', fontSize: 13, fontFamily: FONT_FAMILY.body, fontStyle: 'italic' }}>Generating response...</Text>
+                  <ActivityIndicator size="small" color={isDark ? '#00c16e' : '#059669'} />
+                  <Text style={{ color: colors.textMuted, fontSize: 13, fontFamily: FONT_FAMILY.body, fontStyle: 'italic' }}>Generating response...</Text>
                 </View>
               </View>
             )}
@@ -814,7 +820,7 @@ export default function LearningVideoPlayer({
                   onPress={generateQuiz}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="sparkles" size={13} color="#a599ff" />
+                  <Ionicons name="sparkles" size={13} color={colors.accentPrimary} />
                   <Text style={s.chatgptPillText}>Quiz Me</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -823,8 +829,8 @@ export default function LearningVideoPlayer({
                   disabled={generatingCards}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="flash" size={12} color="#00c16e" />
-                  <Text style={[s.chatgptPillText, { color: '#00c16e' }]}>
+                  <Ionicons name="flash" size={12} color={isDark ? '#00c16e' : '#059669'} />
+                  <Text style={[s.chatgptPillText, { color: isDark ? '#00c16e' : '#059669' }]}>
                     {generatingCards ? 'Creating...' : '+ Flashcards'}
                   </Text>
                 </TouchableOpacity>
@@ -834,7 +840,7 @@ export default function LearningVideoPlayer({
               <TextInput
                 style={s.aiInput}
                 placeholder="Ask ZEN-GPT anything..."
-                placeholderTextColor="#71717a"
+                placeholderTextColor={colors.textMuted}
                 value={aiInput}
                 onChangeText={setAiInput}
                 onSubmitEditing={() => {
@@ -853,7 +859,7 @@ export default function LearningVideoPlayer({
                 disabled={aiLoading || !aiInput.trim()}
                 activeOpacity={0.8}
               >
-                <Ionicons name="arrow-up" size={18} color="#000000" />
+                <Ionicons name="arrow-up" size={18} color={isDark ? '#000000' : '#FFFFFF'} />
               </TouchableOpacity>
             </View>
           </Animated.View>
@@ -878,19 +884,19 @@ export default function LearningVideoPlayer({
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <TouchableOpacity style={s.toolActionBtn} onPress={handleInsertTimestamp}>
-                <Ionicons name="time-outline" size={13} color="#a599ff" />
+                <Ionicons name="time-outline" size={13} color={colors.accentPrimary} />
                 <Text style={s.toolActionText}>+ Time</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[s.exportBtn, exporting && { opacity: 0.6 }]} onPress={handleExportToNotes} disabled={exporting}>
-                {exporting ? <ActivityIndicator size="small" color="#080510" /> : (
+                {exporting ? <ActivityIndicator size="small" color={isDark ? '#080510' : '#FFFFFF'} /> : (
                   <>
-                    <Ionicons name="share-outline" size={12} color="#080510" />
+                    <Ionicons name="share-outline" size={12} color={isDark ? '#080510' : '#FFFFFF'} />
                     <Text style={s.exportBtnText}>Export</Text>
                   </>
                 )}
               </TouchableOpacity>
               <TouchableOpacity style={s.saveNoteBtn} onPress={saveNotes}>
-                <Text style={{ color: '#a599ff', fontFamily: FONT_FAMILY.bold, fontSize: 12.5 }}>Save</Text>
+                <Text style={{ color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 12.5 }}>Save</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -900,7 +906,7 @@ export default function LearningVideoPlayer({
                 <Text style={s.timestampChipsLabel}>Jump:</Text>
                 {detectedTimestamps.map((ts, idx) => (
                   <TouchableOpacity key={idx} style={s.timestampChip} onPress={() => handleSeekToTimestamp(ts)}>
-                    <Ionicons name="play" size={9} color="#a599ff" />
+                    <Ionicons name="play" size={9} color={colors.accentPrimary} />
                     <Text style={s.timestampChipText}>{ts}</Text>
                   </TouchableOpacity>
                 ))}
@@ -912,7 +918,7 @@ export default function LearningVideoPlayer({
               style={s.notesInput}
               multiline textAlignVertical="top"
               placeholder="Jot down notes here... Use # headers, **bold**, and tap '+ Time' to insert clickable video timestamps."
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.textMuted}
               value={currentNotes}
               onChangeText={setCurrentNotes}
               onBlur={saveNotes}
@@ -922,7 +928,7 @@ export default function LearningVideoPlayer({
               {currentNotes.trim() ? (
                 <Markdown rules={markdownRules} style={mdStylesModel}>{currentNotes}</Markdown>
               ) : (
-                <Text style={{ color: '#71717a', fontStyle: 'italic', fontFamily: FONT_FAMILY.body }}>No notes written yet. Switch to Edit mode or tap '+ Time' to start.</Text>
+                <Text style={{ color: colors.textMuted, fontStyle: 'italic', fontFamily: FONT_FAMILY.body }}>No notes written yet. Switch to Edit mode or tap '+ Time' to start.</Text>
               )}
             </ScrollView>
           )}
@@ -943,11 +949,11 @@ export default function LearningVideoPlayer({
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <TouchableOpacity
-                style={[s.toolActionBtn, autoScrollTranscript && { backgroundColor: 'rgba(0,193,110,0.15)', borderColor: 'rgba(0,193,110,0.3)' }]}
+                style={[s.toolActionBtn, autoScrollTranscript && { backgroundColor: isDark ? 'rgba(0,193,110,0.15)' : 'rgba(5,150,105,0.10)', borderColor: isDark ? 'rgba(0,193,110,0.3)' : 'rgba(5,150,105,0.25)' }]}
                 onPress={() => setAutoScrollTranscript(!autoScrollTranscript)}
               >
-                <Ionicons name="locate" size={13} color={autoScrollTranscript ? '#00c16e' : '#8e8e93'} />
-                <Text style={[s.toolActionText, autoScrollTranscript && { color: '#00c16e' }]}>
+                <Ionicons name="locate" size={13} color={autoScrollTranscript ? (isDark ? '#00c16e' : '#059669') : colors.textMuted} />
+                <Text style={[s.toolActionText, autoScrollTranscript && { color: isDark ? '#00c16e' : '#059669' }]}>
                   {autoScrollTranscript ? 'Tracking' : 'Manual'}
                 </Text>
               </TouchableOpacity>
@@ -956,18 +962,18 @@ export default function LearningVideoPlayer({
 
           {/* Quick Search */}
           <View style={s.transcriptSearchBox}>
-            <Ionicons name="search" size={14} color="#71717a" />
+            <Ionicons name="search" size={14} color={colors.textMuted} />
             <TextInput
               style={s.transcriptSearchInput}
               placeholder="Search words in lecture audio..."
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.textMuted}
               value={transcriptSearch}
               onChangeText={setTranscriptSearch}
               clearButtonMode="while-editing"
             />
             {transcriptSearch.length > 0 && (
               <TouchableOpacity onPress={() => setTranscriptSearch('')}>
-                <Ionicons name="close-circle" size={14} color="#71717a" />
+                <Ionicons name="close-circle" size={14} color={colors.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -975,15 +981,15 @@ export default function LearningVideoPlayer({
           {/* Cue List */}
           {transcriptLoading ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 }}>
-              <ActivityIndicator size="large" color="#a599ff" />
-              <Text style={{ color: '#8e8e93', fontSize: 13, fontFamily: FONT_FAMILY.body }}>
+              <ActivityIndicator size="large" color={colors.accentPrimary} />
+              <Text style={{ color: colors.textSecondary, fontSize: 13, fontFamily: FONT_FAMILY.body }}>
                 Synchronizing lecture transcript...
               </Text>
             </View>
           ) : filteredCues.length === 0 ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-              <Ionicons name="receipt-outline" size={36} color="#3a3a3c" />
-              <Text style={{ color: '#8e8e93', fontSize: 14, fontFamily: FONT_FAMILY.body, marginTop: 12, textAlign: 'center' }}>
+              <Ionicons name="receipt-outline" size={36} color={colors.border} />
+              <Text style={{ color: colors.textSecondary, fontSize: 14, fontFamily: FONT_FAMILY.body, marginTop: 12, textAlign: 'center' }}>
                 {transcriptSearch ? 'No spoken words matched your search.' : 'No transcript cues found for this lecture.'}
               </Text>
             </View>
@@ -1004,7 +1010,7 @@ export default function LearningVideoPlayer({
                     onPress={() => handleSeekToCue(cue)}
                   >
                     <View style={[s.cueTimePill, isActive && s.cueTimePillActive]}>
-                      <Ionicons name={isActive ? "play" : "time-outline"} size={10} color={isActive ? "#080510" : "#a599ff"} />
+                      <Ionicons name={isActive ? "play" : "time-outline"} size={10} color={isActive ? (isDark ? "#080510" : "#FFFFFF") : colors.accentPrimary} />
                       <Text style={[s.cueTimeText, isActive && s.cueTimeTextActive]}>
                         {cue.formattedTime}
                       </Text>
@@ -1019,7 +1025,7 @@ export default function LearningVideoPlayer({
                       onPress={() => handleCopyCueToNotes(cue)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Ionicons name="bookmark-outline" size={14} color="#71717a" />
+                      <Ionicons name="bookmark-outline" size={14} color={colors.textMuted} />
                     </TouchableOpacity>
                   </TouchableOpacity>
                 );
@@ -1027,6 +1033,162 @@ export default function LearningVideoPlayer({
             </ScrollView>
           )}
         </View>
+      )}
+
+      {/* ── Default Lecture Study Hub (Shown when no specific panel is toggled) ── */}
+      {!isPip && !isFocusMode && !aiChatVisible && !notesVisible && !transcriptVisible && (
+        <ScrollView
+          style={{ flex: 1, backgroundColor: colors.background }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Lecture Info Card */}
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isDark ? '#22c55e' : '#059669' }} />
+              <Text style={{ color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold, letterSpacing: 0.4 }}>
+                ACTIVE LECTURE
+              </Text>
+            </View>
+            <Text style={{ color: colors.textPrimary, fontSize: 16, fontFamily: FONT_FAMILY.bold, lineHeight: 22, marginBottom: 6 }}>
+              {activeVideoSub.title}
+            </Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: FONT_FAMILY.body }}>
+              Tap any study tool below or in the toolbar above to engage with AI.
+            </Text>
+          </View>
+
+          {/* Quick Hub Grid */}
+          <View style={{ gap: 10 }}>
+            {/* AI Tutor Card */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.surface,
+                padding: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                gap: 12,
+              }}
+              onPress={() => {
+                setAiChatVisible(true);
+                setNotesVisible(false);
+                setTranscriptVisible(false);
+              }}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.10)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="sparkles" size={20} color={isDark ? '#00c16e' : '#059669'} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>
+                  ZEN-GPT AI Tutor
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>
+                  Ask questions, get step-by-step breakdowns, and quiz yourself.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            {/* Smart Notes Card */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.surface,
+                padding: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                gap: 12,
+              }}
+              onPress={() => {
+                setNotesVisible(true);
+                setAiChatVisible(false);
+                setTranscriptVisible(false);
+              }}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="document-text" size={20} color={colors.accentPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>
+                  Timestamped Notes
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>
+                  Jot insights, insert video timestamps, and export to Vault.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            {/* Live Transcript Card */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.surface,
+                padding: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                gap: 12,
+              }}
+              onPress={() => {
+                setTranscriptVisible(true);
+                setAiChatVisible(false);
+                setNotesVisible(false);
+              }}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.10)', alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="receipt-outline" size={20} color={isDark ? '#38bdf8' : '#0284C7'} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>
+                  Synchronized Transcript
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>
+                  Follow spoken dialogue in real-time and jump to any moment.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            {/* Concept Mind Map Card */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.surface,
+                padding: 14,
+                borderRadius: 14,
+                borderWidth: 1,
+                borderColor: colors.border,
+                gap: 12,
+              }}
+              onPress={() => setMindMapVisible(true)}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? 'rgba(251,191,36,0.12)' : 'rgba(217,119,6,0.10)', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 18 }}>🗺️</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>
+                  360° Concept Mind Map
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>
+                  Explore interactive spatial graph with pinch & pan.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       )}
 
       <LectureChatHistoryModal
@@ -1061,98 +1223,98 @@ export default function LearningVideoPlayer({
 }
 
 
-const s = StyleSheet.create({
-  fullPlayerContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#000000', zIndex: 100 },
-  pipContainer: { position: 'absolute', bottom: 100, right: 20, width: 150, height: 84, backgroundColor: '#000000', borderRadius: 10, overflow: 'hidden', zIndex: 100, borderWidth: 2, borderColor: '#a599ff' },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  fullPlayerContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.background, zIndex: 100 },
+  pipContainer: { position: 'absolute', bottom: 100, right: 20, width: 150, height: 84, backgroundColor: isDark ? '#000000' : colors.surface, borderRadius: 10, overflow: 'hidden', zIndex: 100, borderWidth: 2, borderColor: colors.accentPrimary },
   playerWrapper: { width: '100%', backgroundColor: '#000000' },
-  playerControls: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 6, alignItems: 'center', backgroundColor: '#141416', borderBottomWidth: 1, borderBottomColor: '#1c1c1e' },
-  controlBtn: { padding: 6, backgroundColor: '#1c1c1e', borderRadius: 6 },
-  controlBtnText: { color: '#f2f2f7', fontFamily: FONT_FAMILY.bold, fontSize: 12 },
+  playerControls: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 6, alignItems: 'center', backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  controlBtn: { padding: 6, backgroundColor: isDark ? '#1c1c1e' : '#F5F4FA', borderRadius: 6 },
+  controlBtnText: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 12 },
   pipRestoreBtn: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
-  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1c1c1e' },
-  panelTitle: { fontFamily: FONT_FAMILY.bold, color: '#ffffff', fontSize: 16 },
-  transcriptPanel: { flex: 1, backgroundColor: '#0c0c0e' },
-  transcriptCountBadge: { backgroundColor: 'rgba(165,153,255,0.12)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(165,153,255,0.25)' },
-  transcriptCountText: { color: '#a599ff', fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  transcriptSearchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#141416', marginHorizontal: 12, marginVertical: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  transcriptSearchInput: { flex: 1, color: '#fff', fontSize: 13, fontFamily: FONT_FAMILY.body, marginLeft: 6, padding: 0 },
-  cueRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.03)', borderRadius: 10, marginHorizontal: 8, marginVertical: 2 },
-  cueRowActive: { backgroundColor: 'rgba(165,153,255,0.12)', borderWidth: 1, borderColor: 'rgba(165,153,255,0.35)' },
-  cueTimePill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(165,153,255,0.12)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, marginRight: 10, marginTop: 1 },
-  cueTimePillActive: { backgroundColor: '#a599ff' },
-  cueTimeText: { color: '#a599ff', fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  cueTimeTextActive: { color: '#080510' },
-  cueText: { flex: 1, color: '#a1a1aa', fontSize: 13, lineHeight: 19, fontFamily: FONT_FAMILY.body },
-  cueTextActive: { color: '#ffffff', fontFamily: FONT_FAMILY.medium },
+  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
+  panelTitle: { fontFamily: FONT_FAMILY.bold, color: colors.textPrimary, fontSize: 16 },
+  transcriptPanel: { flex: 1, backgroundColor: colors.background },
+  transcriptCountBadge: { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)' },
+  transcriptCountText: { color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
+  transcriptSearchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, marginHorizontal: 12, marginVertical: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
+  transcriptSearchInput: { flex: 1, color: colors.textPrimary, fontSize: 13, fontFamily: FONT_FAMILY.body, marginLeft: 6, padding: 0 },
+  cueRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.03)' : '#ECEBF2', borderRadius: 10, marginHorizontal: 8, marginVertical: 2 },
+  cueRowActive: { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.35)' : colors.accentPrimary },
+  cueTimePill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, marginRight: 10, marginTop: 1 },
+  cueTimePillActive: { backgroundColor: colors.accentPrimary },
+  cueTimeText: { color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
+  cueTimeTextActive: { color: isDark ? '#080510' : '#FFFFFF' },
+  cueText: { flex: 1, color: isDark ? '#a1a1aa' : '#4B5563', fontSize: 13, lineHeight: 19, fontFamily: FONT_FAMILY.body },
+  cueTextActive: { color: colors.textPrimary, fontFamily: FONT_FAMILY.medium },
   cueAddNoteBtn: { padding: 4, marginLeft: 6, marginTop: 1 },
-  modeToggleContainer: { flexDirection: 'row', backgroundColor: '#1c1c1e', borderRadius: 12, padding: 2, marginLeft: 8 },
+  modeToggleContainer: { flexDirection: 'row', backgroundColor: isDark ? '#1c1c1e' : '#EAE9F2', borderRadius: 12, padding: 2, marginLeft: 8 },
   modeToggleBtn: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
-  modeToggleBtnActive: { backgroundColor: 'rgba(165,153,255,0.2)' },
-  modeToggleText: { fontSize: 11, color: '#8e8e93', fontFamily: FONT_FAMILY.body },
-  modeToggleTextActive: { color: '#a599ff', fontFamily: FONT_FAMILY.bold },
-  toolActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: 'rgba(165,153,255,0.12)', borderWidth: 1, borderColor: 'rgba(165,153,255,0.25)' },
-  toolActionText: { color: '#a599ff', fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, backgroundColor: '#a599ff' },
-  exportBtnText: { color: '#080510', fontSize: 11, fontFamily: FONT_FAMILY.bold },
+  modeToggleBtnActive: { backgroundColor: isDark ? 'rgba(165,153,255,0.2)' : '#FFFFFF' },
+  modeToggleText: { fontSize: 11, color: colors.textMuted, fontFamily: FONT_FAMILY.body },
+  modeToggleTextActive: { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold },
+  toolActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)' },
+  toolActionText: { color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
+  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, backgroundColor: colors.accentPrimary },
+  exportBtnText: { color: isDark ? '#080510' : '#FFFFFF', fontSize: 11, fontFamily: FONT_FAMILY.bold },
   saveNoteBtn: { paddingHorizontal: 4, paddingVertical: 4 },
-  timestampChipsContainer: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)', backgroundColor: '#0d0d10' },
-  timestampChipsLabel: { color: '#71717a', fontSize: 11, fontFamily: FONT_FAMILY.bold, marginRight: 2 },
-  timestampChip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: 'rgba(165,153,255,0.15)', borderWidth: 1, borderColor: 'rgba(165,153,255,0.3)', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
-  timestampChipText: { color: '#e5e5ea', fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  quizBtn: { backgroundColor: 'rgba(165,153,255,0.15)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
-  quizBtnText: { color: '#a599ff', fontSize: 10, fontFamily: FONT_FAMILY.bold },
-  aiPanel: { flex: 1, backgroundColor: 'transparent' },
+  timestampChipsContainer: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
+  timestampChipsLabel: { color: colors.textMuted, fontSize: 11, fontFamily: FONT_FAMILY.bold, marginRight: 2 },
+  timestampChip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)', borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
+  timestampChipText: { color: colors.textPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
+  quizBtn: { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
+  quizBtnText: { color: colors.accentPrimary, fontSize: 10, fontFamily: FONT_FAMILY.bold },
+  aiPanel: { flex: 1, backgroundColor: colors.background },
   chatBubble: { marginBottom: 18, width: '100%' },
   chatBubbleModel: { alignSelf: 'stretch', width: '100%' },
   chatBubbleUser: { alignItems: 'flex-end', width: '100%' },
   assistantContainer: { width: '100%' },
   assistantHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  assistantAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: 'rgba(0,193,110,0.15)', alignItems: 'center', justifyContent: 'center' },
-  assistantName: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#a1a1aa', letterSpacing: 0.3 },
+  assistantAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: isDark ? 'rgba(0,193,110,0.15)' : 'rgba(5,150,105,0.12)', alignItems: 'center', justifyContent: 'center' },
+  assistantName: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: isDark ? '#a1a1aa' : colors.accentPrimary, letterSpacing: 0.3 },
   markdownWrapper: { width: '100%' },
-  userBubble: { backgroundColor: '#27272a', borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 10, maxWidth: '85%' },
+  userBubble: { backgroundColor: isDark ? '#27272a' : colors.accentPrimary, borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 10, maxWidth: '85%' },
   userBubbleText: { fontFamily: FONT_FAMILY.body, fontSize: 15, color: '#ffffff', lineHeight: 22 },
   aiInputRow: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 14, paddingTop: 6, paddingBottom: 8, backgroundColor: 'transparent' },
   aiSuggestionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2, marginBottom: 8 },
-  chatgptPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(28, 28, 30, 0.75)', paddingHorizontal: 13, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)' },
-  chatgptPillText: { color: '#e4e4e7', fontSize: 12, fontFamily: FONT_FAMILY.medium, letterSpacing: 0.1 },
-  aiInputCapsule: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#18181b', borderRadius: 26, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', paddingLeft: 16, paddingRight: 6, minHeight: 48 },
-  aiInput: { flex: 1, fontFamily: FONT_FAMILY.body, fontSize: 14.5, color: '#ffffff', maxHeight: 100, paddingVertical: 10 },
-  aiSendBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
-  aiSendBtnDisabled: { backgroundColor: 'rgba(255, 255, 255, 0.2)', opacity: 0.5 },
-  quizInputBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(165,153,255,0.15)', justifyContent: 'center', alignItems: 'center' },
-  notesPanel: { flex: 1, backgroundColor: '#000000' },
-  notesInput: { flex: 1, padding: 16, color: '#f2f2f7', fontFamily: FONT_FAMILY.body, fontSize: 14 },
-  codeBoxContainer: { backgroundColor: '#1e1e1e', borderRadius: 10, borderWidth: 1, borderColor: '#333333', marginVertical: 8, overflow: 'hidden' },
-  codeBoxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#252526', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: '#333333' },
-  codeBoxLang: { color: '#cccccc', fontSize: 11, fontFamily: FONT_FAMILY.bold, textTransform: 'uppercase' },
+  chatgptPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: isDark ? 'rgba(28, 28, 30, 0.75)' : '#FFFFFF', paddingHorizontal: 13, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: colors.border },
+  chatgptPillText: { color: isDark ? '#e4e4e7' : colors.accentPrimary, fontSize: 12, fontFamily: FONT_FAMILY.medium, letterSpacing: 0.1 },
+  aiInputCapsule: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#18181b' : '#FFFFFF', borderRadius: 26, borderWidth: 1, borderColor: colors.border, paddingLeft: 16, paddingRight: 6, minHeight: 48 },
+  aiInput: { flex: 1, fontFamily: FONT_FAMILY.body, fontSize: 14.5, color: colors.textPrimary, maxHeight: 100, paddingVertical: 10 },
+  aiSendBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? '#ffffff' : colors.accentPrimary, alignItems: 'center', justifyContent: 'center' },
+  aiSendBtnDisabled: { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(108,92,231,0.2)', opacity: 0.5 },
+  quizInputBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)', justifyContent: 'center', alignItems: 'center' },
+  notesPanel: { flex: 1, backgroundColor: colors.surface },
+  notesInput: { flex: 1, padding: 16, color: colors.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: 14 },
+  codeBoxContainer: { backgroundColor: isDark ? '#1e1e1e' : '#F8F7FC', borderRadius: 10, borderWidth: 1, borderColor: colors.border, marginVertical: 8, overflow: 'hidden' },
+  codeBoxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? '#252526' : '#ECEBF2', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
+  codeBoxLang: { color: colors.textSecondary, fontSize: 11, fontFamily: FONT_FAMILY.bold, textTransform: 'uppercase' },
   codeCopyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 2 },
-  codeCopyText: { color: '#cccccc', fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  codeText: { color: '#d4d4d4', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', lineHeight: 19 },
+  codeCopyText: { color: colors.textSecondary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
+  codeText: { color: isDark ? '#d4d4d4' : '#1C1C1E', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', lineHeight: 19 },
 });
 
-const mdStylesModel = StyleSheet.create({
-  body: { color: '#ececec', fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 24, letterSpacing: 0.15 },
-  heading1: { color: '#ffffff', fontFamily: 'Inter_600SemiBold', fontSize: 18, marginTop: 12, marginBottom: 6, lineHeight: 24 },
-  heading2: { color: '#ffffff', fontFamily: 'Inter_600SemiBold', fontSize: 16, marginTop: 10, marginBottom: 4, lineHeight: 22 },
-  heading3: { color: '#ffffff', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 8, marginBottom: 4, lineHeight: 20 },
-  strong: { color: '#ffffff', fontFamily: 'Inter_600SemiBold' },
-  em: { color: '#e5e5ea', fontStyle: 'italic' },
-  bullet_list_icon: { color: '#00c16e', fontSize: 14, marginTop: 3, marginRight: 8 },
-  ordered_list_icon: { color: '#00c16e', fontSize: 14, marginTop: 3, marginRight: 8 },
-  code_inline: { color: '#00c16e', backgroundColor: 'transparent', fontFamily: 'Inter_600SemiBold', fontSize: 14.5 },
-  code_block: { color: '#f2f2f7', backgroundColor: '#141416', fontFamily: 'Inter_400Regular', padding: 12, borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', fontSize: 13.5 },
-  fence: { color: '#f2f2f7', backgroundColor: '#141416', fontFamily: 'Inter_400Regular', padding: 12, borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', fontSize: 13.5 },
-  pre: { backgroundColor: '#141416', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginVertical: 6 },
-  blockquote: { backgroundColor: 'rgba(0,193,110,0.08)', borderColor: '#00c16e', borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 6, marginVertical: 6, borderRadius: 4 },
-  table: { borderColor: '#2c2c2e', borderWidth: 1, borderRadius: 8, backgroundColor: '#141416', marginVertical: 8 },
-  tr: { borderColor: '#2c2c2e', borderBottomWidth: 1, flexDirection: 'row' },
-  th: { backgroundColor: '#1c1c1e', color: '#00c16e', padding: 8, fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  td: { padding: 8, color: '#f2f2f7', fontSize: 13 },
+const makeMdStylesModel = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  body: { color: isDark ? '#ececec' : '#1C1C1E', fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 24, letterSpacing: 0.15 },
+  heading1: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 18, marginTop: 12, marginBottom: 6, lineHeight: 24 },
+  heading2: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 16, marginTop: 10, marginBottom: 4, lineHeight: 22 },
+  heading3: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 8, marginBottom: 4, lineHeight: 20 },
+  strong: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold' },
+  em: { color: isDark ? '#e5e5ea' : '#3A3A3C', fontStyle: 'italic' },
+  bullet_list_icon: { color: isDark ? '#00c16e' : '#059669', fontSize: 14, marginTop: 3, marginRight: 8 },
+  ordered_list_icon: { color: isDark ? '#00c16e' : '#059669', fontSize: 14, marginTop: 3, marginRight: 8 },
+  code_inline: { color: isDark ? '#00c16e' : '#059669', backgroundColor: 'transparent', fontFamily: 'Inter_600SemiBold', fontSize: 14.5 },
+  code_block: { color: isDark ? '#f2f2f7' : '#1C1C1E', backgroundColor: isDark ? '#141416' : '#F8F7FC', fontFamily: 'Inter_400Regular', padding: 12, borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: colors.border, fontSize: 13.5 },
+  fence: { color: isDark ? '#f2f2f7' : '#1C1C1E', backgroundColor: isDark ? '#141416' : '#F8F7FC', fontFamily: 'Inter_400Regular', padding: 12, borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: colors.border, fontSize: 13.5 },
+  pre: { backgroundColor: isDark ? '#141416' : '#F8F7FC', borderRadius: 10, borderWidth: 1, borderColor: colors.border, marginVertical: 6 },
+  blockquote: { backgroundColor: isDark ? 'rgba(0,193,110,0.08)' : 'rgba(5,150,105,0.08)', borderColor: isDark ? '#00c16e' : '#059669', borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 6, marginVertical: 6, borderRadius: 4 },
+  table: { borderColor: colors.border, borderWidth: 1, borderRadius: 8, backgroundColor: isDark ? '#141416' : '#F8F7FC', marginVertical: 8 },
+  tr: { borderColor: colors.border, borderBottomWidth: 1, flexDirection: 'row' },
+  th: { backgroundColor: isDark ? '#1c1c1e' : '#ECEBF2', color: isDark ? '#00c16e' : '#059669', padding: 8, fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  td: { padding: 8, color: colors.textPrimary, fontSize: 13 },
   paragraph: { marginTop: 0, marginBottom: 8 },
 });
 
-const mdStylesUser = StyleSheet.create({
+const makeMdStylesUser = (colors: any, isDark: boolean = true) => StyleSheet.create({
   body: { color: '#ffffff', fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 22 },
   heading1: { color: '#ffffff', fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 8, marginBottom: 4 },
   heading2: { color: '#ffffff', fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 6, marginBottom: 2 },

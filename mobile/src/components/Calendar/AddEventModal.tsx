@@ -593,7 +593,7 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   conflictTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 11,
-    color: '#fbbf24',
+    color: isDark ? '#fbbf24' : '#B45309',
     letterSpacing: 0.3,
     marginBottom: 2,
     textTransform: 'uppercase',
@@ -601,7 +601,7 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   conflictMessage: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 12,
-    color: '#fef3c7',
+    color: isDark ? '#fef3c7' : '#78350F',
     lineHeight: 16,
   },
   saveBtn: {
@@ -621,7 +621,7 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     shadowOpacity: 0,
   },
   saveBtnText: {
-    color: '#000000',
+    color: isDark ? '#000000' : '#FFFFFF',
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.base,
   },

@@ -119,7 +119,7 @@ const getGradientForLevel = (level: string) => {
   }
 };
 
-export function UnifiedLifeWidget({
+export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
   currentStreak,
   streakAtRisk = false,
   agendaCompleted,
@@ -151,8 +151,8 @@ export function UnifiedLifeWidget({
   onCapture,
   onPressAssignments,
 }: UnifiedLifeWidgetProps) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const mascotConfig = useMemo(() => {
     if (levelLabel === 'Warden') return { w: 90, b: -28, x: 0 };
@@ -162,6 +162,8 @@ export function UnifiedLifeWidget({
 
   const levelGradients = useMemo(() => getGradientForLevel(levelLabel), [levelLabel]);
   const primaryLevelColor = levelGradients[0];
+  const isAttendanceRing = !!(nextClass && !nextClass.isOngoing);
+  const isOngoingClass = !!(nextClass && nextClass.isOngoing);
 
   const ringPercent = nextClass
     ? (nextClass.isOngoing
@@ -172,8 +174,13 @@ export function UnifiedLifeWidget({
   const strokeDashoffset = RING_CIRCUMFERENCE * (1 - ringPercent);
   const allDone = nextClass ? ringPercent === 1 : (agendaTotal > 0 && agendaCompleted >= agendaTotal);
 
-  const bgStroke = (nextClass && !nextClass.isOngoing) ? '#ff4d4f' : 'rgba(255,255,255,0.06)';
-  const fgStroke = 'url(#xpGradient)';
+  const bgStroke = isAttendanceRing
+    ? (isDark ? '#ff4d4f' : '#dc2626')
+    : (isDark ? 'rgba(255,255,255,0.06)' : '#EAE9F2');
+
+  const fgStroke = isAttendanceRing
+    ? (isDark ? '#5eda9e' : '#059669')
+    : 'url(#xpGradient)';
 
   const displayWater = useMemo(() => {
     if (!waterCompleted) return '0';
@@ -244,7 +251,7 @@ export function UnifiedLifeWidget({
               </Animated.View>
             ) : (
               <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={styles.ringCenterInner}>
-                <Text style={[styles.ringCount, { color: primaryLevelColor }]}>
+                <Text style={[styles.ringCount, { color: isDark ? primaryLevelColor : colors.textPrimary }]}>
                   {agendaCompleted}/{agendaTotal}
                 </Text>
                 <Text style={styles.ringLabel}>
@@ -261,34 +268,56 @@ export function UnifiedLifeWidget({
         <View style={styles.rightMetricsColumn}>
           {/* HABITS */}
           <AnimatedPressable
-            style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1 }]}
+            style={[
+              styles.compactMetricRow, 
+              { 
+                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(5, 150, 105, 0.08)', 
+                borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, 
+                borderWidth: 1 
+              }
+            ]}
             activeOpacity={0.75}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressHabits(); }}
           >
             <View style={styles.compactLeftGroup}>
               <Text style={styles.compactEmoji}>🌱</Text>
-              <Text style={[styles.compactLabel, { color: '#5eda9e' }]}>Momentum</Text>
+              <Text style={[styles.compactLabel, { color: colors.accentGreen }]}>Momentum</Text>
             </View>
-            <Text style={[styles.valuePillText, { color: '#5eda9e' }]}>{habitsCompleted}/{habitsTotal}</Text>
+            <Text style={[styles.valuePillText, { color: colors.accentGreen }]}>{habitsCompleted}/{habitsTotal}</Text>
           </AnimatedPressable>
 
           {/* WATER */}
           <AnimatedPressable
-            style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1, overflow: 'hidden' }]}
+            style={[
+              styles.compactMetricRow, 
+              { 
+                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(2, 132, 199, 0.08)', 
+                borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, 
+                borderWidth: 1, 
+                overflow: 'hidden' 
+              }
+            ]}
             activeOpacity={0.75}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressWater(); }}
           >
-            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.min(100, (waterCompleted / (waterTotal || 1)) * 100)}%`, backgroundColor: 'rgba(137, 220, 235, 0.15)' }} />
+            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.min(100, (waterCompleted / (waterTotal || 1)) * 100)}%`, backgroundColor: isDark ? 'rgba(137, 220, 235, 0.15)' : 'rgba(2, 132, 199, 0.12)' }} />
             <View style={styles.compactLeftGroup}>
               <Text style={styles.compactEmoji}>💧</Text>
-              <Text style={[styles.compactLabel, { color: '#89dceb' }]}>Hydration</Text>
+              <Text style={[styles.compactLabel, { color: colors.accentBlue }]}>Hydration</Text>
             </View>
-            <Text style={[styles.valuePillText, { color: '#89dceb' }]}>{displayWater}/{displayWaterTarget}L</Text>
+            <Text style={[styles.valuePillText, { color: colors.accentBlue }]}>{displayWater}/{displayWaterTarget}L</Text>
           </AnimatedPressable>
 
           {/* CLASSES (Replaced Library) */}
           <AnimatedPressable
-            style={[styles.compactMetricRow, { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)', borderWidth: 1 }]}
+            style={[
+              styles.compactMetricRow, 
+              { 
+                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(217, 119, 6, 0.08)', 
+                borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, 
+                borderWidth: 1 
+              }
+            ]}
             activeOpacity={0.75}
             onPress={() => { 
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
@@ -297,9 +326,9 @@ export function UnifiedLifeWidget({
           >
             <View style={styles.compactLeftGroup}>
               <Text style={styles.compactEmoji}>🎓</Text>
-              <Text style={[styles.compactLabel, { color: '#fbbf24' }]}>Classes</Text>
+              <Text style={[styles.compactLabel, { color: colors.accentAmber }]}>Classes</Text>
             </View>
-            <Text style={[styles.valuePillText, { color: '#fbbf24' }]}>
+            <Text style={[styles.valuePillText, { color: colors.accentAmber }]}>
               {classesTotalToday > 0 
                 ? `${classesAttendedToday}/${classesTotalToday} Done`
                 : (overallAttendancePct > 0 ? `${overallAttendancePct}% Avg` : '0/0 Done')
@@ -397,12 +426,12 @@ export function UnifiedLifeWidget({
       )}
     </View>
   );
-}
+});
 
-const makeStyles = (colors: any) =>
+const makeStyles = (colors: any, isDark: boolean = true) =>
   StyleSheet.create({
     card: {
-      backgroundColor: '#101012', // solid/slug-like black, not pure black
+      backgroundColor: isDark ? '#101012' : colors.surface,
       borderRadius: RADIUS.xl,
       borderWidth: 1,
       borderColor: colors.border || '#2c2c2e',
@@ -427,12 +456,12 @@ const makeStyles = (colors: any) =>
       borderWidth: 1,
     },
     streakPill: {
-      backgroundColor: 'rgba(255,159,77,0.10)',
-      borderColor: 'rgba(255,159,77,0.22)',
+      backgroundColor: colors.accentAmberDim,
+      borderColor: colors.accentAmber + '35',
     },
     levelPill: {
-      backgroundColor: 'rgba(165,153,255,0.10)',
-      borderColor: 'rgba(165,153,255,0.22)',
+      backgroundColor: colors.accentDim,
+      borderColor: colors.accentPrimary + '35',
     },
     pillIcon: { fontSize: 12 },
     pillText: {
@@ -440,8 +469,8 @@ const makeStyles = (colors: any) =>
       fontSize: 11,
       letterSpacing: 0.2,
     },
-    streakPillText: { color: '#ff9f4d' },
-    levelPillText: { color: '#a599ff' },
+    streakPillText: { color: colors.accentAmber },
+    levelPillText: { color: colors.accentPrimary },
     mainRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -452,7 +481,7 @@ const makeStyles = (colors: any) =>
     verticalDivider: {
       width: 1,
       height: '100%',
-      backgroundColor: 'rgba(255,255,255,0.06)',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.border,
     },
     rightMetricsColumn: {
       flex: 1,
@@ -606,12 +635,12 @@ const makeStyles = (colors: any) =>
       flexDirection: 'row',
       alignItems: 'center',
       marginTop: SPACE.md,
-      backgroundColor: 'rgba(255,159,77,0.08)',
+      backgroundColor: colors.accentAmberDim,
       borderWidth: 1,
-      borderColor: 'rgba(255,159,77,0.25)',
+      borderColor: colors.accentAmber + '40',
       borderRadius: RADIUS.lg,
       padding: SPACE.lg,
     },
     urgentTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.accentAmber, letterSpacing: 0.5, marginBottom: 4 },
-    urgentItem:  { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted || '#8e8e93', lineHeight: 18 },
+    urgentItem:  { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textSecondary, lineHeight: 18 },
   });

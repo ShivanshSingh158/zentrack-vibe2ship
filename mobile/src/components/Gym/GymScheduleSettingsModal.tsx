@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Platform, SafeAreaView, Switch, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -30,7 +30,7 @@ export function GymScheduleSettingsModal({
   onNotifSaved 
 }: Props) {
   const { colors, isDark } = useTheme();
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const [activeTab, setActiveTab] = useState<'weekly' | 'today' | 'reminders'>('weekly');
 
@@ -552,18 +552,20 @@ export function GymScheduleSettingsModal({
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'flex-end',
   },
   card: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: RADIUS.xl,
     borderTopRightRadius: RADIUS.xl,
     height: '90%',
     padding: SPACE.md,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   header: {
     flexDirection: 'row',
@@ -673,7 +675,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     color: colors.textMuted,
   },
   saveBtn: {
-    backgroundColor: colors.accentPrimary,
+    backgroundColor: isDark ? '#FFFFFF' : colors.accentPrimary,
     paddingVertical: SPACE.md,
     borderRadius: RADIUS.md,
     alignItems: 'center',
@@ -681,7 +683,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   saveBtnText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.md,
-    color: colors.surface,
+    color: isDark ? '#000000' : '#FFFFFF',
   },
   editContainer: {
     paddingTop: SPACE.sm,

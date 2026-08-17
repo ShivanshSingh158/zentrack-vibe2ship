@@ -1,18 +1,3 @@
-/**
- * ConsistencyHeatmap.tsx — ZenTrack Mobile
- *
- * 90-day workout consistency heatmap grid.
- * Upgraded from binary (trained/not) to 4-level intensity gradient
- * based on daily training volume (kg):
- *
- *  Level 0 → Empty:  rgba(255,255,255,0.04)
- *  Level 1 → Light:  rgba(165,153,255,0.22)   — 1..999 kg
- *  Level 2 → Medium: rgba(165,153,255,0.52)   — 1000..2999 kg
- *  Level 3 → Heavy:  #a599ff                  — 3000+ kg
- *
- * Tooltip: tapping a cell shows date + volume in a small caption.
- */
-
 import React, { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, COLORS } from '../../../theme/tokens';
@@ -37,11 +22,11 @@ function getLast90Days(): string[] {
   return dates;
 }
 
-function getIntensityColor(volume: number): string {
-  if (volume <= 0)    return 'rgba(255,255,255,0.04)';
-  if (volume < 1000)  return 'rgba(165,153,255,0.22)';
-  if (volume < 3000)  return 'rgba(165,153,255,0.52)';
-  return '#a599ff';
+function getIntensityColor(volume: number, isDark: boolean = true): string {
+  if (volume <= 0) return isDark ? 'rgba(255,255,255,0.04)' : '#EAE9F2';
+  if (volume < 1000) return isDark ? 'rgba(165,153,255,0.22)' : 'rgba(108,92,231,0.25)';
+  if (volume < 3000) return isDark ? 'rgba(165,153,255,0.52)' : 'rgba(108,92,231,0.55)';
+  return isDark ? '#a599ff' : '#059669';
 }
 
 function formatDateShort(dateStr: string): string {
@@ -51,8 +36,8 @@ function formatDateShort(dateStr: string): string {
 }
 
 export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const [selected, setSelected] = useState<{ date: string; volume: number } | null>(null);
 
@@ -86,6 +71,13 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
     return volumeMap.get(dateStr) || 0;
   };
 
+  const legendColors = [
+    isDark ? 'rgba(255,255,255,0.04)' : '#EAE9F2',
+    isDark ? 'rgba(165,153,255,0.22)' : 'rgba(108,92,231,0.25)',
+    isDark ? 'rgba(165,153,255,0.52)' : 'rgba(108,92,231,0.55)',
+    isDark ? '#a599ff' : '#059669',
+  ];
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -99,7 +91,7 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
         {/* Intensity legend */}
         <View style={styles.intensityLegend}>
           <Text style={styles.legendLabel}>Less</Text>
-          {['rgba(255,255,255,0.04)', 'rgba(165,153,255,0.22)', 'rgba(165,153,255,0.52)', '#a599ff'].map((c, i) => (
+          {legendColors.map((c, i) => (
             <View key={i} style={[styles.legendCell, { backgroundColor: c }]} />
           ))}
           <Text style={styles.legendLabel}>More</Text>
@@ -122,7 +114,7 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
               <View key={`col-${colIndex}`} style={styles.column}>
                 {col.map((dateStr) => {
                   const vol = volumeForDate(dateStr);
-                  const bgColor = getIntensityColor(vol);
+                  const bgColor = getIntensityColor(vol, isDark);
                   const isSelected = selected?.date === dateStr;
                   return (
                     <TouchableOpacity
@@ -165,14 +157,14 @@ export default function ConsistencyHeatmap({ data }: ConsistencyHeatmapProps) {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
     backgroundColor: colors.surface,
     borderRadius: RADIUS.xl,
     padding: SPACE.md,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
   },
   header: {
     flexDirection: 'row',
@@ -184,13 +176,13 @@ const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: FONT_FAMILY.bold,
     fontSize: 10,
     fontWeight: '700',
-    color: COLORS.textTertiary,
+    color: colors.textTertiary,
     letterSpacing: 1.2,
   },
   subtitle: {
     fontFamily: FONT_FAMILY.regular,
     fontSize: FONT_SIZE.xs,
-    color: 'rgba(255, 255, 255, 0.5)',
+    color: colors.textTertiary,
     marginTop: 2,
   },
   intensityLegend: {
@@ -200,7 +192,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   legendLabel: {
     fontSize: 8,
-    color: 'rgba(255,255,255,0.35)',
+    color: colors.textTertiary,
     fontFamily: FONT_FAMILY.regular,
   },
   legendCell: {
@@ -221,7 +213,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   dayLabelText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 9,
-    color: 'rgba(255, 255, 255, 0.35)',
+    color: colors.textTertiary,
     lineHeight: 14,
   },
   scrollArea: {
@@ -242,11 +234,11 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   cellSelected: {
     borderWidth: 1.5,
-    borderColor: '#a599ff',
+    borderColor: colors.accentPrimary,
   },
   tooltip: {
     marginTop: 10,
-    backgroundColor: 'rgba(165,153,255,0.12)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)',
     borderRadius: RADIUS.md,
     paddingHorizontal: 12,
     paddingVertical: 7,
@@ -254,15 +246,17 @@ const makeStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.2)',
   },
   tooltipDate: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.bold,
-    color: '#a599ff',
+    color: colors.accentPrimary,
   },
   tooltipVol: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.medium,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
 });

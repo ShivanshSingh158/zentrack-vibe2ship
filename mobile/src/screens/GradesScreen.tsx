@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Dimensions, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { StatusBar } from 'expo-status-bar';
 import type { Semester, SemesterSubject } from '../contexts/MobileDataContext';
 import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
@@ -20,8 +21,8 @@ const GRADE_MAP: Record<string, number> = {
 };
 
 export default function GradesScreen() {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
   const { semesters, semesterSubjects } = useAcademicData();
   const { user } = useCoreData();
 
@@ -243,7 +244,16 @@ export default function GradesScreen() {
             <Svg width={width - 40} height={height}>
               {/* Grid lines */}
               {[0, 5, 10].map(val => (
-                <Line key={val} x1={padX} y1={padY + usableHeight - (val/10)*usableHeight} x2={width - 40 - padX} y2={padY + usableHeight - (val/10)*usableHeight} stroke="#2c2c2e" strokeWidth={1} strokeDasharray="4" />
+                <Line
+                  key={val}
+                  x1={padX}
+                  y1={padY + usableHeight - (val/10)*usableHeight}
+                  x2={width - 40 - padX}
+                  y2={padY + usableHeight - (val/10)*usableHeight}
+                  stroke={isDark ? "#2c2c2e" : colors.border}
+                  strokeWidth={1}
+                  strokeDasharray="4"
+                />
               ))}
               
               {/* SGPA Bars */}
@@ -252,7 +262,17 @@ export default function GradesScreen() {
                 const x = padX + (points.length > 1 ? i * stepX : stepX);
                 const barH = usableHeight - (padY + usableHeight - (p.calcSgpa! / 10) * usableHeight - padY);
                 return (
-                  <Rect key={`bar-${i}`} x={x - 10} y={padY + usableHeight - (p.calcSgpa! / 10) * usableHeight} width={20} height={barH} fill="#3a3a3c" rx={4} />
+                  <Rect
+                    key={`bar-${i}`}
+                    x={x - 10}
+                    y={padY + usableHeight - (p.calcSgpa! / 10) * usableHeight}
+                    width={20}
+                    height={barH}
+                    fill={isDark ? "#3a3a3c" : "#E2E1EA"}
+                    stroke={isDark ? "transparent" : "#D1D0DC"}
+                    strokeWidth={isDark ? 0 : 1}
+                    rx={4}
+                  />
                 );
               })}
 
@@ -266,7 +286,7 @@ export default function GradesScreen() {
                     const y1 = padY + usableHeight - (points[i-1].calcCgpa! / 10) * usableHeight;
                     const x2 = padX + i * stepX;
                     const y2 = padY + usableHeight - (p.calcCgpa! / 10) * usableHeight;
-                    return <Line key={`line-${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#a599ff" strokeWidth={3} />;
+                    return <Line key={`line-${i}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={colors.accentPrimary} strokeWidth={3} />;
                   })}
                 </Svg>
               )}
@@ -276,17 +296,17 @@ export default function GradesScreen() {
                  const stepX = points.length > 1 ? usableWidth / (points.length - 1) : usableWidth / 2;
                  const x = padX + (points.length > 1 ? i * stepX : stepX);
                  const y = padY + usableHeight - (p.calcCgpa! / 10) * usableHeight;
-                 return <Circle key={`dot-${i}`} cx={x} cy={y} r={5} fill="#000" stroke="#a599ff" strokeWidth={2} />;
+                 return <Circle key={`dot-${i}`} cx={x} cy={y} r={5} fill={isDark ? "#000" : "#FFFFFF"} stroke={colors.accentPrimary} strokeWidth={2} />;
               })}
             </Svg>
           )}
           <View style={styles.chartLegend}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 12, height: 12, backgroundColor: '#3a3a3c', borderRadius: 2 }} />
+              <View style={{ width: 12, height: 12, backgroundColor: isDark ? '#3a3a3c' : '#E2E1EA', borderRadius: 2, borderWidth: isDark ? 0 : 1, borderColor: '#D1D0DC' }} />
               <Text style={styles.legendText}>SGPA</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 12, height: 2, backgroundColor: '#a599ff' }} />
+              <View style={{ width: 12, height: 2, backgroundColor: colors.accentPrimary }} />
               <Text style={styles.legendText}>CGPA</Text>
             </View>
           </View>
@@ -300,7 +320,7 @@ export default function GradesScreen() {
       <View style={styles.header}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <View style={styles.iconCircle}>
-            <Ionicons name="calculator" size={18} color="#a599ff" />
+            <Ionicons name="calculator" size={18} color={colors.accentPrimary} />
           </View>
           <View>
             <Text style={styles.screenTitle}>Grade calculator</Text>
@@ -312,10 +332,10 @@ export default function GradesScreen() {
       <View style={styles.heroCard}>
         <View>
           <Text style={styles.heroLabel}>CUMULATIVE GPA</Text>
-          <Text style={[styles.heroValue, !currentCGPA && { color: '#636366' }]}>{currentCGPA || '--'}</Text>
+          <Text style={[styles.heroValue, !currentCGPA && { color: colors.textMuted }]}>{currentCGPA || '--'}</Text>
         </View>
         <View style={styles.iconCircleLg}>
-          <Ionicons name="school" size={20} color="#a599ff" />
+          <Ionicons name="school" size={20} color={colors.accentPrimary} />
         </View>
       </View>
 
@@ -323,22 +343,48 @@ export default function GradesScreen() {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <Text style={styles.sectionHeading}>What do I need?</Text>
           <View style={styles.infoCircle}>
-            <Ionicons name="information" size={14} color="#8e8e93" />
+            <Ionicons name="information" size={14} color={colors.textMuted} />
           </View>
         </View>
         <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.inputLabel}>Target CGPA</Text>
-            <TextInput style={styles.targetInput} value={targetCGPA} onChangeText={setTargetCGPA} keyboardType="decimal-pad" />
+            <TextInput
+              style={styles.targetInput}
+              value={targetCGPA}
+              onChangeText={setTargetCGPA}
+              keyboardType="decimal-pad"
+              placeholderTextColor={colors.textMuted}
+            />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.inputLabel}>Next credits</Text>
-            <TextInput style={styles.targetInput} value={targetCredits} onChangeText={setTargetCredits} keyboardType="number-pad" />
+            <TextInput
+              style={styles.targetInput}
+              value={targetCredits}
+              onChangeText={setTargetCredits}
+              keyboardType="number-pad"
+              placeholderTextColor={colors.textMuted}
+            />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.inputLabel, { color: '#a599ff', textAlign: 'center', fontFamily: FONT_FAMILY.bold }]}>NEEDED</Text>
-            <View style={[styles.targetResultBox, targetNeeded && !targetNeeded.achievable && { borderColor: 'rgba(255,105,97,0.3)', backgroundColor: 'rgba(255,105,97,0.1)' }]}>
-              <Text style={[styles.targetResultValue, targetNeeded && !targetNeeded.achievable && { color: '#ff6961', fontSize: 13 }, targetNeeded && targetNeeded.neededSGPA <= 0 && { color: '#5eda9e', fontSize: 14 }]}>
+            <Text style={[styles.inputLabel, { color: colors.accentPrimary, textAlign: 'center', fontFamily: FONT_FAMILY.bold }]}>NEEDED</Text>
+            <View style={[
+              styles.targetResultBox,
+              targetNeeded && !targetNeeded.achievable && {
+                borderColor: isDark ? 'rgba(255,105,97,0.3)' : '#DC2626',
+                backgroundColor: isDark ? 'rgba(255,105,97,0.1)' : '#FEF2F2',
+              },
+              targetNeeded && targetNeeded.neededSGPA <= 0 && {
+                borderColor: isDark ? 'rgba(94,218,158,0.3)' : '#059669',
+                backgroundColor: isDark ? 'rgba(94,218,158,0.1)' : '#ECFDF5',
+              }
+            ]}>
+              <Text style={[
+                styles.targetResultValue,
+                targetNeeded && !targetNeeded.achievable && { color: colors.error, fontSize: 13 },
+                targetNeeded && targetNeeded.neededSGPA <= 0 && { color: colors.priorityLow, fontSize: 14 }
+              ]}>
                 {!targetNeeded ? '--' : (
                   targetNeeded.neededSGPA > 10 ? 'Impossible' : 
                   targetNeeded.neededSGPA <= 0 ? 'Achieved!' : 
@@ -355,7 +401,7 @@ export default function GradesScreen() {
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 32, marginBottom: 8 }}>
         <Text style={styles.sectionHeading}>Semesters</Text>
         <TouchableOpacity style={styles.addBtnSmall} onPress={() => setSemModalVisible(true)}>
-          <Ionicons name="add" size={16} color="#000" />
+          <Ionicons name="add" size={16} color={isDark ? "#000" : "#FFF"} />
           <Text style={styles.addBtnSmallText}>Add</Text>
         </TouchableOpacity>
       </View>
@@ -364,6 +410,7 @@ export default function GradesScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       
       <FlatList
         ListHeaderComponent={renderHeader()}
@@ -385,16 +432,16 @@ export default function GradesScreen() {
                   </View>
                   <Text style={styles.cardSub}>SGPA: {sem.calcSgpa || '--'}  •  CGPA: {sem.calcCgpa || '--'}</Text>
                 </View>
-                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color="#8e8e93" />
+                <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textMuted} />
               </TouchableOpacity>
 
               {isExpanded && (
                 <View style={styles.cardExpanded}>
                   {isDirect ? (
                     <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                      <Text style={{ color: '#8e8e93', marginBottom: 12, fontSize: 13, fontFamily: FONT_FAMILY.body }}>Using Direct SGPA ({sem.sgpa} on {sem.totalCredits} credits)</Text>
+                      <Text style={{ color: colors.textMuted, marginBottom: 12, fontSize: 13, fontFamily: FONT_FAMILY.body }}>Using Direct SGPA ({sem.sgpa} on {sem.totalCredits} credits)</Text>
                       <TouchableOpacity onPress={() => handleClearDirect(sem.id!)} style={styles.clearDirectBtn}>
-                        <Text style={{ color: '#ff6961', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Clear Quick Mode</Text>
+                        <Text style={{ color: colors.error, fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Clear Quick Mode</Text>
                       </TouchableOpacity>
                     </View>
                   ) : (
@@ -416,12 +463,12 @@ export default function GradesScreen() {
                           style={styles.addSubBtn}
                           onPress={() => { setActiveSemId(sem.id!); setSubModalVisible(true); }}
                         >
-                          <Ionicons name="add" size={16} color="#a599ff" />
+                          <Ionicons name="add" size={16} color={colors.accentPrimary} />
                           <Text style={styles.addSubText}>Add Subject</Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity 
-                          style={[styles.addSubBtn, { backgroundColor: '#1c1c1e' }]}
+                          style={[styles.addSubBtn, styles.directSgpaBtn]}
                           onPress={() => { 
                             setActiveSemId(sem.id!); 
                             setDirectSGPA(sem.calcSgpa?.toString() || '');
@@ -429,8 +476,8 @@ export default function GradesScreen() {
                             setDirectModalVisible(true); 
                           }}
                         >
-                          <Ionicons name="flash" size={14} color="#8e8e93" />
-                          <Text style={[styles.addSubText, { color: '#8e8e93' }]}>Direct SGPA</Text>
+                          <Ionicons name="flash" size={14} color={colors.textMuted} />
+                          <Text style={[styles.addSubText, { color: colors.textMuted }]}>Direct SGPA</Text>
                         </TouchableOpacity>
                       </View>
                     </>
@@ -458,14 +505,15 @@ export default function GradesScreen() {
 
       {/* Semester Modal */}
       {semModalVisible && (
-        <Modal visible={semModalVisible} transparent animationType="fade">
+        <Modal visible={semModalVisible} transparent animationType="fade" onRequestClose={() => setSemModalVisible(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setSemModalVisible(false)} />
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>New Semester</Text>
               <TextInput
                 style={styles.input}
                 placeholder="E.g., Fall 2026"
-                placeholderTextColor="#8e8e93"
+                placeholderTextColor={colors.textMuted}
                 value={semName}
                 onChangeText={setSemName}
                 autoFocus
@@ -485,38 +533,39 @@ export default function GradesScreen() {
 
       {/* Subject Modal */}
       {subModalVisible && (
-        <Modal visible={subModalVisible} transparent animationType="fade">
+        <Modal visible={subModalVisible} transparent animationType="fade" onRequestClose={() => setSubModalVisible(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setSubModalVisible(false)} />
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Add Subject</Text>
               
-              <Text style={styles.inputLabel}>Subject Name</Text>
+              <Text style={styles.modalInputLabel}>Subject Name</Text>
               <TextInput
                 style={styles.input}
                 placeholder="E.g., Physics 101"
-                placeholderTextColor="#8e8e93"
+                placeholderTextColor={colors.textMuted}
                 value={subName}
                 onChangeText={setSubName}
               />
 
               <View style={{ flexDirection: 'row', gap: 12, marginTop: 16 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Credits</Text>
+                  <Text style={styles.modalInputLabel}>Credits</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="4"
-                    placeholderTextColor="#8e8e93"
+                    placeholderTextColor={colors.textMuted}
                     value={subCredits}
                     onChangeText={setSubCredits}
                     keyboardType="number-pad"
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Grade</Text>
+                  <Text style={styles.modalInputLabel}>Grade</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="A+"
-                    placeholderTextColor="#8e8e93"
+                    placeholderTextColor={colors.textMuted}
                     value={subGrade}
                     onChangeText={setSubGrade}
                     autoCapitalize="characters"
@@ -539,30 +588,31 @@ export default function GradesScreen() {
 
       {/* Direct SGPA Modal */}
       {directModalVisible && (
-        <Modal visible={directModalVisible} transparent animationType="fade">
+        <Modal visible={directModalVisible} transparent animationType="fade" onRequestClose={() => setDirectModalVisible(false)}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={() => setDirectModalVisible(false)} />
             <View style={styles.modalCard}>
               <Text style={styles.modalTitle}>Direct SGPA Mode</Text>
-              <Text style={{ color: '#8e8e93', fontSize: 13, fontFamily: FONT_FAMILY.body, marginBottom: 20 }}>Skip adding subjects individually. Just enter the final SGPA and total credits.</Text>
+              <Text style={{ color: colors.textMuted, fontSize: 13, fontFamily: FONT_FAMILY.body, marginBottom: 20 }}>Skip adding subjects individually. Just enter the final SGPA and total credits.</Text>
               
               <View style={{ flexDirection: 'row', gap: 16 }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Final SGPA</Text>
+                  <Text style={styles.modalInputLabel}>Final SGPA</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="8.5"
-                    placeholderTextColor="#8e8e93"
+                    placeholderTextColor={colors.textMuted}
                     value={directSGPA}
                     onChangeText={setDirectSGPA}
                     keyboardType="decimal-pad"
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Total Credits</Text>
+                  <Text style={styles.modalInputLabel}>Total Credits</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="24"
-                    placeholderTextColor="#8e8e93"
+                    placeholderTextColor={colors.textMuted}
                     value={directCredits}
                     onChangeText={setDirectCredits}
                     keyboardType="number-pad"
@@ -587,69 +637,213 @@ export default function GradesScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1, backgroundColor: '#000000' },
-      
-      header: { marginBottom: 24, marginTop: 8 },
-      iconCircle: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(165,153,255,0.12)', justifyContent: 'center', alignItems: 'center' },
-      iconCircleLg: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(165,153,255,0.12)', justifyContent: 'center', alignItems: 'center' },
-      screenTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#ffffff' },
-      screenSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: '#8e8e93' },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
+  
+  header: { marginBottom: 24, marginTop: 8 },
+  iconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  iconCircleLg: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  screenTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
+  screenSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted },
 
-      heroCard: { backgroundColor: '#141415', borderRadius: 20, padding: 24, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-      heroLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 10.5, color: '#8e8e93', letterSpacing: 1, marginBottom: 4 },
-      heroValue: { fontFamily: FONT_FAMILY.bold, fontSize: 32, color: '#ffffff' },
+  heroCard: {
+    backgroundColor: isDark ? '#141415' : '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  heroLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 10.5, color: colors.textMuted, letterSpacing: 1, marginBottom: 4 },
+  heroValue: { fontFamily: FONT_FAMILY.bold, fontSize: 32, color: colors.textPrimary },
 
-      targetCard: { backgroundColor: '#141415', padding: 20, borderRadius: 16, marginBottom: 24 },
-      sectionHeading: { fontFamily: FONT_FAMILY.bold, color: '#f2f2f7', fontSize: 15 },
-      infoCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#1c1c1e', justifyContent: 'center', alignItems: 'center' },
-      
-      inputLabel: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: '#8e8e93', marginBottom: 8 },
-      targetInput: { backgroundColor: '#1c1c1e', height: 48, borderRadius: 10, paddingHorizontal: 16, color: '#f2f2f7', fontFamily: FONT_FAMILY.bold, fontSize: 20 },
-      
-      targetResultBox: { backgroundColor: 'rgba(165,153,255,0.1)', borderRadius: 10, height: 48, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(165,153,255,0.3)' },
-      targetResultValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#a599ff' },
+  targetCard: {
+    backgroundColor: isDark ? '#141415' : '#FFFFFF',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sectionHeading: { fontFamily: FONT_FAMILY.bold, color: colors.textPrimary, fontSize: 15 },
+  infoCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: isDark ? '#1c1c1e' : '#F0EFF7',
+    borderWidth: isDark ? 0 : 1,
+    borderColor: isDark ? 'transparent' : '#E2E1EA',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  
+  inputLabel: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.textMuted, marginBottom: 8 },
+  targetInput: {
+    backgroundColor: isDark ? '#1c1c1e' : '#F0EFF7',
+    height: 48,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    color: colors.textPrimary,
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 20,
+    borderWidth: isDark ? 0 : 1,
+    borderColor: colors.border,
+  },
+  
+  targetResultBox: {
+    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.08)',
+    borderRadius: 10,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
+  },
+  targetResultValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.accentPrimary },
 
-      chartContainer: { marginTop: 8 },
-      chartBox: { backgroundColor: '#141415', borderRadius: 16, padding: 16, marginTop: 16 },
-      chartLegend: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 12 },
-      legendText: { fontSize: 10, color: '#8e8e93', fontFamily: FONT_FAMILY.bold },
+  chartContainer: { marginTop: 8 },
+  chartBox: {
+    backgroundColor: isDark ? '#141415' : '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  chartLegend: { flexDirection: 'row', justifyContent: 'center', gap: 16, marginTop: 12 },
+  legendText: { fontSize: 10, color: colors.textMuted, fontFamily: FONT_FAMILY.bold },
 
-      addBtnSmall: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#a599ff', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, gap: 4 },
-      addBtnSmallText: { fontFamily: FONT_FAMILY.bold, color: '#000', fontSize: 12 },
+  addBtnSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.accentPrimary,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    gap: 4
+  },
+  addBtnSmallText: { fontFamily: FONT_FAMILY.bold, color: isDark ? '#000000' : '#FFFFFF', fontSize: 12 },
 
-      list: { paddingHorizontal: 20, paddingBottom: 100 },
-      card: { backgroundColor: '#141415', borderRadius: 16, overflow: 'hidden', marginBottom: 12 },
-      cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-      cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#f2f2f7' },
-      cardSub: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: '#8e8e93', marginTop: 2 },
-      
-      quickBadge: { backgroundColor: 'rgba(165,153,255,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-      quickBadgeText: { color: '#a599ff', fontSize: 8, fontFamily: FONT_FAMILY.bold },
+  list: { paddingHorizontal: 20, paddingBottom: 100 },
+  card: {
+    backgroundColor: isDark ? '#141415' : '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
+  cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
+  cardSub: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  
+  quickBadge: {
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.08)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4
+  },
+  quickBadgeText: { color: colors.accentPrimary, fontSize: 8, fontFamily: FONT_FAMILY.bold },
 
-      cardExpanded: { padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: '#1c1c1d' },
-      subRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1c1c1d' },
-      subTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#f2f2f7' },
-      subCredits: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: '#8e8e93', marginTop: 2 },
-      gradeBadge: { backgroundColor: '#1c1c1d', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
-      gradeBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#a599ff' },
-      
-      addSubBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(165,153,255,0.12)', borderRadius: 10 },
-      addSubText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#a599ff' },
-      clearDirectBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: '#ff6961' },
+  cardExpanded: { padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: colors.border },
+  subRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  subTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary },
+  subCredits: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  gradeBadge: {
+    backgroundColor: isDark ? '#1c1c1d' : '#F0EFF7',
+    borderWidth: isDark ? 0 : 1,
+    borderColor: isDark ? 'transparent' : '#E2E1EA',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 6
+  },
+  gradeBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.accentPrimary },
+  
+  addSubBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+    borderWidth: isDark ? 0 : 1,
+    borderColor: isDark ? 'transparent' : 'rgba(108,92,231,0.2)',
+    borderRadius: 10
+  },
+  directSgpaBtn: {
+    backgroundColor: isDark ? '#1c1c1e' : '#F0EFF7',
+    borderColor: isDark ? 'transparent' : '#E2E1EA',
+  },
+  addSubText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.accentPrimary },
+  clearDirectBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.error
+  },
 
-      empty: { padding: 40, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
-      emptyText: { fontFamily: FONT_FAMILY.body, color: '#636366', fontSize: 13, marginTop: 12 },
+  empty: { padding: 40, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
+  emptyText: { fontFamily: FONT_FAMILY.body, color: colors.textMuted, fontSize: 13, marginTop: 12 },
 
-      modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-      modalCard: { backgroundColor: '#141415', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 40 },
-      modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#ffffff', marginBottom: 20 },
-      modalInputLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: '#8e8e93', letterSpacing: 1, marginBottom: 8 },
-      input: { backgroundColor: '#1c1c1d', borderRadius: 10, padding: 16, color: '#ffffff', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
-      
-      modalActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
-      cancelBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', backgroundColor: '#1c1c1d' },
-      cancelBtnText: { fontFamily: FONT_FAMILY.bold, color: '#ffffff', fontSize: 14 },
-      saveBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center', backgroundColor: '#a599ff' },
-      saveBtnText: { fontFamily: FONT_FAMILY.bold, color: '#000000', fontSize: 14 },
-    });
+  modalOverlay: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: isDark ? (colors.surfaceRaised || '#18181b') : '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 24,
+    paddingBottom: 40,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary, marginBottom: 20 },
+  modalInputLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, letterSpacing: 0.5, marginBottom: 8 },
+  input: {
+    backgroundColor: isDark ? (colors.surface2 || '#1c1c1f') : '#F0EFF7',
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    padding: 16,
+    color: colors.textPrimary,
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 14
+  },
+  
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 24 },
+  cancelBtn: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? (colors.surface2 || '#1c1c1f') : '#E2E1EA',
+  },
+  cancelBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
+  saveBtn: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.accentPrimary
+  },
+  saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: isDark ? '#000000' : '#FFFFFF' },
+});

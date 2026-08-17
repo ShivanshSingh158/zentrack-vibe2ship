@@ -3,7 +3,7 @@
  * Interactive 3D Active Recall & Spaced Repetition Review Deck.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, Modal, TouchableOpacity,
   Animated, ActivityIndicator, Dimensions, Platform, ScrollView
@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { FONT_FAMILY } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
 import { Flashcard, ReviewGrade, submitFlashcardReview } from '../../services/flashcardService';
 import { awardXP } from '../../services/xpSystem';
 
@@ -26,12 +27,12 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 /**
  * Parses markdown inline backticks (`code`) and renders stylish code chips
  */
-function FormattedCardText({ text, isQuestion = false }: { text: string; isQuestion?: boolean }) {
+function FormattedCardText({ text, isQuestion = false, styles }: { text: string; isQuestion?: boolean; styles: any }) {
   if (!text) return null;
   const parts = text.split(/(`[^`]+`)/g);
 
   return (
-    <Text style={isQuestion ? s.questionText : s.answerText}>
+    <Text style={isQuestion ? styles.questionText : styles.answerText}>
       {parts.map((part, index) => {
         if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
           const code = part.slice(1, -1);
@@ -39,8 +40,8 @@ function FormattedCardText({ text, isQuestion = false }: { text: string; isQuest
             <Text
               key={index}
               style={[
-                s.inlineCodeChip,
-                !isQuestion && s.inlineCodeChipGreen,
+                styles.inlineCodeChip,
+                !isQuestion && styles.inlineCodeChipGreen,
               ]}
             >
               {` ${code} `}
@@ -59,6 +60,9 @@ export default function FlashcardReviewModal({
   dueCards,
   onSessionComplete,
 }: FlashcardReviewModalProps) {
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   const [deck, setDeck] = useState<Flashcard[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -188,7 +192,7 @@ export default function FlashcardReviewModal({
           <View style={s.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <View style={s.headerIconBox}>
-                <Ionicons name="flash" size={16} color="#a599ff" />
+                <Ionicons name="flash" size={16} color={colors.accentPrimary} />
               </View>
               <View>
                 <Text style={s.headerTitle}>Daily Active Recall</Text>
@@ -197,7 +201,7 @@ export default function FlashcardReviewModal({
             </View>
 
             <TouchableOpacity style={s.closeBtn} onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close" size={18} color="#8e8e93" />
+              <Ionicons name="close" size={18} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -205,7 +209,7 @@ export default function FlashcardReviewModal({
             /* Celebration Screen */
             <View style={s.finishedBox}>
               <View style={s.starCircle}>
-                <Ionicons name="trophy" size={40} color="#00c16e" />
+                <Ionicons name="trophy" size={40} color={isDark ? '#00c16e' : '#059669'} />
               </View>
               
               <Text style={s.finishTitle}>Deck Mastered! ⚡</Text>
@@ -216,7 +220,7 @@ export default function FlashcardReviewModal({
               {/* Stats Breakdown Card */}
               <View style={s.statsCard}>
                 <View style={s.statItem}>
-                  <Text style={[s.statNum, { color: '#00c16e' }]}>{sessionStats.easy + sessionStats.good}</Text>
+                  <Text style={[s.statNum, { color: isDark ? '#00c16e' : '#059669' }]}>{sessionStats.easy + sessionStats.good}</Text>
                   <Text style={s.statLabel}>Recalled</Text>
                 </View>
                 <View style={s.statDivider} />
@@ -232,13 +236,13 @@ export default function FlashcardReviewModal({
               </View>
 
               <View style={s.xpBadge}>
-                <Ionicons name="sparkles" size={14} color="#00c16e" />
+                <Ionicons name="sparkles" size={14} color={isDark ? '#00c16e' : '#059669'} />
                 <Text style={s.xpBadgeText}>+15 XP Added to Vanguard Level</Text>
               </View>
 
               <TouchableOpacity style={s.doneBtn} onPress={onClose} activeOpacity={0.85}>
                 <Text style={s.doneBtnText}>Continue to Dashboard</Text>
-                <Ionicons name="arrow-forward" size={16} color="#000000" />
+                <Ionicons name="arrow-forward" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
               </TouchableOpacity>
             </View>
           ) : currentCard ? (
@@ -248,7 +252,7 @@ export default function FlashcardReviewModal({
               <View style={s.progressSection}>
                 <View style={s.progressRow}>
                   <Text style={s.progressText}>
-                    Card <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>{currentIndex + 1}</Text> of {deck.length}
+                    Card <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{currentIndex + 1}</Text> of {deck.length}
                   </Text>
                   <Text style={s.progressPct}>{progressPercent}% Done</Text>
                 </View>
@@ -270,7 +274,7 @@ export default function FlashcardReviewModal({
               {/* Subject / Lecture Capsule */}
               <View style={s.sourceRow}>
                 <View style={s.topicPill}>
-                  <Ionicons name="book-outline" size={12} color="#a599ff" style={{ marginRight: 4 }} />
+                  <Ionicons name="book-outline" size={12} color={colors.accentPrimary} style={{ marginRight: 4 }} />
                   <Text style={s.topicPillText} numberOfLines={1}>
                     {currentCard.topicTitle || 'Learning Workspace'}
                   </Text>
@@ -294,17 +298,17 @@ export default function FlashcardReviewModal({
                     <Animated.View style={[s.cardFace, s.cardFaceFront, { transform: [{ rotateY: frontInterpolate }] }]}>
                       <View style={s.cardTop}>
                         <View style={s.badgeQuestion}>
-                          <Ionicons name="help-circle" size={13} color="#a599ff" style={{ marginRight: 4 }} />
+                          <Ionicons name="help-circle" size={13} color={colors.accentPrimary} style={{ marginRight: 4 }} />
                           <Text style={s.badgeQuestionText}>QUESTION</Text>
                         </View>
                         <View style={s.flipPromptBadge}>
-                          <Ionicons name="sync-outline" size={12} color="#71717a" />
+                          <Ionicons name="sync-outline" size={12} color={colors.textSecondary} />
                           <Text style={s.flipPromptText}>Tap to Flip</Text>
                         </View>
                       </View>
 
                       <ScrollView style={s.cardScroll} showsVerticalScrollIndicator={false}>
-                        <FormattedCardText text={currentCard.question} isQuestion={true} />
+                        <FormattedCardText text={currentCard.question} isQuestion={true} styles={s} />
                       </ScrollView>
 
                       {/* Hint Trigger Accordion */}
@@ -335,7 +339,7 @@ export default function FlashcardReviewModal({
                       )}
 
                       <View style={s.cardBottomCue}>
-                        <Ionicons name="hand-left-outline" size={13} color="#71717a" />
+                        <Ionicons name="hand-left-outline" size={13} color={colors.textSecondary} />
                         <Text style={s.cardBottomCueText}>Tap card to reveal answer</Text>
                       </View>
                     </Animated.View>
@@ -344,21 +348,21 @@ export default function FlashcardReviewModal({
                     <Animated.View style={[s.cardFace, s.cardFaceBack, { transform: [{ rotateY: backInterpolate }] }]}>
                       <View style={s.cardTop}>
                         <View style={s.badgeAnswer}>
-                          <Ionicons name="checkmark-circle" size={13} color="#00c16e" style={{ marginRight: 4 }} />
+                          <Ionicons name="checkmark-circle" size={13} color={isDark ? '#00c16e' : '#059669'} style={{ marginRight: 4 }} />
                           <Text style={s.badgeAnswerText}>KEY ANSWER</Text>
                         </View>
                         <View style={s.flipPromptBadge}>
-                          <Ionicons name="shield-checkmark-outline" size={12} color="#00c16e" />
-                          <Text style={[s.flipPromptText, { color: '#00c16e' }]}>Recall Test</Text>
+                          <Ionicons name="shield-checkmark-outline" size={12} color={isDark ? '#00c16e' : '#059669'} />
+                          <Text style={[s.flipPromptText, { color: isDark ? '#00c16e' : '#059669' }]}>Recall Test</Text>
                         </View>
                       </View>
 
                       <ScrollView style={s.cardScroll} showsVerticalScrollIndicator={false}>
-                        <FormattedCardText text={currentCard.answer} isQuestion={false} />
+                        <FormattedCardText text={currentCard.answer} isQuestion={false} styles={s} />
                       </ScrollView>
 
                       <View style={s.cardBottomCue}>
-                        <Text style={[s.cardBottomCueText, { color: '#a1a1aa' }]}>Rate your recall below to schedule next review</Text>
+                        <Text style={[s.cardBottomCueText, { color: colors.textSecondary }]}>Rate your recall below to schedule next review</Text>
                       </View>
                     </Animated.View>
                   )}
@@ -403,9 +407,9 @@ export default function FlashcardReviewModal({
                       disabled={submitting}
                     >
                       <View style={s.gradeIconCircle}>
-                        <Ionicons name="thumbs-up" size={14} color="#a599ff" />
+                        <Ionicons name="thumbs-up" size={14} color={colors.accentPrimary} />
                       </View>
-                      <Text style={[s.gradeTitle, { color: '#a599ff' }]}>Good</Text>
+                      <Text style={[s.gradeTitle, { color: colors.accentPrimary }]}>Good</Text>
                       <Text style={s.gradeSub}>4 Days</Text>
                     </TouchableOpacity>
 
@@ -416,9 +420,9 @@ export default function FlashcardReviewModal({
                       disabled={submitting}
                     >
                       <View style={s.gradeIconCircle}>
-                        <Ionicons name="rocket" size={14} color="#00c16e" />
+                        <Ionicons name="rocket" size={14} color={isDark ? '#00c16e' : '#059669'} />
                       </View>
-                      <Text style={[s.gradeTitle, { color: '#00c16e' }]}>Easy</Text>
+                      <Text style={[s.gradeTitle, { color: isDark ? '#00c16e' : '#059669' }]}>Easy</Text>
                       <Text style={s.gradeSub}>7+ Days</Text>
                     </TouchableOpacity>
                   </View>
@@ -427,14 +431,14 @@ export default function FlashcardReviewModal({
                 <View style={s.unflippedHintRow}>
                   <TouchableOpacity style={s.revealAnswerBtn} activeOpacity={0.8} onPress={handleFlip}>
                     <Text style={s.revealAnswerBtnText}>Reveal Answer</Text>
-                    <Ionicons name="chevron-forward" size={15} color="#000000" />
+                    <Ionicons name="chevron-forward" size={15} color={isDark ? '#000000' : '#FFFFFF'} />
                   </TouchableOpacity>
                 </View>
               )}
             </View>
           ) : (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: '#8e8e93', fontFamily: FONT_FAMILY.body }}>No flashcards due right now!</Text>
+              <Text style={{ color: colors.textSecondary, fontFamily: FONT_FAMILY.body }}>No flashcards due right now!</Text>
             </View>
           )}
         </View>
@@ -443,20 +447,20 @@ export default function FlashcardReviewModal({
   );
 }
 
-const s = StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.85)' : 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
   container: {
-    backgroundColor: '#0c0c0e',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     padding: 20,
     height: '86%',
     borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
   },
   header: {
     flexDirection: 'row',
@@ -468,31 +472,31 @@ const s = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: 'rgba(165,153,255,0.12)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.25)',
+    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 16,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     letterSpacing: -0.2,
   },
   headerSubtitle: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 11,
-    color: '#71717a',
+    color: colors.textSecondary,
     marginTop: 1,
   },
   closeBtn: {
     width: 30,
     height: 30,
-    backgroundColor: '#18181b',
+    backgroundColor: isDark ? '#18181b' : '#ECEBF2',
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -506,24 +510,24 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   progressText: {
-    color: '#8e8e93',
+    color: colors.textSecondary,
     fontSize: 12,
     fontFamily: FONT_FAMILY.medium,
   },
   progressPct: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontSize: 11,
     fontFamily: FONT_FAMILY.bold,
   },
   progressBarTrack: {
     height: 4,
-    backgroundColor: '#18181b',
+    backgroundColor: isDark ? '#18181b' : '#ECEBF2',
     borderRadius: 2,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#a599ff',
+    backgroundColor: colors.accentPrimary,
     borderRadius: 2,
   },
   sourceRow: {
@@ -535,21 +539,21 @@ const s = StyleSheet.create({
   topicPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(165,153,255,0.08)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.08)',
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.2)',
+    borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.2)',
     maxWidth: '55%',
   },
   topicPillText: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontSize: 11,
     fontFamily: FONT_FAMILY.bold,
   },
   lectureText: {
-    color: '#71717a',
+    color: colors.textSecondary,
     fontSize: 11,
     fontFamily: FONT_FAMILY.body,
     flex: 1,
@@ -561,25 +565,25 @@ const s = StyleSheet.create({
   },
   cardFace: {
     flex: 1,
-    backgroundColor: '#131316',
+    backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
     justifyContent: 'space-between',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: isDark ? 0.35 : 0.08,
     shadowRadius: 10,
     elevation: 8,
   },
   cardFaceFront: {
-    backgroundColor: '#131316',
-    borderColor: 'rgba(165,153,255,0.18)',
+    backgroundColor: colors.surface,
+    borderColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.20)',
   },
   cardFaceBack: {
-    backgroundColor: '#111614',
-    borderColor: 'rgba(0,193,110,0.25)',
+    backgroundColor: isDark ? '#111614' : '#F7FDF9',
+    borderColor: isDark ? 'rgba(0,193,110,0.25)' : 'rgba(5,150,105,0.25)',
   },
   cardTop: {
     flexDirection: 'row',
@@ -590,7 +594,7 @@ const s = StyleSheet.create({
   badgeQuestion: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(165,153,255,0.1)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.10)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -598,13 +602,13 @@ const s = StyleSheet.create({
   badgeQuestionText: {
     fontSize: 10,
     fontFamily: FONT_FAMILY.bold,
-    color: '#a599ff',
+    color: colors.accentPrimary,
     letterSpacing: 0.6,
   },
   badgeAnswer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,193,110,0.12)',
+    backgroundColor: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.12)',
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -612,7 +616,7 @@ const s = StyleSheet.create({
   badgeAnswerText: {
     fontSize: 10,
     fontFamily: FONT_FAMILY.bold,
-    color: '#00c16e',
+    color: isDark ? '#00c16e' : '#059669',
     letterSpacing: 0.6,
   },
   flipPromptBadge: {
@@ -622,7 +626,7 @@ const s = StyleSheet.create({
   },
   flipPromptText: {
     fontSize: 11,
-    color: '#71717a',
+    color: colors.textSecondary,
     fontFamily: FONT_FAMILY.medium,
   },
   cardScroll: {
@@ -630,14 +634,14 @@ const s = StyleSheet.create({
     marginVertical: 4,
   },
   questionText: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 17,
     lineHeight: 27,
     fontFamily: FONT_FAMILY.bold,
     letterSpacing: -0.2,
   },
   answerText: {
-    color: '#f4f4f5',
+    color: colors.textPrimary,
     fontSize: 16,
     lineHeight: 26,
     fontFamily: FONT_FAMILY.medium,
@@ -645,24 +649,24 @@ const s = StyleSheet.create({
   inlineCodeChip: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 15,
-    color: '#c084fc',
-    backgroundColor: 'rgba(192, 132, 252, 0.15)',
+    color: colors.accentPrimary,
+    backgroundColor: isDark ? 'rgba(192, 132, 252, 0.15)' : 'rgba(108,92,231,0.10)',
     fontWeight: '700',
   },
   inlineCodeChipGreen: {
-    color: '#34d399',
-    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    color: isDark ? '#34d399' : '#059669',
+    backgroundColor: isDark ? 'rgba(52, 211, 153, 0.15)' : 'rgba(5,150,105,0.12)',
   },
   hintContainer: {
     marginTop: 8,
     marginBottom: 4,
   },
   hintBox: {
-    backgroundColor: 'rgba(245,166,35,0.08)',
+    backgroundColor: isDark ? 'rgba(245,166,35,0.08)' : 'rgba(245,158,11,0.08)',
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(245,166,35,0.22)',
+    borderColor: isDark ? 'rgba(245,166,35,0.22)' : 'rgba(245,158,11,0.22)',
   },
   hintHeader: {
     flexDirection: 'row',
@@ -676,7 +680,7 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.bold,
   },
   hintText: {
-    color: '#fcd34d',
+    color: isDark ? '#fcd34d' : '#B45309',
     fontSize: 12,
     fontFamily: FONT_FAMILY.body,
     lineHeight: 18,
@@ -686,15 +690,15 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(245,166,35,0.06)',
+    backgroundColor: isDark ? 'rgba(245,166,35,0.06)' : 'rgba(245,158,11,0.08)',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: 'rgba(245,166,35,0.15)',
+    borderColor: isDark ? 'rgba(245,166,35,0.15)' : 'rgba(245,158,11,0.20)',
   },
   showHintText: {
-    color: '#f5a623',
+    color: isDark ? '#f5a623' : '#D97706',
     fontSize: 11.5,
     fontFamily: FONT_FAMILY.medium,
   },
@@ -705,10 +709,10 @@ const s = StyleSheet.create({
     gap: 5,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.04)',
+    borderTopColor: colors.border,
   },
   cardBottomCueText: {
-    color: '#71717a',
+    color: colors.textSecondary,
     fontSize: 11,
     fontFamily: FONT_FAMILY.medium,
   },
@@ -719,7 +723,7 @@ const s = StyleSheet.create({
   gradeHeaderLabel: {
     fontSize: 10,
     fontFamily: FONT_FAMILY.bold,
-    color: '#71717a',
+    color: colors.textSecondary,
     letterSpacing: 0.8,
     textAlign: 'center',
     marginBottom: 8,
@@ -748,12 +752,12 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(245,166,35,0.08)',
   },
   gradeGood: {
-    borderColor: 'rgba(165,153,255,0.3)',
-    backgroundColor: 'rgba(165,153,255,0.08)',
+    borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.3)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.08)',
   },
   gradeEasy: {
-    borderColor: 'rgba(0,193,110,0.3)',
-    backgroundColor: 'rgba(0,193,110,0.08)',
+    borderColor: isDark ? 'rgba(0,193,110,0.3)' : 'rgba(16,185,129,0.3)',
+    backgroundColor: isDark ? 'rgba(0,193,110,0.08)' : 'rgba(16,185,129,0.08)',
   },
   gradeTitle: {
     fontSize: 12.5,
@@ -761,7 +765,7 @@ const s = StyleSheet.create({
   },
   gradeSub: {
     fontSize: 9.5,
-    color: '#8e8e93',
+    color: colors.textSecondary,
     fontFamily: FONT_FAMILY.body,
     marginTop: 1,
   },
@@ -770,7 +774,7 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   revealAnswerBtn: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.accentPrimary,
     paddingVertical: 13,
     borderRadius: 16,
     flexDirection: 'row',
@@ -779,11 +783,11 @@ const s = StyleSheet.create({
     gap: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isDark ? 0.2 : 0.1,
     shadowRadius: 6,
   },
   revealAnswerBtnText: {
-    color: '#000000',
+    color: isDark ? '#000000' : '#FFFFFF',
     fontSize: 14,
     fontFamily: FONT_FAMILY.bold,
   },
@@ -797,21 +801,21 @@ const s = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(0,193,110,0.12)',
+    backgroundColor: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
     borderWidth: 1.5,
-    borderColor: 'rgba(0,193,110,0.3)',
+    borderColor: isDark ? 'rgba(0,193,110,0.3)' : 'rgba(5,150,105,0.3)',
   },
   finishTitle: {
-    color: '#FFFFFF',
+    color: colors.textPrimary,
     fontSize: 22,
     fontFamily: FONT_FAMILY.bold,
     letterSpacing: -0.3,
   },
   finishSub: {
-    color: '#8e8e93',
+    color: colors.textSecondary,
     fontSize: 13,
     fontFamily: FONT_FAMILY.body,
     textAlign: 'center',
@@ -823,9 +827,9 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: '#141416',
+    backgroundColor: isDark ? '#141416' : '#F5F4FA',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 20,
@@ -841,34 +845,34 @@ const s = StyleSheet.create({
   },
   statLabel: {
     fontSize: 11,
-    color: '#71717a',
+    color: colors.textSecondary,
     fontFamily: FONT_FAMILY.medium,
     marginTop: 2,
   },
   statDivider: {
     width: 1,
     height: 24,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.border,
   },
   xpBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(0,193,110,0.12)',
+    backgroundColor: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.12)',
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 16,
     marginTop: 18,
     borderWidth: 1,
-    borderColor: 'rgba(0,193,110,0.25)',
+    borderColor: isDark ? 'rgba(0,193,110,0.25)' : 'rgba(5,150,105,0.25)',
   },
   xpBadgeText: {
-    color: '#00c16e',
+    color: isDark ? '#00c16e' : '#059669',
     fontSize: 12.5,
     fontFamily: FONT_FAMILY.bold,
   },
   doneBtn: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.accentPrimary,
     paddingVertical: 15,
     borderRadius: 16,
     marginTop: 24,
@@ -879,11 +883,11 @@ const s = StyleSheet.create({
     gap: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
+    shadowOpacity: isDark ? 0.25 : 0.12,
     shadowRadius: 8,
   },
   doneBtnText: {
-    color: '#000000',
+    color: isDark ? '#000000' : '#FFFFFF',
     fontSize: 14.5,
     fontFamily: FONT_FAMILY.bold,
   },

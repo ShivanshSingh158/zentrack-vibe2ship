@@ -13,14 +13,14 @@
 export const DARK_COLORS = {
 
   // ── Backgrounds ─────────────────────────────────────────────────────────────
-  background:    '#000000',              // true black, OLED-friendly
-  surface:       '#1c1c1d',              // primary card background (Telegram dark)
-  surface2:      '#141415',              // for multi-row grouped cards
-  surfaceRaised: '#2c2c2e',              // Modals / raised cards
+  background:    '#000000',              // true OLED pitch black canvas
+  surface:       '#141416',              // sleek elevated greyish surface for cards & rows
+  surface2:      '#1c1c1f',              // secondary elevated grey for chips & inner sections
+  surfaceRaised: '#18181b',              // elevated modals, sheets & action cards
 
   // ── Borders ─────────────────────────────────────────────────────────────────
-  border:        '#2c2c2e',              // 0.5px lines inside grouped cards
-  borderHover:   '#3c3c3e',              // Interactive hover state
+  border:        '#242428',              // 1px sleek dark border for cards
+  borderHover:   '#2e2e34',              // Interactive hover state
   borderGlow:    'rgba(165,153,255,0.40)', // Focus / active glow
 
   // ── Text ────────────────────────────────────────────────────────────────────
@@ -73,71 +73,71 @@ export const DARK_COLORS = {
 };
 
 // ── Light Theme: "Frost Quartz" ───────────────────────────────────────────────
-// iOS-native feel: warm off-white system background, deep ink text, same purple accent.
+// iOS-native feel: warm off-white system background (#F4F3F8), deep charcoal text, rich royal amethyst accent (#6C5CE7).
 export const LIGHT_COLORS = {
 
   // ── Backgrounds ─────────────────────────────────────────────────────────────
-  background:    '#f2f1f6',              // iOS grouped background (warm off-white)
-  surface:       '#ffffff',              // cards, input fields
-  surface2:      '#f2f1f6',              // nested / secondary cards (same as bg)
+  background:    '#F4F3F8',              // warm alabaster / frost lilac canvas
+  surface:       '#ffffff',              // crisp pure quartz white cards
+  surface2:      '#F0EFF7',              // soft cool inset surface / secondary cards
   surfaceRaised: '#ffffff',              // modals / raised cards
 
   // ── Borders ─────────────────────────────────────────────────────────────────
-  border:        '#e5e5ea',              // separator lines
-  borderHover:   '#d1d1d6',              // interactive hover
-  borderGlow:    'rgba(165,153,255,0.50)', // focus / active glow
+  border:        '#E2E1EA',              // muted titanium lavender hairline
+  borderHover:   '#D1D0DA',              // interactive hover state
+  borderGlow:    'rgba(108,92,231,0.30)', // focus / active glow
 
   // ── Text ────────────────────────────────────────────────────────────────────
-  textPrimary:   '#1c1c1e',              // near-black (iOS label)
-  textSecondary: '#3a3a3c',              // body text
-  textMuted:     '#636366',              // secondary label
-  textTertiary:  '#8e8e93',              // tertiary label / timestamps
+  textPrimary:   '#1C1C1E',              // Apple dark charcoal / jet black
+  textSecondary: '#4B5563',              // graphite muted body text
+  textMuted:     '#636366',              // secondary labels / inactive icons
+  textTertiary:  '#8E8E93',              // tertiary label / timestamps / placeholders
 
-  // ── Accent — Purple (same across themes for brand consistency) ───────────────
-  accentPrimary:  '#7c6ff7',             // slightly deeper purple for light bg contrast
-  accentLight:    '#a599ff',             // hover state
-  accentDim:      'rgba(124,111,247,0.12)', // tinted bg
-  accentGlow:     'rgba(124,111,247,0.20)', // ambient glow
+  // ── Accent — Purple / Royal Amethyst ────────────────────────────────────────
+  accentPrimary:  '#6C5CE7',             // Rich royal amethyst for crisp daylight contrast
+  accentLight:    '#8274E8',             // hover state
+  accentDim:      'rgba(108,92,231,0.12)', // tinted bg
+  accentGlow:     'rgba(108,92,231,0.20)', // ambient glow
 
   // ── Success — Green ─────────────────────────────────────────────────────────
-  accentGreen:     '#34c759',            // iOS system green (brighter on white)
-  accentGreenDim:  'rgba(52,199,89,0.12)',
-  accentGreenGlow: 'rgba(52,199,89,0.28)',
+  accentGreen:     '#059669',            // deep emerald green
+  accentGreenDim:  'rgba(5,150,105,0.10)',
+  accentGreenGlow: 'rgba(5,150,105,0.24)',
 
-  // ── Warning — Orange ─────────────────────────────────────────────────────────
-  accentAmber:    '#ff9500',             // iOS system orange
-  accentAmberDim: 'rgba(255,149,0,0.10)',
+  // ── Warning — Orange / Amber ────────────────────────────────────────────────
+  accentAmber:    '#D97706',             // warm golden amber
+  accentAmberDim: 'rgba(217,119,6,0.10)',
 
   // ── Sky Blue ─────────────────────────────────────────────────────────────────
-  accentBlue:      '#32ade6',            // iOS system blue
-  accentBlueDim:   'rgba(50,173,230,0.12)',
-  accentSecondary: '#32ade6',
+  accentBlue:      '#0284C7',            // crisp ocean blue
+  accentBlueDim:   'rgba(2,132,199,0.10)',
+  accentSecondary: '#0284C7',
 
   // ── Danger — Red ─────────────────────────────────────────────────────────────
-  error:    '#ff3b30',                   // iOS system red
-  errorBg:  'rgba(255,59,48,0.10)',
+  error:    '#DC2626',                   // crisp crimson red
+  errorBg:  'rgba(220,38,38,0.10)',
 
   // ── Priority ─────────────────────────────────────────────────────────────────
-  priorityHigh:   '#ff3b30',
-  priorityMed:    '#ff9500',
-  priorityLow:    '#34c759',
-  success:        '#34c759',
+  priorityHigh:   '#DC2626',
+  priorityMed:    '#D97706',
+  priorityLow:    '#059669',
+  success:        '#059669',
 
-  // ── S.A.R.A Agent Colors (same hues, slightly adjusted for light bg) ──────────
+  // ── S.A.R.A Agent Colors (adjusted for high-contrast light mode readability) ───
   agents: {
-    ORACLE:      '#7c6ff7',
-    HERMES:      '#ff9500',
-    CHRONOS:     '#32ade6',
-    TITAN:       '#34c759',
-    AEGIS:       '#30d5c8',
-    HEPHAESTUS:  '#ff6b35',
-    GAINS:       '#ff3b30',
+    ORACLE:      '#6C5CE7',
+    HERMES:      '#EA580C',
+    CHRONOS:     '#0284C7',
+    TITAN:       '#059669',
+    AEGIS:       '#0D9488',
+    HEPHAESTUS:  '#EA580C',
+    GAINS:       '#DC2626',
   },
 };
 
-// ── Backwards-compat default export (always dark — screens not yet theme-aware use this) ──
+// ── Backwards-compat default export (default light — screens not yet theme-aware use this) ──
 // Theme-aware code should use `useTheme().colors` from ThemeContext instead.
-export const COLORS = DARK_COLORS;
+export const COLORS = LIGHT_COLORS;
 
 
 // ─── Radius ───────────────────────────────────────────────────────────────────

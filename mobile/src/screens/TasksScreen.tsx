@@ -8,6 +8,8 @@ import * as Haptics from 'expo-haptics';
 import Svg, { Circle } from 'react-native-svg';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDateWithDay } from '../utils/dateUtils';
 import { triggerLayoutAnimation } from '../theme/animations';
@@ -65,9 +67,11 @@ const PROGRESS_CIRCUM = PROGRESS_RADIUS * 2 * Math.PI;
 
 export default function TasksScreen() {
   const { colors, isDark } = useTheme();
-  const styles = makeTasksStyles(colors);
+  const styles = makeTasksStyles(colors, isDark);
   
   const { tasks, user, optimisticUpdateTask, optimisticDeleteTask } = useCoreData();
+  const { attendance, attendanceLogs } = useAcademicData();
+  const { gymLogs, userGymPlan } = useWellnessData();
   
   // 1. Recurring Spawn Logic
   useRecurringSpawn(tasks, user?.uid);
@@ -144,39 +148,31 @@ export default function TasksScreen() {
   };
 
   const { doneCount, progressPercent, progressDashoffset, nextPendingTimeStr } = useMemo(() => {
-    const done = selectedDateTasks.filter((t) => t.status === 'completed').length;
+    let done = 0;
     const total = selectedDateTasks.length;
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const currentTimeFloat = now.getHours() + now.getMinutes() / 60;
+    let nextStr = '';
+
+    for (let i = 0; i < total; i++) {
+      const t = selectedDateTasks[i];
+      if (t.status === 'completed') {
+        done++;
+      } else if (!nextStr && t.status === 'pending' && t.timeSlot) {
+        const start = t.timeSlot.split(/[-–—•]| to /i)[0]?.trim();
+        if (selectedDate !== todayStr || parseTimeFloat(start) >= currentTimeFloat) {
+          nextStr = formatTimeStr(start);
+        }
+      }
+    }
+
     const progressSize = 44;
     const progressStroke = 3;
     const progressRadius = (progressSize - progressStroke) / 2;
     const progressCircum = progressRadius * 2 * Math.PI;
     const pct = total > 0 ? done / total : 0;
     const offset = progressCircum - pct * progressCircum;
-
-    const now = new Date();
-    const todayStr = [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, '0'),
-      String(now.getDate()).padStart(2, '0'),
-    ].join('-');
-    const currentTimeFloat = now.getHours() + now.getMinutes() / 60;
-
-    const pendingTasksWithTime = selectedDateTasks
-      .filter(t => {
-        if (t.status !== 'pending' || !t.timeSlot) return false;
-        if (selectedDate === todayStr) {
-          const start = t.timeSlot.split(/[-–—•]| to /i)[0]?.trim();
-          return parseTimeFloat(start) >= currentTimeFloat;
-        }
-        return true;
-      })
-      .sort((a, b) => {
-        const startA = a.timeSlot?.split(/[-–—•]| to /i)[0]?.trim() || '';
-        const startB = b.timeSlot?.split(/[-–—•]| to /i)[0]?.trim() || '';
-        return parseTimeFloat(startA) - parseTimeFloat(startB);
-      });
-
-    const nextStr = pendingTasksWithTime.length > 0 ? formatTimeStr(pendingTasksWithTime[0].timeSlot!.split(/[-–—•]| to /i)[0]) : '';
 
     return {
       doneCount: done,
@@ -210,18 +206,18 @@ export default function TasksScreen() {
   }, [conflicts]);
 
   return (
-    <SafeAreaView style={[styles.root, { backgroundColor: '#000000' }]}>
+    <SafeAreaView style={styles.root}>
       
       {/* PROACTIVE WIDGET */}
       {taskConflicts.length > 0 && (
         <Animated.View style={[{ paddingHorizontal: 24, marginBottom: 16, marginTop: 8 }, headerStyle]}>
           {taskConflicts.map(c => (
-            <View key={c.id} style={{ backgroundColor: '#fee2e2', padding: 16, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: '#fca5a5' }}>
+            <View key={c.id} style={{ backgroundColor: isDark ? 'rgba(255, 105, 97, 0.12)' : '#fee2e2', padding: 16, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: isDark ? 'rgba(255, 105, 97, 0.25)' : '#fca5a5' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                <Ionicons name="warning" size={16} color="#ef4444" />
-                <Text style={{ fontFamily: 'Inter_700Bold', color: '#b91c1c', fontSize: 14 }}>Conflict Detected</Text>
+                <Ionicons name="warning" size={16} color={colors.error} />
+                <Text style={{ fontFamily: 'Inter_700Bold', color: colors.error, fontSize: 14 }}>Conflict Detected</Text>
               </View>
-              <Text style={{ fontFamily: 'Inter_400Regular', color: '#991b1b', fontSize: 12 }}>{c.message} {c.suggestion}</Text>
+              <Text style={{ fontFamily: 'Inter_400Regular', color: colors.error, fontSize: 12 }}>{c.message} {c.suggestion}</Text>
             </View>
           ))}
         </Animated.View>
@@ -233,10 +229,10 @@ export default function TasksScreen() {
         <View style={styles.topHeaderIcons}>
           {isBulkEdit ? (
             <AnimatedPressable 
-              style={[styles.iconBtn, { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' }]} 
+              style={[styles.iconBtn, { width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : colors.surface2, alignItems: 'center', justifyContent: 'center' }]} 
               onPress={() => { setIsBulkEdit(false); setSelectedTaskIds(new Set()); }}
             >
-              <Ionicons name="close" size={18} color="#A599FF" />
+              <Ionicons name="close" size={18} color={colors.accentPrimary} />
             </AnimatedPressable>
           ) : (
             <>
@@ -245,34 +241,34 @@ export default function TasksScreen() {
                 style={styles.iconBtn}
                 onPress={() => overdueTasks.length > 0 ? setIsOverdueModalOpen(true) : setIsInboxModalOpen(true)}
               >
-                <Ionicons name="file-tray-outline" size={20} color="#FFFFFF" />
+                <Ionicons name="file-tray-outline" size={20} color={colors.textPrimary} />
                 {overdueTasks.length > 0 ? (
-                  <View style={[styles.badge, { backgroundColor: '#FF6961', top: -6, right: 6 }]}>
-                    <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{overdueTasks.length}</Text>
+                  <View style={[styles.badge, { backgroundColor: colors.error, top: -6, right: 6 }]}>
+                    <Text style={[styles.badgeText, { color: isDark ? '#000000' : '#FFFFFF' }]}>{overdueTasks.length}</Text>
                   </View>
                 ) : inboxTasks.length > 0 ? (
                   <View style={[styles.badge, { top: -6, right: 6 }]}>
                     <Text style={styles.badgeText}>{inboxTasks.length}</Text>
                   </View>
                 ) : null}
-                <Text style={{ fontSize: 9, color: '#8e8e93', fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Inbox</Text>
+                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Inbox</Text>
               </AnimatedPressable>
               {/* Time Spent button */}
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsTimeSpentOpen(true)}>
-                <Ionicons name="timer-outline" size={20} color="#FFFFFF" />
-                <Text style={{ fontSize: 9, color: '#8e8e93', fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Timer</Text>
+                <Ionicons name="timer-outline" size={20} color={colors.textPrimary} />
+                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Timer</Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setViewMode(v => v === 'list' ? 'timeline' : v === 'timeline' ? 'kanban' : 'list')}>
-                <Ionicons name={viewMode === 'list' ? 'time-outline' : viewMode === 'timeline' ? 'git-branch-outline' : 'list'} size={20} color="#FFFFFF" />
-                <Text style={{ fontSize: 9, color: '#8e8e93', fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>View</Text>
+                <Ionicons name={viewMode === 'list' ? 'time-outline' : viewMode === 'timeline' ? 'git-branch-outline' : 'list'} size={20} color={colors.textPrimary} />
+                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>View</Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsNewTaskOpen(true)}>
-                <Ionicons name="add" size={22} color="#FFFFFF" />
-                <Text style={{ fontSize: 9, color: '#8e8e93', fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Add</Text>
+                <Ionicons name="add" size={22} color={colors.textPrimary} />
+                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>Add</Text>
               </AnimatedPressable>
               <AnimatedPressable style={styles.iconBtn} onPress={() => setIsMenuOpen(true)}>
-                <Ionicons name="ellipsis-horizontal" size={20} color="#FFFFFF" />
-                <Text style={{ fontSize: 9, color: '#8e8e93', fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>More</Text>
+                <Ionicons name="ellipsis-horizontal" size={20} color={colors.textPrimary} />
+                <Text style={{ fontSize: 9, color: colors.textTertiary, fontFamily: 'Inter_500Medium', marginTop: 2, textAlign: 'center' }}>More</Text>
               </AnimatedPressable>
             </>
           )}
@@ -286,11 +282,11 @@ export default function TasksScreen() {
 
       {/* PROGRESS RING */}
       <Animated.View style={[{ paddingHorizontal: 6, marginBottom: 0 }, dateStripStyle]}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#0A0A0A', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#2C2C2E' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
           <View style={{ width: PROGRESS_SIZE, height: PROGRESS_SIZE, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
             <Svg width={PROGRESS_SIZE} height={PROGRESS_SIZE} style={{ position: 'absolute' }}>
               <Circle
-                stroke="#2C2C2E"
+                stroke={isDark ? '#2C2C2E' : '#E2E1EA'}
                 fill="none"
                 cx={PROGRESS_SIZE / 2}
                 cy={PROGRESS_SIZE / 2}
@@ -298,7 +294,7 @@ export default function TasksScreen() {
                 strokeWidth={PROGRESS_STROKE}
               />
               <AnimatedCircle
-                stroke="#FF9500"
+                stroke={colors.accentAmber}
                 fill="none"
                 cx={PROGRESS_SIZE / 2}
                 cy={PROGRESS_SIZE / 2}
@@ -310,13 +306,13 @@ export default function TasksScreen() {
                 transform={`rotate(-90 ${PROGRESS_SIZE / 2} ${PROGRESS_SIZE / 2})`}
               />
             </Svg>
-            <Text style={{ color: '#FFFFFF', fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>{doneCount}/{selectedDateTasks.length}</Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 12, fontFamily: 'Inter_600SemiBold' }}>{doneCount}/{selectedDateTasks.length}</Text>
           </View>
           <View>
-            <Text style={{ color: '#FFFFFF', fontSize: 16, fontFamily: 'Inter_600SemiBold', marginBottom: 2 }}>
-              <Text style={{ color: '#FF9500' }}>{doneCount}</Text> of {selectedDateTasks.length} done today
+            <Text style={{ color: colors.textPrimary, fontSize: 16, fontFamily: 'Inter_600SemiBold', marginBottom: 2 }}>
+              <Text style={{ color: colors.accentAmber }}>{doneCount}</Text> of {selectedDateTasks.length} done today
             </Text>
-            <Text style={{ color: '#8E8E93', fontSize: 13, fontFamily: 'Inter_400Regular' }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontFamily: 'Inter_400Regular' }}>
               {selectedDateTasks.length - doneCount} remaining{nextPendingTimeStr ? ` · next at ${nextPendingTimeStr}` : ''}
             </Text>
           </View>
@@ -355,6 +351,11 @@ export default function TasksScreen() {
             tasks={selectedDateTasks} 
             onTaskPress={(t) => setEditingTask(t)} 
             colors={colors}
+            isDark={isDark}
+            attendance={attendance}
+            attendanceLogs={attendanceLogs}
+            gymLogs={gymLogs}
+            userGymPlan={userGymPlan}
             selectedDate={selectedDate}
           />
         </Animated.View>
@@ -405,7 +406,7 @@ export default function TasksScreen() {
           }
           renderSectionHeader={({ section: { title } }: any) => (
             <View style={styles.listSectionHeader}>
-              <Text style={[styles.listSectionTitle, { color: '#8E8E93', fontSize: 11, letterSpacing: 1 }]}>{title}</Text>
+              <Text style={[styles.listSectionTitle, { color: colors.textTertiary, fontSize: 11, letterSpacing: 1 }]}>{title}</Text>
             </View>
           )}
           renderItem={renderItem}
@@ -415,7 +416,7 @@ export default function TasksScreen() {
       {/* FLOATING ACTION PILLS */}
       <View style={[styles.floatingAddContainer, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 16 }]}>
         <AnimatedPressable style={styles.floatingAddBtn} onPress={() => setIsNewTaskOpen(true)}>
-          <Ionicons name="add" size={18} color="#000000" style={{ marginRight: 4 }} />
+          <Ionicons name="add" size={18} color={isDark ? '#000000' : '#ffffff'} style={{ marginRight: 4 }} />
           <Text style={styles.floatingAddText}>Add task</Text>
         </AnimatedPressable>
       </View>
@@ -425,8 +426,8 @@ export default function TasksScreen() {
         <View style={{ flexShrink: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, paddingHorizontal: 8, paddingTop: 10 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Ionicons name="warning" size={24} color="#FF6961" style={{ marginRight: 12 }} />
-              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: '#FFFFFF' }}>Overdue Tasks</Text>
+              <Ionicons name="warning" size={24} color={colors.error} style={{ marginRight: 12 }} />
+              <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Overdue Tasks</Text>
             </View>
             {overdueTasks.length > 0 && (
               <Pressable onPress={() => {
@@ -447,7 +448,7 @@ export default function TasksScreen() {
                   ]
                 );
               }}>
-                <Text style={{ color: '#FF6961', fontSize: 14, fontFamily: 'Inter_600SemiBold', padding: 8 }}>Clear All</Text>
+                <Text style={{ color: colors.error, fontSize: 14, fontFamily: 'Inter_600SemiBold', padding: 8 }}>Clear All</Text>
               </Pressable>
             )}
           </View>
@@ -480,11 +481,11 @@ export default function TasksScreen() {
       <BottomSheet visible={isInboxModalOpen} onClose={() => setIsInboxModalOpen(false)}>
         <View style={{ flexShrink: 1, maxHeight: 600 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, paddingHorizontal: 8, paddingTop: 20 }}>
-            <Ionicons name="file-tray" size={24} color="#A599FF" style={{ marginRight: 12 }} />
-            <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: '#FFFFFF' }}>Inbox</Text>
+            <Ionicons name="file-tray" size={24} color={colors.accentPrimary} style={{ marginRight: 12 }} />
+            <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 24, color: colors.textPrimary }}>Inbox</Text>
           </View>
           {inboxTasks.length === 0 ? (
-            <Text style={{ color: '#8E8E93', fontFamily: 'Inter_500Medium', textAlign: 'center', marginTop: 20, paddingBottom: 40 }}>No tasks in your inbox.</Text>
+            <Text style={{ color: colors.textTertiary, fontFamily: 'Inter_500Medium', textAlign: 'center', marginTop: 20, paddingBottom: 40 }}>No tasks in your inbox.</Text>
           ) : (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
               {inboxTasks.map(t => (
@@ -520,24 +521,24 @@ export default function TasksScreen() {
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setIsMenuOpen(false)}>
           <View style={styles.menuContainer}>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setSortBy('priority'); setIsMenuOpen(false); }}>
-              <Ionicons name="filter" size={18} color="#FFFFFF" style={{ marginRight: 12 }} />
+              <Ionicons name="filter" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
               <Text style={styles.menuItemText}>Sort by Priority</Text>
-              {sortBy === 'priority' && <Ionicons name="checkmark" size={16} color="#A599FF" style={{ marginLeft: 'auto' }} />}
+              {sortBy === 'priority' && <Ionicons name="checkmark" size={16} color={colors.accentPrimary} style={{ marginLeft: 'auto' }} />}
             </TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuItem} onPress={() => { setIsTemplatesSheetOpen(true); setIsMenuOpen(false); }}>
-              <Ionicons name="copy-outline" size={18} color="#FFFFFF" style={{ marginRight: 12 }} />
+              <Ionicons name="copy-outline" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
               <Text style={styles.menuItemText}>Task Templates</Text>
             </TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuItem} onPress={() => { setIsBulkEdit(true); setIsMenuOpen(false); }}>
-              <Ionicons name="checkbox-outline" size={18} color="#FFFFFF" style={{ marginRight: 12 }} />
+              <Ionicons name="checkbox-outline" size={18} color={colors.textPrimary} style={{ marginRight: 12 }} />
               <Text style={styles.menuItemText}>Select Multiple</Text>
             </TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuItem} onPress={() => { clearCompletedTasks(tasks); setIsMenuOpen(false); }}>
-              <Ionicons name="trash-bin-outline" size={18} color="#FF6961" style={{ marginRight: 12 }} />
-              <Text style={[styles.menuItemText, { color: '#FF6961' }]}>Clear Completed</Text>
+              <Ionicons name="trash-bin-outline" size={18} color={colors.error} style={{ marginRight: 12 }} />
+              <Text style={[styles.menuItemText, { color: colors.error }]}>Clear Completed</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -546,14 +547,14 @@ export default function TasksScreen() {
       {/* BULK ACTION BAR */}
       {isBulkEdit && (
         <Animated.View entering={FadeInUp} style={[styles.bulkActionBar, { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 20, paddingVertical: 16, paddingHorizontal: 24 }]}>
-          <AnimatedPressable style={[styles.bulkActionCircle, { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: 'rgba(94,218,158,0.15)', borderColor: 'rgba(94,218,158,0.4)' }]} disabled={selectedTaskIds.size === 0} onPress={() => { if(selectedTaskIds.size > 0) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); bulkComplete(selectedTaskIds); setIsBulkEdit(false); setSelectedTaskIds(new Set()); } }}>
-            <Ionicons name="checkmark" size={22} color="#5eda9e" />
+          <AnimatedPressable style={[styles.bulkActionCircle, { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: isDark ? 'rgba(94,218,158,0.15)' : 'rgba(5,150,105,0.12)', borderColor: isDark ? 'rgba(94,218,158,0.4)' : 'rgba(5,150,105,0.3)' }]} disabled={selectedTaskIds.size === 0} onPress={() => { if(selectedTaskIds.size > 0) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); bulkComplete(selectedTaskIds); setIsBulkEdit(false); setSelectedTaskIds(new Set()); } }}>
+            <Ionicons name="checkmark" size={22} color={colors.accentGreen} />
           </AnimatedPressable>
-          <AnimatedPressable style={[styles.bulkActionCircle, { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: 'rgba(165,153,255,0.15)', borderColor: 'rgba(165,153,255,0.4)' }]} disabled={selectedTaskIds.size === 0} onPress={() => { if(selectedTaskIds.size > 0) setBulkRescheduleModal(true); }}>
-            <Ionicons name="calendar-outline" size={22} color="#A599FF" />
+          <AnimatedPressable style={[styles.bulkActionCircle, { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)', borderColor: isDark ? 'rgba(165,153,255,0.4)' : 'rgba(108,92,231,0.3)' }]} disabled={selectedTaskIds.size === 0} onPress={() => { if(selectedTaskIds.size > 0) setBulkRescheduleModal(true); }}>
+            <Ionicons name="calendar-outline" size={22} color={colors.accentPrimary} />
           </AnimatedPressable>
-          <AnimatedPressable style={[styles.bulkActionCircle, { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: 'rgba(255,105,97,0.15)', borderColor: 'rgba(255,105,97,0.4)' }]} disabled={selectedTaskIds.size === 0} onPress={() => { if(selectedTaskIds.size > 0) { bulkDelete(selectedTaskIds); setIsBulkEdit(false); setSelectedTaskIds(new Set()); } }}>
-            <Ionicons name="trash-outline" size={22} color="#ff6961" />
+          <AnimatedPressable style={[styles.bulkActionCircle, { opacity: selectedTaskIds.size === 0 ? 0.35 : 1, backgroundColor: isDark ? 'rgba(255,105,97,0.15)' : 'rgba(220,38,38,0.12)', borderColor: isDark ? 'rgba(255,105,97,0.4)' : 'rgba(220,38,38,0.3)' }]} disabled={selectedTaskIds.size === 0} onPress={() => { if(selectedTaskIds.size > 0) { bulkDelete(selectedTaskIds); setIsBulkEdit(false); setSelectedTaskIds(new Set()); } }}>
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
           </AnimatedPressable>
         </Animated.View>
       )}

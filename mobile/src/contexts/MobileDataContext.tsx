@@ -429,7 +429,7 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   loading: false,
   pendingTaskCount: 0,
   todayHabits: [],
-  pinnedModules: [],
+  pinnedModules: ["Tasks", "Gym", "Calendar", "Attendance"],
   setPinnedModules: () => {},
   googleAccessToken: null,
   optimisticAddTask: () => {},

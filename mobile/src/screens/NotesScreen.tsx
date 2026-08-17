@@ -32,6 +32,7 @@ import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
 
 const UploadProgressRing = ({ progress }: { progress: number }) => {
+  const { colors, isDark } = useTheme();
   const radius = 12;
   const stroke = 3;
   const normalizedRadius = radius - stroke * 2;
@@ -41,9 +42,9 @@ const UploadProgressRing = ({ progress }: { progress: number }) => {
   return (
     <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }}>
       <Svg height="32" width="32" viewBox="0 0 32 32">
-        <Circle stroke="#2c2c2e" fill="transparent" strokeWidth={stroke} r={normalizedRadius} cx="16" cy="16" />
+        <Circle stroke={isDark ? "#2c2c2e" : "#E2E1EA"} fill="transparent" strokeWidth={stroke} r={normalizedRadius} cx="16" cy="16" />
         <Circle
-          stroke="#a599ff"
+          stroke={colors.accentPrimary}
           fill="transparent"
           strokeWidth={stroke}
           strokeDasharray={circumference + ' ' + circumference}
@@ -59,8 +60,8 @@ const UploadProgressRing = ({ progress }: { progress: number }) => {
 
 // ─── Document Viewer Modal ──────────────────────────────────────────────────
 function DocumentViewer({ node, onClose }: { node: StorageNode | null, onClose: () => void }) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   if (!node) return null;
   const isImage = node.fileType === 'image';
   const url = node.url || '';
@@ -81,13 +82,13 @@ function DocumentViewer({ node, onClose }: { node: StorageNode | null, onClose: 
             <Text style={styles.detailHeaderTitle} numberOfLines={1}>{node.name}</Text>
             <View style={{ width: 24 }} />
           </View>
-          <View style={{ flex: 1, backgroundColor: '#000' }}>
+          <View style={{ flex: 1, backgroundColor: isDark ? '#000000' : colors.background }}>
             {isImage ? (
               <Image source={{ uri: url }} style={{ flex: 1, resizeMode: 'contain' }} />
             ) : (
               <WebView
                 source={{ uri: viewerUrl }}
-                style={{ flex: 1 }}
+                style={{ flex: 1, backgroundColor: isDark ? '#000000' : '#FFFFFF' }}
                 startInLoadingState
                 renderLoading={() => (
                   <View style={styles.webviewLoader}>
@@ -110,11 +111,11 @@ function NoteEditorModal({ note, userId, parentId, onClose }: {
   parentId: string | null;
   onClose: () => void;
 }) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const mdStyles = useMemo(() => makeMarkdownStyles(colors, isDark), [colors, isDark]);
   const [title, setTitle] = useState(note?.name || '');
   const [content, setContent] = useState(note?.content || '');
-  const [tagsInput, setTagsInput] = useState(note?.tags ? note.tags.join(', ') : '');
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
   const [showAi, setShowAi] = useState(false);
   const [aiInput, setAiInput] = useState('');
@@ -131,11 +132,9 @@ function NoteEditorModal({ note, userId, parentId, onClose }: {
     if (note) {
       setTitle(note.name);
       setContent(note.content || '');
-      setTagsInput(note.tags ? note.tags.join(', ') : '');
     } else {
       setTitle('');
       setContent('');
-      setTagsInput('');
     }
     setViewMode('edit');
     setShowAi(false);
@@ -152,12 +151,9 @@ function NoteEditorModal({ note, userId, parentId, onClose }: {
     
     setTimeout(() => {
       if (isNew) {
-        const parsedTags = tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
-
         addDoc(collection(db, 'storage_nodes'), {
-
           userId,
-          tags: parsedTags,
+          tags: [],
           type: 'note',
           name: title.trim(),
           content: content.trim(),
@@ -166,12 +162,9 @@ function NoteEditorModal({ note, userId, parentId, onClose }: {
           updatedAt: Date.now(),
         }).catch(handleSyncError);
       } else {
-        const parsedTags = tagsInput.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
-
         updateDoc(doc(db, 'storage_nodes', note.id!), {
-
           name: title.trim(),
-          tags: parsedTags,
+          tags: [],
           content: content.trim(),
           updatedAt: Date.now(),
         }).catch(handleSyncError);
@@ -382,7 +375,7 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
             </TouchableOpacity>
           </View>
           <TouchableOpacity onPress={handleSave} disabled={saving} style={styles.editorBtn}>
-            {saving ? <ActivityIndicator size="small" color="#C490FF" /> : <Ionicons name="checkmark" size={24} color="#C490FF" />}
+            {saving ? <ActivityIndicator size="small" color={colors.accentPrimary} /> : <Ionicons name="checkmark" size={24} color={colors.accentPrimary} />}
           </TouchableOpacity>
         </View>
 
@@ -397,12 +390,12 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
           />
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity onPress={handleExportPdf} style={styles.aiToggleBtn}>
-              <Ionicons name="download-outline" size={16} color="#C490FF" />
+              <Ionicons name="download-outline" size={16} color={colors.accentPrimary} />
               <Text style={styles.aiToggleText}>PDF</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setShowAi(!showAi)} style={[styles.aiToggleBtn, showAi && styles.aiToggleBtnActive]}>
               <Image source={require('../../assets/images/sara-running.png')} style={{ width: 16, height: 16 }} resizeMode="contain" />
-              <Text style={[styles.aiToggleText, showAi && { color: '#fff' }]}>AI</Text>
+              <Text style={[styles.aiToggleText, showAi && { color: isDark ? '#000000' : '#FFFFFF' }]}>AI</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -412,7 +405,7 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
           <View style={{ flex: 1 }}>
             {viewMode === 'edit' ? (
               <>
-                <View style={{ flexDirection: 'row', backgroundColor: colors.surface, paddingHorizontal: SPACE.md, paddingVertical: 8, borderBottomWidth: 1, borderColor: colors.border, gap: 16 }}>
+                <View style={{ flexDirection: 'row', backgroundColor: isDark ? '#141416' : '#F8F7FC', paddingHorizontal: SPACE.md, paddingVertical: 8, borderBottomWidth: 1, borderColor: colors.border, gap: 16 }}>
                   <TouchableOpacity onPress={() => insertMarkdown('**', '**')}><Text style={{ color: colors.textPrimary, fontWeight: 'bold', fontSize: 16 }}>B</Text></TouchableOpacity>
                   <TouchableOpacity onPress={() => insertMarkdown('*', '*')}><Text style={{ color: colors.textPrimary, fontStyle: 'italic', fontSize: 16 }}>I</Text></TouchableOpacity>
                   <TouchableOpacity onPress={() => insertMarkdown('### ')}><Ionicons name="text-outline" size={18} color={colors.textPrimary} /></TouchableOpacity>
@@ -432,7 +425,7 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
               </>
             ) : (
               <ScrollView style={styles.markdownPreview}>
-                <Markdown style={makeMarkdownStyles(colors)}>{content || '*Nothing to preview.*'}</Markdown>
+                <Markdown style={mdStyles}>{content || '*Nothing to preview.*'}</Markdown>
               </ScrollView>
             )}
           </View>
@@ -463,22 +456,22 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
                   </View>
                 </View>
                 {chatHistory.map((msg, idx) => (
-                  <View key={idx} style={[{ padding: 12, borderRadius: 12, marginBottom: 8, maxWidth: '90%' }, msg.role === 'user' ? { alignSelf: 'flex-end', backgroundColor: '#333' } : { alignSelf: 'flex-start', backgroundColor: 'rgba(196,144,255,0.1)' }]}>
-                    <Text style={{ color: colors.textPrimary, fontSize: 13, lineHeight: 18 }}>{msg.text}</Text>
+                  <View key={idx} style={[{ padding: 12, borderRadius: 12, marginBottom: 8, maxWidth: '90%' }, msg.role === 'user' ? { alignSelf: 'flex-end', backgroundColor: isDark ? '#27272A' : colors.accentPrimary } : { alignSelf: 'flex-start', backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.08)' }]}>
+                    <Text style={{ color: msg.role === 'user' ? '#ffffff' : colors.textPrimary, fontSize: 13, lineHeight: 18 }}>{msg.text}</Text>
                     {msg.role === 'model' && (
                       <TouchableOpacity
-                        style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: 'rgba(196,144,255,0.2)', borderRadius: 6 }}
+                        style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 8, backgroundColor: isDark ? 'rgba(165,153,255,0.20)' : 'rgba(108,92,231,0.15)', borderRadius: 6 }}
                         onPress={() => setContent(prev => (prev ? prev + '\n\n' : '') + msg.text)}
                       >
-                        <Ionicons name="arrow-down-circle-outline" size={14} color="#C490FF" />
-                        <Text style={{ fontSize: 11, color: '#C490FF', fontWeight: 'bold' }}>Insert to Note</Text>
+                        <Ionicons name="arrow-down-circle-outline" size={14} color={colors.accentPrimary} />
+                        <Text style={{ fontSize: 11, color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold }}>Insert to Note</Text>
                       </TouchableOpacity>
                     )}
                   </View>
                 ))}
                 {aiLoading && (
-                  <View style={{ padding: 12, borderRadius: 12, marginBottom: 8, maxWidth: '90%', alignSelf: 'flex-start', backgroundColor: 'rgba(196,144,255,0.1)' }}>
-                    <ActivityIndicator size="small" color="#C490FF" />
+                  <View style={{ padding: 12, borderRadius: 12, marginBottom: 8, maxWidth: '90%', alignSelf: 'flex-start', backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.08)' }}>
+                    <ActivityIndicator size="small" color={colors.accentPrimary} />
                   </View>
                 )}
               </ScrollView>
@@ -492,7 +485,7 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
                   onSubmitEditing={() => handleAiSubmit()}
                 />
                 <TouchableOpacity style={styles.aiSendBtn} onPress={() => handleAiSubmit()}>
-                  <Ionicons name="send" size={16} color="#fff" />
+                  <Ionicons name="send" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -505,8 +498,8 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
 
 // ─── Main Screen ────────────────────────────────────────────────────────────
 export default function NotesScreen() {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { storageNodes } = useCreativeData();
   const { user } = useCoreData();
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -531,26 +524,10 @@ export default function NotesScreen() {
 
   // New states for the requested features
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [filterMode, setFilterMode] = useState<'All' | 'Documents' | 'Images' | 'Notes'>('All');
   const [sortMode, setSortMode] = useState<'newest' | 'oldest' | 'az'>('newest');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // Storage Stats
-  const allTags = useMemo(() => {
-    const tags = new Set<string>();
-    storageNodes.forEach(n => {
-      if (n.tags && Array.isArray(n.tags)) {
-        n.tags.forEach(t => {
-          if (t && typeof t === 'string' && t.trim().length > 0 && t.length <= 20 && !t.includes('|')) {
-            tags.add(t.trim());
-          }
-        });
-      }
-    });
-    return Array.from(tags).sort();
-  }, [storageNodes]);
 
   const storageStats = useMemo(() => {
     const usedBytes = storageNodes.reduce((acc, node) => acc + (node.size || 0), 0);
@@ -581,10 +558,6 @@ export default function NotesScreen() {
       const q = searchQuery.toLowerCase();
       // "Search all files..." implies global search within the storage
       items = items.filter(n => n.name.toLowerCase().includes(q) || (n.content && n.content.toLowerCase().includes(q)));
-    }
-
-    if (selectedTag) {
-      items = items.filter(n => n.tags && n.tags.includes(selectedTag));
     }
 
     if (filterMode === 'Documents') {
@@ -741,29 +714,29 @@ export default function NotesScreen() {
   };
 
   const getIcon = (type: string, ftype?: string) => {
-    let bgColor = 'rgba(142, 142, 147, 0.15)';
-    let color = '#8E8E93';
+    let bgColor = isDark ? 'rgba(142, 142, 147, 0.15)' : 'rgba(142, 142, 147, 0.10)';
+    let color = isDark ? '#8E8E93' : '#636366';
     let iconName: any = 'document';
 
     if (type === 'folder') {
-      bgColor = 'rgba(10, 132, 255, 0.15)';
-      color = '#0A84FF';
+      bgColor = isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(2, 132, 199, 0.10)';
+      color = isDark ? '#0A84FF' : '#0284C7';
       iconName = 'folder';
     } else if (type === 'note') {
-      bgColor = 'rgba(165, 153, 255, 0.15)'; // matching #a599ff
-      color = '#a599ff';
+      bgColor = isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)';
+      color = isDark ? '#a599ff' : '#6C5CE7';
       iconName = 'document-text';
     } else if (ftype === 'pdf') {
-      bgColor = 'rgba(255, 105, 97, 0.15)';
-      color = '#ff6961';
+      bgColor = isDark ? 'rgba(255, 105, 97, 0.15)' : 'rgba(220, 38, 38, 0.10)';
+      color = isDark ? '#ff6961' : '#DC2626';
       iconName = 'document';
     } else if (ftype === 'image') {
-      bgColor = 'rgba(142, 142, 147, 0.15)';
-      color = '#8E8E93';
+      bgColor = isDark ? 'rgba(94, 218, 158, 0.15)' : 'rgba(5, 150, 105, 0.10)';
+      color = isDark ? '#5EDA9E' : '#059669';
       iconName = 'image';
     } else if (ftype === 'docx') {
-      bgColor = 'rgba(10, 132, 255, 0.15)';
-      color = '#0A84FF';
+      bgColor = isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(2, 132, 199, 0.10)';
+      color = isDark ? '#0A84FF' : '#0284C7';
       iconName = 'document';
     }
 
@@ -778,13 +751,15 @@ export default function NotesScreen() {
     <SafeAreaView style={styles.root}>
       {/* Header */}
       <View style={styles.vaultHeader}>
-        <TouchableOpacity style={styles.vaultHeaderBtn} onPress={() => { if (currentFolderId) setCurrentFolderId(null); }}>
-          <Ionicons name="chevron-back" size={24} color="#a599ff" />
-        </TouchableOpacity>
+        {currentFolderId ? (
+          <TouchableOpacity style={styles.vaultHeaderBtn} onPress={() => setCurrentFolderId(null)}>
+            <Ionicons name="chevron-back" size={24} color={colors.accentPrimary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 32 }} />
+        )}
         <Text style={styles.vaultHeaderTitle}>{currentFolderId ? breadcrumbs[breadcrumbs.length - 1]?.name || 'Vault' : 'Vault'}</Text>
-        <TouchableOpacity style={styles.vaultHeaderMenuBtn} onPress={() => { /* overflow menu */ }}>
-          <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ width: 32 }} />
       </View>
 
       {/* Storage Usage Bar */}
@@ -803,36 +778,18 @@ export default function NotesScreen() {
       {/* Toolbar / Actions */}
       <View style={{ paddingHorizontal: SPACE.md, paddingBottom: SPACE.md, borderBottomWidth: 1, borderColor: colors.border }}>
         {/* Search */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e', borderRadius: RADIUS.full, paddingHorizontal: SPACE.md, marginBottom: SPACE.md }}>
-          <Ionicons name="search" size={16} color="#636366" />
+        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1c1c1e' : '#FFFFFF', borderRadius: RADIUS.full, paddingHorizontal: SPACE.md, marginBottom: SPACE.md, borderWidth: 1, borderColor: colors.border }}>
+          <Ionicons name="search" size={16} color={colors.textSecondary} />
           <TextInput
             style={{ flex: 1, padding: SPACE.sm, color: colors.textPrimary, fontFamily: FONT_FAMILY.body }}
             placeholder="Search files"
-            placeholderTextColor="#636366"
+            placeholderTextColor={colors.textMuted}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
 
-        {/* Tag Filter Pills */}
-        {allTags.length > 0 && (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACE.sm, marginBottom: SPACE.md }}>
-            {allTags.map((t) => {
-              const isActive = selectedTag === t;
-              return (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.filterPill, isActive && styles.filterPillActive]}
-                  onPress={() => setSelectedTag(isActive ? null : t)}
-                >
-                  <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>#{t}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        )}
-
-        {/* Filter Pills */}
+        {/* Category Filter Pills */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACE.sm }}>
           {['All', 'Documents', 'Images', 'Notes'].map((f) => {
             const isActive = filterMode === f;
@@ -932,22 +889,22 @@ export default function NotesScreen() {
               <View style={styles.actionSheetHandle} />
 
               <TouchableOpacity style={styles.actionSheetItem} onPress={handleFileUpload}>
-                <View style={[styles.actionSheetIcon, { backgroundColor: 'rgba(165, 153, 255, 0.15)' }]}><Ionicons name="cloud-upload" size={20} color="#a599ff" /></View>
+                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name="cloud-upload" size={20} color={colors.accentPrimary} /></View>
                 <Text style={styles.actionSheetText}>Upload file</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setShowFabMenu(false); /* trigger camera */ }}>
-                <View style={[styles.actionSheetIcon, { backgroundColor: 'rgba(165, 153, 255, 0.15)' }]}><Ionicons name="scan" size={20} color="#a599ff" /></View>
+                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name="scan" size={20} color={colors.accentPrimary} /></View>
                 <Text style={styles.actionSheetText}>Scan document</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setShowFabMenu(false); setEditorNote('new'); }}>
-                <View style={[styles.actionSheetIcon, { backgroundColor: 'rgba(165, 153, 255, 0.15)' }]}><Ionicons name="document-text" size={20} color="#a599ff" /></View>
+                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name="document-text" size={20} color={colors.accentPrimary} /></View>
                 <Text style={styles.actionSheetText}>New note</Text>
               </TouchableOpacity>
 
               <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setShowFabMenu(false); setShowNewFolder(true); }}>
-                <View style={[styles.actionSheetIcon, { backgroundColor: 'rgba(165, 153, 255, 0.15)' }]}><Ionicons name="folder-outline" size={20} color="#a599ff" /></View>
+                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(2, 132, 199, 0.10)' }]}><Ionicons name="folder-outline" size={20} color={isDark ? '#0A84FF' : '#0284C7'} /></View>
                 <Text style={styles.actionSheetText}>New folder</Text>
               </TouchableOpacity>
             </View>
@@ -956,7 +913,7 @@ export default function NotesScreen() {
       )}
 
       <TouchableOpacity style={styles.fab} onPress={() => setShowFabMenu(true)}>
-        <Ionicons name="add" size={24} color="#000" />
+        <Ionicons name="add" size={24} color={isDark ? '#000000' : '#FFFFFF'} />
       </TouchableOpacity>
 
       {/* New Folder Modal */}
@@ -992,23 +949,23 @@ export default function NotesScreen() {
             <View style={styles.actionSheetHandle} />
 
             <TouchableOpacity style={styles.actionSheetItem} onPress={() => { handlePin(menuItem!.id!, !!menuItem!.pinned); setMenuItem(null); }}>
-              <View style={[styles.actionSheetIcon, { backgroundColor: 'rgba(165, 153, 255, 0.15)' }]}><Ionicons name={menuItem?.pinned ? "pin-outline" : "pin"} size={20} color="#a599ff" /></View>
+              <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name={menuItem?.pinned ? "pin-outline" : "pin"} size={20} color={colors.accentPrimary} /></View>
               <Text style={styles.actionSheetText}>{menuItem?.pinned ? "Unpin" : "Pin"}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setRenameValue(menuItem!.name); setRenameNode(menuItem); setMenuItem(null); }}>
-              <View style={[styles.actionSheetIcon, { backgroundColor: 'rgba(165, 153, 255, 0.15)' }]}><Ionicons name="pencil" size={20} color="#a599ff" /></View>
+              <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name="pencil" size={20} color={colors.accentPrimary} /></View>
               <Text style={styles.actionSheetText}>Rename</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setMoveNode(menuItem); setMenuItem(null); }}>
-              <View style={[styles.actionSheetIcon, { backgroundColor: 'rgba(165, 153, 255, 0.15)' }]}><Ionicons name="move" size={20} color="#a599ff" /></View>
+              <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(2, 132, 199, 0.10)' }]}><Ionicons name="move" size={20} color={isDark ? '#0A84FF' : '#0284C7'} /></View>
               <Text style={styles.actionSheetText}>Move To...</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.actionSheetItem} onPress={() => { handleDelete(menuItem!.id!, menuItem!.name); setMenuItem(null); }}>
-              <View style={[styles.actionSheetIcon, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}><Ionicons name="trash" size={20} color="#ef4444" /></View>
-              <Text style={[styles.actionSheetText, { color: '#ef4444' }]}>Delete</Text>
+              <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(220, 38, 38, 0.10)' }]}><Ionicons name="trash" size={20} color={isDark ? '#ef4444' : '#DC2626'} /></View>
+              <Text style={[styles.actionSheetText, { color: isDark ? '#ef4444' : '#DC2626' }]}>Delete</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1051,7 +1008,7 @@ export default function NotesScreen() {
               </TouchableOpacity>
               {storageNodes.filter(n => n.type === 'folder' && n.id !== moveNode?.id).map(f => (
                 <TouchableOpacity key={f.id} style={styles.moveRow} onPress={() => executeMove(f.id!)}>
-                  <Ionicons name="folder" size={20} color="#0A84FF" />
+                  <Ionicons name="folder" size={20} color={isDark ? '#0A84FF' : '#0284C7'} />
                   <Text style={styles.moveRowText}>{f.name}</Text>
                 </TouchableOpacity>
               ))}
@@ -1078,107 +1035,106 @@ export default function NotesScreen() {
 }
 
 // ─── Styles ────────────────────────────────────────────────────────────────
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1, backgroundColor: colors.background },
-      vaultHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, paddingBottom: SPACE.md },
-      vaultHeaderBtn: { padding: SPACE.sm },
-      vaultHeaderTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
-      vaultHeaderMenuBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
+  vaultHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.lg, paddingTop: SPACE.sm, paddingBottom: SPACE.md, backgroundColor: colors.background },
+  vaultHeaderBtn: { padding: SPACE.sm },
+  vaultHeaderTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
 
-      storageCard: { backgroundColor: colors.surface, marginHorizontal: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.lg, marginBottom: SPACE.md, borderWidth: 1, borderColor: colors.border },
-      storageCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 },
-      storageCardText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
-      storageCardSubtext: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textTertiary },
-      storageTrack: { height: 4, backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' },
-      storageFill: { height: '100%', backgroundColor: colors.accentPrimary, borderRadius: 2 },
+  storageCard: { backgroundColor: colors.surface, marginHorizontal: SPACE.md, padding: SPACE.md, borderRadius: RADIUS.lg, marginBottom: SPACE.md, borderWidth: 1, borderColor: colors.border },
+  storageCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8 },
+  storageCardText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
+  storageCardSubtext: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textSecondary },
+  storageTrack: { height: 4, backgroundColor: isDark ? colors.border : '#E2E1EA', borderRadius: 2, overflow: 'hidden' },
+  storageFill: { height: '100%', backgroundColor: colors.accentPrimary, borderRadius: 2 },
 
-      filterPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: colors.surface2 || colors.surface, borderWidth: 1, borderColor: colors.border },
-      filterPillActive: { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
-      filterPillText: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted },
-      filterPillTextActive: { color: '#ffffff', fontFamily: FONT_FAMILY.bold },
+  filterPill: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: isDark ? (colors.surface2 || '#1C1C1E') : '#FFFFFF', borderWidth: 1, borderColor: colors.border },
+  filterPillActive: { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+  filterPillText: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textSecondary },
+  filterPillTextActive: { color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold },
 
-      list: { padding: SPACE.sm, paddingBottom: 100 },
-      listItem: {
-        flexDirection: 'row', alignItems: 'center',
-        marginVertical: SPACE.xs, marginHorizontal: SPACE.xs, backgroundColor: colors.surface,
-        borderRadius: RADIUS.lg, padding: SPACE.md,
-        borderWidth: 1, borderColor: colors.border,
-        ...SHADOW.sm,
-      },
-      itemTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary, marginLeft: SPACE.md, flex: 1 },
+  list: { padding: SPACE.sm, paddingBottom: 100 },
+  listItem: {
+    flexDirection: 'row', alignItems: 'center',
+    marginVertical: SPACE.xs, marginHorizontal: SPACE.xs, backgroundColor: colors.surface,
+    borderRadius: RADIUS.lg, padding: SPACE.md,
+    borderWidth: 1, borderColor: colors.border,
+    ...SHADOW.sm,
+  },
+  itemTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary, marginLeft: SPACE.md, flex: 1 },
 
-      emptyState: { alignItems: 'center', marginTop: 100, gap: SPACE.md },
-      emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted },
+  emptyState: { alignItems: 'center', marginTop: 100, gap: SPACE.md },
+  emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted },
 
-      actionSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-      actionSheet: { backgroundColor: colors.surfaceRaised || colors.surface, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg, paddingBottom: SPACE.xl, paddingHorizontal: SPACE.md, borderWidth: 1, borderColor: colors.border },
-      actionSheetHandle: { width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginVertical: SPACE.md },
-      actionSheetItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.md, gap: SPACE.md },
-      actionSheetIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-      actionSheetText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
+  actionSheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  actionSheet: { backgroundColor: colors.surface, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg, paddingBottom: SPACE.xl, paddingHorizontal: SPACE.md, borderWidth: 1, borderColor: colors.border },
+  actionSheetHandle: { width: 40, height: 4, backgroundColor: isDark ? colors.border : '#D1D1D6', borderRadius: 2, alignSelf: 'center', marginVertical: SPACE.md },
+  actionSheetItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.md, gap: SPACE.md },
+  actionSheetIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  actionSheetText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
 
-      fab: {
-        position: 'absolute', bottom: 100, right: SPACE.xl,
-        width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accentPrimary,
-        alignItems: 'center', justifyContent: 'center', zIndex: 20,
-        ...SHADOW.md
-      },
+  fab: {
+    position: 'absolute', bottom: 100, right: SPACE.xl,
+    width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accentPrimary,
+    alignItems: 'center', justifyContent: 'center', zIndex: 20,
+    ...SHADOW.md
+  },
 
-      modalBg: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: SPACE.xl },
-      modalSheet: { backgroundColor: colors.surface, borderRadius: RADIUS.lg, padding: SPACE.xl, gap: SPACE.md, borderWidth: 1, borderColor: colors.border },
-      modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
-      input: { backgroundColor: colors.surface2, borderRadius: RADIUS.md, padding: SPACE.md, fontFamily: FONT_FAMILY.body, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border },
-      btn: { flex: 1, padding: SPACE.md, borderRadius: RADIUS.md, alignItems: 'center' },
-      btnCancel: { backgroundColor: colors.surface2 },
-      btnPrimary: { backgroundColor: '#0A84FF' },
-      btnTextCancel: { fontFamily: FONT_FAMILY.bold, color: colors.textPrimary },
-      btnTextPrimary: { fontFamily: FONT_FAMILY.bold, color: '#fff' },
+  modalBg: { flex: 1, justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.7)', padding: SPACE.xl },
+  modalSheet: { backgroundColor: colors.surface, borderRadius: RADIUS.lg, padding: SPACE.xl, gap: SPACE.md, borderWidth: 1, borderColor: colors.border },
+  modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
+  input: { backgroundColor: isDark ? '#000000' : '#F5F4FA', borderRadius: RADIUS.md, padding: SPACE.md, fontFamily: FONT_FAMILY.body, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border },
+  btn: { flex: 1, padding: SPACE.md, borderRadius: RADIUS.md, alignItems: 'center' },
+  btnCancel: { backgroundColor: isDark ? '#08080A' : '#ECEBF2' },
+  btnPrimary: { backgroundColor: colors.accentPrimary },
+  btnTextCancel: { fontFamily: FONT_FAMILY.bold, color: colors.textPrimary },
+  btnTextPrimary: { fontFamily: FONT_FAMILY.bold, color: isDark ? '#000000' : '#FFFFFF' },
 
-      menuRow: { flexDirection: 'row', alignItems: 'center', padding: SPACE.md, gap: SPACE.md, borderBottomWidth: 1, borderBottomColor: colors.border },
-      menuRowText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary },
-      moveRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.md, gap: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
-      moveRowText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: colors.textPrimary },
+  menuRow: { flexDirection: 'row', alignItems: 'center', padding: SPACE.md, gap: SPACE.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  menuRowText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary },
+  moveRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.md, gap: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
+  moveRowText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: colors.textPrimary },
 
-      // Editor
-      editorRoot: { flex: 1, backgroundColor: colors.background },
-      editorHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderColor: colors.border },
-      editorBtn: { padding: SPACE.sm },
-      editorTabs: { flexDirection: 'row', backgroundColor: colors.surface2, borderRadius: RADIUS.md, padding: 4 },
-      tabBtn: { paddingHorizontal: SPACE.lg, paddingVertical: 6, borderRadius: RADIUS.sm },
-      tabBtnActive: { backgroundColor: colors.surface },
-      tabText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.textMuted },
-      tabTextActive: { color: colors.textPrimary },
-      editorToolbar: { flexDirection: 'row', padding: SPACE.md, borderBottomWidth: 1, borderColor: colors.border, alignItems: 'center', gap: SPACE.md },
-      editorTitleInput: { flex: 1, fontFamily: FONT_FAMILY.title, fontSize: 24, color: colors.textPrimary },
-      aiToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, borderWidth: 1, borderColor: colors.accentPrimary },
-      aiToggleBtnActive: { backgroundColor: colors.accentPrimary },
-      aiToggleText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.accentPrimary },
-      editorTextArea: { flex: 1, padding: SPACE.xl, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: colors.textPrimary },
-      markdownPreview: { flex: 1, padding: SPACE.xl },
+  // Editor
+  editorRoot: { flex: 1, backgroundColor: colors.background },
+  editorHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: SPACE.md, paddingVertical: SPACE.sm, borderBottomWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  editorBtn: { padding: SPACE.sm },
+  editorTabs: { flexDirection: 'row', backgroundColor: isDark ? '#08080A' : '#EAE9F2', borderRadius: RADIUS.md, padding: 4 },
+  tabBtn: { paddingHorizontal: SPACE.lg, paddingVertical: 6, borderRadius: RADIUS.sm },
+  tabBtnActive: { backgroundColor: isDark ? '#1A1A1E' : '#FFFFFF' },
+  tabText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.textSecondary },
+  tabTextActive: { color: colors.textPrimary },
+  editorToolbar: { flexDirection: 'row', padding: SPACE.md, borderBottomWidth: 1, borderColor: colors.border, alignItems: 'center', gap: SPACE.md, backgroundColor: colors.surface },
+  editorTitleInput: { flex: 1, fontFamily: FONT_FAMILY.title, fontSize: 24, color: colors.textPrimary },
+  aiToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)', backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)' },
+  aiToggleBtnActive: { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+  aiToggleText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.accentPrimary },
+  editorTextArea: { flex: 1, padding: SPACE.xl, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base, color: colors.textPrimary, backgroundColor: isDark ? '#000000' : '#FFFFFF' },
+  markdownPreview: { flex: 1, padding: SPACE.xl, backgroundColor: isDark ? '#000000' : '#FFFFFF' },
 
-      // AI Panel
-      aiPanel: { width: 300, borderLeftWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderTopLeftRadius: RADIUS.lg },
-      aiPanelHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, padding: SPACE.md, borderBottomWidth: 1, borderColor: colors.border },
-      aiPanelTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary },
-      aiChatArea: { flex: 1 },
-      aiMsgSystem: { backgroundColor: colors.surface2, padding: SPACE.md, borderRadius: RADIUS.md, marginBottom: SPACE.sm },
-      aiMsgTextSystem: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted },
-      aiQuickBtn: { backgroundColor: colors.accentDim, paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: colors.accentPrimary },
-      aiQuickBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.accentPrimary },
-      aiInputArea: { flexDirection: 'row', padding: SPACE.md, borderTopWidth: 1, borderColor: colors.border, gap: SPACE.sm },
-      aiInput: { flex: 1, backgroundColor: colors.background, borderRadius: RADIUS.full, paddingHorizontal: SPACE.md, paddingVertical: 8, color: colors.textPrimary, fontFamily: FONT_FAMILY.body },
-      aiSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accentPrimary, alignItems: 'center', justifyContent: 'center' },
+  // AI Panel
+  aiPanel: { width: 300, borderLeftWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderTopLeftRadius: RADIUS.lg },
+  aiPanelHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACE.sm, padding: SPACE.md, borderBottomWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  aiPanelTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary },
+  aiChatArea: { flex: 1 },
+  aiMsgSystem: { backgroundColor: isDark ? '#08080A' : '#F8F7FC', padding: SPACE.md, borderRadius: RADIUS.md, marginBottom: SPACE.sm, borderWidth: 1, borderColor: colors.border },
+  aiMsgTextSystem: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textSecondary },
+  aiQuickBtn: { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)' },
+  aiQuickBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.accentPrimary },
+  aiInputArea: { flexDirection: 'row', padding: SPACE.md, borderTopWidth: 1, borderColor: colors.border, gap: SPACE.sm, backgroundColor: colors.surface },
+  aiInput: { flex: 1, backgroundColor: isDark ? '#000000' : '#F5F4FA', borderRadius: RADIUS.full, paddingHorizontal: SPACE.md, paddingVertical: 8, color: colors.textPrimary, fontFamily: FONT_FAMILY.body, borderWidth: 1, borderColor: colors.border },
+  aiSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accentPrimary, alignItems: 'center', justifyContent: 'center' },
 
-      // Viewer
-      viewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
-      detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACE.md, backgroundColor: colors.background },
-      detailBack: { padding: SPACE.sm },
-      detailHeaderTitle: { flex: 1, textAlign: 'center', fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary },
-      webviewLoader: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }
-    });
+  // Viewer
+  viewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)' },
+  detailHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACE.md, backgroundColor: isDark ? '#000000' : colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
+  detailBack: { padding: SPACE.sm },
+  detailHeaderTitle: { flex: 1, textAlign: 'center', fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary },
+  webviewLoader: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }
+});
 
 
-const makeMarkdownStyles = (colors: any) => ({
+const makeMarkdownStyles = (colors: any, isDark: boolean = true) => ({
   // Core text
   body:             { color: colors.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: 16, lineHeight: 26, backgroundColor: 'transparent' },
   paragraph:        { color: colors.textPrimary, marginBottom: 12, backgroundColor: 'transparent' },
@@ -1186,16 +1142,16 @@ const makeMarkdownStyles = (colors: any) => ({
   // Headings
   heading1:         { color: colors.textPrimary, fontFamily: FONT_FAMILY.title, fontSize: 24, marginTop: 24, marginBottom: 10, backgroundColor: 'transparent' },
   heading2:         { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 20, marginTop: 18, marginBottom: 8, backgroundColor: 'transparent' },
-  heading3:         { color: colors.textSecondary, fontFamily: FONT_FAMILY.bold, fontSize: 17, marginTop: 14, marginBottom: 6, backgroundColor: 'transparent' },
+  heading3:         { color: isDark ? '#E5E5EA' : '#3A3A3C', fontFamily: FONT_FAMILY.bold, fontSize: 17, marginTop: 14, marginBottom: 6, backgroundColor: 'transparent' },
 
   // Code
-  code_inline:      { backgroundColor: colors.accentDim, fontFamily: 'monospace', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, color: colors.accentAmber, fontSize: 14 },
-  code_block:       { backgroundColor: colors.surface2 || colors.surface, fontFamily: 'monospace', padding: 16, borderRadius: 10, color: colors.textPrimary, fontSize: 13, lineHeight: 20, marginVertical: 10 },
-  fence:            { backgroundColor: colors.surface2 || colors.surface, fontFamily: 'monospace', padding: 16, borderRadius: 10, color: colors.textPrimary, fontSize: 13, lineHeight: 20, marginVertical: 10 },
-  pre:              { backgroundColor: colors.surface2 || colors.surface, borderRadius: 10, marginVertical: 10, padding: 0 },
+  code_inline:      { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : '#F0EFF7', fontFamily: 'monospace', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, color: isDark ? '#FF9F4D' : '#D97706', fontSize: 14 },
+  code_block:       { backgroundColor: isDark ? '#08080A' : '#F8F7FC', fontFamily: 'monospace', padding: 16, borderRadius: 10, color: colors.textPrimary, fontSize: 13, lineHeight: 20, marginVertical: 10, borderWidth: 1, borderColor: colors.border },
+  fence:            { backgroundColor: isDark ? '#08080A' : '#F8F7FC', fontFamily: 'monospace', padding: 16, borderRadius: 10, color: colors.textPrimary, fontSize: 13, lineHeight: 20, marginVertical: 10, borderWidth: 1, borderColor: colors.border },
+  pre:              { backgroundColor: isDark ? '#08080A' : '#F8F7FC', borderRadius: 10, marginVertical: 10, padding: 0, borderLeftWidth: 4, borderLeftColor: colors.accentPrimary },
 
   // Blockquote
-  blockquote:       { backgroundColor: colors.accentDim, borderLeftWidth: 3, borderLeftColor: colors.accentPrimary, paddingLeft: 14, paddingVertical: 8, marginVertical: 10, borderRadius: 4 },
+  blockquote:       { backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.08)', borderLeftWidth: 4, borderLeftColor: colors.accentPrimary, paddingLeft: 14, paddingVertical: 8, marginVertical: 10, borderRadius: 4 },
   blockquote_text:  { color: colors.textSecondary, fontStyle: 'italic' as const, fontFamily: FONT_FAMILY.body },
 
   // Lists
@@ -1209,8 +1165,8 @@ const makeMarkdownStyles = (colors: any) => ({
   link:             { color: colors.accentPrimary, textDecorationLine: 'underline' as const },
 
   // Tables (if any)
-  table:            { backgroundColor: colors.surface, borderRadius: 8, marginVertical: 10 },
-  th:               { backgroundColor: colors.surface2, padding: 8, color: colors.textPrimary, fontFamily: FONT_FAMILY.bold },
+  table:            { backgroundColor: colors.surface, borderRadius: 8, marginVertical: 10, borderWidth: 1, borderColor: colors.border },
+  th:               { backgroundColor: isDark ? '#08080A' : '#ECEBF2', padding: 8, color: colors.textPrimary, fontFamily: FONT_FAMILY.bold },
   td:               { backgroundColor: 'transparent', padding: 8, color: colors.textSecondary, borderBottomColor: colors.border, borderBottomWidth: 1 },
 
   // Strong / Em

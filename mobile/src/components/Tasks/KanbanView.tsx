@@ -23,18 +23,19 @@ import { Task } from "../../contexts/MobileDataContext";
 import { COLLECTION } from "../../config/constants";
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from "../../theme/tokens";
 import { handleSyncError } from '../../utils/errorUtils';
-
+import { formatLocalDateStr } from "../../utils/dateUtils";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const COLUMN_WIDTH = SCREEN_WIDTH * 0.78;
 
-const _today = new Date();
-const TODAY_STR = `${_today.getFullYear()}-${String(_today.getMonth() + 1).padStart(2, "0")}-${String(_today.getDate()).padStart(2, "0")}`;
+function getTodayStr(): string {
+  return formatLocalDateStr(new Date());
+}
 
 function getWeekEnd(): string {
   const d = new Date();
   d.setDate(d.getDate() + (7 - d.getDay()));
-  return d.toISOString().slice(0, 10);
+  return formatLocalDateStr(d);
 }
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -57,14 +58,29 @@ interface Props {
   colors: any;
 }
 
-export default function KanbanView({ tasks, onTaskPress, colors }: Props) {
+const KanbanView = React.memo(function KanbanView({ tasks, onTaskPress, colors }: Props) {
   const weekEnd = getWeekEnd();
 
   const columns: Column[] = useMemo(() => {
-    const done   = tasks.filter(t => t.status === "completed");
-    const today  = tasks.filter(t => t.date === TODAY_STR && t.status !== "completed");
-    const week   = tasks.filter(t => t.date && t.date > TODAY_STR && t.date <= weekEnd && t.status !== "completed");
-    const backlog= tasks.filter(t => (!t.date || t.date < TODAY_STR) && t.status !== "completed");
+    const todayStr = getTodayStr();
+    const backlog: Task[] = [];
+    const today: Task[] = [];
+    const week: Task[] = [];
+    const done: Task[] = [];
+
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (t.status === "completed") {
+        done.push(t);
+      } else if (!t.date || t.date < todayStr) {
+        backlog.push(t);
+      } else if (t.date === todayStr) {
+        today.push(t);
+      } else if (t.date <= weekEnd) {
+        week.push(t);
+      }
+    }
+
     return [
       { id: "backlog", label: "Backlog",   icon: "layers-outline",        accent: "#6b7280", tasks: backlog },
       { id: "today",   label: "Today",     icon: "today-outline",         accent: "#a599ff", tasks: today  },
@@ -75,14 +91,15 @@ export default function KanbanView({ tasks, onTaskPress, colors }: Props) {
 
   const moveTask = useCallback(async (task: Task, targetColumnId: Column["id"]) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const todayStr = getTodayStr();
     let updates: Partial<Task> = {};
-    if (targetColumnId === "today")   updates = { date: TODAY_STR, status: "pending" };
+    if (targetColumnId === "today")   updates = { date: todayStr, status: "pending" };
     else if (targetColumnId === "done")  updates = { status: "completed" };
     else if (targetColumnId === "backlog") updates = { date: undefined, status: "pending" } as any;
     else if (targetColumnId === "week") {
       // move to tomorrow
       const d = new Date(); d.setDate(d.getDate() + 1);
-      updates = { date: d.toISOString().slice(0, 10), status: "pending" };
+      updates = { date: formatLocalDateStr(d), status: "pending" };
     }
     if (task.id) {
       await updateDoc(doc(db, COLLECTION.TASKS, task.id), updates as any).catch(handleSyncError);
@@ -140,7 +157,9 @@ export default function KanbanView({ tasks, onTaskPress, colors }: Props) {
       ))}
     </ScrollView>
   );
-}
+});
+
+export default KanbanView;
 
 // --- KanbanCard ---------------------------------------------------------------
 

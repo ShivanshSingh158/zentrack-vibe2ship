@@ -4,7 +4,7 @@
  * accent color (#a599ff), navigation to NotificationsSettings screen.
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Switch, Platform, Modal, Alert
@@ -55,7 +55,7 @@ export default function SettingsScreen() {
   // ── Theme ──────────────────────────────────────────────────────────────────
   const { isDark, mode, colors, setTheme, toggleTheme } = useTheme();
   // Build styles dynamically so they react to theme changes
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   const handleThemeToggle = useCallback((v: boolean) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -124,8 +124,6 @@ export default function SettingsScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSaraProactive(v);
     await AsyncStorage.setItem('zentrack_sara_proactive', v.toString());
-    // The SaraScreen reads this key every time it mounts via useFocusEffect,
-    // so next time Sara opens it will respect this setting.
   }, []);
 
   // Biometric lock toggle
@@ -271,7 +269,7 @@ export default function SettingsScreen() {
 
         <View style={s.groupCard}>
           <View style={s.settingRow}>
-            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(110,86,207,0.12)' }]}>
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}>
               <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={15} color={colors.accentPrimary} />
             </View>
             <View style={{ flex: 1 }}>
@@ -326,7 +324,7 @@ export default function SettingsScreen() {
         <View style={s.groupCard}>
           {/* Default reminder time */}
           <View style={s.settingRow}>
-            <View style={s.iconBox}><Ionicons name="time-outline" size={15} color={COLORS.accentPrimary} /></View>
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}><Ionicons name="time-outline" size={15} color={colors.accentPrimary} /></View>
             <View style={{ flex: 1 }}>
               <Text style={s.settingTitle}>Default reminder time</Text>
               <Text style={s.settingSubtitle}>For tasks with no set time</Text>
@@ -353,86 +351,81 @@ export default function SettingsScreen() {
             activeOpacity={0.7}
             onPress={() => navigation.navigate('MoreStack', { screen: 'NotificationsSettings' })}
           >
-            <View style={s.iconBox}><Ionicons name="notifications-outline" size={15} color={COLORS.accentPrimary} /></View>
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}><Ionicons name="notifications-outline" size={15} color={colors.accentPrimary} /></View>
             <View style={{ flex: 1 }}>
               <Text style={s.settingTitle}>Notification preferences</Text>
               <Text style={s.settingSubtitle}>Habits, tasks, gym, quiet hours & more</Text>
             </View>
-            <Ionicons name="chevron-forward" size={14} color={COLORS.textTertiary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </AnimatedPressable>
 
           <Hairline />
 
-            {/* Sara proactive nudges — now functional */}
-            <View style={s.settingRow}>
-              <View style={s.iconBox}><Ionicons name="planet-outline" size={15} color={COLORS.accentPrimary} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.settingTitle}>Sara's proactive nudges</Text>
-                <Text style={s.settingSubtitle}>
-                  {saraProactive ? 'She will suggest things unprompted' : 'She only responds when you ask'}
-                </Text>
-              </View>
-              <Switch
-                value={saraProactive}
-                onValueChange={handleSaraProactive}
-                trackColor={{ false: COLORS.surfaceRaised, true: COLORS.accentPrimary }}
-                thumbColor={'#000000'}
-                ios_backgroundColor={COLORS.surfaceRaised}
-                style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] }}
-              />
+          {/* Sara proactive nudges */}
+          <View style={s.settingRow}>
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}><Ionicons name="planet-outline" size={15} color={colors.accentPrimary} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.settingTitle}>Sara's proactive nudges</Text>
+              <Text style={s.settingSubtitle}>
+                {saraProactive ? 'She will suggest things unprompted' : 'She only responds when you ask'}
+              </Text>
             </View>
-
-            <Hairline />
+            <Switch
+              value={saraProactive}
+              onValueChange={handleSaraProactive}
+              trackColor={{ false: isDark ? '#3A3A3C' : '#E2E1EA', true: colors.accentPrimary }}
+              thumbColor={'#FFFFFF'}
+              ios_backgroundColor={isDark ? '#3A3A3C' : '#E2E1EA'}
+              style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }] }}
+            />
+          </View>
 
           <Hairline />
 
           {/* Biometric Lock */}
-            <View style={s.settingRow}>
-              <View style={[s.iconBox, biometricEnabled ? { backgroundColor: 'rgba(94,218,158,0.15)' } : {}]}>
-                <Ionicons name="finger-print-outline" size={15} color={biometricEnabled ? COLORS.accentGreen : COLORS.accentPrimary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.settingTitle}>Biometric lock</Text>
-                <Text style={s.settingSubtitle}>
-                  {!biometricAvailable
-                    ? 'Not available — set up Face ID or fingerprint first'
-                    : biometricEnabled
-                      ? 'Required on every app open'
-                      : 'Require Face ID / fingerprint to open app'}
-                </Text>
-              </View>
-              <Switch
-                value={biometricEnabled}
-                onValueChange={handleBiometric}
-                disabled={!biometricAvailable}
-                trackColor={{ false: COLORS.surfaceRaised, true: COLORS.accentGreen }}
-                thumbColor={'#000000'}
-                ios_backgroundColor={COLORS.surfaceRaised}
-                style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }], opacity: biometricAvailable ? 1 : 0.4 }}
-              />
+          <View style={s.settingRow}>
+            <View style={[s.iconBox, { backgroundColor: biometricEnabled ? (isDark ? 'rgba(52,199,89,0.15)' : 'rgba(16,185,129,0.12)') : (isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)') }]}>
+              <Ionicons name="finger-print-outline" size={15} color={biometricEnabled ? (isDark ? '#34C759' : '#059669') : colors.accentPrimary} />
             </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.settingTitle}>Biometric lock</Text>
+              <Text style={s.settingSubtitle}>
+                {!biometricAvailable
+                  ? 'Not available — set up Face ID or fingerprint first'
+                  : biometricEnabled
+                    ? 'Required on every app open'
+                    : 'Require Face ID / fingerprint to open app'}
+              </Text>
+            </View>
+            <Switch
+              value={biometricEnabled}
+              onValueChange={handleBiometric}
+              disabled={!biometricAvailable}
+              trackColor={{ false: isDark ? '#3A3A3C' : '#E2E1EA', true: isDark ? '#34C759' : '#059669' }}
+              thumbColor={'#FFFFFF'}
+              ios_backgroundColor={isDark ? '#3A3A3C' : '#E2E1EA'}
+              style={{ transform: [{ scaleX: 0.82 }, { scaleY: 0.82 }], opacity: biometricAvailable ? 1 : 0.4 }}
+            />
+          </View>
         </View>
-
-
 
         {/* ── S.A.R.A ── */}
         <SectionLabel text="S.A.R.A" />
 
         <View style={s.groupCard}>
-          {/* Sara Proactive Nudges — surfaced from GENERAL group for better discoverability */}
           <AnimatedPressable
             style={s.settingRow}
             activeOpacity={0.7}
             onPress={() => navigation.navigate('MoreStack', { screen: 'AgentHistory' })}
           >
-            <View style={[s.iconBox, { backgroundColor: 'rgba(165,153,255,0.12)' }]}>
-              <Ionicons name="time-outline" size={15} color={COLORS.accentPrimary} />
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}>
+              <Ionicons name="time-outline" size={15} color={colors.accentPrimary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.settingTitle}>Action History</Text>
               <Text style={s.settingSubtitle}>See every action Sara took on your behalf</Text>
             </View>
-            <Ionicons name="chevron-forward" size={14} color={COLORS.textTertiary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </AnimatedPressable>
         </View>
 
@@ -442,24 +435,24 @@ export default function SettingsScreen() {
         <View style={s.groupCard}>
           {/* Export Data */}
           <AnimatedPressable style={s.settingRow} activeOpacity={0.7} onPress={handleExportData}>
-            <View style={s.iconBox}><Ionicons name="download-outline" size={15} color={COLORS.accentPrimary} /></View>
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}><Ionicons name="download-outline" size={15} color={colors.accentPrimary} /></View>
             <View style={{ flex: 1 }}>
               <Text style={s.settingTitle}>Export data</Text>
               <Text style={s.settingSubtitle}>Download as CSV</Text>
             </View>
-            <Ionicons name="chevron-forward" size={14} color={COLORS.textTertiary} />
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </AnimatedPressable>
 
           <Hairline />
 
           {/* Check for Updates */}
           <AnimatedPressable style={s.settingRow} activeOpacity={0.7} onPress={handleCheckForUpdate} disabled={checkingUpdate}>
-            <View style={s.iconBox}><Ionicons name="cloud-download-outline" size={15} color={COLORS.accentPrimary} /></View>
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}><Ionicons name="cloud-download-outline" size={15} color={colors.accentPrimary} /></View>
             <View style={{ flex: 1 }}>
               <Text style={s.settingTitle}>Check for updates</Text>
               <Text style={s.settingSubtitle}>{checkingUpdate ? 'Checking...' : 'OTA live updates'}</Text>
             </View>
-            {checkingUpdate ? null : <Ionicons name="chevron-forward" size={14} color={COLORS.textTertiary} />}
+            {checkingUpdate ? null : <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
           </AnimatedPressable>
 
           <Hairline />
@@ -470,33 +463,20 @@ export default function SettingsScreen() {
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); setSignOutModal(true); }}
             activeOpacity={0.7}
           >
-            <View style={[s.iconBox, { backgroundColor: COLORS.errorBg }]}>
-              <Ionicons name="log-out-outline" size={15} color={COLORS.error} />
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.12)' }]}>
+              <Ionicons name="log-out-outline" size={15} color={isDark ? '#EF4444' : '#DC2626'} />
             </View>
-            <Text style={[s.settingTitle, { color: COLORS.error }]}>Sign out</Text>
+            <Text style={[s.settingTitle, { color: isDark ? '#EF4444' : '#DC2626', fontFamily: 'Inter_600SemiBold' }]}>Sign out</Text>
           </AnimatedPressable>
         </View>
 
         {/* ── UPCOMING FEATURES ── */}
         <SectionLabel text="UPCOMING FEATURES" />
 
-        <View style={[s.groupCard, { opacity: 0.6 }]}>
-          {/* Appearance / Theme toggle — locked */}
-          <AnimatedPressable style={s.settingRow} activeOpacity={0.7} onPress={() => Alert.alert('Coming Soon', 'Light mode is currently being polished and will return in a future update!')}>
-            <View style={[s.iconBox, { backgroundColor: 'rgba(124,111,247,0.12)' }]}>
-              <Ionicons name="sunny" size={15} color={colors.accentPrimary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.settingTitle}>Appearance (Light Mode)</Text>
-              <Text style={s.settingSubtitle}>Coming in next update</Text>
-            </View>
-            <Ionicons name="lock-closed" size={14} color={colors.textTertiary} />
-          </AnimatedPressable>
-
-          <Hairline />
+        <View style={[s.groupCard, { opacity: 0.7 }]}>
           {/* Google Workspace */}
           <View style={s.settingRow}>
-            <View style={[s.iconBox, { backgroundColor: 'rgba(217,48,37,0.2)' }]}>
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(217,48,37,0.2)' : 'rgba(217,48,37,0.12)' }]}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: '#d93025' }}>G</Text>
             </View>
             <View style={{ flex: 1 }}>
@@ -508,20 +488,20 @@ export default function SettingsScreen() {
 
           <Hairline />
 
-            {/* Language */}
-            <AnimatedPressable
-              style={s.settingRow}
-              activeOpacity={0.7}
-              onPress={() => Alert.alert('Multi-language Support', 'ZenTrack currently only supports English (US). Additional languages will be available in future updates.')}
-            >
-              <View style={s.iconBox}><Ionicons name="language-outline" size={15} color={colors.accentPrimary} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.settingTitle}>Language</Text>
-                <Text style={s.settingSubtitle}>English (US)</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={COLORS.textTertiary} />
-            </AnimatedPressable>
-          </View>
+          {/* Language */}
+          <AnimatedPressable
+            style={s.settingRow}
+            activeOpacity={0.7}
+            onPress={() => Alert.alert('Multi-language Support', 'ZenTrack currently only supports English (US). Additional languages will be available in future updates.')}
+          >
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)' }]}><Ionicons name="language-outline" size={15} color={colors.accentPrimary} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.settingTitle}>Language</Text>
+              <Text style={s.settingSubtitle}>English (US)</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+          </AnimatedPressable>
+        </View>
 
         <Text style={s.versionText}>ZenTrack v1.0.0</Text>
       </ScrollView>
@@ -549,10 +529,10 @@ export default function SettingsScreen() {
   );
 }
 
-const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext').useTheme>['colors']) =>
+const makeStyles = (colors: any, isDark: boolean = true) =>
   StyleSheet.create({
   root:   { flex: 1, backgroundColor: colors.background },
-  scroll: { paddingHorizontal: 8, paddingTop: 16, paddingBottom: 60 },
+  scroll: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 60 },
 
   profileCard: {
     flexDirection: 'row', alignItems: 'center',
@@ -564,9 +544,9 @@ const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext')
     width: 42, height: 42, borderRadius: 21,
     backgroundColor: colors.accentPrimary, alignItems: 'center', justifyContent: 'center',
   },
-  profileAvatarText: { fontFamily: 'Inter_700Bold', fontSize: 17, color: '#000000' },
+  profileAvatarText: { fontFamily: 'Inter_700Bold', fontSize: 17, color: isDark ? '#000000' : '#FFFFFF' },
   profileName:  { fontFamily: 'Inter_600SemiBold', fontSize: 15, color: colors.textPrimary },
-  profileEmail: { fontFamily: 'Inter_400Regular',  fontSize: 12, color: colors.textTertiary, marginTop: 2 },
+  profileEmail: { fontFamily: 'Inter_400Regular',  fontSize: 12, color: colors.textSecondary, marginTop: 2 },
 
   collapsibleHeader: {
     flexDirection: 'row', alignItems: 'center',
@@ -574,13 +554,13 @@ const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext')
   },
   sectionLabel: {
     fontFamily: 'Inter_600SemiBold', fontSize: 11,
-    letterSpacing: 0.8, color: colors.textTertiary, marginBottom: 8,
+    letterSpacing: 0.8, color: colors.textTertiary, marginBottom: 8, marginTop: 8,
   },
 
   groupCard: {
     backgroundColor: colors.surface, borderRadius: 16,
     borderWidth: 1, borderColor: colors.border,
-    overflow: 'hidden', marginBottom: 4,
+    overflow: 'hidden', marginBottom: 12,
   },
 
   settingRow: {
@@ -589,12 +569,12 @@ const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext')
   },
   iconBox: {
     width: 30, height: 30, borderRadius: 8,
-    backgroundColor: colors.accentDim,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
-  iconBoxActive: { backgroundColor: 'rgba(165,153,255,0.2)' },
+  iconBoxActive: { backgroundColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.18)' },
   settingTitle:    { fontFamily: 'Inter_400Regular',  fontSize: 14, color: colors.textPrimary },
-  settingSubtitle: { fontFamily: 'Inter_400Regular',  fontSize: 11, color: colors.textTertiary, marginTop: 2, lineHeight: 15 },
+  settingSubtitle: { fontFamily: 'Inter_400Regular',  fontSize: 11, color: colors.textSecondary, marginTop: 2, lineHeight: 15 },
 
   hairline: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginLeft: 58 },
 
@@ -612,18 +592,18 @@ const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext')
     gap: 6,
     paddingVertical: 9,
     borderRadius: 10,
-    backgroundColor: colors.surface2 || colors.surfaceRaised,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
     borderWidth: 1,
     borderColor: colors.border,
   },
   themeSegBtnActive: {
-    backgroundColor: colors.accentDim,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)',
     borderColor: colors.accentPrimary,
   },
   themeSegText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 12,
-    color: colors.textMuted,
+    color: colors.textSecondary,
   },
   themeSegTextActive: {
     fontFamily: 'Inter_600SemiBold',
@@ -631,8 +611,9 @@ const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext')
   },
 
   valueChip: {
-    backgroundColor: colors.surfaceRaised, borderRadius: 8,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA', borderRadius: 8,
     paddingHorizontal: 12, paddingVertical: 6,
+    borderWidth: 1, borderColor: colors.border,
   },
   valueChipText: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.accentPrimary },
 
@@ -656,7 +637,7 @@ const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext')
 
   versionText: {
     fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textTertiary,
-    textAlign: 'center', marginTop: 32,
+    textAlign: 'center', marginTop: 24, marginBottom: 16,
   } as any,
 
   // Sign out modal
@@ -665,23 +646,22 @@ const makeStyles = (colors: ReturnType<typeof import('../contexts/ThemeContext')
     justifyContent: 'center', alignItems: 'center', padding: 32,
   },
   confirmCard: {
-    backgroundColor: colors.surfaceRaised, borderRadius: 20,
+    backgroundColor: colors.surface, borderRadius: 20,
     padding: 24, width: '100%',
     borderWidth: 1, borderColor: colors.border,
   },
   confirmTitle: { fontFamily: 'Inter_700Bold',   fontSize: 17, color: colors.textPrimary, marginBottom: 8 },
-  confirmBody:  { fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textMuted, lineHeight: 20, marginBottom: 24 },
+  confirmBody:  { fontFamily: 'Inter_400Regular', fontSize: 14, color: colors.textSecondary, lineHeight: 20, marginBottom: 24 },
   confirmBtns:  { flexDirection: 'row', gap: 12 },
   confirmCancel: {
     flex: 1, padding: 14, borderRadius: 12,
-    backgroundColor: colors.surfaceRaised, alignItems: 'center',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA', alignItems: 'center',
     borderWidth: 1, borderColor: colors.border,
   },
   confirmCancelText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.textPrimary },
   confirmDanger: {
     flex: 1, padding: 14, borderRadius: 12,
-    backgroundColor: colors.errorBg, alignItems: 'center',
-    borderWidth: 1, borderColor: colors.error,
+    backgroundColor: isDark ? '#EF4444' : '#DC2626', alignItems: 'center',
   },
-  confirmDangerText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: colors.error },
+  confirmDangerText: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: '#FFFFFF' },
 });

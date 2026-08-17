@@ -7,6 +7,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, COLORS } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
 import { GYM_PLAN } from '../../data/gymPlan';
 import { useMobileData } from '../../contexts/MobileDataContext';
 import { getCustomPlanDay } from '../../hooks/useGymLog';
@@ -22,6 +23,8 @@ interface Props {
 }
 
 export function SwapRoutineModal({ visible, selectedDate, currentPlanDayIndex, onClose, onSelectDay }: Props) {
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { userGymPlan } = useMobileData();
 
   const days = Array.from({ length: 7 }, (_, i) => i + 1).map(idx => {
@@ -47,7 +50,7 @@ export function SwapRoutineModal({ visible, selectedDate, currentPlanDayIndex, o
               <Text style={styles.subtitle}>Select a workout program for {formatIndianDate(selectedDate)}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
-              <Ionicons name="close" size={20} color={COLORS.textMuted} />
+              <Ionicons name="close" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -87,11 +90,11 @@ export function SwapRoutineModal({ visible, selectedDate, currentPlanDayIndex, o
                   <View style={styles.dayCardRight}>
                     {isSelected ? (
                       <View style={styles.activeCheckPill}>
-                        <Ionicons name="checkmark-circle" size={16} color="#000000" />
+                        <Ionicons name="checkmark-circle" size={16} color="#ffffff" />
                         <Text style={styles.activeCheckText}>Active</Text>
                       </View>
                     ) : (
-                      <Ionicons name="swap-horizontal" size={18} color="#71717A" />
+                      <Ionicons name="swap-horizontal" size={18} color={colors.textMuted} />
                     )}
                   </View>
                 </TouchableOpacity>
@@ -104,124 +107,125 @@ export function SwapRoutineModal({ visible, selectedDate, currentPlanDayIndex, o
   );
 }
 
-const styles = StyleSheet.create({
-  modalBg: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#000000',
-    borderTopLeftRadius: RADIUS.xxl,
-    borderTopRightRadius: RADIUS.xxl,
-    padding: SPACE.xl,
-    maxHeight: '80%',
-    borderTopWidth: 1,
-    borderTopColor: '#27272A',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: SPACE.lg,
-  },
-  title: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 20,
-    color: '#FFFFFF',
-  },
-  subtitle: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
-    color: '#A1A1AA',
-    marginTop: 2,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#18181B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrollArea: {
-    marginBottom: SPACE.md,
-  },
-  dayCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#141416',
-    borderRadius: RADIUS.xl,
-    padding: SPACE.md,
-    marginBottom: SPACE.sm,
-    borderWidth: 1.5,
-    borderColor: '#27272A',
-  },
-  dayCardActive: {
-    borderColor: '#FFFFFF',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  dayCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACE.md,
-    flex: 1,
-  },
-  dayBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.lg,
-    backgroundColor: '#27272A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  restBadge: {
-    backgroundColor: '#27272A',
-  },
-  dayBadgeActive: {
-    backgroundColor: '#FFFFFF',
-  },
-  dayBadgeText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  dayBadgeTextActive: {
-    color: '#000000',
-  },
-  dayInfo: {
-    flex: 1,
-  },
-  dayName: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.base,
-    color: '#FFFFFF',
-  },
-  dayNameActive: {
-    color: '#FFFFFF',
-  },
-  daySubtitle: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
-    color: '#A1A1AA',
-    marginTop: 2,
-  },
-  dayCardRight: {
-    marginLeft: SPACE.sm,
-  },
-  activeCheckPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-  },
-  activeCheckText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
-    color: '#000000',
-  },
-});
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    modalBg: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.65)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: RADIUS.xxl,
+      borderTopRightRadius: RADIUS.xxl,
+      padding: SPACE.xl,
+      maxHeight: '80%',
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: SPACE.lg,
+    },
+    title: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 20,
+      color: colors.textPrimary,
+    },
+    subtitle: {
+      fontFamily: FONT_FAMILY.body,
+      fontSize: 12,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.surface2 || colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    scrollArea: {
+      marginBottom: SPACE.md,
+    },
+    dayCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: isDark ? '#000000' : '#F5F4FA',
+      borderRadius: RADIUS.xl,
+      padding: SPACE.md,
+      marginBottom: SPACE.sm,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+    },
+    dayCardActive: {
+      borderColor: colors.accentPrimary,
+      backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+    },
+    dayCardLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACE.md,
+      flex: 1,
+    },
+    dayBadge: {
+      width: 40,
+      height: 40,
+      borderRadius: RADIUS.lg,
+      backgroundColor: isDark ? '#27272A' : '#EAE9F2',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    restBadge: {
+      backgroundColor: isDark ? '#27272A' : '#EAE9F2',
+    },
+    dayBadgeActive: {
+      backgroundColor: colors.accentPrimary,
+    },
+    dayBadgeText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 13,
+      color: isDark ? '#FFFFFF' : '#1C1C1E',
+    },
+    dayBadgeTextActive: {
+      color: '#FFFFFF',
+    },
+    dayInfo: {
+      flex: 1,
+    },
+    dayName: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: FONT_SIZE.base,
+      color: colors.textPrimary,
+    },
+    dayNameActive: {
+      color: colors.textPrimary,
+    },
+    daySubtitle: {
+      fontFamily: FONT_FAMILY.body,
+      fontSize: 12,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    dayCardRight: {
+      marginLeft: SPACE.sm,
+    },
+    activeCheckPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.accentPrimary,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: RADIUS.full,
+    },
+    activeCheckText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 11,
+      color: '#FFFFFF',
+    },
+  });

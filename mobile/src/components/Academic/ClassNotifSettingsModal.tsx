@@ -84,8 +84,8 @@ interface Props {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
   const mobileData = useMobileData() as any;
   const subjects: AttendanceSubject[] = mobileData.attendance ?? [];
   const { tasks, customEvents, gymLogs, habitLogs, allHabits, assignments, waterLogs, sleepLogs } = mobileData;
@@ -187,7 +187,7 @@ export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
     );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.root}>
         {/* Header */}
         <View style={styles.header}>
@@ -318,8 +318,8 @@ export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
                   {hasLabs && (
                     <View style={[styles.section, styles.labSection]}>
                       <View style={styles.sectionHeader}>
-                        <Ionicons name="flask-outline" size={13} color="#FAD7A1" />
-                        <Text style={[styles.sectionTitle, { color: '#FAD7A1' }]}>LAB SESSIONS (2 hours)</Text>
+                        <Ionicons name="flask-outline" size={13} color={isDark ? "#FAD7A1" : colors.accentBlue} />
+                        <Text style={[styles.sectionTitle, { color: isDark ? '#FAD7A1' : colors.accentBlue }]}>LAB SESSIONS (2 hours)</Text>
                       </View>
 
                       {/* Mid-lab toggle */}
@@ -328,7 +328,7 @@ export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
                         <Switch
                           value={pref.labMidEnabled}
                           onValueChange={val => update(subj.id!, { labMidEnabled: val })}
-                          trackColor={{ false: colors.border, true: '#FAD7A1' }}
+                          trackColor={{ false: colors.border, true: isDark ? '#FAD7A1' : colors.accentBlue }}
                           thumbColor={Platform.OS === 'android' ? (pref.labMidEnabled ? '#fff' : '#aaa') : '#fff'}
                           style={{ transform: [{ scaleX: 0.75 }, { scaleY: 0.75 }] }}
                           disabled={disabled}
@@ -372,7 +372,7 @@ export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
               disabled={saving}
             >
               {saving
-                ? <ActivityIndicator color="#000" size="small" />
+                ? <ActivityIndicator color={isDark ? "#000" : "#fff"} size="small" />
                 : <Text style={styles.saveBtnText}>Save &amp; Apply Notifications</Text>
               }
             </TouchableOpacity>
@@ -385,32 +385,32 @@ export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   root:             { flex: 1, backgroundColor: colors.background },
   header:           { flexDirection: 'row', alignItems: 'flex-start', padding: SPACE.xl, borderBottomWidth: 1, borderColor: colors.border, gap: SPACE.md },
   headerTitle:      { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: colors.textPrimary },
   headerSub:        { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted, marginTop: 2 },
-  closeBtn:         { padding: 8, borderRadius: 20, backgroundColor: colors.surface },
-  infoBanner:       { flexDirection: 'row', alignItems: 'flex-start', gap: 8, margin: SPACE.md, padding: SPACE.md, backgroundColor: `${colors.accentPrimary}18`, borderRadius: RADIUS.md, borderWidth: 1, borderColor: `${colors.accentPrimary}30` },
+  closeBtn:         { padding: 8, borderRadius: 20, backgroundColor: isDark ? colors.surface : '#EAE9F2', borderWidth: isDark ? 0 : 1, borderColor: isDark ? 'transparent' : '#E2E1EA' },
+  infoBanner:       { flexDirection: 'row', alignItems: 'flex-start', gap: 8, margin: SPACE.md, padding: SPACE.md, backgroundColor: isDark ? 'rgba(165,153,255,0.09)' : 'rgba(108,92,231,0.08)', borderRadius: RADIUS.md, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.20)' },
   infoText:         { flex: 1, fontSize: 12, color: colors.textMuted, lineHeight: 18 },
-  card:             { backgroundColor: colors.surface, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: colors.border, padding: SPACE.md, gap: SPACE.md },
+  card:             { backgroundColor: isDark ? colors.surface : '#FFFFFF', borderRadius: RADIUS.lg, borderWidth: 1, borderColor: colors.border, padding: SPACE.md, gap: SPACE.md },
   subjectRow:       { flexDirection: 'row', alignItems: 'center', gap: SPACE.md },
   subjectName:      { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
   subjectDays:      { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   section:          { paddingTop: SPACE.sm, borderTopWidth: 1, borderColor: colors.border, gap: 4 },
-  labSection:       { borderTopColor: 'rgba(250,215,161,0.3)' },
+  labSection:       { borderTopColor: isDark ? 'rgba(250,215,161,0.3)' : 'rgba(2,132,199,0.25)' },
   sectionHeader:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sectionTitle:     { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: colors.textMuted, letterSpacing: 0.8, flex: 1 },
   sectionSubtitle:  { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
   toggleRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   toggleLabel:      { fontSize: 12, color: colors.textSecondary, flex: 1 },
-  chip:             { paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+  chip:             { paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: isDark ? colors.background : '#F5F4FA', borderWidth: 1, borderColor: colors.border },
   chipActive:       { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
-  chipLabActive:    { backgroundColor: 'rgba(250,215,161,0.2)', borderColor: '#FAD7A1' },
+  chipLabActive:    { backgroundColor: isDark ? 'rgba(250,215,161,0.2)' : 'rgba(2,132,199,0.15)', borderColor: isDark ? '#FAD7A1' : colors.accentBlue },
   chipText:         { fontSize: 12, color: colors.textSecondary },
-  chipTextActive:   { color: '#000', fontWeight: '700' },
-  chipLabTextActive:{ color: '#FAD7A1', fontWeight: '700' },
+  chipTextActive:   { color: isDark ? '#000' : '#FFFFFF', fontWeight: '700' },
+  chipLabTextActive:{ color: isDark ? '#FAD7A1' : colors.accentBlue, fontWeight: '700' },
   footer:           { padding: SPACE.xl, borderTopWidth: 1, borderColor: colors.border },
   saveBtn:          { backgroundColor: colors.accentPrimary, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center' },
-  saveBtnText:      { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#000' },
+  saveBtnText:      { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: isDark ? '#000000' : '#FFFFFF' },
 });

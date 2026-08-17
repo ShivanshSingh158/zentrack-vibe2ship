@@ -5,9 +5,9 @@
  * computations extracted from TasksScreen.tsx.
  * The screen coordinator imports this single hook for all data.
  */
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Task } from '../../contexts/MobileDataContext';
-import { today } from './taskConstants';
+import { getToday } from './taskConstants';
 
 export type ViewMode = 'list' | 'timeline' | 'kanban';
 export type SortBy = 'default' | 'priority';
@@ -48,7 +48,23 @@ function parseTimeFloat(timeStr?: string | null): number {
 
 export function useTasksData(tasks: Task[]) {
   // ── UI State ────────────────────────────────────────────────────────────────
-  const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(() => getToday());
+
+  // Listen to midnight date transitions
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const liveToday = getToday();
+      setSelectedDate(prev => {
+        const oldToday = new Date(Date.now() - 60000);
+        const oldTodayStr = `${oldToday.getFullYear()}-${String(oldToday.getMonth() + 1).padStart(2, '0')}-${String(oldToday.getDate()).padStart(2, '0')}`;
+        if (prev === oldTodayStr) {
+          return liveToday;
+        }
+        return prev;
+      });
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [filterTag, setFilterTag] = useState<string | null>(null);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -66,60 +82,67 @@ export function useTasksData(tasks: Task[]) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [conflicts, setConflicts] = useState<any[]>([]);
 
-  // ── Derived / Memoized Data ─────────────────────────────────────────────────
-  const overdueTasks = useMemo(() =>
-    tasks.filter(t => t.date && t.date < today && t.status !== 'completed')
-      .sort((a, b) => (a.order || 0) - (b.order || 0)),
-    [tasks]);
+  // ── Derived / Memoized Data (Optimized Single-Pass O(N) Partitioning) ─────
+  const { overdueTasks, inboxTasks, selectedDateTasks, upcomingTasks, taskDates } = useMemo(() => {
+    const todayStr = getToday();
+    const overdue: Task[] = [];
+    const inbox: Task[] = [];
+    const selected: Array<{ task: Task; timeVal: number; prio: number; isCompleted: boolean; order: number }> = [];
+    const upcoming: Task[] = [];
+    const dates = new Set<string>();
 
-  const inboxTasks = useMemo(() =>
-    tasks.filter(t => !t.date && t.status !== 'completed')
-      .sort((a, b) => (a.order || 0) - (b.order || 0)),
-    [tasks]);
-
-  const selectedDateTasks = useMemo(() => {
-    const dayTasks = tasks.filter(t => t.date === selectedDate);
     const priorityWeight = (p?: string) => (p === 'high' || p === 'P1' ? 3 : (p === 'medium' || p === 'P2' ? 2 : 1));
 
-    // Pre-parse numerical timestamps once in O(N) to eliminate O(N log N) regex splits in sort
-    const mapped = dayTasks.map(t => {
-      let timeVal = Infinity;
-      if (t.timeSlot) {
-        const start = t.timeSlot.split(/[-–—•]| to /i)[0]?.trim();
-        timeVal = parseTimeFloat(start);
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      const isCompleted = t.status === 'completed';
+      if (t.date && !isCompleted) {
+        dates.add(t.date);
       }
-      return {
-        task: t,
-        timeVal,
-        prio: priorityWeight(t.priority),
-        isCompleted: t.status === 'completed',
-        order: t.order || 0,
-      };
-    });
 
-    mapped.sort((a, b) => {
-      if (a.isCompleted && !b.isCompleted) return 1;
-      if (!a.isCompleted && b.isCompleted) return -1;
-      if (sortBy === 'priority') {
-        if (a.prio !== b.prio) return b.prio - a.prio;
+      if (!t.date && !isCompleted) {
+        inbox.push(t);
+      } else if (t.date && t.date < todayStr && !isCompleted) {
+        overdue.push(t);
       }
+      
+      if (t.date === selectedDate) {
+        let timeVal = Infinity;
+        if (t.timeSlot) {
+          const start = t.timeSlot.split(/[-–—•]| to /i)[0]?.trim();
+          timeVal = parseTimeFloat(start);
+        }
+        selected.push({
+          task: t,
+          timeVal,
+          prio: priorityWeight(t.priority),
+          isCompleted,
+          order: t.order || 0,
+        });
+      } else if (t.date && t.date > selectedDate && !isCompleted && (t.priority === 'high' || t.priority === 'P1')) {
+        upcoming.push(t);
+      }
+    }
+
+    overdue.sort((a, b) => (a.order || 0) - (b.order || 0));
+    inbox.sort((a, b) => (a.order || 0) - (b.order || 0));
+    upcoming.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    selected.sort((a, b) => {
+      if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+      if (sortBy === 'priority' && a.prio !== b.prio) return b.prio - a.prio;
       if (a.timeVal !== b.timeVal) return a.timeVal - b.timeVal;
       return a.order - b.order;
     });
 
-    return mapped.map(m => m.task);
+    return {
+      overdueTasks: overdue,
+      inboxTasks: inbox,
+      selectedDateTasks: selected.map(s => s.task),
+      upcomingTasks: upcoming,
+      taskDates: dates,
+    };
   }, [tasks, selectedDate, sortBy]);
-
-  const upcomingTasks = useMemo(() =>
-    tasks.filter(t => t.date && t.date > selectedDate && t.status !== 'completed' && (t.priority === 'high' || t.priority === 'P1'))
-      .sort((a, b) => (a.date || '').localeCompare(b.date || '')),
-    [tasks, selectedDate]);
-
-  const taskDates = useMemo(() => {
-    const dates = new Set<string>();
-    tasks.forEach(t => { if (t.date && t.status !== 'completed') dates.add(t.date); });
-    return dates;
-  }, [tasks]);
 
   const toggleTaskSelection = (id: string) => {
     setSelectedTaskIds(prev => {

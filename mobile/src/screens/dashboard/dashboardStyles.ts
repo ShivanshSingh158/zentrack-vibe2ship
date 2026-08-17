@@ -19,7 +19,21 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   greetingTime: { fontFamily: FONT_FAMILY.title, fontSize: 34, color: colors.accentPrimary, lineHeight: 40 },
 
   avatarCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accentPrimary, alignItems: 'center', justifyContent: 'center' },
-  avatarText:   { fontSize: 16, fontFamily: FONT_FAMILY.bold, color: colors.background },
+  avatarText:   { fontSize: 16, fontFamily: FONT_FAMILY.bold, color: '#ffffff' },
+
+  themeToggleCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 3,
+  },
 
   headerStreakPill: {
     flexDirection: 'row',
@@ -29,14 +43,14 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     height: 36,
     paddingHorizontal: 10,
     borderRadius: 18,
-    backgroundColor: 'rgba(255,159,77,0.10)',
+    backgroundColor: colors.accentAmberDim,
     borderWidth: 1,
-    borderColor: 'rgba(255,159,77,0.22)',
+    borderColor: colors.accentAmber + '35',
   },
   headerStreakText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 12,
-    color: '#ff9f4d',
+    color: colors.accentAmber,
     letterSpacing: 0.2,
   },
 
@@ -144,14 +158,14 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: SPACE.xl,
-    backgroundColor: 'rgba(255,159,77,0.08)',
+    backgroundColor: colors.accentAmberDim,
     borderWidth: 1,
-    borderColor: 'rgba(255,159,77,0.25)',
+    borderColor: colors.accentAmber + '40',
     borderRadius: RADIUS.lg,
     padding: SPACE.lg,
   },
   urgentTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.accentAmber, letterSpacing: 0.5, marginBottom: 4 },
-  urgentItem:  { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted, lineHeight: 18 },
+  urgentItem:  { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textSecondary, lineHeight: 18 },
 
   sectionLabel: {
     fontFamily: FONT_FAMILY.bold,

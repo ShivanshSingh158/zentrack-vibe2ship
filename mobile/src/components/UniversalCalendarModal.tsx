@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { FONT_FAMILY, RADIUS } from '../theme/tokens';
 import { useTheme } from "../contexts/ThemeContext";
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 interface UniversalCalendarModalProps {
   visible: boolean;
@@ -14,21 +15,27 @@ interface UniversalCalendarModalProps {
   title?: string;
 }
 
-const UniversalCalendarModal = React.memo(function UniversalCalendarModal({
+export const UniversalCalendarModal = React.memo(function UniversalCalendarModal({
   visible,
-  onClose,
   selectedDate,
   onDateSelect,
-  title = "Select Date"
+  onClose,
+  title = 'Select Date'
 }: UniversalCalendarModalProps) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
+  if (!visible) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <BlurView experimentalBlurMethod="dimezisBlurView" intensity={40} tint="dark" style={StyleSheet.absoluteFill}>
-        
-          <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <BlurView intensity={25} tint={isDark ? "dark" : "light"} style={StyleSheet.absoluteFill}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.centeredView}>
           <View style={styles.calendarCard} onStartShouldSetResponder={() => true}>
             
@@ -42,26 +49,26 @@ const UniversalCalendarModal = React.memo(function UniversalCalendarModal({
 
             {/* Apple-style Calendar Theme */}
             <Calendar
-              current={selectedDate}
+              current={selectedDate || formatLocalDateStr(new Date())}
               onDayPress={(day: DateData) => {
                 onDateSelect(day.dateString);
                 onClose(); // Automatically close when a date is selected
               }}
               markedDates={{
-                [selectedDate]: { selected: true, selectedColor: '#ff3b30' } // Apple Calendar red accent
+                [selectedDate]: { selected: true, selectedColor: colors.accentPrimary }
               }}
               theme={{
                 backgroundColor: 'transparent',
                 calendarBackground: 'transparent',
-                textSectionTitleColor: '#8e8e93', // Subtle gray for Mon, Tue, etc.
-                selectedDayBackgroundColor: '#ff3b30',
+                textSectionTitleColor: colors.textTertiary,
+                selectedDayBackgroundColor: colors.accentPrimary,
                 selectedDayTextColor: '#ffffff',
-                todayTextColor: '#ff3b30',
+                todayTextColor: colors.accentPrimary,
                 dayTextColor: colors.textPrimary,
-                textDisabledColor: '#3a3a3c',
-                arrowColor: colors.textPrimary,
+                textDisabledColor: colors.textTertiary,
+                arrowColor: colors.accentPrimary,
                 monthTextColor: colors.textPrimary,
-                indicatorColor: '#ff3b30',
+                indicatorColor: colors.accentPrimary,
                 textDayFontFamily: FONT_FAMILY.body,
                 textMonthFontFamily: FONT_FAMILY.heading,
                 textDayHeaderFontFamily: FONT_FAMILY.body,
@@ -88,49 +95,49 @@ const UniversalCalendarModal = React.memo(function UniversalCalendarModal({
   );
 });
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      centeredView: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-      },
-      calendarCard: {
-        backgroundColor: '#1c1c1e', // Apple iOS dark mode modal gray
-        borderRadius: RADIUS.lg,
-        width: '100%',
-        maxWidth: 360,
-        padding: 16,
-        paddingTop: 12,
-        borderWidth: 1,
-        borderColor: '#2c2c2e',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.3,
-        shadowRadius: 20,
-        elevation: 5,
-      },
-      header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 10,
-        paddingHorizontal: 8,
-      },
-      title: {
-        fontFamily: FONT_FAMILY.heading,
-        fontSize: 18,
-        color: colors.textPrimary,
-        fontWeight: '600',
-      },
-      closeBtn: {
-        backgroundColor: '#2c2c2e',
-        borderRadius: 15,
-        width: 30,
-        height: 30,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }
-    });
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  centeredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  calendarCard: {
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.lg,
+    width: '100%',
+    maxWidth: 360,
+    padding: 16,
+    paddingTop: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: isDark ? 0.3 : 0.08,
+    shadowRadius: 20,
+    elevation: 5,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 8,
+  },
+  title: {
+    fontFamily: FONT_FAMILY.heading,
+    fontSize: 18,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  closeBtn: {
+    backgroundColor: isDark ? (colors.surface2 || '#2c2c2e') : '#F0EFF7',
+    borderRadius: 15,
+    width: 30,
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+  }
+});
 
 export default UniversalCalendarModal;

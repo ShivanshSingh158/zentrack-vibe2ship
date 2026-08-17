@@ -52,8 +52,8 @@ function HabitReminderRow({
   state: HabitRowState;
   onChange: (update: Partial<HabitRowState>) => void;
 }) {
-  const { colors } = useTheme();
-  const s = rowStyles(colors);
+  const { colors, isDark } = useTheme();
+  const s = rowStyles(colors, isDark);
 
   const pickerDate = new Date();
   pickerDate.setHours(state.hours, state.minutes, 0, 0);
@@ -73,7 +73,7 @@ function HabitReminderRow({
         <Switch
           value={state.enabled}
           onValueChange={(val) => { hapticSelection(); onChange({ enabled: val }); }}
-          trackColor={{ false: colors.border, true: colors.accentPrimary }}
+          trackColor={{ false: isDark ? '#2c2c2e' : '#D1D1D6', true: colors.accentPrimary }}
           thumbColor={Platform.OS === "android" ? (state.enabled ? "#fff" : colors.textMuted) : undefined}
         />
       </View>
@@ -108,12 +108,14 @@ function HabitReminderRow({
   );
 }
 
-const rowStyles = (colors: any) => StyleSheet.create({
+const rowStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: isDark ? "#1c1c1e" : "#F5F4FA",
     borderRadius: RADIUS.lg,
     padding: SPACE.md,
     marginBottom: SPACE.sm,
+    borderWidth: 1,
+    borderColor: isDark ? "rgba(255,255,255,0.05)" : "#E2E1EA",
   },
   row: {
     flexDirection: "row",
@@ -136,7 +138,7 @@ const rowStyles = (colors: any) => StyleSheet.create({
   streak: {
     fontFamily: FONT_FAMILY.body,
     fontSize: FONT_SIZE.xs,
-    color: colors.textMuted,
+    color: isDark ? colors.textMuted : '#B45309',
     marginTop: 2,
   },
   timeRow: {
@@ -156,7 +158,7 @@ const rowStyles = (colors: any) => StyleSheet.create({
   timeBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#2c2c2e",
+    backgroundColor: isDark ? "#2c2c2e" : "#EAE9F2",
     paddingHorizontal: SPACE.md,
     paddingVertical: SPACE.xs,
     borderRadius: RADIUS.md,
@@ -177,8 +179,8 @@ interface Props {
 }
 
 export function HabitReminderModal({ visible, onClose, habits }: Props) {
-  const { colors } = useTheme();
-  const s = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const s = makeStyles(colors, isDark);
 
   const [rows, setRows] = useState<Record<string, HabitRowState>>({});
   const [loading, setLoading] = useState(true);
@@ -217,73 +219,70 @@ export function HabitReminderModal({ visible, onClose, habits }: Props) {
   }, []);
 
   const handleSave = async () => {
-    hapticMedium();
     setSaving(true);
+    hapticMedium();
     try {
-      const pairs: [string, string][] = [];
+      const writes: [string, string][] = [];
       for (const [habitId, state] of Object.entries(rows)) {
-        pairs.push([HABIT_NOTIF_ENABLED_KEY(habitId), state.enabled.toString()]);
-        pairs.push([HABIT_NOTIF_TIME_KEY(habitId), `${state.hours}:${state.minutes}`]);
+        writes.push([HABIT_NOTIF_ENABLED_KEY(habitId), state.enabled ? "true" : "false"]);
+        writes.push([
+          HABIT_NOTIF_TIME_KEY(habitId),
+          `${state.hours.toString().padStart(2, "0")}:${state.minutes.toString().padStart(2, "0")}`,
+        ]);
       }
-      await AsyncStorage.multiSet(pairs);
-      Alert.alert(
-        "Saved ✅",
-        "Habit reminders updated. You can log any habit directly from the notification — no need to open the app."
-      );
+      await AsyncStorage.multiSet(writes);
+
+      // Trigger notification engine to reschedule all notifications with updated habit settings
+      const { scheduleAllNotifications, clearScheduleCache } = await import("../../services/notifications");
+      clearScheduleCache();
+      await scheduleAllNotifications({ allHabits: habits, tasks: [] });
+
       onClose();
-    } catch {
-      Alert.alert("Error", "Could not save settings. Please try again.");
+    } catch (e: any) {
+      Alert.alert("Save Failed", e?.message || "Could not save habit reminders.");
     } finally {
       setSaving(false);
     }
   };
-
-  const enabledCount = Object.values(rows).filter(r => r.enabled).length;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={s.overlay}>
         <View style={s.card}>
 
+          {/* Header */}
           <View style={s.header}>
-            <View style={{ flex: 1, marginRight: SPACE.md }}>
+            <View style={{ flex: 1 }}>
               <Text style={s.title}>Habit Reminders</Text>
-              <Text style={s.subtitle}>
-                {enabledCount > 0
-                  ? `${enabledCount} habit${enabledCount !== 1 ? "s" : ""} with reminders active`
-                  : "Enable reminders for individual habits"}
-              </Text>
+              <Text style={s.subtitle}>Get notified at the right time each day</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={s.closeBtn}>
-              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            <TouchableOpacity onPress={onClose} style={s.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Ionicons name="close" size={22} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
+          {/* Info Banner */}
           <View style={s.infoBanner}>
-            <Ionicons name="flash-outline" size={14} color="#5eda9e" style={{ marginTop: 2 }} />
+            <Ionicons name="notifications" size={16} color={isDark ? "#5EDA9E" : "#059669"} style={{ marginTop: 1 }} />
             <Text style={s.infoText}>
-              Tap{" "}
-              <Text style={{ color: "#5eda9e", fontFamily: FONT_FAMILY.bold }}>🔥 Log It</Text>
-              {" "}on the notification to mark a habit done without opening the app.
-              Your streak updates in real-time.
+              Notifications fire daily at your set time with actionable buttons to log directly from your lock screen.
             </Text>
           </View>
 
+          {/* Habit List */}
           {loading ? (
             <View style={s.loader}>
-              <ActivityIndicator color={colors.accentPrimary} />
+              <ActivityIndicator color={colors.accentPrimary} size="small" />
             </View>
           ) : habits.length === 0 ? (
-            <View style={s.loader}>
-              <Text style={s.emptyText}>No habits yet — create one first!</Text>
-            </View>
+            <Text style={s.emptyText}>No habits found. Create a habit first.</Text>
           ) : (
-            <ScrollView style={s.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 4 }}>
+            <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
               {habits.map(habit => (
                 <HabitReminderRow
                   key={habit.id}
                   habit={habit}
-                  state={rows[habit.id] ?? { enabled: false, hours: DEFAULT_TIME.hours, minutes: DEFAULT_TIME.minutes, showPicker: false }}
+                  state={rows[habit.id] || { enabled: false, hours: DEFAULT_TIME.hours, minutes: DEFAULT_TIME.minutes, showPicker: false }}
                   onChange={(update) => updateRow(habit.id, update)}
                 />
               ))}
@@ -296,7 +295,7 @@ export function HabitReminderModal({ visible, onClose, habits }: Props) {
             disabled={saving || loading}
           >
             {saving
-              ? <ActivityIndicator color={colors.background} size="small" />
+              ? <ActivityIndicator color="#FFFFFF" size="small" />
               : <Text style={s.saveBtnText}>Save Reminders</Text>
             }
           </TouchableOpacity>
@@ -307,19 +306,21 @@ export function HabitReminderModal({ visible, onClose, habits }: Props) {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "flex-end",
   },
   card: {
-    backgroundColor: "#141416",
+    backgroundColor: isDark ? "#141416" : "#FFFFFF",
     borderTopLeftRadius: RADIUS.xxl,
     borderTopRightRadius: RADIUS.xxl,
     padding: SPACE.xl,
     paddingBottom: Platform.OS === "ios" ? 44 : 24,
     maxHeight: "88%",
+    borderTopWidth: 1,
+    borderColor: isDark ? "rgba(255,255,255,0.08)" : "#E2E1EA",
   },
   header: {
     flexDirection: "row",
@@ -338,14 +339,21 @@ const makeStyles = (colors: any) => StyleSheet.create({
     fontSize: FONT_SIZE.sm,
     color: colors.textMuted,
   },
-  closeBtn: { padding: SPACE.xs },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)",
+  },
   infoBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: SPACE.xs,
-    backgroundColor: "rgba(94,218,158,0.08)",
+    backgroundColor: isDark ? "rgba(94,218,158,0.08)" : "rgba(16, 185, 129, 0.10)",
     borderWidth: 1,
-    borderColor: "rgba(94,218,158,0.18)",
+    borderColor: isDark ? "rgba(94,218,158,0.18)" : "rgba(16, 185, 129, 0.22)",
     borderRadius: RADIUS.md,
     padding: SPACE.md,
     marginBottom: SPACE.lg,
@@ -354,7 +362,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flex: 1,
     fontFamily: FONT_FAMILY.body,
     fontSize: FONT_SIZE.xs,
-    color: colors.textSecondary,
+    color: isDark ? colors.textSecondary : "#047857",
     lineHeight: 18,
   },
   scroll: { maxHeight: 380 },
@@ -370,11 +378,16 @@ const makeStyles = (colors: any) => StyleSheet.create({
     textAlign: "center",
   },
   saveBtn: {
-    backgroundColor: colors.accentPrimary,
+    backgroundColor: isDark ? colors.accentPrimary : '#6C5CE7',
     paddingVertical: SPACE.lg,
     borderRadius: RADIUS.xl,
     alignItems: "center",
     marginTop: SPACE.lg,
+    shadowColor: '#6C5CE7',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: isDark ? 0.35 : 0.25,
+    shadowRadius: 8,
+    elevation: 3,
   },
   saveBtnText: {
     fontFamily: FONT_FAMILY.bold,

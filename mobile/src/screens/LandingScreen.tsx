@@ -1,13 +1,18 @@
+import React, { useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import React from 'react';
 import { formatDateWithDay } from '../utils/dateUtils';
-import { View, Text, StyleSheet, TouchableOpacity, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useFonts, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold, PlayfairDisplay_600SemiBold_Italic } from '@expo-google-fonts/playfair-display';
+import { useTheme } from '../contexts/ThemeContext';
+import { FONT_FAMILY } from '../theme/tokens';
 
 export default function LandingScreen() {
   const navigation = useNavigation<any>();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_600SemiBold,
@@ -24,14 +29,15 @@ export default function LandingScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
-      
       <View style={styles.mainContent}>
         
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerBrandText}>ZENTRACK</Text>
-          <Text style={styles.stepText}>01 / life OS</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.headerBrandText}>ZENTRACK</Text>
+            <View style={styles.brandDot} />
+          </View>
+          <Text style={styles.stepText}>01 / LIFE OS</Text>
         </View>
 
         {/* Hero Section */}
@@ -41,9 +47,7 @@ export default function LandingScreen() {
             <Text style={styles.heroTitleBold}>orchestrated.</Text>
 
             <Text style={styles.heroSubtitle}>
-              Tasks, time, and habits, handled{'\n'}
-              alongside you. No dashboards to{'\n'}
-              manage. No noise.
+              Tasks, time, academics, and habits, handled alongside you. No dashboard clutter. Zero cognitive friction.
             </Text>
           </View>
         </View>
@@ -64,68 +68,77 @@ export default function LandingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#050505',
+    backgroundColor: colors.background,
   },
   mainContent: {
     flex: 1,
-    paddingTop: 6,
-    paddingHorizontal: 6,
+    paddingTop: 12,
+    paddingHorizontal: 24,
     paddingBottom: 40,
     justifyContent: 'space-between',
   },
   header: {
-    marginTop: 24,
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerBrandText: {
-    color: 'rgba(255, 255, 255, 0.4)',
+    color: colors.textPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 12,
     letterSpacing: 2,
-    marginBottom: 4,
+  },
+  brandDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.accentPrimary,
   },
   stepText: {
-    color: 'rgba(255, 255, 255, 0.3)',
+    color: colors.textMuted,
     fontFamily: 'Inter_400Regular',
-    fontSize: 12,
+    fontSize: 11,
+    letterSpacing: 1,
   },
   heroSection: {
     flex: 1,
     justifyContent: 'center',
-    marginTop: -40,
+    marginTop: -30,
   },
   heroTextContainer: {
     justifyContent: 'center',
   },
   heroTitleItalic: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
     fontSize: 52,
     lineHeight: 58,
   },
   heroTitleBold: {
-    color: '#ffffff',
+    color: colors.textPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 42,
     lineHeight: 50,
     letterSpacing: -1,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   heroSubtitle: {
-    color: 'rgba(255, 255, 255, 0.6)',
+    color: colors.textSecondary,
     fontFamily: 'Inter_400Regular',
-    fontSize: 16,
-    lineHeight: 26,
-    paddingRight: 20,
+    fontSize: 15,
+    lineHeight: 24,
+    maxWidth: 320,
   },
   footer: {
     width: '100%',
   },
   footerLine: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: colors.border,
     marginBottom: 20,
   },
   footerContent: {
@@ -134,7 +147,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dateText: {
-    color: 'rgba(255, 255, 255, 0.3)',
+    color: colors.textMuted,
     fontFamily: 'Inter_400Regular',
     fontSize: 12,
   },
@@ -143,11 +156,11 @@ const styles = StyleSheet.create({
     paddingLeft: 20,
   },
   ctaButtonText: {
-    color: '#ffffff',
+    color: colors.textPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 15,
   },
   ctaArrow: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
   }
 });

@@ -18,6 +18,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONT_FAMILY, RADIUS } from '../../../theme/tokens';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 interface ExerciseSpark {
   name: string;
@@ -84,6 +85,9 @@ function buildAreaPath(values: number[], w: number, h: number): string {
 }
 
 function SparkCard({ ex }: { ex: ExerciseSpark }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   const values = ex.weeks.map(w => w.est1RM);
   const linePath = useMemo(() => buildSparkPath(values, SPARK_W, SPARK_H), [values]);
   const areaPath = useMemo(() => buildAreaPath(values, SPARK_W, SPARK_H), [values]);
@@ -94,7 +98,7 @@ function SparkCard({ ex }: { ex: ExerciseSpark }) {
   const gradId = `grad_${ex.name.replace(/\s/g, '_')}`;
 
   return (
-    <View style={[styles.sparkCard, { borderColor: `${ex.color}22` }]}>
+    <View style={[styles.sparkCard, { borderColor: isDark ? `${ex.color}22` : colors.border }]}>
       {/* Left: info */}
       <View style={styles.sparkInfo}>
         <View style={[styles.accentDot, { backgroundColor: ex.color }]} />
@@ -106,11 +110,11 @@ function SparkCard({ ex }: { ex: ExerciseSpark }) {
         <Text style={styles.rm1Sub}>est. 1RM</Text>
         <View style={[
           styles.deltaBadge,
-          { backgroundColor: isFlat ? 'rgba(255,255,255,0.06)' : isUp ? 'rgba(94,218,158,0.12)' : 'rgba(255,76,76,0.12)' }
+          { backgroundColor: isFlat ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)') : isUp ? (isDark ? 'rgba(94,218,158,0.12)' : 'rgba(16,185,129,0.12)') : (isDark ? 'rgba(255,76,76,0.12)' : 'rgba(239,68,68,0.12)') }
         ]}>
           <Text style={[
             styles.deltaText,
-            { color: isFlat ? COLORS.textTertiary : isUp ? COLORS.accentGreen : COLORS.error }
+            { color: isFlat ? colors.textTertiary : isUp ? (isDark ? '#5EDA9E' : '#059669') : (isDark ? '#FF4C4C' : '#DC2626') }
           ]}>
             {isFlat ? '• flat' : isUp ? `▲ +${delta}` : `▼ ${delta}`}
           </Text>
@@ -123,8 +127,8 @@ function SparkCard({ ex }: { ex: ExerciseSpark }) {
           <Svg width={SPARK_W} height={SPARK_H} viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}>
             <Defs>
               <LinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={ex.color} stopOpacity="0.25" />
-                <Stop offset="1" stopColor={ex.color} stopOpacity="0.02" />
+                <Stop offset="0" stopColor={ex.color} stopOpacity={0.25} />
+                <Stop offset="1" stopColor={ex.color} stopOpacity={0.02} />
               </LinearGradient>
             </Defs>
             <Path d={areaPath} fill={`url(#${gradId})`} />
@@ -141,7 +145,7 @@ function SparkCard({ ex }: { ex: ExerciseSpark }) {
               const lastIdx = values.length - 1;
               const x = (lastIdx * stepX).toFixed(1);
               const y = (padY + chartH - ((values[lastIdx] - minV) / range) * chartH).toFixed(1);
-              return <Circle cx={x} cy={y} r="3" fill={ex.color} stroke="#0e0e1a" strokeWidth="1.5" />;
+              return <Circle cx={x} cy={y} r="3" fill={ex.color} stroke={isDark ? '#0e0e1a' : '#ffffff'} strokeWidth="1.5" />;
             })()}
           </Svg>
         ) : (
@@ -159,6 +163,9 @@ function SparkCard({ ex }: { ex: ExerciseSpark }) {
 }
 
 export default function StrengthProgressionChart({ exercises }: StrengthProgressionChartProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   if (!exercises || exercises.length === 0) return null;
 
   return (
@@ -166,7 +173,7 @@ export default function StrengthProgressionChart({ exercises }: StrengthProgress
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerIcon}>
-          <Ionicons name="trending-up" size={12} color="#5eda9e" />
+          <Ionicons name="trending-up" size={12} color={isDark ? '#5eda9e' : '#059669'} />
         </View>
         <View>
           <Text style={styles.sectionLabel}>STRENGTH PROGRESSION</Text>
@@ -184,122 +191,123 @@ export default function StrengthProgressionChart({ exercises }: StrengthProgress
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 14,
-  },
-  headerIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    backgroundColor: 'rgba(94,218,158,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.textTertiary,
-    letterSpacing: 1.2,
-    fontFamily: FONT_FAMILY.bold,
-  },
-  sectionSub: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
-    marginTop: 1,
-  },
-  grid: {
-    gap: 8,
-  },
-  sparkCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: RADIUS.lg,
-    borderWidth: 1,
-    padding: 12,
-    gap: 12,
-  },
-  sparkInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  accentDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginBottom: 4,
-  },
-  exName: {
-    fontSize: 13,
-    fontFamily: FONT_FAMILY.bold,
-    color: COLORS.textPrimary,
-    lineHeight: 16,
-  },
-  muscleTag: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.medium,
-  },
-  rm1Value: {
-    fontSize: 20,
-    fontFamily: FONT_FAMILY.bold,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  rm1Unit: {
-    fontSize: 12,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.medium,
-  },
-  rm1Sub: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
-  },
-  deltaBadge: {
-    alignSelf: 'flex-start',
-    borderRadius: 6,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    marginTop: 4,
-  },
-  deltaText: {
-    fontSize: 10,
-    fontFamily: FONT_FAMILY.bold,
-  },
-  sparkChart: {
-    alignItems: 'flex-end',
-  },
-  weekLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: SPARK_W,
-    marginTop: 3,
-  },
-  weekLabel: {
-    fontSize: 8,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
-  },
-  notEnoughData: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
-    width: SPARK_W,
-    textAlign: 'center',
-    marginTop: 12,
-  },
-});
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.xl,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 14,
+    },
+    headerIcon: {
+      width: 26,
+      height: 26,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(94,218,158,0.12)' : 'rgba(16,185,129,0.12)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sectionLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textTertiary,
+      letterSpacing: 1.2,
+      fontFamily: FONT_FAMILY.bold,
+    },
+    sectionSub: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.regular,
+      marginTop: 1,
+    },
+    grid: {
+      gap: 8,
+    },
+    sparkCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : (colors.surface2 || '#F8F7FC'),
+      borderRadius: RADIUS.lg,
+      borderWidth: 1,
+      padding: 12,
+      gap: 12,
+    },
+    sparkInfo: {
+      flex: 1,
+      gap: 2,
+    },
+    accentDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      marginBottom: 4,
+    },
+    exName: {
+      fontSize: 13,
+      fontFamily: FONT_FAMILY.bold,
+      color: colors.textPrimary,
+      lineHeight: 16,
+    },
+    muscleTag: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.medium,
+    },
+    rm1Value: {
+      fontSize: 20,
+      fontFamily: FONT_FAMILY.bold,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    rm1Unit: {
+      fontSize: 12,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.medium,
+    },
+    rm1Sub: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.regular,
+    },
+    deltaBadge: {
+      alignSelf: 'flex-start',
+      borderRadius: 6,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      marginTop: 4,
+    },
+    deltaText: {
+      fontSize: 10,
+      fontFamily: FONT_FAMILY.bold,
+    },
+    sparkChart: {
+      alignItems: 'flex-end',
+    },
+    weekLabels: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      width: SPARK_W,
+      marginTop: 3,
+    },
+    weekLabel: {
+      fontSize: 8,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.regular,
+    },
+    notEnoughData: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.regular,
+      width: SPARK_W,
+      textAlign: 'center',
+      marginTop: 12,
+    },
+  });

@@ -1082,3 +1082,19 @@ export function formatDateNumeric(dateStr: string): string {
 export function formatDateObjShort(date: Date): string {
   return `${date.getDate().toString().padStart(2, '0')} ${MONTHS_SHORT[date.getMonth()]}`;
 }
+
+/**
+ * Format any JS Date object to local "YYYY-MM-DD" string.
+ * CRITICAL: Never use date.toISOString().slice(0, 10) because toISOString() shifts to UTC,
+ * which shows the previous day before 5:30 AM in IST or other positive timezones!
+ */
+export function formatLocalDateStr(date: Date = new Date()): string {
+  const y = date.getFullYear();
+  const m = (date.getMonth() + 1).toString().padStart(2, '0');
+  const d = date.getDate().toString().padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function getTodayLocalDateStr(): string {
+  return formatLocalDateStr(new Date());
+}

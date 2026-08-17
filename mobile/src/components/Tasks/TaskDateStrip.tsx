@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import AnimatedPressable from '../AnimatedPressable';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export interface DateObj {
   dateStr: string;
@@ -51,6 +52,8 @@ const generateDates = (baseDateStr: string) => {
 };
 
 export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, onSelectDate, taskDates, style }: TaskDateStripProps) {
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
   const dates = useMemo(() => generateDates(selectedDate), [selectedDate]);
   
   // Extract month and year from the selected date (which is at index 3 in our -3 to +3 array)
@@ -74,10 +77,10 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, o
               style={[styles.dateItem, isActive && styles.dateItemActive]}
               onPress={() => onSelectDate(d.dateStr)}
             >
-              <Text style={[styles.dateDay, isActive && styles.dateDayActive, d.isToday && !isActive && { color: '#A599FF' }]}>
+              <Text style={[styles.dateDay, isActive && styles.dateDayActive, d.isToday && !isActive && { color: colors.accentPrimary }]}>
                 {d.dayShort}
               </Text>
-              <Text style={[styles.dateNum, isActive && styles.dateNumActive, d.isToday && !isActive && { color: '#A599FF' }]}>
+              <Text style={[styles.dateNum, isActive && styles.dateNumActive, d.isToday && !isActive && { color: colors.accentPrimary }]}>
                 {d.dateNum}
               </Text>
               {/* Dot indicator */}
@@ -85,7 +88,7 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, o
                 styles.dot, 
                 isActive ? styles.dotActive : null, 
                 taskDates?.has(d.dateStr) ? styles.dotVisible : null,
-                d.isToday && !isActive && { backgroundColor: '#A599FF' }
+                d.isToday && !isActive && { backgroundColor: colors.accentPrimary }
               ]} />
             </AnimatedPressable>
           );
@@ -95,11 +98,11 @@ export const TaskDateStrip = React.memo(function TaskDateStrip({ selectedDate, o
   );
 });
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
     paddingTop: 8,
     paddingBottom: 16,
-    backgroundColor: '#000000',
+    backgroundColor: 'transparent',
     width: '100%',
   },
   headerRow: {
@@ -113,12 +116,12 @@ const styles = StyleSheet.create({
   dayFullText: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 16,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
   },
   monthYearText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 14,
-    color: '#8E8E93',
+    color: colors.textTertiary,
   },
   dateRow: {
     width: '100%',
@@ -133,36 +136,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: 56,
     borderRadius: 12,
-    backgroundColor: '#141416',
+    backgroundColor: isDark ? '#141416' : colors.surface,
     borderWidth: 1,
-    borderColor: '#2C2C2E',
+    borderColor: isDark ? '#2C2C2E' : colors.border,
   },
   dateItemActive: {
-    backgroundColor: '#A599FF',
-    borderColor: '#A599FF',
+    backgroundColor: colors.accentPrimary,
+    borderColor: colors.accentPrimary,
   },
   dateDay: {
     fontFamily: 'Inter_500Medium',
     fontSize: 11,
-    color: '#8E8E93',
+    color: colors.textTertiary,
     marginBottom: 4,
   },
   dateDayActive: {
-    color: '#000000',
+    color: isDark ? '#000000' : '#FFFFFF',
+    fontWeight: '700',
   },
   dateNum: {
     fontFamily: 'Inter_600SemiBold',
     fontSize: 15,
-    color: '#F2F2F7',
+    color: colors.textPrimary,
   },
   dateNumActive: {
-    color: '#000000',
+    color: isDark ? '#000000' : '#FFFFFF',
+    fontWeight: '700',
   },
   dot: {
     width: 3,
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: '#636366',
+    backgroundColor: colors.textTertiary,
     marginTop: 4,
     opacity: 0, // hidden by default, can be toggled
   },
@@ -170,6 +175,6 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
   dotActive: {
-    backgroundColor: '#000000',
+    backgroundColor: isDark ? '#000000' : '#FFFFFF',
   }
 });

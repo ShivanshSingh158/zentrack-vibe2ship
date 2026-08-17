@@ -4,10 +4,12 @@
  * not the whole GymHomeScreen. Extracted from inline memo in GymHomeScreen.tsx.
  */
 import React, { memo, useEffect, useState } from 'react';
-import { Text } from 'react-native';
+import { Text, Platform } from 'react-native';
 import { FONT_FAMILY } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const WorkoutTimer = memo(function WorkoutTimer({ startTime }: { startTime: number }) {
+  const { colors, isDark } = useTheme();
   const [elapsed, setElapsed] = useState(Math.floor((Date.now() - startTime) / 1000));
 
   useEffect(() => {
@@ -24,7 +26,12 @@ const WorkoutTimer = memo(function WorkoutTimer({ startTime }: { startTime: numb
     : `${m}:${s.toString().padStart(2, '0')}`;
 
   return (
-    <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#a599ff' }}>
+    <Text style={{
+      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+      fontSize: 13,
+      fontWeight: 'bold',
+      color: isDark ? colors.accentPrimary : (colors.accentAmber || '#D97706'),
+    }}>
       {label}
     </Text>
   );

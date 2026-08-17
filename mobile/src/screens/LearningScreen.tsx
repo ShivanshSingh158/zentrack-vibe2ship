@@ -136,8 +136,8 @@ export default function LearningScreen() {
   const { learningTopics } = useCreativeData();
   const { user } = useCoreData();
   const navigation = useNavigation();
-  const { colors } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
   // ΓöÇΓöÇ Modal state ΓöÇΓöÇ
   const [topicModalVisible, setTopicModalVisible] = useState(false);
@@ -166,8 +166,8 @@ export default function LearningScreen() {
   const playerRef = useRef<any>(null);
   const [videoLayout, setVideoLayout] = useState({ width: 300, height: 200 });
 
-  // ΓöÇΓöÇ AI chat state ΓöÇΓöÇ
-  const [aiChatVisible, setAiChatVisible] = useState(false);
+  // ── AI chat state ──
+  const [aiChatVisible, setAiChatVisible] = useState(true);
   const [aiHistory, setAiHistory] = useState<{ role: string; text: string }[]>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
@@ -197,7 +197,7 @@ export default function LearningScreen() {
     return () => sub.remove();
   }, [learningTopics]);
 
-  // ΓöÇΓöÇ Hide tab bar when panels open ΓöÇΓöÇ
+  // ── Hide tab bar only when a video lecture is open ──
   useEffect(() => {
     const baseTabBarStyle = {
       position: 'absolute' as const,
@@ -213,13 +213,13 @@ export default function LearningScreen() {
       paddingBottom: 0,
     };
 
-    if (aiChatVisible || notesVisible) {
+    if (activeVideoSub && !isPip) {
       navigation.setOptions({ tabBarStyle: { display: 'none' } });
     } else {
       navigation.setOptions({ tabBarStyle: baseTabBarStyle });
     }
     return () => navigation.setOptions({ tabBarStyle: baseTabBarStyle });
-  }, [aiChatVisible, notesVisible, navigation, colors]);
+  }, [activeVideoSub, isPip, navigation, colors]);
 
   // ΓöÇΓöÇ Helpers ΓöÇΓöÇ
   const extractVideoId = (url?: string): string | null => {
@@ -303,6 +303,8 @@ export default function LearningScreen() {
     setPlaying(true);
     setIsPip(false);
     setIsFocusMode(false);
+    setAiChatVisible(true);
+    setNotesVisible(false);
     setCurrentNotes(sub.notes || '');
 
     const videoTitle = sub.title?.trim() || 'this lecture';
@@ -571,21 +573,39 @@ export default function LearningScreen() {
       {/* Single header row: icon + title LEFT, "+ Quick import" RIGHT */}
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
         <View style={s.headerIconWrapper}>
-          <Ionicons name="book" size={20} color="#a599ff" />
+          <Ionicons name="book" size={20} color={colors.accentPrimary} />
         </View>
         <Text style={[s.screenTitle, { marginLeft: 12, flex: 1 }]}>Learn</Text>
         <TouchableOpacity
           onPress={() => setRoadmapModalVisible(true)}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: 'rgba(165,153,255,0.1)', borderWidth: 1, borderColor: 'rgba(165,153,255,0.25)' }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            paddingVertical: 6,
+            paddingHorizontal: 12,
+            borderRadius: 20,
+            backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.10)',
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)',
+          }}
         >
-          <Ionicons name="sparkles" size={14} color="#a599ff" />
-          <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#f2f2f7' }}>Quick import</Text>
+          <Ionicons name="sparkles" size={14} color={colors.accentPrimary} />
+          <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>Quick import</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setTopicModalVisible(true)}
-          style={{ marginLeft: 10, width: 36, height: 36, borderRadius: 18, backgroundColor: '#a599ff', alignItems: 'center', justifyContent: 'center' }}
+          style={{
+            marginLeft: 10,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: colors.accentPrimary,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          <Ionicons name="add" size={22} color="#080510" />
+          <Ionicons name="add" size={22} color={isDark ? '#080510' : '#FFFFFF'} />
         </TouchableOpacity>
       </View>
     </View>
@@ -702,10 +722,10 @@ export default function LearningScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   list: { paddingHorizontal: 8, paddingTop: 18, paddingBottom: 100 },
-  headerIconWrapper: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accentDim, justifyContent: 'center', alignItems: 'center' },
+  headerIconWrapper: { width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? colors.accentDim : 'rgba(108,92,231,0.12)', justifyContent: 'center', alignItems: 'center' },
   screenTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: colors.textPrimary },
   searchBar: { backgroundColor: colors.surface2 || colors.surface, borderRadius: 16, flexDirection: 'row', alignItems: 'center', padding: 14, gap: 8, marginBottom: 24, borderWidth: 1, borderColor: colors.border },
   searchText: { fontFamily: FONT_FAMILY.body, color: colors.textMuted, fontSize: 13 },

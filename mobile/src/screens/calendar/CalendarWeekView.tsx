@@ -15,6 +15,7 @@ import { FONT_FAMILY } from '../../theme/tokens';
 interface CalendarWeekViewProps {
   styles: any;
   colors: any;
+  isDark?: boolean;
   weekEvents: any[];
   DYNAMIC_HOURS: number[];
   minHour: number;
@@ -28,7 +29,7 @@ interface CalendarWeekViewProps {
 }
 
 export const CalendarWeekView = React.memo(function CalendarWeekView({
-  styles, colors, weekEvents, minHour, maxHour, DYNAMIC_HOURS,
+  styles, colors, isDark = true, weekEvents, minHour, maxHour, DYNAMIC_HOURS,
   indicatorTop, selectedDate, nowDateStr, setSelectedDate, setCurrentView,
   markedDates = {}
 }: CalendarWeekViewProps) {
@@ -56,6 +57,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
   }, [selectedDate, nowDateStr]);
 
   const DAY_LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const eventColorMap = getEventColors(colors, isDark);
 
   return (
     <View style={{ flex: 1 }}>
@@ -97,7 +99,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
                   <Text style={{
                     fontSize: 14,
                     fontFamily: wd.isSelected || wd.isToday ? FONT_FAMILY.bold : FONT_FAMILY.body,
-                    color: wd.isSelected ? '#000000' : (wd.isToday ? (colors.accentPrimary || '#a599ff') : colors.textPrimary),
+                    color: wd.isSelected ? (isDark ? '#000000' : '#FFFFFF') : (wd.isToday ? (colors.accentPrimary || '#a599ff') : colors.textPrimary),
                   }}>
                     {wd.dateNum}
                   </Text>
@@ -116,7 +118,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
                           width: 3.5,
                           height: 3.5,
                           borderRadius: 2,
-                          backgroundColor: wd.isSelected ? '#000000' : (dot.color || colors.accentPrimary),
+                          backgroundColor: wd.isSelected ? (isDark ? '#000000' : '#FFFFFF') : (dot.color || colors.accentPrimary),
                         }}
                       />
                     ))}
@@ -165,7 +167,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
                   )}
                   {/* Events */}
                   {weekEvents.filter((e: any) => e.dayIndex === i).map((event: any) => {
-                    const typeColor = getEventColors(colors)[event.type]?.bg || '#a599ff';
+                    const eventColor = eventColorMap[event.type] || { bg: isDark ? '#a599ff40' : 'rgba(108,92,231,0.12)', text: colors.textPrimary, border: colors.accentPrimary };
                     const timeLabel = event.startTime ? format12Hour(event.startTime).replace(' AM','a').replace(' PM','p') : '';
                     return (
                       <TouchableOpacity
@@ -175,8 +177,8 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
                           {
                             top: event.top - (minHour * HOUR_HEIGHT),
                             height: event.height,
-                            backgroundColor: `${typeColor}40`,
-                            borderLeftColor: typeColor,
+                            backgroundColor: isDark ? `${eventColor.border}35` : eventColor.bg,
+                            borderLeftColor: eventColor.border,
                           }
                         ]}
                         onPress={() => { setSelectedDate(event.dateStr); setCurrentView('Day'); }}
@@ -184,7 +186,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
                       >
                         {/* Title — 1 line, bold */}
                         <Text
-                          style={[styles.weekEventTitle, { color: typeColor }]}
+                          style={[styles.weekEventTitle, { color: isDark ? eventColor.border : colors.textPrimary }]}
                           numberOfLines={1}
                           ellipsizeMode="tail"
                         >
@@ -193,7 +195,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
                         {/* Time sub-label — only show if block tall enough */}
                         {event.height >= 28 && timeLabel ? (
                           <Text
-                            style={{ fontSize: 8, color: typeColor, opacity: 0.75, fontFamily: FONT_FAMILY.body }}
+                            style={{ fontSize: 8, color: isDark ? eventColor.border : colors.textSecondary, opacity: 0.85, fontFamily: FONT_FAMILY.body }}
                             numberOfLines={1}
                           >
                             {timeLabel}

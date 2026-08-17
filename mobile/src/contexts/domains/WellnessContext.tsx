@@ -86,11 +86,11 @@ export function WellnessProvider({
     let cancelled = false;
     readWellnessCache().then(cached => {
       if (cancelled) return;
-      if (cached.gymLogs    && cached.gymLogs.length > 0)    setGymLogs(prev    => prev.length === 0 ? cached.gymLogs!    : prev);
-      if (cached.userGymPlan)                               setUserGymPlan(prev => prev === null   ? cached.userGymPlan! : prev);
-      if (cached.waterLogs  && cached.waterLogs.length > 0) setWaterLogs(prev  => prev.length === 0 ? cached.waterLogs!  : prev);
-      if (cached.sleepLogs  && cached.sleepLogs.length > 0) setSleepLogs(prev  => prev.length === 0 ? cached.sleepLogs!  : prev);
-      if (cached.weightLogs && cached.weightLogs.length > 0) setWeightLogs(prev => prev.length === 0 ? cached.weightLogs! : prev);
+      if (Array.isArray(cached.gymLogs))   setGymLogs(cached.gymLogs);
+      if (cached.userGymPlan)              setUserGymPlan(cached.userGymPlan);
+      if (Array.isArray(cached.waterLogs)) setWaterLogs(cached.waterLogs);
+      if (Array.isArray(cached.sleepLogs)) setSleepLogs(cached.sleepLogs);
+      if (Array.isArray(cached.weightLogs)) setWeightLogs(cached.weightLogs);
     });
     return () => { cancelled = true; };
   }, []);

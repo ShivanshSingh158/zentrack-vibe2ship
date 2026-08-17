@@ -30,7 +30,7 @@ import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DashboardScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark, toggleTheme } = useTheme();
   const s = makeStyles(colors);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
@@ -116,9 +116,47 @@ export default function DashboardScreen() {
     };
   }, [data.tasks, data.allHabits, data.habitLogs, data.waterLogs, data.todayStr]);
 
+  const { showXPSection, showCapture } = useMemo(() => {
+    let xpVisible = true;
+    let captureVisible = false;
+    for (let i = 0; i < data.layout.length; i++) {
+      const l = data.layout[i];
+      if (l.id === 'xp') xpVisible = !l.hidden;
+      if (l.id === 'capture') captureVisible = !l.hidden;
+    }
+    return { showXPSection: xpVisible, showCapture: captureVisible };
+  }, [data.layout]);
+
+  const handlePressStreak = useCallback(() => {
+    navigation.navigate('MoreStack', { screen: 'StreakDetail' });
+  }, [navigation]);
+
+  const handlePressHabits = useCallback(() => {
+    navigation.navigate('Habits');
+  }, [navigation]);
+
+  const handlePressWater = useCallback(() => {
+    data.setWaterLogVisible(true);
+  }, [data.setWaterLogVisible]);
+
+  const handlePressAttendance = useCallback(() => {
+    navigation.navigate('Attendance');
+  }, [navigation]);
+
+  const handlePressXP = useCallback(() => {
+    navigation.navigate('MoreStack', { screen: 'XPConstellation' });
+  }, [navigation]);
+
+  const handlePressRing = useCallback(() => {
+    navigation.navigate(data.nextClass ? 'Attendance' : 'Tasks');
+  }, [navigation, data.nextClass]);
+
+  const handleCapture = useCallback(() => {
+    data.setCaptureVisible(true);
+  }, [data.setCaptureVisible]);
+
   // ── Floating Action Menu State & Motion (Smooth Linear / Non-Bouncy) ────────
   const [menuOpen, setMenuOpen] = useState(false);
-  const [menuLayout, setMenuLayout] = useState({ x: 0, y: 0, ready: false });
   const avatarRef = useRef<View>(null);
   const rotateVal = useSharedValue(0);
   const animVal = useSharedValue(0);
@@ -126,12 +164,11 @@ export default function DashboardScreen() {
   const closeMenu = useCallback(() => {
     if (menuOpen) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      rotateVal.value = withTiming(0, { duration: 240, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-      animVal.value = withTiming(0, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+      rotateVal.value = withTiming(0, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+      animVal.value = withTiming(0, { duration: 180, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
       setTimeout(() => {
         setMenuOpen(false);
-        setMenuLayout(prev => ({ ...prev, ready: false }));
-      }, 220);
+      }, 190);
     }
   }, [menuOpen, rotateVal, animVal]);
 
@@ -140,12 +177,9 @@ export default function DashboardScreen() {
     if (menuOpen) {
       closeMenu();
     } else {
-      avatarRef.current?.measure((x, y, w, h, pageX, pageY) => {
-        setMenuLayout({ x: pageX, y: pageY + h, ready: true });
-        setMenuOpen(true);
-        rotateVal.value = withTiming(180, { duration: 260, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-        animVal.value = withTiming(1, { duration: 240, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
-      });
+      setMenuOpen(true);
+      rotateVal.value = withTiming(180, { duration: 220, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
+      animVal.value = withTiming(1, { duration: 200, easing: Easing.bezier(0.25, 0.1, 0.25, 1) });
     }
   }, [menuOpen, closeMenu, rotateVal, animVal]);
 
@@ -164,117 +198,31 @@ export default function DashboardScreen() {
     transform: [{ rotate: `${rotateVal.value}deg` }],
   }));
 
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: animVal.value,
-  }));
-
   const layoutBtnStyle = useAnimatedStyle(() => ({
     opacity: animVal.value,
     transform: [
-      { translateY: interpolate(animVal.value, [0, 1], [-44, 0]) },
-      { scale: interpolate(animVal.value, [0, 1], [0.1, 1]) },
-      { rotate: `${interpolate(animVal.value, [0, 1], [-180, 0])}deg` },
+      { translateY: interpolate(animVal.value, [0, 1], [-8, 0]) },
+      { scale: interpolate(animVal.value, [0, 1], [0.8, 1]) },
     ],
   }));
 
   const settingsBtnStyle = useAnimatedStyle(() => ({
     opacity: animVal.value,
     transform: [
-      { translateY: interpolate(animVal.value, [0, 1], [-88, 0]) },
-      { scale: interpolate(animVal.value, [0, 1], [0.1, 1]) },
-      { rotate: `${interpolate(animVal.value, [0, 1], [-360, 0])}deg` },
+      { translateY: interpolate(animVal.value, [0, 1], [-14, 0]) },
+      { scale: interpolate(animVal.value, [0, 1], [0.8, 1]) },
     ],
   }));
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
-      {/* Root-Level Absolute Overlay for Dropdown Menu to bypass ScrollView touch issues */}
-      <Animated.View
-        pointerEvents={menuOpen ? 'auto' : 'none'}
-        style={[StyleSheet.absoluteFillObject, { zIndex: 9999 }, backdropStyle]}
-      >
+      {/* Tap-outside transparent backdrop to dismiss dropdown */}
+      {menuOpen && (
         <Pressable
-          style={StyleSheet.absoluteFillObject}
+          style={[StyleSheet.absoluteFillObject, { zIndex: 9998 }]}
           onPress={closeMenu}
         />
-        
-        {/* Floating Action Menu Buttons */}
-        {menuLayout.ready && (
-          <View
-            pointerEvents="box-none"
-            style={{
-              position: 'absolute',
-              top: menuLayout.y + 8,
-              left: menuLayout.x,
-              width: 36,
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
-            {/* Icon 1: Customize Layout */}
-            <Animated.View style={layoutBtnStyle}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: '#1c1c1e',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.18)',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.4,
-                  shadowRadius: 8,
-                  elevation: 12,
-                }}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  closeMenu();
-                  setTimeout(() => {
-                    data.setLayoutSheetVisible(true);
-                  }, 120);
-                }}
-              >
-                <Ionicons name="color-palette-outline" size={18} color="#a599ff" />
-              </TouchableOpacity>
-            </Animated.View>
-
-            {/* Icon 2: App Settings */}
-            <Animated.View style={settingsBtnStyle}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: '#1c1c1e',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 1,
-                  borderColor: 'rgba(255,255,255,0.18)',
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.4,
-                  shadowRadius: 8,
-                  elevation: 12,
-                }}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  closeMenu();
-                  setTimeout(() => {
-                    navigation.navigate('MoreStack', { screen: 'Settings' });
-                  }, 120);
-                }}
-              >
-                <Ionicons name="settings-outline" size={18} color="#38bdf8" />
-              </TouchableOpacity>
-            </Animated.View>
-          </View>
-        )}
-      </Animated.View>
+      )}
 
       <SaraHUDBanner
         message={data.surfaceMessage || ''}
@@ -286,14 +234,14 @@ export default function DashboardScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView scrollEnabled={!menuOpen} contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
           
-          <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[s.greetingContainer, { zIndex: 999 }]}>
+          <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[s.greetingContainer, { zIndex: 9999 }]}>
             <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={s.greetingGood}>Good</Text>
               <Text style={s.greetingTime}>{data.timeGreeting}</Text>
             </View>
 
             {/* Header Action Bar */}
-            <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', zIndex: 999 }}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', zIndex: 9999 }}>
               {/* Flame streak pill */}
               <AnimatedPressable
                 style={s.headerStreakPill}
@@ -305,23 +253,46 @@ export default function DashboardScreen() {
                 </Text>
               </AnimatedPressable>
 
+              {/* Circular Dark Mode / Light Mode Switcher */}
+              <AnimatedPressable
+                style={[
+                  s.themeToggleCircle,
+                  {
+                    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+                    borderColor: colors.border,
+                  },
+                ]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  toggleTheme();
+                }}
+                accessibilityLabel={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                accessibilityRole="button"
+              >
+                <Ionicons
+                  name={isDark ? "sunny" : "moon"}
+                  size={18}
+                  color={isDark ? "#FFB300" : colors.accentPrimary}
+                />
+              </AnimatedPressable>
+
               {/* Anchored Vertical Speed Dial Container */}
-              <View collapsable={false} ref={avatarRef} style={{ position: 'relative', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 1000, elevation: 10 }}>
+              <View collapsable={false} ref={avatarRef} style={{ position: 'relative', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 99999, elevation: 9999 }}>
                 {/* Rotating Trigger Avatar / Close Button */}
                 <Animated.View style={avatarAnimatedStyle}>
                   <AnimatedPressable
                     style={[
                       s.avatarCircle,
                       menuOpen && {
-                        backgroundColor: '#2c2c2e',
+                        backgroundColor: isDark ? '#2c2c2e' : '#e5e5ea',
                         borderWidth: 1,
-                        borderColor: 'rgba(255,255,255,0.2)',
+                        borderColor: colors.border,
                       },
                     ]}
                     onPress={toggleMenu}
                   >
                     {menuOpen ? (
-                      <Ionicons name="close" size={20} color="#ffffff" />
+                      <Ionicons name="close" size={20} color={colors.textPrimary} />
                     ) : data.user?.photoURL ? (
                       <Image source={{ uri: data.user.photoURL }} style={{ width: 36, height: 36, borderRadius: 18 }} />
                     ) : (
@@ -329,6 +300,85 @@ export default function DashboardScreen() {
                     )}
                   </AnimatedPressable>
                 </Animated.View>
+
+                {/* Speed Dial Menu Buttons anchored directly below avatar */}
+                {menuOpen && (
+                  <View
+                    pointerEvents="box-none"
+                    style={{
+                      position: 'absolute',
+                      top: 44,
+                      right: 0,
+                      width: 36,
+                      alignItems: 'center',
+                      gap: 8,
+                      zIndex: 99999,
+                      elevation: 9999,
+                    }}
+                  >
+                    {/* Icon 1: Customize Layout */}
+                    <Animated.View style={layoutBtnStyle}>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderWidth: 1,
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
+                          shadowColor: colors.accentPrimary,
+                          shadowOffset: { width: 0, height: 4 },
+                          shadowOpacity: isDark ? 0.35 : 0.15,
+                          shadowRadius: 8,
+                          elevation: 12,
+                        }}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          closeMenu();
+                          setTimeout(() => {
+                            data.setLayoutSheetVisible(true);
+                          }, 120);
+                        }}
+                      >
+                        <Ionicons name="color-palette-outline" size={18} color={isDark ? '#a599ff' : colors.accentPrimary} />
+                      </TouchableOpacity>
+                    </Animated.View>
+
+                    {/* Icon 2: App Settings */}
+                    <Animated.View style={settingsBtnStyle}>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          borderWidth: 1,
+                          borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
+                          shadowColor: colors.accentBlue,
+                          shadowOffset: { width: 0, height: 4 },
+                          shadowOpacity: isDark ? 0.35 : 0.15,
+                          shadowRadius: 8,
+                          elevation: 12,
+                        }}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          closeMenu();
+                          setTimeout(() => {
+                            navigation.navigate('MoreStack', { screen: 'Settings' });
+                          }, 120);
+                        }}
+                      >
+                        <Ionicons name="settings-outline" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />
+                      </TouchableOpacity>
+                    </Animated.View>
+                  </View>
+                )}
               </View>
             </View>
           </Animated.View>
@@ -338,19 +388,19 @@ export default function DashboardScreen() {
             <Animated.View entering={FadeInDown.delay(180).duration(400)} style={{ marginTop: 12, marginBottom: 6 }}>
               <View
                 style={{
-                  backgroundColor: '#121214',
+                  backgroundColor: colors.surface,
                   borderRadius: 18,
                   paddingHorizontal: 14,
                   paddingVertical: 12,
                   flexDirection: 'row',
                   alignItems: 'center',
                   borderWidth: 1,
-                  borderColor: 'rgba(255, 255, 255, 0.08)',
+                  borderColor: colors.border,
                   shadowColor: '#000',
                   shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
+                  shadowOpacity: isDark ? 0.3 : 0.06,
                   shadowRadius: 8,
-                  elevation: 6,
+                  elevation: 4,
                 }}
               >
                 {/* Left Flash Icon */}
@@ -364,15 +414,15 @@ export default function DashboardScreen() {
                     width: 38,
                     height: 38,
                     borderRadius: 12,
-                    backgroundColor: 'rgba(165, 153, 255, 0.12)',
+                    backgroundColor: colors.accentDim,
                     borderWidth: 1,
-                    borderColor: 'rgba(165, 153, 255, 0.25)',
+                    borderColor: colors.accentPrimary + '30',
                     alignItems: 'center',
                     justifyContent: 'center',
                     marginRight: 12,
                   }}
                 >
-                  <Ionicons name="flash" size={18} color="#a599ff" />
+                  <Ionicons name="flash" size={18} color={colors.accentPrimary} />
                 </TouchableOpacity>
 
                 {/* Middle Text Column (Generous space, no XP badge overlap) */}
@@ -384,10 +434,10 @@ export default function DashboardScreen() {
                     setFlashcardModalVisible(true);
                   }}
                 >
-                  <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#FFFFFF', fontSize: 13.5, letterSpacing: -0.2 }}>
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary, fontSize: 13.5, letterSpacing: -0.2 }}>
                     3-Min Active Recall
                   </Text>
-                  <Text style={{ color: '#8e8e93', fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 }} numberOfLines={1}>
+                  <Text style={{ color: colors.textTertiary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 }} numberOfLines={1}>
                     {dueFlashcards.length} flashcard{dueFlashcards.length > 1 ? 's' : ''} scheduled
                   </Text>
                 </TouchableOpacity>
@@ -397,7 +447,7 @@ export default function DashboardScreen() {
                   <TouchableOpacity
                     activeOpacity={0.85}
                     style={{
-                      backgroundColor: '#FFFFFF',
+                      backgroundColor: isDark ? '#FFFFFF' : colors.accentPrimary,
                       paddingHorizontal: 12,
                       paddingVertical: 7,
                       borderRadius: 12,
@@ -410,8 +460,8 @@ export default function DashboardScreen() {
                       setFlashcardModalVisible(true);
                     }}
                   >
-                    <Text style={{ color: '#000000', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Review</Text>
-                    <Ionicons name="chevron-forward" size={12} color="#000000" />
+                    <Text style={{ color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold, fontSize: 12 }}>Review</Text>
+                    <Ionicons name="chevron-forward" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
@@ -421,13 +471,13 @@ export default function DashboardScreen() {
                       width: 26,
                       height: 26,
                       borderRadius: 13,
-                      backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                     onPress={handleDismissBanner}
                   >
-                    <Ionicons name="close" size={14} color="#8e8e93" />
+                    <Ionicons name="close" size={14} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -474,17 +524,17 @@ export default function DashboardScreen() {
                     levelXP={data.xp}
                     levelNextXP={levelInfo.nextXP}
                     levelProgress={levelInfo.progress}
-                    showXPSection={!data.layout.find(l => l.id === 'xp')?.hidden}
-                    showCapture={!data.layout.find(l => l.id === 'capture')?.hidden}
+                    showXPSection={showXPSection}
+                    showCapture={showCapture}
                     urgentAssignments={[]}
                     nextClass={data.nextClass}
-                    onPressStreak={() => navigation.navigate('MoreStack', { screen: 'StreakDetail' })}
-                    onPressHabits={() => navigation.navigate('Habits')}
-                    onPressWater={() => data.setWaterLogVisible(true)}
-                    onPressAttendance={() => navigation.navigate('Attendance')}
-                    onPressXP={() => navigation.navigate('MoreStack', { screen: 'XPConstellation' })}
-                    onPressRing={() => navigation.navigate(data.nextClass ? 'Attendance' : 'Tasks')}
-                    onCapture={() => data.setCaptureVisible(true)}
+                    onPressStreak={handlePressStreak}
+                    onPressHabits={handlePressHabits}
+                    onPressWater={handlePressWater}
+                    onPressAttendance={handlePressAttendance}
+                    onPressXP={handlePressXP}
+                    onPressRing={handlePressRing}
+                    onCapture={handleCapture}
                   />
                 </Animated.View>
               );

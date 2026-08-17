@@ -1,20 +1,25 @@
-﻿/**
+/**
  * SaraBubble - ChatGPT-style message bubble for Sara AI.
  *
+ * Dual-Theme System:
+ *   - Dark Mode: Obsidian Cosmos (#000000 / #141417), violet accents (#A599FF), pill (#27272A)
+ *   - Light Mode: Frost Quartz (#F4F3F8 / #FFFFFF), amethyst accents (#6C5CE7), user bubble (#6C5CE7)
+ *
  * Variants:
- *   'sara' - Full-width, no bubble card. Sparkles avatar + SARA label + clean markdown
- *   'user' - Right-aligned dark pill/capsule (#27272a)
- *   actionCard / batchActions - Obsidian cards with glassmorphism border
- *   quickReplies - Translucent violet glass pills
+ *   'sara' - Full-width, clean assistant markdown
+ *   'user' - Right-aligned pill/capsule
+ *   actionCard / batchActions - Tactile elevated cards with dynamic borders
+ *   quickReplies - Soft amethyst glass pills
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import BatchActionCard, { BatchAction } from './BatchActionCard';
 import { FONT_FAMILY } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export interface ActionCardData {
   icon?: string;
@@ -42,7 +47,7 @@ interface SaraBubbleProps {
 }
 
 // -- Blinking cursor -----------------------------------------------------------
-function Cursor() {
+function Cursor({ color }: { color: string }) {
   const opacity = useRef(new Animated.Value(1)).current;
   useEffect(() => {
     const anim = Animated.loop(
@@ -54,11 +59,11 @@ function Cursor() {
     anim.start();
     return () => anim.stop();
   }, [opacity]);
-  return <Animated.Text style={[styles.cursor, { opacity }]}>|</Animated.Text>;
+  return <Animated.Text style={[stylesStatic.cursor, { opacity, color }]}>|</Animated.Text>;
 }
 
 // -- Typing indicator (ChatGPT style 3 pulsing dots) ----------------------------
-function TypingIndicator() {
+function TypingIndicator({ color }: { color: string }) {
   const dot1 = useRef(new Animated.Value(0.3)).current;
   const dot2 = useRef(new Animated.Value(0.3)).current;
   const dot3 = useRef(new Animated.Value(0.3)).current;
@@ -80,16 +85,16 @@ function TypingIndicator() {
   }, []);
 
   return (
-    <View style={styles.typingContainer}>
-      <Animated.View style={[styles.typingDot, { opacity: dot1 }]} />
-      <Animated.View style={[styles.typingDot, { opacity: dot2 }]} />
-      <Animated.View style={[styles.typingDot, { opacity: dot3 }]} />
+    <View style={stylesStatic.typingContainer}>
+      <Animated.View style={[stylesStatic.typingDot, { opacity: dot1, backgroundColor: color }]} />
+      <Animated.View style={[stylesStatic.typingDot, { opacity: dot2, backgroundColor: color }]} />
+      <Animated.View style={[stylesStatic.typingDot, { opacity: dot3, backgroundColor: color }]} />
     </View>
   );
 }
 
 // -- Inline markdown parser ----------------------------------------------------
-function parseInlineMarkdown(text: string, baseStyle: any): React.ReactNode {
+function parseInlineMarkdown(text: string, baseStyle: any, colors: any): React.ReactNode {
   const parts: { text: string; bold?: boolean; italic?: boolean; code?: boolean }[] = [];
   const regex = /(\*\*[\s\S]+?\*\*|\*[\s\S]+?\*|`[^`]+`)/g;
   let lastIndex = 0;
@@ -124,9 +129,9 @@ function parseInlineMarkdown(text: string, baseStyle: any): React.ReactNode {
           key={i}
           style={[
             baseStyle,
-            part.bold && { fontFamily: FONT_FAMILY.bold, color: '#ffffff' },
+            part.bold && { fontFamily: FONT_FAMILY.bold, color: colors.textPrimary },
             part.italic && { fontStyle: 'italic' },
-            part.code && { fontFamily: FONT_FAMILY.bold, color: '#a599ff' },
+            part.code && { fontFamily: FONT_FAMILY.bold, color: colors.accentPrimary },
           ]}
         >
           {part.text}
@@ -137,7 +142,7 @@ function parseInlineMarkdown(text: string, baseStyle: any): React.ReactNode {
 }
 
 // -- Block markdown renderer ---------------------------------------------------
-function MarkdownText({ text, baseStyle }: { text: string; baseStyle: any }) {
+function MarkdownText({ text, baseStyle, styles, colors }: { text: string; baseStyle: any; styles: any; colors: any }) {
   const lines = text.split('\n');
   const nodes: React.ReactNode[] = [];
   let i = 0;
@@ -150,14 +155,14 @@ function MarkdownText({ text, baseStyle }: { text: string; baseStyle: any }) {
       const content = trimmed.replace(/^#+\s/, '');
       nodes.push(
         <Text key={i} style={styles.mdH1}>
-          {parseInlineMarkdown(content, styles.mdH1)}
+          {parseInlineMarkdown(content, styles.mdH1, colors)}
         </Text>
       );
     } else if (/^##\s/.test(trimmed)) {
       const content = trimmed.replace(/^#+\s/, '');
       nodes.push(
         <Text key={i} style={styles.mdH2}>
-          {parseInlineMarkdown(content, styles.mdH2)}
+          {parseInlineMarkdown(content, styles.mdH2, colors)}
         </Text>
       );
     } else if (/^[\*\-]\s/.test(trimmed)) {
@@ -165,7 +170,7 @@ function MarkdownText({ text, baseStyle }: { text: string; baseStyle: any }) {
       nodes.push(
         <Text key={i} style={[baseStyle, styles.mdBulletText]}>
           <Text style={styles.mdBulletDot}>{'•   '}</Text>
-          {parseInlineMarkdown(content, baseStyle)}
+          {parseInlineMarkdown(content, baseStyle, colors)}
         </Text>
       );
     } else if (/^\d+\.\s/.test(trimmed)) {
@@ -174,7 +179,7 @@ function MarkdownText({ text, baseStyle }: { text: string; baseStyle: any }) {
       nodes.push(
         <Text key={i} style={[baseStyle, styles.mdBulletText]}>
           <Text style={styles.mdBulletDot}>{`${num}.  `}</Text>
-          {parseInlineMarkdown(content, baseStyle)}
+          {parseInlineMarkdown(content, baseStyle, colors)}
         </Text>
       );
     } else if (/^(---|\*\*\*|___)$/.test(trimmed)) {
@@ -184,7 +189,7 @@ function MarkdownText({ text, baseStyle }: { text: string; baseStyle: any }) {
     } else {
       nodes.push(
         <View key={i} style={styles.mdPara}>
-          {parseInlineMarkdown(trimmed, baseStyle)}
+          {parseInlineMarkdown(trimmed, baseStyle, colors)}
         </View>
       );
     }
@@ -203,9 +208,11 @@ function SaraBubbleInner({
   batchActions,
   onBatchConfirm,
 }: SaraBubbleProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const isUser = sender === 'user';
 
-  // User Message -> Right-aligned ChatGPT Dark Pill
+  // User Message -> Right-aligned Pill
   if (isUser) {
     return (
       <View style={styles.userRow}>
@@ -216,14 +223,14 @@ function SaraBubbleInner({
     );
   }
 
-  // Sara Message -> ChatGPT Full Width, No Boxy Card
+  // Sara Message -> ChatGPT Full Width, Clean Markdown
   return (
     <View style={styles.assistantRow}>
       <View style={styles.assistantMessageContainer}>
         {/* Avatar + Label Header */}
         <View style={styles.assistantHeader}>
           <View style={styles.assistantAvatar}>
-            <Ionicons name="sparkles" size={12} color="#a599ff" />
+            <Ionicons name="sparkles" size={12} color={colors.accentPrimary} />
           </View>
           <Text style={styles.assistantName}>SARA</Text>
         </View>
@@ -231,12 +238,12 @@ function SaraBubbleInner({
         {/* Content Body */}
         {!text && isStreaming ? (
           <View style={styles.thinkingContainer}>
-            <TypingIndicator />
+            <TypingIndicator color={colors.accentPrimary} />
           </View>
         ) : (
           <View style={styles.markdownWrapper}>
-            <MarkdownText text={text} baseStyle={styles.textSara} />
-            {isStreaming && <Cursor />}
+            <MarkdownText text={text} baseStyle={styles.textSara} styles={styles} colors={colors} />
+            {isStreaming && <Cursor color={colors.accentPrimary} />}
           </View>
         )}
 
@@ -253,7 +260,7 @@ function SaraBubbleInner({
                 <Ionicons
                   name={(actionCard.icon as any) || 'document-text-outline'}
                   size={16}
-                  color="#a599ff"
+                  color={colors.accentPrimary}
                 />
               </View>
               <View style={styles.actionCardContent}>
@@ -263,7 +270,7 @@ function SaraBubbleInner({
                 ) : null}
               </View>
               {actionCard.onPress ? (
-                <Ionicons name="chevron-forward" size={14} color="#71717a" style={{ marginLeft: 4 }} />
+                <Ionicons name="chevron-forward" size={14} color={colors.textMuted} style={{ marginLeft: 4 }} />
               ) : null}
             </TouchableOpacity>
 
@@ -276,7 +283,7 @@ function SaraBubbleInner({
                 )}
                 {actionCard.onConfirm && (
                   <TouchableOpacity style={styles.confirmBtn} onPress={actionCard.onConfirm} activeOpacity={0.8}>
-                    <Ionicons name="checkmark" size={14} color="#000000" style={{ marginRight: 4 }} />
+                    <Ionicons name="checkmark" size={14} color={isDark ? '#000000' : '#ffffff'} style={{ marginRight: 4 }} />
                     <Text style={styles.confirmBtnText}>Confirm</Text>
                   </TouchableOpacity>
                 )}
@@ -323,8 +330,27 @@ const SaraBubble = React.memo(SaraBubbleInner, (prev, next) => {
 
 export default SaraBubble;
 
-// -- Styles --------------------------------------------------------------------
-const styles = StyleSheet.create({
+// -- Static styles -------------------------------------------------------------
+const stylesStatic = StyleSheet.create({
+  cursor: {
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  typingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+});
+
+// -- Theme-aware styles --------------------------------------------------------
+const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   // User Bubble
   userRow: {
     alignItems: 'flex-end',
@@ -333,12 +359,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   userBubble: {
-    backgroundColor: '#27272a',
+    backgroundColor: isDark ? '#27272a' : colors.accentPrimary,
     borderRadius: 20,
     borderBottomRightRadius: 6,
     paddingHorizontal: 16,
     paddingVertical: 10,
     maxWidth: '85%',
+    shadowColor: isDark ? '#000000' : colors.accentPrimary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.3 : 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   userBubbleText: {
     fontFamily: FONT_FAMILY.body,
@@ -366,14 +397,14 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    backgroundColor: 'rgba(165,153,255,0.15)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   assistantName: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 12.5,
-    color: '#a599ff',
+    color: colors.accentPrimary,
     letterSpacing: 0.5,
   },
   markdownWrapper: {
@@ -387,32 +418,15 @@ const styles = StyleSheet.create({
   textSara: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 15,
-    color: '#ececec',
+    color: colors.textPrimary,
     lineHeight: 23,
-  },
-  cursor: {
-    fontSize: 15,
-    fontFamily: FONT_FAMILY.bold,
-    color: '#a599ff',
-  },
-  typingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 6,
-  },
-  typingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#a599ff',
   },
 
   // Markdown block elements
   mdH1: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 17,
-    color: '#ffffff',
+    color: colors.textPrimary,
     lineHeight: 24,
     marginTop: 6,
     marginBottom: 4,
@@ -420,7 +434,7 @@ const styles = StyleSheet.create({
   mdH2: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 15,
-    color: '#f4f4f5',
+    color: colors.textPrimary,
     lineHeight: 22,
     marginTop: 4,
     marginBottom: 2,
@@ -431,12 +445,12 @@ const styles = StyleSheet.create({
   },
   mdBulletDot: {
     fontSize: 15,
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontFamily: FONT_FAMILY.bold,
   },
   mdHr: {
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: colors.border,
     marginVertical: 8,
     width: '100%',
   },
@@ -447,12 +461,17 @@ const styles = StyleSheet.create({
   // Action Cards
   actionCard: {
     marginTop: 12,
-    backgroundColor: '#141417',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     paddingVertical: 14,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.22)',
+    borderColor: isDark ? 'rgba(165,153,255,0.22)' : colors.border,
+    shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.06)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 6,
+    elevation: 3,
   },
   actionCardHeader: {
     flexDirection: 'row',
@@ -464,7 +483,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 8,
-    backgroundColor: 'rgba(165,153,255,0.15)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -476,14 +495,14 @@ const styles = StyleSheet.create({
   actionCardTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 15,
-    color: '#ffffff',
+    color: colors.textPrimary,
     lineHeight: 21,
     marginBottom: 3,
   },
   actionCardSub: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 13,
-    color: '#a1a1aa',
+    color: colors.textMuted,
     lineHeight: 18,
   },
   actionCardActionsRow: {
@@ -493,26 +512,26 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    borderTopColor: colors.border,
     paddingTop: 10,
   },
   confirmBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: isDark ? '#ffffff' : colors.accentPrimary,
     paddingVertical: 7,
     paddingHorizontal: 14,
     borderRadius: 8,
   },
   confirmBtnText: {
-    color: '#000000',
+    color: isDark ? '#000000' : '#ffffff',
     fontFamily: FONT_FAMILY.bold,
     fontSize: 13.5,
   },
   editBtn: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: colors.border,
     paddingVertical: 7,
     paddingHorizontal: 12,
     borderRadius: 8,
@@ -520,7 +539,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   editBtnText: {
-    color: '#d4d4d8',
+    color: colors.textSecondary,
     fontFamily: FONT_FAMILY.medium,
     fontSize: 13.5,
   },
@@ -537,13 +556,12 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.3)',
-    backgroundColor: 'rgba(165,153,255,0.1)',
+    borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.08)',
   },
   qrChipText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 12.5,
-    color: '#c4bfff',
+    color: colors.accentPrimary,
   },
 });
-

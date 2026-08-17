@@ -13,7 +13,7 @@
  * the human-readable interpretation.
  */
 
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TextInput, StyleSheet, ScrollView,
   TouchableOpacity, Platform, TextInputSelectionChangeEventData,
@@ -30,14 +30,26 @@ import { ActivityIndicator } from 'react-native';
 import VoiceMicButton from '../SARA/VoiceMicButton';
 
 // ─── Token color map ───────────────────────────────────────────────────────────
-const TOKEN_COLORS: Record<NLPToken['type'], { bg: string; text: string; border: string }> = {
-  date:       { bg: '#1a2e4a', text: '#60a5fa', border: '#3b82f6' },  // blue
-  time:       { bg: '#1a3a2a', text: '#34d399', border: '#10b981' },  // green
-  priority:   { bg: '#3a1a1a', text: '#f87171', border: '#ef4444' },  // red
-  recurrence: { bg: '#2a1a3a', text: '#c084fc', border: '#a855f7' },  // purple
-  tag:        { bg: '#1a2a3a', text: '#38bdf8', border: '#0ea5e9' },  // cyan
-  duration:   { bg: '#2a2a1a', text: '#fbbf24', border: '#f59e0b' },  // amber
-};
+const getTokenColors = (isDark: boolean): Record<NLPToken['type'], { bg: string; text: string; border: string }> => ({
+  date: isDark 
+    ? { bg: '#1a2e4a', text: '#60a5fa', border: '#3b82f6' }
+    : { bg: 'rgba(2, 132, 199, 0.08)', text: '#0284C7', border: 'rgba(2, 132, 199, 0.25)' },
+  time: isDark
+    ? { bg: '#1a3a2a', text: '#34d399', border: '#10b981' }
+    : { bg: 'rgba(5, 150, 105, 0.08)', text: '#059669', border: 'rgba(5, 150, 105, 0.25)' },
+  priority: isDark
+    ? { bg: '#3a1a1a', text: '#f87171', border: '#ef4444' }
+    : { bg: 'rgba(220, 38, 38, 0.08)', text: '#DC2626', border: 'rgba(220, 38, 38, 0.25)' },
+  recurrence: isDark
+    ? { bg: '#2a1a3a', text: '#c084fc', border: '#a855f7' }
+    : { bg: 'rgba(108, 92, 231, 0.08)', text: '#6C5CE7', border: 'rgba(108, 92, 231, 0.25)' },
+  tag: isDark
+    ? { bg: '#1a2a3a', text: '#38bdf8', border: '#0ea5e9' }
+    : { bg: 'rgba(2, 132, 199, 0.08)', text: '#0284C7', border: 'rgba(2, 132, 199, 0.25)' },
+  duration: isDark
+    ? { bg: '#2a2a1a', text: '#fbbf24', border: '#f59e0b' }
+    : { bg: 'rgba(217, 119, 6, 0.08)', text: '#D97706', border: 'rgba(217, 119, 6, 0.25)' },
+});
 
 // Priority → accent color map for the priority chip icon
 const PRIORITY_ICON_COLORS = { high: '#ef4444', medium: '#f97316', low: '#22c55e' };
@@ -59,6 +71,7 @@ export default function NLPTaskInput({
   value, onChangeText, parsed, onDismissToken, autoFocus, placeholder, onSubmitEditing, onAutoSubmit, hideMic, onMicPress
 }: Props) {
   const { colors, isDark } = useTheme();
+  const tokenColors = useMemo(() => getTokenColors(isDark), [isDark]);
   const inputRef = useRef<TextInput>(null);
   const chipScale = useSharedValue(1);
   const [voiceState, setVoiceState] = useState<VoiceState>('idle');
@@ -174,8 +187,8 @@ export default function NLPTaskInput({
             >
               <TouchableOpacity
                 style={[styles.chip, {
-                  backgroundColor: TOKEN_COLORS[tok.type].bg,
-                  borderColor: TOKEN_COLORS[tok.type].border,
+                  backgroundColor: tokenColors[tok.type].bg,
+                  borderColor: tokenColors[tok.type].border,
                 }]}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -183,10 +196,10 @@ export default function NLPTaskInput({
                 }}
                 activeOpacity={0.75}
               >
-                <Text style={[styles.chipText, { color: TOKEN_COLORS[tok.type].text }]}>
+                <Text style={[styles.chipText, { color: tokenColors[tok.type].text }]}>
                   {tok.display}
                 </Text>
-                <Ionicons name="close" size={11} color={TOKEN_COLORS[tok.type].text} style={{ marginLeft: 3, opacity: 0.7 }} />
+                <Ionicons name="close" size={11} color={tokenColors[tok.type].text} style={{ marginLeft: 3, opacity: 0.7 }} />
               </TouchableOpacity>
             </Animated.View>
           ))}

@@ -76,7 +76,8 @@ interface TaskTimeLogSheetProps {
 }
 
 export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: TaskTimeLogSheetProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
 
   // Parse time slot details
   const timeSlotInfo = useMemo(() => {
@@ -117,6 +118,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
         { id: '+15', label: `+15m (${minutesTo12HourStr(base + 15)})`, offsetMin: 15 },
         { id: '+30', label: `+30m (${minutesTo12HourStr(base + 30)})`, offsetMin: 30 },
         { id: '+60', label: `+1h (${minutesTo12HourStr(base + 60)})`, offsetMin: 60 },
+        { id: '-15', label: `-15m (${minutesTo12HourStr(base - 15)})`, offsetMin: -15 },
       ];
     } else {
       const nowMin = new Date().getHours() * 60 + new Date().getMinutes();
@@ -192,7 +194,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.iconBadge}>
-            <Ionicons name="timer-outline" size={20} color="#A599FF" />
+            <Ionicons name="timer-outline" size={20} color={colors.accentPrimary} />
           </View>
           <View style={styles.headerTextContainer}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>How long did it take?</Text>
@@ -201,157 +203,178 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
             </Text>
             {timeSlotInfo?.raw && (
               <View style={styles.plannedTimeBadge}>
-                <Ionicons name="calendar-outline" size={10} color="#A599FF" style={{ marginRight: 4 }} />
+                <Ionicons name="calendar-outline" size={12} color={colors.accentPrimary} style={{ marginRight: 4 }} />
                 <Text style={styles.plannedTimeText}>
-                  Planned: {timeSlotInfo.raw} {plannedMinutes ? `(${formatMinDisplay(plannedMinutes)})` : ''}
+                  Planned: {timeSlotInfo.raw}
+                  {plannedMinutes ? ` (${formatMinDisplay(plannedMinutes)})` : ''}
                 </Text>
               </View>
             )}
           </View>
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollArea}>
-
-          {/* SECTION 1: When did you start? */}
+        {/* Scrollable Content */}
+        <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+          {/* Section 1: Duration */}
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-              1. When did you start?
-            </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {startChips.map((chip) => {
-                const isSelected = startOption === chip.id;
+            <View style={styles.sectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Duration</Text>
+              {plannedMinutes && (
+                <Text style={styles.plannedHint}>
+                  Planned: {formatMinDisplay(plannedMinutes)}
+                </Text>
+              )}
+            </View>
+            <View style={styles.chipGrid}>
+              {durationChips.map(chip => {
+                const isSelected = selectedDuration === chip.minutes;
+                const isPlanned = chip.minutes === plannedMinutes;
                 return (
-                  <AnimatedPressable
-                    key={chip.id}
+                  <TouchableOpacity
+                    key={chip.minutes}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setSelectedDuration(chip.minutes);
+                    }}
                     style={[
                       styles.chip,
-                      { backgroundColor: colors.surface2, borderColor: colors.border },
-                      isSelected && styles.chipActive,
+                      { borderColor: colors.border, backgroundColor: colors.surface },
+                      isPlanned && !isSelected && styles.chipPlannedBorder,
+                      isSelected && styles.chipActiveGreen,
                     ]}
-                    onPress={() => {
-                      setStartOption(chip.id);
-                    }}
+                    activeOpacity={0.7}
                   >
-                    <Text style={[
-                      styles.chipText,
-                      { color: colors.textSecondary },
-                      isSelected && styles.chipTextActive,
-                    ]}>
+                    {isPlanned && !isSelected && <View style={styles.plannedDot} />}
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: colors.textSecondary },
+                        isSelected && styles.chipTextActiveGreen,
+                      ]}
+                    >
                       {chip.label}
                     </Text>
-                  </AnimatedPressable>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Section 2: Start Time */}
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>When did you start?</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {startChips.map(chip => {
+                const isSelected = startOption === chip.id;
+                return (
+                  <TouchableOpacity
+                    key={chip.id}
+                    onPress={() => {
+                      Haptics.selectionAsync();
+                      setStartOption(chip.id);
+                    }}
+                    style={[
+                      styles.chip,
+                      { borderColor: colors.border, backgroundColor: colors.surface },
+                      isSelected && styles.chipActive,
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: colors.textSecondary },
+                        isSelected && styles.chipTextActive,
+                      ]}
+                    >
+                      {chip.label}
+                    </Text>
+                  </TouchableOpacity>
                 );
               })}
 
-              <AnimatedPressable
-                style={[
-                  styles.chip,
-                  { backgroundColor: colors.surface2, borderColor: colors.border },
-                  startOption === 'custom' && styles.chipActive,
-                ]}
+              {/* Custom time button */}
+              <TouchableOpacity
                 onPress={() => {
+                  Haptics.selectionAsync();
                   setStartOption('custom');
                   if (Platform.OS === 'android') {
                     setShowAndroidPicker(true);
                   }
                 }}
+                style={[
+                  styles.chip,
+                  { borderColor: colors.border, backgroundColor: colors.surface },
+                  startOption === 'custom' && styles.chipActive,
+                ]}
+                activeOpacity={0.7}
               >
-                <Ionicons name="time-outline" size={14} color={startOption === 'custom' ? '#A599FF' : colors.textMuted} style={{ marginRight: 4 }} />
-                <Text style={[
-                  styles.chipText,
-                  { color: colors.textSecondary },
-                  startOption === 'custom' && styles.chipTextActive,
-                ]}>
-                  {startOption === 'custom' ? minutesTo12HourStr(customTime.getHours() * 60 + customTime.getMinutes()) : 'Custom'}
+                <Ionicons
+                  name="time-outline"
+                  size={14}
+                  color={startOption === 'custom' ? colors.accentPrimary : colors.textSecondary}
+                  style={{ marginRight: 4 }}
+                />
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: colors.textSecondary },
+                    startOption === 'custom' && styles.chipTextActive,
+                  ]}
+                >
+                  {startOption === 'custom'
+                    ? minutesTo12HourStr(customTime.getHours() * 60 + customTime.getMinutes())
+                    : 'Custom...'}
                 </Text>
-              </AnimatedPressable>
+              </TouchableOpacity>
             </ScrollView>
 
-            {((Platform.OS === 'ios' && startOption === 'custom') || (Platform.OS === 'android' && showAndroidPicker)) && (
+            {/* Inline iOS / Modal Android Time Picker */}
+            {startOption === 'custom' && Platform.OS === 'ios' && (
               <View style={styles.pickerContainer}>
                 <DateTimePicker
                   value={customTime}
                   mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(event, d) => { 
-                    if (Platform.OS === 'android') {
-                      if (event.type === 'set' && d) {
-                        setCustomTime(d);
-                      }
-                      setShowAndroidPicker(false);
-                    } else {
-                      if (d) setCustomTime(d); 
-                    }
-                  }}
+                  display="spinner"
                   textColor={colors.textPrimary}
+                  onChange={(_, date) => {
+                    if (date) setCustomTime(date);
+                  }}
                 />
               </View>
             )}
-          </View>
 
-          {/* SECTION 2: How long did you actually work? */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-                2. How long did you actually work?
-              </Text>
-              {plannedMinutes ? (
-                <Text style={styles.plannedHint}>
-                  Planned: {formatMinDisplay(plannedMinutes)}
-                </Text>
-              ) : null}
-            </View>
-
-            <View style={styles.chipGrid}>
-              {durationChips.map((chip) => {
-                const isSelected = selectedDuration === chip.minutes;
-                const isPlanned = plannedMinutes === chip.minutes;
-                return (
-                  <AnimatedPressable
-                    key={chip.minutes}
-                    style={[
-                      styles.chip,
-                      { backgroundColor: colors.surface2, borderColor: colors.border },
-                      isSelected && styles.chipActiveGreen,
-                      isPlanned && !isSelected && styles.chipPlannedBorder,
-                    ]}
-                    onPress={() => {
-                      setSelectedDuration(chip.minutes);
-                    }}
-                  >
-                    {isPlanned && !isSelected && (
-                      <View style={styles.plannedDot} />
-                    )}
-                    <Text style={[
-                      styles.chipText,
-                      { color: colors.textSecondary },
-                      isSelected && styles.chipTextActiveGreen,
-                      isPlanned && !isSelected && { color: '#A599FF', fontFamily: FONT_FAMILY.bold },
-                    ]}>
-                      {chip.label}
-                    </Text>
-                  </AnimatedPressable>
-                );
-              })}
-            </View>
+            {startOption === 'custom' && Platform.OS === 'android' && showAndroidPicker && (
+              <DateTimePicker
+                value={customTime}
+                mode="time"
+                display="default"
+                onChange={(_, date) => {
+                  setShowAndroidPicker(false);
+                  if (date) setCustomTime(date);
+                }}
+              />
+            )}
           </View>
         </ScrollView>
 
         {/* Action Buttons */}
         <View style={[styles.footer, { borderTopColor: colors.border }]}>
           <AnimatedPressable
-            style={[styles.btn, styles.btnSkip, { borderColor: colors.border, backgroundColor: colors.surface2 }]}
             onPress={handleSkip}
+            style={[styles.btn, styles.btnSkip, { borderColor: colors.border }]}
           >
             <Text style={[styles.btnSkipText, { color: colors.textSecondary }]}>Skip</Text>
           </AnimatedPressable>
 
           <AnimatedPressable
-            style={[styles.btn, styles.btnSave]}
             onPress={handleSave}
+            style={[styles.btn, styles.btnSave, { backgroundColor: colors.accentGreen }]}
           >
-            <Ionicons name="checkmark" size={16} color="#000000" style={{ marginRight: 6 }} />
-            <Text style={styles.btnSaveText}>Save</Text>
+            <Ionicons name="checkmark-circle" size={18} color={isDark ? '#000000' : '#FFFFFF'} style={{ marginRight: 6 }} />
+            <Text style={[styles.btnSaveText, { color: isDark ? '#000000' : '#FFFFFF' }]}>
+              Log {formatMinDisplay(selectedDuration)}
+            </Text>
           </AnimatedPressable>
         </View>
       </View>
@@ -359,7 +382,7 @@ export default function TaskTimeLogSheet({ task, visible, onSkip, onSave }: Task
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
     paddingBottom: SPACE.md,
     flexShrink: 1,
@@ -373,7 +396,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(165, 153, 255, 0.12)',
+    backgroundColor: colors.accentDim,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACE.md,
@@ -394,9 +417,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
-    backgroundColor: 'rgba(165, 153, 255, 0.08)',
+    backgroundColor: colors.accentDim,
     borderWidth: 1,
-    borderColor: 'rgba(165, 153, 255, 0.15)',
+    borderColor: colors.accentPrimary + '25',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: RADIUS.md,
@@ -405,7 +428,7 @@ const styles = StyleSheet.create({
   plannedTimeText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 10,
-    color: '#A599FF',
+    color: colors.accentPrimary,
   },
   scrollArea: {
     maxHeight: 280,
@@ -427,7 +450,7 @@ const styles = StyleSheet.create({
   plannedHint: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: FONT_SIZE.xs,
-    color: '#A599FF',
+    color: colors.accentPrimary,
   },
   chipRow: {
     flexDirection: 'row',
@@ -448,34 +471,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   chipActive: {
-    backgroundColor: 'rgba(165, 153, 255, 0.12)',
-    borderColor: 'rgba(165, 153, 255, 0.4)',
+    backgroundColor: colors.accentDim,
+    borderColor: colors.accentPrimary,
   },
   chipActiveGreen: {
-    backgroundColor: 'rgba(94,218,158,0.12)',
-    borderColor: '#5eda9e',
+    backgroundColor: colors.accentGreenDim,
+    borderColor: colors.accentGreen,
   },
   chipPlannedBorder: {
-    borderColor: 'rgba(165, 153, 255, 0.3)',
-    backgroundColor: 'rgba(165, 153, 255, 0.04)',
+    borderColor: colors.accentPrimary + '50',
+    backgroundColor: colors.accentDim,
   },
   chipText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: FONT_SIZE.sm,
   },
   chipTextActive: {
-    color: '#A599FF',
+    color: colors.accentPrimary,
     fontFamily: FONT_FAMILY.bold,
   },
   chipTextActiveGreen: {
-    color: '#5eda9e',
+    color: colors.accentGreen,
     fontFamily: FONT_FAMILY.bold,
   },
   plannedDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#A599FF',
+    backgroundColor: colors.accentPrimary,
     marginRight: 6,
   },
   pickerContainer: {
@@ -501,7 +524,7 @@ const styles = StyleSheet.create({
     flex: 0.35,
   },
   btnSave: {
-    backgroundColor: '#5eda9e',
+    backgroundColor: colors.accentGreen,
     flex: 0.65,
     ...SHADOW.sm,
   },

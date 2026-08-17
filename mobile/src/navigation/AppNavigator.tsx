@@ -94,7 +94,7 @@ const ZEN_DARK_THEME = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: '#080510',
+    background: '#000000',
     card:        'transparent',
     border:      'transparent',
     text:        '#f2f2f7',
@@ -105,7 +105,7 @@ const ZEN_LIGHT_THEME = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    background: '#f2f1f6',
+    background: '#F4F3F8',
     card:        'transparent',
     border:      'transparent',
     text:        '#1c1c1e',
@@ -280,14 +280,12 @@ function NestedScreens() {
 
 // --- Root authenticated navigator + global SARA FAB --------------------------
 function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
-  const { colors }        = useTheme();
+  const { colors, isDark } = useTheme();
   const [saraVisible, setSaraVisible] = useState(false);
 
-  // Memoised -- prevents MainTabNavigator from remounting on any parent state change.
   const MainTabsScreen = useCallback(
     () => <MainTabNavigator initialTab={initialTab} />,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [initialTab, colors, isDark]
   );
 
   // Pre-warm SaraScreen 2.5s after login so first tap opens instantly.
@@ -307,7 +305,7 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
   }, []);
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#080510' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="MainTabs" component={MainTabsScreen} />
         <Stack.Group screenOptions={{ presentation: 'card' }}>
@@ -384,6 +382,7 @@ export default function AppNavigator() {
             setUser(optimisticUser as User);
             setAppReady(true);
             hasResolved.current = true; // Mark as resolved so Firebase background check doesn't double-boot
+            firstAuthAt.current = Date.now();
           } catch {}
         }
       } catch {
@@ -423,14 +422,18 @@ export default function AppNavigator() {
       }
 
       // Background Validation: We booted optimistically, now Firebase is checking the real token
-      if (!usr) {
-        // Null within 3s of first resolution = token refresh, NOT logout
-        if (Date.now() - firstAuthAt.current < 3000) return;
-        setUser(null);
-        saveOptimisticUser(null);
-      } else {
+      if (usr) {
         setUser(usr);
         saveOptimisticUser(usr);
+      } else {
+        // WhatsApp / Instagram Offline-First Architecture:
+        // An offline app NEVER logs out the user when network is unavailable!
+        // We only clear the user if the user explicitly signed out (which removes @zentrack_optimistic_user).
+        AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
+          if (!raw) {
+            setUser(null);
+          }
+        }).catch(() => {});
       }
     });
 

@@ -28,7 +28,8 @@ export default function AnimatedRestTimer({
   onSubtract,
   onSkip,
 }: AnimatedRestTimerProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const [isExpanded, setIsExpanded] = useState(false);
 
   // Draggable position state (PanResponder)
@@ -109,21 +110,21 @@ export default function AnimatedRestTimer({
       ]}
     >
       {!isExpanded ? (
-        /* Collapsed State: Sleek circular/pill badge showing GŦ 2:52 */
+        /* Collapsed State: Sleek circular/pill badge */
         <TouchableOpacity
           onPress={toggleExpand}
           activeOpacity={0.8}
           style={styles.collapsedBadge}
         >
-          <Ionicons name="timer-outline" size={15} color="#a599ff" style={{ marginRight: 5 }} />
+          <Ionicons name="timer-outline" size={15} color={colors.accentPrimary} style={{ marginRight: 5 }} />
           <Text style={styles.collapsedTimeText}>{timeDisplay}</Text>
         </TouchableOpacity>
       ) : (
-        /* Expanded State: Horizontal control capsule = - GŦ 2:52 + | Skip */
+        /* Expanded State: Horizontal control capsule = - timer + | Skip */
         <View style={styles.expandedCapsule}>
           {/* Drag handle / collapse icon */}
           <TouchableOpacity onPress={toggleExpand} style={styles.dragGrip} activeOpacity={0.7}>
-            <Ionicons name="reorder-two" size={16} color="rgba(255,255,255,0.35)" />
+            <Ionicons name="reorder-two" size={16} color={colors.textMuted} />
           </TouchableOpacity>
 
           {/* Minus 30s */}
@@ -136,7 +137,7 @@ export default function AnimatedRestTimer({
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="remove-circle-outline" size={18} color="#8e8e93" />
+            <Ionicons name="remove-circle-outline" size={18} color={colors.textMuted} />
           </TouchableOpacity>
 
           {/* Timer Display button (tap to collapse) */}
@@ -145,7 +146,7 @@ export default function AnimatedRestTimer({
             style={styles.timeContainer}
             activeOpacity={0.8}
           >
-            <Ionicons name="timer-outline" size={13} color="#a599ff" style={{ marginRight: 4 }} />
+            <Ionicons name="timer-outline" size={13} color={colors.accentPrimary} style={{ marginRight: 4 }} />
             <Text style={styles.timeText}>{timeDisplay}</Text>
           </TouchableOpacity>
 
@@ -159,7 +160,7 @@ export default function AnimatedRestTimer({
             activeOpacity={0.7}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="add-circle-outline" size={18} color="#a599ff" />
+            <Ionicons name="add-circle-outline" size={18} color={colors.accentPrimary} />
           </TouchableOpacity>
 
           <View style={styles.divider} />
@@ -182,89 +183,90 @@ export default function AnimatedRestTimer({
   );
 }
 
-const styles = StyleSheet.create({
-  wrapper: {
-    zIndex: 9999,
-    alignSelf: 'center',
-  },
-  collapsedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#141416',
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: 'rgba(165,153,255,0.35)',
-    paddingHorizontal: 13,
-    paddingVertical: 7,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 10,
-  },
-  collapsedTimeText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 14,
-    color: '#a599ff',
-    letterSpacing: 0.5,
-  },
-  expandedCapsule: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#141416',
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.3)',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    gap: 6,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 12,
-  },
-  dragGrip: {
-    paddingRight: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionBtn: {
-    padding: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  timeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(165,153,255,0.1)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.2)',
-  },
-  timeText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 14,
-    color: '#a599ff',
-    letterSpacing: 0.5,
-  },
-  divider: {
-    width: 1,
-    height: 16,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    marginHorizontal: 2,
-  },
-  skipBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  skipText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
-    color: '#8e8e93',
-  },
-});
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    wrapper: {
+      zIndex: 9999,
+      alignSelf: 'center',
+    },
+    collapsedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(165,153,255,0.35)' : 'rgba(108,92,231,0.3)',
+      paddingHorizontal: 13,
+      paddingVertical: 7,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.4 : 0.12,
+      shadowRadius: 10,
+      elevation: 10,
+    },
+    collapsedTimeText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 14,
+      color: colors.accentPrimary,
+      letterSpacing: 0.5,
+    },
+    expandedCapsule: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      gap: 6,
+      shadowColor: '#000000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: isDark ? 0.5 : 0.15,
+      shadowRadius: 12,
+      elevation: 12,
+    },
+    dragGrip: {
+      paddingRight: 2,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    actionBtn: {
+      padding: 2,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    timeContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.08)',
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)',
+    },
+    timeText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 14,
+      color: colors.accentPrimary,
+      letterSpacing: 0.5,
+    },
+    divider: {
+      width: 1,
+      height: 16,
+      backgroundColor: colors.border,
+      marginHorizontal: 2,
+    },
+    skipBtn: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 10,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+    },
+    skipText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 11,
+      color: colors.textMuted,
+    },
+  });

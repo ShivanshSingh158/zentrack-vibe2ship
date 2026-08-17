@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, SafeAreaView, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,10 +10,11 @@ import { useGymLog, todayStr } from '../../hooks/useGymLog';
 import { GymNavigationParamList } from '../../types/gym.types';
 import { hapticMedium, hapticSuccess } from '../../utils/haptics';
 import { useTheme } from "../../contexts/ThemeContext";
+import { StatusBar } from 'expo-status-bar';
 
 export default function CardioLogScreen() {
     const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const route = useRoute<RouteProp<GymNavigationParamList, 'CardioLog'>>();
   const cardioId = route.params?.cardioId;
@@ -70,7 +72,8 @@ export default function CardioLogScreen() {
   if (!cardioItem) return null;
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -89,7 +92,7 @@ export default function CardioLogScreen() {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Ionicons name="walk" size={32} color={colors.background} />
+              <Ionicons name="walk" size={32} color="#ffffff" />
             </LinearGradient>
             <Text style={styles.title}>{cardioItem.type}</Text>
           </View>
@@ -102,24 +105,25 @@ export default function CardioLogScreen() {
                 value={duration}
                 onChangeText={setDuration}
                 keyboardType="numeric"
-                placeholder="e.g. 20"
+                placeholder="e.g. 30"
                 placeholderTextColor={colors.textMuted}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Distance (km)</Text>
-              <TextInput
-                style={styles.input}
-                value={distance}
-                onChangeText={setDistance}
-                keyboardType="numeric"
-                placeholder="e.g. 5.2"
-                placeholderTextColor={colors.textMuted}
+                autoFocus
               />
             </View>
 
             <View style={styles.row}>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={styles.label}>Distance (km)</Text>
+                <TextInput
+                  style={styles.input}
+                  value={distance}
+                  onChangeText={setDistance}
+                  keyboardType="numeric"
+                  placeholder="e.g. 5.0"
+                  placeholderTextColor={colors.textMuted}
+                />
+              </View>
+
               <View style={[styles.inputGroup, { flex: 1 }]}>
                 <Text style={styles.label}>Speed (km/h)</Text>
                 <TextInput
@@ -127,25 +131,26 @@ export default function CardioLogScreen() {
                   value={speed}
                   onChangeText={setSpeed}
                   keyboardType="numeric"
-                  placeholder="e.g. 8.5"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
-              <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.label}>Incline (%)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={incline}
-                  onChangeText={setIncline}
-                  keyboardType="numeric"
-                  placeholder="e.g. 2"
+                  placeholder="e.g. 10.5"
                   placeholderTextColor={colors.textMuted}
                 />
               </View>
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Calories Burned</Text>
+              <Text style={styles.label}>Incline (%)</Text>
+              <TextInput
+                style={styles.input}
+                value={incline}
+                onChangeText={setIncline}
+                keyboardType="numeric"
+                placeholder="e.g. 2.0"
+                placeholderTextColor={colors.textMuted}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Calories Burned (kcal)</Text>
               <TextInput
                 style={styles.input}
                 value={calories}
@@ -178,17 +183,17 @@ export default function CardioLogScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1, backgroundColor: '#0D0D0E' },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: colors.background },
       header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: SPACE.xl,
-        paddingTop: Platform.OS === 'ios' ? 50 : 40,
+        paddingTop: Platform.OS === 'ios' ? 10 : 20,
         paddingBottom: SPACE.md,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: colors.border,
       },
       backBtn: { padding: SPACE.xs },
       headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted, letterSpacing: 1 },
@@ -204,9 +209,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
       inputGroup: { gap: SPACE.xs },
       label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 },
       input: {
-        backgroundColor: '#161618',
+        backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+        borderColor: colors.border,
         borderRadius: RADIUS.md,
         paddingHorizontal: SPACE.md,
         height: 50,
@@ -217,5 +222,5 @@ const makeStyles = (colors: any) => StyleSheet.create({
       
       saveBtnWrapper: { marginTop: SPACE.lg, borderRadius: RADIUS.lg, overflow: 'hidden' },
       saveBtn: { paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-      saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.background },
+      saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#ffffff' },
     });

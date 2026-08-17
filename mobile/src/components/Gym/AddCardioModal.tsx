@@ -37,7 +37,8 @@ const CARDIO_TYPES: { label: string; icon: string }[] = [
 ];
 
 export function AddCardioModal({ visible, onClose, onAdd }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const s = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const slideAnim = useRef(new Animated.Value(500)).current;
 
@@ -95,7 +96,7 @@ export function AddCardioModal({ visible, onClose, onAdd }: Props) {
 
           {/* Cardio Type Grid */}
           <View style={s.grid}>
-            {CARDIO_TYPES.map(({ label, icon }, index) => {
+            {CARDIO_TYPES.map(({ label, icon }) => {
               const isSelected = selectedType === label;
               const isFullWidth = label === 'Other';
 
@@ -108,32 +109,35 @@ export function AddCardioModal({ visible, onClose, onAdd }: Props) {
                     isSelected && s.chipSelected,
                   ]}
                   onPress={() => handleSelect(label)}
-                  activeOpacity={0.7}
+                  activeOpacity={0.75}
                 >
                   <View style={[s.chipIcon, isSelected && s.chipIconSelected]}>
                     <Ionicons
                       name={icon as any}
                       size={18}
-                      color={isSelected ? '#000000' : '#a599ff'}
+                      color={isSelected ? (isDark ? '#000000' : '#FFFFFF') : colors.accentPrimary}
                     />
                   </View>
-                  <Text style={[s.chipLabel, isSelected && s.chipLabelSelected]} numberOfLines={1}>
+                  <Text style={[s.chipLabel, isSelected && s.chipLabelSelected]}>
                     {label}
                   </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark-circle" size={16} color={colors.accentPrimary} />
+                  )}
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {/* CTA */}
+          {/* Add Button */}
           <TouchableOpacity
             style={[s.addBtn, !selectedType && s.addBtnDisabled]}
-            disabled={!selectedType}
             onPress={handleAdd}
-            activeOpacity={0.85}
+            disabled={!selectedType}
+            activeOpacity={0.8}
           >
             <Text style={[s.addBtnText, !selectedType && s.addBtnTextDisabled]}>
-              {selectedType ? `Add ${selectedType}` : 'Select a type above'}
+              {selectedType ? `Add ${selectedType}` : 'Select an activity'}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -142,118 +146,116 @@ export function AddCardioModal({ visible, onClose, onAdd }: Props) {
   );
 }
 
-const ACCENT = '#a599ff'; // ZenTrack purple accent
-
-const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#000000',
-    borderTopLeftRadius: RADIUS.xxl,
-    borderTopRightRadius: RADIUS.xxl,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
-    borderWidth: 1,
-    borderColor: '#27272A',
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignSelf: 'center',
-    marginBottom: 18,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 18,
-    paddingHorizontal: 4,
-  },
-  title: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 22,
-    color: '#ffffff',
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#1C1C1E',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    rowGap: 10,
-    marginBottom: 20,
-  },
-  chip: {
-    width: '48.5%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#141416',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    borderRadius: RADIUS.lg,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-  },
-  chipFullWidth: {
-    width: '100%',
-  },
-  chipSelected: {
-    backgroundColor: 'rgba(165,153,255,0.12)',
-    borderColor: 'rgba(165,153,255,0.4)',
-  },
-  chipIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: 'rgba(165,153,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipIconSelected: {
-    backgroundColor: ACCENT,
-  },
-  chipLabel: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 13,
-    color: '#8E8E93',
-    flex: 1,
-  },
-  chipLabelSelected: {
-    color: '#ffffff',
-  },
-  addBtn: {
-    backgroundColor: ACCENT,
-    borderRadius: RADIUS.lg,
-    paddingVertical: 15,
-    alignItems: 'center',
-  },
-  addBtnDisabled: {
-    backgroundColor: '#141416',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-  },
-  addBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 15,
-    color: '#000000',
-  },
-  addBtnTextDisabled: {
-    color: '#636366',
-  },
-});
-
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.65)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: RADIUS.xxl,
+      borderTopRightRadius: RADIUS.xxl,
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    handle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)',
+      alignSelf: 'center',
+      marginBottom: 18,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 18,
+      paddingHorizontal: 4,
+    },
+    title: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 22,
+      color: colors.textPrimary,
+    },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: isDark ? '#1C1C1E' : '#E2E1EA',
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'space-between',
+      rowGap: 10,
+      marginBottom: 20,
+    },
+    chip: {
+      width: '48.5%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: isDark ? '#141416' : '#F5F4FA',
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: RADIUS.lg,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+    },
+    chipFullWidth: {
+      width: '100%',
+    },
+    chipSelected: {
+      backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.12)',
+      borderColor: colors.accentPrimary,
+    },
+    chipIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.1)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    chipIconSelected: {
+      backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
+    },
+    chipLabel: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 13,
+      color: colors.textTertiary,
+      flex: 1,
+    },
+    chipLabelSelected: {
+      color: colors.textPrimary,
+    },
+    addBtn: {
+      backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
+      borderRadius: RADIUS.lg,
+      paddingVertical: 15,
+      alignItems: 'center',
+    },
+    addBtnDisabled: {
+      backgroundColor: isDark ? '#141416' : '#E2E1EA',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    addBtnText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 15,
+      color: isDark ? '#000000' : '#FFFFFF',
+    },
+    addBtnTextDisabled: {
+      color: colors.textMuted,
+    },
+  });

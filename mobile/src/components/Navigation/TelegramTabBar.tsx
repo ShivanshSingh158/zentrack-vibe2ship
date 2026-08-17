@@ -170,8 +170,8 @@ export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: 
         styles.container, 
         { 
           backgroundColor: isDark ? 'rgba(11, 11, 14, 0.97)' : 'rgba(255, 255, 255, 0.97)',
-          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
-          shadowColor: isDark ? '#000000' : 'rgba(0, 0, 0, 0.15)',
+          borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : colors.border,
+          shadowColor: isDark ? '#000000' : 'rgba(0, 0, 0, 0.08)',
           left: 16,
           right: 16,
         }, 
@@ -189,7 +189,7 @@ export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: 
             backgroundColor: colors.accentPrimary,
             shadowColor: colors.accentPrimary,
             shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 0.8,
+            shadowOpacity: isDark ? 0.8 : 0.4,
             shadowRadius: 6,
             elevation: 4
           }
@@ -255,7 +255,13 @@ export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: 
                   inactiveColor={colors.textMuted}
                 />
                 {badges[route.name] > 0 && (
-                  <View style={styles.badgeContainer}>
+                  <View style={[
+                    styles.badgeContainer,
+                    {
+                      backgroundColor: colors.error,
+                      borderColor: isDark ? 'rgba(25, 25, 28, 1)' : '#ffffff',
+                    }
+                  ]}>
                     <Text style={styles.badgeText}>{badges[route.name]}</Text>
                   </View>
                 )}

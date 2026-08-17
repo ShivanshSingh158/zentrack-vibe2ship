@@ -29,6 +29,7 @@ import { uploadFileToCloudinary } from '../../services/cloudinary';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import { FONT_FAMILY } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -59,13 +60,22 @@ const BRANCH_RADIUS = 285;
 const LEAF_RADIUS_INNER = 475;
 const LEAF_RADIUS_OUTER = 595;
 
-const BRANCH_COLORS = [
+const BRANCH_COLORS_DARK = [
   '#a599ff', // Lavender Purple
   '#38bdf8', // Sky Blue
   '#22c55e', // Emerald Green
   '#fbbf24', // Amber Yellow
   '#f472b6', // Neon Pink
   '#fb923c', // Warm Coral
+];
+
+const BRANCH_COLORS_LIGHT = [
+  '#6C5CE7', // Royal Amethyst
+  '#0284C7', // Sky Blue
+  '#059669', // Emerald Green
+  '#D97706', // Amber Yellow
+  '#DB2777', // Berry Pink
+  '#EA580C', // Warm Coral
 ];
 
 const { width: WINDOW_W, height: WINDOW_H } = Dimensions.get('window');
@@ -156,7 +166,7 @@ function generateMindMapHtml(mapData: MindMapData, lectureTitle: string): string
   const layoutData = branches.map((branch, bi) => {
     const bAngle = (360 / bCount) * bi;
     const bPos = polarXY(BRANCH_RADIUS, bAngle);
-    const color = BRANCH_COLORS[bi % BRANCH_COLORS.length];
+    const color = BRANCH_COLORS_DARK[bi % BRANCH_COLORS_DARK.length];
     const leafCount = Math.min(branch.children.length, 4);
     const angleSpread = leafCount <= 2 ? 30 : leafCount === 3 ? 42 : 50;
     const leaves = branch.children.slice(0, 4).map((child, ci) => {
@@ -437,6 +447,9 @@ export default function LectureMindMap({
 }: LectureMindMapProps) {
   const insets = useSafeAreaInsets();
   const { user } = useCoreData();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   const [mapData, setMapData] = useState<MindMapData | null>(null);
   const [loading, setLoading] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -653,47 +666,25 @@ export default function LectureMindMap({
             pinchStartScale = scaleValue.current;
             lastMidX = currentMidX;
             lastMidY = currentMidY;
-            lastTouchCount = 2;
-            return;
           }
-
-          // 1. Natural Two-Finger Zoom
-          const scaleRatio = currentDist / pinchStartDist;
-          const newScale = Math.min(2.0, Math.max(0.3, Number((pinchStartScale * scaleRatio).toFixed(3))));
-          scale.setValue(newScale);
-          scaleValue.current = newScale;
-          setScaleDisplay(Math.round(newScale * 100));
-
-          // 2. Natural Two-Finger Focal Pan
-          const dMidX = currentMidX - lastMidX;
-          const dMidY = currentMidY - lastMidY;
-          panOffset.current.x += dMidX;
-          panOffset.current.y += dMidY;
-          lastMidX = currentMidX;
-          lastMidY = currentMidY;
-
-          pan.setValue({
-            x: panOffset.current.x,
-            y: panOffset.current.y,
-          });
-
+          const dist = Math.hypot(touches[0].pageX - touches[1].pageX, touches[0].pageY - touches[1].pageY);
+          if (dist > 0 && pinchStartDist > 0) {
+            const factor = dist / pinchStartDist;
+            const newScale = Math.max(0.35, Math.min(2.0, pinchStartScale * factor));
+            scale.setValue(newScale);
+            scaleValue.current = newScale;
+            setScaleDisplay(Math.round(newScale * 100));
+          }
         } else if (touches.length === 1) {
           if (lastTouchCount >= 2) {
-            // Clean seamless transition from 2-finger pinch back to 1-finger pan
             lastTouchCount = 1;
             pinchStartDist = 0;
             panOffset.current = {
               x: (pan.x as any)._value || panOffset.current.x,
               y: (pan.y as any)._value || panOffset.current.y,
             };
-            return;
           }
-
-          lastTouchCount = 1;
-          pan.setValue({
-            x: panOffset.current.x + gs.dx,
-            y: panOffset.current.y + gs.dy,
-          });
+          pan.setValue({ x: gs.dx, y: gs.dy });
         }
       },
       onPanResponderRelease: (evt, gs) => {
@@ -706,10 +697,6 @@ export default function LectureMindMap({
         lastTouchCount = 0;
         pinchStartDist = 0;
       },
-      onPanResponderTerminate: () => {
-        lastTouchCount = 0;
-        pinchStartDist = 0;
-      },
     });
   }, [pan, scale]);
 
@@ -718,11 +705,12 @@ export default function LectureMindMap({
     if (!mapData) return null;
     const branches = mapData.branches.slice(0, 6);
     const bCount = branches.length;
+    const branchColors = isDark ? BRANCH_COLORS_DARK : BRANCH_COLORS_LIGHT;
 
     return branches.map((branch, bi) => {
       const bAngle = (360 / bCount) * bi;
       const bPos = polarXY(BRANCH_RADIUS, bAngle);
-      const color = BRANCH_COLORS[bi % BRANCH_COLORS.length];
+      const color = branchColors[bi % branchColors.length];
 
       const leafCount = Math.min(branch.children.length, 4);
       const angleSpread = leafCount <= 2 ? 30 : leafCount === 3 ? 42 : 50;
@@ -735,7 +723,7 @@ export default function LectureMindMap({
 
       return { branch, bPos, color, leaves, bAngle };
     });
-  }, [mapData]);
+  }, [mapData, isDark]);
 
   return (
     <Modal
@@ -767,10 +755,10 @@ export default function LectureMindMap({
               disabled={exportingPdf}
             >
               {exportingPdf ? (
-                <ActivityIndicator size="small" color="#080510" style={{ transform: [{ scale: 0.8 }] }} />
+                <ActivityIndicator size="small" color={isDark ? '#080510' : '#FFFFFF'} style={{ transform: [{ scale: 0.8 }] }} />
               ) : (
                 <>
-                  <Ionicons name="document-text" size={13} color="#080510" />
+                  <Ionicons name="document-text" size={13} color={isDark ? '#080510' : '#FFFFFF'} />
                   <Text style={styles.pdfBtnText}>Export PDF</Text>
                 </>
               )}
@@ -778,17 +766,17 @@ export default function LectureMindMap({
           )}
 
           <TouchableOpacity style={styles.iconBtn} onPress={generate} disabled={loading}>
-            <Ionicons name="refresh" size={16} color="#a599ff" />
+            <Ionicons name="refresh" size={16} color={colors.accentPrimary} />
           </TouchableOpacity>
           <TouchableOpacity style={styles.iconBtn} onPress={onClose}>
-            <Ionicons name="close" size={18} color="#f2f2f7" />
+            <Ionicons name="close" size={18} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
         {/* ── Subtitle / Hint ── */}
         {mapData && !loading && (
           <View style={styles.hintBar}>
-            <Ionicons name="sparkles" size={12} color="#a599ff" />
+            <Ionicons name="sparkles" size={12} color={colors.accentPrimary} />
             <Text style={styles.hintText}>Pinch with 2 fingers to zoom • Drag anywhere to pan • Tap any node to ask AI</Text>
           </View>
         )}
@@ -797,7 +785,7 @@ export default function LectureMindMap({
         {loading && (
           <View style={styles.centerState}>
             <View style={styles.loadingSpinnerCard}>
-              <ActivityIndicator size="large" color="#a599ff" />
+              <ActivityIndicator size="large" color={colors.accentPrimary} />
               <Text style={styles.loadTitle}>Generating Concept Graph</Text>
               <Text style={styles.loadSub}>Analyzing key ideas, relationships & hierarchies…</Text>
             </View>
@@ -810,7 +798,7 @@ export default function LectureMindMap({
             <Ionicons name="alert-circle-outline" size={42} color="#f87171" />
             <Text style={styles.errText}>{error}</Text>
             <TouchableOpacity style={styles.retryBtn} onPress={generate}>
-              <Ionicons name="refresh" size={14} color="#a599ff" />
+              <Ionicons name="refresh" size={14} color={colors.accentPrimary} />
               <Text style={styles.retryText}>Try Again</Text>
             </TouchableOpacity>
           </View>
@@ -843,7 +831,7 @@ export default function LectureMindMap({
                     x1={CX} y1={CY}
                     x2={b.bPos.x} y2={b.bPos.y}
                     color={b.color}
-                    opacity={0.45}
+                    opacity={isDark ? 0.45 : 0.55}
                   />
                   {/* Branch to Leaf Children */}
                   {b.leaves.map((leaf, li) => (
@@ -852,7 +840,7 @@ export default function LectureMindMap({
                       x1={b.bPos.x} y1={b.bPos.y}
                       x2={leaf.pos.x} y2={leaf.pos.y}
                       color={b.color}
-                      opacity={0.25}
+                      opacity={isDark ? 0.25 : 0.35}
                       isDashed
                     />
                   ))}
@@ -873,8 +861,8 @@ export default function LectureMindMap({
                         {
                           left: leaf.pos.x - 70,
                           top: leaf.pos.y - 24,
-                          borderColor: isTapped ? b.color : 'rgba(255,255,255,0.12)',
-                          backgroundColor: isTapped ? `${b.color}33` : '#16161a',
+                          borderColor: isTapped ? b.color : (isDark ? 'rgba(255,255,255,0.12)' : colors.border),
+                          backgroundColor: isTapped ? `${b.color}25` : (isDark ? '#16161a' : '#FFFFFF'),
                           shadowColor: b.color,
                         },
                       ]}
@@ -883,7 +871,7 @@ export default function LectureMindMap({
                       <Text
                         style={[
                           styles.leafText,
-                          isTapped && { color: '#ffffff', fontFamily: FONT_FAMILY.bold },
+                          isTapped && { color: isDark ? '#ffffff' : b.color, fontFamily: FONT_FAMILY.bold },
                         ]}
                         numberOfLines={3}
                       >
@@ -908,7 +896,7 @@ export default function LectureMindMap({
                         left: b.bPos.x - 82,
                         top: b.bPos.y - 32,
                         borderColor: b.color,
-                        backgroundColor: isTapped ? b.color : '#121217',
+                        backgroundColor: isTapped ? b.color : (isDark ? '#121217' : '#FFFFFF'),
                         shadowColor: b.color,
                       },
                     ]}
@@ -921,7 +909,7 @@ export default function LectureMindMap({
                     <Text
                       style={[
                         styles.branchTitle,
-                        { color: isTapped ? '#000000' : '#ffffff' },
+                        { color: isTapped ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary },
                       ]}
                       numberOfLines={3}
                     >
@@ -940,20 +928,20 @@ export default function LectureMindMap({
                   {
                     left: CX - 100,
                     top: CY - 46,
-                    backgroundColor: tappedNode === mapData.centralTopic ? '#a599ff' : '#1c1438',
-                    borderColor: '#a599ff',
+                    backgroundColor: tappedNode === mapData.centralTopic ? colors.accentPrimary : (isDark ? '#1c1438' : '#FFFFFF'),
+                    borderColor: colors.accentPrimary,
                   },
                 ]}
               >
                 <View style={styles.centerGlowRing} />
                 <View style={styles.centerHubBadge}>
-                  <Ionicons name="sparkles" size={10} color="#a599ff" />
+                  <Ionicons name="sparkles" size={10} color={colors.accentPrimary} />
                   <Text style={styles.centerHubBadgeText}>CENTRAL THEME</Text>
                 </View>
                 <Text
                   style={[
                     styles.centerHubText,
-                    { color: tappedNode === mapData.centralTopic ? '#000000' : '#ffffff' },
+                    { color: tappedNode === mapData.centralTopic ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary },
                   ]}
                   numberOfLines={2}
                 >
@@ -966,7 +954,7 @@ export default function LectureMindMap({
             {/* ── Floating Zoom HUD Toolbar ── */}
             <View style={styles.zoomToolbar}>
               <TouchableOpacity style={styles.zoomBtn} onPress={handleZoomIn} activeOpacity={0.7}>
-                <Ionicons name="add" size={18} color="#f2f2f7" />
+                <Ionicons name="add" size={18} color={colors.textPrimary} />
               </TouchableOpacity>
               <View style={styles.zoomDivider} />
               <TouchableOpacity style={styles.zoomBtn} onPress={() => resetToCenter(0.75)} activeOpacity={0.7}>
@@ -974,7 +962,7 @@ export default function LectureMindMap({
               </TouchableOpacity>
               <View style={styles.zoomDivider} />
               <TouchableOpacity style={styles.zoomBtn} onPress={handleZoomOut} activeOpacity={0.7}>
-                <Ionicons name="remove" size={18} color="#f2f2f7" />
+                <Ionicons name="remove" size={18} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -1002,10 +990,10 @@ export default function LectureMindMap({
 
 // ── Styles ────────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#08080a',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -1013,43 +1001,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingBottom: 8,
     gap: 10,
+    backgroundColor: colors.background,
   },
   title: {
     fontSize: 18,
     fontFamily: FONT_FAMILY.bold,
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
   badge: {
-    backgroundColor: 'rgba(165,153,255,0.15)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)',
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.25)',
+    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)',
   },
   badgeText: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontSize: 10,
     fontFamily: FONT_FAMILY.bold,
   },
   sub: {
     fontSize: 12,
     fontFamily: FONT_FAMILY.body,
-    color: '#71717a',
+    color: colors.textSecondary,
     marginTop: 2,
   },
   pdfBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#a599ff',
+    backgroundColor: colors.accentPrimary,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     marginRight: 2,
   },
   pdfBtnText: {
-    color: '#080510',
+    color: isDark ? '#080510' : '#FFFFFF',
     fontFamily: FONT_FAMILY.bold,
     fontSize: 11.5,
   },
@@ -1057,7 +1046,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.surface2 || '#ECEBF2',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1068,14 +1057,14 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 4,
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#ECEBF2',
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.04)',
+    borderBottomColor: colors.border,
   },
   hintText: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.body,
-    color: '#a1a1aa',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   centerState: {
@@ -1086,24 +1075,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   loadingSpinnerCard: {
-    backgroundColor: '#121216',
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 24,
     alignItems: 'center',
     gap: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
   },
   loadTitle: {
     fontSize: 15,
     fontFamily: FONT_FAMILY.bold,
-    color: '#ffffff',
+    color: colors.textPrimary,
     marginTop: 6,
   },
   loadSub: {
     fontSize: 12,
     fontFamily: FONT_FAMILY.body,
-    color: '#71717a',
+    color: colors.textSecondary,
     textAlign: 'center',
   },
   errText: {
@@ -1118,20 +1107,20 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 20,
     paddingVertical: 9,
-    backgroundColor: 'rgba(165,153,255,0.12)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.3)',
+    borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
   },
   retryText: {
     fontSize: 13,
     fontFamily: FONT_FAMILY.bold,
-    color: '#a599ff',
+    color: colors.accentPrimary,
   },
   viewport: {
     flex: 1,
     overflow: 'hidden',
-    backgroundColor: '#0a0a0e',
+    backgroundColor: isDark ? '#0a0a0e' : '#F8F7FC',
   },
   board: {
     width: CANVAS_SIZE,
@@ -1144,11 +1133,10 @@ const styles = StyleSheet.create({
     top: 0,
     right: 0,
     bottom: 0,
-    opacity: 0.18,
+    opacity: isDark ? 0.18 : 0.08,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
   },
-  // ── Central Topic Hub Style ──
   centerHub: {
     position: 'absolute',
     width: 200,
@@ -1159,9 +1147,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    shadowColor: '#a599ff',
+    shadowColor: colors.accentPrimary,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45,
+    shadowOpacity: isDark ? 0.45 : 0.2,
     shadowRadius: 18,
     elevation: 12,
     zIndex: 10,
@@ -1174,14 +1162,14 @@ const styles = StyleSheet.create({
     bottom: -6,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.2)',
+    borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)',
     pointerEvents: 'none',
   },
   centerHubBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: 'rgba(165,153,255,0.15)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -1190,7 +1178,7 @@ const styles = StyleSheet.create({
   centerHubBadgeText: {
     fontSize: 9,
     fontFamily: FONT_FAMILY.bold,
-    color: '#a599ff',
+    color: colors.accentPrimary,
     letterSpacing: 0.5,
   },
   centerHubText: {
@@ -1199,7 +1187,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 19,
   },
-  // ── Branch Pillar Style ──
   branchCard: {
     position: 'absolute',
     width: 164,
@@ -1211,7 +1198,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: isDark ? 0.3 : 0.1,
     shadowRadius: 10,
     elevation: 8,
     zIndex: 9,
@@ -1233,7 +1220,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
   },
-  // ── Leaf Concept Style ──
   leafCard: {
     position: 'absolute',
     width: 152,
@@ -1246,7 +1232,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isDark ? 0.2 : 0.08,
     shadowRadius: 6,
     elevation: 5,
     zIndex: 8,
@@ -1261,24 +1247,23 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 11,
     fontFamily: FONT_FAMILY.medium,
-    color: '#d4d4d8',
+    color: colors.textPrimary,
     lineHeight: 15,
   },
-  // ── Floating Zoom HUD Toolbar ──
   zoomToolbar: {
     position: 'absolute',
     right: 18,
     bottom: 74,
     flexDirection: 'column',
     alignItems: 'center',
-    backgroundColor: 'rgba(24, 24, 27, 0.94)',
+    backgroundColor: isDark ? 'rgba(24, 24, 27, 0.94)' : '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.14)',
+    borderColor: colors.border,
     paddingVertical: 4,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
+    shadowOpacity: isDark ? 0.4 : 0.12,
     shadowRadius: 10,
     elevation: 10,
     zIndex: 99,
@@ -1292,12 +1277,12 @@ const styles = StyleSheet.create({
   zoomPercentText: {
     fontSize: 10,
     fontFamily: FONT_FAMILY.bold,
-    color: '#a599ff',
+    color: colors.accentPrimary,
   },
   zoomDivider: {
     width: 22,
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: colors.border,
   },
   // ── Bottom Legend ──
   bottomLegend: {
@@ -1320,10 +1305,10 @@ const styles = StyleSheet.create({
     gap: 5,
     paddingHorizontal: 9,
     paddingVertical: 4,
-    backgroundColor: 'rgba(24, 24, 27, 0.92)',
+    backgroundColor: isDark ? 'rgba(24, 24, 27, 0.92)' : '#FFFFFF',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.border,
   },
   legendDot: {
     width: 6,
@@ -1333,6 +1318,6 @@ const styles = StyleSheet.create({
   legendChipText: {
     fontSize: 10,
     fontFamily: FONT_FAMILY.medium,
-    color: '#e4e4e7',
+    color: colors.textPrimary,
   },
 });

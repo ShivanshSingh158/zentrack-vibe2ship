@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
@@ -17,8 +17,8 @@ import * as Haptics from 'expo-haptics';
 export default function StudyRoomScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { colors } = useTheme();
-  const s = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   
   const roomCode = route.params?.roomCode;
   const { user } = useMobileData();
@@ -206,7 +206,7 @@ export default function StudyRoomScreen() {
               returnKeyType="send"
             />
             <TouchableOpacity style={s.sendBtn} onPress={handleSendMessage}>
-              <Ionicons name="send" size={18} color={colors.background} />
+              <Ionicons name="send" size={18} color={isDark ? '#000000' : '#ffffff'} />
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -215,7 +215,7 @@ export default function StudyRoomScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   root: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -229,10 +229,10 @@ const makeStyles = (colors: any) => StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACE.md, gap: 8 },
   cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
   
-  taskRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  taskRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACE.sm, borderBottomWidth: 1, borderBottomColor: colors.border },
   taskTitle: { flex: 1, fontFamily: FONT_FAMILY.medium, fontSize: 14, color: colors.textPrimary, marginLeft: SPACE.sm },
   taskTitleCompleted: { color: colors.textMuted, textDecorationLine: 'line-through' },
-  taskAssignee: { fontFamily: FONT_FAMILY.body, fontSize: 10, color: colors.textSecondary, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  taskAssignee: { fontFamily: FONT_FAMILY.body, fontSize: 10, color: colors.textSecondary, backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   emptyText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textMuted, fontStyle: 'italic' },
 
   chatHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACE.md, gap: 8 },
@@ -241,21 +241,22 @@ const makeStyles = (colors: any) => StyleSheet.create({
   
   msgBubble: { padding: SPACE.md, borderRadius: RADIUS.lg, maxWidth: '85%' },
   msgMe: { alignSelf: 'flex-end', backgroundColor: colors.accentPrimary, borderBottomRightRadius: 4 },
-  msgOther: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.1)', borderBottomLeftRadius: 4 },
-  msgSara: { alignSelf: 'flex-start', backgroundColor: 'rgba(165,153,255,0.15)', borderBottomLeftRadius: 4, borderColor: colors.accentPurple, borderWidth: 1 },
+  msgOther: { alignSelf: 'flex-start', backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', borderBottomLeftRadius: 4 },
+  msgSara: { alignSelf: 'flex-start', backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.08)', borderBottomLeftRadius: 4, borderColor: colors.accentPrimary, borderWidth: 1 },
   msgName: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: colors.textSecondary, marginBottom: 4 },
   msgText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textPrimary, lineHeight: 20 },
-  msgTextMe: { color: colors.background },
+  msgTextMe: { color: isDark ? '#000000' : '#ffffff' },
 
   chatInputContainer: {
     flexDirection: 'row', alignItems: 'center', gap: SPACE.sm,
     paddingHorizontal: SPACE.xl, paddingVertical: SPACE.md,
-    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)',
+    borderTopWidth: 1, borderTopColor: colors.border,
   },
   chatInput: {
-    flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.full,
+    flex: 1, backgroundColor: isDark ? (colors.surface2 || '#1c1c1f') : '#F5F4FA', borderRadius: RADIUS.full,
     paddingHorizontal: SPACE.lg, paddingVertical: 12,
     fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textPrimary,
+    borderWidth: 1, borderColor: colors.border,
   },
   sendBtn: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentPrimary,

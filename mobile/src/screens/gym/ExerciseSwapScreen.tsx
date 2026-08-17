@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, SafeAreaView,
+  View, Text, StyleSheet, TouchableOpacity,
   TextInput, ScrollView, Platform, KeyboardAvoidingView, ActivityIndicator, Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,7 @@ import { callProxy } from '../../services/geminiProxy';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
 import { GymNavigationParamList } from '../../types/gym.types';
 import { useTheme } from '../../contexts/ThemeContext';
+import { StatusBar } from 'expo-status-bar';
 
 export interface AiSwapRecommendation {
   id: string;
@@ -47,8 +49,8 @@ export interface TemplateExerciseSwapItem {
 }
 
 export default function ExerciseSwapScreen() {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const route = useRoute<RouteProp<GymNavigationParamList, 'ExerciseSwap'>>();
   const originalExerciseId = route.params?.originalExerciseId;
@@ -563,7 +565,8 @@ Return ONLY a raw valid JSON array of 6 objects:
   };
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         {/* Header */}
         <View style={styles.header}>
@@ -803,50 +806,50 @@ Return ONLY a raw valid JSON array of 6 objects:
   );
 }
 
-const makeStyles = (colors: any) =>
+const makeStyles = (colors: any, isDark: boolean = true) =>
   StyleSheet.create({
-    root: { flex: 1, backgroundColor: '#0D0D0E' },
+    root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: SPACE.lg,
-      paddingTop: Platform.OS === 'ios' ? 44 : 20,
+      paddingTop: Platform.OS === 'ios' ? 10 : 20,
       paddingBottom: SPACE.sm,
       borderBottomWidth: 1,
-      borderBottomColor: 'rgba(255,255,255,0.05)',
+      borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
     },
     backBtn: { padding: SPACE.xs },
-    headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#ffffff', letterSpacing: 1.5 },
+    headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary, letterSpacing: 1.5 },
     headerSub: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.textMuted, marginTop: 2 },
 
     originalCard: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: '#161618',
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface,
       marginHorizontal: SPACE.lg,
       marginTop: SPACE.md,
       marginBottom: SPACE.sm,
       padding: SPACE.md,
       borderRadius: RADIUS.lg,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.06)',
+      borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
     },
     originalCardLeft: { flex: 1, paddingRight: 8 },
     originalCardLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 9, color: colors.textMuted, letterSpacing: 1.2, marginBottom: 2 },
-    originalCardName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#ffffff', textTransform: 'capitalize' },
+    originalCardName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary, textTransform: 'capitalize' },
     originalCardMeta: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.textMuted, marginTop: 2 },
 
     tabContainer: {
       flexDirection: 'row',
       marginHorizontal: SPACE.lg,
       marginVertical: SPACE.md,
-      backgroundColor: '#161618',
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface,
       borderRadius: RADIUS.lg,
       padding: 3,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.06)',
+      borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
     },
     tabBtn: {
       flex: 1,
@@ -858,7 +861,7 @@ const makeStyles = (colors: any) =>
       borderRadius: RADIUS.md,
     },
     tabBtnActive: {
-      backgroundColor: '#a599ff',
+      backgroundColor: colors.accentPrimary,
     },
     tabBtnText: {
       fontFamily: FONT_FAMILY.bold,
@@ -866,20 +869,20 @@ const makeStyles = (colors: any) =>
       color: colors.textMuted,
     },
     tabBtnTextActive: {
-      color: '#000000',
+      color: '#ffffff',
     },
 
     searchContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: '#161618',
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface,
       marginHorizontal: SPACE.lg,
       marginBottom: SPACE.sm,
       paddingHorizontal: SPACE.md,
       height: 42,
       borderRadius: RADIUS.md,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.05)',
+      borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
     },
     searchIcon: { marginRight: SPACE.sm },
     searchInput: { flex: 1, fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textPrimary, height: '100%' },
@@ -896,13 +899,13 @@ const makeStyles = (colors: any) =>
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: RADIUS.full,
-      backgroundColor: 'rgba(255,255,255,0.05)',
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
+      borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
     },
     chipActive: {
-      backgroundColor: '#a599ff',
-      borderColor: '#a599ff',
+      backgroundColor: colors.accentPrimary,
+      borderColor: colors.accentPrimary,
     },
     chipText: {
       fontFamily: FONT_FAMILY.medium,
@@ -910,7 +913,7 @@ const makeStyles = (colors: any) =>
       color: colors.textMuted,
     },
     chipTextActive: {
-      color: '#000000',
+      color: '#ffffff',
       fontFamily: FONT_FAMILY.bold,
     },
 
@@ -926,7 +929,7 @@ const makeStyles = (colors: any) =>
     sectionHeaderTitle: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 12,
-      color: '#a599ff',
+      color: colors.accentPrimary,
       letterSpacing: 0.5,
     },
     sectionHeaderSub: {
@@ -936,16 +939,16 @@ const makeStyles = (colors: any) =>
     },
 
     templateSwapCard: {
-      backgroundColor: '#161618',
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface,
       borderRadius: RADIUS.lg,
       padding: SPACE.md,
       marginBottom: SPACE.sm,
       borderWidth: 1,
-      borderColor: 'rgba(165,153,255,0.18)',
+      borderColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.2)',
     },
     templateSwapCardExact: {
-      borderColor: 'rgba(165,153,255,0.4)',
-      backgroundColor: '#1A1824',
+      borderColor: colors.accentPrimary,
+      backgroundColor: isDark ? '#1A1824' : '#F0EFF7',
     },
     templateCardTop: {
       flexDirection: 'row',
@@ -957,17 +960,17 @@ const makeStyles = (colors: any) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
-      backgroundColor: 'rgba(165,153,255,0.12)',
+      backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.1)',
       paddingHorizontal: 8,
       paddingVertical: 3,
       borderRadius: RADIUS.sm,
       borderWidth: 1,
-      borderColor: 'rgba(165,153,255,0.2)',
+      borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.2)',
     },
     dayOriginText: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 10,
-      color: '#a599ff',
+      color: colors.accentPrimary,
     },
     templateCardBody: {
       marginVertical: 4,
@@ -975,7 +978,7 @@ const makeStyles = (colors: any) =>
     templateExName: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 16,
-      color: '#ffffff',
+      color: colors.textPrimary,
       marginBottom: 2,
       textTransform: 'capitalize',
     },
@@ -988,65 +991,65 @@ const makeStyles = (colors: any) =>
       marginTop: 6,
       paddingTop: 6,
       borderTopWidth: 1,
-      borderTopColor: 'rgba(255,255,255,0.05)',
+      borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
       flexDirection: 'row',
       justifyContent: 'flex-end',
     },
     templateTapHint: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 11,
-      color: '#a599ff',
+      color: colors.accentPrimary,
     },
 
     aiStatusBanner: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: 'rgba(165,153,255,0.08)',
+      backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.08)',
       paddingHorizontal: 14,
       paddingVertical: 10,
       borderRadius: RADIUS.md,
       marginBottom: SPACE.md,
       borderWidth: 1,
-      borderColor: 'rgba(165,153,255,0.15)',
+      borderColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.15)',
     },
     aiStatusTitle: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 12,
-      color: '#a599ff',
+      color: colors.accentPrimary,
     },
 
     exerciseRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: '#161618',
+      backgroundColor: isDark ? '#1C1C1E' : colors.surface,
       padding: SPACE.md,
       borderRadius: RADIUS.md,
       marginBottom: SPACE.sm,
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.02)',
+      borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
     },
     exInfo: { flex: 1, paddingRight: SPACE.sm },
     exName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary, marginBottom: 2, textTransform: 'capitalize' },
     exTarget: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted },
-    exReason: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: '#a599ff', marginTop: 2 },
+    exReason: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.accentPrimary, marginTop: 2 },
 
     templateBadge: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 3,
-      backgroundColor: 'rgba(165,153,255,0.1)',
+      backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.1)',
       paddingHorizontal: 6,
       paddingVertical: 2,
       borderRadius: RADIUS.sm,
       borderWidth: 1,
-      borderColor: 'rgba(165,153,255,0.2)',
+      borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.2)',
     },
     templateBadgeText: {
       fontFamily: FONT_FAMILY.bold,
       fontSize: 9,
-      color: '#a599ff',
+      color: colors.accentPrimary,
     },
 
     musclePill: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },

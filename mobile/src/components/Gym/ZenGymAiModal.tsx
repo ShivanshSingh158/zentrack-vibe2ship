@@ -103,7 +103,7 @@ export interface StoredChatSession {
 const STORAGE_KEY_SESSIONS = '@gym_gpt_sessions_v1';
 const STORAGE_KEY_PREFS = '@gym_gpt_preferences_v1';
 
-// â”€â”€ Interactive Option Chips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Interactive Option Chips ──────────────────────────────────────────────────
 // Renders after a GYM-GPT preference question. Tapping auto-sends the option.
 function OptionsChips({
   options,
@@ -116,6 +116,7 @@ function OptionsChips({
   onWriteOwn: () => void;
   disabled: boolean;
 }) {
+  const { colors, isDark } = useTheme();
   const scaleAnims = useRef(options.map(() => new Animated.Value(1))).current;
 
   const pressIn = (i: number) =>
@@ -129,25 +130,40 @@ function OptionsChips({
         {options.map((opt, i) => (
           <Animated.View key={i} style={{ transform: [{ scale: scaleAnims[i] }] }}>
             <TouchableOpacity
-              style={[optChipStyles.chip, disabled && optChipStyles.chipDisabled]}
+              style={[
+                optChipStyles.chip,
+                {
+                  backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+                  borderColor: isDark ? 'rgba(165,153,255,0.35)' : 'rgba(108,92,231,0.25)',
+                },
+                disabled && optChipStyles.chipDisabled
+              ]}
               onPress={() => { if (!disabled) { feedback.tap(); onSelect(opt); } }}
               onPressIn={() => pressIn(i)}
               onPressOut={() => pressOut(i)}
               activeOpacity={1}
               disabled={disabled}
             >
-              <Text style={optChipStyles.chipText}>{opt}</Text>
+              <Text style={[optChipStyles.chipText, { color: colors.accentPrimary }]}>{opt}</Text>
             </TouchableOpacity>
           </Animated.View>
         ))}
         <TouchableOpacity
-          style={[optChipStyles.chip, optChipStyles.chipWrite, disabled && optChipStyles.chipDisabled]}
+          style={[
+            optChipStyles.chip,
+            optChipStyles.chipWrite,
+            {
+              backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : colors.surface,
+              borderColor: colors.border,
+            },
+            disabled && optChipStyles.chipDisabled
+          ]}
           onPress={() => { if (!disabled) { feedback.tap(); onWriteOwn(); } }}
           disabled={disabled}
           activeOpacity={0.8}
         >
-          <Ionicons name="create-outline" size={12} color="#71717a" />
-          <Text style={[optChipStyles.chipText, { color: '#71717a' }]}>Write my own</Text>
+          <Ionicons name="create-outline" size={12} color={colors.textSecondary} />
+          <Text style={[optChipStyles.chipText, { color: colors.textSecondary }]}>Write my own</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -158,9 +174,7 @@ const optChipStyles = StyleSheet.create({
   wrapper: { marginTop: 10, marginBottom: 2 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chip: {
-    backgroundColor: 'rgba(165,153,255,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.35)',
     borderRadius: 20,
     paddingHorizontal: 13,
     paddingVertical: 7,
@@ -168,20 +182,17 @@ const optChipStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
   },
-  chipWrite: {
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
+  chipWrite: {},
   chipDisabled: { opacity: 0.4 },
   chipText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 12.5,
-    color: '#c4bfff',
     letterSpacing: 0.1,
   },
 });
 
 function TypingDots() {
+  const { colors } = useTheme();
   const dot1 = useRef(new Animated.Value(0.3)).current;
   const dot2 = useRef(new Animated.Value(0.3)).current;
   const dot3 = useRef(new Animated.Value(0.3)).current;
@@ -204,14 +215,14 @@ function TypingDots() {
 
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8 }}>
-      <Animated.View style={[{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#a599ff' }, { opacity: dot1 }]} />
-      <Animated.View style={[{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#a599ff' }, { opacity: dot2 }]} />
-      <Animated.View style={[{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#a599ff' }, { opacity: dot3 }]} />
+      <Animated.View style={[{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.accentPrimary }, { opacity: dot1 }]} />
+      <Animated.View style={[{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.accentPrimary }, { opacity: dot2 }]} />
+      <Animated.View style={[{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: colors.accentPrimary }, { opacity: dot3 }]} />
     </View>
   );
 }
 
-// â”€â”€â”€ Multi-Day Plan Import Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Multi-Day Plan Import Card ─────────────────────────────────────────────
 
 const DAY_NAMES = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_COLORS: Record<number, string> = {
@@ -220,6 +231,7 @@ const DAY_COLORS: Record<number, string> = {
 };
 
 function MultiDayPlanCard({ card }: { card: any }) {
+  const { colors, isDark } = useTheme();
   const [confirmed, setConfirmed] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
@@ -234,34 +246,34 @@ function MultiDayPlanCard({ card }: { card: any }) {
   };
 
   return (
-    <View style={planCardStyles.container}>
+    <View style={[planCardStyles.container, { backgroundColor: colors.surface, borderColor: isDark ? 'rgba(165,153,255,0.2)' : colors.border }]}>
       <View style={planCardStyles.header}>
-        <View style={planCardStyles.headerIcon}>
-          <Ionicons name="calendar-outline" size={16} color="#a599ff" />
+        <View style={[planCardStyles.headerIcon, { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)' }]}>
+          <Ionicons name="calendar-outline" size={16} color={colors.accentPrimary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={planCardStyles.title}>{card.planName}</Text>
-          <Text style={planCardStyles.subtitle}>{card.days?.length || 0} training days</Text>
+          <Text style={[planCardStyles.title, { color: colors.textPrimary }]}>{card.planName}</Text>
+          <Text style={[planCardStyles.subtitle, { color: colors.textMuted }]}>{card.days?.length || 0} training days</Text>
         </View>
         {confirmed && (
           <View style={planCardStyles.confirmedBadge}>
-            <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
-            <Text style={planCardStyles.confirmedText}>Imported</Text>
+            <Ionicons name="checkmark-circle" size={16} color={colors.accentGreen || '#4ade80'} />
+            <Text style={[planCardStyles.confirmedText, { color: colors.accentGreen || '#4ade80' }]}>Imported</Text>
           </View>
         )}
       </View>
 
-      <View style={planCardStyles.divider} />
+      <View style={[planCardStyles.divider, { backgroundColor: colors.border }]} />
 
       <View style={planCardStyles.dayList}>
         {(card.days || []).map((day: MultiDayPlanEntry) => (
           <View key={day.dayIndex} style={planCardStyles.dayRow}>
-            <View style={[planCardStyles.dayChip, { backgroundColor: (DAY_COLORS[day.dayIndex] || '#a599ff') + '22', borderColor: (DAY_COLORS[day.dayIndex] || '#a599ff') + '66' }]}>
-              <Text style={[planCardStyles.dayChipText, { color: DAY_COLORS[day.dayIndex] || '#a599ff' }]}>{DAY_NAMES[day.dayIndex] || day.dayName}</Text>
+            <View style={[planCardStyles.dayChip, { backgroundColor: (DAY_COLORS[day.dayIndex] || colors.accentPrimary) + '22', borderColor: (DAY_COLORS[day.dayIndex] || colors.accentPrimary) + '66' }]}>
+              <Text style={[planCardStyles.dayChipText, { color: DAY_COLORS[day.dayIndex] || colors.accentPrimary }]}>{DAY_NAMES[day.dayIndex] || day.dayName}</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={planCardStyles.dayFocus} numberOfLines={1}>{day.focus || day.dayName}</Text>
-              <Text style={planCardStyles.dayExCount}>{day.exercises?.length || 0} exercises</Text>
+              <Text style={[planCardStyles.dayFocus, { color: colors.textPrimary }]} numberOfLines={1}>{day.focus || day.dayName}</Text>
+              <Text style={[planCardStyles.dayExCount, { color: colors.textMuted }]}>{day.exercises?.length || 0} exercises</Text>
             </View>
           </View>
         ))}
@@ -269,13 +281,13 @@ function MultiDayPlanCard({ card }: { card: any }) {
 
       {!confirmed && (
         <TouchableOpacity
-          style={[planCardStyles.importBtn, loading && { opacity: 0.6 }]}
+          style={[planCardStyles.importBtn, { backgroundColor: colors.accentPrimary }, loading && { opacity: 0.6 }]}
           onPress={handleConfirm}
           disabled={loading}
           activeOpacity={0.75}
         >
           {loading ? (
-            <Text style={planCardStyles.importBtnText}>Importingâ€¦</Text>
+            <Text style={planCardStyles.importBtnText}>Importing…</Text>
           ) : (
             <>
               <Ionicons name="cloud-upload-outline" size={15} color="#fff" />
@@ -285,18 +297,19 @@ function MultiDayPlanCard({ card }: { card: any }) {
         </TouchableOpacity>
       )}
 
-      <Text style={planCardStyles.disclaimer}>
+      <Text style={[planCardStyles.disclaimer, { color: colors.textMuted }]}>
         {confirmed
-          ? 'âœ… Applied to your gym calendar. Will repeat every week.'
+          ? '✅ Applied to your gym calendar. Will repeat every week.'
           : 'This will overwrite your recurring plan for these days permanently.'}
       </Text>
     </View>
   );
 }
 
-// â”€â”€â”€ Add-to-Plan-Day Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Add-to-Plan-Day Card ───────────────────────────────────────────────────
 
 function AddToPlanDayCard({ card }: { card: any }) {
+  const { colors, isDark } = useTheme();
   const [confirmed, setConfirmed] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
 
@@ -311,18 +324,18 @@ function AddToPlanDayCard({ card }: { card: any }) {
   };
 
   const ex = card.exercise || {};
-  const dayColor = DAY_COLORS[card.dayIndex] || '#a599ff';
+  const dayColor = DAY_COLORS[card.dayIndex] || colors.accentPrimary;
 
   return (
-    <View style={addDayCardStyles.container}>
+    <View style={[addDayCardStyles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={addDayCardStyles.row}>
         <View style={[addDayCardStyles.dayPill, { backgroundColor: dayColor + '22', borderColor: dayColor + '66' }]}>
           <Text style={[addDayCardStyles.dayPillText, { color: dayColor }]}>{card.dayName}</Text>
         </View>
-        <Ionicons name="add-circle-outline" size={14} color="#71717a" style={{ marginHorizontal: 6 }} />
-        <Text style={addDayCardStyles.exName} numberOfLines={1}>{ex.name}</Text>
+        <Ionicons name="add-circle-outline" size={14} color={colors.textMuted} style={{ marginHorizontal: 6 }} />
+        <Text style={[addDayCardStyles.exName, { color: colors.textPrimary }]} numberOfLines={1}>{ex.name}</Text>
       </View>
-      <Text style={addDayCardStyles.exMeta}>{ex.targetSets} sets Ã— {ex.targetReps} reps{ex.muscle ? ` Â· ${ex.muscle}` : ''}</Text>
+      <Text style={[addDayCardStyles.exMeta, { color: colors.textMuted }]}>{ex.targetSets} sets × {ex.targetReps} reps{ex.muscle ? ` · ${ex.muscle}` : ''}</Text>
 
       {!confirmed ? (
         <TouchableOpacity
@@ -333,13 +346,13 @@ function AddToPlanDayCard({ card }: { card: any }) {
         >
           <Ionicons name={loading ? 'hourglass-outline' : 'checkmark-outline'} size={14} color={dayColor} />
           <Text style={[addDayCardStyles.addBtnText, { color: dayColor }]}>
-            {loading ? 'Addingâ€¦' : `Add to ${card.dayName} Plan`}
+            {loading ? 'Adding…' : `Add to ${card.dayName} Plan`}
           </Text>
         </TouchableOpacity>
       ) : (
         <View style={addDayCardStyles.doneRow}>
-          <Ionicons name="checkmark-circle" size={14} color="#4ade80" />
-          <Text style={addDayCardStyles.doneText}>Added to {card.dayName} â€” active every week</Text>
+          <Ionicons name="checkmark-circle" size={14} color={colors.accentGreen || '#4ade80'} />
+          <Text style={[addDayCardStyles.doneText, { color: colors.textMuted }]}>Added to {card.dayName} — active every week</Text>
         </View>
       )}
     </View>
@@ -347,38 +360,37 @@ function AddToPlanDayCard({ card }: { card: any }) {
 }
 
 const planCardStyles = StyleSheet.create({
-  container: { backgroundColor: '#0f0f0f', borderRadius: 14, borderWidth: 1, borderColor: '#a599ff33', padding: 14, marginTop: 2 },
+  container: { borderRadius: 14, borderWidth: 1, padding: 14, marginTop: 2 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  headerIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#a599ff18', alignItems: 'center', justifyContent: 'center' },
-  title: { fontFamily: 'Inter_600SemiBold', fontSize: 14, color: '#fff', lineHeight: 18 },
-  subtitle: { fontFamily: 'Inter_400Regular', fontSize: 11, color: '#71717a', marginTop: 1 },
-  confirmedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#4ade8018', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4 },
-  confirmedText: { fontFamily: 'Inter_600SemiBold', fontSize: 11, color: '#4ade80' },
-  divider: { height: 1, backgroundColor: '#ffffff0d', marginBottom: 10 },
+  headerIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  title: { fontFamily: 'Inter_600SemiBold', fontSize: 14, lineHeight: 18 },
+  subtitle: { fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 1 },
+  confirmedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(74, 222, 128, 0.12)', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4 },
+  confirmedText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  divider: { height: 1, marginBottom: 10 },
   dayList: { gap: 6, marginBottom: 12 },
   dayRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dayChip: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 7, paddingVertical: 3, minWidth: 38, alignItems: 'center' },
   dayChipText: { fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 0.5 },
-  dayFocus: { fontFamily: 'Inter_500Medium', fontSize: 12, color: '#d4d4d8', lineHeight: 16 },
-  dayExCount: { fontFamily: 'Inter_400Regular', fontSize: 10, color: '#52525b', marginTop: 1 },
-  importBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: '#a599ff', borderRadius: 10, paddingVertical: 11, marginBottom: 8 },
+  dayFocus: { fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 16 },
+  dayExCount: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 1 },
+  importBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 10, paddingVertical: 11, marginBottom: 8 },
   importBtnText: { fontFamily: 'Inter_700Bold', fontSize: 13, color: '#fff', letterSpacing: 0.3 },
-  disclaimer: { fontFamily: 'Inter_400Regular', fontSize: 10, color: '#52525b', textAlign: 'center', lineHeight: 14 },
+  disclaimer: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', lineHeight: 14 },
 });
 
 const addDayCardStyles = StyleSheet.create({
-  container: { backgroundColor: '#0f0f0f', borderRadius: 12, borderWidth: 1, borderColor: '#ffffff15', padding: 12 },
+  container: { borderRadius: 12, borderWidth: 1, padding: 12 },
   row: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
   dayPill: { borderRadius: 20, borderWidth: 1, paddingHorizontal: 9, paddingVertical: 3 },
   dayPillText: { fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.3 },
-  exName: { fontFamily: 'Inter_600SemiBold', fontSize: 13, color: '#fff', flex: 1 },
-  exMeta: { fontFamily: 'Inter_400Regular', fontSize: 11, color: '#71717a', marginBottom: 10, paddingLeft: 2 },
+  exName: { fontFamily: 'Inter_600SemiBold', fontSize: 13, flex: 1 },
+  exMeta: { fontFamily: 'Inter_400Regular', fontSize: 11, marginBottom: 10, paddingLeft: 2 },
   addBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 8, borderWidth: 1, paddingVertical: 8, paddingHorizontal: 12 },
   addBtnText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   doneRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  doneText: { fontFamily: 'Inter_400Regular', fontSize: 11, color: '#71717a' },
+  doneText: { fontFamily: 'Inter_400Regular', fontSize: 11 },
 });
-
 
 export function ZenGymAiModal({
   visible, 
@@ -397,7 +409,8 @@ export function ZenGymAiModal({
 
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const mdStyles = useMemo(() => makeMdStyles(colors, isDark), [colors, isDark]);
   const { tasks, habits, gymLogs, waterLogs, sleepLogs, user, notes, goals, googleAccessToken } = useMobileData();
   const { gymProfile } = useGymProfile();
   const [prompt, setPrompt] = useState('');
@@ -1271,7 +1284,7 @@ export function ZenGymAiModal({
               {sessions.length === 0 ? (
                 <View style={styles.historyEmptyState}>
                   <View style={styles.historyEmptyIcon}>
-                    <Ionicons name="chatbubbles-outline" size={36} color="#71717a" />
+                    <Ionicons name="chatbubbles-outline" size={36} color={colors.textMuted} />
                   </View>
                   <Text style={styles.historyEmptyTitle}>No Past Chats</Text>
                   <Text style={styles.historyEmptySubtitle}>
@@ -1308,7 +1321,7 @@ export function ZenGymAiModal({
                             style={styles.historyDeleteBtn}
                             activeOpacity={0.7}
                           >
-                            <Ionicons name="trash-outline" size={16} color="#71717a" />
+                            <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
                           </TouchableOpacity>
                         </View>
 
@@ -1333,7 +1346,7 @@ export function ZenGymAiModal({
                     style={styles.clearAllBtn}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="trash-bin-outline" size={15} color="#ef4444" />
+                    <Ionicons name="trash-bin-outline" size={15} color={colors.error || "#ef4444"} />
                     <Text style={styles.clearAllBtnText}>Clear All History</Text>
                   </TouchableOpacity>
                 </>
@@ -1349,10 +1362,10 @@ export function ZenGymAiModal({
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.35)',
     justifyContent: 'flex-end',
   },
   backdrop: {
@@ -1360,15 +1373,15 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   sheetContainer: {
     height: '85%',
-    backgroundColor: '#0a0a0e',
+    backgroundColor: colors.background,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: colors.border,
     overflow: 'hidden',
-    shadowColor: '#000',
+    shadowColor: isDark ? '#000' : 'rgba(0,0,0,0.1)',
     shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.5,
+    shadowOpacity: isDark ? 0.5 : 0.15,
     shadowRadius: 16,
     elevation: 24,
   },
@@ -1382,16 +1395,16 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 32,
     height: 3,
     borderRadius: 1.5,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.2)',
     marginBottom: 2,
   },
   root: {
     flex: 1,
-    backgroundColor: '#0a0a0e',
+    backgroundColor: colors.background,
   },
   safeArea: {
     flex: 1,
-    backgroundColor: '#0a0a0e',
+    backgroundColor: colors.background,
   },
   keyboardContainer: {
     flex: 1,
@@ -1404,7 +1417,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     paddingVertical: 6,
     paddingTop: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: colors.border,
     backgroundColor: 'transparent',
   },
   headerCenter: {
@@ -1417,9 +1430,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1435,7 +1448,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   headerTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 14,
-    color: '#ffffff',
+    color: colors.textPrimary,
     letterSpacing: 0.3,
   },
   onlineDot: {
@@ -1447,7 +1460,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   headerSub: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 10,
-    color: '#71717a',
+    color: colors.textMuted,
     marginTop: 1,
     letterSpacing: 0.2,
   },
@@ -1460,16 +1473,16 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: 'rgba(165,153,255,0.12)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.25)',
+    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.2)',
   },
 
   quickPromptsWrapper: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: colors.border,
   },
   quickPrompts: {
     paddingHorizontal: 12,
@@ -1478,17 +1491,22 @@ const makeStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
   },
   quickPill: {
-    backgroundColor: '#18181b',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
     borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 5,
+    shadowColor: isDark ? '#000' : 'rgba(0,0,0,0.03)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   quickPillText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 11.5,
-    color: '#d4d4d8',
+    color: colors.textPrimary,
   },
 
   chatArea: {
@@ -1518,13 +1536,13 @@ const makeStyles = (colors: any) => StyleSheet.create({
   emptyTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 20,
-    color: '#ffffff',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 13.5,
-    color: '#71717a',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -1534,12 +1552,17 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: '100%',
   },
   userBubble: {
-    backgroundColor: '#27272a',
+    backgroundColor: isDark ? '#27272a' : (colors.accentAmber || colors.accentPrimary),
     borderRadius: 20,
     borderBottomRightRadius: 6,
     paddingHorizontal: 15,
     paddingVertical: 10,
     maxWidth: '88%',
+    shadowColor: isDark ? '#000' : colors.accentAmber,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
   },
   userBubbleText: {
     fontFamily: FONT_FAMILY.body,
@@ -1564,14 +1587,14 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: 'rgba(165,153,255,0.15)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   assistantName: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 12.5,
-    color: '#a1a1aa',
+    color: colors.accentPrimary,
     letterSpacing: 0.2,
   },
   markdownWrapper: {
@@ -1605,24 +1628,24 @@ const makeStyles = (colors: any) => StyleSheet.create({
   inputCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#18181b',
+    backgroundColor: colors.surface,
     borderRadius: 25,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderColor: colors.border,
     paddingLeft: 16,
     paddingRight: 6,
     minHeight: 46,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowColor: isDark ? '#000' : 'rgba(0,0,0,0.06)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 4,
   },
   input: {
     flex: 1,
     fontFamily: FONT_FAMILY.body,
     fontSize: 15,
-    color: '#ffffff',
+    color: colors.textPrimary,
     maxHeight: 100,
     paddingVertical: 10,
   },
@@ -1630,7 +1653,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.accentPrimary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1641,7 +1664,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   /* History Modal Styles */
   historyRoot: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: colors.background,
   },
   historyHeader: {
     flexDirection: 'row',
@@ -1650,19 +1673,19 @@ const makeStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#000000',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   historyHeaderTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 17,
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
   newChatBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#a599ff',
+    backgroundColor: colors.accentPrimary,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
@@ -1670,7 +1693,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   newChatBtnText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 12,
-    color: '#000000',
+    color: '#ffffff',
   },
   historyCloseBtn: {
     width: 32,
@@ -1681,7 +1704,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   historyList: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: colors.background,
   },
   historyListContent: {
     padding: 16,
@@ -1698,37 +1721,37 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: '#18181b',
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
   },
   historyEmptyTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 18,
-    color: '#ffffff',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   historyEmptySubtitle: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 13.5,
-    color: '#71717a',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 20,
   },
   historyCard: {
-    backgroundColor: '#121215',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: colors.border,
     gap: 8,
   },
   historyCardActive: {
-    borderColor: '#a599ff',
-    backgroundColor: '#181822',
+    borderColor: colors.accentPrimary,
+    backgroundColor: isDark ? '#181822' : '#F0EFF7',
   },
   historyCardHeader: {
     flexDirection: 'row',
@@ -1740,7 +1763,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flex: 1,
     fontFamily: FONT_FAMILY.bold,
     fontSize: 15,
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
   historyDeleteBtn: {
     padding: 4,
@@ -1748,7 +1771,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   historyCardSnippet: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 13,
-    color: '#9ca3af',
+    color: colors.textMuted,
     lineHeight: 18,
   },
   historyCardFooter: {
@@ -1760,10 +1783,10 @@ const makeStyles = (colors: any) => StyleSheet.create({
   historyCardDate: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 11.5,
-    color: '#71717a',
+    color: colors.textMuted,
   },
   historyMsgBadge: {
-    backgroundColor: 'rgba(165,153,255,0.12)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 10,
@@ -1771,7 +1794,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   historyMsgBadgeText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 11,
-    color: '#a599ff',
+    color: colors.accentPrimary,
   },
   clearAllBtn: {
     flexDirection: 'row',
@@ -1784,21 +1807,20 @@ const makeStyles = (colors: any) => StyleSheet.create({
   clearAllBtnText: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 13,
-    color: '#ef4444',
+    color: colors.error || '#ef4444',
   },
 });
 
-// â”€â”€â”€ Markdown styles for GYM-GPT responses â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-const mdStyles = StyleSheet.create({
+// Markdown styles for GYM-GPT responses
+const makeMdStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   body: {
-    color: '#f2f2f7',
+    color: colors.textPrimary,
     fontFamily: 'Inter_400Regular',
     fontSize: 14.5,
     lineHeight: 22,
   },
-  // Headings
   heading1: {
-    color: '#ffffff',
+    color: colors.textPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 17,
     fontWeight: '700',
@@ -1807,35 +1829,33 @@ const mdStyles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   heading2: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 15,
     fontWeight: '700',
     marginTop: 12,
     marginBottom: 6,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(165,153,255,0.22)',
+    borderBottomColor: isDark ? 'rgba(165,153,255,0.22)' : 'rgba(108,92,231,0.2)',
     paddingBottom: 4,
   },
   heading3: {
-    color: '#c4b5fd',
+    color: colors.textPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 13.5,
     fontWeight: '600',
     marginTop: 8,
     marginBottom: 3,
   },
-  // Inline styles
   strong: {
     fontFamily: 'Inter_600SemiBold',
     fontWeight: '700',
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
   em: {
     fontStyle: 'italic',
-    color: '#d8b4fe',
+    color: colors.accentPrimary,
   },
-  // Lists
   bullet_list: {
     marginVertical: 3,
   },
@@ -1847,7 +1867,7 @@ const mdStyles = StyleSheet.create({
     marginBottom: 4,
   },
   bullet_list_icon: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
     lineHeight: 22,
@@ -1855,7 +1875,7 @@ const mdStyles = StyleSheet.create({
     marginTop: 0,
   },
   ordered_list_icon: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontFamily: 'Inter_600SemiBold',
     fontSize: 14,
     lineHeight: 22,
@@ -1864,91 +1884,82 @@ const mdStyles = StyleSheet.create({
   },
   bullet_list_content: {
     flex: 1,
-    color: '#f2f2f7',
+    color: colors.textPrimary,
     fontFamily: 'Inter_400Regular',
     fontSize: 14.5,
     lineHeight: 22,
   },
   ordered_list_content: {
     flex: 1,
-    color: '#f2f2f7',
+    color: colors.textPrimary,
     fontFamily: 'Inter_400Regular',
     fontSize: 14.5,
     lineHeight: 22,
   },
-  // Divider
   hr: {
-    backgroundColor: 'rgba(165,153,255,0.18)',
+    backgroundColor: colors.border,
     height: 1,
     marginVertical: 10,
   },
-  // Code / Metric Badges â€” Sleek violet/indigo pill instead of yellow Courier
   code_inline: {
     fontFamily: 'Inter_600SemiBold',
-    fontSize: 14.5,
-    color: '#a599ff',
-    backgroundColor: 'transparent',
+    fontSize: 13.5,
+    color: colors.accentPrimary,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : '#F0EFF7',
   },
   fence: {
-    backgroundColor: '#0d0d12',
+    backgroundColor: isDark ? '#0d0d12' : '#F8F7FC',
     borderRadius: 10,
     padding: 12,
     marginVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.15)',
+    borderColor: colors.border,
   },
-  // Blockquote (used for tips/callouts)
   blockquote: {
-    backgroundColor: 'rgba(165,153,255,0.08)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)',
     borderLeftWidth: 3.5,
-    borderLeftColor: '#a599ff',
+    borderLeftColor: colors.accentPrimary,
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 8,
     marginVertical: 6,
     borderWidth: 0.5,
-    borderColor: 'rgba(165,153,255,0.15)',
+    borderColor: colors.border,
   },
-  // Paragraph spacing
   paragraph: {
     marginTop: 0,
     marginBottom: 6,
-    color: '#f2f2f7',
+    color: colors.textPrimary,
     fontFamily: 'Inter_400Regular',
     fontSize: 14.5,
     lineHeight: 22,
   },
-  // Table styling
   table: {
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: colors.border,
     borderRadius: 8,
     marginVertical: 8,
     overflow: 'hidden',
   },
   th: {
-    backgroundColor: 'rgba(165,153,255,0.16)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.16)' : 'rgba(108,92,231,0.10)',
     padding: 8,
     fontFamily: 'Inter_600SemiBold',
-    color: '#ffffff',
+    color: colors.textPrimary,
     fontSize: 12.5,
   },
   td: {
     padding: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-    color: '#f2f2f7',
+    borderTopColor: colors.border,
+    color: colors.textPrimary,
     fontSize: 12.5,
   },
-  // Links
   link: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     textDecorationLine: 'underline',
   },
   text: {
-    color: '#f2f2f7',
+    color: colors.textPrimary,
   },
 });
-
-
-

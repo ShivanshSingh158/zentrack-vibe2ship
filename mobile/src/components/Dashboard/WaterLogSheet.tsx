@@ -27,7 +27,7 @@ interface Props {
 
 export default function WaterLogSheet({ visible, onClose, userId, target, onUpdateTarget }: Props) {
   const { colors, isDark } = useTheme();
-  const s = makeStyles(colors);
+  const s = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
   const { gymProfile, saveGymProfile } = useGymProfile();
   const { weightLogs } = useMobileData();
@@ -126,7 +126,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
         <View style={s.sheet}>
           <View style={s.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.xs }}>
-              <Ionicons name="water" size={22} color="#0A84FF" />
+              <Ionicons name="water" size={22} color={colors.accentBlue} />
               <Text style={s.title}>Hydration Tracker</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={s.closeBtn}>
@@ -136,16 +136,16 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
 
           {/* Personalized Smart Banner */}
           <View style={s.smartBanner}>
-            <Ionicons name="sparkles" size={16} color="#0A84FF" />
+            <Ionicons name="sparkles" size={16} color={colors.accentBlue} />
             <View style={{ flex: 1 }}>
               {userWeight ? (
                 <Text style={s.smartBannerText}>
-                  Goal: <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#0A84FF' }}>{goalLitres}L</Text> for your <Text style={{ fontFamily: FONT_FAMILY.bold }}>{userWeight}kg</Text> body weight (40ml/kg)
+                  Goal: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.accentBlue }}>{goalLitres}L</Text> for your <Text style={{ fontFamily: FONT_FAMILY.bold }}>{userWeight}kg</Text> body weight (40ml/kg)
                 </Text>
               ) : (
                 <TouchableOpacity onPress={() => setShowWeightPrompt(v => !v)}>
                   <Text style={s.smartBannerText}>
-                    Goal: <Text style={{ fontFamily: FONT_FAMILY.bold, color: '#0A84FF' }}>{goalLitres}L</Text> • <Text style={{ color: '#0A84FF', textDecorationLine: 'underline' }}>Set weight to personalize</Text>
+                    Goal: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.accentBlue }}>{goalLitres}L</Text> • <Text style={{ color: colors.accentBlue, textDecorationLine: 'underline' }}>Set weight to personalize</Text>
                   </Text>
                 </TouchableOpacity>
               )}
@@ -182,7 +182,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
             ].map(item => (
               <TouchableOpacity
                 key={item.label}
-                style={[s.card, item.label === 'Custom' && showCustomLog && { borderColor: '#0A84FF' }]}
+                style={[s.card, item.label === 'Custom' && showCustomLog && { borderColor: colors.accentBlue }]}
                 onPress={() => {
                   if (item.amount > 0) {
                     handleLog(item.amount);
@@ -192,7 +192,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
                 }}
               >
                 <View style={s.iconWrap}>
-                  <Ionicons name={item.icon as any} size={28} color="#0A84FF" />
+                  <Ionicons name={item.icon as any} size={28} color={colors.accentBlue} />
                 </View>
                 <Text style={s.amountText} adjustsFontSizeToFit numberOfLines={1}>{item.mlText}</Text>
                 <Text style={s.labelText}>{item.label}</Text>
@@ -236,7 +236,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
               </View>
             ) : (
               <TouchableOpacity onPress={() => setEditingTarget(true)}>
-                <Text style={s.targetText}>{target} ml ({goalLitres}L)  <Ionicons name="pencil" size={14} color="#0A84FF" /></Text>
+                <Text style={s.targetText}>{target} ml ({goalLitres}L)  <Ionicons name="pencil" size={14} color={colors.accentBlue} /></Text>
               </TouchableOpacity>
             )}
           </View>
@@ -252,7 +252,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
               ].map(opt => (
                 <TouchableOpacity
                   key={opt.val}
-                  style={[s.segmentBtn, reminderFreq === opt.val && { backgroundColor: '#0A84FF', borderColor: '#0A84FF' }]}
+                  style={[s.segmentBtn, reminderFreq === opt.val && { backgroundColor: colors.accentBlue, borderColor: colors.accentBlue }]}
                   onPress={() => handleFreqChange(opt.val)}
                 >
                   <Text style={[s.segmentText, reminderFreq === opt.val && { color: '#fff' }]}>{opt.label}</Text>
@@ -277,13 +277,13 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: RADIUS.xxl,
     borderTopRightRadius: RADIUS.xxl,
     padding: SPACE.xl,
@@ -316,8 +316,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACE.xs,
-    backgroundColor: 'rgba(10, 132, 255, 0.08)',
-    borderColor: 'rgba(10, 132, 255, 0.25)',
+    backgroundColor: colors.accentBlueDim,
+    borderColor: colors.accentBlue + '30',
     borderWidth: 1,
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACE.md,
@@ -339,8 +339,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
   weightInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(10, 132, 255, 0.3)',
-    backgroundColor: colors.surface,
+    borderColor: colors.accentBlue + '40',
+    backgroundColor: isDark ? colors.surface : colors.surface2,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACE.md,
     paddingVertical: SPACE.xs,
@@ -349,7 +349,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: FONT_FAMILY.body,
   },
   calcBtn: {
-    backgroundColor: '#0A84FF',
+    backgroundColor: colors.accentBlue,
     paddingHorizontal: SPACE.md,
     paddingVertical: SPACE.xs + 2,
     borderRadius: RADIUS.md,
@@ -369,7 +369,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flex: 1,
     borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? colors.surface : colors.surface2,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACE.md,
     paddingVertical: SPACE.xs,
@@ -378,7 +378,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: FONT_FAMILY.body,
   },
   logCustomBtn: {
-    backgroundColor: '#0A84FF',
+    backgroundColor: colors.accentBlue,
     paddingHorizontal: SPACE.lg,
     paddingVertical: SPACE.xs + 2,
     borderRadius: RADIUS.md,
@@ -395,7 +395,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   card: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? colors.surface : colors.surface2,
     borderRadius: RADIUS.xl,
     padding: SPACE.md,
     alignItems: 'center',
@@ -406,7 +406,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(10, 132, 255, 0.1)',
+    backgroundColor: colors.accentBlueDim,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACE.sm,
@@ -436,7 +436,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   targetText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.sm,
-    color: '#0A84FF',
+    color: colors.accentBlue,
   },
   editRow: {
     flexDirection: 'row',
@@ -447,12 +447,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(165,153,255,0.1)',
+    backgroundColor: colors.accentDim,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACE.md,
     marginTop: SPACE.xl,
     borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.3)',
+    borderColor: colors.accentPrimary + '35',
   },
   dashboardBtnText: {
     fontFamily: FONT_FAMILY.medium,
@@ -464,7 +464,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     marginTop: SPACE.xl,
     paddingTop: SPACE.xl,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
+    borderTopColor: colors.border,
   },
   sectionTitle: {
     fontFamily: FONT_FAMILY.bold,
@@ -491,7 +491,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   input: {
     borderBottomWidth: 1,
-    borderBottomColor: '#0A84FF',
+    borderBottomColor: colors.accentBlue,
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.sm,
     padding: 0,
@@ -499,7 +499,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     textAlign: 'center',
   },
   saveBtn: {
-    backgroundColor: '#0A84FF',
+    backgroundColor: colors.accentBlue,
     paddingHorizontal: SPACE.md,
     paddingVertical: 4,
     borderRadius: RADIUS.sm,

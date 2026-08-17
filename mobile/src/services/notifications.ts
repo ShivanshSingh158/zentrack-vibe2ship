@@ -490,10 +490,10 @@ const INACTIVITY_POOLS = (days: number) => [
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export interface ScheduleParams {
-  tasks: Task[];
-  customEvents: CustomEvent[];
-  gymLogs: GymLog[];
-  attendance: AttendanceSubject[];
+  tasks?: Task[];
+  customEvents?: CustomEvent[];
+  gymLogs?: GymLog[];
+  attendance?: AttendanceSubject[];
   habitLogs?: HabitLog[];
   allHabits?: Habit[];
   assignments?: Assignment[];

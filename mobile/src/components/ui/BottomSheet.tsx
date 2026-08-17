@@ -26,8 +26,8 @@ export default function BottomSheet({
   contentStyle,
   fullHeight = false,
 }: BottomSheetProps) {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
 
   const [mounted, setMounted] = useState(visible);
   const translateY = useSharedValue(600);
@@ -104,27 +104,28 @@ export default function BottomSheet({
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   backdrop: {
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(0, 0, 0, 0.35)',
   },
   sheet: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#0c0c0e',
+    backgroundColor: isDark ? (colors.surfaceRaised || '#18181b') : '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 14,
     elevation: 24,
-    shadowColor: '#000',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.25,
+    shadowOpacity: isDark ? 0.5 : 0.15,
     shadowRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.border,
+    borderBottomWidth: 0,
   },
   fullHeight: {
     height: '90%',
@@ -135,7 +136,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   handle: {
     width: 36,
     height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 14,

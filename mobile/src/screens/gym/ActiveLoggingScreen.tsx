@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, TextInput,
-  Platform, KeyboardAvoidingView, ScrollView, Modal, ActivityIndicator, AppState
+  Platform, KeyboardAvoidingView, ScrollView, Modal, ActivityIndicator, AppState,
+  StatusBar as RNStatusBar
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -22,13 +23,14 @@ import { GYM_PLAN } from '../../data/gymPlan';
 import { EXERCISE_DATABASE } from '../../data/exerciseDatabase';
 import { getOverloadSuggestion, getRestDuration } from '../../services/progressiveOverload';
 import { GymSet, GymNavigationParamList } from '../../types/gym.types';
-import { useTheme } from "../../contexts/ThemeContext";
+import { StatusBar } from 'expo-status-bar';
+import { useTheme } from '../../contexts/ThemeContext';
 
-// ΓöÇΓöÇΓöÇ Per-set controlled input state ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Per-set controlled input state ──────────────────────────────────────────
 // BUG FIX #1: Instead of feeding the exercise's weight/reps directly into
 // TextInput's `value` (which flickers whenever saveLog triggers a re-render),
 // we maintain LOCAL input state per set. This local state is only updated from
-// the exercise data on initial load or exercise change ΓÇö never during typing.
+// the exercise data on initial load or exercise change — never during typing.
 interface SetInputState {
   weight: string;
   reps: string;
@@ -36,7 +38,7 @@ interface SetInputState {
 
 export default function ActiveLoggingScreen() {
     const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const route = useRoute<RouteProp<GymNavigationParamList, 'ActiveLogging'>>();
   const date = route.params?.date;
@@ -565,6 +567,7 @@ export default function ActiveLoggingScreen() {
 
   return (
     <SafeAreaView style={styles.root}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
 
         {/* Header */}
@@ -1135,17 +1138,17 @@ export default function ActiveLoggingScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1, backgroundColor: '#000000' },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
       header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: SPACE.xl,
-        paddingTop: Platform.OS === 'ios' ? 50 : 40,
-        paddingBottom: SPACE.md,
+        paddingTop: Platform.OS === 'android' ? (RNStatusBar.currentHeight || 40) + 8 : 12,
+        paddingBottom: SPACE.sm,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
       },
       backBtn: { padding: SPACE.xs },
       headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted, letterSpacing: 1 },
@@ -1183,17 +1186,26 @@ const makeStyles = (colors: any) => StyleSheet.create({
         justifyContent: 'space-between',
         paddingVertical: 8,
         paddingHorizontal: SPACE.md,
-        backgroundColor: '#1C1C1E',
+        backgroundColor: isDark ? '#1C1C1E' : colors.surface,
         borderRadius: RADIUS.md,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.05)',
+        borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
+        shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.03)',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+        elevation: 1,
       },
       setRowActive: {
-        backgroundColor: '#2C2C2E',
+        backgroundColor: isDark ? '#2C2C2E' : '#F0EFF7',
         borderTopLeftRadius: 0,
         borderBottomLeftRadius: 0,
+        borderColor: colors.accentPrimary,
       },
-      setRowCompleted: { backgroundColor: 'transparent', borderColor: 'transparent' },
+      setRowCompleted: {
+        backgroundColor: isDark ? 'transparent' : 'rgba(5, 150, 105, 0.04)',
+        borderColor: isDark ? 'transparent' : colors.border,
+      },
       setIndexArea: { width: 32, alignItems: 'center', justifyContent: 'center' },
       setIndexText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textMuted },
       inputGroup: { flex: 1, marginHorizontal: 6, position: 'relative' },
@@ -1208,7 +1220,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         fontSize: 16,
       },
       textInput: {
-        backgroundColor: 'rgba(255,255,255,0.03)',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : colors.surface2,
         borderRadius: RADIUS.sm,
         height: 44,
         paddingVertical: 0,
@@ -1216,6 +1228,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
         fontSize: 16,
         color: colors.textPrimary,
         textAlign: 'center',
+        borderWidth: isDark ? 0 : 1,
+        borderColor: colors.border,
       },
 
       addSetBtn: {
@@ -1224,7 +1238,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         paddingHorizontal: SPACE.xl,
         marginTop: SPACE.sm,
       },
-      addSetBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted },
+      addSetBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.accentPrimary },
       videoBtn: { padding: 4 },
       videoContainer: { borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: SPACE.xl },
 
@@ -1236,15 +1250,15 @@ const makeStyles = (colors: any) => StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
       },
-      mainBtnComplete: { backgroundColor: '#34C759' },
-      mainBtnIncomplete: { backgroundColor: '#1C1C1E', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+      mainBtnComplete: { backgroundColor: isDark ? '#34C759' : colors.accentGreen },
+      mainBtnIncomplete: { backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
       mainBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
 
-      modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-      modalContent: { backgroundColor: '#1C1C1E', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%' },
+      modalOverlay: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
+      modalContent: { backgroundColor: isDark ? '#1C1C1E' : (colors.surfaceRaised || colors.surface), borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
       modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
       modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: colors.textPrimary },
       modalSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted, marginTop: 4 },
-      altRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#2C2C2E', padding: 16, borderRadius: 12, marginBottom: 12 },
+      altRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#2C2C2E' : (colors.surface2 || '#F0EFF7'), padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
       altText: { flex: 1, fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginLeft: 12 },
     });

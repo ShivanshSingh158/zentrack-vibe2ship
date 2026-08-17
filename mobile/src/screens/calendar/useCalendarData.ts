@@ -17,6 +17,7 @@ import { GYM_PLAN } from '../../data/gymPlan';
 import { getCustomPlanDay, planDayIndexForDate } from '../../hooks/useGymLog';
 import { parseTimeTo24h, parseTaskTimeSlot, HOUR_HEIGHT } from './calendarUtils';
 import { useDeferredMemo } from '../../hooks/useDeferredMemo';
+import { formatLocalDateStr } from '../../utils/dateUtils';
 
 export function useCalendarData() {
   const { customEvents } = usePlannerData();
@@ -24,10 +25,18 @@ export function useCalendarData() {
   const { attendance } = useAcademicData();
   const { gymLogs, userGymPlan } = useWellnessData();
 
-  // Stable reference to mount time — never changes across renders
-  const nowRef = useRef(new Date());
-  const now = nowRef.current;
-  const [selectedDate, setSelectedDate] = useState(now.toISOString().slice(0, 10));
+  // Stable reference to mount time
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const now = currentTime;
+  const [selectedDate, setSelectedDate] = useState(() => formatLocalDateStr(new Date()));
+
+  // Keep time synchronized and detect midnight day transitions
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const [showEventModal, setShowEventModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -42,7 +51,6 @@ export function useCalendarData() {
 
   const scrollViewRef = useRef<ScrollView>(null);
   const agendaScrollRef = useRef<ScrollView>(null);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [currentView, setCurrentView] = useState<'Day'|'Week'|'Month'>('Day');
 
   const handleSaveGymTime = async () => {
@@ -116,13 +124,16 @@ export function useCalendarData() {
       }
     });
 
-    const dayOfWeek = new Date(selectedDate + 'T00:00:00').getDay().toString();
+    const dayOfWeekNum = new Date(selectedDate + 'T00:00:00').getDay();
+    const dayOfWeek = dayOfWeekNum.toString();
     const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const dayName = DAY_NAMES[dayOfWeekNum];
+    const dayNameLower = dayName.toLowerCase();
     const timedClasses: any[] = [];
     const unscheduledClasses: any[] = [];
 
     attendance?.forEach((subj: any) => {
-      const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[Number(dayOfWeek)] || subj.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] || subj.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
+      const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[dayOfWeekNum] || subj.schedule?.[dayName] || subj.schedule?.[dayNameLower];
       if (!sch) return;
 
       if (sch.classes && Array.isArray(sch.classes)) {
@@ -234,6 +245,36 @@ export function useCalendarData() {
     d.setDate(d.getDate() - d.getDay());
     let allWeekEvents: any[] = [];
 
+    // Pre-group custom events, tasks, and gcal by date in single pass
+    const customEventsByDate: Record<string, any[]> = {};
+    for (let i = 0; i < customEvents.length; i++) {
+      const e = customEvents[i];
+      if (e.date) {
+        if (!customEventsByDate[e.date]) customEventsByDate[e.date] = [];
+        customEventsByDate[e.date].push(e);
+      }
+    }
+
+    const tasksByDate: Record<string, any[]> = {};
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (t.date) {
+        if (!tasksByDate[t.date]) tasksByDate[t.date] = [];
+        tasksByDate[t.date].push(t);
+      }
+    }
+
+    const gcalByDate: Record<string, any[]> = {};
+    for (let i = 0; i < gcalEvents.length; i++) {
+      const g = gcalEvents[i];
+      if (g.date) {
+        if (!gcalByDate[g.date]) gcalByDate[g.date] = [];
+        gcalByDate[g.date].push(g);
+      }
+    }
+
+    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
     for (let i = 0; i < 7; i++) {
       const cur = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
       const dateStr = [
@@ -242,17 +283,19 @@ export function useCalendarData() {
         String(cur.getDate()).padStart(2, '0')
       ].join('-');
       
-      const events = customEvents.filter((e: any) => e.date === dateStr);
-      const dayTasks = tasks.filter((t: any) => t.date === dateStr).map((t: any) => {
+      const events = customEventsByDate[dateStr] || [];
+      const dayTasks = (tasksByDate[dateStr] || []).map((t: any) => {
         const { startTime, endTime } = parseTaskTimeSlot(t.timeSlot);
         return { id: t.id, title: t.title, type: 'todo', date: dateStr, startTime, endTime };
       });
       
-      const dayOfWeek = cur.getDay().toString();
-      const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const curDayOfWeekNum = cur.getDay();
+      const dayOfWeek = curDayOfWeekNum.toString();
+      const dayName = DAY_NAMES[curDayOfWeekNum];
+      const dayNameLower = dayName.toLowerCase();
       
       const classEvents = attendance?.flatMap((subj: any) => {
-        const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[Number(dayOfWeek)] || subj.schedule?.[DAY_NAMES[cur.getDay()]] || subj.schedule?.[DAY_NAMES[cur.getDay()].toLowerCase()];
+        const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[curDayOfWeekNum] || subj.schedule?.[dayName] || subj.schedule?.[dayNameLower];
         if (!sch) return [];
         const evtList: any[] = [];
         if (sch.classes && Array.isArray(sch.classes)) {
@@ -276,7 +319,7 @@ export function useCalendarData() {
         return evtList;
       }) || [];
 
-      const gcals = gcalEvents.filter((e: any) => e.date === dateStr);
+      const gcals = gcalByDate[dateStr] || [];
       
       const gLog = (gymLogs || []).find((g: any) => g.date === dateStr);
       const planIdx = planDayIndexForDate(dateStr);
@@ -335,7 +378,7 @@ export function useCalendarData() {
   // Scroll to current time on mount and when switching to Day view on today
   useEffect(() => {
     if (currentView !== 'Day') return;
-    if (selectedDate !== now.toISOString().slice(0, 10)) return;
+    if (selectedDate !== formatLocalDateStr(new Date())) return;
     if (!scrollViewRef.current) return;
     const currentHour = new Date().getHours();
     const currentMin  = new Date().getMinutes();

@@ -13,7 +13,7 @@ import EmptyState from '../components/ui/EmptyState';
 
 export default function WeeklyReviewScreen() {
   const navigation = useNavigation<any>();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const s = makeStyles(colors);
   const { weeklyReviews } = usePlannerData();
 
@@ -23,7 +23,7 @@ export default function WeeklyReviewScreen() {
   }, [weeklyReviews]);
 
   return (
-    <ExpoLinearGradient colors={['#181036', '#090710', '#050507']} style={s.root}>
+    <ExpoLinearGradient colors={isDark ? ['#080510', '#000000', '#000000'] : ['#F4F3F8', '#FFFFFF', '#F4F3F8']} style={s.root}>
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
         {/* Header */}
         <View style={s.header}>

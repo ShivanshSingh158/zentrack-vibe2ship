@@ -78,7 +78,8 @@ const TYPE_FIELDS: Record<string, FieldKey[]> = {
 const DEFAULT_FIELDS: FieldKey[] = ['durationMinutes', 'distanceKm', 'calories'];
 
 export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const s = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const slideAnim = useRef(new Animated.Value(500)).current;
   const keyboardOffset = useRef(new Animated.Value(0)).current;
 
@@ -207,7 +208,7 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
               </Text>
             </View>
             <TouchableOpacity style={s.closeBtn} onPress={handleClose} activeOpacity={0.7}>
-              <Ionicons name="close" size={16} color="#ffffff" />
+              <Ionicons name="close" size={16} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
@@ -215,173 +216,180 @@ export function LogCardioModal({ visible, cardio, onClose, onSave }: Props) {
           <ScrollView
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
-            style={{ maxHeight: SCREEN_H * 0.45 }}
+            contentContainerStyle={{ paddingBottom: 8 }}
           >
-            {fieldPairs.map((pair, pi) => (
-              <View key={pi} style={s.row}>
-                {pair.map((field, fi) => (
-                  <View key={field.key} style={[s.fieldBox, fi === 0 && pair.length > 1 && { marginRight: 10 }]}>
+            {fieldPairs.map((row, ri) => (
+              <View key={ri} style={s.row}>
+                {row.map((field, fi) => (
+                  <View
+                    key={field.key}
+                    style={[
+                      s.fieldBox,
+                      fi === 0 && row.length > 1 && { marginRight: 8 },
+                      row.length === 1 && { width: '100%' },
+                    ]}
+                  >
                     <View style={s.fieldHeader}>
                       <View style={s.fieldIconBox}>
-                        <Ionicons name={field.icon as any} size={12} color="#a599ff" />
+                        <Ionicons name={field.icon as any} size={11} color={colors.accentPrimary} />
                       </View>
                       <Text style={s.fieldLabel}>{field.label}</Text>
                       <Text style={s.fieldUnit}>{field.unit}</Text>
                     </View>
                     <TextInput
                       style={s.input}
-                      placeholder={field.placeholder}
-                      placeholderTextColor="#3C3C3E"
-                      keyboardType="numeric"
                       value={values[field.key] || ''}
-                      onChangeText={v => setValues(prev => ({ ...prev, [field.key]: v }))}
-                      returnKeyType="next"
+                      onChangeText={(t) => setValues(prev => ({ ...prev, [field.key]: t }))}
+                      placeholder="—"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType={field.decimal ? 'decimal-pad' : 'number-pad'}
+                      returnKeyType="done"
                     />
                   </View>
                 ))}
               </View>
             ))}
-          </ScrollView>
 
-          {/* Save CTA — always visible, anchored below fields */}
-          <TouchableOpacity
-            style={[s.saveBtn, !canSave && s.saveBtnDisabled]}
-            onPress={handleSave}
-            activeOpacity={0.85}
-            disabled={!canSave}
-          >
-            <Text style={[s.saveBtnText, !canSave && s.saveBtnTextDisabled]}>
-              {canSave ? 'Save & Mark Complete' : 'Enter duration to save'}
-            </Text>
-          </TouchableOpacity>
+            {/* Save CTA */}
+            <TouchableOpacity
+              style={[s.saveBtn, !canSave && s.saveBtnDisabled]}
+              onPress={handleSave}
+              activeOpacity={0.85}
+              disabled={!canSave}
+            >
+              <Text style={[s.saveBtnText, !canSave && s.saveBtnTextDisabled]}>
+                {canSave ? 'Save & Mark Complete' : 'Enter duration to complete'}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
   );
 }
 
-const SCREEN_H = Dimensions.get('window').height;
+const { height: SCREEN_H } = Dimensions.get('window');
 
-const s = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#000000',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
-    borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    // Use at most 70% of screen so it never clips — enough for 2 rows of cards
-    maxHeight: SCREEN_H * 0.72,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignSelf: 'center',
-    marginBottom: 14,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  headerLeft: { flex: 1 },
-  title: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 20,
-    color: '#ffffff',
-    marginBottom: 1,
-  },
-  subtitle: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: '#636366',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  closeBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#1C1C1E',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    marginBottom: 10,
-  },
-  fieldBox: {
-    flex: 1,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    padding: 12,
-  },
-  fieldHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginBottom: 8,
-  },
-  fieldIconBox: {
-    width: 20,
-    height: 20,
-    borderRadius: 5,
-    backgroundColor: 'rgba(165,153,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fieldLabel: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 10,
-    color: '#8E8E93',
-    flex: 1,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  fieldUnit: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 9,
-    color: '#48484A',
-  },
-  input: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 20,
-    color: '#ffffff',
-    padding: 0,
-    height: 28,
-  },
-  saveBtn: {
-    backgroundColor: '#a599ff',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  saveBtnDisabled: {
-    backgroundColor: '#1C1C1E',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-  },
-  saveBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 14,
-    color: '#ffffff',
-  },
-  saveBtnTextDisabled: {
-    color: '#636366',
-  },
-});
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    backdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.65)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+      borderTopWidth: 1,
+      borderColor: colors.border,
+      maxHeight: SCREEN_H * 0.72,
+    },
+    handle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.15)',
+      alignSelf: 'center',
+      marginBottom: 14,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    headerLeft: { flex: 1 },
+    title: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 20,
+      color: colors.textPrimary,
+      marginBottom: 1,
+    },
+    subtitle: {
+      fontFamily: FONT_FAMILY.medium,
+      fontSize: 11,
+      color: colors.textTertiary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    closeBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: isDark ? '#1C1C1E' : '#E2E1EA',
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    row: {
+      flexDirection: 'row',
+      marginBottom: 10,
+    },
+    fieldBox: {
+      flex: 1,
+      backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 12,
+    },
+    fieldHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      marginBottom: 8,
+    },
+    fieldIconBox: {
+      width: 20,
+      height: 20,
+      borderRadius: 5,
+      backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.15)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    fieldLabel: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 10,
+      color: colors.textTertiary,
+      flex: 1,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    fieldUnit: {
+      fontFamily: FONT_FAMILY.medium,
+      fontSize: 9,
+      color: colors.textMuted,
+    },
+    input: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 20,
+      color: colors.textPrimary,
+      padding: 0,
+      height: 28,
+    },
+    saveBtn: {
+      backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
+      borderRadius: 12,
+      paddingVertical: 14,
+      alignItems: 'center',
+      marginTop: 10,
+    },
+    saveBtnDisabled: {
+      backgroundColor: isDark ? '#1C1C1E' : '#E2E1EA',
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    saveBtnText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 14,
+      color: isDark ? '#000000' : '#FFFFFF',
+    },
+    saveBtnTextDisabled: {
+      color: colors.textMuted,
+    },
+  });

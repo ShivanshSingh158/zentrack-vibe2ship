@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect, useState } from 'react';
+import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   Animated, ScrollView,
@@ -6,116 +6,59 @@ import {
 import Reanimated, { FadeIn } from 'react-native-reanimated';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
 import { triggerLayoutAnimation } from '../theme/animations';
-import { auth } from '../services/firebase';
 import { performSignOut } from '../contexts/domains/CoreDataContext';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { BlurView } from 'expo-blur';
 import { useTheme } from "../contexts/ThemeContext";
-// Cap 7: BFE module ordering
-import { getFingerprint } from '../services/saraMemory';
-import { handleSyncError } from '../utils/errorUtils';
 
-
-// ─── Module Categories ────────────────────────────────────────────────────────
-
-type ModuleCategory = {
-  label: string;
-  icon: string;
-  color: string;
-  modules: ModuleDef[];
-};
+// ─── Module Definitions ───────────────────────────────────────────────────────
 
 type ModuleDef = {
   id: string;
   name: string;
   icon: string;
-  color: string;
+  colorDark: string;
+  colorLight: string;
 };
 
-function getModuleCategories(colors: any) {
-  return [
-    {
-      label: 'Productivity',
-      icon: 'rocket-outline',
-      color: colors.accentPrimary,
-      modules: [
-        { id: 'Tasks',    name: 'Tasks',       icon: 'checkmark-circle', color: '#34C759' },
-        { id: 'Habits',   name: 'Habits',      icon: 'flame',            color: '#FF9500' },
-        { id: 'Calendar', name: 'Calendar',    icon: 'calendar',         color: '#FF3B30' },
-        { id: 'Notes',    name: 'Notes Vault', icon: 'document-text',    color: '#FFD60A' },
-      ],
-    },
-    {
-      label: 'Academic',
-      icon: 'school-outline',
-      color: colors.accentAmber,
-      modules: [
-        { id: 'Attendance',   name: 'Attendance',   icon: 'id-card',     color: '#5856D6' },
-        { id: 'Assignments',  name: 'Assignments',  icon: 'book',        color: '#FF2D55' },
-        { id: 'Grades',       name: 'Grades',       icon: 'calculator',  color: '#8E8E93' },
-        { id: 'Learning',     name: 'Learning',     icon: 'library',     color: '#00C7BE' },
-      ],
-    },
-    {
-      label: 'Wellness',
-      icon: 'heart-outline',
-      color: colors.accentGreen,
-      modules: [
-        { id: 'Gym',      name: 'Gym Log',   icon: 'barbell', color: '#32ADE6' },
-      ],
-    },
-    {
-      label: 'Community',
-      icon: 'people-outline',
-      color: colors.accentSecondary,
-      modules: [
-
-      ],
-    },
-    {
-      label: 'Analytics',
-      icon: 'bar-chart-outline',
-      color: colors.accentBlue,
-      modules: [
-        { id: 'Analytics', name: 'Analytics', icon: 'bar-chart', color: '#007AFF' },
-      ],
-    },
-  ];
-}
-
-// Flat list for pinning logic
-const ALL_MODULES: ModuleDef[] = [
-  { id: 'Tasks',    name: 'Tasks',       icon: 'checkmark-circle', color: '#34C759' },
-  { id: 'Habits',   name: 'Habits',      icon: 'flame',            color: '#FF9500' },
-  { id: 'Calendar', name: 'Calendar',    icon: 'calendar',         color: '#FF3B30' },
-  { id: 'Notes',    name: 'Notes Vault', icon: 'document-text',    color: '#FFD60A' },
-  { id: 'Attendance',   name: 'Attendance',   icon: 'id-card',     color: '#5856D6' },
-  { id: 'Assignments',  name: 'Assignments',  icon: 'book',        color: '#FF2D55' },
-  { id: 'Grades',       name: 'Grades',       icon: 'calculator',  color: '#8E8E93' },
-  { id: 'Learning',     name: 'Learning',     icon: 'library',     color: '#00C7BE' },
-  { id: 'Gym',      name: 'Gym Log',   icon: 'barbell', color: '#32ADE6' },
-
-  { id: 'Analytics', name: 'Analytics', icon: 'bar-chart', color: '#007AFF' },
+const ALL_MODULES_DEF: ModuleDef[] = [
+  { id: 'Tasks',       name: 'Tasks',       icon: 'checkmark-circle', colorDark: '#34C759', colorLight: '#059669' },
+  { id: 'Habits',      name: 'Habits',      icon: 'flame',            colorDark: '#FF9500', colorLight: '#D97706' },
+  { id: 'Calendar',    name: 'Calendar',    icon: 'calendar',         colorDark: '#FF3B30', colorLight: '#DC2626' },
+  { id: 'Notes',       name: 'Notes Vault', icon: 'document-text',    colorDark: '#FFD60A', colorLight: '#D97706' },
+  { id: 'Attendance',  name: 'Attendance',  icon: 'id-card',          colorDark: '#5856D6', colorLight: '#6C5CE7' },
+  { id: 'Assignments', name: 'Assignments', icon: 'book',             colorDark: '#FF2D55', colorLight: '#0284C7' },
+  { id: 'Grades',      name: 'Grades',      icon: 'calculator',       colorDark: '#8E8E93', colorLight: '#6C5CE7' },
+  { id: 'Learning',    name: 'Learning',    icon: 'library',          colorDark: '#00C7BE', colorLight: '#0284C7' },
+  { id: 'Gym',         name: 'Gym Log',     icon: 'barbell',          colorDark: '#32ADE6', colorLight: '#D97706' },
+  { id: 'Analytics',   name: 'Analytics',   icon: 'bar-chart',        colorDark: '#007AFF', colorLight: '#0284C7' },
 ];
+
+const DEFAULT_PINNED_MODULES = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function MoreScreen() {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const MODULE_CATEGORIES = getModuleCategories(colors);
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
   const { pinnedModules, setPinnedModules } = useMobileData();
+  const effectivePinned = useMemo(() => {
+    return (pinnedModules && pinnedModules.length > 0) ? pinnedModules : DEFAULT_PINNED_MODULES;
+  }, [pinnedModules]);
+
   const [isEditing, setIsEditing] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
-  // Cap 7: BFE-ordered pinned modules
-  const [bfeOrderedPins, setBfeOrderedPins] = useState<string[]>([]);
-  const { user } = useMobileData();
+  const [selected, setSelected] = useState<string[]>(effectivePinned);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setSelected(effectivePinned);
+    }
+  }, [effectivePinned, isEditing]);
 
   const handleClose = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -125,18 +68,15 @@ export default function MoreScreen() {
     }
   }, [navigation]);
 
-
   const toggleEdit = useCallback(() => {
     triggerLayoutAnimation();
     if (isEditing) {
-      setPinnedModules(selected);
+      setPinnedModules(selected.length > 0 ? selected : DEFAULT_PINNED_MODULES);
     } else {
-      setSelected(pinnedModules);
+      setSelected(effectivePinned);
     }
     setIsEditing(!isEditing);
-  }, [isEditing, pinnedModules, selected, setPinnedModules]);
-
-  // Cap 7 BFE logic removed as user requested not to show pinned modules in MoreScreen
+  }, [isEditing, effectivePinned, selected, setPinnedModules]);
 
   const navigateWithClose = useCallback((screenName: string) => {
     if (screenName === 'Settings') {
@@ -165,9 +105,14 @@ export default function MoreScreen() {
     }
   }, [isEditing, selected, navigateWithClose]);
 
-  const handleLogout = useCallback(() => {
-    performSignOut().catch(console.warn);
-  }, []);
+  const allModules = useMemo(() => {
+    return ALL_MODULES_DEF.map(m => ({
+      id: m.id,
+      name: m.name,
+      icon: m.icon,
+      color: isDark ? m.colorDark : m.colorLight,
+    }));
+  }, [isDark]);
 
   return (
     <View style={styles.root}>
@@ -177,7 +122,7 @@ export default function MoreScreen() {
       </View>
 
       {/* Bottom Sheet */}
-      <BlurView intensity={70} tint="dark" style={styles.sheet}>
+      <BlurView intensity={isDark ? 70 : 95} tint={isDark ? "dark" : "light"} style={styles.sheet}>
 
         {/* Header */}
         <View style={styles.headerRow}>
@@ -200,19 +145,19 @@ export default function MoreScreen() {
               <Ionicons
                 name={isEditing ? 'checkmark' : 'pencil'}
                 size={14}
-                color={isEditing ? colors.background : colors.textPrimary}
+                color={isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary}
               />
               <Text
                 style={[
                   styles.editPillText,
-                  { color: isEditing ? colors.background : colors.textPrimary },
+                  { color: isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary },
                 ]}
               >
                 {isEditing ? 'Done' : 'Edit Nav'}
               </Text>
             </AnimatedPressable>
             <AnimatedPressable
-              style={[styles.actionBtn, { backgroundColor: 'rgba(255,255,255,0.05)' }]}
+              style={styles.actionBtn}
               onPress={handleClose}
               haptic="light"
             >
@@ -226,12 +171,9 @@ export default function MoreScreen() {
         )}
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-
-          {/* Removed Pinned Section */}
-
           {/* Unified Grid */}
           <View style={styles.grid}>
-            {ALL_MODULES.filter(m => isEditing || !pinnedModules.includes(m.id)).map((mod, index) => {
+            {allModules.filter(m => isEditing || !effectivePinned.includes(m.id)).map((mod, index) => {
               const isSelected = selected.includes(mod.id);
               const isDimmed = isEditing && !isSelected && selected.length >= 4;
               return (
@@ -247,15 +189,15 @@ export default function MoreScreen() {
                     styles.gridIconBox,
                     isEditing && isSelected && { borderColor: colors.accentPrimary, borderWidth: 2 },
                   ]}>
-                    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: mod.color, opacity: 0.14 }]} />
+                    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: mod.color, opacity: isDark ? 0.14 : 0.10 }]} />
                     <Ionicons name={mod.icon as any} size={26} color={mod.color} />
                     {isEditing && isSelected && (
                       <View style={styles.selectedBadge}>
-                        <Ionicons name="checkmark" size={12} color={colors.background} />
+                        <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
                       </View>
                     )}
                   </View>
-                  <Text style={[styles.gridItemText, isEditing && isSelected && { color: colors.textPrimary }]}>
+                  <Text style={[styles.gridItemText, isEditing && isSelected && { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold }]}>
                     {mod.name}
                   </Text>
                 </AnimatedPressable>
@@ -263,10 +205,10 @@ export default function MoreScreen() {
             })}
 
             {/* Utility Row: Settings */}
-            <AnimatedPressable entering={FadeIn.delay(ALL_MODULES.length * 20).duration(200)} style={styles.gridItem} activeOpacity={0.7} haptic="none" onPress={() => navigateWithClose('Settings')}>
+            <AnimatedPressable entering={FadeIn.delay(allModules.length * 20).duration(200)} style={styles.gridItem} activeOpacity={0.7} haptic="none" onPress={() => navigateWithClose('Settings')}>
               <View style={styles.gridIconBox}>
-                <View style={[StyleSheet.absoluteFillObject, { backgroundColor: colors.textMuted, opacity: 0.12 }]} />
-                <Ionicons name="settings" size={26} color={colors.textMuted} />
+                <View style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? colors.textMuted : '#636366', opacity: isDark ? 0.12 : 0.08 }]} />
+                <Ionicons name="settings" size={26} color={isDark ? colors.textMuted : '#636366'} />
               </View>
               <Text style={styles.gridItemText}>Settings</Text>
             </AnimatedPressable>
@@ -279,123 +221,100 @@ export default function MoreScreen() {
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1, justifyContent: 'flex-end' },
-      backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
-      backdropTouch: { flex: 1 },
-      sheet: {
-        borderTopLeftRadius: RADIUS.xxl,
-        borderTopRightRadius: RADIUS.xxl,
-        paddingHorizontal: SPACE.xl,
-        paddingTop: SPACE.xl,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-        borderBottomWidth: 0,
-        maxHeight: '90%',
-        overflow: 'hidden',
-        backgroundColor: 'rgba(28, 28, 30, 0.4)',
-      },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  root: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.25)' },
+  backdropTouch: { flex: 1 },
+  sheet: {
+    borderTopLeftRadius: RADIUS.xxl,
+    borderTopRightRadius: RADIUS.xxl,
+    paddingHorizontal: SPACE.xl,
+    paddingTop: SPACE.xl,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E1EA',
+    borderBottomWidth: 0,
+    maxHeight: '90%',
+    overflow: 'hidden',
+    backgroundColor: isDark ? 'rgba(28, 28, 30, 0.4)' : '#FFFFFF',
+  },
 
-      headerRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: SPACE.md,
-      },
-      headerIconBox: {
-        width: 24, height: 24, borderRadius: 6,
-        backgroundColor: 'rgba(165,153,255,0.15)',
-        alignItems: 'center', justifyContent: 'center',
-      },
-      headerTitle: {
-        fontFamily: FONT_FAMILY.title,
-        fontSize: FONT_SIZE.lg,
-        color: colors.textPrimary,
-      },
-      actionBtn: {
-        width: 36, height: 36, borderRadius: 18,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
-        alignItems: 'center', justifyContent: 'center',
-      },
-      editPillBtn: {
-        height: 36,
-        paddingHorizontal: 12,
-        borderRadius: 18,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.surface2 || colors.surface,
-      },
-      editPillText: {
-        fontFamily: FONT_FAMILY.medium,
-        fontSize: 12,
-        letterSpacing: 0.2,
-      },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACE.md,
+  },
+  headerIconBox: {
+    width: 24, height: 24, borderRadius: 6,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.08)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerTitle: {
+    fontFamily: FONT_FAMILY.title,
+    fontSize: FONT_SIZE.lg,
+    color: colors.textPrimary,
+  },
+  actionBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E1EA',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F0EFF7',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  editPillBtn: {
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E1EA',
+    backgroundColor: isDark ? (colors.surface2 || colors.surface) : '#F0EFF7',
+  },
+  editPillText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 12,
+    letterSpacing: 0.2,
+  },
 
-      editHint: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: FONT_SIZE.sm,
-        color: colors.textTertiary,
-        marginBottom: SPACE.lg,
-        textAlign: 'center',
-      },
+  editHint: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: FONT_SIZE.sm,
+    color: colors.textTertiary,
+    marginBottom: SPACE.lg,
+    textAlign: 'center',
+  },
 
-      // ── Categories
-      categorySection: { marginBottom: SPACE.xl },
-      categoryHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: SPACE.xs,
-        marginBottom: SPACE.md,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: colors.border,
-        paddingBottom: SPACE.xs,
-      },
-      categoryLabel: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 10,
-        letterSpacing: 1,
-        textTransform: 'uppercase',
-      },
-
-      // ── Grid
-      grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
-      gridItem: { width: '25%', alignItems: 'center', marginBottom: SPACE.lg },
-      gridIconBox: {
-        width: 58, height: 58, borderRadius: 18,
-        backgroundColor: colors.surface,
-        borderWidth: 1, borderColor: colors.border,
-        alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden',
-      },
-      gridItemText: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: 11,
-        color: colors.textMuted,
-        textAlign: 'center',
-        marginTop: SPACE.sm,
-      },
-      selectedBadge: {
-        position: 'absolute', top: -6, right: -6,
-        width: 22, height: 22, borderRadius: 11,
-        backgroundColor: colors.accentPrimary,
-        alignItems: 'center', justifyContent: 'center',
-        borderWidth: 2, borderColor: colors.background,
-      },
-      // Cap 7: BFE section styles
-      sectionLabel: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 11,
-        letterSpacing: 0.8,
-        textTransform: 'uppercase',
-        color: colors.textMuted,
-      },
-      bfeHint: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: 10,
-        color: colors.accentPrimary,
-        opacity: 0.7,
-      },
-    });
+  // ── Grid
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
+  gridItem: { width: '25%', alignItems: 'center', marginBottom: SPACE.lg },
+  gridIconBox: {
+    width: 58, height: 58, borderRadius: 18,
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border : '#E2E1EA',
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+    elevation: isDark ? 0 : 1,
+    shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.04)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    shadowOpacity: isDark ? 0 : 0.5,
+  },
+  gridItemText: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 11,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: SPACE.sm,
+  },
+  selectedBadge: {
+    position: 'absolute', top: -6, right: -6,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.accentPrimary,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: isDark ? colors.background : '#FFFFFF',
+  },
+});

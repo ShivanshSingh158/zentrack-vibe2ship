@@ -20,9 +20,10 @@ import { useSafeTimeout } from '../hooks/useSafeTimeout';
 
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Modal, Platform, KeyboardAvoidingView,
-  Pressable, StatusBar, Keyboard, FlatList, PanResponder, Alert, Dimensions, Animated
+  TextInput, Modal, Platform,
+  Pressable, StatusBar, Keyboard, FlatList, PanResponder, Alert, Dimensions, Animated, Easing
 } from 'react-native';
+import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -207,7 +208,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
   const insets = useSafeAreaInsets();
   const safeSetTimeout = useSafeTimeout();
   const { colors, isDark } = useTheme();
-  const s = makeStyles(colors);
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const {
     tasks, habits, habitLogs, notes, goals, gymLogs,
     attendance, assignments, customEvents, learningTopics,
@@ -561,6 +562,12 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
   const [menuOpen, setMenuOpen] = useState(false);
   const [aboutModalOpen, setAboutModalOpen] = useState(false);
 
+  const keyboard = useAnimatedKeyboard();
+  const chatKeyboardStyle = useAnimatedStyle(() => ({
+    flex: 1,
+    paddingBottom: keyboard.height.value,
+  }));
+
   // Custom animation and pan responder for global modal
   const translateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
   const [internalVisible, setInternalVisible] = useState(visible || false);
@@ -572,19 +579,22 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
         if (gestureState.dy > 0) translateY.setValue(gestureState.dy);
       },
       onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dy > 150 || gestureState.vy > 1) {
-          // Close
+        if (gestureState.dy > 120 || gestureState.vy > 0.8) {
+          // Instant fluid close matching BottomSheet (140ms)
           Animated.timing(translateY, {
             toValue: Dimensions.get('window').height,
-            duration: 250,
+            duration: 140,
+            easing: Easing.in(Easing.quad),
             useNativeDriver: true,
           }).start(() => {
             if (onClose) onClose();
           });
         } else {
           // Snap back
-          Animated.spring(translateY, {
+          Animated.timing(translateY, {
             toValue: 0,
+            duration: 160,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: true,
           }).start();
         }
@@ -596,14 +606,18 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
     if (isGlobalModal) {
       if (visible) {
         setInternalVisible(true);
-        Animated.spring(translateY, {
+        translateY.setValue(Dimensions.get('window').height);
+        Animated.timing(translateY, {
           toValue: 0,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
           useNativeDriver: true,
         }).start();
       } else {
         Animated.timing(translateY, {
           toValue: Dimensions.get('window').height,
-          duration: 250,
+          duration: 140,
+          easing: Easing.in(Easing.quad),
           useNativeDriver: true,
         }).start(() => setInternalVisible(false));
       }
@@ -1435,11 +1449,11 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           style={s.headerBtn} 
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="close" size={24} color={colors.textMuted} />
+          <Ionicons name="close" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>Sara</Text>
         <TouchableOpacity onPress={() => setMenuOpen(true)} style={s.headerBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-          <Ionicons name="ellipsis-horizontal" size={18} color={colors.textMuted} />
+          <Ionicons name="ellipsis-horizontal" size={18} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
 
@@ -1473,13 +1487,8 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
         </TouchableOpacity>
       </View>
 
-      {/* ΓöÇΓöÇ Chat Area ΓöÇΓöÇ */}
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior="padding"
-
-        keyboardVerticalOffset={0}
-      >
+      {/* ── Chat Area (Fluid 60fps Keyboard-Synchronous Container) ── */}
+      <Reanimated.View style={chatKeyboardStyle}>
         {!hasMessages ? (
           /* ── Empty state ── */
           <ScrollView
@@ -1593,7 +1602,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
                 ref={inputRef}
                 style={s.textInput}
                 placeholder="Message Sara..."
-                placeholderTextColor="#71717a"
+                placeholderTextColor={colors.textMuted}
                 value={input}
                 onChangeText={setInput}
                 onFocus={() => setKeyboardVisible(true)}
@@ -1611,7 +1620,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
                   disabled={isRunning}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="arrow-up" size={18} color="#000000" />
+                  <Ionicons name="arrow-up" size={18} color={isDark ? '#000000' : '#ffffff'} />
                 </TouchableOpacity>
               ) : (
                 <VoiceMicButton
@@ -1631,14 +1640,14 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           visible={hudToast.visible}
           onDismiss={() => setHudToast(prev => ({ ...prev, visible: false }))}
         />
-      </KeyboardAvoidingView>
+      </Reanimated.View>
 
       {/* ΓöÇΓöÇ Voice Mode Overlay ΓöÇΓöÇ */}
       <Modal visible={isVoiceMode} animationType="fade" transparent={false} statusBarTranslucent>
         <View style={s.voiceOverlay}>
           {/* Close X */}
-          <TouchableOpacity style={s.voiceClose} onPress={closeVoiceMode}>
-            <Ionicons name="close" size={22} color={colors.textMuted} />
+          <TouchableOpacity style={s.voiceClose} onPress={closeVoiceMode} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+            <Ionicons name="close" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
 
           {/* Orb */}
@@ -1859,7 +1868,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
         <Animated.View style={[{ flex: 1, marginTop: '15%' }, { transform: [{ translateY }] }]}>
           <SafeAreaView edges={['bottom']} style={{ flex: 1, backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24 }}>
             <View {...panResponder.panHandlers} style={{ alignItems: 'center', paddingTop: 16, paddingBottom: 16 }}>
-              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#3a3a3c' }} />
+              <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? '#3a3a3c' : '#D1D1D6' }} />
             </View>
             {content}
           </SafeAreaView>
@@ -1874,7 +1883,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
         <Pressable style={StyleSheet.absoluteFill} onPress={() => { if (onClose) onClose(); else navigation.goBack(); }} />
         <SafeAreaView edges={['bottom']} style={{ flex: 1, marginTop: isKeyboardVisible ? 0 : '15%', backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, overflow: 'hidden' }}>
           <View style={{ alignItems: 'center', marginTop: 12, marginBottom: 4 }}>
-            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: '#3a3a3c' }} />
+            <View style={{ width: 40, height: 4, borderRadius: 2, backgroundColor: isDark ? '#3a3a3c' : '#D1D1D6' }} />
           </View>
           {content}
         </SafeAreaView>
@@ -1889,8 +1898,8 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
   );
 }
 
-// ΓöÇΓöÇ Styles ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-const makeStyles = (colors: any) => StyleSheet.create({
+// ── Styles ──────────────────────────────────────────────────────────────────
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
       root: { flex: 1, backgroundColor: colors.background },
 
       // Header
@@ -1903,7 +1912,14 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: colors.border,
       },
-      headerBtn: { width: 32, alignItems: 'center' },
+      headerBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+      },
       headerTitle: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
 
       // Text/Voice mode segmented control
@@ -1937,7 +1953,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         color: colors.textMuted,
       },
       modeSegmentTextActive: {
-        color: colors.background,
+        color: isDark ? colors.background : '#ffffff',
         fontFamily: FONT_FAMILY.bold,
       },
 
@@ -1953,7 +1969,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       emptyGreeting: {
         fontSize: 22,
         fontFamily: FONT_FAMILY.bold,
-        color: '#ffffff',
+        color: colors.textPrimary,
         textAlign: 'center',
         marginTop: 20,
         marginBottom: 6,
@@ -1962,7 +1978,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       emptySub: {
         fontSize: 13.5,
         fontFamily: FONT_FAMILY.body,
-        color: '#71717a',
+        color: colors.textSecondary,
         textAlign: 'center',
         lineHeight: 20,
         marginBottom: 28,
@@ -1971,13 +1987,18 @@ const makeStyles = (colors: any) => StyleSheet.create({
       starterChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#18181b',
+        backgroundColor: colors.surface,
         borderRadius: 14,
         paddingVertical: 12,
         paddingHorizontal: 14,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: colors.border,
         gap: 12,
+        shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.05)',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0.3 : 0.1,
+        shadowRadius: 4,
+        elevation: 2,
       },
       starterIconBadge: {
         width: 30,
@@ -1985,12 +2006,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderRadius: 15,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(255,255,255,0.04)',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(108,92,231,0.08)',
       },
       starterChipTitle: {
         fontFamily: FONT_FAMILY.medium,
         fontSize: 13.5,
-        color: '#f4f4f5',
+        color: colors.textPrimary,
       },
 
       // Thread
@@ -2023,13 +2044,18 @@ const makeStyles = (colors: any) => StyleSheet.create({
       quickChip: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#18181b',
+        backgroundColor: colors.surface,
         borderRadius: 18,
         paddingVertical: 7,
         paddingHorizontal: 13,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: colors.border,
         gap: 6,
+        shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.04)',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 1,
       },
       quickChipIcon: {
         // Inline with label
@@ -2037,20 +2063,25 @@ const makeStyles = (colors: any) => StyleSheet.create({
       quickChipLabel: {
         fontFamily: FONT_FAMILY.medium,
         fontSize: 12.5,
-        color: '#d4d4d8',
+        color: colors.textPrimary,
         letterSpacing: 0.1,
       },
       inputCapsule: {
         flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#18181b',
+        backgroundColor: colors.surface,
         borderRadius: 25,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.12)',
+        borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
         paddingLeft: 16,
         paddingRight: 6,
         minHeight: 48,
+        shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.06)',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+        elevation: 3,
       },
       textInput: {
         flex: 1,
@@ -2079,9 +2110,17 @@ const makeStyles = (colors: any) => StyleSheet.create({
       },
       voiceClose: {
         position: 'absolute',
-        top: 56,
+        top: Platform.OS === 'ios' ? 56 : 40,
         right: 24,
-        padding: 8,
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10,
       },
       voiceOrbArea: {
         marginBottom: 32,
@@ -2117,6 +2156,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
         backgroundColor: colors.surface,
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: colors.border,
       },
       voiceControlBtnActive: {
         backgroundColor: colors.accentDim,
@@ -2128,7 +2169,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         width: 68,
         height: 68,
         borderRadius: 34,
-        backgroundColor: '#ff453a',
+        backgroundColor: colors.error || '#ff453a',
         alignItems: 'center',
         justifyContent: 'center',
       },
@@ -2153,6 +2194,11 @@ const makeStyles = (colors: any) => StyleSheet.create({
         overflow: 'hidden',
         borderWidth: 1,
         borderColor: colors.border,
+        shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.1)',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 10,
+        elevation: 6,
       },
       menuRow: {
         flexDirection: 'row',
@@ -2168,7 +2214,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       // ── About Modal ──────────────────────────────────────────────────────────
       aboutOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.35)',
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 20,
@@ -2181,7 +2227,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         padding: 22,
         borderWidth: 1,
         borderColor: colors.border,
-        shadowColor: '#a599ff',
+        shadowColor: colors.accentPrimary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.15,
         shadowRadius: 24,
@@ -2191,7 +2237,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
         alignItems: 'center',
         marginBottom: 20,
       },
-      // Old badge kept for compat — use aboutOrbBadge for the new design
       aboutIconBadge: {
         width: 48,
         height: 48,
@@ -2245,14 +2290,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
         textTransform: 'uppercase',
         letterSpacing: 1.2,
       },
-      // Legacy text style
       aboutBody: {
         fontSize: 14,
         fontFamily: FONT_FAMILY.body,
         color: colors.textMuted,
         lineHeight: 22,
       },
-      // Capability row (icon badge + label + desc)
       aboutCapRow: {
         flexDirection: 'row',
         alignItems: 'flex-start',
@@ -2279,7 +2322,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
         color: colors.textMuted,
         lineHeight: 17,
       },
-      // Module grid (3-column chip wrap)
       aboutModuleGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
@@ -2302,7 +2344,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
         color: colors.accentPrimary,
         opacity: 0.9,
       },
-      // Live stats row
       aboutStatsRow: {
         flexDirection: 'row',
         gap: 8,

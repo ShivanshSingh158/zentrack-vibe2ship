@@ -6,10 +6,10 @@ import { StyleSheet } from 'react-native';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { HOUR_HEIGHT } from './calendarUtils';
 
-export const makeStyles = (colors: any) => StyleSheet.create({
+export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   root: { 
     flex: 1, 
-    backgroundColor: colors.background // Matched exactly to the screenshot's deep dark hue
+    backgroundColor: colors.background,
   },
   
   /* 1. Header */
@@ -47,12 +47,12 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#a599ff', // matches screenshot avatar color
+    backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   profileInitials: {
-    color: '#000',
+    color: isDark ? '#000000' : '#FFFFFF',
     fontFamily: FONT_FAMILY.bold,
     fontSize: 14,
   },
@@ -76,13 +76,13 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
   },
   monthText: {
-    fontFamily: FONT_FAMILY.bold, // screenshot shows bold title for month
+    fontFamily: FONT_FAMILY.bold,
     fontSize: 18,
     color: colors.textPrimary,
   },
   viewSelector: {
     flexDirection: 'row',
-    backgroundColor: '#1E1E1E', // dark grey pill background
+    backgroundColor: isDark ? '#1E1E1E' : '#EAE9F2',
     borderRadius: 8,
     padding: 2,
   },
@@ -94,7 +94,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     borderRadius: 6,
   },
   viewSelectorBtnActive: {
-    backgroundColor: '#a599ff', // Active purple pill
+    backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
   },
   viewSelectorText: {
     fontFamily: FONT_FAMILY.body,
@@ -102,17 +102,17 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     color: colors.textMuted,
   },
   viewSelectorTextActive: {
-    color: '#000',
+    color: isDark ? '#000000' : '#FFFFFF',
     fontFamily: FONT_FAMILY.bold,
   },
 
   /* Month Dropdown */
   monthDropdownContainer: {
     position: 'absolute',
-    top: 85, // moved down so it doesn't block the header
+    top: 85,
     left: 0,
     right: 0,
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
     paddingBottom: 8,
@@ -120,7 +120,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     zIndex: 100,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
+    shadowOpacity: isDark ? 0.5 : 0.12,
     shadowRadius: 10,
     elevation: 10,
   },
@@ -134,10 +134,13 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 16,
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? '#000000' : '#F5F4FA',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   monthChipActive: {
-    backgroundColor: colors.surface2,
+    backgroundColor: isDark ? '#08080A' : 'rgba(108,92,231,0.12)',
+    borderColor: colors.accentPrimary,
   },
   monthChipText: {
     fontFamily: FONT_FAMILY.body,
@@ -146,6 +149,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   },
   monthChipTextActive: {
     color: colors.accentPrimary,
+    fontFamily: FONT_FAMILY.bold,
   },
 
   /* 2. Date Selector (Week Strip) */
@@ -168,7 +172,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     fontWeight: '500'
   },
   dayLetterActive: { 
-    color: '#fff',
+    color: isDark ? '#FFFFFF' : colors.textPrimary,
     fontFamily: FONT_FAMILY.bold,
   },
   dayPill: { 
@@ -181,7 +185,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     overflow: 'hidden' 
   },
   dayPillActive: { 
-    backgroundColor: colors.accentPrimary, 
+    backgroundColor: isDark ? '#a599ff' : colors.accentPrimary, 
   },
   dayNum: { 
     fontSize: 18, 
@@ -189,7 +193,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: FONT_FAMILY.body 
   },
   dayNumActive: { 
-    color: '#ffffff', 
+    color: isDark ? '#000000' : '#FFFFFF', 
     fontFamily: FONT_FAMILY.bold 
   },
 
@@ -199,7 +203,6 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.background,
   },
   timelineInner: {
-    // height removed, set dynamically inline
     position: 'relative',
   },
   hourRow: {
@@ -215,17 +218,17 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: FONT_FAMILY.body,
     fontSize: 12,
     color: colors.textMuted,
-    marginTop: -8, // Center text on the line
+    marginTop: -8,
   },
   hourLine: {
     flex: 1,
     height: 1,
-    backgroundColor: colors.border, // Very subtle grid line
+    backgroundColor: colors.border,
   },
   eventsContainer: {
     position: 'absolute',
     top: 0,
-    left: 60, // Right of the hour text
+    left: 60,
     right: 8,
     bottom: 0,
   },
@@ -248,7 +251,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   },
   currentTimeIndicator: {
     position: 'absolute',
-    left: 54, // left edge aligned with line
+    left: 54,
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
@@ -258,24 +261,24 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.accentPrimary,
+    backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
     marginLeft: 0,
   },
   currentTimeLine: {
     flex: 1,
     height: 2,
-    backgroundColor: colors.accentPrimary,
+    backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
   },
 
   /* 4. FAB */
   fab: {
     position: 'absolute',
-    bottom: 110, // moved up above tab bar
-    right: 20, // matched with Sara button
-    width: 48, // matched with Sara button
+    bottom: 110,
+    right: 20,
+    width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: colors.accentPrimary,
+    backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: colors.accentPrimary,
@@ -294,15 +297,15 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     padding: 24,
   },
   modalContent: {
-    backgroundColor: colors.surfaceRaised || colors.surface,
+    backgroundColor: colors.surface,
     width: '100%',
-    borderRadius: 8,
+    borderRadius: RADIUS.lg,
     padding: 20,
     borderWidth: 1,
     borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
+    shadowOpacity: isDark ? 0.35 : 0.12,
     shadowRadius: 10,
     elevation: 10,
   },
@@ -334,9 +337,9 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   weekHourText: { fontSize: 10, color: colors.textMuted, position: 'absolute', top: -7, left: 4 },
   weekGrid: { flex: 1, flexDirection: 'row' },
   weekCol: { flex: 1, borderLeftWidth: 1, borderLeftColor: colors.border, position: 'relative' },
-  weekColToday: { backgroundColor: colors.accentDim },
+  weekColToday: { backgroundColor: isDark ? 'rgba(165,153,255,0.06)' : 'rgba(108,92,231,0.04)' },
   weekHourLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: colors.border },
-  weekCurrentTimeTick: { position: 'absolute', left: 0, width: 12, height: 2, backgroundColor: colors.accentPrimary, zIndex: 10 },
+  weekCurrentTimeTick: { position: 'absolute', left: 0, width: 12, height: 2, backgroundColor: isDark ? '#a599ff' : colors.accentPrimary, zIndex: 10 },
   weekEventBlock: { position: 'absolute', left: 1, right: 1, borderRadius: 4, padding: 2, borderLeftWidth: 2, overflow: 'hidden' },
   weekEventTitle: { fontSize: 9, fontWeight: '600', fontFamily: FONT_FAMILY.medium },
   
@@ -345,7 +348,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
   monthEventListContainer: { flex: 1, paddingHorizontal: 8, paddingTop: 16 },
   monthEventListHeader: { fontSize: 11, fontWeight: '700', color: colors.textMuted, marginBottom: 12, letterSpacing: 1 },
   monthEventRow: { backgroundColor: colors.surface, padding: 12, borderRadius: 12, marginBottom: 8, borderLeftWidth: 3, borderWidth: 1, borderColor: colors.border },
-  monthEventTitle: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
+  monthEventTitle: { fontSize: 14, fontWeight: '600', marginBottom: 4, color: colors.textPrimary },
   monthEventTime: { fontSize: 12, color: colors.textSecondary },
   emptyText: { color: colors.textMuted, fontSize: 14, marginTop: 16, textAlign: 'center' },
 
@@ -372,6 +375,8 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     paddingVertical: 5,
     borderRadius: RADIUS.full,
     borderWidth: 1,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F5F4FA',
+    borderColor: colors.border,
   },
   unscheduledDot: {
     width: 6,
@@ -382,5 +387,6 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: FONT_FAMILY.medium,
     fontSize: 11,
     maxWidth: 140,
+    color: colors.textPrimary,
   },
 });

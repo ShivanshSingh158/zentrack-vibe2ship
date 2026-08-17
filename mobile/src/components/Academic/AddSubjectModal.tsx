@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, ScrollView, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -31,7 +31,7 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
   existingSubject?: AttendanceSubject | null;
 }) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = makeStyles(colors, isDark);
   const { user } = useMobileData();
   const { attendance, optimisticAddSubject, optimisticUpdateAttendance } = useAcademicData();
   const [name, setName] = useState('');
@@ -224,8 +224,9 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.modalSheet}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{existingSubject ? 'Edit Subject' : 'Add Subject'}</Text>
@@ -272,7 +273,7 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
                   }}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="sparkles-outline" size={14} color={calibrationMode === 'fresh' ? '#000000' : colors.textMuted} />
+                  <Ionicons name="sparkles-outline" size={14} color={calibrationMode === 'fresh' ? (isDark ? '#000000' : '#FFFFFF') : colors.textMuted} />
                   <Text style={[styles.segmentBtnText, calibrationMode === 'fresh' && styles.segmentBtnTextActive]}>
                     Starting Fresh (0/0)
                   </Text>
@@ -286,7 +287,7 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
                   }}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="calculator-outline" size={14} color={calibrationMode === 'mid_semester' ? '#000000' : colors.textMuted} />
+                  <Ionicons name="calculator-outline" size={14} color={calibrationMode === 'mid_semester' ? (isDark ? '#000000' : '#FFFFFF') : colors.textMuted} />
                   <Text style={[styles.segmentBtnText, calibrationMode === 'mid_semester' && styles.segmentBtnTextActive]}>
                     Mid-Semester Baseline
                   </Text>
@@ -377,16 +378,16 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
 
                   {/* Live Calibration Stats Preview */}
                   {previewData && (
-                    <View style={[styles.previewCard, { borderColor: previewData.safe ? 'rgba(52,199,89,0.3)' : 'rgba(239,68,68,0.3)' }]}>
+                    <View style={[styles.previewCard, { borderColor: previewData.safe ? (isDark ? 'rgba(94,218,158,0.3)' : 'rgba(16,185,129,0.25)') : (isDark ? 'rgba(255,105,97,0.3)' : 'rgba(239,68,68,0.25)') }]}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                         <Text style={{ fontSize: 11, color: colors.textMuted, fontFamily: FONT_FAMILY.bold, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                           Calibrated Starting Baseline
                         </Text>
-                        <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: previewData.safe ? '#34C759' : '#ef4444' }}>
+                        <Text style={{ fontSize: 16, fontFamily: FONT_FAMILY.bold, color: previewData.safe ? colors.priorityLow : colors.error }}>
                           {previewData.pct}%
                         </Text>
                       </View>
-                      <Text style={{ fontSize: 12, color: previewData.safe ? '#34C759' : '#fca5a5', fontFamily: FONT_FAMILY.medium }}>
+                      <Text style={{ fontSize: 12, color: previewData.safe ? colors.priorityLow : (isDark ? '#fca5a5' : colors.error), fontFamily: FONT_FAMILY.medium }}>
                         {previewData.label}
                       </Text>
                     </View>
@@ -496,20 +497,29 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalSheet: { backgroundColor: colors.background, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, padding: SPACE.xl, paddingBottom: 40, maxHeight: '90%' },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  modalBg: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalSheet: {
+    backgroundColor: isDark ? (colors.surfaceRaised || '#18181b') : '#FFFFFF',
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    padding: SPACE.xl,
+    paddingBottom: 40,
+    maxHeight: '90%',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.lg },
   modalTitle: { fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.xl, color: colors.textPrimary },
   
   inputGroup: { marginBottom: SPACE.xl },
   label: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.textMuted, marginBottom: SPACE.sm },
-  input: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: RADIUS.md, padding: SPACE.md, color: colors.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base },
+  input: { backgroundColor: isDark ? (colors.surface2 || '#1c1c1f') : '#F5F4FA', borderWidth: 1, borderColor: colors.border, borderRadius: RADIUS.md, padding: SPACE.md, color: colors.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.base },
   
   // ── Segmented Control Styles ──
   segmentedContainer: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? colors.surface : '#EAE9F2',
     borderRadius: RADIUS.lg,
     padding: 3,
     borderWidth: 1,
@@ -526,7 +536,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     gap: 6,
   },
   segmentBtnActive: {
-    backgroundColor: colors.textPrimary,
+    backgroundColor: colors.accentPrimary,
   },
   segmentBtnText: {
     fontFamily: FONT_FAMILY.medium,
@@ -535,7 +545,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   segmentBtnTextActive: {
     fontFamily: FONT_FAMILY.bold,
-    color: colors.background,
+    color: isDark ? '#000000' : '#FFFFFF',
   },
   helperText: {
     fontFamily: FONT_FAMILY.body,
@@ -548,7 +558,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
 
   // ── Calibration Card Styles ──
   calibrationCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? colors.surface : '#F8F7FC',
     borderRadius: RADIUS.lg,
     borderWidth: 1,
     borderColor: colors.border,
@@ -576,7 +586,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     marginBottom: 4,
   },
   calibInput: {
-    backgroundColor: colors.background,
+    backgroundColor: isDark ? colors.background : '#FFFFFF',
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: RADIUS.md,
@@ -600,24 +610,24 @@ const makeStyles = (colors: any) => StyleSheet.create({
   },
   previewCard: {
     marginTop: SPACE.md,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : '#FFFFFF',
     borderRadius: RADIUS.md,
     borderWidth: 1,
     padding: SPACE.md,
   },
 
-  dayCard: { backgroundColor: colors.surface, borderRadius: RADIUS.md, marginBottom: SPACE.md, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
-  dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.surface2, padding: SPACE.md, borderBottomWidth: 1, borderColor: colors.border },
+  dayCard: { backgroundColor: isDark ? colors.surface : '#FFFFFF', borderRadius: RADIUS.md, marginBottom: SPACE.md, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+  dayHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? colors.surface2 : '#F5F4FA', padding: SPACE.md, borderBottomWidth: 1, borderColor: colors.border },
   dayText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
   dayActions: { flexDirection: 'row', gap: SPACE.sm },
-  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.sm },
+  addBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF', borderWidth: isDark ? 0 : 1, borderColor: colors.border, borderRadius: RADIUS.sm },
   addBtnText: { color: colors.accentPrimary, fontSize: 12, fontWeight: 'bold' },
   
   sessionRow: { flexDirection: 'row', alignItems: 'center', padding: SPACE.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: colors.border, gap: SPACE.sm },
   sessionType: { width: 40, fontSize: 11, fontWeight: 'bold', color: colors.accentPrimary },
-  sessionInput: { flex: 1, backgroundColor: colors.background, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border },
+  sessionInput: { flex: 1, backgroundColor: isDark ? colors.background : '#F5F4FA', borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12, color: colors.textPrimary, borderWidth: 1, borderColor: colors.border },
 
-  saveBtn: { backgroundColor: colors.textPrimary, padding: SPACE.md, borderRadius: RADIUS.md, alignItems: 'center', marginTop: SPACE.lg },
+  saveBtn: { backgroundColor: colors.accentPrimary, padding: SPACE.md, borderRadius: RADIUS.md, alignItems: 'center', marginTop: SPACE.lg },
   saveBtnDisabled: { opacity: 0.5 },
-  saveBtnText: { color: colors.background, fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base },
+  saveBtnText: { color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base },
 });

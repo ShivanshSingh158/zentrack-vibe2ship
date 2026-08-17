@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Calendar } from 'react-native-calendars';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { Task } from '../../contexts/MobileDataContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const RESCHEDULE_TIME_SLOTS = [
   '6:00 AM–7:00 AM','7:00 AM–8:00 AM','7:30 AM–8:30 AM',
@@ -42,6 +43,7 @@ interface Props {
 }
 
 export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds, allTasks, onConfirm }: Props) {
+  const { colors, isDark } = useTheme();
   const todayStr = todayString();
   const [pickedDate, setPickedDate] = useState(todayStr);
   const [pickedSlot, setPickedSlot] = useState<string | null>(null);
@@ -58,25 +60,35 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
     const [sStr, eStr] = slot.split(/[-–]/);
     const sF = parseF(sStr); if (sF === null) return null;
     const eF = eStr ? parseF(eStr) : sF + 1;
-    for (const ex of existingBlocks) {
-      const [xsStr, xeStr] = ex.slot.split(/[-–]/);
-      const xsF = parseF(xsStr); if (xsF === null) continue;
-      const xeF = xeStr ? parseF(xeStr) : xsF + 1;
-      if (sF < (xeF ?? xsF + 1) && (eF ?? sF + 1) > xsF) return ex.title;
+    for (const b of existingBlocks) {
+      const [bsStr, beStr] = b.slot.split(/[-–]/);
+      const bsF = parseF(bsStr); if (bsF === null) continue;
+      const beF = beStr ? parseF(beStr) : bsF + 1;
+      if (sF < (beF ?? bsF + 1) && (eF ?? sF + 1) > bsF) return b.title;
     }
     return null;
   }
 
-  const markedDates = React.useMemo(() => {
-    const m: Record<string, any> = {};
-    allTasks.forEach(t => { if (t.date) m[t.date] = { marked: true, dotColor: '#A599FF' }; });
-    m[pickedDate] = { ...(m[pickedDate] || {}), selected: true, selectedColor: '#A599FF' };
-    return m;
-  }, [allTasks, pickedDate]);
+  const markedDates = React.useMemo(() => ({
+    [pickedDate]: {
+      selected: true,
+      selectedColor: colors.accentPrimary,
+      selectedTextColor: isDark ? '#000000' : '#FFFFFF',
+    },
+    ...(pickedDate !== todayStr ? {
+      [todayStr]: {
+        marked: true,
+        dotColor: colors.accentPrimary,
+      }
+    } : {}),
+  }), [pickedDate, todayStr, colors, isDark]);
 
   const handleConfirm = async () => {
     setSaving(true);
-    try { await onConfirm(pickedDate, pickedSlot ?? undefined); }
+    try {
+      await onConfirm(pickedDate, pickedSlot ?? undefined);
+      onClose();
+    }
     finally { setSaving(false); }
   };
 
@@ -85,27 +97,27 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' }}>
+      <View style={{ flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.40)', justifyContent: 'flex-end' }}>
         <View style={{
-          backgroundColor: '#0d0d0f',
+          backgroundColor: colors.surface,
           borderTopLeftRadius: 28, borderTopRightRadius: 28,
           maxHeight: '92%',
           borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
-          borderColor: '#2c2c2e',
+          borderColor: colors.border,
         }}>
           {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 8 }}>
             <View>
-              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#f2f2f7' }}>Reschedule</Text>
-              <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#8e8e93', marginTop: 2 }}>
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary }}>Reschedule</Text>
+              <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textTertiary, marginTop: 2 }}>
                 {selectedTaskIds.size} task{selectedTaskIds.size === 1 ? '' : 's'} selected
               </Text>
             </View>
             <TouchableOpacity
               onPress={onClose}
-              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}
+              style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.surface2, alignItems: 'center', justifyContent: 'center' }}
             >
-              <Ionicons name="close" size={18} color="#8e8e93" />
+              <Ionicons name="close" size={18} color={colors.textTertiary} />
             </TouchableOpacity>
           </View>
 
@@ -117,10 +129,10 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
               markedDates={markedDates}
               theme={{
                 backgroundColor: 'transparent', calendarBackground: 'transparent',
-                dayTextColor: '#f2f2f7', textDisabledColor: '#3a3a3c',
-                monthTextColor: '#f2f2f7', arrowColor: '#A599FF',
-                selectedDayBackgroundColor: '#A599FF', selectedDayTextColor: '#fff',
-                todayTextColor: '#A599FF', dotColor: '#A599FF',
+                dayTextColor: colors.textPrimary, textDisabledColor: colors.textMuted,
+                monthTextColor: colors.textPrimary, arrowColor: colors.accentPrimary,
+                selectedDayBackgroundColor: colors.accentPrimary, selectedDayTextColor: isDark ? '#000000' : '#FFFFFF',
+                todayTextColor: colors.accentPrimary, dotColor: colors.accentPrimary,
                 textDayFontFamily: FONT_FAMILY.medium, textMonthFontFamily: FONT_FAMILY.bold,
               } as any}
               style={{ marginHorizontal: 8 }}
@@ -130,20 +142,20 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
             <View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: 8 }}>
               {/* Section header */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
-                <Ionicons name="time-outline" size={16} color="#A599FF" style={{ marginRight: 8 }} />
-                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: '#f2f2f7' }}>Time Slot</Text>
-                <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#8e8e93', marginLeft: 8 }}>(optional)</Text>
+                <Ionicons name="time-outline" size={16} color={colors.accentPrimary} style={{ marginRight: 8 }} />
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary }}>Time Slot</Text>
+                <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textTertiary, marginLeft: 8 }}>(optional)</Text>
               </View>
 
               {/* Existing tasks on this date */}
               {existingBlocks.length > 0 && (
-                <View style={{ marginBottom: 12, padding: 10, backgroundColor: 'rgba(165,153,255,0.07)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(165,153,255,0.2)' }}>
-                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: '#A599FF', marginBottom: 6, letterSpacing: 0.5 }}>ALREADY ON {friendlyDate.toUpperCase()}</Text>
+                <View style={{ marginBottom: 12, padding: 10, backgroundColor: colors.accentDim, borderRadius: 10, borderWidth: 1, borderColor: colors.accentPrimary + '35' }}>
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.accentPrimary, marginBottom: 6, letterSpacing: 0.5 }}>ALREADY ON {friendlyDate.toUpperCase()}</Text>
                   {existingBlocks.map((b, i) => (
                     <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                      <Ionicons name="ellipse" size={5} color="#A599FF" />
-                      <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#aeaeb2' }} numberOfLines={1}>
-                        {b.title} <Text style={{ color: '#636366' }}>· {b.slot}</Text>
+                      <Ionicons name="ellipse" size={5} color={colors.accentPrimary} />
+                      <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textSecondary }} numberOfLines={1}>
+                        {b.title} <Text style={{ color: colors.textMuted }}>· {b.slot}</Text>
                       </Text>
                     </View>
                   ))}
@@ -156,16 +168,16 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
                 style={[
                   { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, marginBottom: 10, borderWidth: 1.5, flexDirection: 'row', alignItems: 'center', gap: 8 },
                   pickedSlot === null
-                    ? { backgroundColor: 'rgba(165,153,255,0.15)', borderColor: '#A599FF' }
-                    : { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: '#2c2c2e' }
+                    ? { backgroundColor: colors.accentDim, borderColor: colors.accentPrimary }
+                    : { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : colors.surface2, borderColor: colors.border }
                 ]}
               >
                 <Ionicons
                   name={pickedSlot === null ? 'radio-button-on' : 'radio-button-off'}
                   size={16}
-                  color={pickedSlot === null ? '#A599FF' : '#636366'}
+                  color={pickedSlot === null ? colors.accentPrimary : colors.textMuted}
                 />
-                <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 13, color: pickedSlot === null ? '#f2f2f7' : '#8e8e93' }}>
+                <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 13, color: pickedSlot === null ? colors.textPrimary : colors.textTertiary }}>
                   Move date only — keep current time
                 </Text>
               </TouchableOpacity>
@@ -183,21 +195,21 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
                       style={[
                         { paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1.5 },
                         isSel
-                          ? { backgroundColor: 'rgba(165,153,255,0.2)', borderColor: '#A599FF' }
+                          ? { backgroundColor: colors.accentDim, borderColor: colors.accentPrimary }
                           : conflict
-                          ? { backgroundColor: 'rgba(255,105,97,0.08)', borderColor: 'rgba(255,105,97,0.35)' }
-                          : { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: '#2c2c2e' }
+                          ? { backgroundColor: colors.errorBg, borderColor: colors.error + '50' }
+                          : { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : colors.surface2, borderColor: colors.border }
                       ]}
                     >
                       <Text style={{
                         fontFamily: FONT_FAMILY.medium, fontSize: 11,
-                        color: isSel ? '#A599FF' : conflict ? '#ff6961' : '#aeaeb2'
+                        color: isSel ? colors.accentPrimary : conflict ? colors.error : colors.textSecondary
                       }}>
                         {slot}
                       </Text>
                       {/* Conflict task name shown under the slot */}
                       {conflict && !isSel && (
-                        <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 9, color: '#ff6961', marginTop: 2 }} numberOfLines={1}>
+                        <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 9, color: colors.error, marginTop: 2 }} numberOfLines={1}>
                           {conflict}
                         </Text>
                       )}
@@ -208,9 +220,9 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
 
               {/* Conflict warning banner if selected slot overlaps something */}
               {conflictOnSelected && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, padding: 12, backgroundColor: 'rgba(255,105,97,0.1)', borderRadius: 10, borderWidth: 1, borderColor: 'rgba(255,105,97,0.3)' }}>
-                  <Ionicons name="warning-outline" size={16} color="#ff6961" />
-                  <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#ff6961', flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, padding: 12, backgroundColor: colors.errorBg, borderRadius: 10, borderWidth: 1, borderColor: colors.error + '40' }}>
+                  <Ionicons name="warning-outline" size={16} color={colors.error} />
+                  <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.error, flex: 1 }}>
                     Conflicts with "{conflictOnSelected}" — you can still proceed
                   </Text>
                 </View>
@@ -224,12 +236,12 @@ export default function BulkRescheduleSheet({ visible, onClose, selectedTaskIds,
                 disabled={saving}
                 activeOpacity={0.85}
                 style={{
-                  backgroundColor: '#A599FF', borderRadius: 14,
+                  backgroundColor: colors.accentPrimary, borderRadius: 14,
                   paddingVertical: 15, alignItems: 'center',
                   opacity: saving ? 0.6 : 1,
                 }}
               >
-                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#1a110a' }}>
+                <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 15, color: isDark ? '#1a110a' : '#FFFFFF' }}>
                   {saving
                     ? 'Moving…'
                     : `Move to ${friendlyDate}${pickedSlot ? ` · ${pickedSlot.split('–')[0].trim()}` : ''}`

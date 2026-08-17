@@ -149,21 +149,57 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     readCoreCacheMulti().then(cached => {
       if (cancelled) return;
-      if (cached.tasks     && cached.tasks.length > 0)     setTasks(prev     => prev.length === 0 ? cached.tasks!     : prev);
-      if (cached.habits    && cached.habits.length > 0)    setHabits(prev    => prev.length === 0 ? cached.habits!    : prev);
-      if (cached.habitLogs && cached.habitLogs.length > 0) setHabitLogs(prev => prev.length === 0 ? cached.habitLogs! : prev);
+      if (Array.isArray(cached.tasks))     setTasks(cached.tasks);
+      if (Array.isArray(cached.habits))    setHabits(cached.habits);
+      if (Array.isArray(cached.habitLogs)) setHabitLogs(cached.habitLogs);
     });
     return () => { cancelled = true; };
   }, []);
 
   // Auth state — updates user reference. NEVER wipe offline cache on passive auth changes (preserves offline mode).
   useEffect(() => {
-    return onAuthStateChanged(auth, u => {
-      setUser(u);
-      if (!u) {
-        setFirestoreReady(false);
+    let cancelled = false;
+
+    // Check synchronous auth or cached optimistic user on mount (~0ms)
+    if (auth.currentUser) {
+      setUser(auth.currentUser);
+    } else {
+      AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
+        if (!cancelled && raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed?.uid) setUser(parsed as User);
+          } catch {}
+        }
+      }).catch(() => {});
+    }
+
+    auth.authStateReady().then(() => {
+      if (!cancelled && auth.currentUser) {
+        setUser(auth.currentUser);
+      }
+    }).catch(() => {});
+
+    const unsub = onAuthStateChanged(auth, u => {
+      if (!cancelled) {
+        if (u) {
+          setUser(u);
+        } else {
+          // WhatsApp / Instagram pattern: do NOT log out if offline
+          AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
+            if (!cancelled && !raw) {
+              setUser(null);
+              setFirestoreReady(false);
+            }
+          }).catch(() => {});
+        }
       }
     });
+
+    return () => {
+      cancelled = true;
+      unsub();
+    };
   }, []);
 
 
@@ -257,19 +293,35 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   };
   const optimisticUpdateHabit = (habitId: string, partial: Partial<Habit>) => {
     lockHabits();
-    setHabits(prev => prev.map(h => h.id === habitId ? { ...h, ...partial } : h));
+    setHabits(prev => {
+      const next = prev.map(h => h.id === habitId ? { ...h, ...partial } : h);
+      writeCoreCacheMulti({ habits: next });
+      return next;
+    });
   };
   const optimisticAddHabitLog = (log: HabitLog) => {
     lockHabitLogs();
-    setHabitLogs(prev => [...prev, log]);
+    setHabitLogs(prev => {
+      const next = [...prev, log];
+      writeCoreCacheMulti({ habitLogs: next });
+      return next;
+    });
   };
   const optimisticUpdateHabitLog = (logId: string, partial: Partial<HabitLog>) => {
     lockHabitLogs();
-    setHabitLogs(prev => prev.map(l => l.id === logId ? { ...l, ...partial } : l));
+    setHabitLogs(prev => {
+      const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
+      writeCoreCacheMulti({ habitLogs: next });
+      return next;
+    });
   };
   const optimisticRemoveHabitLog = (habitId: string, date: string) => {
     lockHabitLogs();
-    setHabitLogs(prev => prev.filter(l => !(l.habitId === habitId && l.date === date)));
+    setHabitLogs(prev => {
+      const next = prev.filter(l => !(l.habitId === habitId && l.date === date));
+      writeCoreCacheMulti({ habitLogs: next });
+      return next;
+    });
   };
 
   const value = useMemo(() => ({
@@ -296,6 +348,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
  */
 export async function performSignOut() {
   try {
+    await AsyncStorage.removeItem('@zentrack_optimistic_user');
     await auth.signOut();
     await clearCoreCache();
     await clearAllDomainCaches();

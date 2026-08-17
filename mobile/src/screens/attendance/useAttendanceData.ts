@@ -121,40 +121,58 @@ export function useAttendanceData() {
   const weekDates         = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
 
   const todayScheduledSubjects = useMemo(() => {
-    const filtered = subjects.filter(s => {
+    const dayOfWeekNum = new Date(selectedDate + 'T00:00:00').getDay();
+    const dayName = DAY_NAMES[dayOfWeekNum];
+    const dayNameLower = dayName.toLowerCase();
+
+    const getEarliestTime = (sch: any): number => {
+      let earliest = 9999;
+      if (sch?.classes && Array.isArray(sch.classes)) {
+        for (let i = 0; i < sch.classes.length; i++) {
+          const t = sch.classes[i]?.time;
+          if (t) {
+            const m = parseTimeToMinutes(t);
+            if (m < earliest) earliest = m;
+          }
+        }
+      }
+      if (sch?.labs && Array.isArray(sch.labs)) {
+        for (let i = 0; i < sch.labs.length; i++) {
+          const t = sch.labs[i]?.time;
+          if (t) {
+            const m = parseTimeToMinutes(t);
+            if (m < earliest) earliest = m;
+          }
+        }
+      }
+      return earliest;
+    };
+
+    const list: Array<{ subject: AttendanceSubject; earliestTime: number }> = [];
+
+    for (let i = 0; i < subjects.length; i++) {
+      const s = subjects[i];
       const sch =
         s.schedule?.[selectedDayOfWeek] ||
-        s.schedule?.[Number(selectedDayOfWeek)] ||
-        s.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] ||
-        s.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
-      return sch && (
+        s.schedule?.[dayOfWeekNum] ||
+        s.schedule?.[dayName] ||
+        s.schedule?.[dayNameLower];
+
+      if (sch && (
         (sch.classes && sch.classes.length > 0) ||
-        (sch.labs   && sch.labs.length   > 0) ||
+        (sch.labs && sch.labs.length > 0) ||
         sch.classCount > 0 ||
-        sch.labCount   > 0
-      );
-    });
-    return filtered.sort((a, b) => {
-      const schA =
-        a.schedule?.[selectedDayOfWeek] ||
-        a.schedule?.[Number(selectedDayOfWeek)] ||
-        a.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] ||
-        a.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
-      const schB =
-        b.schedule?.[selectedDayOfWeek] ||
-        b.schedule?.[Number(selectedDayOfWeek)] ||
-        b.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()]] ||
-        b.schedule?.[DAY_NAMES[new Date(selectedDate + 'T00:00:00').getDay()].toLowerCase()];
-      const getEarliestTime = (sch: any): number => {
-        const times: number[] = [];
-        if (sch?.classes && Array.isArray(sch.classes))
-          sch.classes.forEach((c: any) => c.time && times.push(parseTimeToMinutes(c.time)));
-        if (sch?.labs && Array.isArray(sch.labs))
-          sch.labs.forEach((l: any) => l.time && times.push(parseTimeToMinutes(l.time)));
-        return times.length > 0 ? Math.min(...times) : 9999;
-      };
-      return getEarliestTime(schA) - getEarliestTime(schB);
-    });
+        sch.labCount > 0
+      )) {
+        list.push({
+          subject: s,
+          earliestTime: getEarliestTime(sch),
+        });
+      }
+    }
+
+    list.sort((a, b) => a.earliestTime - b.earliestTime);
+    return list.map(item => item.subject);
   }, [subjects, selectedDayOfWeek, selectedDate]);
 
   const warningSubjects = useMemo(() =>

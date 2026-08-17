@@ -29,11 +29,11 @@ export const TimetableModal = React.memo(({
   handleExportCSV,
   handleResetSemester,
 }: TimetableModalProps) => {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
   
   return (
-    <Modal visible={visible} animationType="slide">
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={styles.modalRoot} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.header}>
@@ -44,12 +44,12 @@ export const TimetableModal = React.memo(({
               activeOpacity={0.8}
               style={styles.addBtn}
             >
-              <Ionicons name="add" size={16} color="#000000" />
+              <Ionicons name="add" size={16} color={isDark ? "#000000" : "#FFFFFF"} />
               <Text style={styles.addBtnText}>Add</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color="#8e8e93" />
+              <Ionicons name="close" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -77,14 +77,14 @@ export const TimetableModal = React.memo(({
                       activeOpacity={0.7}
                       style={styles.iconActionBtn}
                     >
-                      <Ionicons name="pencil-outline" size={16} color="#8e8e93" />
+                      <Ionicons name="pencil-outline" size={16} color={colors.textMuted} />
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleDeleteSubject(s.id!, s.name)}
                       activeOpacity={0.7}
                       style={styles.iconActionBtn}
                     >
-                      <Ionicons name="trash-outline" size={16} color="#ff6961" />
+                      <Ionicons name="trash-outline" size={16} color={colors.error} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -119,7 +119,7 @@ export const TimetableModal = React.memo(({
                   activeOpacity={0.8}
                   style={[styles.footerActionBtn, styles.exportBtn]}
                 >
-                  <Ionicons name="download-outline" size={16} color="#5eda9e" />
+                  <Ionicons name="download-outline" size={16} color={colors.priorityLow} />
                   <Text style={styles.exportBtnText}>Export CSV</Text>
                 </TouchableOpacity>
 
@@ -128,7 +128,7 @@ export const TimetableModal = React.memo(({
                   activeOpacity={0.8}
                   style={[styles.footerActionBtn, styles.resetBtn]}
                 >
-                  <Ionicons name="refresh-outline" size={16} color="#ff6961" />
+                  <Ionicons name="refresh-outline" size={16} color={colors.error} />
                   <Text style={styles.resetBtnText}>Reset Semester</Text>
                 </TouchableOpacity>
               </View>
@@ -140,10 +140,10 @@ export const TimetableModal = React.memo(({
   );
 });
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   modalRoot: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
@@ -152,12 +152,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: SPACE.lg,
     paddingVertical: SPACE.md,
     borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
   },
   headerTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 20,
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
   headerActions: {
     flexDirection: 'row',
@@ -168,7 +168,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#a599ff',
+    backgroundColor: colors.accentPrimary,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: RADIUS.lg,
@@ -176,13 +176,15 @@ const makeStyles = (colors: any) => StyleSheet.create({
   addBtnText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 12,
-    color: '#000000',
+    color: isDark ? '#000000' : '#FFFFFF',
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#EAE9F2',
+    borderWidth: isDark ? 0 : 1,
+    borderColor: isDark ? 'transparent' : '#E2E1EA',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
@@ -193,12 +195,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
     paddingBottom: 40,
   },
   subjectCard: {
-    backgroundColor: '#141416',
+    backgroundColor: isDark ? '#141416' : '#FFFFFF',
     borderRadius: RADIUS.xl,
     padding: SPACE.lg,
     marginBottom: SPACE.md,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -210,7 +212,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flex: 1,
     fontFamily: FONT_FAMILY.bold,
     fontSize: 16,
-    color: '#ffffff',
+    color: colors.textPrimary,
     marginRight: SPACE.sm,
   },
   cardIconActions: {
@@ -222,7 +224,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F5F4FA',
+    borderWidth: isDark ? 0 : 1,
+    borderColor: isDark ? 'transparent' : '#E2E1EA',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -239,12 +243,12 @@ const makeStyles = (colors: any) => StyleSheet.create({
   targetBadgeLabel: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 12,
-    color: '#8e8e93',
+    color: colors.textMuted,
   },
   targetBadgeVal: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 12,
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
   metricsRow: {
     flexDirection: 'row',
@@ -255,22 +259,22 @@ const makeStyles = (colors: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#F5F4FA',
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACE.md,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: colors.border,
   },
   metricChipLabel: {
     fontFamily: FONT_FAMILY.medium,
     fontSize: 12,
-    color: '#8e8e93',
+    color: colors.textMuted,
   },
   metricChipVal: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 13,
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
 
   footerRow: {
@@ -290,21 +294,21 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
   },
   exportBtn: {
-    backgroundColor: 'rgba(94,218,158,0.08)',
-    borderColor: 'rgba(94,218,158,0.2)',
+    backgroundColor: isDark ? 'rgba(94,218,158,0.08)' : 'rgba(16,185,129,0.10)',
+    borderColor: isDark ? 'rgba(94,218,158,0.2)' : 'rgba(16,185,129,0.25)',
   },
   exportBtnText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 13,
-    color: '#5eda9e',
+    color: colors.priorityLow,
   },
   resetBtn: {
-    backgroundColor: 'rgba(255,105,97,0.08)',
-    borderColor: 'rgba(255,105,97,0.2)',
+    backgroundColor: isDark ? 'rgba(255,105,97,0.08)' : 'rgba(239,68,68,0.10)',
+    borderColor: isDark ? 'rgba(255,105,97,0.2)' : 'rgba(239,68,68,0.25)',
   },
   resetBtnText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 13,
-    color: '#ff6961',
+    color: colors.error,
   },
 });

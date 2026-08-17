@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { formatDateShort, parseLocalDate } from '../../utils/dateUtils';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Platform, TextInput, KeyboardAvoidingView, ScrollView, Switch, Alert, ActivityIndicator, AppState } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Platform, TextInput, KeyboardAvoidingView, ScrollView, Switch, Alert, ActivityIndicator, AppState } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +14,7 @@ import { resolveMuscleColor, hexToRgba, MUSCLE_CANONICAL } from '../../utils/gym
 import { GymExerciseLog, GymNavigationParamList } from '../../types/gym.types';
 import { hapticMedium, hapticLight, hapticSuccess } from '../../utils/haptics';
 import { useTheme } from "../../contexts/ThemeContext";
+import { StatusBar } from 'expo-status-bar';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
 
 const extractVideoId = (urlOrId: string) => {
@@ -24,7 +26,7 @@ const extractVideoId = (urlOrId: string) => {
 
 export default function ExerciseDetailScreen() {
     const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+    const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const route = useRoute<RouteProp<GymNavigationParamList, 'ExerciseDetail'>>();
   const exerciseId = route.params?.exerciseId;
@@ -242,7 +244,8 @@ export default function ExerciseDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -488,21 +491,21 @@ export default function ExerciseDetailScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1, backgroundColor: '#000000' },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+      root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
       header: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: SPACE.xl,
-        paddingTop: Platform.OS === 'ios' ? 50 : 40,
+        paddingTop: Platform.OS === 'ios' ? 10 : 20,
         paddingBottom: SPACE.md,
         borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
+        borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
       },
       backBtn: { padding: SPACE.xs },
       headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
-      saveBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: 'rgba(165,153,255,0.15)', borderRadius: RADIUS.sm },
+      saveBtn: { paddingHorizontal: 12, paddingVertical: 6, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)', borderRadius: RADIUS.sm },
       saveBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.accentPrimary },
       
       scrollContent: { padding: SPACE.xl, paddingBottom: 100 },
@@ -517,10 +520,10 @@ const makeStyles = (colors: any) => StyleSheet.create({
     top: 60,
     left: 0,
     right: 0,
-    backgroundColor: '#2C2C2E',
+    backgroundColor: isDark ? '#1C1C1E' : colors.surface,
     borderRadius: RADIUS.md,
     borderWidth: 1,
-    borderColor: '#3A3A3C',
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
     zIndex: 999,
     elevation: 5,
     maxHeight: 180,
@@ -528,7 +531,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   dropdownItem: {
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#3A3A3C',
+    borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
   },
   dropdownText: {
     color: colors.textPrimary,
@@ -539,7 +542,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       rowForm: { flexDirection: 'row', justifyContent: 'space-between' },
       label: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted, marginBottom: 8, letterSpacing: 0.5 },
       input: {
-        backgroundColor: '#161618',
+        backgroundColor: isDark ? '#1C1C1E' : colors.surface,
         borderRadius: RADIUS.md,
         paddingHorizontal: 16,
         height: 48,
@@ -547,7 +550,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         fontSize: 15,
         color: colors.textPrimary,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.04)',
+        borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
       },
       
       videoInputRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -565,25 +568,25 @@ const makeStyles = (colors: any) => StyleSheet.create({
       masterSplitTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginBottom: 4 },
       masterSplitDesc: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted },
 
-      divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.05)', marginVertical: SPACE.xl },
+      divider: { height: 1, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, marginVertical: SPACE.xl },
       sectionTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary, marginBottom: SPACE.md },
       
       historyItem: {
-        backgroundColor: '#161618',
+        backgroundColor: isDark ? '#1C1C1E' : colors.surface,
         borderRadius: RADIUS.md,
         padding: SPACE.md,
         marginBottom: SPACE.md,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.02)',
+        borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
       },
       historyHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.md },
       historyDate: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
       historySummary: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.accentPrimary },
       
       setsList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-      setBubble: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
-      setBubbleCompleted: { backgroundColor: 'rgba(165,153,255, 0.15)' },
-      setBubbleMissed: { backgroundColor: 'rgba(255,255,255,0.02)' },
+      setBubble: { backgroundColor: isDark ? '#2C2C2E' : colors.surface2, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+      setBubbleCompleted: { backgroundColor: isDark ? 'rgba(165,153,255, 0.15)' : 'rgba(108,92,231,0.12)' },
+      setBubbleMissed: { backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.03)' },
       setBubbleText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary },
       
       emptyState: { alignItems: 'center', marginTop: 20, gap: SPACE.md },

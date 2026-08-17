@@ -21,10 +21,7 @@ import Animated, {
   cancelAnimation,
   withDelay,
 } from 'react-native-reanimated';
-
-const PURPLE = '#a599ff';
-const PURPLE_DIM = 'rgba(165,153,255,0.18)';
-const PURPLE_MID = 'rgba(165,153,255,0.35)';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export type VoiceStatus = 'idle' | 'listening' | 'processing' | 'speaking' | 'success';
 
@@ -41,6 +38,10 @@ export default function VoiceOrb({
   isActive = false,
   isListening = false,
 }: VoiceOrbProps) {
+  const { colors, isDark } = useTheme();
+  const PURPLE = colors.accentPrimary || (isDark ? '#a599ff' : '#6C5CE7');
+  const PURPLE_DIM = isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.16)';
+  const PURPLE_MID = isDark ? 'rgba(165,153,255,0.35)' : 'rgba(108,92,231,0.30)';
   const coreSize = size === 'large' ? 160 : 60;
 
   // Resolve legacy props if status is not explicitly passed

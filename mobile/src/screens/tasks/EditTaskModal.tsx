@@ -43,8 +43,8 @@ const PRIORITY_DATA = [
 ];
 
 function EditTaskModalComponent({ visible, onClose, task }: Props) {
-  const { colors } = useTheme();
-  const styles = makeTasksStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = makeTasksStyles(colors, isDark);
 
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
@@ -240,11 +240,24 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       <View>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACE.md, paddingHorizontal: SPACE.lg }}>
           <TextInput
-            style={[styles.newTaskInputLarge, { flex: 1, marginBottom: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', color: '#FFFFFF' }]}
+            style={[
+              styles.newTaskInputLarge,
+              {
+                flex: 1,
+                marginBottom: 0,
+                paddingHorizontal: 0,
+                borderWidth: 0,
+                backgroundColor: 'transparent',
+                color: colors.textPrimary,
+                fontSize: 18,
+                fontFamily: 'Inter_600SemiBold',
+              }
+            ]}
             value={title}
             onChangeText={setTitle}
             placeholder="Task title"
-            placeholderTextColor="#636366"
+            placeholderTextColor={colors.textMuted}
+            autoFocus={visible}
           />
           <AnimatedPressable onPress={handleDelete} style={{ padding: SPACE.sm, marginLeft: 'auto' }}>
             <Ionicons name="trash-outline" size={20} color="#ff6961" />
@@ -311,11 +324,11 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
             {subtasks.map((st, i) => (
               <View key={st.id || i} style={styles.subtaskRow}>
                 <AnimatedPressable onPress={() => setSubtasks(prev => prev.map((s, idx) => idx === i ? { ...s, completed: !s.completed } : s))}>
-                  <Ionicons name={st.completed ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={st.completed ? '#5eda9e' : '#636366'} />
+                  <Ionicons name={st.completed ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={st.completed ? '#5eda9e' : colors.textMuted} />
                 </AnimatedPressable>
-                <Text style={[styles.subtaskRowText, st.completed && { textDecorationLine: 'line-through', color: '#636366' }]}>{st.title}</Text>
+                <Text style={[styles.subtaskRowText, st.completed && { textDecorationLine: 'line-through', color: colors.textMuted }]}>{st.title}</Text>
                 <AnimatedPressable onPress={() => setSubtasks(prev => prev.filter((_, idx) => idx !== i))}>
-                  <Ionicons name="close" size={14} color="#636366" />
+                  <Ionicons name="close" size={14} color={colors.textMuted} />
                 </AnimatedPressable>
               </View>
             ))}

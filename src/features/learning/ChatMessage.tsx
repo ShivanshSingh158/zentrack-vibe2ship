@@ -247,7 +247,7 @@ export const ChatMessageBubble = ({
         content: `# 🤖 ZEN-GPT Lecture Note\n\n**Lecture:** ${videoTitle || 'Lecture'}\n**Topic:** ${topicName || 'Learning'}\n**Date:** ${new Date().toLocaleDateString()}\n\n---\n\n${msg.text.trim()}`,
         type: 'note',
         folderId: null,
-        tags: ['zengpt', 'lecture-notes', (topicName || 'learning').toLowerCase().replace(/\s+/g, '-')],
+        tags: [],
         pinned: false,
         color: '#00c16e',
         createdAt: serverTimestamp(),

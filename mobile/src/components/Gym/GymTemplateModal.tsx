@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
 import { hapticMedium, hapticLight } from '../../utils/haptics';
+import { FONT_FAMILY } from '../../theme/tokens';
 
 interface Props {
   visible: boolean;
@@ -11,6 +12,9 @@ interface Props {
 }
 
 export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply }) => {
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   const [selected, setSelected] = useState<'arnold' | 'ppl'>('ppl');
   const [schedulePattern, setSchedulePattern] = useState<'mon_sun' | 'tue_mon' | 'wed_sun' | 'mon_fri'>('mon_sun');
 
@@ -24,48 +28,52 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
         <TouchableOpacity style={s.content} activeOpacity={1} onPress={(e) => e.stopPropagation?.()}>
+          {/* Header */}
           <View style={s.header}>
-            <Text style={s.title}>Workout Templates</Text>
-            <TouchableOpacity onPress={onClose} style={s.closeBtn}>
-              <Ionicons name="close" size={24} color={COLORS.textMuted} />
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={s.title}>Workout Templates</Text>
+              <Text style={s.desc}>
+                Select your split & schedule. Rest days show your weekly recap.
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={s.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-          
-          <Text style={s.desc}>
-            Select your split and your weekly training schedule. Rest days will automatically display your weekly performance recap.
-          </Text>
 
-          <ScrollView style={s.scroll} showsVerticalScrollIndicator={false}>
-            {/* Template Selection */}
+          <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} showsVerticalScrollIndicator={false}>
+            {/* Section 1: Template Selection (Side-by-Side Grid) */}
             <Text style={s.sectionHeader}>1. SELECT SPLIT</Text>
-            <TouchableOpacity 
-              style={[s.optionCard, selected === 'ppl' && s.optionActive]} 
-              activeOpacity={0.8}
-              onPress={() => { hapticLight(); setSelected('ppl'); }}
-            >
-              <View style={s.cardHeader}>
-                <Text style={[s.cardTitle, selected === 'ppl' && s.cardTitleActive]}>Push / Pull / Legs (PPL)</Text>
-                {selected === 'ppl' && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-              </View>
-              <Text style={s.cardSub}>6 Days • Balanced 158 Sets • Maximum Hypertrophy</Text>
-              <Text style={s.cardDetail}>A modernized PPL split perfectly balancing volume across all major and minor muscle heads, hitting everything 2x per week.</Text>
-            </TouchableOpacity>
+            <View style={s.splitGrid}>
+              <TouchableOpacity 
+                style={[s.splitCard, selected === 'ppl' && s.splitCardActive]} 
+                activeOpacity={0.8}
+                onPress={() => { hapticLight(); setSelected('ppl'); }}
+              >
+                <View style={s.splitCardTop}>
+                  <Text style={[s.splitCardTitle, selected === 'ppl' && s.splitCardTitleActive]}>Push / Pull / Legs</Text>
+                  {selected === 'ppl' && <Ionicons name="checkmark-circle" size={16} color={colors.accentPrimary} />}
+                </View>
+                <Text style={s.splitCardBadge}>6 Days • 158 Sets</Text>
+                <Text style={s.splitCardDetail} numberOfLines={2}>Modernized balanced hypertrophy hitting each muscle 2x/week.</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={[s.optionCard, selected === 'arnold' && s.optionActive]} 
-              activeOpacity={0.8}
-              onPress={() => { hapticLight(); setSelected('arnold'); }}
-            >
-              <View style={s.cardHeader}>
-                <Text style={[s.cardTitle, selected === 'arnold' && s.cardTitleActive]}>Two Muscles / Day (Arnold)</Text>
-                {selected === 'arnold' && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-              </View>
-              <Text style={s.cardSub}>6 Days • Classic Arnold Split</Text>
-              <Text style={s.cardDetail}>Focuses heavily on Chest/Back, Shoulders/Arms, and Legs/Core. Great for intense isolation and superset opportunities.</Text>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={[s.splitCard, selected === 'arnold' && s.splitCardActive]} 
+                activeOpacity={0.8}
+                onPress={() => { hapticLight(); setSelected('arnold'); }}
+              >
+                <View style={s.splitCardTop}>
+                  <Text style={[s.splitCardTitle, selected === 'arnold' && s.splitCardTitleActive]}>Arnold Split</Text>
+                  {selected === 'arnold' && <Ionicons name="checkmark-circle" size={16} color={colors.accentPrimary} />}
+                </View>
+                <Text style={s.splitCardBadge}>6 Days • Antagonist</Text>
+                <Text style={s.splitCardDetail} numberOfLines={2}>Chest/Back, Shoulders/Arms, Legs/Core isolation & supersets.</Text>
+              </TouchableOpacity>
+            </View>
 
-            {/* Weekly Schedule Days Selection */}
-            <Text style={[s.sectionHeader, { marginTop: 12 }]}>2. SELECT WEEKLY SCHEDULE</Text>
+            {/* Section 2: Weekly Schedule Selection */}
+            <Text style={[s.sectionHeader, { marginTop: 14 }]}>2. SELECT WEEKLY SCHEDULE</Text>
 
             <TouchableOpacity 
               style={[s.scheduleCard, schedulePattern === 'mon_sun' && s.scheduleCardActive]}
@@ -73,7 +81,11 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
               activeOpacity={0.8}
             >
               <View style={s.scheduleHeader}>
-                <Text style={s.scheduleTitle}>Monday – Saturday</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {schedulePattern === 'mon_sun' && <Ionicons name="radio-button-on" size={16} color={colors.accentPrimary} />}
+                  {schedulePattern !== 'mon_sun' && <Ionicons name="radio-button-off" size={16} color={colors.textTertiary} />}
+                  <Text style={s.scheduleTitle}>Monday – Saturday</Text>
+                </View>
                 <View style={s.restPill}><Text style={s.restPillText}>Sunday Rest</Text></View>
               </View>
               <Text style={s.scheduleSub}>Standard 6-day split (Push/Pull/Legs x2, Sunday Recap)</Text>
@@ -85,7 +97,11 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
               activeOpacity={0.8}
             >
               <View style={s.scheduleHeader}>
-                <Text style={s.scheduleTitle}>Tuesday – Sunday</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {schedulePattern === 'tue_mon' && <Ionicons name="radio-button-on" size={16} color={colors.accentPrimary} />}
+                  {schedulePattern !== 'tue_mon' && <Ionicons name="radio-button-off" size={16} color={colors.textTertiary} />}
+                  <Text style={s.scheduleTitle}>Tuesday – Sunday</Text>
+                </View>
                 <View style={s.restPill}><Text style={s.restPillText}>Monday Rest</Text></View>
               </View>
               <Text style={s.scheduleSub}>Starts on Tuesday, trains through Sunday, Monday Recap</Text>
@@ -97,7 +113,11 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
               activeOpacity={0.8}
             >
               <View style={s.scheduleHeader}>
-                <Text style={s.scheduleTitle}>Mid-Week Rest Split</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {schedulePattern === 'wed_sun' && <Ionicons name="radio-button-on" size={16} color={colors.accentPrimary} />}
+                  {schedulePattern !== 'wed_sun' && <Ionicons name="radio-button-off" size={16} color={colors.textTertiary} />}
+                  <Text style={s.scheduleTitle}>Mid-Week Rest Split</Text>
+                </View>
                 <View style={s.restPill}><Text style={s.restPillText}>Wed & Sun Rest</Text></View>
               </View>
               <Text style={s.scheduleSub}>Mon, Tue, Thu, Fri, Sat workout days (PPL + Upper/Lower)</Text>
@@ -109,14 +129,19 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
               activeOpacity={0.8}
             >
               <View style={s.scheduleHeader}>
-                <Text style={s.scheduleTitle}>Monday – Friday</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  {schedulePattern === 'mon_fri' && <Ionicons name="radio-button-on" size={16} color={colors.accentPrimary} />}
+                  {schedulePattern !== 'mon_fri' && <Ionicons name="radio-button-off" size={16} color={colors.textTertiary} />}
+                  <Text style={s.scheduleTitle}>Monday – Friday</Text>
+                </View>
                 <View style={s.restPill}><Text style={s.restPillText}>Sat & Sun Rest</Text></View>
               </View>
               <Text style={s.scheduleSub}>5-day weekday routine with weekends off for full recovery</Text>
             </TouchableOpacity>
           </ScrollView>
 
-          <TouchableOpacity style={s.applyBtn} onPress={handleApply}>
+          {/* Bottom Action Button */}
+          <TouchableOpacity style={s.applyBtn} onPress={handleApply} activeOpacity={0.85}>
             <Text style={s.applyBtnText}>Apply Selected Template</Text>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -125,32 +150,95 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
   );
 };
 
-const s = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
-  content: { backgroundColor: '#000000', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 48, maxHeight: '85%', borderWidth: 1, borderColor: '#27272A' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  title: { fontSize: 20, fontWeight: '700', color: '#FFFFFF' },
-  closeBtn: { padding: 4, margin: -4 },
-  desc: { fontSize: 13, color: '#A1A1AA', marginBottom: 16, lineHeight: 18 },
-  scroll: { marginBottom: 16 },
-  sectionHeader: { fontSize: 11, fontWeight: '700', color: '#A1A1AA', letterSpacing: 1.2, marginBottom: 8 },
-  
-  optionCard: { backgroundColor: '#121214', borderRadius: 16, padding: 16, marginBottom: 10, borderWidth: 1.5, borderColor: '#27272A' },
-  optionActive: { borderColor: '#FFFFFF', backgroundColor: 'rgba(255,255,255,0.06)' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
-  cardTitleActive: { color: '#FFFFFF' },
-  cardSub: { fontSize: 12, fontWeight: '600', color: '#A1A1AA', marginBottom: 6 },
-  cardDetail: { fontSize: 12, color: '#71717A', lineHeight: 17 },
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
+    content: {
+      backgroundColor: isDark ? '#000000' : '#FFFFFF',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingHorizontal: 18,
+      paddingTop: 20,
+      paddingBottom: 28,
+      maxHeight: '88%',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.10)' : '#E2E1EA',
+    },
+    header: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 },
+    title: { fontSize: 19, fontFamily: FONT_FAMILY.bold, color: isDark ? '#FFFFFF' : '#1C1C1E' },
+    closeBtn: { padding: 4, margin: -4 },
+    desc: { fontSize: 12, fontFamily: FONT_FAMILY.body, color: isDark ? '#A1A1AA' : '#636366', marginTop: 2, lineHeight: 16 },
+    
+    scroll: { flexGrow: 0 },
+    scrollContent: { paddingBottom: 16 },
+    sectionHeader: { fontSize: 10.5, fontFamily: FONT_FAMILY.bold, color: isDark ? 'rgba(255,255,255,0.45)' : '#8E8E93', letterSpacing: 1.2, marginBottom: 8 },
+    
+    splitGrid: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 4,
+    },
+    splitCard: {
+      flex: 1,
+      backgroundColor: isDark ? '#000000' : '#FFFFFF',
+      borderRadius: 14,
+      padding: 12,
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#E2E1EA',
+      justifyContent: 'space-between',
+    },
+    splitCardActive: {
+      borderColor: isDark ? '#a599ff' : colors.accentPrimary,
+      backgroundColor: isDark ? 'rgba(165,153,255,0.06)' : 'rgba(108,92,231,0.06)',
+    },
+    splitCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+    splitCardTitle: { fontSize: 13, fontFamily: FONT_FAMILY.bold, color: isDark ? '#FFFFFF' : '#1C1C1E', flex: 1 },
+    splitCardTitleActive: { color: isDark ? '#FFFFFF' : '#1C1C1E' },
+    splitCardBadge: { fontSize: 10.5, fontFamily: FONT_FAMILY.medium, color: isDark ? '#a599ff' : colors.accentPrimary, marginBottom: 4 },
+    splitCardDetail: { fontSize: 11, fontFamily: FONT_FAMILY.body, color: isDark ? '#A1A1AA' : '#636366', lineHeight: 15 },
 
-  scheduleCard: { backgroundColor: '#121214', borderRadius: 14, padding: 14, marginBottom: 8, borderWidth: 1.5, borderColor: '#27272A' },
-  scheduleCardActive: { borderColor: '#a599ff', backgroundColor: 'rgba(165,153,255,0.08)' },
-  scheduleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  scheduleTitle: { fontSize: 14, fontWeight: '700', color: '#FFFFFF' },
-  scheduleSub: { fontSize: 11, color: '#8E8E93' },
-  restPill: { backgroundColor: 'rgba(255,159,77,0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,159,77,0.25)' },
-  restPillText: { fontSize: 10, fontWeight: '700', color: '#ff9f4d' },
+    scheduleCard: {
+      backgroundColor: isDark ? '#000000' : '#FFFFFF',
+      borderRadius: 12,
+      paddingVertical: 11,
+      paddingHorizontal: 12,
+      marginBottom: 7,
+      borderWidth: 1.5,
+      borderColor: isDark ? 'rgba(255,255,255,0.12)' : '#E2E1EA',
+    },
+    scheduleCardActive: {
+      borderColor: isDark ? '#a599ff' : colors.accentPrimary,
+      backgroundColor: isDark ? 'rgba(165,153,255,0.06)' : 'rgba(108,92,231,0.06)',
+    },
+    scheduleHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+    scheduleTitle: { fontSize: 13, fontFamily: FONT_FAMILY.bold, color: isDark ? '#FFFFFF' : '#1C1C1E' },
+    scheduleSub: { fontSize: 10.5, fontFamily: FONT_FAMILY.body, color: isDark ? '#A1A1AA' : '#636366', marginLeft: 22 },
+    restPill: {
+      backgroundColor: isDark ? 'rgba(255,159,77,0.12)' : 'rgba(217,119,6,0.10)',
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,159,77,0.25)' : 'rgba(217,119,6,0.25)',
+    },
+    restPillText: { fontSize: 9.5, fontFamily: FONT_FAMILY.bold, color: isDark ? '#FFAA55' : '#D97706' },
 
-  applyBtn: { backgroundColor: '#FFFFFF', paddingVertical: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  applyBtnText: { color: '#000000', fontSize: 16, fontWeight: '700' },
-});
+    applyBtn: {
+      backgroundColor: isDark ? '#FFFFFF' : colors.accentPrimary,
+      paddingVertical: 14,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.2 : 0.15,
+      shadowRadius: 6,
+      elevation: 4,
+    },
+    applyBtnText: {
+      color: isDark ? '#000000' : '#FFFFFF',
+      fontSize: 15,
+      fontFamily: FONT_FAMILY.bold,
+    },
+  });

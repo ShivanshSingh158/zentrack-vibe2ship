@@ -35,8 +35,8 @@ export default function LearningTopicCard({
   loadMoreSubTasks, extractVideoId, openVideo,
   setActiveTopicId, setSubtaskModalVisible,
 }: LearningTopicCardProps) {
-  const { colors } = useTheme();
-  const s = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const s = makeStyles(colors, isDark);
   const isExpanded = expandedTopics.has(topic.id!);
   const subTasks = topic.subTasks || [];
   const completedCount = subTasks.filter(s => s.isCompleted).length;
@@ -86,13 +86,13 @@ export default function LearningTopicCard({
           startTime: '19:00',
           endTime: '20:00',
           priority: 'medium',
-          tags: ['learning'],
+          tags: [],
           status: 'pending',
           notes: `Topic: ${topic.title}\nURL: ${scheduleSubtask.url || ''}`,
           createdAt: serverTimestamp(),
         });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('🎉 Task Created!', `Added "${scheduleSubtask.title}" to your Task timeline under #learning.`);
+        Alert.alert('🎉 Task Created!', `Added "${scheduleSubtask.title}" to your Task timeline.`);
       }
       setScheduleSubtask(null);
     } catch (e: any) {
@@ -111,20 +111,29 @@ export default function LearningTopicCard({
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <Text style={s.cardTitle} numberOfLines={2}>{topic.title}</Text>
               <View style={s.iconButton}>
-                <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={16} color="#e5e5ea" />
+                <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textPrimary} />
               </View>
             </View>
             
             {/* Stats Row */}
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={[s.cardStats, { color: '#a599ff', fontFamily: FONT_FAMILY.bold }]}>
+              <Text style={[s.cardStats, { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold }]}>
                 {progress.toFixed(0)}% completed
               </Text>
               <Text style={s.cardStats}>
                 {'  ·  '}{completedCount}/{totalCount} tasks
                 {(() => {
                   let totalH = 0;
-                  subTasks.forEach(s => { if (!s.isCompleted && s.estimatedHours) totalH += s.estimatedHours; });
+                  subTasks.forEach(s => {
+                    if (!s.isCompleted && s.estimatedHours != null && s.estimatedHours > 0) {
+                      totalH += s.estimatedHours;
+                    }
+                  });
+                  if ((topic as any).totalEstimatedHours && Number((topic as any).totalEstimatedHours) > 0 && totalCount > 0) {
+                    const topicTotal = Number((topic as any).totalEstimatedHours);
+                    const remainingFraction = (totalCount - completedCount) / totalCount;
+                    totalH = topicTotal * remainingFraction;
+                  }
                   if (totalH > 0) {
                     const h = Math.floor(totalH);
                     const m = Math.round((totalH - h) * 60);
@@ -157,11 +166,11 @@ export default function LearningTopicCard({
                   }
                 }}
               >
-                <Ionicons name="play" size={14} color="#000" />
+                <Ionicons name="play" size={14} color={isDark ? '#000000' : '#FFFFFF'} />
                 <Text style={s.primaryBtnText}>{progress === 0 ? 'Start Learning' : 'Resume'}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={() => showTopicOptions(topic.id!)} style={s.iconButton}>
-                <Ionicons name="ellipsis-horizontal" size={16} color="#e5e5ea" />
+                <Ionicons name="ellipsis-horizontal" size={16} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -176,10 +185,10 @@ export default function LearningTopicCard({
                 const isCurrent = !sub.isCompleted && subTasks.findIndex(s => !s.isCompleted) === idx;
                 return (
                   <View key={sub.id} style={s.subRow}>
-                    <Text style={[s.subIndex, { color: isCurrent ? '#a599ff' : '#636366' }]}>{idx + 1}</Text>
+                    <Text style={[s.subIndex, { color: isCurrent ? colors.accentPrimary : colors.textSecondary }]}>{idx + 1}</Text>
                     <TouchableOpacity onPress={() => toggleSubtask(topic.id!, sub.id)}>
                       <View style={[s.checkbox, sub.isCompleted ? s.checkboxDone : (isCurrent ? s.checkboxActive : s.checkboxFuture)]}>
-                        {sub.isCompleted && <Ionicons name="checkmark" size={12} color="#000" />}
+                        {sub.isCompleted && <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />}
                       </View>
                     </TouchableOpacity>
                     <Text style={[s.subTitle, sub.isCompleted ? s.subTitleDone : (isCurrent ? s.subTitleActive : undefined)]} numberOfLines={1}>
@@ -187,19 +196,19 @@ export default function LearningTopicCard({
                     </Text>
                     {!sub.isCompleted && extractVideoId(sub.url) && (
                       <TouchableOpacity style={s.watchBtn} onPress={() => openVideo(topic.id!, sub)}>
-                        <Ionicons name="play" size={10} color="#a599ff" />
+                        <Ionicons name="play" size={10} color={colors.accentPrimary} />
                         <Text style={s.watchBtnText}>Watch</Text>
                       </TouchableOpacity>
                     )}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
                       <TouchableOpacity onPress={() => handleOpenScheduleModal(sub)} style={{ padding: 4 }}>
-                        <Ionicons name="calendar-outline" size={14} color="#a599ff" />
+                        <Ionicons name="calendar-outline" size={14} color={colors.accentPrimary} />
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => togglePin(topic.id!, sub.id)} style={{ padding: 4 }}>
-                        <Ionicons name={sub.pinned ? "star" : "star-outline"} size={14} color={sub.pinned ? '#a599ff' : '#636366'} />
+                        <Ionicons name={sub.pinned ? "star" : "star-outline"} size={14} color={sub.pinned ? colors.accentPrimary : colors.textSecondary} />
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => showSubtaskOptions(topic.id!, sub.id)} style={{ padding: 4 }}>
-                        <Ionicons name="ellipsis-horizontal" size={14} color="#636366" />
+                        <Ionicons name="ellipsis-horizontal" size={14} color={colors.textSecondary} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -209,12 +218,12 @@ export default function LearningTopicCard({
 
             {(subTasks.length > (visibleLimits[topic.id!] || 15)) && (
               <TouchableOpacity style={[s.addSubBtn, { justifyContent: 'center', marginBottom: 8 }]} onPress={() => loadMoreSubTasks(topic.id!)}>
-                <Text style={[s.addSubText, { color: '#8e8e93' }]}>Show more ({subTasks.length - (visibleLimits[topic.id!] || 15)} hidden)</Text>
+                <Text style={[s.addSubText, { color: colors.textSecondary }]}>Show more ({subTasks.length - (visibleLimits[topic.id!] || 15)} hidden)</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity style={s.addSubBtn} onPress={() => { setActiveTopicId(topic.id!); setSubtaskModalVisible(true); }}>
-              <Ionicons name="add" size={16} color="#a599ff" />
+              <Ionicons name="add" size={16} color={colors.accentPrimary} />
               <Text style={s.addSubText}>Add Checkpoint</Text>
             </TouchableOpacity>
           </View>
@@ -244,7 +253,7 @@ export default function LearningTopicCard({
             <View style={s.scheduleHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <View style={s.scheduleIconBadge}>
-                  <Ionicons name="calendar" size={16} color="#a599ff" />
+                  <Ionicons name="calendar" size={16} color={colors.accentPrimary} />
                 </View>
                 <Text style={s.scheduleModalTitle}>Schedule Study Slot</Text>
               </View>
@@ -252,7 +261,7 @@ export default function LearningTopicCard({
                 style={s.scheduleCloseBtn}
                 onPress={() => setScheduleSubtask(null)}
               >
-                <Ionicons name="close" size={18} color="#8e8e93" />
+                <Ionicons name="close" size={18} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -276,16 +285,16 @@ export default function LearningTopicCard({
                 activeOpacity={0.7}
               >
                 <View style={s.scheduleOptionIcon}>
-                  <Ionicons name="calendar-outline" size={20} color="#a599ff" />
+                  <Ionicons name="calendar-outline" size={20} color={colors.accentPrimary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.scheduleOptionTitle}>Today at 7:00 PM</Text>
                   <Text style={s.scheduleOptionSub}>Calendar · 1 hour study session</Text>
                 </View>
                 {scheduling ? (
-                  <ActivityIndicator size="small" color="#a599ff" />
+                  <ActivityIndicator size="small" color={colors.accentPrimary} />
                 ) : (
-                  <Ionicons name="chevron-forward" size={16} color="#636366" />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
                 )}
               </TouchableOpacity>
 
@@ -296,17 +305,17 @@ export default function LearningTopicCard({
                 disabled={scheduling}
                 activeOpacity={0.7}
               >
-                <View style={[s.scheduleOptionIcon, { backgroundColor: 'rgba(165,153,255,0.12)' }]}>
-                  <Ionicons name="time-outline" size={20} color="#a599ff" />
+                <View style={s.scheduleOptionIcon}>
+                  <Ionicons name="time-outline" size={20} color={colors.accentPrimary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.scheduleOptionTitle}>Tomorrow at 7:00 PM</Text>
                   <Text style={s.scheduleOptionSub}>Calendar · 1 hour study session</Text>
                 </View>
                 {scheduling ? (
-                  <ActivityIndicator size="small" color="#a599ff" />
+                  <ActivityIndicator size="small" color={colors.accentPrimary} />
                 ) : (
-                  <Ionicons name="chevron-forward" size={16} color="#636366" />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
                 )}
               </TouchableOpacity>
 
@@ -317,17 +326,17 @@ export default function LearningTopicCard({
                 disabled={scheduling}
                 activeOpacity={0.7}
               >
-                <View style={[s.scheduleOptionIcon, { backgroundColor: 'rgba(0,193,110,0.12)' }]}>
-                  <Ionicons name="checkbox-outline" size={20} color="#00c16e" />
+                <View style={[s.scheduleOptionIcon, { backgroundColor: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.10)' }]}>
+                  <Ionicons name="checkbox-outline" size={20} color={isDark ? '#00c16e' : '#059669'} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.scheduleOptionTitle}>Add to Today's Tasks</Text>
-                  <Text style={s.scheduleOptionSub}>Tasks Timeline · Tagged #learning</Text>
+                  <Text style={s.scheduleOptionSub}>Tasks Timeline</Text>
                 </View>
                 {scheduling ? (
-                  <ActivityIndicator size="small" color="#00c16e" />
+                  <ActivityIndicator size="small" color={isDark ? '#00c16e' : '#059669'} />
                 ) : (
-                  <Ionicons name="chevron-forward" size={16} color="#636366" />
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
                 )}
               </TouchableOpacity>
             </View>
@@ -346,44 +355,66 @@ export default function LearningTopicCard({
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-  card: { backgroundColor: colors.surface, marginBottom: 16, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  card: {
+    backgroundColor: colors.surface,
+    marginBottom: 16,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.3 : 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
   cardHeader: { padding: 0 },
   cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary, flex: 1, paddingRight: 16, lineHeight: 24 },
-  cardStats: { color: colors.textTertiary, fontSize: 13, fontFamily: FONT_FAMILY.medium },
-  divider: { height: 1, backgroundColor: colors.border, marginVertical: 16, borderRadius: 1 },
-  iconButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface2 || colors.surface, alignItems: 'center', justifyContent: 'center' },
+  cardStats: { color: colors.textSecondary, fontSize: 13, fontFamily: FONT_FAMILY.medium },
+  divider: { height: 1, backgroundColor: isDark ? colors.border : '#ECEBF2', marginVertical: 16, borderRadius: 1 },
+  iconButton: { width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#1C1C1E' : '#F4F3F8', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E1EA', alignItems: 'center', justifyContent: 'center' },
   cardExpanded: { paddingTop: 16 },
-  subRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-  subIndex: { fontFamily: FONT_FAMILY.body, fontSize: 10, marginRight: 8, width: 16, textAlign: 'center', color: colors.textTertiary },
+  subRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    backgroundColor: isDark ? 'transparent' : '#F8F7FC',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border : '#E2E1EA',
+    marginBottom: 6,
+  },
+  subIndex: { fontFamily: FONT_FAMILY.body, fontSize: 10, marginRight: 8, width: 16, textAlign: 'center', color: colors.textSecondary },
   checkbox: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   checkboxDone: { backgroundColor: colors.accentPrimary },
   checkboxActive: { backgroundColor: colors.accentDim, borderWidth: 1.5, borderColor: colors.accentPrimary },
-  checkboxFuture: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.border },
+  checkboxFuture: { backgroundColor: isDark ? 'transparent' : '#F4F3F8', borderWidth: 1.5, borderColor: isDark ? colors.border : '#D1D1D6' },
   subTitle: { flex: 1, fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textPrimary, marginRight: 8 },
   subTitleActive: { fontFamily: FONT_FAMILY.bold, color: colors.textPrimary },
-  subTitleDone: { color: colors.textMuted },
-  watchBtn: { backgroundColor: colors.accentDim, borderColor: colors.border, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  subTitleDone: { color: colors.textMuted, textDecorationLine: 'line-through' },
+  watchBtn: { backgroundColor: isDark ? colors.accentDim : 'rgba(108,92,231,0.10)', borderColor: isDark ? colors.border : '#E2E1EA', borderWidth: 1, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 4 },
   watchBtnText: { color: colors.accentPrimary, fontFamily: FONT_FAMILY.medium, fontSize: 10 },
   primaryBtn: { flex: 1, marginRight: 8, justifyContent: 'center', backgroundColor: colors.accentPrimary, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  primaryBtnText: { color: '#ffffff', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
+  primaryBtnText: { color: isDark ? '#000000' : '#ffffff', fontFamily: FONT_FAMILY.bold, fontSize: 14 },
   addSubBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16, paddingVertical: 8 },
   addSubText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.accentPrimary },
   // Schedule Modal
   scheduleModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  scheduleModalCard: { backgroundColor: colors.surfaceRaised || colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 36, borderWidth: 1, borderColor: colors.border },
-  dragHandle: { width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  scheduleModalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 36, borderWidth: 1, borderColor: colors.border },
+  dragHandle: { width: 40, height: 4, backgroundColor: isDark ? colors.border : '#D1D1D6', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   scheduleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  scheduleIconBadge: { width: 28, height: 28, borderRadius: 8, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
+  scheduleIconBadge: { width: 28, height: 28, borderRadius: 8, backgroundColor: isDark ? colors.accentDim : 'rgba(108,92,231,0.10)', alignItems: 'center', justifyContent: 'center' },
   scheduleModalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
   scheduleCloseBtn: { padding: 6, backgroundColor: colors.surface2 || colors.surface, borderRadius: 14 },
-  scheduleCheckpointBox: { backgroundColor: colors.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
+  scheduleCheckpointBox: { backgroundColor: isDark ? colors.surface2 : '#F8F7FC', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
   scheduleCheckpointTopic: { color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold, textTransform: 'uppercase', letterSpacing: 0.5 },
   scheduleCheckpointTitle: { color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold, marginTop: 4, lineHeight: 20 },
   scheduleOptionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.surface, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border },
-  scheduleOptionIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.accentDim, alignItems: 'center', justifyContent: 'center' },
+  scheduleOptionIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: isDark ? colors.accentDim : 'rgba(108,92,231,0.10)', alignItems: 'center', justifyContent: 'center' },
   scheduleOptionTitle: { color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold },
-  scheduleOptionSub: { color: colors.textMuted, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 },
+  scheduleOptionSub: { color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 2 },
   scheduleCancelBtn: { marginTop: 6, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface2 || colors.surface, borderRadius: 12, borderWidth: 1, borderColor: colors.border },
   scheduleCancelText: { color: colors.textMuted, fontFamily: FONT_FAMILY.bold, fontSize: 14 },
 });

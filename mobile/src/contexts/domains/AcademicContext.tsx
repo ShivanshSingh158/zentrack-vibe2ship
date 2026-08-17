@@ -83,11 +83,11 @@ export function AcademicProvider({
     let cancelled = false;
     readAcademicCache().then(cached => {
       if (cancelled) return;
-      if (cached.attendance      && cached.attendance.length > 0)      setAttendance(prev      => prev.length === 0 ? cached.attendance!      : prev);
-      if (cached.attendanceLogs  && cached.attendanceLogs.length > 0)  setAttendanceLogs(prev  => prev.length === 0 ? cached.attendanceLogs!  : prev);
-      if (cached.assignments     && cached.assignments.length > 0)     setAssignments(prev     => prev.length === 0 ? cached.assignments!     : prev);
-      if (cached.semesters       && cached.semesters.length > 0)       setSemesters(prev       => prev.length === 0 ? cached.semesters!       : prev);
-      if (cached.semesterSubjects && cached.semesterSubjects.length > 0) setSemesterSubjects(prev => prev.length === 0 ? cached.semesterSubjects! : prev);
+      if (Array.isArray(cached.attendance))       setAttendance(cached.attendance);
+      if (Array.isArray(cached.attendanceLogs))   setAttendanceLogs(cached.attendanceLogs);
+      if (Array.isArray(cached.assignments))      setAssignments(cached.assignments);
+      if (Array.isArray(cached.semesters))        setSemesters(cached.semesters);
+      if (Array.isArray(cached.semesterSubjects)) setSemesterSubjects(cached.semesterSubjects);
     });
     return () => { cancelled = true; };
   }, []);

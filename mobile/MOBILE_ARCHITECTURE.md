@@ -749,7 +749,38 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 | New XP event | `src/services/xpSystem.ts → XP_SOURCES` + call `awardXP()` at event site |
 | New screen name constant | `src/config/constants.ts → SCREENS` |
 
----
+### 2026-08-17 — Tasks Module TimelineView Light/Dark Overhaul & Schedule Sync
+- **UPDATED** `src/components/Tasks/TimelineView.tsx` — Complete overhaul of the 24-hour timeline rendering engine:
+  1. **Dual-Theme Support (Frost Quartz & Obsidian Cosmos)**: Dynamic palette for tasks (P1/High: Crimson `#DC2626` / Coral `#FF6961`, P2/Medium: Amber `#D97706` / `#FF9F4D`, P3/Low: Royal Amethyst `#6C5CE7` / Lavender `#A599FF`, Done: Emerald `#059669` / `#5EDA9E`, Missed: Red `#DC2626` / `#FF6961`), Academic Classes (Soft Purple/Blue `#6C5CE7` / `#89DCEB`), Academic Labs (Deep Sky Blue `#0284C7` / Gold `#FAD7A1`), and Gym Sessions (Emerald `#059669` / `#5EDA9E`).
+  2. **Academic & Gym Schedule Parsing**: Fixed `START_HOUR` dynamic calculation to inspect both classes and labs across single-time and range formats (`"10:00 AM - 11:00 AM"`, `"10:00 - 11:00"`). Fixed default gym workout rendering for scheduled days fallback (`18:00 - 19:30`).
+  3. **Live Time Indicator**: Added real-time dot and horizontal indicator line on "Today" matching `CalendarDayView`.
+  4. **Interactive Navigation**: Tapping gym blocks opens Gym module (`MoreStack → Gym`) and tapping class blocks opens Attendance module (`MoreStack → Attendance`).
+  5. **Hatch Pattern**: Dynamic SVG hatch overlays for done, past, and missed events adapted for light and dark contrast.
+- **UPDATED** `src/screens/TasksScreen.tsx` — Wired `useAcademicData()` and `useWellnessData()` to pass `attendance`, `attendanceLogs`, `gymLogs`, `userGymPlan`, and `isDark` directly to `TimelineView`.
+- **VERIFIED** — TypeScript type checker clean with 0 errors (`npx tsc --noEmit` exited with code 0).
+
+### 2026-08-16 — Streak Detail & Wellbeing Dashboard Light Mode Implementation
+- **UPDATED** `src/screens/WellbeingDashboardScreen.tsx` — Dynamic Frost Quartz palette: pure `#FFFFFF` quartz cards with `#E2E1EA` borders in light mode, `#F4F3F8` canvas, high-contrast `#1C1C1E` numbers and labels, theme-aware cyan/blue SVG line and area gradients, clean `#F0EFF7` inset AI insight box with dynamic amethyst sparkle icon. Dark mode BlurView glass card is 100% untouched.
+- **UPDATED** `src/screens/StreakDetailScreen.tsx` — Full light mode conversion: `#F4F3F8` canvas, `#FFFFFF` pure quartz cards, dynamic `#1C1C1E` streak day counts, amber flame orb glow, `#E2E1EA` milestone progress track, high-contrast Overview 2x2 grid, Apple Watch style milestone achievement medals, semantic Activity breakdown cards (Amber, Sky Blue, Emerald, Amethyst), and theme-aware Apple Health activity history calendar.
+- **VERIFIED** — Clean TypeScript compilation with 0 errors (`npx tsc --noEmit` exits with 0).
+
+### 2026-08-16 — Tasks Screen & Subcomponents Light Mode Implementation
+- **UPDATED** `src/screens/tasks/tasksStyles.ts` — Implemented `makeTasksStyles(colors, isDark)` dynamically rendering Frost Quartz surfaces (#F4F3F8 canvas, #FFFFFF card surfaces, #F8F7FC recessed subtask insets, #E2E1EA borders, #6C5CE7 royal amethyst accent, #DC2626 overdue banners, #D97706 priority badges, #059669 completion green). Dark mode is 100% untouched.
+- **UPDATED** `src/screens/TasksScreen.tsx` — Dynamic root view, header action icons, progress ring SVG track & fill, overdue alert banner, NLP quick input container, segmented control filters, and floating bulk action bar.
+- **UPDATED** `src/components/Tasks/TaskRow.tsx` — Replaced hardcoded black rows with dynamic `colors.surface`, theme-aware checkbox border/fill, dynamic tag pills, subtask progress bar, and nested subtask accordion items.
+- **UPDATED** `src/components/Tasks/TaskDateStrip.tsx` — Full light/dark support with dynamic capsule items, day text, date number, today indicator dot, and active day highlight.
+- **UPDATED** `src/components/Tasks/NLPTaskInput.tsx` — Dynamic natural language token chips using translucent light tints with high-contrast text in light mode, dynamic mic state styling.
+- **UPDATED** `src/components/Tasks/RecurrencePickerModal.tsx`, `BulkRescheduleSheet.tsx`, `TaskTimeLogSheet.tsx`, `TaskTemplatesSheet.tsx`, `NewTaskModal.tsx`, `EditTaskModal.tsx` — Converted all task sheets and modals to use dynamic theme tokens and `makeStyles(colors, isDark)`.
+- **VERIFIED** — Zero compile errors (`npx tsc --noEmit` exits with 0).
+
+### 2026-08-16 — Home Screen & Core Design System Light Mode Implementation
+- **IMPLEMENTED** `src/theme/tokens.ts` — Updated `LIGHT_COLORS` with the complete Frost Quartz palette (#F4F3F8 canvas, #FFFFFF pure quartz cards, #F0EFF7 soft inset surface, #E2E1EA titanium lavender border, #1C1C1E Apple charcoal text, #6C5CE7 royal amethyst accent, #059669 emerald green, #D97706 golden amber, #0284C7 sky blue, #DC2626 crimson red). Dark mode palette (`DARK_COLORS`) 100% untouched.
+- **UPDATED** `src/navigation/AppNavigator.tsx` — Dynamic root canvas background (#F4F3F8) and `RootNavigatorWithSara` container matching active theme.
+- **UPDATED** `src/screens/dashboard/dashboardStyles.ts` & `DashboardScreen.tsx` — Full theme awareness: speed dial floating action buttons use `colors.surface`, `colors.border`, `colors.accentPrimary`, and `colors.accentBlue`; avatar dropdown menu uses dynamic borders and high-contrast close button; Flashcard Recall Due Widget updated to pure `colors.surface`, `colors.border`, and dynamic action CTAs; streak pill uses `colors.accentAmberDim` and `colors.accentAmber`.
+- **UPDATED** `src/components/Dashboard/UnifiedLifeWidget.tsx` — Dynamic card background (`colors.surface` in light mode), SVG donut track ring (`#EAE9F2` in light mode), center score text (`colors.textPrimary`), vertical divider (`colors.border`), and metric rows (Momentum in `colors.accentGreen`, Hydration in `colors.accentBlue`, Classes in `colors.accentAmber`).
+- **UPDATED** `src/components/Dashboard/AgendaWidget.tsx` — Replaced hardcoded orange with `colors.accentAmber`; empty state button text and icons use dynamic theme colors.
+- **UPDATED** `src/components/Navigation/TelegramTabBar.tsx` — Tab badges styled with dynamic `colors.error` and `isDark ? 'rgba(25, 25, 28, 1)' : '#ffffff'` borders.
+- **UPDATED** `src/components/Dashboard/QuickCaptureSheet.tsx` & `WaterLogSheet.tsx` — Fully dynamic sheets, drag handles, input containers, quick add bottle chips, and CTA buttons.
 
 ### 2026-08-12 — WorkoutSummaryScreen Redesign (Minimalist & Structured)
 - **REDESIGNED** `src/screens/gym/WorkoutSummaryScreen.tsx` — Replaced the loud glowing purple elements, oversized trophy icon, and unformatted chart container with a subtle, high-end minimalist design:
@@ -936,7 +967,39 @@ Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID)
 - **UPDATED** `src/features/gym/components/AddExerciseModal.tsx` (Web) — Added routine day selection so web users can browse and select exercises across all template days (e.g. selecting Monday exercises when on Thursday).
 - **CURATED & INTEGRATED** `src/data/gymPlan.ts` & `src/services/exerciseVideoResolver.ts` — Complete verified YouTube Shorts (< 120s) form guide video library for all 6 days of the PPL Split (**Monday to Saturday, 55 total exercises**). Tapping any exercise form video in ZenTrack opens high-yield, verified Shorts with concise biomechanical tutorials from TylerPath, Hazzytrainer, DeltaBolic, Gerardi Performance, and Davis Diley.
 
-### 2026-08-16 — Instant Cold-Boot (<200ms) & Progressive Tab Pre-Warming
-- **OPTIMIZED** `mobile/app.json` — Changed `fallbackToCacheTimeout` to `0` and `checkAutomatically` to `ON_ERROR_RECOVERY`. Eliminates the 3,000ms EAS network timeout blocking the native splash screen on every cold start.
-- **OPTIMIZED** `src/navigation/AppNavigator.tsx` — Migrated `TasksScreen`, `CalendarScreen`, `AttendanceScreen`, `GymStack`, and `MoreScreen` to progressive `cacheAwareLazy`. Changed bottom tab options to `lazy: true` so only `Home` (`DashboardScreen`) renders on Frame 0, dropping initial startup JavaScript execution time and heap allocation. Background pre-warming (`startPrefetching`) runs via `InteractionManager.runAfterInteractions` right after initial paint to ensure instant subsequent tab switching.
-- **OPTIMIZED** `src/contexts/MobileDataContext.tsx` — Secondary domain context subscriptions (`Wellness`, `Academic`, `Creative`, `Planner`) are now deferred to subscribe via `InteractionManager.runAfterInteractions`, letting `CoreDataContext` (Tasks & Habits) hold 100% of CPU and network bandwidth during Frame 0.
+### 2026-08-16 — Attendance Screen & Academic Modals Light Mode Implementation
+- **UPDATED** `src/screens/attendance/attendanceStyles.ts` — Refactored `makeStyles(colors, isDark = true)` providing dynamic styling for both *Obsidian Cosmos* (OLED Dark Mode) and *Frost Quartz* (Light Mode). Styled overview card (`#FFFFFF` background, `#E2E1EA` border), warning banner (`#FEF2F2` background, `#F87171` border in light), week strip, subject cards, log rows (`#F5F4FA` in light), session status buttons (Present `#059669` / `#ECFDF5`, Absent `#DC2626` / `#FEF2F2`, Cancelled `#636366` / `#F5F4FA`), history modal, and extra class logging bottom sheet.
+- **UPDATED** `src/screens/AttendanceScreen.tsx` — Integrated `isDark` and `getThemeProgressColor` mapped dynamically to `colors.priorityLow` (`#059669` light / `#5eda9e` dark), `colors.priorityMed` (`#D97706` light / `#ff9f4d` dark), and `colors.priorityHigh` (`#DC2626` light / `#ff6961` dark). All headers, progress tracks, subject cards, and interactive modal dialogs adapt instantly to theme switching.
+- **UPDATED** `src/screens/attendance/HorizontalWeekStrip.tsx` — Converted week selector with dynamic active day text (`#FFFFFF` in light / `#000000` in dark), today outline indicator (`rgba(108, 92, 231, 0.12)` background, `rgba(108, 92, 231, 0.35)` border), and high-contrast weekday numbers.
+- **UPDATED** `src/components/Academic/TimetableModal.tsx` — Dynamic timetable list with `#FFFFFF` subject cards, `#F5F4FA` metric chips, `#6C5CE7` add button, emerald green CSV export button, and crimson reset button.
+- **UPDATED** `src/components/Academic/AddSubjectModal.tsx` — Full light/dark support with high-contrast inputs, segmented baseline mode selector, dynamic `#F8F7FC` calibration card with live safe/risk indicators, and schedule day cards.
+- **UPDATED** `src/components/Academic/ClassNotifSettingsModal.tsx` — Dynamic subject alert configuration with theme-aware cards, chip toggles, lab notification sections, and save button.
+- **VERIFIED** — Dual theme ready across all attendance submodules and modal dialogs.
+
+### 2026-08-16 — Grades & GPA Calculator Screen Light Mode Implementation
+- **UPDATED** `src/screens/GradesScreen.tsx` — Full dual-theme (*Obsidian Cosmos* & *Frost Quartz*) implementation:
+  1. **Dynamic Theme Foundation**: Integrated `useTheme()` with `makeStyles(colors, isDark)` and native `<StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />`.
+  2. **Hero & Target Predictor Cards**: Pure `#FFFFFF` card surfaces with `#E2E1EA` borders in light mode, `#1C1C1E` bold inputs, `#F0EFF7` recessed numeric fields, and dynamic Needed SGPA result box with semantic alert states (Emerald Green for achieved, Crimson Red for impossible, Royal Amethyst for standard target).
+  3. **SVG Progression Graph**: Dynamic SVG reference grid lines (`#E2E1EA`), SGPA semester bars (`#E2E1EA` with `#D1D0DC` border), and royal amethyst CGPA trajectory line with crisp circular data nodes.
+  4. **Semester Accordion & Subject Chips**: High-contrast semester headers, `#F0EFF7` letter grade badges, `#6C5CE7` Add Subject button, and dynamic Direct SGPA quick mode controls.
+  5. **Dialog Modals**: Elevated `#FFFFFF` dialog surfaces for New Semester, Add Subject, and Direct SGPA modals with titanium lavender input styling and royal amethyst save CTA.
+- **VERIFIED** — Clean TypeScript compilation with 0 errors.
+
+### 2026-08-16 — More Screen (Launcher) & Telegram Tab Bar Light Mode Implementation
+- **UPDATED** `src/screens/MoreScreen.tsx` — Dynamic frosted bottom sheet adapting between Obsidian Cosmos (`BlurView tint="dark"`, `rgba(28,28,30,0.4)`) and Frost Quartz (`BlurView tint="light"`, `#FFFFFF` with `#E2E1EA` border). Integrated dynamic module semantic color mappings (`#059669` Tasks, `#D97706` Habits/Notes/Gym, `#DC2626` Calendar, `#6C5CE7` Attendance/Grades, `#0284C7` Assignments/Learning/Analytics). Styled `#F0EFF7` Edit Nav pill, `#FFFFFF` pure quartz elevated squircles, and Royal Amethyst checkmark badges.
+- **UPDATED** `src/components/Navigation/TelegramTabBar.tsx` — Floating capsule styled with dynamic `#E2E1EA` border and soft shadow in light mode, precision animated sliding dot indicator with `#6C5CE7` accent glow, and dynamic unread notification badges.
+- **VERIFIED** — Clean TypeScript compilation with 0 errors.
+
+### 2026-08-16 — Assignments Module & BottomSheet Dual-Theme Implementation
+- **UPDATED** `src/components/ui/BottomSheet.tsx` — Converted `BottomSheet` to dynamic theme tokens. Replaced hardcoded dark background (`#0c0c0e`), border, and handle bar with dynamic theme support (`#FFFFFF` in Frost Quartz Light Mode, `#121214` in Obsidian Cosmos Dark Mode, `#E2E1EA` border in Light, and dynamic drag handle).
+- **UPDATED** `src/screens/AssignmentsScreen.tsx` — Complete dual-theme (*Obsidian Cosmos* & *Frost Quartz*) implementation:
+  1. **Dynamic Theme Foundation**: Integrated `useTheme()` with `makeStyles(colors, isDark)` and native `<StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />`.
+  2. **Filter Bar & Segmented Chips**: `#FFFFFF` quartz capsules with `#E2E1EA` borders and `#636366` subtext in light mode, transitioning to Royal Amethyst (`#6C5CE7`) when active.
+  3. **Assignment Cards & Status Squircles**: Elevated `#FFFFFF` card surfaces with soft drop shadows, dynamic status badges (Not Started `#64748B`, In Progress `#D97706`, Submitted `#0284C7`, Graded `#059669`), and semantic urgency calculations (Overdue Crimson `#DC2626`, Due Today Amber `#D97706`, Safe Emerald `#059669`).
+  4. **BottomSheet Modal & Form**: Removed nested `modalOverlay` / `modalCard` double nesting. Direct `#F0EFF7` recessed input boxes, `#E2E1EA` hairline borders, dynamic date picker button, status selector chips with high-contrast text, and Royal Amethyst save CTA.
+- **VERIFIED** — Clean TypeScript compilation with 0 errors.
+
+
+
+
+

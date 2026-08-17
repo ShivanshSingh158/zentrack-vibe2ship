@@ -38,11 +38,13 @@ function OptionPill<T extends string>({
   value,
   onSelect,
   colors,
+  isDark = true,
 }: {
   options: { key: T; label: string }[];
   value: T | null;
   onSelect: (v: T) => void;
   colors: any;
+  isDark?: boolean;
 }) {
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -55,8 +57,10 @@ function OptionPill<T extends string>({
             style={[
               s.pill,
               {
-                borderColor: isSelected ? '#a599ff' : 'rgba(255,255,255,0.08)',
-                backgroundColor: isSelected ? '#251e3d' : '#14121d',
+                borderColor: isSelected ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.08)' : colors.border),
+                backgroundColor: isSelected
+                  ? (isDark ? '#251e3d' : 'rgba(108,92,231,0.12)')
+                  : (isDark ? '#14121d' : '#F5F4FA'),
               },
             ]}
           >
@@ -64,7 +68,7 @@ function OptionPill<T extends string>({
               style={[
                 s.pillText,
                 {
-                  color: isSelected ? '#a599ff' : 'rgba(255,255,255,0.65)',
+                  color: isSelected ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.65)' : colors.textPrimary),
                   fontFamily: isSelected ? FONT_FAMILY.bold : FONT_FAMILY.body,
                 },
               ]}
@@ -79,7 +83,8 @@ function OptionPill<T extends string>({
 }
 
 export function GymProfileModal({ visible, onClose }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const p = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { gymProfile, saveGymProfile } = useGymProfile();
 
   const [draft, setDraft] = useState<GymProfile>(DEFAULT_PROFILE);
@@ -191,7 +196,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
           <View style={p.header}>
             <View style={p.headerLeft}>
               <View style={p.iconBadge}>
-                <Ionicons name="fitness" size={20} color="#a599ff" />
+                <Ionicons name="fitness" size={20} color={colors.accentPrimary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={p.title} numberOfLines={1}>Athlete Profile</Text>
@@ -199,7 +204,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
               </View>
             </View>
             <TouchableOpacity onPress={onClose} style={p.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close" size={18} color="rgba(255,255,255,0.8)" />
+              <Ionicons name="close" size={18} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -213,7 +218,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
                 <TextInput
                   style={p.input}
                   placeholder="e.g. 175"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  placeholderTextColor={colors.textMuted}
                   keyboardType="numeric"
                   value={draft.heightCm?.toString() || ''}
                   onChangeText={v => set('heightCm', v ? parseFloat(v) : null)}
@@ -224,7 +229,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
                 <TextInput
                   style={p.input}
                   placeholder="e.g. 75"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  placeholderTextColor={colors.textMuted}
                   keyboardType="numeric"
                   value={draft.weightKg?.toString() || ''}
                   onChangeText={v => set('weightKg', v ? parseFloat(v) : null)}
@@ -235,7 +240,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
                 <TextInput
                   style={p.input}
                   placeholder="e.g. 22"
-                  placeholderTextColor="rgba(255,255,255,0.3)"
+                  placeholderTextColor={colors.textMuted}
                   keyboardType="numeric"
                   value={draft.age?.toString() || ''}
                   onChangeText={v => set('age', v ? parseInt(v, 10) : null)}
@@ -246,13 +251,13 @@ export function GymProfileModal({ visible, onClose }: Props) {
             {/* Gender */}
             <Text style={p.sectionLabel}>GENDER</Text>
             <View style={{ marginBottom: 20 }}>
-              <OptionPill options={GENDERS} value={draft.gender} onSelect={v => set('gender', v)} colors={{ border: '#2c2c2e', surface: '#1c1c1e', textSecondary: '#aeaeb2' }} />
+              <OptionPill options={GENDERS} value={draft.gender} onSelect={v => set('gender', v)} colors={colors} isDark={isDark} />
             </View>
 
             {/* Goal - Single Line Horizontal Scroll with up to 2 multi-selection */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <Text style={p.sectionLabel}>PRIMARY GOALS (MAX 2)</Text>
-              <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11, color: selectedGoals.length > 0 ? '#a599ff' : 'rgba(255,255,255,0.4)', marginBottom: 10 }}>
+              <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 11, color: selectedGoals.length > 0 ? colors.accentPrimary : colors.textMuted, marginBottom: 10 }}>
                 {selectedGoals.length}/2 selected
               </Text>
             </View>
@@ -266,7 +271,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
                     style={[p.goalPill, isSelected && p.goalPillActive]}
                   >
                     <Text style={{ fontSize: 16 }}>{g.label.split(' ')[0]}</Text>
-                    <Text style={[p.goalPillText, { color: isSelected ? '#a599ff' : 'rgba(255,255,255,0.7)', fontFamily: isSelected ? FONT_FAMILY.bold : FONT_FAMILY.medium }]}>
+                    <Text style={[p.goalPillText, { color: isSelected ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.7)' : colors.textPrimary), fontFamily: isSelected ? FONT_FAMILY.bold : FONT_FAMILY.medium }]}>
                       {g.label.split(' ').slice(1).join(' ')}
                     </Text>
                   </TouchableOpacity>
@@ -286,8 +291,10 @@ export function GymProfileModal({ visible, onClose }: Props) {
                     style={[
                       s.pill,
                       {
-                        borderColor: isSelected ? '#a599ff' : 'rgba(255,255,255,0.08)',
-                        backgroundColor: isSelected ? '#251e3d' : '#14121d',
+                        borderColor: isSelected ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.08)' : colors.border),
+                        backgroundColor: isSelected
+                          ? (isDark ? '#251e3d' : 'rgba(108,92,231,0.12)')
+                          : (isDark ? '#14121d' : '#F5F4FA'),
                       },
                     ]}
                   >
@@ -295,7 +302,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
                       style={[
                         s.pillText,
                         {
-                          color: isSelected ? '#a599ff' : 'rgba(255,255,255,0.65)',
+                          color: isSelected ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.65)' : colors.textPrimary),
                           fontFamily: isSelected ? FONT_FAMILY.bold : FONT_FAMILY.medium,
                         },
                       ]}
@@ -310,7 +317,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
             {/* Experience */}
             <Text style={p.sectionLabel}>TRAINING EXPERIENCE</Text>
             <View style={{ marginBottom: 20 }}>
-              <OptionPill options={EXP} value={draft.experience} onSelect={v => set('experience', v)} colors={{ border: '#2c2c2e', surface: '#1c1c1e', textSecondary: '#aeaeb2' }} />
+              <OptionPill options={EXP} value={draft.experience} onSelect={v => set('experience', v)} colors={colors} isDark={isDark} />
             </View>
 
             {/* Days per week */}
@@ -324,7 +331,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
                     onPress={() => { feedback.tap(); set('daysPerWeek', d); }}
                     style={[p.dayPill, isSelected && p.dayPillActive]}
                   >
-                    <Text style={[p.dayPillText, { color: isSelected ? '#a599ff' : 'rgba(255,255,255,0.7)' }]}>{d}x</Text>
+                    <Text style={[p.dayPillText, { color: isSelected ? colors.accentPrimary : (isDark ? 'rgba(255,255,255,0.7)' : colors.textPrimary) }]}>{d}x</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -335,7 +342,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
             <TextInput
               style={[p.input, p.textArea]}
               placeholder="e.g. deadlifts, pull-ups, leg press..."
-              placeholderTextColor="rgba(255,255,255,0.3)"
+              placeholderTextColor={colors.textMuted}
               multiline
               numberOfLines={2}
               value={draft.exercisesToAvoid}
@@ -345,7 +352,7 @@ export function GymProfileModal({ visible, onClose }: Props) {
 
           {/* Save Button */}
           <TouchableOpacity style={p.saveBtn} onPress={handleSave} activeOpacity={0.85}>
-            <Ionicons name="sparkles" size={18} color="#080510" />
+            <Ionicons name="sparkles" size={18} color={isDark ? '#080510' : '#FFFFFF'} />
             <Text style={p.saveBtnText}>Save Profile — GYM-GPT Ready</Text>
           </TouchableOpacity>
         </KeyboardAvoidingView>
@@ -354,184 +361,185 @@ export function GymProfileModal({ visible, onClose }: Props) {
   );
 }
 
-const p = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.8)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#000000',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    maxHeight: '92%',
-    borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.2)',
-    borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    elevation: 16,
-  },
-  handle: {
-    width: 38,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 20,
-  },
-  headerLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginRight: 12,
-  },
-  iconBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(165,153,255,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 20,
-    color: '#ffffff',
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.45)',
-    marginTop: 2,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionLabel: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
-    color: '#a599ff',
-    letterSpacing: 1.5,
-    marginBottom: 10,
-  },
-  label: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.6)',
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: '#161422',
-    borderWidth: 1,
-    borderColor: 'rgba(165,153,255,0.2)',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    height: 48,
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 15,
-    color: '#ffffff',
-  },
-  textArea: {
-    height: 'auto' as any,
-    paddingVertical: 12,
-    textAlignVertical: 'top',
-    marginBottom: 0,
-  },
-  goalPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: '#14121d',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    gap: 6,
-  },
-  goalPillActive: {
-    borderColor: '#a599ff',
-    backgroundColor: '#251e3d',
-    shadowColor: '#a599ff',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 0,
-  },
-  goalPillText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 13,
-    backgroundColor: 'transparent',
-    includeFontPadding: false,
-  },
-  dayPill: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#14121d',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  dayPillActive: {
-    borderColor: '#a599ff',
-    backgroundColor: '#251e3d',
-    shadowColor: '#a599ff',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 0,
-  },
-  dayPillText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 16,
-    backgroundColor: 'transparent',
-    includeFontPadding: false,
-  },
-  saveBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#a599ff',
-    borderRadius: 26,
-    height: 52,
-    marginBottom: Platform.OS === 'ios' ? 32 : 16,
-    marginTop: 12,
-    shadowColor: '#a599ff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
-    elevation: 8,
-  },
-  saveBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 15,
-    color: '#080510',
-    backgroundColor: 'transparent',
-    includeFontPadding: false,
-  },
-});
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.65)',
+      justifyContent: 'flex-end',
+    },
+    sheet: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      paddingTop: 12,
+      paddingHorizontal: 20,
+      maxHeight: '92%',
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderBottomWidth: 0,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -8 },
+      shadowOpacity: isDark ? 0.5 : 0.15,
+      shadowRadius: 24,
+      elevation: 16,
+    },
+    handle: {
+      width: 38,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)',
+      alignSelf: 'center',
+      marginBottom: 16,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 20,
+    },
+    headerLeft: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginRight: 12,
+    },
+    iconBadge: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.2)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    title: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 20,
+      color: colors.textPrimary,
+      letterSpacing: -0.3,
+    },
+    subtitle: {
+      fontFamily: FONT_FAMILY.body,
+      fontSize: 12,
+      color: colors.textTertiary,
+      marginTop: 2,
+    },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sectionLabel: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 11,
+      color: colors.accentPrimary,
+      letterSpacing: 1.5,
+      marginBottom: 10,
+    },
+    label: {
+      fontFamily: FONT_FAMILY.medium,
+      fontSize: 12,
+      color: colors.textTertiary,
+      marginBottom: 6,
+    },
+    input: {
+      backgroundColor: isDark ? '#161422' : '#F5F4FA',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(165,153,255,0.2)' : colors.border,
+      borderRadius: 16,
+      paddingHorizontal: 14,
+      height: 48,
+      fontFamily: FONT_FAMILY.medium,
+      fontSize: 15,
+      color: colors.textPrimary,
+    },
+    textArea: {
+      height: 'auto' as any,
+      paddingVertical: 12,
+      textAlignVertical: 'top',
+      marginBottom: 0,
+    },
+    goalPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      borderRadius: 20,
+      backgroundColor: isDark ? '#14121d' : '#F5F4FA',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+      gap: 6,
+    },
+    goalPillActive: {
+      borderColor: colors.accentPrimary,
+      backgroundColor: isDark ? '#251e3d' : 'rgba(108,92,231,0.12)',
+      shadowColor: colors.accentPrimary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.35 : 0.15,
+      shadowRadius: 8,
+      elevation: 0,
+    },
+    goalPillText: {
+      fontFamily: FONT_FAMILY.medium,
+      fontSize: 13,
+      backgroundColor: 'transparent',
+      includeFontPadding: false,
+    },
+    dayPill: {
+      flex: 1,
+      paddingVertical: 12,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? '#14121d' : '#F5F4FA',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+    },
+    dayPillActive: {
+      borderColor: colors.accentPrimary,
+      backgroundColor: isDark ? '#251e3d' : 'rgba(108,92,231,0.12)',
+      shadowColor: colors.accentPrimary,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0.3 : 0.15,
+      shadowRadius: 8,
+      elevation: 0,
+    },
+    dayPillText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 16,
+      backgroundColor: 'transparent',
+      includeFontPadding: false,
+    },
+    saveBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
+      borderRadius: 26,
+      height: 52,
+      marginBottom: Platform.OS === 'ios' ? 32 : 16,
+      marginTop: 12,
+      shadowColor: colors.accentPrimary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDark ? 0.45 : 0.25,
+      shadowRadius: 14,
+      elevation: 8,
+    },
+    saveBtnText: {
+      fontFamily: FONT_FAMILY.bold,
+      fontSize: 15,
+      color: isDark ? '#080510' : '#FFFFFF',
+      backgroundColor: 'transparent',
+      includeFontPadding: false,
+    },
+  });
 
 // Thin alias for the existing style object in modal context
 const s = StyleSheet.create({

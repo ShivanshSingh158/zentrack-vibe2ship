@@ -9,6 +9,7 @@ import { FONT_FAMILY, SPACE, RADIUS, SHADOW } from '../../theme/tokens';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { GymNavigationParamList } from '../../types/gym.types';
 import { useTheme } from "../../contexts/ThemeContext";
+import { StatusBar } from 'expo-status-bar';
 
 const { width } = Dimensions.get('window');
 
@@ -19,8 +20,8 @@ const CHART_WIDTH = width - 48;
 const PADDING = 20;
 
 export default function GymProgressScreen() {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const { gymLogs } = useWellnessData();
 
@@ -272,6 +273,7 @@ export default function GymProgressScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
@@ -295,22 +297,22 @@ export default function GymProgressScreen() {
         {/* KPI CARDS */}
         <Animated.View style={[styles.kpiRow, { opacity: animCards, transform: [{ translateY: animCards.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
           <View style={styles.kpiCard}>
-            <View style={[styles.kpiIconBox, { backgroundColor: 'rgba(165,153,255,0.1)' }]}>
-              <Ionicons name="fitness-outline" size={16} color="#a599ff" />
+            <View style={[styles.kpiIconBox, { backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.1)' }]}>
+              <Ionicons name="fitness-outline" size={16} color={colors.accentPrimary} />
             </View>
             <Text style={styles.kpiValue}>{kpi.totalWorkouts}</Text>
             <Text style={styles.kpiLabel}>Workouts</Text>
           </View>
           <View style={styles.kpiCard}>
-            <View style={[styles.kpiIconBox, { backgroundColor: 'rgba(94,218,158,0.1)' }]}>
-              <Ionicons name="barbell-outline" size={16} color="#5eda9e" />
+            <View style={[styles.kpiIconBox, { backgroundColor: isDark ? 'rgba(94,218,158,0.1)' : 'rgba(5,150,105,0.1)' }]}>
+              <Ionicons name="barbell-outline" size={16} color={colors.accentGreen} />
             </View>
             <Text style={styles.kpiValue}>{kpi.totalVolumeKg >= 1000 ? `${(kpi.totalVolumeKg/1000).toFixed(1)}k` : kpi.totalVolumeKg}</Text>
             <Text style={styles.kpiLabel}>Volume (kg)</Text>
           </View>
           <View style={styles.kpiCard}>
-            <View style={[styles.kpiIconBox, { backgroundColor: 'rgba(255,159,77,0.1)' }]}>
-              <Ionicons name="stopwatch-outline" size={16} color="#ff9f4d" />
+            <View style={[styles.kpiIconBox, { backgroundColor: isDark ? 'rgba(255,159,77,0.1)' : 'rgba(217,119,6,0.1)' }]}>
+              <Ionicons name="stopwatch-outline" size={16} color={colors.accentAmber} />
             </View>
             <Text style={styles.kpiValue}>{kpi.totalCardioMins}m</Text>
             <Text style={styles.kpiLabel}>Cardio</Text>
@@ -333,28 +335,28 @@ export default function GymProgressScreen() {
             <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
               <Defs>
                 <LinearGradient id="lineGrad" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor="#a599ff" stopOpacity="0.4" />
-                  <Stop offset="1" stopColor="#a599ff" stopOpacity="0.0" />
+                  <Stop offset="0" stopColor={colors.accentPrimary} stopOpacity="0.4" />
+                  <Stop offset="1" stopColor={colors.accentPrimary} stopOpacity="0.0" />
                 </LinearGradient>
               </Defs>
 
               {/* Grid Lines */}
-              <Path d={`M 0 ${PADDING} L ${CHART_WIDTH} ${PADDING}`} stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4 4" />
-              <Path d={`M 0 ${CHART_HEIGHT / 2} L ${CHART_WIDTH} ${CHART_HEIGHT / 2}`} stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4 4" />
-              <Path d={`M 0 ${CHART_HEIGHT - PADDING} L ${CHART_WIDTH} ${CHART_HEIGHT - PADDING}`} stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="4 4" />
+              <Path d={`M 0 ${PADDING} L ${CHART_WIDTH} ${PADDING}`} stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} strokeWidth="1" strokeDasharray="4 4" />
+              <Path d={`M 0 ${CHART_HEIGHT / 2} L ${CHART_WIDTH} ${CHART_HEIGHT / 2}`} stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} strokeWidth="1" strokeDasharray="4 4" />
+              <Path d={`M 0 ${CHART_HEIGHT - PADDING} L ${CHART_WIDTH} ${CHART_HEIGHT - PADDING}`} stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'} strokeWidth="1" strokeDasharray="4 4" />
 
               {lineCoords.length > 1 && (
                 <>
                   <Path d={`${smoothPath} L ${lineCoords[lineCoords.length-1].x},${CHART_HEIGHT - PADDING} L ${lineCoords[0].x},${CHART_HEIGHT - PADDING} Z`} fill="url(#lineGrad)" />
-                  <Path d={smoothPath} fill="none" stroke="#a599ff" strokeWidth="8" strokeOpacity="0.15" strokeLinecap="round" strokeLinejoin="round" />
-                  <Path d={smoothPath} fill="none" stroke="#a599ff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                  <Path d={smoothPath} fill="none" stroke={colors.accentPrimary} strokeWidth="8" strokeOpacity="0.15" strokeLinecap="round" strokeLinejoin="round" />
+                  <Path d={smoothPath} fill="none" stroke={colors.accentPrimary} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
                 </>
               )}
 
-              {/* Data Points (Render only if length is small or downsample for 90d to prevent clutter) */}
+              {/* Data Points */}
               {timeRange !== '90d' && lineCoords.map((pt, idx) => (
                 <G key={idx}>
-                  <Circle cx={pt.x} cy={pt.y} r={3} fill="#141416" stroke="#a599ff" strokeWidth={1.5} />
+                  <Circle cx={pt.x} cy={pt.y} r={3} fill={colors.surface} stroke={colors.accentPrimary} strokeWidth={1.5} />
                 </G>
               ))}
             </Svg>
@@ -524,55 +526,55 @@ export default function GymProgressScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#000000' },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingTop: Platform.OS === 'ios' ? 8 : 16, paddingBottom: SPACE.md },
   backBtn: { padding: 4 },
-  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#ffffff' },
+  headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
   filterTabs: { flexDirection: 'row', paddingHorizontal: SPACE.md, gap: 8, marginBottom: SPACE.md },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.02)' },
-  tabActive: { backgroundColor: 'rgba(165,153,255,0.15)', borderColor: '#a599ff' },
-  tabText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: '#8e8e93' },
-  tabTextActive: { color: '#a599ff' },
+  tab: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: RADIUS.full, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
+  tabActive: { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)', borderColor: colors.accentPrimary },
+  tabText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted },
+  tabTextActive: { color: colors.accentPrimary },
   content: { paddingHorizontal: SPACE.md, paddingBottom: 120 },
   kpiRow: { flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.lg },
-  kpiCard: { flex: 1, backgroundColor: '#141416', borderRadius: RADIUS.lg, padding: SPACE.sm, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  kpiCard: { flex: 1, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: RADIUS.lg, padding: SPACE.sm, alignItems: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, ...SHADOW.sm },
   kpiIconBox: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  kpiValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#ffffff' },
-  kpiLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 10, color: '#8e8e93', marginTop: 2 },
-  glassCard: { backgroundColor: '#141416', borderRadius: RADIUS.xl, padding: SPACE.lg, marginBottom: SPACE.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', ...SHADOW.sm },
+  kpiValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
+  kpiLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  glassCard: { backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: RADIUS.xl, padding: SPACE.lg, marginBottom: SPACE.lg, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, ...SHADOW.sm },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACE.md },
-  cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#ffffff' },
-  cardSubtitle: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#8e8e93', marginTop: 2 },
-  cardHeaderBadge: { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  cardHeaderBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 9, color: '#ffffff', letterSpacing: 0.5 },
+  cardTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
+  cardSubtitle: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textMuted, marginTop: 2 },
+  cardHeaderBadge: { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  cardHeaderBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 9, color: colors.textPrimary, letterSpacing: 0.5 },
   svgWrapper: { alignItems: 'center', marginTop: SPACE.xs },
   chartDateAxis: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 6, paddingHorizontal: 4 },
-  axisDateText: { fontFamily: FONT_FAMILY.mono, fontSize: 10, color: '#636366' },
+  axisDateText: { fontFamily: FONT_FAMILY.mono, fontSize: 10, color: colors.textMuted },
   donutContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACE.md, gap: SPACE.md },
   donutSvgWrapper: { width: 150, height: 150, alignItems: 'center', justifyContent: 'center', position: 'relative' },
   donutCenterLabel: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
-  donutCenterValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: '#FFFFFF' },
-  donutCenterSub: { fontFamily: FONT_FAMILY.medium, fontSize: 11, color: '#A1A1AA' },
+  donutCenterValue: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
+  donutCenterSub: { fontFamily: FONT_FAMILY.medium, fontSize: 11, color: colors.textMuted },
   donutLegend: { flex: 1, gap: 8 },
   donutLegendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   donutDot: { width: 10, height: 10, borderRadius: 5 },
-  donutLegendName: { flex: 1, fontFamily: FONT_FAMILY.medium, fontSize: 13, color: '#FFFFFF' },
-  donutLegendPercent: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#A1A1AA' },
+  donutLegendName: { flex: 1, fontFamily: FONT_FAMILY.medium, fontSize: 13, color: colors.textPrimary },
+  donutLegendPercent: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted },
   cardioMetricsGrid: { flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.lg },
-  cardioMetricBox: { flex: 1, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: RADIUS.md, padding: SPACE.sm, alignItems: 'center' },
-  cardioMetricValue: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: '#ffffff', marginTop: 8 },
-  cardioMetricLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 10, color: '#8e8e93', marginTop: 2 },
+  cardioMetricBox: { flex: 1, backgroundColor: isDark ? '#2C2C2E' : colors.surface2, borderRadius: RADIUS.md, padding: SPACE.sm, alignItems: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
+  cardioMetricValue: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginTop: 8 },
+  cardioMetricLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 10, color: colors.textMuted, marginTop: 2 },
   chipScroll: { gap: 6, marginBottom: SPACE.md },
-  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: '#141416', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  chipActive: { borderColor: '#a599ff', backgroundColor: 'rgba(165,153,255,0.1)' },
-  chipText: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: '#8e8e93' },
-  chipTextActive: { color: '#a599ff' },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.full, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
+  chipActive: { borderColor: colors.accentPrimary, backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.1)' },
+  chipText: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textMuted },
+  chipTextActive: { color: colors.accentPrimary },
   pillScroll: { gap: 8, paddingVertical: 4, marginBottom: SPACE.sm },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.lg, backgroundColor: '#141416', borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
-  pillActive: { backgroundColor: '#5eda9e', borderColor: '#5eda9e' },
-  pillText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: '#8e8e93' },
-  pillTextActive: { color: '#000000' },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.lg, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
+  pillActive: { backgroundColor: colors.accentGreen, borderColor: colors.accentGreen },
+  pillText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textMuted },
+  pillTextActive: { color: '#ffffff' },
   emptyBox: { alignItems: 'center', justifyContent: 'center', paddingVertical: SPACE.xl, gap: 8 },
-  emptyText: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: 'rgba(255,255,255,0.4)', textAlign: 'center' },
+  emptyText: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textMuted, textAlign: 'center' },
 });

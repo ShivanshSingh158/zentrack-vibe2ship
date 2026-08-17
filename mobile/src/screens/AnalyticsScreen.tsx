@@ -1,18 +1,5 @@
 /**
- * AnalyticsScreen â€” ZenTrack Mobile â€” A+ Rebuild
- *
- * Features:
- *  - Time period selector: Week / Month / Semester (7 / 30 / 90 days)
- *  - Period-over-period comparison: â–²â–¼ delta vs previous period
- *  - Zen Score animated ring with gradient (purple â†’ teal)
- *  - Gym strength progression line chart (real data, SVG bezier)
- *  - Task completion bar chart with this-vs-last period overlay
- *  - Deep Work focus bar chart with animated fill
- *  - Gym volume bar chart per session day
- *  - 35-day activity heatmap (tasks + gym + habits combined)
- *  - Best streak + avg daily focus stat cards
- *  - All charts: animated entry, grid lines, axis labels
- *  - Zero TypeScript errors (accentSecondary alias already in tokens.ts)
+ * AnalyticsScreen — ZenTrack Mobile
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
@@ -22,6 +9,7 @@ import {
   TouchableOpacity, Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Path, Defs, LinearGradient as SvgLinearGradient, Stop, Line, Text as SvgText, Rect } from 'react-native-svg';
 import { LinearGradient as ExpoLinearGradient } from 'expo-linear-gradient';
@@ -38,7 +26,7 @@ const CHART_H = 90;
 const CARD_PAD = 16;
 const CHART_W = SCREEN_WIDTH - 8 * 2 - CARD_PAD * 2;
 
-// â”€â”€â”€ Smooth bezier helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Smooth bezier helper ──────────────────────────────────────────────────
 function smoothPath(pts: { x: number; y: number }[]): string {
   if (pts.length < 2) return pts.length === 1 ? `M ${pts[0].x} ${pts[0].y}` : '';
   const d = [`M ${pts[0].x} ${pts[0].y}`];
@@ -50,7 +38,7 @@ function smoothPath(pts: { x: number; y: number }[]): string {
   return d.join(' ');
 }
 
-// â”€â”€â”€ Date helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Date helpers ──────────────────────────────────────────────────────────
 function daysAgoStr(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -65,24 +53,31 @@ type Period = 'week' | 'month' | 'semester';
 const PERIOD_DAYS: Record<Period, number> = { week: 7, month: 30, semester: 90 };
 const PERIOD_LABEL: Record<Period, string> = { week: 'This Week', month: 'This Month', semester: 'This Semester' };
 
-// â”€â”€â”€ Animated SVG Circle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Animated SVG Circle ───────────────────────────────────────────────────
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
-// â”€â”€â”€ GlassCard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── GlassCard ─────────────────────────────────────────────────────────────
 function GlassCard({ children, style }: { children: React.ReactNode; style?: any }) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  if (isDark) {
+    return (
+      <BlurView intensity={55} tint="dark" style={[styles.glassCard, style]}>
+        {children}
+      </BlurView>
+    );
+  }
   return (
-    <BlurView intensity={55} tint="dark" style={[styles.glassCard, style]}>
+    <View style={[styles.glassCard, style]}>
       {children}
-    </BlurView>
+    </View>
   );
 }
 
-// â”€â”€â”€ Period Pill Selector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Period Pill Selector ──────────────────────────────────────────────────
 function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const PERIODS: Period[] = ['week', 'month', 'semester'];
   const LABELS: Record<Period, string> = { week: '7D', month: '30D', semester: '90D' };
   return (
@@ -102,25 +97,29 @@ function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Peri
   );
 }
 
-// â”€â”€â”€ Delta badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Delta badge ───────────────────────────────────────────────────────────
 function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: string }) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   if (prev === 0 && cur === 0) return null;
   const diff = cur - prev;
   const pct = prev > 0 ? Math.round((diff / prev) * 100) : (cur > 0 ? 100 : 0);
   const up = diff >= 0;
+  const posBg = isDark ? 'rgba(94,218,158,0.15)' : 'rgba(5,150,105,0.10)';
+  const negBg = isDark ? 'rgba(255,105,97,0.15)' : 'rgba(220,38,38,0.10)';
+  const posColor = isDark ? colors.accentGreen : '#059669';
+  const negColor = isDark ? colors.error : '#DC2626';
   return (
-    <View style={[styles.delta, { backgroundColor: up ? 'rgba(94,218,158,0.15)' : 'rgba(255,105,97,0.15)' }]}>
-      <Ionicons name={up ? 'trending-up' : 'trending-down'} size={10} color={up ? colors.accentGreen : colors.error} />
-      <Text style={[styles.deltaText, { color: up ? colors.accentGreen : colors.error }]}>
+    <View style={[styles.delta, { backgroundColor: up ? posBg : negBg }]}>
+      <Ionicons name={up ? 'trending-up' : 'trending-down'} size={10} color={up ? posColor : negColor} />
+      <Text style={[styles.deltaText, { color: up ? posColor : negColor }]}>
         {up ? '+' : ''}{pct}%{unit ? ` ${unit}` : ''}
       </Text>
     </View>
   );
 }
 
-// â”€â”€â”€ Bar Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Bar Chart ─────────────────────────────────────────────────────────────
 interface BarChartProps {
   data: { label: string; cur: number; prev?: number }[];
   color: string;
@@ -131,8 +130,8 @@ interface BarChartProps {
 }
 
 function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated = false }: BarChartProps) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     anim.setValue(0);
@@ -145,7 +144,6 @@ function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated =
 
   const barW = prevColor ? 8 : 12;
   const gap = prevColor ? 3 : 6;
-  const groupW = prevColor ? barW * 2 + gap + 12 : barW + 12;
 
   return (
     <View style={{ height, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' }}>
@@ -177,7 +175,7 @@ function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated =
                   height: prevH,
                   backgroundColor: prevColor || 'transparent',
                   borderRadius: 4,
-                  opacity: 0.45,
+                  opacity: isDark ? 0.45 : 0.25,
                 }} />
               )}
               <Animated.View style={{
@@ -187,9 +185,9 @@ function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated =
                 borderRadius: 4,
                 shadowColor: color,
                 shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.35,
+                shadowOpacity: isDark ? 0.35 : 0.15,
                 shadowRadius: 4,
-                elevation: 3,
+                elevation: 2,
               }} />
             </View>
             <Text style={styles.barLabel}>{d.label}</Text>
@@ -200,7 +198,7 @@ function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated =
   );
 }
 
-// â”€â”€â”€ Stacked Bar Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stacked Bar Chart ─────────────────────────────────────────────────────
 interface StackedBarChartProps {
   data: { label: string; attended: number; missed: number }[];
   color1: string;
@@ -211,8 +209,8 @@ interface StackedBarChartProps {
 }
 
 function StackedBarChart({ data, color1, color2, maxVal, height = CHART_H, animated = true }: StackedBarChartProps) {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const anim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -265,7 +263,7 @@ function StackedBarChart({ data, color1, color2, maxVal, height = CHART_H, anima
   );
 }
 
-// â”€â”€â”€ Line Chart (SVG) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Line Chart (SVG) ──────────────────────────────────────────────────────
 interface LineChartProps {
   data: { label: string; value: number }[];
   color: string;
@@ -274,8 +272,8 @@ interface LineChartProps {
 }
 
 function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2, height = CHART_H }: LineChartProps) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const anim = useRef(new Animated.Value(0)).current;
   const [rendered, setRendered] = useState(false);
 
@@ -314,12 +312,12 @@ function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD
       <Svg width={width} height={height} style={StyleSheet.absoluteFillObject} pointerEvents="none">
         {[0.25, 0.5, 0.75].map((f, i) => (
           <Line key={i} x1={0} y1={height * (1 - f)} x2={width} y2={height * (1 - f)}
-            stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+            stroke={isDark ? "rgba(255,255,255,0.06)" : colors.border} strokeWidth="1" />
         ))}
         {/* Area fill */}
         <Defs>
           <SvgLinearGradient id={`areaGrad_${color}`} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={color} stopOpacity="0.35" />
+            <Stop offset="0" stopColor={color} stopOpacity={isDark ? "0.35" : "0.20"} />
             <Stop offset="1" stopColor={color} stopOpacity="0" />
           </SvgLinearGradient>
         </Defs>
@@ -327,7 +325,7 @@ function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD
         {rendered && <Path d={linePath} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />}
         {rendered && pts.map((p, i) => (
           <Circle key={i} cx={p.x} cy={p.y} r="4" fill={color}
-            stroke="rgba(0,0,0,0.5)" strokeWidth="1.5" />
+            stroke={isDark ? "rgba(0,0,0,0.5)" : "#FFFFFF"} strokeWidth="1.5" />
         ))}
       </Svg>
       {/* X-axis labels */}
@@ -342,15 +340,15 @@ function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD
   );
 }
 
-// â”€â”€â”€ Heatmap â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Heatmap ───────────────────────────────────────────────────────────────
 function ActivityHeatmap({ dates, tasks, gymLogs, habitLogs }: {
   dates: string[];
   tasks: any[];
   gymLogs: any[];
   habitLogs: any[];
 }) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: SPACE.md }}>
       {dates.map((date, i) => {
@@ -359,11 +357,20 @@ function ActivityHeatmap({ dates, tasks, gymLogs, habitLogs }: {
         const habitDone = habitLogs.filter(l => l.date === date).length;
         const total = tasksDone + gymDone + (habitDone > 0 ? 1 : 0);
 
-        let bg = 'rgba(255,255,255,0.04)';
-        let borderColor = 'rgba(255,255,255,0.07)';
-        if (total === 1) { bg = 'rgba(165,153,255,0.25)'; borderColor = 'rgba(165,153,255,0.4)'; }
-        if (total === 2) { bg = 'rgba(165,153,255,0.55)'; borderColor = 'rgba(165,153,255,0.7)'; }
-        if (total >= 3)  { bg = colors.accentPrimary; borderColor = colors.accentPrimary; }
+        let bg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+        let borderColor = isDark ? 'rgba(255,255,255,0.07)' : colors.border;
+        if (total === 1) {
+          bg = isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.20)';
+          borderColor = isDark ? 'rgba(165,153,255,0.40)' : 'rgba(108,92,231,0.30)';
+        }
+        if (total === 2) {
+          bg = isDark ? 'rgba(165,153,255,0.55)' : 'rgba(108,92,231,0.50)';
+          borderColor = isDark ? 'rgba(165,153,255,0.70)' : 'rgba(108,92,231,0.60)';
+        }
+        if (total >= 3) {
+          bg = colors.accentPrimary;
+          borderColor = colors.accentPrimary;
+        }
 
         return (
           <View key={i} style={{
@@ -380,15 +387,10 @@ function ActivityHeatmap({ dates, tasks, gymLogs, habitLogs }: {
   );
 }
 
-// â”€â”€â”€ Main Screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 export default function AnalyticsScreen() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
-  const styles = makeStyles(colors);
-  // BUG-H5 FIX: Removed pomodoroSessions â€” the Focus/Pomodoro module was deleted on 2026-07-15.
-  // pomodoroSessions always returns empty, making the Deep Work chart show "Not enough data"
-  // and artificially capping the Zen Score. Now using real data only.
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const {
     tasks,
     gymLogs,
@@ -408,11 +410,7 @@ export default function AnalyticsScreen() {
   const animCharts  = useRef(new Animated.Value(1)).current;
   const animHeat    = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    // Disabled animations for instant load
-  }, []);
-
-  // â”€â”€ Period bounds â”€â”€
+  // Period bounds
   const days = PERIOD_DAYS[period];
   const curStart  = daysAgoStr(days - 1);
   const prevStart = daysAgoStr(days * 2 - 1);
@@ -572,7 +570,7 @@ export default function AnalyticsScreen() {
   }, [habitLogs, allHabits, period, days]);
   const maxFocusBar = 100; // always percentage, cap at 100%
 
-  // ── Attendance Stacked Bar Chart Data (O(L) Map indexing - 152x faster) ──
+  // ── Attendance Stacked Bar Chart Data (O(L) Map indexing) ──
   const attendanceBarData = useMemo(() => {
     const attMap = new Map<string, { attended: number; missed: number }>();
     for (const l of attendanceLogs) {
@@ -612,9 +610,6 @@ export default function AnalyticsScreen() {
   const maxAttBar = Math.max(...attendanceBarData.map(d => d.attended + d.missed), 4);
 
   // ── Gym volume bar chart ──
-  // BUG-M9 FIX: Was showing exercise count (log.exercises?.length), which makes
-  // a user doing 3 heavy compounds look identical to one doing 6 easy isolation sets.
-  // Now computes real training volume: sum of (weight Ã— reps) for all completed sets.
   const gymVolData = useMemo(() => {
     const calcVolume = (log: any): number => {
       if (!log?.exercises) return 0;
@@ -651,75 +646,24 @@ export default function AnalyticsScreen() {
   // ── Heatmap dates (5 weeks) ──
   const heatDates = useMemo(() => daysRange(0, 35), []);
 
-  // ── Habit completion rate per day (line) — O(1) Map indexed ──
-  const habitLineData = useMemo(() => {
-    const habitDateCountMap = new Map<string, number>();
-    for (const l of habitLogs || []) {
-      if (l.date) habitDateCountMap.set(l.date, (habitDateCountMap.get(l.date) || 0) + 1);
-    }
-
-    const activeCount = allHabits.filter(h => !h.archived).length || 1;
-    const n = Math.min(days, 14);
-    const step = days <= 7 ? 1 : days <= 30 ? 2 : 7;
-    const result: { label: string; value: number }[] = [];
-    for (let i = n - 1; i >= 0; i -= step) {
-      const d = daysAgoStr(i);
-      const done = habitDateCountMap.get(d) || 0;
-      result.push({ label: formatDateShort(d), value: Math.round((done / activeCount) * 100) });
-    }
-    return result;
-  }, [habitLogs, allHabits, period, days]);
-
-  // ─── Goal Progress Data — O(1) Map grouped ───
-  const goalProgressData = useMemo(() => {
-    if (!goals) return [];
-    const taskStatsByGoal = new Map<string, { total: number; completed: number }>();
-    for (const t of tasks || []) {
-      if (t.subject) {
-        const stats = taskStatsByGoal.get(t.subject) || { total: 0, completed: 0 };
-        stats.total++;
-        if (t.status === 'completed') stats.completed++;
-        taskStatsByGoal.set(t.subject, stats);
-      }
-    }
-    return goals.map(goal => {
-      const stats = taskStatsByGoal.get(goal.title) || { total: 0, completed: 0 };
-      const pct = stats.total === 0 ? 0 : (stats.completed / stats.total) * 100;
-      return { ...goal, pct, total: stats.total, completed: stats.completed };
-    }).filter(g => g.total > 0 || g.status === 'active');
-  }, [goals, tasks]);
-
-  // ─── CGPA Data ───
-  const cgpaData = useMemo(() => {
-    if (!semesters) return [];
-    return [...semesters].sort((a, b) => (a.order || 0) - (b.order || 0)).filter(s => s.sgpa && s.sgpa > 0);
-  }, [semesters]);
-
-  // ─── Attendance Trend Data (Safe Timestamp Normalization) ───
-  const attendanceTrendData = useMemo(() => {
-    if (!attendanceLogs || attendanceLogs.length === 0) return [];
-    const getTs = (l: any) => typeof l.timestamp === 'number' ? l.timestamp : (l.timestamp?.toMillis?.() ?? 0);
-    const sorted = [...attendanceLogs].sort((a, b) => getTs(a) - getTs(b));
-    let attended = 0; let total = 0;
-    const byDate = new Map<string, number>();
-    sorted.forEach(log => {
-      if (log.action === 'attended') { attended++; total++; }
-      else if (log.action === 'missed') { total++; }
-      if (total > 0 && log.date) byDate.set(log.date, (attended / total) * 100);
-    });
-    return Array.from(byDate.entries()).map(([date, pct]) => ({ date, pct }));
-  }, [attendanceLogs]);
-
   return (
-    <ExpoLinearGradient colors={['#160C28', '#080512', '#000000']} style={styles.root}>
-      {/* Ambient glow blobs */}
-      <View style={styles.bgGlow1} />
-      <View style={styles.bgGlow2} />
-      <View style={styles.bgGlow3} />
+    <View style={styles.root}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      {isDark && (
+        <ExpoLinearGradient colors={['#160C28', '#080512', '#000000']} style={StyleSheet.absoluteFillObject} />
+      )}
+      {/* Ambient glow blobs in dark mode */}
+      {isDark && (
+        <>
+          <View style={styles.bgGlow1} />
+          <View style={styles.bgGlow2} />
+          <View style={styles.bgGlow3} />
+        </>
+      )}
 
       <SafeAreaView style={{ flex: 1 }} edges={['top']}>
 
-        {/* â”€â”€ Header â”€â”€ */}
+        {/* ── Header ── */}
         <Animated.View style={[styles.header, {
           opacity: animHeader,
           transform: [{ translateY: animHeader.interpolate({ inputRange: [0,1], outputRange: [-16,0] }) }],
@@ -734,7 +678,7 @@ export default function AnalyticsScreen() {
           </View>
         </Animated.View>
 
-        {/* â”€â”€ Period Selector â”€â”€ */}
+        {/* ── Period Selector ── */}
         <Animated.View style={{ opacity: animHeader }}>
           <PeriodSelector value={period} onChange={setPeriod} />
         </Animated.View>
@@ -753,11 +697,11 @@ export default function AnalyticsScreen() {
                 <Defs>
                   <SvgLinearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
                     <Stop offset="0" stopColor={colors.accentPrimary} />
-                    <Stop offset="1" stopColor={colors.accentSecondary} />
+                    <Stop offset="1" stopColor={isDark ? colors.accentSecondary : '#0284C7'} />
                   </SvgLinearGradient>
                 </Defs>
                 <Circle cx={RING_SIZE/2} cy={RING_SIZE/2} r={RING_R}
-                  stroke="rgba(255,255,255,0.05)" strokeWidth="10" fill="none" />
+                  stroke={isDark ? "rgba(255,255,255,0.05)" : colors.border} strokeWidth="10" fill="none" />
                 <AnimatedCircle cx={RING_SIZE/2} cy={RING_SIZE/2} r={RING_R}
                   stroke="url(#ringGrad)" strokeWidth="13" fill="none"
                   strokeDasharray={CIRC} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
@@ -771,19 +715,19 @@ export default function AnalyticsScreen() {
             {/* 3 summary stats */}
             <View style={styles.summaryRow}>
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryVal, { color: colors.accentGreen }]}>{stats.curTasks}</Text>
+                <Text style={[styles.summaryVal, { color: isDark ? colors.accentGreen : '#059669' }]}>{stats.curTasks}</Text>
                 <Text style={styles.summaryKey}>Tasks</Text>
                 <Delta cur={stats.curTasks} prev={stats.prevTasks} />
               </View>
               <View style={styles.summaryDivider} />
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryVal, { color: colors.accentPrimary }]}>{stats.curGym}</Text>
+                <Text style={[styles.summaryVal, { color: isDark ? colors.accentPrimary : '#D97706' }]}>{stats.curGym}</Text>
                 <Text style={styles.summaryKey}>Gym Days</Text>
                 <Delta cur={stats.curGym} prev={stats.prevGym} />
               </View>
               <View style={styles.summaryDivider} />
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryVal, { color: colors.accentSecondary }]}>
+                <Text style={[styles.summaryVal, { color: isDark ? colors.accentSecondary : '#0284C7' }]}>
                   {stats.curFocus >= 60 ? `${Math.floor(stats.curFocus / 60)}h ${stats.curFocus % 60}m` : `${stats.curFocus}m`}
                 </Text>
                 <Text style={styles.summaryKey}>Focus Time</Text>
@@ -792,29 +736,29 @@ export default function AnalyticsScreen() {
             </View>
           </Animated.View>
 
-          {/* â”€â”€ 2. STAT CARDS ROW â”€â”€ */}
+          {/* ── 2. STAT CARDS ROW ── */}
           <Animated.View style={[styles.cardRow, {
             opacity: animCards,
             transform: [{ translateY: animCards.interpolate({ inputRange: [0,1], outputRange: [20,0] }) }],
           }]}>
             <GlassCard style={styles.statCard}>
-              <Ionicons name="flame" size={20} color={colors.accentPrimary} style={{ marginBottom: 6 }} />
+              <Ionicons name="flame" size={20} color={isDark ? colors.accentPrimary : '#D97706'} style={{ marginBottom: 6 }} />
               <Text style={styles.statCardVal}>{stats.bestStreak}d</Text>
               <Text style={styles.statCardLabel}>Best Streak</Text>
             </GlassCard>
             <GlassCard style={styles.statCard}>
-              <Ionicons name="checkmark-circle-outline" size={20} color={colors.accentSecondary} style={{ marginBottom: 6 }} />
+              <Ionicons name="checkmark-circle-outline" size={20} color={isDark ? colors.accentSecondary : '#059669'} style={{ marginBottom: 6 }} />
               <Text style={styles.statCardVal}>{stats.curHabits}</Text>
               <Text style={styles.statCardLabel}>Habits Done</Text>
             </GlassCard>
-              <GlassCard style={styles.statCard}>
-                <Ionicons name="school-outline" size={20} color={colors.success} style={{ marginBottom: 6 }} />
-                <Text style={styles.statCardVal}>{stats.curAttended}</Text>
-                <Text style={styles.statCardLabel}>Classes Attended</Text>
-              </GlassCard>
+            <GlassCard style={styles.statCard}>
+              <Ionicons name="school-outline" size={20} color={isDark ? colors.success : '#0284C7'} style={{ marginBottom: 6 }} />
+              <Text style={styles.statCardVal}>{stats.curAttended}</Text>
+              <Text style={styles.statCardLabel}>Classes Attended</Text>
+            </GlassCard>
           </Animated.View>
 
-          {/* —— 3. TASK COMPLETION CHART —— */}
+          {/* ── 3. TASK COMPLETION CHART ── */}
           <Animated.View style={[styles.fullCard, {
             opacity: animCharts,
             transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [30,0] }) }],
@@ -828,7 +772,7 @@ export default function AnalyticsScreen() {
                 <View style={styles.legendRow}>
                   <View style={[styles.legendDot, { backgroundColor: colors.accentPrimary }]} />
                   <Text style={styles.legendText}>This</Text>
-                  <View style={[styles.legendDot, { backgroundColor: colors.accentPrimary, opacity: 0.4 }]} />
+                  <View style={[styles.legendDot, { backgroundColor: colors.accentPrimary, opacity: isDark ? 0.4 : 0.25 }]} />
                   <Text style={styles.legendText}>Prev</Text>
                 </View>
               </View>
@@ -842,7 +786,7 @@ export default function AnalyticsScreen() {
             </GlassCard>
           </Animated.View>
 
-          {/* â”€â”€ 4. HABIT CONSISTENCY CHART (replaces dead Pomodoro Deep Work chart) â”€â”€ */}
+          {/* ── 4. HABIT CONSISTENCY CHART ── */}
           <Animated.View style={[styles.fullCard, {
             opacity: animCharts,
             transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
@@ -854,23 +798,23 @@ export default function AnalyticsScreen() {
                   <Text style={styles.chartSub}>% of habits completed per day</Text>
                 </View>
                 <View style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.accentSecondary }]} />
+                  <View style={[styles.legendDot, { backgroundColor: isDark ? colors.accentSecondary : '#D97706' }]} />
                   <Text style={styles.legendText}>This</Text>
-                  <View style={[styles.legendDot, { backgroundColor: colors.accentSecondary, opacity: 0.4 }]} />
+                  <View style={[styles.legendDot, { backgroundColor: isDark ? colors.accentSecondary : '#D97706', opacity: isDark ? 0.4 : 0.25 }]} />
                   <Text style={styles.legendText}>Prev</Text>
                 </View>
               </View>
               <BarChart
                 data={focusBarData}
-                color={colors.accentSecondary}
-                prevColor={colors.accentSecondary}
+                color={isDark ? colors.accentSecondary : '#D97706'}
+                prevColor={isDark ? colors.accentSecondary : '#D97706'}
                 maxVal={maxFocusBar}
                 height={CHART_H}
               />
             </GlassCard>
           </Animated.View>
 
-          {/* â”€â”€ 5. ATTENDANCE CHART â”€â”€ */}
+          {/* ── 5. ATTENDANCE CHART ── */}
           <Animated.View style={[styles.fullCard, {
             opacity: animCharts,
             transform: [{ translateY: animCharts.interpolate({ inputRange: [0,1], outputRange: [50,0] }) }],
@@ -882,24 +826,23 @@ export default function AnalyticsScreen() {
                   <Text style={styles.chartSub}>Attended vs Missed</Text>
                 </View>
                 <View style={styles.legendRow}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.accentGreen }]} />
+                  <View style={[styles.legendDot, { backgroundColor: isDark ? colors.accentGreen : '#059669' }]} />
                   <Text style={styles.legendText}>Attended</Text>
-                  <View style={[styles.legendDot, { backgroundColor: colors.error }]} />
+                  <View style={[styles.legendDot, { backgroundColor: isDark ? colors.error : '#DC2626' }]} />
                   <Text style={styles.legendText}>Missed</Text>
                 </View>
               </View>
               <StackedBarChart
                 data={attendanceBarData}
-                color1={colors.accentGreen}
-                color2={colors.error}
+                color1={isDark ? colors.accentGreen : '#059669'}
+                color2={isDark ? colors.error : '#DC2626'}
                 maxVal={maxAttBar}
                 height={CHART_H}
               />
             </GlassCard>
           </Animated.View>
 
-          {/* â”€â”€ 7. GYM VOLUME BAR CHART â”€â”€ */}
-          {/* ——— 7. GYM VOLUME BAR CHART ——— */}
+          {/* ── 7. GYM VOLUME BAR CHART ── */}
           <Animated.View style={[styles.fullCard, {
             opacity: animCharts,
           }]}>
@@ -913,15 +856,15 @@ export default function AnalyticsScreen() {
               </View>
               <BarChart
                 data={gymVolData}
-                color={colors.accentBlue}
-                prevColor={colors.accentBlue}
+                color={isDark ? colors.accentBlue : '#0284C7'}
+                prevColor={isDark ? colors.accentBlue : '#0284C7'}
                 maxVal={maxGymVol}
                 height={CHART_H}
               />
             </GlassCard>
           </Animated.View>
 
-          {/* â”€â”€ 8. ACTIVITY HEATMAP â”€â”€ */}
+          {/* ── 8. ACTIVITY HEATMAP ── */}
           <Animated.View style={[styles.fullCard, {
             opacity: animHeat,
             transform: [{ translateY: animHeat.interpolate({ inputRange: [0,1], outputRange: [40,0] }) }],
@@ -933,7 +876,12 @@ export default function AnalyticsScreen() {
                   <Text style={styles.chartSub}>Last 35 days</Text>
                 </View>
                 <View style={styles.legendRow}>
-                  {['rgba(255,255,255,0.05)', 'rgba(165,153,255,0.3)', 'rgba(165,153,255,0.6)', colors.accentPrimary].map((c, i) => (
+                  {[
+                    isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                    isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
+                    isDark ? 'rgba(165,153,255,0.6)' : 'rgba(108,92,231,0.55)',
+                    colors.accentPrimary
+                  ].map((c, i) => (
                     <View key={i} style={[styles.heatLegendDot, { backgroundColor: c }]} />
                   ))}
                 </View>
@@ -950,263 +898,251 @@ export default function AnalyticsScreen() {
               </View>
             </GlassCard>
           </Animated.View>
-          {/* Goal Progression Removed */}
-
-          {/* Removed Academic Predictor, CGPA Trend, Attendance Trend, and Export Button */}
 
           <View style={{ height: 100 }} />
         </ScrollView>
       </SafeAreaView>
-    </ExpoLinearGradient>
+    </View>
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1 },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
 
   bgGlow1: {
     position: 'absolute', top: -80, left: -100,
     width: 350, height: 350, borderRadius: 175,
     backgroundColor: colors.accentPrimary,
-    transform: [{ scale: 1.5 }], opacity: 0.12,
-    filter: 'blur(40px)' as any,
+    transform: [{ scale: 1.5 }], opacity: isDark ? 0.12 : 0,
   },
   bgGlow2: {
     position: 'absolute', bottom: 100, right: -120,
     width: 300, height: 300, borderRadius: 150,
     backgroundColor: colors.accentSecondary,
-    transform: [{ scale: 1.5 }], opacity: 0.08,
-    filter: 'blur(50px)' as any,
+    transform: [{ scale: 1.5 }], opacity: isDark ? 0.08 : 0,
   },
   bgGlow3: {
     position: 'absolute', top: 300, right: -50,
     width: 200, height: 200, borderRadius: 100,
     backgroundColor: colors.accentAmber || '#ff9f4d',
-    transform: [{ scale: 1.5 }], opacity: 0.05,
-    filter: 'blur(40px)' as any,
+    transform: [{ scale: 1.5 }], opacity: isDark ? 0.05 : 0,
   },
 
-      // Header
-      header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        paddingHorizontal: 8,
-        paddingTop: SPACE.lg,
-        paddingBottom: SPACE.sm,
-      },
-      title: { fontFamily: FONT_FAMILY.title, fontSize: 28, color: colors.textPrimary },
-      subtitle: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted, marginTop: 2 },
-      
-      svgContainer: {
-        marginTop: SPACE.md,
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
-      liveSync: {
-        flexDirection: 'row', alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.08)',
-        paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-      },
-      syncDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.accentGreen, marginRight: 6 },
-      syncText: { color: colors.textPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
+  // Header
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingTop: SPACE.lg,
+    paddingBottom: SPACE.sm,
+  },
+  title: { fontFamily: FONT_FAMILY.title, fontSize: 28, color: colors.textPrimary },
+  subtitle: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textSecondary, marginTop: 2 },
+  
+  liveSync: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F0EFF7',
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
+    borderWidth: 1, borderColor: isDark ? 'transparent' : colors.border,
+  },
+  syncDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: isDark ? colors.accentGreen : '#059669', marginRight: 6 },
+  syncText: { color: colors.textPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
 
-      // Period selector
-      periodRow: {
-        flexDirection: 'row',
-        gap: SPACE.sm,
-        paddingHorizontal: 8,
-        marginBottom: SPACE.lg,
-      },
-      periodBtn: {
-        flex: 1, alignItems: 'center',
-        paddingVertical: 8,
-        borderRadius: RADIUS.full,
-        backgroundColor: colors.surface2 || colors.surface,
-        borderWidth: 1,
-        borderColor: colors.border,
-      },
-      periodBtnActive: {
-        backgroundColor: colors.accentPrimary,
-        borderColor: colors.accentPrimary,
-      },
-      periodBtnText: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: FONT_SIZE.sm,
-        color: colors.textMuted,
-      },
-      periodBtnTextActive: { color: '#ffffff' },
+  // Period selector
+  periodRow: {
+    flexDirection: 'row',
+    gap: SPACE.sm,
+    paddingHorizontal: 16,
+    marginBottom: SPACE.lg,
+  },
+  periodBtn: {
+    flex: 1, alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? '#18181B' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+    elevation: isDark ? 0 : 1,
+    shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.04)',
+    shadowOffset: { width: 0, height: 1 },
+    shadowRadius: 2,
+    shadowOpacity: isDark ? 0 : 1,
+  },
+  periodBtnActive: {
+    backgroundColor: colors.accentPrimary,
+    borderColor: colors.accentPrimary,
+  },
+  periodBtnText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: FONT_SIZE.sm,
+    color: colors.textSecondary,
+  },
+  periodBtnTextActive: { color: '#ffffff' },
 
-      scrollContent: { paddingTop: 0 },
+  scrollContent: { paddingTop: 0 },
 
-      // Hero ring
-      heroSection: {
-        alignItems: 'center',
-        paddingHorizontal: 8,
-        marginBottom: SPACE.lg,
-      },
-      ringInner: {
-        position: 'absolute',
-        top: 0, left: 0, right: 0, bottom: 0,
-        alignItems: 'center',
-        justifyContent: 'center',
-        transform: [{ translateY: -15 }],
-      },
-      ringScore: {
-        fontFamily: FONT_FAMILY.title,
-        fontSize: 52,
-        color: colors.textPrimary,
-        lineHeight: 60,
-      },
-      ringLabel: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: 11,
-        color: colors.textMuted,
-        letterSpacing: 3,
-        marginTop: 8,
-        textTransform: 'uppercase',
-      },
+  // Hero ring
+  heroSection: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: SPACE.lg,
+  },
+  ringInner: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    transform: [{ translateY: -15 }],
+  },
+  ringScore: {
+    fontFamily: FONT_FAMILY.title,
+    fontSize: 52,
+    color: colors.textPrimary,
+    lineHeight: 60,
+  },
+  ringLabel: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 11,
+    color: colors.textTertiary,
+    letterSpacing: 3,
+    marginTop: 8,
+    textTransform: 'uppercase',
+  },
 
-      // Summary stats row
-      summaryRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        width: '100%',
-        marginTop: SPACE.xl,
-        backgroundColor: colors.surface,
-        borderRadius: RADIUS.xl,
-        borderWidth: 1,
-        borderColor: colors.border,
-        paddingVertical: SPACE.lg,
-        paddingHorizontal: 8,
-      },
-      summaryItem: { alignItems: 'center', flex: 1 },
-      summaryVal: { fontFamily: FONT_FAMILY.bold, fontSize: 22, lineHeight: 26 },
-      summaryKey: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.xs, color: colors.textMuted, marginTop: 2, marginBottom: 4 },
-      summaryDivider: { width: 1, height: 36, backgroundColor: colors.border },
+  // Summary stats row
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginTop: SPACE.xl,
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: SPACE.lg,
+    paddingHorizontal: 8,
+    elevation: isDark ? 0 : 1,
+    shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.04)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    shadowOpacity: isDark ? 0 : 1,
+  },
+  summaryItem: { alignItems: 'center', flex: 1 },
+  summaryVal: { fontFamily: FONT_FAMILY.bold, fontSize: 22, lineHeight: 26 },
+  summaryKey: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.xs, color: colors.textSecondary, marginTop: 2, marginBottom: 4 },
+  summaryDivider: { width: 1, height: 36, backgroundColor: colors.border },
 
-      // Delta badge
-      delta: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 8,
-        gap: 2,
-      },
-      deltaText: { fontFamily: FONT_FAMILY.bold, fontSize: 10 },
+  // Delta badge
+  delta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 2,
+  },
+  deltaText: { fontFamily: FONT_FAMILY.bold, fontSize: 10 },
 
-      // Stat cards
-      cardRow: {
-        flexDirection: 'row',
-        gap: SPACE.md,
-        paddingHorizontal: 8,
-        marginBottom: SPACE.md,
-      },
-      statCard: {
-        flex: 1,
-        alignItems: 'center',
-        padding: SPACE.lg,
-      },
-      statCardVal: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: FONT_SIZE.xxl,
-        color: colors.textPrimary,
-      },
-      statCardLabel: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: FONT_SIZE.xs,
-        color: colors.textMuted,
-        textAlign: 'center',
-        marginTop: 2,
-      },
+  // Stat cards
+  cardRow: {
+    flexDirection: 'row',
+    gap: SPACE.md,
+    paddingHorizontal: 16,
+    marginBottom: SPACE.md,
+  },
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+    padding: SPACE.lg,
+  },
+  statCardVal: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: FONT_SIZE.xxl,
+    color: colors.textPrimary,
+  },
+  statCardLabel: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: FONT_SIZE.xs,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 2,
+  },
 
-      // Chart cards
-      fullCard: {
-        paddingHorizontal: 8,
-        marginBottom: SPACE.md,
-      },
-      chartCard: {
-        padding: CARD_PAD,
-      },
-      chartHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: SPACE.lg,
-      },
-      chartTitle: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: FONT_SIZE.base,
-        color: colors.textPrimary,
-      },
-      chartSub: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: FONT_SIZE.xs,
-        color: colors.textMuted,
-        marginTop: 2,
-      },
+  // Chart cards
+  fullCard: {
+    paddingHorizontal: 16,
+    marginBottom: SPACE.md,
+  },
+  chartCard: {
+    padding: CARD_PAD,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACE.lg,
+  },
+  chartTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: FONT_SIZE.base,
+    color: colors.textPrimary,
+  },
+  chartSub: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: FONT_SIZE.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
 
-      // Legend
-      legendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-      legendDot: { width: 8, height: 8, borderRadius: 4 },
-      legendText: { fontFamily: FONT_FAMILY.mono, fontSize: 10, color: colors.textMuted },
-      
-      exportBtn: {
-        backgroundColor: colors.accentPrimary,
-        borderRadius: RADIUS.lg,
-        paddingVertical: SPACE.md,
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginHorizontal: SPACE.xl,
-        marginTop: SPACE.xl,
-        gap: SPACE.sm,
-      },
-      exportBtnText: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: FONT_SIZE.md,
-        color: '#ffffff',
-      },
+  // Legend
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendText: { fontFamily: FONT_FAMILY.mono, fontSize: 10, color: colors.textSecondary },
 
-      // Bar chart grid
-      gridLine: {
-        position: 'absolute',
-        left: 0, right: 0,
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: colors.border,
-      },
-      barLabel: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 9,
-        color: colors.textTertiary,
-        marginTop: 4,
-      },
+  // Bar chart grid
+  gridLine: {
+    position: 'absolute',
+    left: 0, right: 0,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+  },
+  barLabel: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 9,
+    color: colors.textTertiary,
+    marginTop: 4,
+  },
 
-      // Axis labels
-      axisLabel: {
-        fontFamily: FONT_FAMILY.body,
-        fontSize: 9,
-        color: colors.textTertiary,
-        textAlign: 'center',
-      },
+  // Axis labels
+  axisLabel: {
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 9,
+    color: colors.textTertiary,
+    textAlign: 'center',
+  },
 
-      // Glass card
-      glassCard: {
-        borderRadius: RADIUS.xxl,
-        borderWidth: 1,
-        borderColor: colors.border,
-        overflow: 'hidden',
-        backgroundColor: colors.surface,
-      },
+  // Glass card
+  glassCard: {
+    borderRadius: RADIUS.xxl,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+    overflow: 'hidden',
+    backgroundColor: isDark ? 'rgba(20,20,25,0.4)' : '#FFFFFF',
+    elevation: isDark ? 0 : 2,
+    shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.03)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    shadowOpacity: isDark ? 0 : 1,
+  },
 
-      // Heatmap
-      heatLegendDot: { width: 10, height: 10, borderRadius: 2 },
-      heatLegendLabels: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: SPACE.sm,
-      },
-    });
+  // Heatmap
+  heatLegendDot: { width: 10, height: 10, borderRadius: 2 },
+  heatLegendLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: SPACE.sm,
+  },
+});
 

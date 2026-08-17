@@ -18,7 +18,7 @@ interface AgendaWidgetProps {
   nowDate: Date;
 }
 
-export function AgendaWidget({
+export const AgendaWidget = React.memo(function AgendaWidget({
   tasks,
   gymLogs,
   userGymPlan,
@@ -27,10 +27,10 @@ export function AgendaWidget({
   todayStr,
   nowDate
 }: AgendaWidgetProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
 
-  const { todayTasks, todayClasses, todayGym, isGymScheduled, shouldShowGymInAgenda, plannedDay, hasAgenda, formatTimeStr } = useMemo(() => {
+  const { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay, formatTimeStr } = useMemo(() => {
     const todayTasks = tasks.filter(t => t.date === todayStr);
     
     const dayOfWeek  = nowDate.getDay().toString();
@@ -46,8 +46,16 @@ export function AgendaWidget({
       return cls;
     }) || [];
 
+    // O(1) Map Pre-Indexing for attendance logs
+    const todayLogsMap = new Map<string, any>();
+    (attendanceLogs || []).forEach(l => {
+      if (l.date === todayStr) {
+        todayLogsMap.set(`${l.subjectId}_${l.type || 'class'}`, l);
+      }
+    });
+
     todayClasses.forEach(c => {
-      const log = (attendanceLogs || []).find(l => l.date === todayStr && l.subjectId === c.subjectId && l.type === c.type);
+      const log = todayLogsMap.get(`${c.subjectId}_${c.type || 'class'}`);
       if (log) {
         if (log.action === 'attended') c.isCompleted = true;
         if (log.action === 'absent' || log.action === 'missed') c.isMissed = true;
@@ -74,8 +82,6 @@ export function AgendaWidget({
     const isGymScheduled = !isRestPlan && !!(plannedDay && !plannedDay.isRest);
     // Show gym in agenda ONLY IF: (1) user has a real active workout log today OR (2) today is a planned non-rest workout day
     const shouldShowGymInAgenda = hasRealWorkoutLog || isGymScheduled;
-    
-    const hasAgenda = shouldShowGymInAgenda || todayClasses.length > 0 || todayTasks.length > 0;
 
     const formatTimeStr = (tStr: string): string => {
       if (!tStr) return '';
@@ -92,166 +98,170 @@ export function AgendaWidget({
       return `${hr}:${m.toString().padStart(2, '0')}${ampm}`;
     };
 
-    return { todayTasks, todayClasses, todayGym, isGymScheduled, shouldShowGymInAgenda, plannedDay, hasAgenda, formatTimeStr };
+    return { todayTasks, todayClasses, todayGym, shouldShowGymInAgenda, plannedDay, formatTimeStr };
   }, [tasks, gymLogs, userGymPlan, attendance, attendanceLogs, todayStr, nowDate]);
-
-
-  const parseTimeToMins = (tStr: string): number => {
-    if (!tStr) return 9999;
-    const startStr = tStr.split('-')[0].trim().toLowerCase();
-    let h = 0; let m = 0;
-    const isPM = startStr.includes('pm');
-    const isAM = startStr.includes('am');
-    const cleanStr = startStr.replace(/[a-z\s]/g, '');
-    const parts = cleanStr.split(':');
-    if (parts.length >= 2) {
-      h = parseInt(parts[0], 10) || 0; m = parseInt(parts[1], 10) || 0;
-    } else {
-      h = parseInt(parts[0], 10) || 0;
-    }
-    if (isPM && h < 12) h += 12;
-    if (isAM && h === 12) h = 0;
-    return h * 60 + m;
-  };
-
-  const getEndTimeMins = (tStr: string): number => {
-    if (!tStr) return 9999;
-    const parts = tStr.split('-');
-    const endStr = (parts.length > 1 ? parts[1] : parts[0]).trim().toLowerCase();
-    let h = 0; let m = 0;
-    const isPM = endStr.includes('pm');
-    const isAM = endStr.includes('am');
-    const cleanStr = endStr.replace(/[a-z\s]/g, '');
-    const timeParts = cleanStr.split(':');
-    if (timeParts.length >= 2) {
-      h = parseInt(timeParts[0], 10) || 0; m = parseInt(timeParts[1], 10) || 0;
-    } else {
-      h = parseInt(timeParts[0], 10) || 0;
-    }
-    if (isPM && h < 12) h += 12;
-    if (isAM && h === 12) h = 0;
-    return h * 60 + m;
-  };
 
   const nowMins = nowDate.getHours() * 60 + nowDate.getMinutes();
 
-  const agendaItems: any[] = [];
-
-  if (shouldShowGymInAgenda) {
-    const isGymCompleted = !!todayGym?.workoutDurationMinutes;
-
-    let gymTimeStr = '';
-    let gymTimeMins = 1080; // default 6:00 PM
-
-    if (plannedDay?.startTime) {
-      if (plannedDay.endTime) {
-         gymTimeStr = formatTimeStr(`${plannedDay.startTime}-${plannedDay.endTime}`);
+  // ── Memoized Agenda Items Generation & Sorting ───────────────────────────
+  const agendaItems = useMemo(() => {
+    const parseTimeToMins = (tStr: string): number => {
+      if (!tStr) return 9999;
+      const startStr = tStr.split('-')[0].trim().toLowerCase();
+      let h = 0; let m = 0;
+      const isPM = startStr.includes('pm');
+      const isAM = startStr.includes('am');
+      const cleanStr = startStr.replace(/[a-z\s]/g, '');
+      const parts = cleanStr.split(':');
+      if (parts.length >= 2) {
+        h = parseInt(parts[0], 10) || 0; m = parseInt(parts[1], 10) || 0;
       } else {
-         gymTimeStr = formatTimeStr(plannedDay.startTime);
+        h = parseInt(parts[0], 10) || 0;
       }
-      gymTimeMins = parseTimeToMins(plannedDay.startTime);
+      if (isPM && h < 12) h += 12;
+      if (isAM && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    const getEndTimeMins = (tStr: string): number => {
+      if (!tStr) return 9999;
+      const parts = tStr.split('-');
+      const endStr = (parts.length > 1 ? parts[1] : parts[0]).trim().toLowerCase();
+      let h = 0; let m = 0;
+      const isPM = endStr.includes('pm');
+      const isAM = endStr.includes('am');
+      const cleanStr = endStr.replace(/[a-z\s]/g, '');
+      const timeParts = cleanStr.split(':');
+      if (timeParts.length >= 2) {
+        h = parseInt(timeParts[0], 10) || 0; m = parseInt(timeParts[1], 10) || 0;
+      } else {
+        h = parseInt(timeParts[0], 10) || 0;
+      }
+      if (isPM && h < 12) h += 12;
+      if (isAM && h === 12) h = 0;
+      return h * 60 + m;
+    };
+
+    const items: any[] = [];
+
+    if (shouldShowGymInAgenda) {
+      const isGymCompleted = !!todayGym?.workoutDurationMinutes;
+
+      let gymTimeStr = '';
+      let gymTimeMins = 1080; // default 6:00 PM
+
+      if (plannedDay?.startTime) {
+        if (plannedDay.endTime) {
+           gymTimeStr = formatTimeStr(`${plannedDay.startTime}-${plannedDay.endTime}`);
+        } else {
+           gymTimeStr = formatTimeStr(plannedDay.startTime);
+        }
+        gymTimeMins = parseTimeToMins(plannedDay.startTime);
+      }
+
+      const gymTitle = todayGym?.workoutStartTime && !isGymCompleted
+        ? 'Gym Workout (In Progress)'
+        : isGymCompleted
+          ? 'Gym Workout (Completed)'
+          : `Gym: ${plannedDay?.name || 'Workout'}`;
+
+      if (!gymTitle.toLowerCase().includes('rest')) {
+        items.push({
+          id: 'gym-item',
+          title: gymTitle,
+          timeStr: gymTimeStr,
+          timeMins: isGymCompleted ? -1 : gymTimeMins,
+          isCompleted: isGymCompleted,
+          isMissed: false,
+          isCancelled: false,
+          icon: isGymCompleted ? 'checkmark-circle' : 'barbell-outline',
+          iconColor: isGymCompleted ? colors.accentGreen : colors.textPrimary,
+          onPress: () => navigation.navigate('Gym')
+        });
+      }
     }
 
-    const gymTitle = todayGym?.workoutStartTime && !isGymCompleted
-      ? 'Gym Workout (In Progress)'
-      : isGymCompleted
-        ? 'Gym Workout (Completed)'
-        : `Gym: ${plannedDay?.name || 'Workout'}`;
+    todayClasses.forEach((c: any) => {
+      let isMissed = c.isMissed;
+      if (!c.isCompleted && !c.isCancelled && !isMissed) {
+        const endTimeMins = getEndTimeMins(c.time);
+        if (nowMins > endTimeMins) {
+          isMissed = true;
+        }
+      }
 
-    if (!gymTitle.toLowerCase().includes('rest')) {
-      agendaItems.push({
-        id: 'gym-item',
-        title: gymTitle,
-        timeStr: gymTimeStr,
-        timeMins: isGymCompleted ? -1 : gymTimeMins,
-        isCompleted: isGymCompleted,
-        isMissed: false,
-        isCancelled: false,
-        icon: isGymCompleted ? 'checkmark-circle' : 'barbell-outline',
-        iconColor: isGymCompleted ? colors.accentGreen : colors.textPrimary,
-        onPress: () => navigation.navigate('Gym')
+      let icon = c.type === 'lab' ? 'flask-outline' : 'library-outline';
+      if (c.isCompleted) icon = 'checkmark-circle';
+      if (isMissed) icon = 'close-circle';
+      if (c.isCancelled) icon = 'remove-circle';
+
+      let iconColor = colors.accentAmber;
+      if (c.isCompleted) iconColor = colors.accentGreen;
+      if (isMissed) iconColor = colors.error;
+      if (c.isCancelled) iconColor = colors.textTertiary;
+
+      items.push({
+        id: c.id,
+        title: c.title,
+        timeStr: formatTimeStr(c.time),
+        timeMins: parseTimeToMins(c.time),
+        isCompleted: c.isCompleted,
+        isMissed,
+        isCancelled: c.isCancelled,
+        icon,
+        iconColor,
+        onPress: () => navigation.navigate('Attendance')
       });
-    }
-  }
-
-  todayClasses.forEach((c: any) => {
-    let isMissed = c.isMissed;
-    if (!c.isCompleted && !c.isCancelled && !isMissed) {
-      const endTimeMins = getEndTimeMins(c.time);
-      if (nowMins > endTimeMins) {
-        isMissed = true;
-      }
-    }
-
-    let icon = c.type === 'lab' ? 'flask-outline' : 'library-outline';
-    if (c.isCompleted) icon = 'checkmark-circle';
-    if (isMissed) icon = 'close-circle';
-    if (c.isCancelled) icon = 'remove-circle';
-
-    let iconColor = '#FF9500';
-    if (c.isCompleted) iconColor = colors.accentGreen;
-    if (isMissed) iconColor = colors.error;
-    if (c.isCancelled) iconColor = colors.textTertiary;
-
-    agendaItems.push({
-      id: c.id,
-      title: c.title,
-      timeStr: formatTimeStr(c.time),
-      timeMins: parseTimeToMins(c.time),
-      isCompleted: c.isCompleted,
-      isMissed,
-      isCancelled: c.isCancelled,
-      icon,
-      iconColor,
-      onPress: () => navigation.navigate('Attendance')
     });
-  });
 
-  todayTasks.forEach((t: any) => {
-    let isMissed = t.status === 'missed' || t.status === 'failed';
-    const isCancelled = t.status === 'cancelled';
-    const isCompleted = t.status === 'completed' || t.status === 'done';
+    todayTasks.forEach((t: any) => {
+      let isMissed = t.status === 'missed' || t.status === 'failed';
+      const isCancelled = t.status === 'cancelled';
+      const isCompleted = t.status === 'completed' || t.status === 'done';
 
-    if (!isCompleted && !isCancelled && !isMissed && t.timeSlot) {
-      const endTimeMins = getEndTimeMins(t.timeSlot);
-      if (nowMins > endTimeMins) {
-        isMissed = true;
+      if (!isCompleted && !isCancelled && !isMissed && t.timeSlot) {
+        const endTimeMins = getEndTimeMins(t.timeSlot);
+        if (nowMins > endTimeMins) {
+          isMissed = true;
+        }
       }
-    }
 
-    let icon = 'ellipse-outline';
-    if (isCompleted) icon = 'checkmark-circle';
-    if (isMissed) icon = 'close-circle';
-    if (isCancelled) icon = 'remove-circle';
+      let icon = 'ellipse-outline';
+      if (isCompleted) icon = 'checkmark-circle';
+      if (isMissed) icon = 'close-circle';
+      if (isCancelled) icon = 'remove-circle';
 
-    let iconColor = colors.textTertiary;
-    if (isCompleted) iconColor = colors.accentGreen;
-    if (isMissed) iconColor = colors.error;
-    if (isCancelled) iconColor = colors.textTertiary;
+      let iconColor = colors.textTertiary;
+      if (isCompleted) iconColor = colors.accentGreen;
+      if (isMissed) iconColor = colors.error;
+      if (isCancelled) iconColor = colors.textTertiary;
 
-    agendaItems.push({
-      id: t.id,
-      title: t.title,
-      timeStr: t.timeSlot ? formatTimeStr(t.timeSlot) : '',
-      timeMins: t.timeSlot ? parseTimeToMins(t.timeSlot) : 9999,
-      isCompleted,
-      isMissed,
-      isCancelled,
-      icon,
-      iconColor,
-      onPress: () => navigation.navigate('Tasks')
+      items.push({
+        id: t.id,
+        title: t.title,
+        timeStr: t.timeSlot ? formatTimeStr(t.timeSlot) : '',
+        timeMins: t.timeSlot ? parseTimeToMins(t.timeSlot) : 9999,
+        isCompleted,
+        isMissed,
+        isCancelled,
+        icon,
+        iconColor,
+        onPress: () => navigation.navigate('Tasks')
+      });
     });
-  });
 
-  agendaItems.sort((a, b) => {
-    const aIsInactive = a.isCompleted || a.isMissed || a.isCancelled;
-    const bIsInactive = b.isCompleted || b.isMissed || b.isCancelled;
+    items.sort((a, b) => {
+      const aIsInactive = a.isCompleted || a.isMissed || a.isCancelled;
+      const bIsInactive = b.isCompleted || b.isMissed || b.isCancelled;
 
-    if (aIsInactive && !bIsInactive) return 1;
-    if (!aIsInactive && bIsInactive) return -1;
-    
-    return a.timeMins - b.timeMins;
-  });
+      if (aIsInactive && !bIsInactive) return 1;
+      if (!aIsInactive && bIsInactive) return -1;
+      
+      return a.timeMins - b.timeMins;
+    });
+
+    return items;
+  }, [shouldShowGymInAgenda, todayGym, plannedDay, todayClasses, todayTasks, nowMins, colors, formatTimeStr, navigation]);
 
   if (agendaItems.length === 0) {
     return (
@@ -276,8 +286,8 @@ export function AgendaWidget({
             navigation.navigate('Tasks');
           }}
         >
-          <Ionicons name="add" size={16} color="#000000" />
-          <Text style={styles.emptyActionTextPrimary}>Add Task</Text>
+          <Ionicons name="add" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
+          <Text style={[styles.emptyActionTextPrimary, { color: isDark ? '#000000' : '#FFFFFF' }]}>Add Task</Text>
         </TouchableOpacity>
       </View>
     );
@@ -325,7 +335,7 @@ export function AgendaWidget({
       })}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   sectionLabel: {

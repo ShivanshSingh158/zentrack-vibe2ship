@@ -30,8 +30,12 @@ export const PRIORITY_COLORS: Record<string, string> = {
   P1: '#ff6961', P2: '#ff9f4d', P3: '#5eda9e',
 };
 
-const _t = new Date();
-export const today = `${_t.getFullYear()}-${String(_t.getMonth() + 1).padStart(2, '0')}-${String(_t.getDate()).padStart(2, '0')}`;
+export const getToday = (): string => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+export const today = getToday();
 
 export const formatDisplayDate = (d: string): string => {
   if (!d || d.length !== 10) return d;

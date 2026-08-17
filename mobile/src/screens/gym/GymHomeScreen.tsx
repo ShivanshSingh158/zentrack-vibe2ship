@@ -43,13 +43,15 @@ import { ZenGymAiFab } from '../../components/Gym/ZenGymAiFab';
 import { handleSyncError } from '../../utils/errorUtils';
 import { getOverloadSuggestion } from '../../services/progressiveOverload';
 import { setTabBarVisible } from '../../utils/tabBarScroll';
+import BottomSheet from '../../components/ui/BottomSheet';
 
+import { StatusBar } from 'expo-status-bar';
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 
 export const GymHomeScreen = memo(function GymHomeScreen() {
   const { colors, isDark } = useTheme();
-  const s = useMemo(() => makeStyles(colors), [colors]);
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const [selectedDate, setSelectedDate] = useState(todayStr());
@@ -100,6 +102,9 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const [logCardioFor, setLogCardioFor] = useState<GymCardioLog | null>(null);
   const [showBodyMetrics, setShowBodyMetrics] = useState(false);
   const [showPRHallOfFame, setShowPRHallOfFame] = useState(false);
+  const [exerciseMenuFor, setExerciseMenuFor] = useState<any | null>(null);
+  const [supersetPickerFor, setSupersetPickerFor] = useState<any | null>(null);
+  const [cardioMenuFor, setCardioMenuFor] = useState<GymCardioLog | null>(null);
 
   // ── Progressive Overload Toast state ────────────────────────────────────────
   const [overloadToast, setOverloadToast] = useState<{
@@ -545,19 +550,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                     style={s.actionBtn}
                     onPress={() => {
                       hapticMedium();
-                      Alert.alert(
-                        c.type || 'Cardio',
-                        'What would you like to do?',
-                        [
-                          { text: 'Log / Edit', onPress: () => setLogCardioFor(c) },
-                          {
-                            text: 'Delete',
-                            style: 'destructive',
-                            onPress: () => deleteCardio(c.id),
-                          },
-                          { text: 'Cancel', style: 'cancel' },
-                        ]
-                      );
+                      setCardioMenuFor(c);
                     }}
                   >
                     <Ionicons name="ellipsis-horizontal" size={20} color={COLORS.textMuted} />
@@ -590,7 +583,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       .filter(ex => !ex.skipped);
   }, [log?.exercises, planDay?.isRest]);
 
-  const renderExerciseItem = ({ item: ex, drag, isActive }: RenderItemParams<any>) => {
+  const renderExerciseItem = useCallback(({ item: ex, drag, isActive }: RenderItemParams<any>) => {
     const isDone = ex.setsLog.length > 0 && ex.setsLog.every((set: any) => set.completed);
     const totalSets = ex.setsLog.length;
     const completedSets = ex.setsLog.filter((s: any) => s.completed);
@@ -604,9 +597,18 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       subText = `${totalSets} sets, ${ex.targetReps || '0'} reps`;
     }
 
-    const activePrevExercises = log!.exercises.slice(0, ex.originalIndex).filter(e => !e.skipped);
-    const prevEx = activePrevExercises.length > 0 ? activePrevExercises[activePrevExercises.length - 1] : null;
-    const isPartnerWithPrevious = ex.supersetGroup && prevEx && prevEx.supersetGroup === ex.supersetGroup;
+    let isPartnerWithPrevious = false;
+    if (ex.supersetGroup && log?.exercises) {
+      for (let i = ex.originalIndex - 1; i >= 0; i--) {
+        const prev = log.exercises[i];
+        if (prev && !prev.skipped) {
+          if (prev.supersetGroup === ex.supersetGroup) {
+            isPartnerWithPrevious = true;
+          }
+          break;
+        }
+      }
+    }
 
     return (
       <ScaleDecorator>
@@ -690,59 +692,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               style={s.actionBtn} 
               onPress={() => {
                 hapticMedium();
-                const isGrouped = !!ex.supersetGroup;
-                const buttons = [
-                  {
-                    text: 'Exercise Details & Guide',
-                    onPress: () => navigation.navigate('ExerciseDetail', { exerciseId: ex.exerciseId, date: log!.date }),
-                  },
-                  {
-                    text: 'Swap Exercise...',
-                    onPress: () => navigation.navigate('ExerciseSwap', { originalExerciseId: ex.exerciseId, date: log!.date }),
-                  },
-                  ...(isGrouped
-                    ? [{
-                        text: `Remove from Superset (${ex.supersetGroup})`,
-                        style: 'destructive' as const,
-                        onPress: () => {
-                          const updated = log!.exercises.map(e => e.exerciseId === ex.exerciseId ? { ...e, supersetGroup: undefined } : e);
-                          reorderExercisesFull(updated);
-                        },
-                      }]
-                    : [{
-                        text: 'Link as Superset...',
-                        onPress: () => {
-                          const availablePartners = log!.exercises.filter(e => !e.skipped && e.exerciseId !== ex.exerciseId);
-                          if (availablePartners.length === 0) {
-                            Alert.alert('Superset', 'Add at least 2 exercises to create a superset.');
-                            return;
-                          }
-                          Alert.alert(
-                            'Select Superset Partner',
-                            `Pair "${ex.name}" with:`,
-                            [
-                              ...availablePartners.map(partner => ({
-                                text: partner.name,
-                                onPress: () => {
-                                  const groupLetter = partner.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
-                                  const updated = log!.exercises.map(e => {
-                                    if (e.exerciseId === ex.exerciseId || e.exerciseId === partner.exerciseId) {
-                                      return { ...e, supersetGroup: groupLetter };
-                                    }
-                                    return e;
-                                  });
-                                  reorderExercisesFull(updated);
-                                },
-                              })),
-                              { text: 'Cancel', style: 'cancel' as const },
-                            ]
-                          );
-                        },
-                      }]
-                  ),
-                  { text: 'Cancel', style: 'cancel' as const },
-                ];
-                Alert.alert(ex.name, 'Exercise Options', buttons);
+                setExerciseMenuFor(ex);
               }}
             >
               <Ionicons name="ellipsis-horizontal" size={20} color={COLORS.textMuted} />
@@ -751,7 +701,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         </TouchableOpacity>
       </ScaleDecorator>
     );
-  };
+  }, [log?.exercises, s, handleResumeWorkout]);
 
   const renderHeader = () => (
     <>
@@ -1120,6 +1070,243 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         {showBodyMetrics && <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />}
         {showPRHallOfFame && <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />}
 
+        {/* ─── Themed Exercise Options Bottom Sheet ──────────────────────────────── */}
+        <BottomSheet
+          visible={!!exerciseMenuFor}
+          onClose={() => setExerciseMenuFor(null)}
+        >
+          <View style={{ gap: 8, paddingBottom: 16 }}>
+            <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
+              {exerciseMenuFor?.name || 'Exercise Options'}
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 8, fontFamily: FONT_FAMILY.medium }}>
+              {exerciseMenuFor?.muscle ? `${exerciseMenuFor.muscle} • ` : ''}{exerciseMenuFor?.setsLog?.length || exerciseMenuFor?.targetSets || 3} sets, {exerciseMenuFor?.targetReps || '8–12'} reps
+            </Text>
+
+            {/* Option 1: Exercise Details & Guide */}
+            <TouchableOpacity
+              style={s.menuActionRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                const ex = exerciseMenuFor;
+                setExerciseMenuFor(null);
+                navigation.navigate('ExerciseDetail', { exerciseId: ex.exerciseId, date: log!.date });
+              }}
+            >
+              <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)' }]}>
+                <Ionicons name="book-outline" size={18} color={colors.accentPrimary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.menuActionTitle}>Exercise Details & Guide</Text>
+                <Text style={s.menuActionSub}>Instructions, muscle anatomy & video</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+
+            {/* Option 2: Swap Exercise */}
+            <TouchableOpacity
+              style={s.menuActionRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                const ex = exerciseMenuFor;
+                setExerciseMenuFor(null);
+                navigation.navigate('ExerciseSwap', { originalExerciseId: ex.exerciseId, date: log!.date });
+              }}
+            >
+              <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.08)' }]}>
+                <Ionicons name="swap-horizontal" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.menuActionTitle}>Swap Exercise...</Text>
+                <Text style={s.menuActionSub}>Choose alternative target movements</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+
+            {/* Option 3: Link/Unlink Superset */}
+            {exerciseMenuFor?.supersetGroup ? (
+              <TouchableOpacity
+                style={s.menuActionRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const ex = exerciseMenuFor;
+                  setExerciseMenuFor(null);
+                  const updated = log!.exercises.map(e => e.exerciseId === ex.exerciseId ? { ...e, supersetGroup: undefined } : e);
+                  reorderExercisesFull(updated);
+                }}
+              >
+                <View style={[s.menuActionIcon, { backgroundColor: 'rgba(255,105,97,0.12)' }]}>
+                  <Ionicons name="link-outline" size={18} color="#ff6961" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.menuActionTitle, { color: '#ff6961' }]}>Remove from Superset ({exerciseMenuFor.supersetGroup})</Text>
+                  <Text style={s.menuActionSub}>Unlink from paired exercise</Text>
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={s.menuActionRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const ex = exerciseMenuFor;
+                  setExerciseMenuFor(null);
+                  const availablePartners = (log?.exercises || []).filter(e => !e.skipped && e.exerciseId !== ex.exerciseId);
+                  if (availablePartners.length === 0) {
+                    Alert.alert('Superset', 'Add at least 2 exercises to create a superset.', [{ text: 'OK' }]);
+                    return;
+                  }
+                  setSupersetPickerFor(ex);
+                }}
+              >
+                <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(255,159,77,0.12)' : 'rgba(217,119,6,0.08)' }]}>
+                  <Ionicons name="link-outline" size={18} color={isDark ? '#ff9f4d' : '#D97706'} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.menuActionTitle}>Link as Superset...</Text>
+                  <Text style={s.menuActionSub}>Pair with another movement for back-to-back sets</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
+
+            {/* Option 4: Delete Exercise */}
+            <TouchableOpacity
+              style={s.menuActionRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                const ex = exerciseMenuFor;
+                setExerciseMenuFor(null);
+                deleteExercise(ex.exerciseId);
+              }}
+            >
+              <View style={[s.menuActionIcon, { backgroundColor: 'rgba(255,105,97,0.12)' }]}>
+                <Ionicons name="trash-outline" size={18} color="#ff6961" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.menuActionTitle, { color: '#ff6961' }]}>Delete Exercise</Text>
+                <Text style={s.menuActionSub}>Remove from today's workout</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Cancel / Go Back Button */}
+            <TouchableOpacity
+              style={s.menuCancelBtn}
+              activeOpacity={0.7}
+              onPress={() => setExerciseMenuFor(null)}
+            >
+              <Text style={s.menuCancelText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </BottomSheet>
+
+        {/* ─── Themed Superset Partner Picker Bottom Sheet ──────────────────── */}
+        <BottomSheet
+          visible={!!supersetPickerFor}
+          onClose={() => setSupersetPickerFor(null)}
+        >
+          <View style={{ gap: 8, paddingBottom: 16 }}>
+            <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
+              Select Superset Partner
+            </Text>
+            <Text style={{ fontSize: 13, color: colors.textMuted, marginBottom: 8, fontFamily: FONT_FAMILY.medium }}>
+              Pair "{supersetPickerFor?.name}" with:
+            </Text>
+            {(log?.exercises || [])
+              .filter(e => !e.skipped && e.exerciseId !== supersetPickerFor?.exerciseId)
+              .map(partner => (
+                <TouchableOpacity
+                  key={partner.exerciseId}
+                  style={s.menuActionRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const ex = supersetPickerFor;
+                    setSupersetPickerFor(null);
+                    const groupLetter = partner.supersetGroup || String.fromCharCode(65 + Math.floor(Math.random() * 26));
+                    const updated = (log?.exercises || []).map(e => {
+                      if (e.exerciseId === ex.exerciseId || e.exerciseId === partner.exerciseId) {
+                        return { ...e, supersetGroup: groupLetter };
+                      }
+                      return e;
+                    });
+                    reorderExercisesFull(updated);
+                  }}
+                >
+                  <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)' }]}>
+                    <Ionicons name="barbell-outline" size={18} color={colors.accentPrimary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.menuActionTitle}>{partner.name}</Text>
+                    <Text style={s.menuActionSub}>{partner.muscle || 'Exercise'}</Text>
+                  </View>
+                  <Ionicons name="checkmark-circle-outline" size={18} color={colors.accentPrimary} />
+                </TouchableOpacity>
+              ))}
+            <TouchableOpacity
+              style={s.menuCancelBtn}
+              activeOpacity={0.7}
+              onPress={() => setSupersetPickerFor(null)}
+            >
+              <Text style={s.menuCancelText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </BottomSheet>
+
+        {/* ─── Themed Cardio Options Bottom Sheet ───────────────────────────── */}
+        <BottomSheet
+          visible={!!cardioMenuFor}
+          onClose={() => setCardioMenuFor(null)}
+        >
+          <View style={{ gap: 8, paddingBottom: 16 }}>
+            <Text style={{ fontSize: 18, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
+              {cardioMenuFor?.type || 'Cardio Options'}
+            </Text>
+            <TouchableOpacity
+              style={s.menuActionRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                const c = cardioMenuFor;
+                setCardioMenuFor(null);
+                if (c) setLogCardioFor(c);
+              }}
+            >
+              <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.08)' }]}>
+                <Ionicons name="create-outline" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.menuActionTitle}>Log / Edit Cardio</Text>
+                <Text style={s.menuActionSub}>Update duration, distance, speed & pace</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={s.menuActionRow}
+              activeOpacity={0.7}
+              onPress={() => {
+                const c = cardioMenuFor;
+                setCardioMenuFor(null);
+                if (c) deleteCardio(c.id);
+              }}
+            >
+              <View style={[s.menuActionIcon, { backgroundColor: 'rgba(255,105,97,0.12)' }]}>
+                <Ionicons name="trash-outline" size={18} color="#ff6961" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.menuActionTitle, { color: '#ff6961' }]}>Delete Cardio</Text>
+                <Text style={s.menuActionSub}>Remove from today's workout</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={s.menuCancelBtn}
+              activeOpacity={0.7}
+              onPress={() => setCardioMenuFor(null)}
+            >
+              <Text style={s.menuCancelText}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </BottomSheet>
+
       </KeyboardAvoidingView>
       </View>
 
@@ -1130,30 +1317,30 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
             bottom: 160,
             left: 16,
             right: 16,
-            backgroundColor: '#1a2a1a',
+            backgroundColor: isDark ? '#1a2a1a' : '#ECFDF5',
             borderRadius: 16,
             padding: 14,
             borderWidth: 1,
-            borderColor: 'rgba(52,199,89,0.35)',
+            borderColor: isDark ? 'rgba(52,199,89,0.35)' : '#A7F3D0',
             flexDirection: 'row',
             alignItems: 'center',
             gap: 12,
-            shadowColor: '#34C759',
+            shadowColor: isDark ? '#34C759' : '#059669',
             shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.25,
+            shadowOpacity: isDark ? 0.25 : 0.15,
             shadowRadius: 12,
             elevation: 12,
             zIndex: 9998,
           }}
         >
-          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(52,199,89,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: isDark ? 'rgba(52,199,89,0.15)' : 'rgba(5,150,105,0.12)', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 18 }}>💪</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, fontFamily: FONT_FAMILY.bold, color: '#34C759', marginBottom: 2 }}>
+            <Text style={{ fontSize: 12, fontFamily: FONT_FAMILY.bold, color: isDark ? '#34C759' : '#059669', marginBottom: 2 }}>
               Progressive Overload Ready!
             </Text>
-            <Text style={{ fontSize: 11, fontFamily: FONT_FAMILY.body, color: '#c7f7d4', lineHeight: 15 }} numberOfLines={2}>
+            <Text style={{ fontSize: 11, fontFamily: FONT_FAMILY.body, color: isDark ? '#c7f7d4' : '#065F46', lineHeight: 15 }} numberOfLines={2}>
               {overloadToast.exerciseName}: try {overloadToast.suggestedWeight}kg next session (+{overloadToast.step}kg from {overloadToast.currentWeight}kg)
             </Text>
           </View>
@@ -1161,7 +1348,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
             onPress={() => { if (overloadToastTimer.current) clearTimeout(overloadToastTimer.current); setOverloadToast(null); }}
             style={{ padding: 4 }}
           >
-            <Ionicons name="close" size={16} color="rgba(255,255,255,0.4)" />
+            <Ionicons name="close" size={16} color={isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)'} />
           </TouchableOpacity>
         </Animated.View>
       )}
@@ -1171,18 +1358,18 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   );
 });
 
-const makeStyles = (colors: any) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
   scrollContent: { paddingBottom: 95, paddingTop: 48 },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: colors.surfaceRaised || colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: colors.border },
+  modalContent: { backgroundColor: isDark ? '#1C1C1E' : (colors.surfaceRaised || colors.surface), borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   modalTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
-  moveActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.accentDim, borderWidth: 1, borderColor: colors.border, paddingVertical: 10, borderRadius: 14 },
-  moveActionText: { fontSize: 13, fontWeight: '700', color: colors.accentPrimary },
-  posRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: colors.surface2 || colors.surface, marginBottom: 6 },
-  posRowActive: { backgroundColor: colors.accentPrimary },
+  moveActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : colors.accentDim, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border, paddingVertical: 10, borderRadius: 14 },
+  moveActionText: { fontSize: 13, fontWeight: '700', color: isDark ? '#a599ff' : colors.accentPrimary },
+  posRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: isDark ? '#2C2C2E' : (colors.surface2 || colors.surface), marginBottom: 6 },
+  posRowActive: { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary },
   posNum: { fontSize: 12, fontWeight: '700', color: colors.textMuted, width: 30 },
   posName: { flex: 1, fontSize: 13, color: colors.textPrimary, marginRight: 8 },
 
@@ -1193,9 +1380,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
   dayLetter: { fontSize: 10.5, color: colors.textTertiary, fontFamily: 'Inter-Medium', marginBottom: 1 },
   dayLetterActive: { color: colors.textPrimary },
   dayPill: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent' },
-  dayPillActive: { backgroundColor: colors.accentPrimary, borderRadius: 18, overflow: 'hidden' },
+  dayPillActive: { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary, borderRadius: 18, overflow: 'hidden' },
   dayNum: { fontSize: 13, color: colors.textTertiary, fontFamily: 'Inter-Regular' },
-  dayNumActive: { color: '#ffffff', fontWeight: '700' },
+  dayNumActive: { color: isDark ? '#000000' : '#ffffff', fontWeight: '700' },
 
   muscleSection: { paddingHorizontal: 8, marginBottom: 16 },
   muscleDiagramWrapper: { alignItems: 'center', paddingVertical: 8 },
@@ -1205,31 +1392,102 @@ const makeStyles = (colors: any) => StyleSheet.create({
   legendText: { fontSize: 10, color: colors.textTertiary, fontFamily: 'Inter-Regular' },
 
   workoutSection: { paddingHorizontal: 8, marginBottom: 8 },
-  startBtn: { backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
-  startBtnText: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', letterSpacing: 1 },
+  startBtn: {
+    backgroundColor: isDark ? '#1C1C1E' : colors.accentGreen,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.accentGreen,
+  },
+  startBtnText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
 
-  completedBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.accentGreenDim, borderRadius: 16, padding: 16 },
+  completedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: isDark ? 'rgba(94,218,158,0.12)' : 'rgba(16,185,129,0.10)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: isDark ? 'transparent' : 'rgba(16,185,129,0.25)',
+  },
   completedBannerLeft: { gap: 2 },
-  completedBannerTitle: { fontSize: 15, fontWeight: '700', color: colors.accentGreen },
+  completedBannerTitle: { fontSize: 15, fontWeight: '700', color: isDark ? '#5eda9e' : '#059669' },
   completedBannerSub: { fontSize: 13, color: colors.textMuted },
-  streakBadgeInline: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 14, backgroundColor: colors.accentAmberDim },
-  streakBadgeInlineText: { fontSize: 12, fontWeight: '700', color: colors.accentAmber },
+  streakBadgeInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
+    backgroundColor: isDark ? 'rgba(255,159,77,0.1)' : 'rgba(249,115,22,0.12)',
+  },
+  streakBadgeInlineText: { fontSize: 12, fontWeight: '700', color: isDark ? '#ff9f4d' : '#EA580C' },
   
   readinessBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1 },
 
-  activeBanner: { backgroundColor: colors.surface, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: colors.border },
+  activeBanner: {
+    backgroundColor: isDark ? '#1a140b' : '#FFFBEB',
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: isDark ? '#4d3b20' : '#FDE68A',
+  },
   activeBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  activeIndicator: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#eab308' },
-  activeBannerTitle: { fontSize: 10, fontWeight: '700', color: '#eab308', letterSpacing: 1 },
-  activeBannerResume: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
+  activeIndicator: { width: 8, height: 8, borderRadius: 4, backgroundColor: isDark ? '#eab308' : '#D97706' },
+  activeBannerTitle: { fontSize: 10, fontWeight: '700', color: isDark ? '#eab308' : '#B45309', letterSpacing: 1 },
+  activeBannerResume: { fontSize: 14, fontWeight: '600', color: isDark ? '#ffffff' : '#B45309' },
 
   section: { paddingHorizontal: 8, marginBottom: 12 },
   sectionLabel: { fontSize: 11, fontWeight: '700', color: colors.textTertiary, marginBottom: 12, marginLeft: 4, letterSpacing: 2 },
   
-  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 16, borderRadius: 16, marginBottom: 8, borderWidth: 1, borderColor: colors.border },
-  cardioSquare: { width: 20, height: 20, borderRadius: 4, backgroundColor: colors.surface2 || colors.surface, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  checkboxCircle: { width: 20, height: 20, borderRadius: 10, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  checkboxCircleDone: { backgroundColor: colors.accentGreen, borderColor: colors.accentGreen },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? '#1C1C1E' : colors.surface,
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
+  },
+  cardioSquare: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: isDark ? '#2C2C2E' : 'rgba(14,165,233,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+    borderWidth: isDark ? 0 : 1,
+    borderColor: isDark ? 'transparent' : '#0284C7',
+  },
+  checkboxCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: isDark ? '#2c2c2e' : '#D1D1D6',
+    backgroundColor: isDark ? 'transparent' : '#F4F3F8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  checkboxCircleDone: {
+    backgroundColor: isDark ? '#5eda9e' : '#059669',
+    borderColor: isDark ? '#5eda9e' : '#059669',
+  },
   rowTextCol: { flex: 1, gap: 2 },
   rowTitle: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
   rowSubtitle: { fontSize: 12, color: colors.textMuted },
@@ -1237,12 +1495,28 @@ const makeStyles = (colors: any) => StyleSheet.create({
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionBtn: { padding: 8, marginHorizontal: -4 },
 
-  fabAi: { position: 'absolute', bottom: 110, right: 24, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
-  fabGradient: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentPrimary },
+  fabAi: { position: 'absolute', bottom: 110, right: 24, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8 },
+  fabGradient: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#a599ff' : colors.accentPrimary },
 
-  restTimerOverlay: { position: 'absolute', bottom: 110, alignSelf: 'center', backgroundColor: colors.surfaceRaised || colors.surface, borderWidth: 1, borderColor: 'rgba(52, 199, 89, 0.5)', borderRadius: 30, paddingVertical: 12, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, elevation: 10, zIndex: 9999 },
+  restTimerOverlay: {
+    position: 'absolute',
+    bottom: 110,
+    alignSelf: 'center',
+    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(52, 199, 89, 0.5)' : 'rgba(16, 185, 129, 0.40)',
+    borderRadius: 30,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    elevation: 10,
+    zIndex: 9999,
+  },
   restTimerLabel: { fontSize: 12, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1 },
-  restTimerText: { fontFamily: 'Courier', fontSize: 24, color: '#34C759', fontWeight: 'bold' },
+  restTimerText: { fontFamily: 'Courier', fontSize: 24, color: isDark ? '#34C759' : '#059669', fontWeight: 'bold' },
   restTimerClose: { marginLeft: 8 },
   routineHeaderBar: {
     flexDirection: 'row',
@@ -1251,11 +1525,11 @@ const makeStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginBottom: 12,
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? '#1C1C1E' : colors.surface,
     marginHorizontal: 8,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
   },
   routineInfoCol: { flex: 1, paddingRight: 8 },
   routineLabelText: { fontSize: 10, fontWeight: '700', color: colors.textTertiary, letterSpacing: 1.5, marginBottom: 2 },
@@ -1264,9 +1538,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.accentDim,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : colors.accentDim,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1316,13 +1590,13 @@ const makeStyles = (colors: any) => StyleSheet.create({
   morphBtnPill: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: 16,
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.09)' : colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? 'rgba(255,255,255,0.14)' : colors.border,
   },
   morphBtnPillAccent: {
-    backgroundColor: colors.accentDim,
-    borderColor: colors.accentPrimary,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.16)' : colors.accentDim,
+    borderColor: isDark ? 'rgba(165,153,255,0.32)' : colors.accentPrimary,
   },
   headerBtnText: {
     fontSize: 8.5,
@@ -1330,6 +1604,51 @@ const makeStyles = (colors: any) => StyleSheet.create({
     fontFamily: 'Inter-Medium',
     marginTop: 1,
     textAlign: 'center',
+  },
+
+  // ── Themed Action Sheet Menu Styles ──────────────────────────────────────
+  menuActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
+    marginBottom: 6,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
+  },
+  menuActionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  menuActionTitle: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bold,
+    color: colors.textPrimary,
+  },
+  menuActionSub: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.body,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  menuCancelBtn: {
+    marginTop: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#E2E1EA',
+  },
+  menuCancelText: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bold,
+    color: colors.textPrimary,
   },
 });
 

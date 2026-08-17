@@ -28,9 +28,11 @@ import { useTheme } from "../contexts/ThemeContext";
 import { HabitReminderModal } from '../components/Habits/HabitReminderModal';
 import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
+import { formatLocalDateStr } from '../utils/dateUtils';
+import BottomSheet from '../components/ui/BottomSheet';
 
-
-const today = new Date().toISOString().slice(0, 10);
+const getTodayStr = () => formatLocalDateStr(new Date());
+const today = formatLocalDateStr(new Date());
 
 // Helper for heat map dates
 const getPastDays = (numDays: number) => {
@@ -39,28 +41,33 @@ const getPastDays = (numDays: number) => {
   for (let i = numDays - 1; i >= 0; i--) {
     const temp = new Date(d);
     temp.setDate(temp.getDate() - i);
-    dates.push(temp.toISOString().slice(0, 10));
+    dates.push(formatLocalDateStr(temp));
   }
   return dates;
 };
 
-// ΓöÇΓöÇΓöÇ Create Habit Modal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Create Habit Modal ────────────────────────────────────────────────────────
 
 function CreateHabitModal({ visible, userId, onClose }: {
   visible: boolean; userId: string; onClose: () => void;
 }) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const [type, setType] = useState<'positive' | 'negative'>('positive');
   const [cost, setCost] = useState('');
   const [name, setName] = useState('');
-  const [emoji, setEmoji] = useState('Γ¡É');
+  const [emoji, setEmoji] = useState('⭐');
   const [frequency, setFrequency] = useState('daily');
   const [customDays, setCustomDays] = useState<string[]>([]);
-  const [color, setColor] = useState(colors.accentPrimary);
+  const [color, setColor] = useState(isDark ? colors.accentPrimary : '#6C5CE7');
   const [targetCount, setTargetCount] = useState('');
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const HABIT_COLORS = [colors.accentPrimary, colors.accentGreen, colors.accentAmber, '#FF3B30', '#34C759', '#007AFF'];
+  const HABIT_COLORS = isDark 
+    ? ['#a599ff', '#5eda9e', '#ff9f4d', '#ff6961', '#38bdf8', '#c084fc']
+    : ['#6C5CE7', '#059669', '#D97706', '#E11D48', '#0284C7', '#7C3AED'];
+  const EMOJI_PRESETS = type === 'positive' 
+    ? ['⭐', '💧', '📚', '🏃', '🧘', '🍎', '💤', '🎯']
+    : ['🚫', '🚭', '🍫', '📱', '🎮', '☕', '🍔', '💸'];
   const [saving, setSaving] = useState(false);
 
   const handleSave = () => {
@@ -71,11 +78,11 @@ function CreateHabitModal({ visible, userId, onClose }: {
     
     // Fire-and-forget network request, deferred to prevent animation frame drops
     setTimeout(() => {
-      const todayStr = new Date().toISOString().slice(0, 10);
+      const todayStr = getTodayStr();
       addDoc(collection(db, COLLECTION.HABITS), {
         userId,
         name: name.trim(),
-        emoji: emoji.trim() || 'Γ¡É',
+        emoji: emoji.trim() || (type === 'positive' ? '⭐' : '🚫'),
         frequency: frequency === 'custom' && customDays.length > 0 ? customDays.join(', ') : frequency,
         streak: 0,
         longestStreak: 0,
@@ -89,8 +96,8 @@ function CreateHabitModal({ visible, userId, onClose }: {
     }, 150);
 
     setName('');
-    setEmoji('Γ¡É');
-    setColor(colors.accentPrimary);
+    setEmoji('⭐');
+    setColor(isDark ? colors.accentPrimary : '#6C5CE7');
     setType('positive');
     setCost('');
     setTargetCount('');
@@ -98,92 +105,138 @@ function CreateHabitModal({ visible, userId, onClose }: {
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <AnimatedPressable style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKAV}>
-          <View style={styles.modalCard} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>New Habit</Text>
-            
-            <View style={{flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.lg}}>
-              <AnimatedPressable 
-                style={[styles.typeBtn, type === 'positive' && styles.typeBtnActivePos]}
-                onPress={() => setType('positive')}
+    <BottomSheet visible={visible} onClose={onClose}>
+      <View style={{ width: '100%' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <Text style={styles.modalTitle}>New Habit</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.modalCloseBtn}>
+            <Ionicons name="close" size={20} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+        
+        <View style={{ flexDirection: 'row', gap: SPACE.sm, marginBottom: SPACE.lg }}>
+          <AnimatedPressable 
+            style={[styles.typeBtn, type === 'positive' && styles.typeBtnActivePos]}
+            onPress={() => {
+              setType('positive');
+              if (emoji === '🚫') setEmoji('⭐');
+            }}
+          >
+            <Text style={[styles.typeBtnText, type === 'positive' && styles.typeBtnTextActivePos]}>Building (Do)</Text>
+          </AnimatedPressable>
+          <AnimatedPressable 
+            style={[styles.typeBtn, type === 'negative' && styles.typeBtnActiveNeg]}
+            onPress={() => {
+              setType('negative');
+              if (emoji === '⭐') setEmoji('🚫');
+            }}
+          >
+            <Text style={[styles.typeBtnText, type === 'negative' && styles.typeBtnTextActiveNeg]}>Avoiding (Quit)</Text>
+          </AnimatedPressable>
+        </View>
+        
+        <TextInput
+            style={styles.modalInput}
+            placeholder={type === 'positive' ? "Name (e.g. Meditate, Read, Workout)" : "Name (e.g. Junk Food, Smoking, Doomscrolling)"}
+            placeholderTextColor={colors.textMuted}
+            value={name}
+            onChangeText={setName}
+        />
+
+        {/* Quick Emoji Presets */}
+        <View style={{ marginBottom: SPACE.md }}>
+          <Text style={styles.sectionTitle}>Icon</Text>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {EMOJI_PRESETS.map((em) => (
+              <TouchableOpacity
+                key={em}
+                style={[
+                  styles.emojiChip,
+                  emoji === em && styles.emojiChipActive,
+                ]}
+                onPress={() => setEmoji(em)}
               >
-                <Text style={[styles.typeBtnText, type === 'positive' && styles.typeBtnTextActive]}>Building (Do)</Text>
-              </AnimatedPressable>
-              <AnimatedPressable 
-                style={[styles.typeBtn, type === 'negative' && styles.typeBtnActiveNeg]}
-                onPress={() => setType('negative')}
-              >
-                <Text style={[styles.typeBtnText, type === 'negative' && styles.typeBtnTextActive]}>Avoiding (Quit)</Text>
-              </AnimatedPressable>
-            </View>
-            
-            <TextInput
-                style={styles.modalInput}
-                placeholder={type === 'positive' ? "Name (e.g. Meditate)" : "Name (e.g. Junk Food)"}
-                placeholderTextColor={colors.textMuted}
-                value={name}
-                onChangeText={setName}
-            />
-
-            {type === 'positive' && (
-              <TextInput
-                  style={styles.modalInput}
-                  placeholder="Daily Target (optional, e.g. 8 for 8 glasses)"
-                  placeholderTextColor={colors.textMuted}
-                  value={targetCount}
-                  onChangeText={setTargetCount}
-                  keyboardType="numeric"
-              />
-            )}
-
-            {type === 'negative' && (
-              <TextInput
-                  style={styles.modalInput}
-                  placeholder="Cost per day (Optional, e.g. 10 for $10)"
-                  placeholderTextColor={colors.textMuted}
-                  value={cost}
-                  onChangeText={setCost}
-                  keyboardType="numeric"
-              />
-            )}
-
-            <Text style={styles.sectionTitle}>Frequency</Text>
-            <View style={styles.frequencyRow}>
-              {['daily', 'weekly', '3x/week', 'custom'].map(f => (
-                <AnimatedPressable 
-                  key={f} 
-                  style={[styles.freqBtn, frequency === f && styles.freqBtnActive]}
-                  onPress={() => setFrequency(f)}
-                >
-                  <Text style={[styles.freqBtnText, frequency === f && styles.freqBtnTextActive]}>
-                    {f.charAt(0).toUpperCase() + f.slice(1)}
-                  </Text>
-                </AnimatedPressable>
-              ))}
-            </View>
-
-            <View style={styles.modalActions}>
-              <AnimatedPressable style={styles.cancelBtn} onPress={onClose}>
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </AnimatedPressable>
-              <AnimatedPressable
-                style={[styles.saveBtn, (!name.trim() || saving) && { opacity: 0.5 }]}
-                onPress={handleSave}
-                disabled={!name.trim() || saving}
-              >
-                <Text style={styles.saveBtnText}>{saving ? 'SavingΓÇª' : 'Create Habit'}</Text>
-              </AnimatedPressable>
-            </View>
+                <Text style={{ fontSize: 18 }}>{em}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        </KeyboardAvoidingView>
-      </AnimatedPressable>
-    </Modal>
+        </View>
+
+        {/* Color Palette Chips */}
+        <View style={{ marginBottom: SPACE.md }}>
+          <Text style={styles.sectionTitle}>Color Accent</Text>
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+            {HABIT_COLORS.map((c) => (
+              <TouchableOpacity
+                key={c}
+                style={[
+                  styles.colorDot,
+                  { backgroundColor: c },
+                  color === c && styles.colorDotActive,
+                ]}
+                onPress={() => setColor(c)}
+              >
+                {color === c && <Ionicons name="checkmark" size={12} color="#FFFFFF" />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {type === 'positive' && (
+          <TextInput
+              style={styles.modalInput}
+              placeholder="Daily Target (optional, e.g. 8 for 8 glasses)"
+              placeholderTextColor={colors.textMuted}
+              value={targetCount}
+              onChangeText={setTargetCount}
+              keyboardType="numeric"
+          />
+        )}
+
+        {type === 'negative' && (
+          <TextInput
+              style={styles.modalInput}
+              placeholder="Cost per day (Optional, e.g. 10 for $10)"
+              placeholderTextColor={colors.textMuted}
+              value={cost}
+              onChangeText={setCost}
+              keyboardType="numeric"
+          />
+        )}
+
+        <Text style={styles.sectionTitle}>Frequency</Text>
+        <View style={styles.frequencyRow}>
+          {['daily', 'weekly', '3x/week', 'custom'].map(f => (
+            <AnimatedPressable 
+              key={f} 
+              style={[styles.freqBtn, frequency === f && styles.freqBtnActive]}
+              onPress={() => setFrequency(f)}
+            >
+              <Text style={[styles.freqBtnText, frequency === f && styles.freqBtnTextActive]}>
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </Text>
+            </AnimatedPressable>
+          ))}
+        </View>
+
+        <View style={styles.modalActions}>
+          <AnimatedPressable style={styles.cancelBtn} onPress={onClose}>
+            <Text style={styles.cancelBtnText}>Cancel</Text>
+          </AnimatedPressable>
+          <AnimatedPressable
+            style={[styles.saveBtn, (!name.trim() || saving) && { opacity: 0.5 }]}
+            onPress={handleSave}
+            disabled={!name.trim() || saving}
+          >
+            <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Create Habit'}</Text>
+          </AnimatedPressable>
+        </View>
+      </View>
+    </BottomSheet>
   );
 }
 
-// ΓöÇΓöÇΓöÇ Habit Card ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Habit Card ────────────────────────────────────────────────────────ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, onToggle, onArchive, onDelete, habitLogs, onFireConfetti, freezesLeft }: {
   habit: Habit;
@@ -197,7 +250,7 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
   freezesLeft?: number;
 }) {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const checkScale = useSharedValue(1);
   const emojiScale = useSharedValue(1);
   const isNegative = habit.type === 'negative';
@@ -229,7 +282,7 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
     const nowMs = new Date().getTime();
     for (let i = 14; i >= 0; i--) {
       const d = new Date(nowMs - i * 24 * 60 * 60 * 1000);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = formatLocalDateStr(d);
       const log = logDateMap.get(dateStr);
       let status: 'completed' | 'missed' | 'freeze' | 'future' = 'missed';
 
@@ -320,8 +373,18 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
       style={[
         styles.habitCard, 
         isCompleted && !isNegative && styles.habitCardCompleted,
-        isNegative && { borderColor: isCompleted ? 'rgba(255,105,97,0.3)' : 'transparent', backgroundColor: 'rgba(255,255,255,0.03)' },
-        !isNegative && { backgroundColor: 'rgba(255,255,255,0.03)' }
+        isNegative && { 
+          borderColor: isCompleted 
+            ? (isDark ? 'rgba(255,105,97,0.3)' : '#FCA5A5') 
+            : (isDark ? 'rgba(255,255,255,0.05)' : '#E2E1EA'), 
+          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' 
+        },
+        !isNegative && { 
+          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+          borderColor: isCompleted && !isDark 
+            ? 'rgba(16, 185, 129, 0.35)' 
+            : (isDark ? 'rgba(255,255,255,0.05)' : '#E2E1EA')
+        }
       ]}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
@@ -329,24 +392,42 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
         {!isNegative && (
           <View style={{ paddingRight: SPACE.md }}>
             {habit.targetCount && habit.targetCount > 0 ? (
-              <View style={[styles.checkCircle, { borderColor: isCompleted ? colors.accentPrimary : 'rgba(255,255,255,0.2)', backgroundColor: isCompleted ? 'rgba(94, 218, 158, 0.15)' : 'transparent' }]}>
-                <Text style={{ color: isCompleted ? colors.accentPrimary : colors.textPrimary, fontSize: 10, fontFamily: FONT_FAMILY.bold }}>
+              <View style={[
+                styles.checkCircle, 
+                { 
+                  borderColor: isCompleted 
+                    ? (isDark ? colors.accentPrimary : colors.accentGreen) 
+                    : (isDark ? 'rgba(255,255,255,0.2)' : '#D1D1D6'), 
+                  backgroundColor: isCompleted 
+                    ? (isDark ? 'rgba(94, 218, 158, 0.15)' : 'rgba(16, 185, 129, 0.12)') 
+                    : (isDark ? 'transparent' : '#F4F3F8') 
+                }
+              ]}>
+                <Text style={{ color: isCompleted ? (isDark ? colors.accentPrimary : colors.accentGreen) : colors.textPrimary, fontSize: 10, fontFamily: FONT_FAMILY.bold }}>
                   {todayLog?.count || 0}/{habit.targetCount}
                 </Text>
               </View>
             ) : (
               <Reanimated.View style={[
                 styles.checkCircle,
-                isCompleted && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+                isCompleted && { 
+                  backgroundColor: isDark ? colors.accentPrimary : colors.accentGreen, 
+                  borderColor: isDark ? colors.accentPrimary : colors.accentGreen 
+                },
                 animatedCheckStyle,
               ]}>
-                {isCompleted && <Ionicons name="checkmark" size={12} color="#000000" />}
+                {isCompleted && <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />}
               </Reanimated.View>
             )}
           </View>
         )}
 
-        <View style={[styles.avatar, isNegative && { backgroundColor: 'rgba(255,105,97,0.1)' }]}>
+        <View style={[
+          styles.avatar, 
+          isNegative 
+            ? { backgroundColor: isDark ? 'rgba(255,105,97,0.12)' : 'rgba(239,68,68,0.10)' } 
+            : { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : (habit.color ? `${habit.color}15` : 'rgba(108,92,231,0.10)') }
+        ]}>
           <Reanimated.Text style={[styles.avatarEmoji, { transform: [{ scale: emojiScale }] }]}>{habit.emoji}</Reanimated.Text>
         </View>
 
@@ -358,16 +439,16 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
               {isCompleted ? (
                 <Text style={[styles.habitStreak, { color: '#ff6961' }]}>Relapsed today</Text>
               ) : (
-                <Text style={[styles.habitStreak, { color: '#ff6961', fontFamily: FONT_FAMILY.bold }]}>{daysClean} days clean</Text>
+                <Text style={[styles.habitStreak, { color: isDark ? '#ff6961' : '#DC2626', fontFamily: FONT_FAMILY.bold }]}>{daysClean} days clean</Text>
               )}
               {moneySaved > 0 && !isCompleted && (
-                <Text style={[styles.habitStreak, { color: colors.accentGreen }]}>+${moneySaved.toFixed(0)} saved</Text>
+                <Text style={[styles.habitStreak, { color: isDark ? colors.accentGreen : '#059669', fontFamily: FONT_FAMILY.bold }]}>+${moneySaved.toFixed(0)} saved</Text>
               )}
             </View>
           ) : (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
               {isCompleted ? (
-                <Text style={styles.completedSub}>Completed today</Text>
+                <Text style={styles.completedSub}>✓ Completed today</Text>
               ) : (
                 <Text style={styles.habitStreak}>
                   {habitLogs.some(l => l.date === new Date(new Date().getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0] && l.isFreeze)
@@ -380,19 +461,19 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
           )}
 
           {!isNegative && heatmapSquares && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 4 }}>
               {heatmapSquares.map((sq, idx) => (
                 <View 
                   key={idx}
                   style={{
-                    width: 10, 
-                    height: 10, 
-                    borderRadius: 2,
-                    backgroundColor: sq.status === 'completed' ? colors.accentPrimary :
-                                     sq.status === 'freeze' ? '#00E5FF' :
-                                     sq.status === 'missed' ? 'rgba(255,255,255,0.06)' : 'transparent',
+                    width: 11, 
+                    height: 11, 
+                    borderRadius: 2.5,
+                    backgroundColor: sq.status === 'completed' ? (isDark ? (habit.color || colors.accentPrimary) : (habit.color || '#6C5CE7')) :
+                                     sq.status === 'freeze' ? '#06B6D4' :
+                                     sq.status === 'missed' ? (isDark ? 'rgba(255,255,255,0.06)' : '#E5E4EE') : 'transparent',
                     borderWidth: sq.status === 'future' ? 1 : 0,
-                    borderColor: 'rgba(255,255,255,0.1)'
+                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#D1D1D6'
                   }} 
                 />
               ))}
@@ -407,8 +488,8 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
 // ΓöÇΓöÇΓöÇ Main Screen ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 export default function HabitsScreen() {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { allHabits, habitLogs, user, loading, optimisticUpdateHabit, optimisticAddHabitLog, optimisticRemoveHabitLog, optimisticUpdateHabitLog } = useCoreData();
   const [createVisible, setCreateVisible] = useState(false);
   const [showReminderModal, setShowReminderModal] = useState(false);
@@ -675,8 +756,8 @@ export default function HabitsScreen() {
           <Text style={styles.headerTitle}>Habits</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowReminderModal(true)}>
-            <Ionicons name="notifications-outline" size={18} color="#f2f2f7" />
+          <TouchableOpacity style={styles.headerIconBtn} onPress={() => setShowReminderModal(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="notifications-outline" size={18} color={isDark ? '#f2f2f7' : colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.statBadge}>
             <Text style={styles.statNum}>{completedCount}/{positiveHabits.length}</Text>
@@ -731,7 +812,7 @@ export default function HabitsScreen() {
       />
 
       <AnimatedPressable style={styles.fab} onPress={() => setCreateVisible(true)} activeOpacity={0.85}>
-        <Ionicons name="add" size={26} color={colors.background} />
+        <Ionicons name="add" size={26} color="#FFFFFF" />
       </AnimatedPressable>
 
       {user && createVisible && (
@@ -765,233 +846,304 @@ export default function HabitsScreen() {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      root: { flex: 1, backgroundColor: '#000000' },
-      header: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingHorizontal: 8, paddingTop: 16, paddingBottom: 12,
-      },
-      headerIconBtn: {
-        width: 36, height: 36,
-        borderRadius: 18,
-        backgroundColor: '#1c1c1e',
-        alignItems: 'center',
-        justifyContent: 'center',
-      },
-      eyebrow: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 11,
-        color: '#6e6e73',
-        textTransform: 'uppercase',
-        letterSpacing: 0.33,
-        marginBottom: 4,
-      },
-      headerTitle: { fontFamily: FONT_FAMILY.title, fontSize: 26, color: '#ffffff' },
-      statBadge: { 
-        backgroundColor: 'rgba(94,218,158,0.12)',
-        paddingHorizontal: 12, paddingVertical: 8, 
-        borderRadius: 8,
-        alignItems: 'center', justifyContent: 'center'
-      },
-      statNum: { color: '#5eda9e', fontSize: 15, fontFamily: FONT_FAMILY.bold },
-      statLabel: { color: '#5eda9e', fontSize: 9, fontFamily: FONT_FAMILY.body, marginTop: 2 },
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 16, paddingBottom: 12,
+  },
+  headerIconBtn: {
+    width: 36, height: 36,
+    borderRadius: 18,
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border : '#E2E1EA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: isDark ? 0.2 : 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  eyebrow: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 11,
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  headerTitle: { fontFamily: FONT_FAMILY.title, fontSize: 26, color: colors.textPrimary },
+  statBadge: { 
+    backgroundColor: isDark ? colors.accentGreenDim : 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1,
+    borderColor: isDark ? 'transparent' : 'rgba(16, 185, 129, 0.25)',
+    paddingHorizontal: 12, paddingVertical: 8, 
+    borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center'
+  },
+  statNum: { color: isDark ? colors.accentGreen : '#059669', fontSize: 14, fontFamily: FONT_FAMILY.bold },
+  statLabel: { color: isDark ? colors.accentGreen : '#059669', fontSize: 9, fontFamily: FONT_FAMILY.body, marginTop: 2 },
 
-      list: { padding: 8, paddingBottom: 120 },
+  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120 },
 
-      sectionHeader: {
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 12,
-        color: '#6e6e73',
-        textTransform: 'uppercase',
-        letterSpacing: 0.5,
-        marginBottom: 8,
-        marginTop: 12,
-        marginLeft: 4,
-      },
+  sectionHeader: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 11,
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginTop: 14,
+    marginLeft: 2,
+  },
 
-      habitCard: {
-        backgroundColor: 'rgba(255,255,255,0.07)',
-        padding: 16,
-        borderRadius: RADIUS.lg,
-        marginBottom: 8,
-        borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
-        flexDirection: 'column',
-      },
-      habitCardCompleted: {
-        opacity: 0.7,
-      },
-      checkCircle: {
-        width: 22, height: 22, borderRadius: 11,
-        borderWidth: 1.5, borderColor: '#3a3a3c',
-        alignItems: 'center', justifyContent: 'center',
-        backgroundColor: 'transparent',
-      },
-      burstEffect: {
-        ...StyleSheet.absoluteFillObject,
-        borderRadius: 10,
-      },
-      avatar: {
-        width: 40, height: 40, borderRadius: 20,
-        backgroundColor: 'rgba(165,153,255,0.1)',
-        alignItems: 'center', justifyContent: 'center',
-      },
-      avatarEmoji: { fontSize: 20 },
-      habitName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: '#f2f2f7' },
-      habitNameCompleted: { fontFamily: FONT_FAMILY.medium, fontSize: 15, color: '#8e8e93', textDecorationLine: 'line-through' },
-      habitStreak: {
-        fontFamily: FONT_FAMILY.medium,
-        fontSize: FONT_SIZE.xs,
-        color: '#8e8e93',
-        marginTop: 2,
-      },
-      completedSub: {
-        fontFamily: FONT_FAMILY.medium,
-        fontSize: FONT_SIZE.xs,
-        color: '#5eda9e',
-        marginTop: 2,
-      },
-      freqBadge: {
-      },
-      heatMapSquare: {
-        width: 10, height: 10,
-        borderRadius: 2,
-      },
+  habitCard: {
+    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+    padding: 16,
+    borderRadius: RADIUS.lg,
+    marginBottom: 10,
+    borderWidth: 1, 
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#E2E1EA',
+    flexDirection: 'column',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.3 : 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  habitCardCompleted: {
+    opacity: isDark ? 0.7 : 0.8,
+  },
+  checkCircle: {
+    width: 22, height: 22, borderRadius: 11,
+    borderWidth: 1.5, borderColor: isDark ? colors.border : '#D1D1D6',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: isDark ? 'transparent' : '#F4F3F8',
+  },
+  burstEffect: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 10,
+  },
+  avatar: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: isDark ? colors.accentDim : 'rgba(108,92,231,0.10)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  avatarEmoji: { fontSize: 20 },
+  habitName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
+  habitNameCompleted: { fontFamily: FONT_FAMILY.medium, fontSize: 15, color: colors.textMuted, textDecorationLine: 'line-through' },
+  habitStreak: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: FONT_SIZE.xs,
+    color: isDark ? colors.textMuted : '#B45309',
+    marginTop: 2,
+  },
+  completedSub: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: FONT_SIZE.xs,
+    color: isDark ? colors.accentGreen : '#059669',
+    marginTop: 2,
+  },
+  freqBadge: {
+  },
+  heatMapSquare: {
+    width: 11, height: 11,
+    borderRadius: 2.5,
+  },
 
-      empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
-      emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted },
+  empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted },
 
-      typeBtn: {
-        flex: 1,
-        paddingVertical: 14,
-        borderRadius: RADIUS.md,
-        backgroundColor: 'transparent',
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: 'transparent',
-      },
-      typeBtnActivePos: {
-        backgroundColor: '#1b2a22',
-        borderColor: '#5eda9e',
-      },
-      typeBtnActiveNeg: {
-        backgroundColor: '#2a1a1c',
-        borderColor: '#ff6961',
-      },
-      typeBtnText: {
-        fontFamily: FONT_FAMILY.medium,
-        fontSize: FONT_SIZE.sm,
-        color: colors.textMuted,
-      },
-      typeBtnTextActive: {
-        color: colors.textPrimary,
-        fontFamily: FONT_FAMILY.bold,
-      },
+  typeBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: RADIUS.md,
+    backgroundColor: isDark ? 'transparent' : '#F5F4FA',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? 'transparent' : '#E2E1EA',
+  },
+  typeBtnActivePos: {
+    backgroundColor: isDark ? '#1b2a22' : 'rgba(16, 185, 129, 0.12)',
+    borderColor: isDark ? '#5eda9e' : '#059669',
+  },
+  typeBtnActiveNeg: {
+    backgroundColor: isDark ? '#2a1a1c' : 'rgba(239, 68, 68, 0.12)',
+    borderColor: isDark ? '#ff6961' : '#DC2626',
+  },
+  typeBtnText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: FONT_SIZE.sm,
+    color: colors.textMuted,
+  },
+  typeBtnTextActivePos: {
+    color: isDark ? '#5eda9e' : '#059669',
+    fontFamily: FONT_FAMILY.bold,
+  },
+  typeBtnTextActiveNeg: {
+    color: isDark ? '#ff6961' : '#DC2626',
+    fontFamily: FONT_FAMILY.bold,
+  },
 
-      fab: {
-        position: 'absolute', bottom: 100, right: 20,
-        width: 52, height: 52, borderRadius: 26,
-        backgroundColor: colors.accentPrimary,
-        alignItems: 'center', justifyContent: 'center',
-        ...SHADOW.md, zIndex: 100,
-      },
+  emojiChip: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? '#1c1c1e' : '#F5F4FA',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E1EA',
+  },
+  emojiChipActive: {
+    backgroundColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)',
+    borderColor: isDark ? '#a599ff' : '#6C5CE7',
+    borderWidth: 1.5,
+  },
 
-      modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
-      },
-      modalKAV: {
-        width: '100%',
-        justifyContent: 'flex-end',
-      },
-      modalCard: {
-        backgroundColor: colors.surfaceRaised || colors.surface,
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        padding: 24,
-        paddingBottom: 40,
-        width: '100%',
-        borderTopWidth: 1,
-        borderColor: colors.border,
-      },
-      modalTitle: {
-        fontFamily: 'PlayfairDisplay-SemiBold',
-        fontSize: 24,
-        color: colors.textPrimary,
-        marginBottom: 24,
-      },
-      modalInput: {
-        backgroundColor: colors.surface2 || colors.surface,
-        borderRadius: RADIUS.md,
-        padding: 16,
-        color: colors.textPrimary,
-        fontFamily: FONT_FAMILY.body,
-        fontSize: 15,
-        borderWidth: 1,
-        borderColor: colors.border,
-        marginBottom: 20,
-      },
-      sectionTitle: {
-        fontFamily: FONT_FAMILY.medium,
-        fontSize: 12,
-        color: colors.textMuted,
-        marginBottom: 10,
-      },
-      frequencyRow: {
-        flexDirection: 'row',
-        gap: 8,
-        marginBottom: 24,
-      },
-      freqBtn: {
-        flex: 1,
-        backgroundColor: colors.surface2 || colors.surface,
-        paddingVertical: 12,
-        borderRadius: RADIUS.sm,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: colors.border,
-      },
-      freqBtnActive: {
-        backgroundColor: colors.accentDim,
-        borderColor: colors.accentPrimary,
-      },
-      freqBtnText: {
-        fontFamily: FONT_FAMILY.medium,
-        fontSize: 11,
-        color: colors.textMuted,
-      },
-      freqBtnTextActive: {
-        color: colors.accentPrimary,
-        fontFamily: FONT_FAMILY.bold,
-      },
-      modalActions: {
-        flexDirection: 'row',
-        gap: 12,
-      },
-      cancelBtn: {
-        flex: 1,
-        backgroundColor: colors.surface2 || colors.surface,
-        paddingVertical: 16,
-        borderRadius: RADIUS.md,
-        alignItems: 'center',
-        borderWidth: 1,
-        borderColor: colors.border,
-      },
-      cancelBtnText: {
-        color: colors.textMuted,
-        fontFamily: FONT_FAMILY.medium,
-        fontSize: 15,
-      },
-      saveBtn: {
-        flex: 2,
-        backgroundColor: colors.accentGreen,
-        paddingVertical: 16,
-        borderRadius: RADIUS.md,
-        alignItems: 'center',
-      },
-      saveBtnText: {
-        color: '#ffffff',
-        fontFamily: FONT_FAMILY.bold,
-        fontSize: 15,
-      },
-    });
+  colorDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  colorDotActive: {
+    borderWidth: 2.5,
+    borderColor: isDark ? '#FFFFFF' : '#1F2937',
+  },
+
+  fab: {
+    position: 'absolute', bottom: 100, right: 20,
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: colors.accentPrimary,
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: colors.accentPrimary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.4 : 0.3,
+    shadowRadius: 10,
+    elevation: 5,
+    zIndex: 100,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalKAV: {
+    width: '100%',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: isDark ? (colors.surfaceRaised || '#1C1C1E') : '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    width: '100%',
+    borderTopWidth: 1,
+    borderColor: isDark ? colors.border : '#E2E1EA',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: isDark ? 0.5 : 0.1,
+    shadowRadius: 16,
+    elevation: 20,
+  },
+  modalTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 22,
+    color: colors.textPrimary,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+  },
+  modalInput: {
+    backgroundColor: isDark ? (colors.surface2 || '#1C1C1E') : '#F8F7FC',
+    borderRadius: RADIUS.md,
+    padding: 14,
+    color: colors.textPrimary,
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: isDark ? colors.border : '#E2E1EA',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 11,
+    color: colors.textTertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  frequencyRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 24,
+  },
+  freqBtn: {
+    flex: 1,
+    backgroundColor: isDark ? (colors.surface2 || '#1C1C1E') : '#F5F4FA',
+    paddingVertical: 11,
+    borderRadius: RADIUS.sm,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border : '#E2E1EA',
+  },
+  freqBtnActive: {
+    backgroundColor: isDark ? colors.accentDim : 'rgba(108, 92, 231, 0.12)',
+    borderColor: colors.accentPrimary,
+  },
+  freqBtnText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+  freqBtnTextActive: {
+    color: colors.accentPrimary,
+    fontFamily: FONT_FAMILY.bold,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  cancelBtn: {
+    flex: 1,
+    backgroundColor: isDark ? (colors.surface2 || '#1C1C1E') : '#F5F4FA',
+    paddingVertical: 15,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? colors.border : '#E2E1EA',
+  },
+  cancelBtnText: {
+    color: colors.textMuted,
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 15,
+  },
+  saveBtn: {
+    flex: 2,
+    backgroundColor: isDark ? '#34C759' : '#059669',
+    paddingVertical: 15,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    shadowColor: isDark ? '#34C759' : '#059669',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  saveBtnText: {
+    color: '#ffffff',
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 15,
+  },
+});

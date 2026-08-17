@@ -13,6 +13,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop, Rect, Circle, G, Line } from 'react-native-svg';
 import { COLORS, FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../../../theme/tokens';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 interface VolumeTrendLineProps {
   /** Mon–Sun volumes for this week (index 0 = Monday) */
@@ -55,9 +56,16 @@ function buildAreaPath(values: number[], width: number, height: number, maxVal: 
 }
 
 export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: VolumeTrendLineProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   const svgWidth = 320; // rendered full width via flex
   const padX = 8;
   const padY = 12;
+
+  const primaryColor = isDark ? '#a599ff' : '#6C5CE7';
+  const secondaryColor = isDark ? '#89dceb' : '#64748B';
+  const gridColor = isDark ? 'rgba(255,255,255,0.06)' : '#EAE9F2';
 
   const maxVal = useMemo(
     () => Math.max(1, ...thisWeek, ...lastWeek),
@@ -101,11 +109,11 @@ export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: Vo
         </View>
         <View style={styles.legend}>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#a599ff' }]} />
+            <View style={[styles.legendDot, { backgroundColor: primaryColor }]} />
             <Text style={styles.legendText}>This week</Text>
           </View>
           <View style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: '#89dceb', opacity: 0.7 }]} />
+            <View style={[styles.legendDot, { backgroundColor: secondaryColor, opacity: 0.7 }]} />
             <Text style={styles.legendText}>Last week</Text>
           </View>
         </View>
@@ -116,8 +124,8 @@ export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: Vo
         <Svg width="100%" height={height} viewBox={`0 0 ${svgWidth} ${height}`} preserveAspectRatio="none">
           <Defs>
             <LinearGradient id="thisWeekGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor="#a599ff" stopOpacity="0.28" />
-              <Stop offset="1" stopColor="#a599ff" stopOpacity="0.03" />
+              <Stop offset="0" stopColor={primaryColor} stopOpacity={isDark ? 0.28 : 0.20} />
+              <Stop offset="1" stopColor={primaryColor} stopOpacity={0.02} />
             </LinearGradient>
           </Defs>
 
@@ -129,7 +137,7 @@ export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: Vo
               y1={padY + (height - padY * 2) * (1 - f)}
               x2={svgWidth - padX}
               y2={padY + (height - padY * 2) * (1 - f)}
-              stroke="rgba(255,255,255,0.05)"
+              stroke={gridColor}
               strokeWidth="1"
             />
           ))}
@@ -139,9 +147,9 @@ export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: Vo
             <Path
               d={lastLinePath}
               fill="none"
-              stroke="#89dceb"
+              stroke={secondaryColor}
               strokeWidth="1.5"
-              strokeOpacity="0.55"
+              strokeOpacity={isDark ? 0.55 : 0.65}
               strokeDasharray="4,4"
             />
           )}
@@ -153,7 +161,7 @@ export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: Vo
           <Path
             d={thisLinePath}
             fill="none"
-            stroke="#a599ff"
+            stroke={primaryColor}
             strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -170,8 +178,8 @@ export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: Vo
                 cx={x.toFixed(1)}
                 cy={y.toFixed(1)}
                 r="3.5"
-                fill="#a599ff"
-                stroke="#1a1a2e"
+                fill={primaryColor}
+                stroke={isDark ? '#1a1a2e' : '#ffffff'}
                 strokeWidth="1.5"
               />
             );
@@ -202,86 +210,87 @@ export default function VolumeTrendLine({ thisWeek, lastWeek, height = 160 }: Vo
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  title: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.textTertiary,
-    letterSpacing: 1.2,
-    fontFamily: FONT_FAMILY.bold,
-  },
-  subtitle: {
-    fontSize: 11,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
-    marginTop: 2,
-  },
-  legend: {
-    gap: 6,
-    alignItems: 'flex-end',
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  legendText: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.medium,
-  },
-  svgWrap: {
-    width: '100%',
-    marginBottom: 4,
-  },
-  dayLabels: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 4,
-  },
-  dayLabelCol: {
-    alignItems: 'center',
-    minWidth: 32,
-  },
-  dayLabel: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.medium,
-  },
-  dayLabelActive: {
-    color: COLORS.textPrimary,
-    fontFamily: FONT_FAMILY.bold,
-  },
-  dayVolLabel: {
-    fontSize: 9,
-    color: '#a599ff',
-    fontFamily: FONT_FAMILY.bold,
-    marginTop: 1,
-  },
-  empty: {
-    fontSize: 13,
-    color: COLORS.textTertiary,
-    textAlign: 'center',
-    marginTop: 20,
-    fontFamily: FONT_FAMILY.regular,
-  },
-});
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.xl,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    title: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textTertiary,
+      letterSpacing: 1.2,
+      fontFamily: FONT_FAMILY.bold,
+    },
+    subtitle: {
+      fontSize: 11,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.regular,
+      marginTop: 2,
+    },
+    legend: {
+      gap: 6,
+      alignItems: 'flex-end',
+    },
+    legendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    legendDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    legendText: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.medium,
+    },
+    svgWrap: {
+      width: '100%',
+      marginBottom: 4,
+    },
+    dayLabels: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingHorizontal: 4,
+    },
+    dayLabelCol: {
+      alignItems: 'center',
+      minWidth: 32,
+    },
+    dayLabel: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.medium,
+    },
+    dayLabelActive: {
+      color: colors.textPrimary,
+      fontFamily: FONT_FAMILY.bold,
+    },
+    dayVolLabel: {
+      fontSize: 9,
+      color: colors.accentPrimary,
+      fontFamily: FONT_FAMILY.bold,
+      marginTop: 1,
+    },
+    empty: {
+      fontSize: 13,
+      color: colors.textTertiary,
+      textAlign: 'center',
+      marginTop: 20,
+      fontFamily: FONT_FAMILY.regular,
+    },
+  });

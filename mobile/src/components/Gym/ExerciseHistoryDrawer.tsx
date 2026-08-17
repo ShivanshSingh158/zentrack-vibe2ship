@@ -18,8 +18,8 @@ interface Props {
 }
 
 export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClose }: Props) {
-    const { colors, isDark } = useTheme();
-    const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { gymLogs } = useMobileData();
 
   // Find history: either all workouts, or specific exercise
@@ -111,17 +111,25 @@ export function ExerciseHistoryDrawer({ visible, exerciseName, exerciseId, onClo
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
-      modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-      sheet: { backgroundColor: colors.background, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, height: '70%', padding: SPACE.xl },
-      header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.xl },
-      title: { flex: 1, fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
-      closeBtn: { padding: SPACE.sm, backgroundColor: colors.surface, borderRadius: RADIUS.full },
-      item: { paddingVertical: SPACE.md, borderBottomWidth: 1, borderBottomColor: colors.surface2 },
-      dateText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary, marginBottom: 4 },
-      statsRow: { flexDirection: 'row', gap: SPACE.sm, alignItems: 'center', flexWrap: 'wrap' },
-      stat: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted },
-      oneRMBadge: { backgroundColor: '#f59e0b20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12 },
-      oneRMText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: '#f59e0b' },
-      emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted, textAlign: 'center', marginTop: SPACE.xxl },
-    });
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    height: '70%',
+    padding: SPACE.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACE.xl },
+  title: { flex: 1, fontFamily: FONT_FAMILY.title, fontSize: FONT_SIZE.lg, color: colors.textPrimary },
+  closeBtn: { padding: SPACE.sm, backgroundColor: isDark ? colors.surface2 : '#E2E1EA', borderRadius: RADIUS.full },
+  item: { paddingVertical: SPACE.md, borderBottomWidth: 1, borderBottomColor: colors.border },
+  dateText: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary, marginBottom: 4 },
+  statsRow: { flexDirection: 'row', gap: SPACE.sm, alignItems: 'center', flexWrap: 'wrap' },
+  stat: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted },
+  oneRMBadge: { backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : 'rgba(217, 119, 6, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 12 },
+  oneRMText: { fontFamily: FONT_FAMILY.bold, fontSize: 11, color: isDark ? '#f59e0b' : '#D97706' },
+  emptyText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.md, color: colors.textMuted, textAlign: 'center', marginTop: SPACE.xxl },
+});

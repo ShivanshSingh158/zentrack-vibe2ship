@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FONT_FAMILY } from '../../theme/tokens';
+import { useTheme } from '../../contexts/ThemeContext';
 import { LearningTopic, LearningSubTask } from '../../contexts/MobileDataContext';
 import * as Haptics from 'expo-haptics';
 
@@ -47,6 +48,9 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
   onClearCurrentChat,
 }) => {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   const [loading, setLoading] = useState(true);
   const [historyItems, setHistoryItems] = useState<ChatHistoryItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -184,7 +188,7 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
           <View style={s.headerRow}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={s.headerIconBadge}>
-                <Ionicons name="time" size={18} color="#a599ff" />
+                <Ionicons name="time" size={18} color={colors.accentPrimary} />
               </View>
               <View>
                 <Text style={s.headerTitle}>Lecture Chat History</Text>
@@ -194,17 +198,17 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
               </View>
             </View>
             <TouchableOpacity style={s.closeBtn} onPress={onClose}>
-              <Ionicons name="close" size={20} color="#f2f2f7" />
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
           {/* Search Bar */}
           <View style={s.searchBar}>
-            <Ionicons name="search" size={16} color="#71717a" />
+            <Ionicons name="search" size={16} color={colors.textSecondary} />
             <TextInput
               style={s.searchInput}
               placeholder="Search past conversations..."
-              placeholderTextColor="#71717a"
+              placeholderTextColor={colors.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
               clearButtonMode="while-editing"
@@ -214,12 +218,12 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
           {/* Content List */}
           {loading ? (
             <View style={s.centered}>
-              <ActivityIndicator size="small" color="#a599ff" />
+              <ActivityIndicator size="small" color={colors.accentPrimary} />
               <Text style={s.loadingText}>Loading past conversations...</Text>
             </View>
           ) : filteredItems.length === 0 ? (
             <View style={s.centered}>
-              <Ionicons name="chatbubbles-outline" size={40} color="#3f3f46" />
+              <Ionicons name="chatbubbles-outline" size={40} color={isDark ? '#3f3f46' : '#C7C6D3'} />
               <Text style={s.emptyTitle}>
                 {searchQuery ? 'No matching conversations' : 'No Chat History Yet'}
               </Text>
@@ -275,7 +279,7 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                       onPress={() => handleDeleteItem(item)}
                     >
-                      <Ionicons name="trash-outline" size={16} color="#71717a" />
+                      <Ionicons name="trash-outline" size={16} color={colors.textSecondary} />
                     </TouchableOpacity>
                   </View>
 
@@ -285,7 +289,7 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
 
                   <View style={s.cardBottomRow}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                      <Ionicons name="chatbubble-ellipses-outline" size={12} color="#a599ff" />
+                      <Ionicons name="chatbubble-ellipses-outline" size={12} color={colors.accentPrimary} />
                       <Text style={s.countText}>{item.messageCount} messages</Text>
                     </View>
                     <Text style={s.openText}>
@@ -302,20 +306,20 @@ export const LectureChatHistoryModal: React.FC<LectureChatHistoryModalProps> = (
   );
 };
 
-const s = StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.85)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.85)' : 'rgba(0,0,0,0.45)',
     justifyContent: 'flex-end',
   },
   modalContent: {
-    backgroundColor: '#121214',
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '90%',
     minHeight: '60%',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
   },
   headerRow: {
     flexDirection: 'row',
@@ -324,53 +328,53 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: colors.border,
   },
   headerIconBadge: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(165,153,255,0.12)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 16,
-    color: '#ffffff',
+    color: colors.textPrimary,
   },
   headerSubtitle: {
     fontFamily: FONT_FAMILY.body,
     fontSize: 12,
-    color: '#71717a',
+    color: colors.textSecondary,
     marginTop: 1,
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#1c1c1f',
+    backgroundColor: isDark ? '#1c1c1f' : '#ECEBF2',
     alignItems: 'center',
     justifyContent: 'center',
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#18181b',
+    backgroundColor: isDark ? '#18181b' : '#F5F4FA',
     borderRadius: 14,
     marginHorizontal: 16,
     marginVertical: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
   },
   searchInput: {
     flex: 1,
     marginLeft: 8,
     fontFamily: FONT_FAMILY.body,
     fontSize: 14,
-    color: '#ffffff',
+    color: colors.textPrimary,
     padding: 0,
   },
   centered: {
@@ -382,19 +386,19 @@ const s = StyleSheet.create({
   },
   loadingText: {
     marginTop: 12,
-    color: '#71717a',
+    color: colors.textSecondary,
     fontSize: 13,
     fontFamily: FONT_FAMILY.body,
   },
   emptyTitle: {
     marginTop: 12,
-    color: '#e4e4e7',
+    color: colors.textPrimary,
     fontSize: 15,
     fontFamily: FONT_FAMILY.bold,
   },
   emptySub: {
     marginTop: 4,
-    color: '#71717a',
+    color: colors.textSecondary,
     fontSize: 13,
     fontFamily: FONT_FAMILY.body,
     textAlign: 'center',
@@ -402,15 +406,15 @@ const s = StyleSheet.create({
     lineHeight: 18,
   },
   card: {
-    backgroundColor: '#18181b',
+    backgroundColor: isDark ? '#18181b' : '#F8F7FC',
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: colors.border,
   },
   cardActive: {
-    borderColor: 'rgba(165,153,255,0.4)',
-    backgroundColor: 'rgba(165,153,255,0.06)',
+    borderColor: isDark ? 'rgba(165,153,255,0.4)' : 'rgba(108,92,231,0.4)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.06)' : 'rgba(108,92,231,0.08)',
   },
   cardTopRow: {
     flexDirection: 'row',
@@ -419,23 +423,23 @@ const s = StyleSheet.create({
     marginBottom: 6,
   },
   currentBadge: {
-    backgroundColor: 'rgba(0,193,110,0.15)',
+    backgroundColor: isDark ? 'rgba(0,193,110,0.15)' : 'rgba(5,150,105,0.12)',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
   },
   currentBadgeText: {
-    color: '#00c16e',
+    color: isDark ? '#00c16e' : '#059669',
     fontSize: 9.5,
     fontFamily: FONT_FAMILY.bold,
   },
   topicBadgeText: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontSize: 11,
     fontFamily: FONT_FAMILY.medium,
   },
   lectureTitle: {
-    color: '#ffffff',
+    color: colors.textPrimary,
     fontSize: 14.5,
     fontFamily: FONT_FAMILY.bold,
   },
@@ -444,7 +448,7 @@ const s = StyleSheet.create({
     marginLeft: 8,
   },
   snippetText: {
-    color: '#a1a1aa',
+    color: colors.textSecondary,
     fontSize: 12.5,
     lineHeight: 17,
     fontFamily: FONT_FAMILY.body,
@@ -456,15 +460,15 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.04)',
+    borderTopColor: colors.border,
   },
   countText: {
-    color: '#71717a',
+    color: colors.textSecondary,
     fontSize: 11.5,
     fontFamily: FONT_FAMILY.medium,
   },
   openText: {
-    color: '#a599ff',
+    color: colors.accentPrimary,
     fontSize: 12,
     fontFamily: FONT_FAMILY.bold,
   },

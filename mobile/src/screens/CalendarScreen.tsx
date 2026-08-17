@@ -20,14 +20,15 @@ import { CalendarGymModal } from './calendar/CalendarGymModal';
 import { EventDetailSheet } from './calendar/EventDetailSheet';
 import { makeStyles } from './calendar/calendarStyles';
 import { getEventColors, format12Hour, parseTimeTo24h, HOUR_HEIGHT } from './calendar/calendarUtils';
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 export default function CalendarScreen() {
-  const { colors } = useTheme();
-  const styles = React.useMemo(() => makeStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const [findingSlots, setFindingSlots] = useState(false);
   const [aiSlotResult, setAiSlotResult] = useState<string | null>(null);
@@ -68,7 +69,7 @@ export default function CalendarScreen() {
   const currentHour = currentTime.getHours();
   const currentMinutes = currentTime.getMinutes();
   const indicatorTop = (currentHour * HOUR_HEIGHT) + ((currentMinutes / 60) * HOUR_HEIGHT);
-  const todayStr = now.toISOString().slice(0, 10);
+  const todayStr = formatLocalDateStr(currentTime);
   const isToday = selectedDate === todayStr;
   // Minutes since midnight — used to fade past events
   const currentTimeMins = currentHour * 60 + currentMinutes;
@@ -116,6 +117,7 @@ export default function CalendarScreen() {
   const markedDates = useMemo(() => {
     const marks: any = {};
     const MAX_DOTS = 3;
+    const colorMap = getEventColors(colors, isDark);
 
     const addDot = (dateStr: string, color: string, key: string) => {
       if (!marks[dateStr]) marks[dateStr] = { dots: [] };
@@ -124,24 +126,24 @@ export default function CalendarScreen() {
       }
     };
 
-    customEvents.forEach(e => e.date && addDot(e.date, getEventColors(colors)[e.type]?.bg || '#a599ff', e.id));
-    tasks.forEach(t => t.date && addDot(t.date, '#f59e0b', t.id)); // Orange for tasks
+    customEvents.forEach(e => e.date && addDot(e.date, colorMap[e.type]?.border || colors.accentPrimary, e.id));
+    tasks.forEach(t => t.date && addDot(t.date, isDark ? '#f59e0b' : '#D97706', t.id));
     if (gymLogs) {
-      gymLogs.forEach((g: any) => g.date && addDot(g.date, '#10b981', g.id)); // Green for gym
+      gymLogs.forEach((g: any) => g.date && addDot(g.date, isDark ? '#10b981' : '#059669', g.id));
     }
 
     // Classes & Labs from pre-indexed cache
     monthClassDates.forEach((dStr) => {
-      addDot(dStr, '#3390ec', 'class-' + dStr); // Blue for classes
+      addDot(dStr, isDark ? '#3390ec' : '#2563EB', 'class-' + dStr);
     });
 
     if (marks[selectedDate]) {
-      marks[selectedDate] = { ...marks[selectedDate], selected: true, selectedColor: colors.accentPrimary, selectedTextColor: '#000000' };
+      marks[selectedDate] = { ...marks[selectedDate], selected: true, selectedColor: colors.accentPrimary, selectedTextColor: isDark ? '#000000' : '#FFFFFF' };
     } else {
-      marks[selectedDate] = { selected: true, selectedColor: colors.accentPrimary, selectedTextColor: '#000000' };
+      marks[selectedDate] = { selected: true, selectedColor: colors.accentPrimary, selectedTextColor: isDark ? '#000000' : '#FFFFFF' };
     }
     return marks;
-  }, [customEvents, tasks, selectedDate, monthClassDates, gymLogs, colors]);
+  }, [customEvents, tasks, selectedDate, monthClassDates, gymLogs, colors, isDark]);
 
   // ── Month Density Heat Map: count events per date ──────────────────────────
   // Used in CalendarAgendaView to color-tint day cells (0=none, 1-2=light, 3-5=medium, 6+=dark)
@@ -155,7 +157,7 @@ export default function CalendarScreen() {
     return counts;
   }, [customEvents, tasks, gymLogs, monthClassDates]);
 
-const handleFindFreeSlots = async () => {
+  const handleFindFreeSlots = async () => {
     setFindingSlots(true);
     try {
       const prompt = `Here are my events for today: ${JSON.stringify(dayEvents.map(e => ({title: e.title, start: e.startTime, end: e.endTime})))}\nFind the best 1-2 hour continuous free slot during working hours (9 AM - 6 PM). Output a brief, energetic message with the time slot and why it's the best choice.`;
@@ -187,30 +189,30 @@ const handleFindFreeSlots = async () => {
             onPress={() => setAiSlotResult(null)}
           >
             <View style={{
-              backgroundColor: colors.surface || '#1c1c1e',
+              backgroundColor: colors.surface,
               borderTopLeftRadius: 24,
               borderTopRightRadius: 24,
               padding: 24,
               paddingBottom: 40,
               borderTopWidth: 1,
-              borderTopColor: colors.border || 'rgba(255,255,255,0.08)',
+              borderTopColor: colors.border,
             }}>
               {/* Handle bar */}
-              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.15)', alignSelf: 'center', marginBottom: 20 }} />
+              <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', alignSelf: 'center', marginBottom: 20 }} />
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
-                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(165,153,255,0.15)', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)', alignItems: 'center', justifyContent: 'center' }}>
                   <Text style={{ fontSize: 16 }}>✨</Text>
                 </View>
-                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 18, color: colors.textPrimary || '#fff' }}>AI Free Slot</Text>
+                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 18, color: colors.textPrimary }}>AI Free Slot</Text>
               </View>
-              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 15, color: colors.textSecondary || '#ebebf5cc', lineHeight: 22 }}>
+              <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 15, color: colors.textSecondary, lineHeight: 22 }}>
                 {aiSlotResult}
               </Text>
               <TouchableOpacity
                 onPress={() => setAiSlotResult(null)}
-                style={{ marginTop: 24, paddingVertical: 14, backgroundColor: colors.accentPrimary || '#a599ff', borderRadius: 14, alignItems: 'center' }}
+                style={{ marginTop: 24, paddingVertical: 14, backgroundColor: colors.accentPrimary, borderRadius: 14, alignItems: 'center' }}
               >
-                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 15, color: '#000' }}>Got it</Text>
+                <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 15, color: isDark ? '#000000' : '#FFFFFF' }}>Got it</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -329,14 +331,14 @@ const handleFindFreeSlots = async () => {
             theme={{
               backgroundColor: 'transparent',
               calendarBackground: 'transparent',
-              textSectionTitleColor: '#8e8e93',
-              selectedDayBackgroundColor: '#ff3b30',
-              selectedDayTextColor: '#ffffff',
-              todayTextColor: '#ff3b30',
+              textSectionTitleColor: colors.textMuted,
+              selectedDayBackgroundColor: colors.accentPrimary,
+              selectedDayTextColor: isDark ? '#000000' : '#FFFFFF',
+              todayTextColor: colors.accentPrimary,
               dayTextColor: colors.textPrimary,
-              textDisabledColor: '#3a3a3c',
-              dotColor: '#ff3b30',
-              selectedDotColor: '#ffffff',
+              textDisabledColor: colors.border,
+              dotColor: colors.accentPrimary,
+              selectedDotColor: isDark ? '#000000' : '#FFFFFF',
               arrowColor: 'transparent',
               monthTextColor: 'transparent',
               textDayFontFamily: FONT_FAMILY.body,
@@ -356,9 +358,9 @@ const handleFindFreeSlots = async () => {
                  key={m} 
                  style={[styles.monthChip, currentMonthIdx === idx && styles.monthChipActive]}
                  onPress={() => {
-                   const d = new Date(selectedDate);
-                   d.setMonth(idx);
-                   setSelectedDate(d.toISOString().slice(0, 10));
+                   const [y, m, day] = selectedDate.split('-').map(Number);
+                   const d = new Date(y, idx, Math.min(day, new Date(y, idx + 1, 0).getDate()));
+                   setSelectedDate(formatLocalDateStr(d));
                  }}
                >
                  <Text style={[styles.monthChipText, currentMonthIdx === idx && styles.monthChipTextActive]}>{m}</Text>
@@ -383,7 +385,7 @@ const handleFindFreeSlots = async () => {
       {currentView === 'Day' && (
         <View style={{ flex: 1 }}>
           <CalendarDayView
-            styles={styles} colors={colors}
+            styles={styles} colors={colors} isDark={isDark}
             unscheduledDayEvents={unscheduledDayEvents} processedEvents={processedEvents}
             DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
             isToday={isToday} indicatorTop={indicatorTop} scrollViewRef={scrollViewRef}
@@ -400,7 +402,7 @@ const handleFindFreeSlots = async () => {
       {currentView === 'Week' && (
         <View style={{ flex: 1 }}>
           <CalendarWeekView
-            styles={styles} colors={colors} weekEvents={weekEvents}
+            styles={styles} colors={colors} isDark={isDark} weekEvents={weekEvents}
             DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
             indicatorTop={indicatorTop} selectedDate={selectedDate} nowDateStr={todayStr}
             setSelectedDate={setSelectedDate} setCurrentView={setCurrentView}
@@ -413,7 +415,7 @@ const handleFindFreeSlots = async () => {
       {currentView === 'Month' && (
         <View style={styles.monthViewContainer}>
           <CalendarAgendaView
-            styles={styles} colors={colors} selectedDate={selectedDate}
+            styles={styles} colors={colors} isDark={isDark} selectedDate={selectedDate}
             currentView={currentView}
             setSelectedDate={setSelectedDate} markedDates={markedDates}
             dayEvents={dayEvents} setSelectedGymLog={setSelectedGymLog}
@@ -491,7 +493,7 @@ const handleFindFreeSlots = async () => {
           setShowAddModal(true);
         }}
       >
-        <Ionicons name="add" size={32} color="#ffffff" />
+        <Ionicons name="add" size={32} color={isDark ? '#000000' : '#ffffff'} />
       </AnimatedPressable>
     </SafeAreaView>
   );

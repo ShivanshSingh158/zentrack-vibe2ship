@@ -16,6 +16,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONT_FAMILY, RADIUS } from '../../../theme/tokens';
+import { useTheme } from '../../../contexts/ThemeContext';
 
 interface MuscleStat {
   muscle: string;
@@ -36,6 +37,9 @@ function degsToFraction(deg: number) {
 }
 
 export default function MuscleDonutChart({ data }: MuscleDonutChartProps) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
   const filtered = useMemo(
     () =>
       [...data]
@@ -90,7 +94,7 @@ export default function MuscleDonutChart({ data }: MuscleDonutChartProps) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerIcon}>
-          <Ionicons name="pie-chart" size={12} color="#a599ff" />
+          <Ionicons name="pie-chart" size={12} color={colors.accentPrimary} />
         </View>
         <View>
           <Text style={styles.sectionLabel}>MUSCLE DISTRIBUTION</Text>
@@ -108,7 +112,7 @@ export default function MuscleDonutChart({ data }: MuscleDonutChartProps) {
               cx={center}
               cy={center}
               r={r}
-              stroke="rgba(255,255,255,0.05)"
+              stroke={isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}
               strokeWidth={STROKE_WIDTH}
               fill="none"
             />
@@ -157,96 +161,97 @@ export default function MuscleDonutChart({ data }: MuscleDonutChartProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.xl,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  headerIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    backgroundColor: 'rgba(165,153,255,0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.textTertiary,
-    letterSpacing: 1.2,
-    fontFamily: FONT_FAMILY.bold,
-  },
-  sectionSub: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
-    marginTop: 1,
-  },
-  chartRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-  },
-  donutWrap: {
-    width: DONUT_SIZE,
-    height: DONUT_SIZE,
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  donutCenter: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  donutTotal: {
-    fontSize: 22,
-    fontFamily: FONT_FAMILY.bold,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  donutTotalLabel: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
-  },
-  legend: {
-    flex: 1,
-    gap: 8,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  legendDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    flexShrink: 0,
-  },
-  legendInfo: {
-    flex: 1,
-  },
-  legendMuscle: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.bold,
-    color: COLORS.textPrimary,
-  },
-  legendStat: {
-    fontSize: 10,
-    color: COLORS.textTertiary,
-    fontFamily: FONT_FAMILY.regular,
-  },
-});
+const makeStyles = (colors: any, isDark: boolean = true) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.xl,
+      padding: 16,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 16,
+    },
+    headerIcon: {
+      width: 26,
+      height: 26,
+      borderRadius: 8,
+      backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sectionLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: colors.textTertiary,
+      letterSpacing: 1.2,
+      fontFamily: FONT_FAMILY.bold,
+    },
+    sectionSub: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.regular,
+      marginTop: 1,
+    },
+    chartRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 20,
+    },
+    donutWrap: {
+      width: DONUT_SIZE,
+      height: DONUT_SIZE,
+      position: 'relative',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    donutCenter: {
+      position: 'absolute',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    donutTotal: {
+      fontSize: 22,
+      fontFamily: FONT_FAMILY.bold,
+      fontWeight: '700',
+      color: colors.textPrimary,
+    },
+    donutTotalLabel: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.regular,
+    },
+    legend: {
+      flex: 1,
+      gap: 8,
+    },
+    legendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    legendDot: {
+      width: 9,
+      height: 9,
+      borderRadius: 5,
+      flexShrink: 0,
+    },
+    legendInfo: {
+      flex: 1,
+    },
+    legendMuscle: {
+      fontSize: 12,
+      fontFamily: FONT_FAMILY.bold,
+      color: colors.textPrimary,
+    },
+    legendStat: {
+      fontSize: 10,
+      color: colors.textTertiary,
+      fontFamily: FONT_FAMILY.regular,
+    },
+  });

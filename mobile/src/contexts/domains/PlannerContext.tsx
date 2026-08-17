@@ -72,9 +72,9 @@ export function PlannerProvider({
     let cancelled = false;
     readPlannerCache().then(cached => {
       if (cancelled) return;
-      if (cached.customEvents  && cached.customEvents.length > 0)  setCustomEvents(prev  => prev.length === 0 ? cached.customEvents!  : prev);
-      if (cached.goals         && cached.goals.length > 0)         setGoals(prev         => prev.length === 0 ? cached.goals!         : prev);
-      if (cached.weeklyReviews && cached.weeklyReviews.length > 0) setWeeklyReviews(prev => prev.length === 0 ? cached.weeklyReviews! : prev);
+      if (Array.isArray(cached.customEvents))  setCustomEvents(cached.customEvents);
+      if (Array.isArray(cached.goals))         setGoals(cached.goals);
+      if (Array.isArray(cached.weeklyReviews)) setWeeklyReviews(cached.weeklyReviews);
     });
     return () => { cancelled = true; };
   }, []);

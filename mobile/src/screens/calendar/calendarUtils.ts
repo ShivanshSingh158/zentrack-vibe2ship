@@ -7,19 +7,40 @@
 export const HOUR_HEIGHT = 60;
 
 // ─── Event Colors ─────────────────────────────────────────────────────────────
-export const getEventColors = (colors: any): Record<string, { bg: string; text: string }> => ({
-  exam:           { bg: '#F28B82', text: '#202124' },
-  assignment_due: { bg: '#C39BD3', text: '#202124' },
-  holiday:        { bg: '#81C995', text: '#202124' },
-  viva:           { bg: '#FAD7A1', text: '#202124' },
-  submission:     { bg: colors.accentPrimary, text: '#202124' },
-  todo:           { bg: '#AECBFA', text: '#202124' },
-  job:            { bg: '#FDE293', text: '#202124' },
-  goal:           { bg: '#FF8BCB', text: '#202124' },
-  gcal:           { bg: colors.accentPrimary, text: '#202124' },
-  class:          { bg: '#C39BD3', text: '#202124' },
-  lab:            { bg: '#FAD7A1', text: '#202124' },
-});
+export const getEventColors = (colors: any, isDark: boolean = true): Record<string, { bg: string; text: string; border: string }> => {
+  if (isDark) {
+    return {
+      exam:           { bg: '#F28B82', text: '#202124', border: '#F28B82' },
+      assignment_due: { bg: '#C39BD3', text: '#202124', border: '#C39BD3' },
+      holiday:        { bg: '#81C995', text: '#202124', border: '#81C995' },
+      viva:           { bg: '#FAD7A1', text: '#202124', border: '#FAD7A1' },
+      submission:     { bg: colors.accentPrimary || '#a599ff', text: '#202124', border: colors.accentPrimary || '#a599ff' },
+      todo:           { bg: '#AECBFA', text: '#202124', border: '#AECBFA' },
+      job:            { bg: '#FDE293', text: '#202124', border: '#FDE293' },
+      goal:           { bg: '#FF8BCB', text: '#202124', border: '#FF8BCB' },
+      gcal:           { bg: colors.accentPrimary || '#a599ff', text: '#202124', border: colors.accentPrimary || '#a599ff' },
+      class:          { bg: '#C39BD3', text: '#202124', border: '#C39BD3' },
+      lab:            { bg: '#FAD7A1', text: '#202124', border: '#FAD7A1' },
+      gym:            { bg: '#5EDA9E', text: '#202124', border: '#5EDA9E' },
+    };
+  }
+
+  // Light Mode ("Frost Quartz"): 12-15% tinted alpha washes, solid 3px left border, deep contrast text
+  return {
+    exam:           { bg: 'rgba(239, 68, 68, 0.12)', text: '#1C1C1E', border: '#DC2626' },
+    assignment_due: { bg: 'rgba(147, 51, 234, 0.12)', text: '#1C1C1E', border: '#7C3AED' },
+    holiday:        { bg: 'rgba(245, 158, 11, 0.12)', text: '#1C1C1E', border: '#D97706' },
+    viva:           { bg: 'rgba(2, 132, 199, 0.12)', text: '#1C1C1E', border: '#0284C7' },
+    submission:     { bg: 'rgba(108, 92, 231, 0.12)', text: '#1C1C1E', border: '#6C5CE7' },
+    todo:           { bg: 'rgba(59, 130, 246, 0.12)', text: '#1C1C1E', border: '#2563EB' },
+    job:            { bg: 'rgba(217, 119, 6, 0.12)', text: '#1C1C1E', border: '#D97706' },
+    goal:           { bg: 'rgba(236, 72, 153, 0.12)', text: '#1C1C1E', border: '#DB2777' },
+    gcal:           { bg: 'rgba(99, 102, 241, 0.12)', text: '#1C1C1E', border: '#4F46E5' },
+    class:          { bg: 'rgba(108, 92, 231, 0.12)', text: '#1C1C1E', border: '#6C5CE7' },
+    lab:            { bg: 'rgba(2, 132, 199, 0.12)', text: '#1C1C1E', border: '#0284C7' },
+    gym:            { bg: 'rgba(16, 185, 129, 0.12)', text: '#1C1C1E', border: '#059669' },
+  };
+};
 
 // ─── Time Formatting ──────────────────────────────────────────────────────────
 export const format12Hour = (time24: string | undefined): string => {

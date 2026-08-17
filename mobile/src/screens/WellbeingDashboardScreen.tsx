@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Rect, Text as SvgText, Line, Circle } from 'react-native-svg';
 import { BlurView } from 'expo-blur';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { StatusBar } from 'expo-status-bar';
 import { useTheme } from '../contexts/ThemeContext';
 import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
@@ -51,16 +52,32 @@ function getDayLabel(dateStr: string): string {
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 // ─── GlassCard ───────────────────────────────────────────────────────────────
-function GlassCard({ children, style }: { children?: React.ReactNode; style?: any }) {
+function GlassCard({ children, style, isDark, colors }: { children?: React.ReactNode; style?: any; isDark: boolean; colors: any }) {
+  if (isDark) {
+    return (
+      <BlurView intensity={55} tint="dark" style={[{
+        borderRadius: RADIUS.xl, padding: CARD_PAD,
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+        overflow: 'hidden', backgroundColor: 'rgba(20, 20, 25, 0.4)',
+      }, style]}>
+        {children}
+      </BlurView>
+    );
+  }
   return (
-    <BlurView intensity={55} tint="dark" style={[styles.glassCard, style]}>
+    <View style={[{
+      borderRadius: RADIUS.xl, padding: CARD_PAD,
+      borderWidth: 1, borderColor: colors.border,
+      overflow: 'hidden', backgroundColor: colors.surface,
+    }, style]}>
       {children}
-    </BlurView>
+    </View>
   );
 }
 
 export default function WellbeingDashboardScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
   const { waterLogs } = useWellnessData();
 
@@ -153,6 +170,7 @@ Water Data (ml per day): ${JSON.stringify(waterData)}
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
@@ -166,16 +184,20 @@ Water Data (ml per day): ${JSON.stringify(waterData)}
         
         {/* Water Intake Section */}
         <Animated.View style={{ opacity: mountAnim, transform: [{ translateY: mountAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }}>
-          <Text style={styles.sectionTitle}>Water Intake</Text>
-          <GlassCard style={styles.card}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Water Intake</Text>
+          <GlassCard style={styles.card} isDark={isDark} colors={colors}>
             <View style={styles.statRow}>
               <View>
-                <Text style={styles.statLabel}>Today</Text>
-                <Text style={styles.statValue}>{todayWater} <Text style={styles.statUnit}>ml</Text></Text>
+                <Text style={[styles.statLabel, { color: colors.textTertiary }]}>Today</Text>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>
+                  {todayWater} <Text style={[styles.statUnit, { color: colors.textTertiary }]}>ml</Text>
+                </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.statLabel}>7-Day Avg</Text>
-                <Text style={styles.statValue}>{waterAvg} <Text style={styles.statUnit}>ml</Text></Text>
+                <Text style={[styles.statLabel, { color: colors.textTertiary }]}>7-Day Avg</Text>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>
+                  {waterAvg} <Text style={[styles.statUnit, { color: colors.textTertiary }]}>ml</Text>
+                </Text>
               </View>
             </View>
 
@@ -183,18 +205,18 @@ Water Data (ml per day): ${JSON.stringify(waterData)}
               <Svg width={CHART_W} height={CHART_H}>
                 <Defs>
                   <SvgLinearGradient id="waterGrad" x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0%" stopColor="#00d2ff" stopOpacity="0.4" />
-                    <Stop offset="100%" stopColor="#3a7bd5" stopOpacity="0" />
+                    <Stop offset="0%" stopColor={isDark ? "#00d2ff" : colors.accentBlue} stopOpacity={isDark ? 0.4 : 0.25} />
+                    <Stop offset="100%" stopColor={isDark ? "#3a7bd5" : colors.accentBlue} stopOpacity={0} />
                   </SvgLinearGradient>
                   <SvgLinearGradient id="waterLineGrad" x1="0" y1="0" x2="1" y2="0">
-                    <Stop offset="0%" stopColor="#3a7bd5" />
-                    <Stop offset="100%" stopColor="#00d2ff" />
+                    <Stop offset="0%" stopColor={isDark ? "#3a7bd5" : colors.accentBlue} />
+                    <Stop offset="100%" stopColor={isDark ? "#00d2ff" : "#0ea5e9"} />
                   </SvgLinearGradient>
                 </Defs>
                 
                 {/* Grid lines */}
                 {[0, 0.5, 1].map(r => (
-                  <Line key={r} x1="0" y1={CHART_H * r} x2={CHART_W} y2={CHART_H * r} stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+                  <Line key={r} x1="0" y1={CHART_H * r} x2={CHART_W} y2={CHART_H * r} stroke={isDark ? "rgba(255,255,255,0.05)" : colors.border} strokeWidth="1" />
                 ))}
 
                 <Path d={waterAreaPath} fill="url(#waterGrad)" />
@@ -211,23 +233,23 @@ Water Data (ml per day): ${JSON.stringify(waterData)}
                 
                 {/* Data points */}
                 {waterPts.map((p, i) => (
-                  <Circle key={i} cx={p.x} cy={p.y} r="4" fill="#00d2ff" />
+                  <Circle key={i} cx={p.x} cy={p.y} r="4" fill={isDark ? "#00d2ff" : colors.accentBlue} />
                 ))}
               </Svg>
 
               <View style={styles.xLabels}>
                 {days.map((d, i) => (
-                  <Text key={i} style={styles.xLabelText}>{getDayLabel(d)}</Text>
+                  <Text key={i} style={[styles.xLabelText, { color: isDark ? 'rgba(255,255,255,0.6)' : colors.textPrimary }]}>{getDayLabel(d)}</Text>
                 ))}
               </View>
             </View>
 
-            <GlassCard style={styles.tipBox}>
-              <Ionicons name="sparkles" size={16} color="#A599FF" />
-              <Text style={styles.tipText}>
+            <View style={[styles.tipBox, { backgroundColor: isDark ? 'rgba(0,0,0,0.3)' : colors.surface2, borderColor: colors.border }]}>
+              <Ionicons name="sparkles" size={16} color={colors.accentPrimary} />
+              <Text style={[styles.tipText, { color: colors.textPrimary }]}>
                 {isAiThinking ? 'S.A.R.A is analyzing your hydration...' : waterTip}
               </Text>
-            </GlassCard>
+            </View>
           </GlassCard>
         </Animated.View>
 
@@ -237,25 +259,30 @@ Water Data (ml per day): ${JSON.stringify(waterData)}
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   safeArea: { flex: 1 },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: SPACE.xl, paddingBottom: SPACE.md,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border,
   },
   backBtn: { padding: SPACE.xs, marginLeft: -SPACE.xs },
   headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg },
   scroll: { flex: 1 },
   scrollContent: { padding: SPACE.xl },
   sectionTitle: {
-    fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.xl, color: '#f2f2f7',
+    fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.xl,
     marginBottom: SPACE.md, marginLeft: SPACE.xs,
   },
-  glassCard: {
+  glassCardDark: {
     borderRadius: RADIUS.xl, padding: CARD_PAD,
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
     overflow: 'hidden', backgroundColor: 'rgba(20, 20, 25, 0.4)',
+  },
+  glassCardLight: {
+    borderRadius: RADIUS.xl, padding: CARD_PAD,
+    borderWidth: 1, borderColor: colors.border,
+    overflow: 'hidden', backgroundColor: colors.surface,
   },
   card: {
     marginBottom: SPACE.md,
@@ -264,14 +291,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACE.xl,
   },
   statLabel: {
-    fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.xs, color: 'rgba(255,255,255,0.5)',
+    fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.xs,
     marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1,
   },
   statValue: {
-    fontFamily: FONT_FAMILY.bold, fontSize: 32, color: '#f2f2f7',
+    fontFamily: FONT_FAMILY.bold, fontSize: 32,
   },
   statUnit: {
-    fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: 'rgba(255,255,255,0.5)',
+    fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm,
   },
   chartContainer: {
     marginBottom: SPACE.lg,
@@ -280,14 +307,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', marginTop: SPACE.sm,
   },
   xLabelText: {
-    fontFamily: FONT_FAMILY.body, fontSize: 10, color: 'rgba(255,255,255,0.4)',
+    fontFamily: FONT_FAMILY.body, fontSize: 10,
   },
   tipBox: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)',
-    padding: SPACE.md, borderRadius: RADIUS.lg,
+    flexDirection: 'row', alignItems: 'center',
+    padding: SPACE.md, borderRadius: RADIUS.lg, borderWidth: 1,
   },
   tipText: {
-    fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: '#f2f2f7',
+    fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm,
     marginLeft: SPACE.md, flex: 1, lineHeight: 20,
   }
 });

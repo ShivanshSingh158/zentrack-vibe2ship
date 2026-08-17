@@ -65,10 +65,10 @@ export function CreativeProvider({
     let cancelled = false;
     readCreativeCache().then(cached => {
       if (cancelled) return;
-      if (cached.storageNodes   && cached.storageNodes.length > 0)   setStorageNodes(prev   => prev.length === 0 ? cached.storageNodes!   : prev);
-      if (cached.learningTopics && cached.learningTopics.length > 0) setLearningTopics(prev => prev.length === 0 ? cached.learningTopics! : prev);
-      if (cached.jobs           && cached.jobs.length > 0)           setJobs(prev           => prev.length === 0 ? cached.jobs!           : prev);
-      if (cached.contentLogs    && cached.contentLogs.length > 0)    setContentLogs(prev    => prev.length === 0 ? cached.contentLogs!    : prev);
+      if (Array.isArray(cached.storageNodes))   setStorageNodes(cached.storageNodes);
+      if (Array.isArray(cached.learningTopics)) setLearningTopics(cached.learningTopics);
+      if (Array.isArray(cached.jobs))           setJobs(cached.jobs);
+      if (Array.isArray(cached.contentLogs))    setContentLogs(cached.contentLogs);
     });
     return () => { cancelled = true; };
   }, []);

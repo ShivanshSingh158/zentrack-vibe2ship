@@ -28,11 +28,7 @@ import {
 
 
   View, Text, StyleSheet, Modal, TouchableOpacity, TextInput,
-
-
-  ScrollView, KeyboardAvoidingView, Platform, Switch, FlatList, ActivityIndicator,
-
-
+  ScrollView, KeyboardAvoidingView, Platform, Switch, ActivityIndicator,
 } from 'react-native';
 
 
@@ -536,10 +532,10 @@ interface Props {
 export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExerciseIds = [] }: Props) {
 
 
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
 
-  const styles = makeStyles(colors);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
 
 
@@ -1432,119 +1428,39 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
 
 
                     {/* Catalogue suggestions */}
-
-
                     {suggestions.length > 0 && (
-
-
-                      <FlatList
-
-
-                        data={suggestions}
-
-
-                        keyExtractor={item => item.id}
-
-
-                        keyboardShouldPersistTaps="handled"
-
-
-                        showsVerticalScrollIndicator={false}
-
-
-                        nestedScrollEnabled
-
-
-                        style={{ maxHeight: 220 }}
-
-
-                        renderItem={({ item, index }) => {
-
-
+                      <View style={{ maxHeight: 240 }}>
+                        {suggestions.slice(0, 8).map((item, index) => {
                           const muscleColor = item.muscle && item.muscle !== 'None'
-
-
                             ? resolveMuscleColor(item.muscle)
-
-
                             : colors.textTertiary;
 
-
                           return (
-
-
                             <TouchableOpacity
-
-
+                              key={item.id}
                               style={[
-
-
                                 styles.suggestionRow,
-
-
                                 index !== 0 && styles.suggestionBorder,
-
-
                               ]}
-
-
                               onPress={() => handleSelectSuggestion(item)}
-
-
                               activeOpacity={0.7}
-
-
                             >
-
-
                               <View style={{ flex: 1 }}>
-
-
                                 <Text style={styles.suggestionName} numberOfLines={1}>{item.name}</Text>
-
-
                                 <Text style={[styles.suggestionMeta, { color: muscleColor }]}>
-
-
                                   {item.muscle}
-
-
                                 </Text>
-
-
                               </View>
-
-
                               <View style={styles.suggestionRight}>
-
-
                                 <Text style={styles.suggestionSets}>
-
-
                                   {item.targetSets}x {item.targetReps}
-
-
                                 </Text>
-
-
                                 <Ionicons name="return-down-back-outline" size={14} color={colors.textTertiary} />
-
-
                               </View>
-
-
                             </TouchableOpacity>
-
-
                           );
-
-
-                        }}
-
-
-                      />
-
-
+                        })}
+                      </View>
                     )}
 
 
@@ -1983,7 +1899,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
               {isAdding ? (
 
 
-                <ActivityIndicator color="#000" size="small" />
+                <ActivityIndicator color={isDark ? '#000' : '#fff'} size="small" />
 
 
               ) : (
@@ -1992,7 +1908,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
                 <>
 
 
-                  <Ionicons name="add" size={18} color="#000" style={{ marginRight: 6 }} />
+                  <Ionicons name="add" size={18} color={isDark ? '#000' : '#fff'} style={{ marginRight: 6 }} />
 
 
                   <Text style={styles.submitBtnText}>Add Exercise</Text>
@@ -2034,7 +1950,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
 
 
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
 
 
   modalBg: {
@@ -2055,7 +1971,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   modalContent: {
 
 
-    backgroundColor: '#000000',
+    backgroundColor: colors.surface,
 
 
     borderTopLeftRadius: RADIUS.xxl,
@@ -2076,7 +1992,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
 
 
-    borderColor: '#27272A',
+    borderColor: colors.border,
 
 
   },
@@ -2127,7 +2043,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderRadius: 16,
 
 
-    backgroundColor: '#2C2C2E',
+    backgroundColor: isDark ? '#2C2C2E' : '#E2E1EA',
 
 
     alignItems: 'center',
@@ -2151,7 +2067,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
 
 
 
-  // •• Search Input •••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+  // Search Input
 
 
   inputGroup: {
@@ -2193,7 +2109,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
 
 
-    backgroundColor: '#1C1C1E',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
 
 
     borderRadius: RADIUS.md,
@@ -2208,7 +2124,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
 
 
-    borderColor: 'rgba(165,153,255,0.2)',
+    borderColor: colors.border,
 
 
   },
@@ -2238,7 +2154,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
 
 
 
-  // •• Dropdown •••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+  // Dropdown
 
 
   dropdown: {
@@ -2247,7 +2163,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     marginTop: 4,
 
 
-    backgroundColor: '#1C1C1E',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
 
 
     borderRadius: RADIUS.md,
@@ -2256,7 +2172,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
 
 
-    borderColor: 'rgba(165,153,255,0.15)',
+    borderColor: colors.border,
 
 
     overflow: 'hidden',
@@ -2292,7 +2208,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
 
 
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    borderTopColor: colors.border,
 
 
   },
@@ -2421,7 +2337,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   inputCompact: {
 
 
-    backgroundColor: '#1C1C1E',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
 
 
     borderRadius: RADIUS.md,
@@ -2445,7 +2361,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
 
 
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: colors.border,
 
 
   },
@@ -2529,7 +2445,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     gap: 10,
 
 
-    backgroundColor: 'rgba(165,153,255,0.06)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.06)' : 'rgba(108,92,231,0.06)',
 
 
   },
@@ -2586,7 +2502,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   aiBadge: {
 
 
-    backgroundColor: 'rgba(165,153,255,0.2)',
+    backgroundColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)',
 
 
     borderRadius: 4,
@@ -2601,7 +2517,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
 
 
-    borderColor: 'rgba(165,153,255,0.4)',
+    borderColor: colors.accentPrimary,
 
 
   },
@@ -2634,7 +2550,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
   input: {
 
 
-    backgroundColor: '#1C1C1E',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
 
 
     borderRadius: RADIUS.md,
@@ -2658,7 +2574,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
 
 
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: colors.border,
 
 
   },
@@ -2679,13 +2595,13 @@ const makeStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
 
 
-    backgroundColor: '#1C1C1E',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
 
 
     borderWidth: 1,
 
 
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: colors.border,
 
 
     paddingHorizontal: SPACE.md,
@@ -2719,143 +2635,51 @@ const makeStyles = (colors: any) => StyleSheet.create({
 
 
   muscleText: {
-
-
     fontFamily: FONT_FAMILY.body,
-
-
     fontSize: 12,
-
-
     color: colors.textMuted,
-
-
   },
-
-
-
-
 
   // Master split
-
-
   masterSplitContainer: {
-
-
     flexDirection: 'row',
-
-
     alignItems: 'center',
-
-
     justifyContent: 'space-between',
-
-
     paddingVertical: SPACE.md,
-
-
     marginBottom: SPACE.md,
-
-
     borderTopWidth: StyleSheet.hairlineWidth,
-
-
-    borderTopColor: 'rgba(255,255,255,0.06)',
-
-
+    borderTopColor: colors.border,
   },
-
-
   masterSplitTitle: {
-
-
     fontFamily: FONT_FAMILY.bold,
-
-
     fontSize: 14,
-
-
     color: colors.textPrimary,
-
-
     marginBottom: 2,
-
-
   },
-
-
   masterSplitDesc: {
-
-
     fontFamily: FONT_FAMILY.body,
-
-
     fontSize: 12,
-
-
     color: colors.textMuted,
-
-
   },
-
-
-
-
 
   // Submit
-
-
   submitBtn: {
-
-
-    backgroundColor: '#a599ff',
-
-
+    backgroundColor: isDark ? '#a599ff' : colors.accentPrimary,
     borderRadius: RADIUS.md,
-
-
     height: 50,
-
-
     flexDirection: 'row',
-
-
     alignItems: 'center',
-
-
     justifyContent: 'center',
-
-
     marginBottom: SPACE.sm,
-
-
   },
-
-
   submitBtnDisabled: {
-
-
     opacity: 0.4,
-
-
   },
-
-
   submitBtnText: {
-
-
     fontFamily: FONT_FAMILY.bold,
-
-
     fontSize: 15,
-
-
-    color: '#000',
-
-
+    color: isDark ? '#000' : '#fff',
   },
-
-
 });
 
 

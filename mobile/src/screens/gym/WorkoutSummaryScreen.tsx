@@ -17,6 +17,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import ConfettiCannon from 'react-native-confetti-cannon';
+import { StatusBar } from 'expo-status-bar';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -35,7 +36,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 export default function WorkoutSummaryScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<NativeStackNavigationProp<GymNavigationParamList>>();
   const route = useRoute<RouteProp<GymNavigationParamList, 'WorkoutSummary'>>();
 
@@ -98,58 +99,63 @@ export default function WorkoutSummaryScreen() {
 
     let totalSets = 0;
     let totalVolume = 0;
-    let maxWeight = 0;
-    const exercisesList: { name: string; setsCount: number; targetReps: string; maxWeight: number; muscle?: string }[] = [];
+    let totalExercises = 0;
+    const exercises: Array<{ name: string; sets: number; maxWeight: number; reps: number }> = [];
 
-    if (todayLog?.exercises) {
-      todayLog.exercises.forEach(ex => {
-        if ((ex as any).skipped) return;
-        let exSets = 0;
-        let exMaxW = 0;
-        let totalReps = 0;
+    todayLog?.exercises?.forEach(ex => {
+      let exSets = 0;
+      let exMaxWeight = 0;
+      let exTotalReps = 0;
 
-        ex.setsLog?.forEach((set: any) => {
-          if (set.completed || (set.weight && set.reps)) {
-            const w = set.weight || 0;
-            const r = set.reps || 0;
-            if (w > 0 || r > 0) exSets++;
-            if (w > maxWeight) maxWeight = w;
-            if (w > exMaxW) exMaxW = w;
-            totalVolume += w * r;
-            totalReps += r;
+      ex.setsLog?.forEach((set: any) => {
+        if (set.completed || (todayLog as any).completed || (set.weight && set.reps)) {
+          exSets++;
+          if (set.weight && set.reps) {
+            totalVolume += set.weight * set.reps;
+            if (set.weight > exMaxWeight) exMaxWeight = set.weight;
+            exTotalReps += set.reps;
           }
-        });
-        totalSets += exSets;
-
-        const avgReps = exSets > 0 ? Math.round(totalReps / exSets) : 0;
-        let repLabel = avgReps > 0 ? `~${avgReps} reps` : (ex.targetReps ? `${ex.targetReps} reps` : '0 reps');
-
-        exercisesList.push({
-          name: ex.name,
-          setsCount: exSets || ex.targetSets || 0,
-          targetReps: repLabel,
-          maxWeight: exMaxW,
-          muscle: (ex as any).muscle || undefined,
-        });
+        }
       });
-    }
 
-    return {
-      notes: todayLog?.notes || '',
-      totalExercises: exercisesList.length,
-      totalSets,
-      totalVolume,
-      maxWeight,
-      exercisesList,
-    };
+      if (exSets > 0) {
+        totalSets += exSets;
+        totalExercises++;
+        exercises.push({
+          name: ex.name,
+          sets: exSets,
+          maxWeight: exMaxWeight,
+          reps: exTotalReps,
+        });
+      }
+    });
+
+    const duration = todayLog?.workoutDurationMinutes || 0;
+    const notes = todayLog?.notes;
+
+    return { totalSets, totalVolume, totalExercises, duration, exercises, notes };
   }, [gymLogs, targetDate]);
 
-  const visibleExercises = useMemo(() => {
-    if (showAllExercises || sessionData.exercisesList.length <= 3) {
-      return sessionData.exercisesList;
+  const displayedExercises = showAllExercises
+    ? sessionData.exercises
+    : sessionData.exercises.slice(0, 3);
+  const remainingCount = sessionData.exercises.length - 3;
+
+  const availableLifts = useMemo(() => {
+    const defaultLifts = ['Bench Press', 'Squat', 'Deadlift', 'Overhead Press', 'Pull Up', 'Barbell Row'];
+    const loggedNames = sessionData.exercises.map(e => e.name);
+    const combined = Array.from(new Set([...loggedNames, ...defaultLifts]));
+    return combined.slice(0, 6);
+  }, [sessionData.exercises]);
+
+  const [selectedLift, setSelectedLift] = useState<string>('Bench Press');
+  const [selectedMetric, setSelectedMetric] = useState<'1RM' | 'Volume'>('1RM');
+
+  useEffect(() => {
+    if (sessionData.exercises.length > 0) {
+      setSelectedLift(sessionData.exercises[0].name);
     }
-    return sessionData.exercisesList.slice(0, 3);
-  }, [sessionData.exercisesList, showAllExercises]);
+  }, [sessionData.exercises]);
 
   const prScale = useSharedValue(0.6);
   const streakScale = useSharedValue(0.6);
@@ -172,31 +178,11 @@ export default function WorkoutSummaryScreen() {
   const streakStyle = useAnimatedStyle(() => ({ transform: [{ scale: streakScale.value }], opacity: streakOpacity.value }));
 
   const screenWidth = Dimensions.get('window').width;
-  const [selectedLift, setSelectedLift] = useState<string>('');
-  const [selectedMetric, setSelectedMetric] = useState<'1RM' | 'Volume'>('1RM');
-
-  const performedLifts = useMemo(() => {
-    let logDate = targetDate;
-    if (!logDate && gymLogs && gymLogs.length > 0) {
-      logDate = [...gymLogs].sort((a, b) => b.date.localeCompare(a.date))[0]?.date;
-    }
-    const todayLog = gymLogs?.find(l => l.date === logDate);
-    if (todayLog?.exercises && todayLog.exercises.length > 0) {
-      const activeEx = todayLog.exercises.filter((e: any) => !e.skipped).map((e: any) => e.name);
-      if (activeEx.length > 0) return Array.from(new Set(activeEx));
-    }
-    return ['Bench Press', 'Squat', 'Deadlift'];
-  }, [gymLogs, targetDate]);
-
-  useEffect(() => {
-    if (performedLifts.length > 0 && (!selectedLift || !performedLifts.includes(selectedLift))) {
-      setSelectedLift(performedLifts[0]);
-    }
-  }, [performedLifts, selectedLift]);
 
   const chartData = useMemo(() => {
-    if (!gymLogs || gymLogs.length === 0 || !selectedLift) return null;
-    const ninetyDaysAgo = new Date(); ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    if (!gymLogs || gymLogs.length === 0) return null;
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
     const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
     const logsInRange = gymLogs.filter(l => l.date >= ninetyDaysAgoStr).sort((a, b) => a.date.localeCompare(b.date));
     const labels: string[] = [];
@@ -218,22 +204,24 @@ export default function WorkoutSummaryScreen() {
         const value = selectedMetric === '1RM' ? max1RM : totalVolume;
         if (value > 0) {
           const dateObj = new Date(log.date);
-          labels.push(dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+          const formattedDate = `${dateObj.getMonth() + 1}/${dateObj.getDate()}`;
+          labels.push(formattedDate);
           dataPoints.push(Math.round(value));
         }
       }
     });
 
-    if (dataPoints.length < 2) return null;
-    const step = Math.ceil(labels.length / 5);
+    if (dataPoints.length === 0) return null;
+    const step = Math.max(1, Math.floor(labels.length / 5));
     return {
       labels: labels.map((l, i) => i % step === 0 ? l : ''),
-      datasets: [{ data: dataPoints, color: (opacity = 1) => `rgba(255, 255, 255, ${opacity * 0.95})`, strokeWidth: 2 }],
+      datasets: [{ data: dataPoints, color: (opacity = 1) => isDark ? `rgba(255, 255, 255, ${opacity * 0.95})` : `rgba(108, 92, 231, ${opacity * 0.95})`, strokeWidth: 2 }],
     };
-  }, [gymLogs, selectedLift, selectedMetric]);
+  }, [gymLogs, selectedLift, selectedMetric, isDark]);
 
   return (
     <SafeAreaView style={styles.root}>
+      <StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />
       {!readOnly && isPR && showConfetti && (
         <ConfettiCannon count={80} origin={{ x: screenWidth / 2, y: -10 }} autoStart={true} fallSpeed={2500} fadeOut={true} onAnimationEnd={() => setShowConfetti(false)} />
       )}
@@ -254,11 +242,11 @@ export default function WorkoutSummaryScreen() {
         <View style={styles.heroSection}>
           <View style={styles.badgeHalo}>
             <LinearGradient
-              colors={isDark ? ['rgba(165,153,255,0.22)', 'rgba(94,218,158,0.12)', 'transparent'] : ['rgba(165,153,255,0.15)', 'transparent']}
+              colors={isDark ? ['rgba(165,153,255,0.22)', 'rgba(94,218,158,0.12)', 'transparent'] : ['rgba(108,92,231,0.15)', 'transparent']}
               style={styles.haloGradient}
             >
               <LinearGradient colors={isDark ? ['#282832', '#16161c'] : ['#ffffff', '#f4f4f6']} style={styles.badgeWrapper}>
-                <Ionicons name="trophy" size={26} color="#a599ff" />
+                <Ionicons name="trophy" size={26} color={colors.accentPrimary} />
               </LinearGradient>
             </LinearGradient>
           </View>
@@ -273,10 +261,12 @@ export default function WorkoutSummaryScreen() {
         {isPR && newPR && (
           <Animated.View style={prStyle}>
             <View style={styles.prCard}>
-              <View style={styles.prIconBox}><Ionicons name="flame" size={18} color="#FF6B6B" /></View>
+              <View style={styles.prIconBox}>
+                <Ionicons name="flame" size={20} color="#FF6B6B" />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.prTag}>NEW PERSONAL RECORD</Text>
-                <Text style={styles.prText}>{newPR.name} • {newPR.weight} kg</Text>
+                <Text style={styles.prText}>{newPR.name} — {newPR.weight} kg</Text>
               </View>
             </View>
           </Animated.View>
@@ -284,51 +274,47 @@ export default function WorkoutSummaryScreen() {
 
         <View style={styles.statsGrid}>
           <View style={styles.statBox}>
-            <Ionicons name="barbell-outline" size={15} color="#a599ff" style={{ marginBottom: 6 }} />
+            <Text style={styles.statNumber}>{sessionData.duration > 0 ? `${sessionData.duration}m` : '--'}</Text>
+            <Text style={styles.statLabel}>DURATION</Text>
+          </View>
+          <View style={styles.statBox}>
             <Text style={styles.statNumber}>{sessionData.totalExercises}</Text>
             <Text style={styles.statLabel}>EXERCISES</Text>
           </View>
           <View style={styles.statBox}>
-            <Ionicons name="checkmark-done-circle-outline" size={15} color="#5eda9e" style={{ marginBottom: 6 }} />
             <Text style={styles.statNumber}>{sessionData.totalSets}</Text>
-            <Text style={styles.statLabel}>SETS DONE</Text>
+            <Text style={styles.statLabel}>SETS</Text>
           </View>
           <View style={styles.statBox}>
-            <Ionicons name="flame-outline" size={15} color="#ff9f4d" style={{ marginBottom: 6 }} />
-            <Text style={styles.statNumber}>{sessionData.totalVolume > 0 ? `${(sessionData.totalVolume / 1000).toFixed(1)}k` : '0'}</Text>
-            <Text style={styles.statLabel}>VOLUME (KG)</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Ionicons name="trophy-outline" size={15} color="#ffd700" style={{ marginBottom: 6 }} />
-            <Text style={styles.statNumber}>{sessionData.maxWeight > 0 ? `${sessionData.maxWeight}kg` : '—'}</Text>
-            <Text style={styles.statLabel}>BEST LIFT</Text>
+            <Text style={styles.statNumber}>{sessionData.totalVolume > 1000 ? `${(sessionData.totalVolume / 1000).toFixed(1)}k` : sessionData.totalVolume}</Text>
+            <Text style={styles.statLabel}>KG VOL</Text>
           </View>
         </View>
 
-        {sessionData.exercisesList.length > 0 && (
+        {sessionData.exercises.length > 0 && (
           <View style={styles.sectionContainer}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>SESSION BREAKDOWN</Text>
-              <View style={styles.countBadge}><Text style={styles.countBadgeText}>{sessionData.exercisesList.length}</Text></View>
+              <Text style={styles.sectionTitle}>PERFORMED EXERCISES</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeText}>{sessionData.exercises.length}</Text>
+              </View>
             </View>
-
             <View style={styles.exercisesList}>
-              {visibleExercises.map((ex, idx) => (
-                <View key={ex.name + idx} style={styles.exerciseCard}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
+              {displayedExercises.map((ex, index) => (
+                <View key={index} style={styles.exerciseCard}>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.exerciseName} numberOfLines={1}>{ex.name}</Text>
-                    <Text style={styles.exerciseMetaBadge}>{ex.setsCount} {ex.setsCount === 1 ? 'set' : 'sets'}, {ex.targetReps}</Text>
+                    <Text style={styles.exerciseMetaBadge}>{ex.sets} sets · {ex.reps} reps</Text>
                   </View>
                   {ex.maxWeight > 0 && (
                     <Text style={styles.exerciseMetaWeight}>{ex.maxWeight} kg</Text>
                   )}
                 </View>
               ))}
-
-              {sessionData.exercisesList.length > 3 && (
-                <TouchableOpacity style={styles.expandBtn} onPress={() => { feedback.tap(); setShowAllExercises(prev => !prev); }} activeOpacity={0.7}>
-                  <Text style={styles.expandBtnText}>{showAllExercises ? 'Show less' : `+ ${sessionData.exercisesList.length - 3} more`}</Text>
-                  <Ionicons name={showAllExercises ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
+              {!showAllExercises && remainingCount > 0 && (
+                <TouchableOpacity style={styles.expandBtn} activeOpacity={0.7} onPress={() => setShowAllExercises(true)}>
+                  <Text style={styles.expandBtnText}>Show {remainingCount} more exercises</Text>
+                  <Ionicons name="chevron-down" size={14} color={colors.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -339,31 +325,56 @@ export default function WorkoutSummaryScreen() {
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>90-DAY PROGRESSION</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-            <View style={styles.pillRow}>
-              {performedLifts.map(lift => (
-                <TouchableOpacity key={lift} style={[styles.liftPill, selectedLift === lift && styles.liftPillActive]} onPress={() => { feedback.tap(); setSelectedLift(lift); }} activeOpacity={0.7}>
-                  <Text style={[styles.liftPillText, selectedLift === lift && styles.liftPillTextActive]}>{lift}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillRow} style={{ marginBottom: 14 }}>
+            {availableLifts.map(lift => {
+              const isActive = selectedLift.toLowerCase() === lift.toLowerCase();
+              return (
+                <TouchableOpacity key={lift} style={[styles.liftPill, isActive && styles.liftPillActive]} onPress={() => { feedback.tap(); setSelectedLift(lift); }} activeOpacity={0.7}>
+                  <Text style={[styles.liftPillText, isActive && styles.liftPillTextActive]}>{lift}</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              );
+            })}
           </ScrollView>
           <View style={styles.segmentedControl}>
-            {(['1RM', 'Volume'] as const).map(metric => (
-              <TouchableOpacity key={metric} style={[styles.segmentBtn, selectedMetric === metric && styles.segmentBtnActive]} onPress={() => { feedback.tap(); setSelectedMetric(metric); }} activeOpacity={0.8}>
-                <Text style={[styles.segmentText, selectedMetric === metric && styles.segmentTextActive]}>{metric === '1RM' ? 'Est. 1RM' : 'Total Volume'}</Text>
-              </TouchableOpacity>
-            ))}
+            <TouchableOpacity style={[styles.segmentBtn, selectedMetric === '1RM' && styles.segmentBtnActive]} onPress={() => { feedback.tap(); setSelectedMetric('1RM'); }} activeOpacity={0.7}>
+              <Text style={[styles.segmentText, selectedMetric === '1RM' && styles.segmentTextActive]}>Est. 1RM (kg)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.segmentBtn, selectedMetric === 'Volume' && styles.segmentBtnActive]} onPress={() => { feedback.tap(); setSelectedMetric('Volume'); }} activeOpacity={0.7}>
+              <Text style={[styles.segmentText, selectedMetric === 'Volume' && styles.segmentTextActive]}>Total Volume (kg)</Text>
+            </TouchableOpacity>
           </View>
           {chartData ? (
             <View style={styles.chartWrapper}>
-              <LineChart data={chartData} width={screenWidth - 64} height={200} chartConfig={{ backgroundColor: 'transparent', backgroundGradientFrom: 'transparent', backgroundGradientTo: 'transparent', decimalPlaces: 0, color: (opacity = 1) => `rgba(255, 255, 255, ${opacity * 0.95})`, labelColor: (opacity = 1) => `rgba(161, 161, 170, ${opacity * 0.8})`, propsForDots: { r: '3', strokeWidth: '1.5', stroke: colors.textPrimary }, propsForBackgroundLines: { stroke: 'rgba(255, 255, 255, 0.05)', strokeDasharray: '4' } }} bezier style={styles.chartStyle} />
+              <LineChart
+                data={chartData}
+                width={screenWidth - 48}
+                height={160}
+                withDots={true}
+                withInnerLines={true}
+                withOuterLines={false}
+                withVerticalLines={false}
+                chartConfig={{
+                  backgroundColor: 'transparent',
+                  backgroundGradientFrom: isDark ? '#1C1C1E' : '#FFFFFF',
+                  backgroundGradientTo: isDark ? '#1C1C1E' : '#FFFFFF',
+                  decimalPlaces: 0,
+                  color: (opacity = 1) => isDark ? `rgba(255, 255, 255, ${opacity})` : `rgba(108, 92, 231, ${opacity})`,
+                  labelColor: (opacity = 1) => isDark ? `rgba(255, 255, 255, ${opacity * 0.45})` : `rgba(28, 28, 30, ${opacity * 0.6})`,
+                  style: { borderRadius: 12 },
+                  propsForBackgroundLines: { strokeDasharray: '4 4', stroke: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' },
+                  propsForDots: { r: '3.5', strokeWidth: '1.5', stroke: isDark ? '#1C1C1E' : '#FFFFFF' },
+                }}
+                bezier
+                style={styles.chartStyle}
+              />
             </View>
           ) : (
             <View style={styles.emptyChartBox}>
-              <View style={styles.emptyIconBadge}><Ionicons name="analytics-outline" size={20} color={colors.textMuted} /></View>
-              <Text style={styles.emptyChartTitle}>Insufficient Data</Text>
-              <Text style={styles.emptyChartText}>Log at least 2 sessions of {selectedLift} in 90 days to see graphs.</Text>
+              <View style={styles.emptyIconBadge}>
+                <Ionicons name="barbell-outline" size={18} color={colors.textMuted} />
+              </View>
+              <Text style={styles.emptyChartTitle}>No Lift History</Text>
+              <Text style={styles.emptyChartText}>Log sets for {selectedLift} across multiple workouts to plot your 90-day strength curve.</Text>
             </View>
           )}
         </Animated.View>
@@ -388,25 +399,25 @@ export default function WorkoutSummaryScreen() {
 }
 
 const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
+  root: { flex: 1, backgroundColor: isDark ? '#000000' : colors.background },
   header: { paddingHorizontal: SPACE.xl, paddingTop: 10, alignItems: 'flex-start' },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', borderRadius: RADIUS.full },
   content: { flexGrow: 1, paddingHorizontal: 8, paddingTop: SPACE.lg },
   heroSection: { alignItems: 'center', marginVertical: SPACE.lg },
   badgeHalo: { marginBottom: SPACE.md },
   haloGradient: { padding: 6, borderRadius: RADIUS.full, alignItems: 'center', justifyContent: 'center' },
-  badgeWrapper: { width: 54, height: 54, borderRadius: RADIUS.full, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center' },
-  sessionPill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isDark ? 'rgba(94, 218, 158, 0.08)' : 'rgba(94, 218, 158, 0.1)', borderWidth: 1, borderColor: 'rgba(94, 218, 158, 0.2)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full, marginBottom: SPACE.md },
-  pulseDot: { width: 6, height: 6, borderRadius: RADIUS.full, backgroundColor: '#5eda9e' },
-  sessionPillText: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: '#5eda9e', letterSpacing: 0.6 },
+  badgeWrapper: { width: 54, height: 54, borderRadius: RADIUS.full, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.3)' : colors.border, alignItems: 'center', justifyContent: 'center' },
+  sessionPill: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: isDark ? 'rgba(94, 218, 158, 0.08)' : 'rgba(5, 150, 105, 0.1)', borderWidth: 1, borderColor: isDark ? 'rgba(94, 218, 158, 0.2)' : 'rgba(5, 150, 105, 0.25)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: RADIUS.full, marginBottom: SPACE.md },
+  pulseDot: { width: 6, height: 6, borderRadius: RADIUS.full, backgroundColor: isDark ? '#5eda9e' : colors.accentGreen },
+  sessionPillText: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: isDark ? '#5eda9e' : colors.accentGreen, letterSpacing: 0.6 },
   heroTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 27, color: colors.textPrimary, textAlign: 'center', letterSpacing: -0.4, marginBottom: 4 },
   heroSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textMuted, textAlign: 'center' },
-  prCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1C1C1E' : '#F3F4F6', borderRadius: 16, padding: 16, marginBottom: SPACE.lg, gap: SPACE.md },
+  prCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: 16, padding: 16, marginBottom: SPACE.lg, gap: SPACE.md, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
   prIconBox: { width: 36, height: 36, borderRadius: RADIUS.md, backgroundColor: 'rgba(255, 107, 107, 0.15)', alignItems: 'center', justifyContent: 'center' },
   prTag: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: '#FF6B6B', letterSpacing: 0.6, marginBottom: 2 },
   prText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
   statsGrid: { flexDirection: 'row', gap: 8, marginBottom: SPACE.xl },
-  statBox: { flex: 1, backgroundColor: isDark ? '#1C1C1E' : '#F3F4F6', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 4, alignItems: 'center' },
+  statBox: { flex: 1, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 4, alignItems: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
   statNumber: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary, marginBottom: 3 },
   statLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 9, color: colors.textMuted, letterSpacing: 0.5 },
   sectionContainer: { marginBottom: SPACE.xl },
@@ -415,18 +426,18 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   countBadge: { backgroundColor: isDark ? '#1C1C1E' : '#E5E7EB', paddingHorizontal: 6, paddingVertical: 2, borderRadius: RADIUS.full, marginLeft: 'auto' },
   countBadgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: colors.textMuted },
   exercisesList: { gap: 8 },
-  exerciseCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isDark ? '#1C1C1E' : '#F3F4F6', padding: 16, borderRadius: 16 },
+  exerciseCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: isDark ? '#1C1C1E' : colors.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
   exerciseName: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary, marginBottom: 4 },
   exerciseMetaBadge: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted },
   exerciseMetaWeight: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary },
-  expandBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 14, backgroundColor: isDark ? '#1C1C1E' : '#F3F4F6', borderRadius: 16 },
+  expandBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 14, backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: 16, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
   expandBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textMuted },
-  progressionCard: { backgroundColor: isDark ? '#1C1C1E' : '#F3F4F6', borderRadius: 16, padding: SPACE.lg, marginBottom: SPACE.xl },
+  progressionCard: { backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: 16, padding: SPACE.lg, marginBottom: SPACE.xl, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
   pillRow: { flexDirection: 'row', gap: 8 },
   liftPill: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: RADIUS.full, backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.05)' },
-  liftPillActive: { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)' },
+  liftPillActive: { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(108, 92, 231, 0.15)' },
   liftPillText: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textMuted },
-  liftPillTextActive: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold },
+  liftPillTextActive: { color: isDark ? '#ffffff' : colors.accentPrimary, fontFamily: FONT_FAMILY.bold },
   segmentedControl: { flexDirection: 'row', backgroundColor: isDark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.04)', borderRadius: RADIUS.md, padding: 3, marginBottom: 16 },
   segmentBtn: { flex: 1, paddingVertical: 7, alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.md - 2 },
   segmentBtnActive: { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#FFFFFF' },
@@ -438,9 +449,9 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   emptyIconBadge: { width: 38, height: 38, borderRadius: RADIUS.full, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   emptyChartTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary, marginBottom: 4 },
   emptyChartText: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted, textAlign: 'center', lineHeight: 18 },
-  notesContainer: { backgroundColor: isDark ? '#1C1C1E' : '#F3F4F6', borderRadius: 16, padding: SPACE.lg, marginBottom: SPACE.xl },
+  notesContainer: { backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderRadius: 16, padding: SPACE.lg, marginBottom: SPACE.xl, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
   notesText: { fontFamily: FONT_FAMILY.body, fontSize: 14, color: colors.textPrimary, lineHeight: 20 },
   footer: { paddingHorizontal: 7, paddingTop: SPACE.sm },
-  doneBtn: { backgroundColor: colors.textPrimary, paddingVertical: 14, width: '100%', borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center' },
-  doneBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.background, letterSpacing: 0.3 },
+  doneBtn: { backgroundColor: isDark ? '#ffffff' : colors.accentPrimary, paddingVertical: 14, width: '100%', borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center' },
+  doneBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: isDark ? '#000000' : '#ffffff', letterSpacing: 0.3 },
 });

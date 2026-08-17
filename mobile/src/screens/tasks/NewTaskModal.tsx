@@ -47,8 +47,8 @@ interface Props {
 export const NewTaskModal = React.memo(function NewTaskModal({
   visible, onClose, userId, selectedDate, listCount,
 }: Props) {
-  const { colors } = useTheme();
-  const styles = makeTasksStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = makeTasksStyles(colors, isDark);
   const { optimisticAddTask } = useMobileData();
 
   const [title, setTitle] = useState('');
@@ -523,9 +523,9 @@ export const NewTaskModal = React.memo(function NewTaskModal({
             )}
             <View style={styles.tagInputRow}>
               <TextInput
-                style={[styles.tagInput, { color: '#fff', borderColor: '#2c2c2e', backgroundColor: '#1c1c1e' }]}
+                style={styles.tagInput}
                 placeholder="New label..."
-                placeholderTextColor="#636366"
+                placeholderTextColor={colors.textMuted}
                 value={newTagInput}
                 onChangeText={setNewTagInput}
                 onSubmitEditing={() => addTag(newTagInput)}
@@ -533,7 +533,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
                 autoCapitalize="none"
               />
               <TouchableOpacity style={styles.tagAddBtn} onPress={() => addTag(newTagInput)}>
-                <Ionicons name="add" size={18} color="#60a5fa" />
+                <Ionicons name="add" size={18} color={colors.accentPrimary} />
               </TouchableOpacity>
             </View>
           </View>
@@ -543,10 +543,10 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           <View style={styles.subtasksPanel}>
             {subtasks.map((st, i) => (
               <View key={i} style={styles.subtaskRow}>
-                <Ionicons name="ellipse-outline" size={14} color="#636366" />
+                <Ionicons name="ellipse-outline" size={14} color={colors.textMuted} />
                 <Text style={styles.subtaskRowText}>{st}</Text>
                 <AnimatedPressable onPress={() => removeSubtask(i)} style={styles.autoStyle2}>
-                  <Ionicons name="close" size={14} color="#636366" />
+                  <Ionicons name="close" size={14} color={colors.textMuted} />
                 </AnimatedPressable>
               </View>
             ))}
@@ -554,14 +554,14 @@ export const NewTaskModal = React.memo(function NewTaskModal({
               <TextInput
                 style={styles.subtaskInput}
                 placeholder="Add subtask..."
-                placeholderTextColor="#636366"
+                placeholderTextColor={colors.textMuted}
                 value={subtaskInput}
                 onChangeText={setSubtaskInput}
                 onSubmitEditing={addSubtask}
                 returnKeyType="done"
               />
               <AnimatedPressable onPress={addSubtask} style={styles.subtaskAddBtn}>
-                <Ionicons name="add" size={16} color="#a599ff" />
+                <Ionicons name="add" size={16} color={colors.accentPrimary} />
               </AnimatedPressable>
             </View>
           </View>
@@ -614,7 +614,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           <Ionicons
             name={saving ? 'hourglass-outline' : 'add-circle-outline'}
             size={16}
-            color={title.trim() ? '#000000' : '#636366'}
+            color={title.trim() ? (isDark ? '#000000' : '#ffffff') : colors.textMuted}
           />
           <Text style={[styles.addTaskBtnFullText, !title.trim() && styles.addTaskBtnDisabledText]}>
             {saving ? 'Adding Task...' : 'Add task'}

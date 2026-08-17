@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Task } from '../../contexts/MobileDataContext';
 import { formatDateShort } from '../../utils/dateUtils';
+import { useTheme } from '../../contexts/ThemeContext';
 
 const today = new Date().toISOString().slice(0, 10);
 
@@ -64,29 +65,32 @@ function formatTime12(timeStr?: string) {
   return formatSingleTime(timeStr);
 }
 
-const tagColor = (tag: string) => {
+const getTagColor = (tag: string, colors: any) => {
   const map: Record<string, string> = {
-    'high': '#FF3B30',
-    'work': '#0A84FF',
-    'personal': '#30D158',
-    'errand': '#FF9F0A',
-    'gym': '#A599FF',
+    'high': colors.error,
+    'work': colors.accentBlue,
+    'personal': colors.accentGreen,
+    'errand': colors.accentAmber,
+    'gym': colors.accentPrimary,
   };
-  return map[tag.toLowerCase()] || '#8E8E93';
+  return map[tag.toLowerCase()] || colors.textTertiary;
 };
 
-const formatSubtext = (task: Task, isOverdue: boolean) => {
-  if (isOverdue) return { text: 'Overdue', color: '#FF453A', icon: 'alert-circle' as const };
+const getFormatSubtext = (task: Task, isOverdue: boolean, colors: any) => {
+  if (isOverdue) return { text: 'Overdue', color: colors.error, icon: 'alert-circle' as const };
   if (task.timeSlot) {
-    return { text: formatTime12(task.timeSlot), color: '#8E8E93', icon: 'time-outline' as const };
+    return { text: formatTime12(task.timeSlot), color: colors.textTertiary, icon: 'time-outline' as const };
   }
   if (task.date && task.date > today) {
-    return { text: formatDateShort(task.date), color: '#8E8E93', icon: 'calendar-outline' as const };
+    return { text: formatDateShort(task.date), color: colors.textTertiary, icon: 'calendar-outline' as const };
   }
   return null;
 };
 
 const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart, onReschedule, onPress, onLongPress, isOverdue, isBulkEdit, isSelected, onToggleSelect, onUpdateTask, onAddSubtask }: TaskRowProps) {
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
+
   const swipeableRef = useRef<Swipeable>(null);
   const checkScale = useSharedValue(1);
   const rowTranslateX = useSharedValue(0);
@@ -99,7 +103,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
   const completedSubtasks = task.subtasks?.filter(st => st.completed).length || 0;
   const hasSubtasks = totalSubtasks > 0;
 
-  const subtextData = formatSubtext(task, isOverdue);
+  const subtextData = React.useMemo(() => getFormatSubtext(task, isOverdue, colors), [task.timeSlot, task.date, task.status, isOverdue, colors]);
   const taskTags = task.tags && task.tags.length > 0 ? task.tags : null;
 
   const animatedCheckStyle = useAnimatedStyle(() => ({
@@ -132,7 +136,6 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
     }
   }, [onComplete, onCompleteStart, isDone, checkScale]);
 
-
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     onLongPress();
@@ -140,24 +143,24 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
 
   const renderLeftActions = useCallback(() => (
     <View style={styles.actionLeftContainer}>
-      <View style={[styles.actionLeft, { backgroundColor: '#34C759' }]}>
+      <View style={[styles.actionLeft, { backgroundColor: colors.accentGreen }]}>
         <Ionicons name="checkmark" size={22} color="#fff" />
       </View>
     </View>
-  ), []);
+  ), [colors]);
 
   const renderRightActions = useCallback(() => (
     <View style={styles.actionRightContainer}>
-      <TouchableOpacity style={[styles.actionRight, { backgroundColor: '#A599FF' }]} onPress={onReschedule}>
+      <TouchableOpacity style={[styles.actionRight, { backgroundColor: colors.accentPrimary }]} onPress={onReschedule}>
         <Ionicons name="calendar-outline" size={20} color="#fff" />
       </TouchableOpacity>
       {onAddSubtask && (
-         <TouchableOpacity style={[styles.actionRight, { backgroundColor: '#3A3A3C' }]} onPress={onAddSubtask}>
+         <TouchableOpacity style={[styles.actionRight, { backgroundColor: isDark ? '#3A3A3C' : '#6B7280' }]} onPress={onAddSubtask}>
           <Ionicons name="list-outline" size={20} color="#fff" />
         </TouchableOpacity>
       )}
     </View>
-  ), [onReschedule, onAddSubtask]);
+  ), [onReschedule, onAddSubtask, colors, isDark]);
 
   const handleSwipeOpen = useCallback((direction: string) => {
     if (direction === 'left') {
@@ -176,7 +179,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
     >
       <Animated.View style={animatedRowStyle}>
         <View
-          style={[styles.row, isSelected && { backgroundColor: 'rgba(165, 153, 255, 0.05)' }]}
+          style={[styles.row, isSelected && { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.08)' : 'rgba(108, 92, 231, 0.08)' }]}
         >
           <TouchableOpacity
             style={styles.leftHalf}
@@ -192,9 +195,9 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                 animatedCheckStyle
               ]}>
                 {isBulkEdit ? (
-                   isSelected && <Ionicons name="checkmark" size={12} color="#000000" />
+                   isSelected && <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
                 ) : (
-                   isDone && <Ionicons name="checkmark" size={12} color="#000000" />
+                   isDone && <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
                 )}
               </Animated.View>
             </View>
@@ -217,7 +220,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                   <Text style={styles.subtaskProgressText}>
                     {completedSubtasks}/{totalSubtasks} subtasks
                   </Text>
-                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} color="#8E8E93" style={{ marginLeft: 4 }} />
+                  <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={12} color={colors.textTertiary} style={{ marginLeft: 4 }} />
                 </TouchableOpacity>
               )}
 
@@ -225,8 +228,8 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
               {taskTags && !isDone && (
                 <View style={styles.tagRow}>
                   {taskTags.slice(0, 3).map(tag => (
-                    <View key={tag} style={[styles.tagPill, { backgroundColor: tagColor(tag) + '22' }]}>
-                      <Text style={[styles.tagPillText, { color: tagColor(tag) }]}>{tag}</Text>
+                    <View key={tag} style={[styles.tagPill, { backgroundColor: getTagColor(tag, colors) + '18' }]}>
+                      <Text style={[styles.tagPillText, { color: getTagColor(tag, colors) }]}>{tag}</Text>
                     </View>
                   ))}
                 </View>
@@ -247,7 +250,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                   {subtextData.text}
                 </Text>
                 {subtextData.icon === 'time-outline' && !isOverdue && (
-                   <Ionicons name="repeat" size={10} color="#C7C7CC" style={{ marginLeft: 6 }} />
+                   <Ionicons name="repeat" size={10} color={colors.textTertiary} style={{ marginLeft: 6 }} />
                 )}
               </View>
             )}
@@ -281,7 +284,7 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
                 }}
               >
                 <View style={[styles.subtaskCheckbox, st.completed && styles.subtaskCheckboxDone]}>
-                  {st.completed && <Ionicons name="checkmark" size={10} color="#000" />}
+                  {st.completed && <Ionicons name="checkmark" size={10} color={isDark ? '#000000' : '#FFFFFF'} />}
                 </View>
                 <Text style={[styles.subtaskTitle, st.completed && styles.subtaskTitleDone]}>
                   {st.title}
@@ -297,13 +300,13 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
 
 export default TaskRow;
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'stretch',
     borderBottomWidth: 1,
-    borderBottomColor: '#1C1C1E',
-    backgroundColor: '#000000',
+    borderBottomColor: colors.border,
+    backgroundColor: colors.surface,
   },
   leftHalf: {
     flex: 1,
@@ -330,18 +333,18 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     borderWidth: 1.5,
-    borderColor: '#3A3A3C',
+    borderColor: isDark ? '#3A3A3C' : '#D1D1D6',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: isDark ? 'transparent' : colors.surface2,
   },
   checkboxDone: {
-    backgroundColor: '#3A3A3C',
-    borderColor: '#3A3A3C',
+    backgroundColor: colors.accentPrimary,
+    borderColor: colors.accentPrimary,
   },
   checkboxSelected: {
-    backgroundColor: '#A599FF',
-    borderColor: '#A599FF',
+    backgroundColor: colors.accentPrimary,
+    borderColor: colors.accentPrimary,
   },
   content: {
     flex: 1,
@@ -350,10 +353,10 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'Inter_500Medium',
     fontSize: 14,
-    color: '#FFFFFF',
+    color: colors.textPrimary,
   },
   titleDone: {
-    color: '#636366',
+    color: colors.textTertiary,
     textDecorationLine: 'line-through',
   },
 
@@ -376,7 +379,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#2C2C2E',
+    borderColor: colors.border,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
   },
   pillText: {
     fontFamily: 'Inter_600SemiBold',
@@ -407,28 +411,28 @@ const styles = StyleSheet.create({
   progressBarBg: {
     width: 60,
     height: 4,
-    backgroundColor: '#3A3A3C',
+    backgroundColor: isDark ? '#3A3A3C' : '#E2E1EA',
     borderRadius: 2,
     marginRight: 8,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
-    backgroundColor: '#A599FF',
+    backgroundColor: colors.accentPrimary,
     borderRadius: 2,
   },
   subtaskProgressText: {
     fontFamily: 'Inter_500Medium',
     fontSize: 11,
-    color: '#8E8E93',
+    color: colors.textTertiary,
   },
   subtaskList: {
-    backgroundColor: '#0A0A0A',
+    backgroundColor: isDark ? '#0A0A0A' : colors.surface2,
     paddingLeft: 54,
     paddingRight: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1C1C1E',
+    borderBottomColor: colors.border,
   },
   subtaskItem: {
     flexDirection: 'row',
@@ -440,22 +444,23 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 4,
     borderWidth: 1,
-    borderColor: '#3A3A3C',
+    borderColor: isDark ? '#3A3A3C' : '#D1D1D6',
     marginRight: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: isDark ? 'transparent' : colors.surface,
   },
   subtaskCheckboxDone: {
-    backgroundColor: '#A599FF',
-    borderColor: '#A599FF',
+    backgroundColor: colors.accentPrimary,
+    borderColor: colors.accentPrimary,
   },
   subtaskTitle: {
     fontFamily: 'Inter_400Regular',
     fontSize: 13,
-    color: '#D1D1D6',
+    color: colors.textPrimary,
   },
   subtaskTitleDone: {
-    color: '#636366',
+    color: colors.textTertiary,
     textDecorationLine: 'line-through',
   },
   tagRow: {

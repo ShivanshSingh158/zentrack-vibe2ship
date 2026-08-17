@@ -17,6 +17,7 @@ import { getFingerprint } from '../../services/saraMemory';
 import { LayoutItem } from '../../components/Dashboard/DashboardLayoutSheet';
 import { NextClassData } from '../../components/Dashboard/UnifiedLifeWidget';
 import { calculateAppStreak } from '../../utils/streakUtils';
+import { formatLocalDateStr } from '../../utils/dateUtils';
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
   { id: 'quote', hidden: false },
@@ -132,25 +133,19 @@ export function useDashboardData() {
 
   // ── Time / greeting ────────────────────────────────────────────────────────
   const hour = nowDate.getHours();
-  const effectiveDate = new Date(nowDate);
-  if (hour < 2) effectiveDate.setDate(effectiveDate.getDate() - 1);
-  const todayStr = [
-    effectiveDate.getFullYear(),
-    String(effectiveDate.getMonth() + 1).padStart(2, '0'),
-    String(effectiveDate.getDate()).padStart(2, '0'),
-  ].join('-');
+  const todayStr = formatLocalDateStr(nowDate);
 
   let timeGreeting = 'evening.';
-  if (hour >= 21 || hour < 2) timeGreeting = 'night.';
+  if (hour >= 21 || hour < 5) timeGreeting = 'night.';
   else if (hour < 12) timeGreeting = 'morning.';
   else if (hour < 17) timeGreeting = 'afternoon.';
 
-// ── Next Class Logic ───────────────────────────────────────────────────────
-  const nextClass = useMemo<NextClassData | null>(() => {
-    if (!attendance || attendance.length === 0) return null;
-    const dayOfWeek  = nowDate.getDay().toString();
-    const DAY_NAMES  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const todayClasses = attendance.flatMap(subj => {
+  // ── Unified Today's Scheduled Classes ──────────────────────────────────────
+  const todayClasses = useMemo(() => {
+    if (!attendance || attendance.length === 0) return [];
+    const dayOfWeek = nowDate.getDay().toString();
+    const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    return attendance.flatMap(subj => {
       const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[Number(dayOfWeek)]
         || subj.schedule?.[DAY_NAMES[nowDate.getDay()]]
         || subj.schedule?.[DAY_NAMES[nowDate.getDay()].toLowerCase()];
@@ -160,7 +155,10 @@ export function useDashboardData() {
       if (sch.labs)    sch.labs.forEach((l: any, idx: number) => l.time && cls.push({ id: `${subj.id}-lab-${l.time}`,   title: `${subj.name} Lab`,   time: l.time, type: 'lab', subjectId: subj.id, subject: subj, sessionIdx: idx }));
       return cls;
     });
+  }, [attendance, nowDate]);
 
+  // ── Next Class Logic ───────────────────────────────────────────────────────
+  const nextClass = useMemo<NextClassData | null>(() => {
     if (todayClasses.length === 0) return null;
 
     const parseTimeToMins = (tStr: string): number => {
@@ -259,7 +257,7 @@ export function useDashboardData() {
       endTimeMins: endMins,
       nowMins
     };
-  }, [attendance, nowDate, attendanceLogs, todayStr]);
+  }, [todayClasses, nowDate, attendanceLogs, todayStr]);
 
   const avatarLetter = user?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'A';
 
@@ -285,19 +283,6 @@ export function useDashboardData() {
       return { classesAttendedToday: 0, classesTotalToday: 0, overallAttendancePct: 0 };
     }
 
-    const dayOfWeek = nowDate.getDay().toString();
-    const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-    const todayClasses = attendance.flatMap(subj => {
-      const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[Number(dayOfWeek)]
-        || subj.schedule?.[DAY_NAMES[nowDate.getDay()]]
-        || subj.schedule?.[DAY_NAMES[nowDate.getDay()].toLowerCase()];
-      if (!sch) return [];
-      const cls: any[] = [];
-      if (sch.classes) sch.classes.forEach((c: any) => c.time && cls.push({ subjectId: subj.id, type: 'class', ...c }));
-      if (sch.labs) sch.labs.forEach((l: any) => l.time && cls.push({ subjectId: subj.id, type: 'lab', ...l }));
-      return cls;
-    });
-
     const attendedCount = (attendanceLogs || []).filter(l => 
       l.date === todayStr && (l.action === 'attended' || (l.action as any) === 'present')
     ).length;
@@ -316,7 +301,7 @@ export function useDashboardData() {
       classesTotalToday: todayClasses.length,
       overallAttendancePct: overallPct,
     };
-  }, [attendance, attendanceLogs, todayStr, nowDate]);
+  }, [attendance, attendanceLogs, todayClasses, todayStr]);
 
   return {
     // Data

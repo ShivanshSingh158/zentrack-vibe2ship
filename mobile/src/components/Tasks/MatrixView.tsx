@@ -5,6 +5,7 @@ import { Task } from '../../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE, SHADOW } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
 import AnimatedPressable from '../AnimatedPressable';
+import { formatLocalDateStr } from '../../utils/dateUtils';
 
 interface MatrixViewProps {
   tasks: Task[];
@@ -16,13 +17,13 @@ const GRID_GAP = 12;
 const CARD_WIDTH = (width - 40 - GRID_GAP) / 2; // 20 padding on each side
 
 export default function MatrixView({ tasks, onTaskPress }: MatrixViewProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const styles = makeStyles(colors);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = formatLocalDateStr(new Date());
   const tomorrowObj = new Date();
   tomorrowObj.setDate(tomorrowObj.getDate() + 1);
-  const tomorrowStr = tomorrowObj.toISOString().slice(0, 10);
+  const tomorrowStr = formatLocalDateStr(tomorrowObj);
 
   // Helper to determine if a date is soon
   const isUrgentDate = (date?: string) => {
@@ -68,7 +69,18 @@ export default function MatrixView({ tasks, onTaskPress }: MatrixViewProps) {
           <Text style={styles.emptyText}>Empty</Text>
         ) : (
           quadrantTasks.map(t => (
-            <AnimatedPressable key={t.id} style={styles.taskItem} onPress={() => onTaskPress(t)}>
+            <AnimatedPressable
+              key={t.id}
+              style={[
+                styles.taskItem,
+                {
+                  borderLeftWidth: 3.5,
+                  borderLeftColor: color,
+                  backgroundColor: isDark ? '#000000' : colors.surfaceRaised,
+                }
+              ]}
+              onPress={() => onTaskPress(t)}
+            >
               <Text style={styles.taskTitle} numberOfLines={2}>{t.title}</Text>
               {t.date && <Text style={styles.taskDate}>{t.date === todayStr ? 'Today' : t.date === tomorrowStr ? 'Tomorrow' : t.date}</Text>}
             </AnimatedPressable>

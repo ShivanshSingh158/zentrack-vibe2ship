@@ -61,7 +61,7 @@ const TABS: { key: CaptureType; label: string; icon: string }[] = [
 
 export default function QuickCaptureSheet({ visible, onClose }: Props) {
     const { colors, isDark } = useTheme();
-    const s = makeStyles(colors);
+    const s = makeStyles(colors, isDark);
   const { user } = useMobileData();
   const insets = useSafeAreaInsets();
   const [type, setType] = useState<CaptureType>('task');
@@ -353,27 +353,27 @@ Today's date is ${new Date().toISOString().slice(0, 10)}.`;
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
       backdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.75)',
+        backgroundColor: isDark ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.40)',
       },
       kavWrapper: {
         flex: 1,
         justifyContent: 'flex-end',
       },
       sheet: {
-        backgroundColor: '#000000',
+        backgroundColor: isDark ? '#000000' : colors.surface,
         borderTopLeftRadius: RADIUS.xxl,
         borderTopRightRadius: RADIUS.xxl,
         paddingTop: SPACE.md,
         paddingHorizontal: SPACE.xl,
         borderWidth: 1,
-        borderColor: 'rgba(165,153,255,0.22)',
+        borderColor: colors.border,
         borderBottomWidth: 0,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: -8 },
-        shadowOpacity: 0.5,
+        shadowOpacity: isDark ? 0.5 : 0.15,
         shadowRadius: 24,
         elevation: 16,
       },
@@ -381,7 +381,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         width: 38,
         height: 4,
         borderRadius: 2,
-        backgroundColor: 'rgba(255,255,255,0.22)',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.15)',
         alignSelf: 'center',
         marginBottom: SPACE.md,
       },
@@ -394,7 +394,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
       title: {
         fontFamily: FONT_FAMILY.bold,
         fontSize: FONT_SIZE.lg,
-        color: '#ffffff',
+        color: colors.textPrimary,
         letterSpacing: -0.3,
       },
       tabs: {
@@ -408,14 +408,14 @@ const makeStyles = (colors: any) => StyleSheet.create({
         paddingHorizontal: SPACE.lg,
         paddingVertical: 8,
         borderRadius: RADIUS.full,
-        backgroundColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.surface2,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: colors.border,
       },
       tabActive: {
-        backgroundColor: '#a599ff',
-        borderColor: '#a599ff',
-        shadowColor: '#a599ff',
+        backgroundColor: colors.accentPrimary,
+        borderColor: colors.accentPrimary,
+        shadowColor: colors.accentPrimary,
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.35,
         shadowRadius: 8,
@@ -424,23 +424,23 @@ const makeStyles = (colors: any) => StyleSheet.create({
       tabText: {
         fontFamily: FONT_FAMILY.medium,
         fontSize: 13,
-        color: 'rgba(255,255,255,0.6)',
+        color: colors.textMuted,
       },
       tabTextActive: {
-        color: '#080510',
+        color: isDark ? '#080510' : '#FFFFFF',
         fontFamily: FONT_FAMILY.bold,
       },
       unifiedInputContainer: {
-        backgroundColor: '#1c1a26',
+        backgroundColor: isDark ? '#1c1a26' : colors.surface2,
         borderRadius: RADIUS.xxl,
         borderWidth: 1,
-        borderColor: 'rgba(165,153,255,0.25)',
+        borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border,
         padding: SPACE.md,
         minHeight: 140,
         marginBottom: SPACE.md,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
+        shadowOpacity: isDark ? 0.3 : 0.05,
         shadowRadius: 12,
         elevation: 4,
       },
@@ -448,7 +448,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
         fontFamily: FONT_FAMILY.body,
         fontSize: 16,
         lineHeight: 24,
-        color: '#ffffff',
+        color: colors.textPrimary,
         minHeight: 64,
         textAlignVertical: 'top',
         paddingHorizontal: SPACE.xs,
@@ -500,21 +500,21 @@ const makeStyles = (colors: any) => StyleSheet.create({
       confirmBtnText: {
         fontFamily: FONT_FAMILY.medium,
         fontSize: 14,
-        color: colors.background,
+        color: isDark ? colors.background : '#FFFFFF',
       },
       iconBtn: {
         width: 42,
         height: 42,
         borderRadius: 21,
-        backgroundColor: 'rgba(255,255,255,0.05)',
+        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : colors.surface2,
         borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderColor: colors.border,
         alignItems: 'center',
         justifyContent: 'center',
       },
       iconBtnRecording: {
-        backgroundColor: 'rgba(255, 105, 97, 0.2)',
-        borderColor: '#ff6961',
+        backgroundColor: colors.errorBg,
+        borderColor: colors.error,
       },
       nlHintRow: {
         flexDirection: 'row',
@@ -545,8 +545,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
         borderRadius: 22,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#a599ff',
-        shadowColor: '#a599ff',
+        backgroundColor: colors.accentPrimary,
+        shadowColor: colors.accentPrimary,
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.45,
         shadowRadius: 10,
@@ -560,6 +560,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
       saveBtnText: {
         fontFamily: FONT_FAMILY.bold,
         fontSize: FONT_SIZE.base,
-        color: '#080510',
+        color: isDark ? '#080510' : '#FFFFFF',
       },
     });

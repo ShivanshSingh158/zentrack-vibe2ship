@@ -27,8 +27,8 @@ const DAYS_OF_WEEK = [
 ];
 
 export default function RecurrencePickerModal({ visible, onClose, initialRule, onSave }: RecurrencePickerModalProps) {
-  const { colors } = useTheme();
-  const styles = makeStyles(colors);
+  const { colors, isDark } = useTheme();
+  const styles = makeStyles(colors, isDark);
 
   const [type, setType] = useState<'once' | 'daily' | 'weekly' | 'monthly' | 'custom'>('once');
   const [interval, setInterval] = useState(1);
@@ -55,9 +55,6 @@ export default function RecurrencePickerModal({ visible, onClose, initialRule, o
 
   const handleTypeSelect = (t: 'once' | 'daily' | 'weekly' | 'monthly' | 'custom') => {
     setType(t);
-    // Instant save+close for simple types — no extra "Save" tap needed.
-    // Weekly stays open so the user can pick days.
-    // Custom stays open so the user can set the interval.
     if (t === 'once') {
       onSave(null);
       onClose();
@@ -70,7 +67,6 @@ export default function RecurrencePickerModal({ visible, onClose, initialRule, o
       onSave(rule);
       onClose();
     }
-    // 'weekly' and 'custom' fall through — user completes config then taps Save
   };
 
   const toggleDay = (dayId: number) => {
@@ -120,7 +116,6 @@ export default function RecurrencePickerModal({ visible, onClose, initialRule, o
             ))}
           </View>
 
-          {/* Show Save button only for weekly/custom — other types auto-save on selection */}
           {(type === 'weekly' || type === 'custom') && (
 
             <View style={styles.optionsContainer}>
@@ -152,7 +147,7 @@ export default function RecurrencePickerModal({ visible, onClose, initialRule, o
                         onPress={() => toggleDay(d.id)}
                       >
                         <Text style={[styles.dayPillText, isActive && styles.dayPillTextActive]}>
-                          {d.label.slice(0, 1)}
+                          {d.label}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -160,60 +155,61 @@ export default function RecurrencePickerModal({ visible, onClose, initialRule, o
                 </View>
               )}
 
-              <View style={[styles.optionRow, { marginTop: SPACE.lg }]}>
-                <Text style={styles.optionLabel}>Ends on</Text>
-                <AnimatedPressable 
+              <View style={[styles.optionRow, { marginTop: SPACE.lg, justifyContent: 'space-between' }]}>
+                <Text style={styles.optionLabel}>Ends</Text>
+                <TouchableOpacity 
                   style={[styles.endDateChip, endDate && styles.endDateChipActive]}
                   onPress={() => setIsCalendarOpen(true)}
                 >
-                  <Ionicons name={endDate ? "calendar" : "calendar-outline"} size={16} color={endDate ? colors.accentPrimary : colors.textMuted} />
+                  <Ionicons name="calendar-outline" size={16} color={endDate ? colors.accentPrimary : colors.textSecondary} />
                   <Text style={[styles.endDateText, endDate && styles.endDateTextActive]}>
                     {formatDisplayDate(endDate)}
                   </Text>
                   {endDate && (
-                    <TouchableOpacity onPress={() => setEndDate(null)} style={{ marginLeft: 8 }}>
-                      <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+                    <TouchableOpacity onPress={() => setEndDate(null)} style={{ padding: 2 }}>
+                      <Ionicons name="close-circle" size={14} color={colors.accentPrimary} />
                     </TouchableOpacity>
                   )}
-                </AnimatedPressable>
+                </TouchableOpacity>
               </View>
 
-            </View>
-          )}
+              <TouchableOpacity style={[styles.saveBtn, { marginTop: SPACE.xl }]} onPress={handleSave}>
+                <Text style={styles.saveBtnText}>Save</Text>
+              </TouchableOpacity>
 
-          {(type === 'weekly' || type === 'custom') && (
-            <AnimatedPressable style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>Save</Text>
-            </AnimatedPressable>
+            </View>
           )}
 
         </View>
       </BottomSheet>
       
-      <UniversalCalendarModal
-        visible={isCalendarOpen}
-        onClose={() => setIsCalendarOpen(false)}
-        selectedDate={endDate || new Date().toISOString().slice(0,10)}
-        onDateSelect={(d) => {
-          setEndDate(d);
-          setIsCalendarOpen(false);
-        }}
-        title="Select End Date"
-      />
+      {isCalendarOpen && (
+        <UniversalCalendarModal
+          visible={isCalendarOpen}
+          onClose={() => setIsCalendarOpen(false)}
+          selectedDate={endDate || new Date().toISOString().slice(0, 10)}
+          onDateSelect={(date) => {
+            setEndDate(date);
+            setIsCalendarOpen(false);
+          }}
+          title="Repeat End Date"
+        />
+      )}
     </>
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   container: {
-    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
+    paddingHorizontal: SPACE.xl,
+    paddingTop: SPACE.sm,
+    paddingBottom: SPACE.xxl,
   },
   title: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.lg,
+    fontFamily: FONT_FAMILY.title,
+    fontSize: FONT_SIZE.xl,
     color: colors.textPrimary,
     marginBottom: SPACE.lg,
-    textAlign: 'center',
   },
   typeSelectorRow: {
     flexDirection: 'row',
@@ -247,6 +243,8 @@ const makeStyles = (colors: any) => StyleSheet.create({
     padding: SPACE.lg,
     borderRadius: RADIUS.lg,
     marginBottom: SPACE.xl,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   optionRow: {
     flexDirection: 'row',
@@ -261,13 +259,15 @@ const makeStyles = (colors: any) => StyleSheet.create({
   stepper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: colors.surface,
     borderRadius: RADIUS.md,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   stepperBtn: {
     padding: 8,
-    backgroundColor: colors.border,
+    backgroundColor: isDark ? colors.border : colors.surface2,
   },
   stepperValue: {
     fontFamily: FONT_FAMILY.bold,
@@ -289,7 +289,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: isDark ? colors.surfaceRaised : colors.surface2,
   },
   dayPillActive: {
     backgroundColor: colors.accentPrimary,
@@ -301,7 +301,7 @@ const makeStyles = (colors: any) => StyleSheet.create({
     color: colors.textSecondary,
   },
   dayPillTextActive: {
-    color: colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
     fontFamily: FONT_FAMILY.bold,
   },
   endDateChip: {
@@ -310,7 +310,9 @@ const makeStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: SPACE.md,
     paddingVertical: 8,
     borderRadius: RADIUS.md,
-    backgroundColor: colors.surfaceRaised,
+    backgroundColor: isDark ? colors.surfaceRaised : colors.surface2,
+    borderWidth: 1,
+    borderColor: colors.border,
     gap: 6,
   },
   endDateChipActive: {
@@ -335,6 +337,6 @@ const makeStyles = (colors: any) => StyleSheet.create({
   saveBtnText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: FONT_SIZE.md,
-    color: colors.background,
+    color: isDark ? colors.background : '#FFFFFF',
   },
 });

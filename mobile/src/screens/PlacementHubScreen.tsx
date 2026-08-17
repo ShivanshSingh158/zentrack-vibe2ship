@@ -35,7 +35,7 @@ function ConfigSheet({ visible, onClose, config, onSave, onReset }: {
   onSave: (newConfig: Partial<PlacementConfig>) => void;
   onReset?: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [startDate, setStartDate] = useState(config.startDate);
   
   const handleSave = () => {
@@ -84,7 +84,7 @@ function ConfigSheet({ visible, onClose, config, onSave, onReset }: {
             </View>
             <View style={{ marginTop: SPACE.lg, gap: SPACE.md }}>
               <TouchableOpacity onPress={handleSave} style={[styles.saveBtn, { backgroundColor: colors.accentPrimary }]}>
-                <Text style={{ color: '#fff', fontFamily: FONT_FAMILY.bold }}>Save Configuration</Text>
+                <Text style={{ color: isDark ? '#000000' : '#ffffff', fontFamily: FONT_FAMILY.bold }}>Save Configuration</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={onReset} style={[styles.saveBtn, { backgroundColor: 'transparent', borderColor: '#ef4444', borderWidth: 1 }]}>
                 <Text style={{ color: '#ef4444', fontFamily: FONT_FAMILY.bold }}>Reset to Roadmap Defaults</Text>

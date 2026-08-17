@@ -45,7 +45,8 @@ interface Props {
 }
 
 export default function BodyMetricsSheet({ visible, onClose }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const { user, weightLogs: contextWeightLogs } = useMobileData();
   const { gymProfile, saveGymProfile } = useGymProfile();
   
@@ -196,8 +197,6 @@ export default function BodyMetricsSheet({ visible, onClose }: Props) {
   }, [last8]);
 
   const polylinePoints = chartPoints?.map(p => `${p.x},${p.y}`).join(" ") ?? "";
-
-  const s = makeStyles(colors);
 
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; date?: string; weight?: number } | null>(null);
 
@@ -471,17 +470,17 @@ export default function BodyMetricsSheet({ visible, onClose }: Props) {
   );
 }
 
-const makeStyles = (colors: any) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 4 },
-  sheetTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: "#FFFFFF" },
-  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#18181B", alignItems: "center", justifyContent: "center" },
+  sheetTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: colors.textPrimary },
+  closeBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: isDark ? '#1c1c1f' : '#E2E1EA', alignItems: "center", justifyContent: "center" },
 
   // Stats Grid
   statsGrid: { flexDirection: "row", gap: SPACE.sm },
-  statCard: { flex: 1, backgroundColor: "#141416", borderRadius: RADIUS.lg, padding: SPACE.md, alignItems: "center", borderWidth: 1, borderColor: "#27272A" },
-  statLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: "#A1A1AA", letterSpacing: 0.5 },
-  statValue: { fontFamily: FONT_FAMILY.bold, fontSize: 22, color: "#FFFFFF", marginTop: 2 },
-  statSubText: { fontFamily: FONT_FAMILY.body, fontSize: 10, color: "#71717A" },
+  statCard: { flex: 1, backgroundColor: isDark ? '#000000' : '#F5F4FA', borderRadius: RADIUS.lg, padding: SPACE.md, alignItems: "center", borderWidth: 1, borderColor: colors.border },
+  statLabel: { fontFamily: FONT_FAMILY.bold, fontSize: 10, color: colors.textTertiary, letterSpacing: 0.5 },
+  statValue: { fontFamily: FONT_FAMILY.bold, fontSize: 22, color: colors.textPrimary, marginTop: 2 },
+  statSubText: { fontFamily: FONT_FAMILY.body, fontSize: 10, color: colors.textMuted },
 
   bmiCard: {
     flexDirection: "row",
@@ -489,11 +488,11 @@ const makeStyles = (colors: any) => StyleSheet.create({
     borderWidth: 1,
     padding: SPACE.lg,
     gap: SPACE.lg,
-    backgroundColor: "#141416",
+    backgroundColor: isDark ? '#000000' : '#F5F4FA',
     alignItems: "center",
   },
   bmiLeft: { alignItems: "center", gap: SPACE.xs, minWidth: 80 },
-  bmiLabel: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: "#A1A1AA" },
+  bmiLabel: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: colors.textTertiary },
   bmiValue: { fontFamily: FONT_FAMILY.bold, fontSize: 36 },
   bmiPill: { paddingHorizontal: SPACE.sm, paddingVertical: 3, borderRadius: RADIUS.full },
   bmiPillText: { fontFamily: FONT_FAMILY.bold, fontSize: 11 },
@@ -501,34 +500,34 @@ const makeStyles = (colors: any) => StyleSheet.create({
   emptyBmiCard: {
     borderRadius: RADIUS.xl,
     borderWidth: 1,
-    borderColor: "#27272A",
+    borderColor: colors.border,
     padding: SPACE.xl,
-    backgroundColor: "#141416",
+    backgroundColor: isDark ? '#000000' : '#F5F4FA',
     alignItems: "center",
     justifyContent: "center",
     gap: SPACE.xs,
   },
   iconBadge: {
     width: 48, height: 48, borderRadius: 24,
-    backgroundColor: "#27272A",
+    backgroundColor: isDark ? '#1c1c1f' : '#E2E1EA',
     alignItems: "center", justifyContent: "center",
     marginBottom: 4,
   },
-  emptyBmiTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: "#FFFFFF" },
-  emptyBmiText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: "#A1A1AA", textAlign: "center", lineHeight: 18 },
+  emptyBmiTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.base, color: colors.textPrimary },
+  emptyBmiText: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm, color: colors.textMuted, textAlign: "center", lineHeight: 18 },
   metricRow: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.sm },
-  metricLabel: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: "#A1A1AA" },
-  metricValue: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: "#FFFFFF" },
+  metricLabel: { fontFamily: FONT_FAMILY.medium, fontSize: FONT_SIZE.sm, color: colors.textTertiary },
+  metricValue: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.sm, color: colors.textPrimary },
   
-  sectionCard: { backgroundColor: "#141416", borderRadius: RADIUS.xl, padding: SPACE.lg, borderWidth: 1, borderColor: "#27272A", gap: SPACE.sm },
-  sectionTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: "#FFFFFF" },
+  sectionCard: { backgroundColor: isDark ? '#000000' : '#F5F4FA', borderRadius: RADIUS.xl, padding: SPACE.lg, borderWidth: 1, borderColor: colors.border, gap: SPACE.sm },
+  sectionTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
   cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  badgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: "#FFFFFF", backgroundColor: "#27272A", paddingHorizontal: 8, paddingVertical: 2, borderRadius: RADIUS.sm },
+  badgeText: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: colors.textPrimary, backgroundColor: isDark ? '#1c1c1f' : '#E2E1EA', paddingHorizontal: 8, paddingVertical: 2, borderRadius: RADIUS.sm },
 
-  progressTrack: { height: 8, backgroundColor: "#27272A", borderRadius: RADIUS.full, overflow: "hidden" },
-  progressFill: { height: 8, backgroundColor: "#FFFFFF", borderRadius: RADIUS.full },
+  progressTrack: { height: 8, backgroundColor: isDark ? '#1c1c1f' : '#E2E1EA', borderRadius: RADIUS.full, overflow: "hidden" },
+  progressFill: { height: 8, backgroundColor: isDark ? '#FFFFFF' : colors.accentPrimary, borderRadius: RADIUS.full },
   progressLabels: { flexDirection: "row", justifyContent: "space-between" },
-  progressLabel: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: "#A1A1AA" },
+  progressLabel: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.textMuted },
   chartContainer: { alignItems: "center", marginTop: 4 },
 
   logWeightBtn: {
@@ -536,56 +535,56 @@ const makeStyles = (colors: any) => StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: SPACE.sm,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: isDark ? '#FFFFFF' : colors.accentPrimary,
     borderRadius: RADIUS.xl,
     paddingVertical: SPACE.md,
   },
-  logWeightBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: "#000000" },
+  logWeightBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: isDark ? '#000000' : '#FFFFFF' },
   
-  logForm: { gap: SPACE.md, backgroundColor: "#141416", padding: SPACE.lg, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: "#27272A" },
-  formTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: "#FFFFFF" },
+  logForm: { gap: SPACE.md, backgroundColor: isDark ? '#000000' : '#F5F4FA', padding: SPACE.lg, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: colors.border },
+  formTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
   inputRow: { flexDirection: "row", gap: SPACE.sm, alignItems: "flex-end" },
   inputGroup: { gap: 4 },
-  inputLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: "#A1A1AA" },
+  inputLabel: { fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textTertiary },
   weightInput: {
-    backgroundColor: "#000000",
+    backgroundColor: isDark ? '#000000' : '#FFFFFF',
     borderWidth: 1,
-    borderColor: "#27272A",
+    borderColor: colors.border,
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACE.md,
     paddingVertical: 10,
     fontFamily: FONT_FAMILY.bold,
     fontSize: 16,
-    color: "#FFFFFF",
+    color: colors.textPrimary,
   },
-  photoBtn: { width: 44, height: 44, borderRadius: RADIUS.md, backgroundColor: "#27272A", alignItems: "center", justifyContent: "center" },
-  photoPreviewRow: { flexDirection: "row", alignItems: "center", gap: SPACE.sm, backgroundColor: "#000000", padding: SPACE.xs, borderRadius: RADIUS.md, borderWidth: 1, borderColor: "#27272A" },
+  photoBtn: { width: 44, height: 44, borderRadius: RADIUS.md, backgroundColor: isDark ? '#27272A' : '#E2E1EA', alignItems: "center", justifyContent: "center" },
+  photoPreviewRow: { flexDirection: "row", alignItems: "center", gap: SPACE.sm, backgroundColor: isDark ? '#000000' : '#FFFFFF', padding: SPACE.xs, borderRadius: RADIUS.md, borderWidth: 1, borderColor: colors.border },
   photoPreviewThumb: { width: 36, height: 36, borderRadius: RADIUS.sm },
-  photoAttachedText: { flex: 1, fontFamily: FONT_FAMILY.medium, fontSize: 12, color: "#FFFFFF" },
+  photoAttachedText: { flex: 1, fontFamily: FONT_FAMILY.medium, fontSize: 12, color: colors.textPrimary },
 
   formActions: { flexDirection: "row", gap: SPACE.sm, alignItems: "center" },
-  saveFormBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACE.xs, paddingVertical: SPACE.md, borderRadius: RADIUS.lg, backgroundColor: "#FFFFFF" },
-  saveFormBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: "#000000" },
-  cancelFormBtn: { width: 44, height: 44, borderRadius: RADIUS.lg, backgroundColor: "#27272A", alignItems: "center", justifyContent: "center" },
+  saveFormBtn: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: SPACE.xs, paddingVertical: SPACE.md, borderRadius: RADIUS.lg, backgroundColor: isDark ? '#FFFFFF' : colors.accentPrimary },
+  saveFormBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: isDark ? '#000000' : '#FFFFFF' },
+  cancelFormBtn: { width: 44, height: 44, borderRadius: RADIUS.lg, backgroundColor: isDark ? '#27272A' : '#E2E1EA', alignItems: "center", justifyContent: "center" },
 
   // History List
   historyRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10 },
-  historyRowBorder: { borderTopWidth: 1, borderTopColor: "#27272A" },
+  historyRowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
   historyDateCol: {},
-  historyDate: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: "#FFFFFF" },
-  historyYear: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: "#71717A" },
+  historyDate: { fontFamily: FONT_FAMILY.bold, fontSize: 14, color: colors.textPrimary },
+  historyYear: { fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.textMuted },
   historyWeightCol: { flexDirection: "row", alignItems: "baseline", gap: 2 },
-  historyWeight: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: "#FFFFFF" },
-  historyWeightUnit: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: "#A1A1AA" },
-  historyThumb: { width: 40, height: 40, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: "#3F3F46" },
-  historyThumbEmpty: { width: 40, height: 40, borderRadius: RADIUS.sm, backgroundColor: "#18181B", alignItems: "center", justifyContent: "center" },
+  historyWeight: { fontFamily: FONT_FAMILY.bold, fontSize: 18, color: colors.textPrimary },
+  historyWeightUnit: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textMuted },
+  historyThumb: { width: 40, height: 40, borderRadius: RADIUS.sm, borderWidth: 1, borderColor: colors.border },
+  historyThumbEmpty: { width: 40, height: 40, borderRadius: RADIUS.sm, backgroundColor: isDark ? '#18181B' : '#E2E1EA', alignItems: "center", justifyContent: "center" },
 
   // Full Photo Viewer Modal
   fullPhotoOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.96)", justifyContent: "center", alignItems: "center" },
-  fullPhotoCloseBtn: { position: "absolute", top: 48, right: 20, zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: "#27272A", alignItems: "center", justifyContent: "center" },
+  fullPhotoCloseBtn: { position: "absolute", top: 48, right: 20, zIndex: 10, width: 40, height: 40, borderRadius: 20, backgroundColor: isDark ? '#27272A' : '#E2E1EA', alignItems: "center", justifyContent: "center" },
   fullPhotoContainer: { width: "100%", height: "80%", alignItems: "center", justifyContent: "center" },
   fullPhotoImage: { width: "92%", height: "88%" },
-  fullPhotoCaption: { marginTop: 12, backgroundColor: "#18181B", paddingHorizontal: 16, paddingVertical: 6, borderRadius: RADIUS.full, borderWidth: 1, borderColor: "#27272A" },
-  fullPhotoCaptionText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: "#FFFFFF" },
+  fullPhotoCaption: { marginTop: 12, backgroundColor: isDark ? '#18181B' : '#E2E1EA', paddingHorizontal: 16, paddingVertical: 6, borderRadius: RADIUS.full, borderWidth: 1, borderColor: colors.border },
+  fullPhotoCaptionText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary },
 });
 
