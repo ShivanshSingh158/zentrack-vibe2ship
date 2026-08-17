@@ -33,6 +33,9 @@ import { CreativeProvider, useCreativeData } from "./domains/CreativeContext";
 import { PlannerProvider, usePlannerData }   from "./domains/PlannerContext";
 import { handleSyncError } from '../utils/errorUtils';
 
+// Export domain hooks for fine-grained, zero-overhead subscriptions
+export { useCoreData, useWellnessData, useAcademicData, useCreativeData, usePlannerData };
+
 
 // ΓöÇΓöÇΓöÇ Type Exports (all preserved ΓÇö no consumer changes needed) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 

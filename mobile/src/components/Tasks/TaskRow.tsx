@@ -296,6 +296,19 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
       </Animated.View>
     </Swipeable>
   );
+}, (prev, next) => {
+  return (
+    prev.task.id === next.task.id &&
+    prev.task.status === next.task.status &&
+    prev.task.title === next.task.title &&
+    prev.task.date === next.task.date &&
+    prev.task.priority === next.task.priority &&
+    prev.task.timeSlot === next.task.timeSlot &&
+    prev.task.subtasks === next.task.subtasks &&
+    prev.isOverdue === next.isOverdue &&
+    prev.isBulkEdit === next.isBulkEdit &&
+    prev.isSelected === next.isSelected
+  );
 });
 
 export default TaskRow;

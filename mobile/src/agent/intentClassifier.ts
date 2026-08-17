@@ -274,10 +274,17 @@ export function buildSelectiveContext(
   lines.push(`TODAY: ${todayISO} | SCOPE: ${profile.temporalScope} | ACTION: ${profile.actionType}`);
 
   if (domains.has('tasks')) {
-    const pending = (ctx.tasks || []).filter(t => t.status !== 'completed').slice(0, 20);
+    const pending = (ctx.tasks || []).filter(t => t.status !== 'completed').slice(0, 20).map(t => ({
+      id: t.id,
+      title: t.title,
+      priority: t.priority,
+      date: t.date,
+      timeSlot: t.timeSlot,
+      subtasks: t.subtasks?.map((s: any) => ({ id: s.id, title: s.title, completed: s.completed })),
+    }));
     const completedToday = (ctx.tasks || []).filter(
       t => t.status === 'completed' && t.completedAt?.startsWith?.(todayISO)
-    ).slice(0, 5);
+    ).slice(0, 5).map(t => ({ id: t.id, title: t.title }));
     lines.push(`\n📋 TASKS (${pending.length} pending):\n${JSON.stringify(pending)}`);
     if (completedToday.length) lines.push(`DONE TODAY: ${JSON.stringify(completedToday)}`);
   }
