@@ -318,8 +318,8 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    backgroundColor: colors.surface,
+    borderBottomColor: isDark ? '#18181b' : colors.border,
+    backgroundColor: isDark ? '#000000' : colors.surface,
   },
   leftHalf: {
     flex: 1,
@@ -440,12 +440,12 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     color: colors.textTertiary,
   },
   subtaskList: {
-    backgroundColor: isDark ? '#0A0A0A' : colors.surface2,
+    backgroundColor: isDark ? '#000000' : colors.surface2,
     paddingLeft: 54,
     paddingRight: 20,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomColor: isDark ? '#18181b' : colors.border,
   },
   subtaskItem: {
     flexDirection: 'row',
