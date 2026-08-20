@@ -12,14 +12,16 @@ import * as Notifications from "expo-notifications";
 import { collection, query, where, onSnapshot, doc, setDoc, getDoc } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { InteractionManager } from 'react-native';
+import { InteractionManager, DeviceEventEmitter } from 'react-native';
 import { auth, db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { Task, Habit, HabitLog } from "../MobileDataContext";
 import { readCoreCacheMulti, writeCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
+import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { clearAllDomainCaches } from "../../utils/domainCache";
 import { registerForPushNotificationsAsync } from "../../services/notifications";
 import { handleSyncError } from '../../utils/errorUtils';
+import { parseTask, parseHabit, parseHabitLog } from "../../utils/schemaGuards";
 
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -79,15 +81,18 @@ export function useCoreData(): CoreDataContextType {
 
 // ─── Provider ──────────────────────────────────────────────────────────────────
 export function CoreDataProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser]           = useState<User | null>(null);
-  const [tasks, setTasks]         = useState<Task[]>([]);
-  const [habits, setHabits]       = useState<Habit[]>([]);
-  const [habitLogs, setHabitLogs] = useState<HabitLog[]>([]);
-  // WHATSAPP PATTERN: loading is derived — never a boolean flag that starts true.
-  // If cache has seeded tasks/habits, loading is false from the very first render.
-  // Screens with cached data never show a spinner on app resume.
+  const initialManifest = getBootManifestSync();
+  const [user, setUser]           = useState<User | null>(initialManifest?.optimisticUser ?? auth.currentUser ?? null);
+  const [tasks, setTasks]         = useState<Task[]>(initialManifest?.tasks ?? []);
+  const [habits, setHabits]       = useState<Habit[]>(initialManifest?.habits ?? []);
+  const [habitLogs, setHabitLogs] = useState<HabitLog[]>(initialManifest?.habitLogs ?? []);
   const [firestoreReady, setFirestoreReady] = useState(false);
-  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(initialManifest?.googleAccessToken ?? null);
+
+  // Tracks when we first resolved a valid authenticated user.
+  // Used to guard against Firebase's routine 60-min token refresh firing
+  // onAuthStateChanged(null) and erroneously clearing the user state.
+  const firstAuthAtRef = useRef<number>(0);
 
   // Write-lock: after an optimistic habit update, ignore Firestore snapshots for
   // 2 seconds to prevent the flicker cycle (optimistic → snapshot rollback → final snapshot).
@@ -107,45 +112,44 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     habitLogWriteLockRef.current = setTimeout(() => { isHabitLogLocked.current = false; }, 2000);
   };
   const DEFAULT_PINNED_MODULES = ["Tasks", "Gym", "Calendar", "Attendance"];
-  const [pinnedModules, setPinnedModulesState]    = useState<string[]>(DEFAULT_PINNED_MODULES);
+  const [pinnedModules, setPinnedModulesState]    = useState<string[]>(initialManifest?.pinnedModules ?? DEFAULT_PINNED_MODULES);
 
-  // Pinned modules (AsyncStorage)
+  // Consolidated Manifest Boot: seeds pinned modules, token, and core cache in 1 single bridge load
   useEffect(() => {
-    AsyncStorage.getItem("@zentrack_pinned_modules")
-      .then(val => { 
-        if (val) {
-          try {
-            const parsed = JSON.parse(val);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              setPinnedModulesState(parsed.slice(0, 4));
-            } else {
-              setPinnedModulesState(DEFAULT_PINNED_MODULES);
-            }
-          } catch {
-            setPinnedModulesState(DEFAULT_PINNED_MODULES);
-          }
-        }
-      })
-      .catch(handleSyncError);
+    let cancelled = false;
+    loadBootManifest().then(manifest => {
+      if (cancelled) return;
+      if (manifest.pinnedModules && manifest.pinnedModules.length > 0) {
+        setPinnedModulesState(manifest.pinnedModules);
+      }
+      if (manifest.googleAccessToken) {
+        setGoogleAccessToken(manifest.googleAccessToken);
+      }
+      if (manifest.tasks.length > 0 && tasks.length === 0) {
+        setTasks(manifest.tasks);
+      }
+      if (manifest.habits.length > 0 && habits.length === 0) {
+        setHabits(manifest.habits);
+      }
+      if (manifest.habitLogs.length > 0 && habitLogs.length === 0) {
+        setHabitLogs(manifest.habitLogs);
+      }
+    }).catch(handleSyncError);
+    return () => { cancelled = true; };
   }, []);
 
   const setPinnedModules = (mods: string[]) => {
     const clamped = mods.length > 0 ? mods.slice(0, 4) : DEFAULT_PINNED_MODULES;
     setPinnedModulesState(clamped);
+    updateL1Cache('pinnedModules', clamped);
     AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(clamped)).catch(console.warn);
   };
 
-  // Google Workspace token
+  // ── Cache-first boot for user changes ────────────────────────────────
+  // Re-seed cache when user changes (login / restore / logout)
+  const userUid = user?.uid ?? null;
   useEffect(() => {
-    AsyncStorage.getItem("google_workspace_token")
-      .then(token => { if (token) setGoogleAccessToken(token); });
-  }, []);
-
-  // ── Cache-first boot ─────────────────────────────────────────────────
-  // Load tasks/habits/habitLogs from AsyncStorage SYNCHRONOUSLY on mount (~5ms).
-  // Dashboard is fully usable before Firestore has responded.
-  // Firestore snapshots will arrive later and silently update the UI.
-  useEffect(() => {
+    if (!userUid) return;
     let cancelled = false;
     readCoreCacheMulti().then(cached => {
       if (cancelled) return;
@@ -154,21 +158,29 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       if (Array.isArray(cached.habitLogs)) setHabitLogs(cached.habitLogs);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [userUid]);
 
-  // Auth state — updates user reference. NEVER wipe offline cache on passive auth changes (preserves offline mode).
+  // Auth state — updates user reference.
+  // OFFLINE-FIRST GUARD: Firebase fires onAuthStateChanged(null) during routine
+  // 60-min token refreshes. We suppress null-user clears for 5 seconds after
+  // first auth, and only clear when there is ALSO no optimistic user in storage.
+  // This matches the WhatsApp / Instagram pattern: offline = stay logged in.
   useEffect(() => {
     let cancelled = false;
 
     // Check synchronous auth or cached optimistic user on mount (~0ms)
     if (auth.currentUser) {
       setUser(auth.currentUser);
+      firstAuthAtRef.current = Date.now();
     } else {
       AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
         if (!cancelled && raw) {
           try {
             const parsed = JSON.parse(raw);
-            if (parsed?.uid) setUser(parsed as User);
+            if (parsed?.uid) {
+              setUser(parsed as User);
+              firstAuthAtRef.current = Date.now();
+            }
           } catch {}
         }
       }).catch(() => {});
@@ -177,6 +189,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     auth.authStateReady().then(() => {
       if (!cancelled && auth.currentUser) {
         setUser(auth.currentUser);
+        firstAuthAtRef.current = Date.now();
       }
     }).catch(() => {});
 
@@ -184,10 +197,18 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       if (!cancelled) {
         if (u) {
           setUser(u);
+          firstAuthAtRef.current = Date.now();
         } else {
-          // WhatsApp / Instagram pattern: do NOT log out if offline
+          // GUARD: only clear user state when all 3 conditions are true:
+          // 1. No optimistic user in AsyncStorage (explicit logout, not a blip)
+          // 2. Enough time has passed since first auth (>5s) — avoids a cold-boot
+          //    race where Firebase fires null before the optimistic user is written
+          // 3. Not cancelled
+          const msSinceFirstAuth = firstAuthAtRef.current
+            ? Date.now() - firstAuthAtRef.current
+            : 0;
           AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
-            if (!cancelled && !raw) {
+            if (!cancelled && !raw && msSinceFirstAuth > 5000) {
               setUser(null);
               setFirestoreReady(false);
             }
@@ -214,8 +235,43 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user]);
 
+  // ── Listener auto-restart on error ───────────────────────────────────────
+  // Firebase ID tokens expire every 60 min. If a network blip coincides with
+  // token expiry, onSnapshot fires its error callback and the listener dies
+  // permanently. This counter, when incremented, causes the effect below to
+  // re-run (after cleanup), reopening all three listeners fresh.
+  const [subscriptionVersion, setSubscriptionVersion] = useState(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleListenerRestart = (context: string) => (err: Error) => {
+    console.warn(`[CoreData] ${context} listener error — restarting in 5s`, err.message);
+    // Only schedule one retry at a time
+    if (retryTimerRef.current) return;
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      setSubscriptionVersion(v => v + 1);
+    }, 5000);
+  };
+
+  // ── Foreground reconnect: restart listeners after long background ─────────
+  // AppNavigator emits 'firestore_force_reconnect' on every AppState: active
+  // event (after refreshing the ID token). This bumps subscriptionVersion,
+  // which tears down any silently-dead listeners and reopens them fresh.
+  // Silent listener death (no onError callback) is the root cause of the
+  // "data not showing after 6+ hours" bug.
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
+      if (user) {
+        console.log('[CoreData] foreground reconnect — restarting Firestore listeners');
+        setSubscriptionVersion(v => v + 1);
+      }
+    });
+    return () => sub.remove();
+  }, [user]);
+
   // Critical-path Firestore subscriptions — open immediately on login.
   // Each snapshot WRITE-THROUGHS to AsyncStorage so the next cold-boot is instant.
+  // Depends on `subscriptionVersion` so any listener error auto-restarts all three.
   useEffect(() => {
     if (!user) return;
     const uid = user.uid;
@@ -224,42 +280,42 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     unsubs.push(onSnapshot(
       query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
       snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Task));
+        const fresh = snap.docs.map(d => parseTask(d.data(), d.id));
         setTasks(fresh);
         setFirestoreReady(true);
         writeCoreCacheMulti({ tasks: fresh });
       },
-      err => { console.error("[CoreData] tasks", err); setFirestoreReady(true); }
+      scheduleListenerRestart("tasks")
     ));
 
     unsubs.push(onSnapshot(
       query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
       snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Habit));
+        const fresh = snap.docs.map(d => parseHabit(d.data(), d.id));
         if (!isHabitLocked.current) {
           setHabits(fresh);
           writeCoreCacheMulti({ habits: fresh });
         }
       },
-      err => console.error("[CoreData] habits", err)
+      scheduleListenerRestart("habits")
     ));
 
     unsubs.push(onSnapshot(
       query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
       snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as HabitLog));
+        const fresh = snap.docs.map(d => parseHabitLog(d.data(), d.id));
         if (!isHabitLogLocked.current) {
           setHabitLogs(fresh);
           writeCoreCacheMulti({ habitLogs: fresh });
         }
       },
-      err => console.error("[CoreData] habitLogs", err)
+      scheduleListenerRestart("habitLogs")
     ));
 
     return () => {
       unsubs.forEach(u => u());
     };
-  }, [user]);
+  }, [user, subscriptionVersion]); // subscriptionVersion triggers clean restart on listener error
 
   // loading is TRUE only when: user is authenticated, Firestore hasn't responded yet,
   // AND we have no cached data to show. Never true when cache is populated.
@@ -344,11 +400,23 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Explicit user sign-out handler: signs out of Firebase and clears local disk caches.
+ * Explicit user sign-out handler: signs out of Firebase and clears ALL local
+ * disk state so no data bleeds to the next user on this device.
+ *
+ * Cleared:
+ *  - @zentrack_optimistic_user   (WhatsApp-style boot token)
+ *  - @zentrack_offline_write_queue  (pending writes — CRITICAL: prevents cross-user data bleed)
+ *  - Core + domain caches (tasks, habits, attendance, gym, etc.)
+ *  - XP local state
  */
 export async function performSignOut() {
   try {
-    await AsyncStorage.removeItem('@zentrack_optimistic_user');
+    await AsyncStorage.multiRemove([
+      '@zentrack_optimistic_user',
+      '@zentrack_offline_write_queue', // Prevents offline writes from one user syncing under another
+      'zentrack_xp_v1',               // XP state — prevents showing previous user's level
+      'zentrack_xp_streak',           // XP streak
+    ]);
     await auth.signOut();
     await clearCoreCache();
     await clearAllDomainCaches();

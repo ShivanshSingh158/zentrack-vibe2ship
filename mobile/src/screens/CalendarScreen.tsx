@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Dimensions, LayoutAnimation, UIManager, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -157,7 +157,17 @@ export default function CalendarScreen() {
     return counts;
   }, [customEvents, tasks, gymLogs, monthClassDates]);
 
+  // FIX 5.2: In-memory cache for AI Free Slot results keyed by date + events fingerprint
+  const slotCacheRef = useRef<Record<string, string>>({});
+
   const handleFindFreeSlots = async () => {
+    // Build fingerprint of today's schedule
+    const scheduleFingerprint = `${selectedDate}_${dayEvents.map(e => `${e.id}_${e.startTime}_${e.endTime}`).join(';')}`;
+    if (slotCacheRef.current[scheduleFingerprint]) {
+      setAiSlotResult(slotCacheRef.current[scheduleFingerprint]);
+      return;
+    }
+
     setFindingSlots(true);
     try {
       const prompt = `Here are my events for today: ${JSON.stringify(dayEvents.map(e => ({title: e.title, start: e.startTime, end: e.endTime})))}\nFind the best 1-2 hour continuous free slot during working hours (9 AM - 6 PM). Output a brief, energetic message with the time slot and why it's the best choice.`;
@@ -165,7 +175,9 @@ export default function CalendarScreen() {
         [{ role: 'user', parts: [{ text: prompt }] }],
         { maxOutputTokens: 250, temperature: 0.5 }
       );
-      setAiSlotResult(text || 'No free slots found.');
+      const resultText = text || 'No free slots found.';
+      slotCacheRef.current[scheduleFingerprint] = resultText;
+      setAiSlotResult(resultText);
     } catch(e) {
       setAiSlotResult('Unable to find free slots. Please try again.');
     }
@@ -435,6 +447,7 @@ export default function CalendarScreen() {
           selectedDate={selectedDate}
           styles={styles}
           colors={colors}
+          isDark={isDark}
           onClose={() => setShowEventModal(false)}
           onEdit={() => {
             setShowEventModal(false);

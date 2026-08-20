@@ -47,8 +47,10 @@ import * as Crypto from 'expo-crypto';
 import { db } from '../services/firebase';
 import {
   collection, addDoc, updateDoc, deleteDoc, doc,
-  serverTimestamp, increment
+  serverTimestamp, increment, setDoc
 } from 'firebase/firestore';
+import { formatLocalDateStr } from '../utils/dateUtils';
+import { safeWrite, safeAdd, safeUpdate, safeDelete } from '../utils/safeWrite';
 import { useMobileData } from '../contexts/MobileDataContext';
 import {
   startVoiceRecording,
@@ -57,7 +59,7 @@ import {
   cancelVoiceRecording,
   isSilenceOrNoise,
 } from '../services/voiceEngine';
-import { speakWithSarvam } from '../services/sarvamProxy';
+import { speakWithSarvam, stopSpeech } from '../services/sarvamProxy';
 import { useTheme } from "../contexts/ThemeContext";
 // SARA Engine v2 components
 import ReasoningFeed, { ReasoningStep } from '../components/SARA/ReasoningFeed';
@@ -244,7 +246,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
     const list: { title: string; subtitle: string; command: string; icon: string; accent: string }[] = [];
     const now = new Date();
     const hour = now.getHours();
-    const todayISO = now.toISOString().split('T')[0];
+    const todayISO = formatLocalDateStr(now);
 
     // 1. Task/Planning Prompt
     const pendingTasks = (tasks || []).filter((t: any) => t.status !== 'completed');
@@ -551,6 +553,14 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
     AsyncStorage.setItem('sara_chat_history', JSON.stringify({ messages: serializableMessages, history }));
   }, [isRunning, isLoaded]);
 
+  // Hardware & Audio Resource Cleanup on Unmount (Microphone, VAD timers, and TTS sound)
+  useEffect(() => {
+    return () => {
+      cancelVoiceRecording().catch(() => {});
+      stopSpeech().catch(() => {});
+    };
+  }, []);
+
   // Voice mode state
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [voiceCaption, setVoiceCaption] = useState('');
@@ -758,16 +768,23 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           // Auto-execute the action (BFE event tracking)
           try {
             if (step.action.type === 'logHabit' && step.action.habitId && user?.uid) {
-              const todayDate = new Date().toISOString().split('T')[0];
-              await addDoc(collection(db, COLLECTION.HABIT_LOGS), {
-                userId: user.uid, habitId: step.action.habitId,
-                date: todayDate, createdAt: serverTimestamp(),
-              });
+              const todayDate = formatLocalDateStr(new Date());
+              const logDocId = `${step.action.habitId}_${todayDate}`;
+              const logData = { userId: user.uid, habitId: step.action.habitId, date: todayDate };
+              await safeWrite(
+                () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), { ...logData, createdAt: serverTimestamp() }),
+                COLLECTION.HABIT_LOGS, 'set', logData, logDocId
+              );
               if (user?.uid) updateFingerprint(user.uid, { type: 'habit_logged' });
             } else if (step.action.type === 'completeTask' && step.action.taskId) {
-              await updateDoc(doc(db, COLLECTION.TASKS, step.action.taskId), {
-                status: 'completed', completedAt: new Date().toISOString(),
-              });
+              await safeUpdate(
+                step.action.taskId,
+                COLLECTION.TASKS,
+                { status: 'completed', completedAt: new Date().toISOString() },
+                () => updateDoc(doc(db, COLLECTION.TASKS, step.action.taskId), {
+                  status: 'completed', completedAt: new Date().toISOString(),
+                })
+              );
               if (user?.uid) updateFingerprint(user.uid, {
                 type: 'task_completed', completedAt: Date.now()
               });
@@ -988,7 +1005,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           };
 
         } else if (name === 'logHabit') {
-          const todayDate = new Date().toISOString().split('T')[0];
+          const todayDate = formatLocalDateStr(new Date());
           actionCard = {
             icon: 'flame-outline',
             title: `Log habit: ${args.habitName}`,
@@ -996,15 +1013,15 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
             onConfirm: async () => {
               try {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                await addDoc(collection(db, COLLECTION.HABIT_LOGS), {
-                  userId: user!.uid,
-                  habitId: args.habitId,
-                  date: todayDate,
-                  createdAt: serverTimestamp(),
-                });
+                const logDocId = `${args.habitId}_${todayDate}`;
+                const logData = { userId: user!.uid, habitId: args.habitId, date: todayDate };
+                await safeWrite(
+                  () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), { ...logData, createdAt: serverTimestamp() }),
+                  COLLECTION.HABIT_LOGS, 'set', logData, logDocId
+                );
                 setMessages(prev => prev.map(m =>
                   m.id === saraMsgId
-                    ? { ...m, actionCard: { ...m.actionCard!, onConfirm: undefined, subtitle: 'Γ£ô Habit logged!' } }
+                    ? { ...m, actionCard: { ...m.actionCard!, onConfirm: undefined, subtitle: '✓ Habit logged!' } }
                     : m
                 ));
               } catch (e: any) {

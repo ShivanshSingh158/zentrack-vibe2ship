@@ -155,6 +155,31 @@ export const AttendanceModule = () => {
   const weekDates = useMemo(() => getWeekDates(selectedDate), [selectedDate]);
   const todayStr = getLocalDateString(new Date());
 
+  const handleShiftWeek = (direction: -1 | 1) => {
+    const current = new Date(selectedDate + 'T00:00:00');
+    current.setDate(current.getDate() + direction * 7);
+    setSelectedDate(getLocalDateString(current));
+  };
+
+  const getClassCountForDay = useCallback((dayIndex: number) => {
+    const dayKey = String(dayIndex);
+    let count = 0;
+    for (const s of subjects) {
+      const daySched = s.schedule?.[dayKey] || defaultSchedule[dayKey];
+      count += (daySched?.classCount || 0) + (daySched?.labCount || 0);
+    }
+    return count;
+  }, [subjects]);
+
+  const weekRangeLabel = useMemo(() => {
+    if (weekDates.length < 7) return '';
+    const start = new Date(weekDates[0] + 'T00:00:00');
+    const end = new Date(weekDates[6] + 'T00:00:00');
+    const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endStr = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return `${startStr} – ${endStr}`;
+  }, [weekDates]);
+
   // Group logs by subject
   const logsBySubjectId = useMemo(() => {
     const map: Record<string, any[]> = {};
@@ -484,10 +509,9 @@ export const AttendanceModule = () => {
 
             <div className="att-progress-track">
               <div
-                className="att-progress-fill"
+                className={`att-progress-fill ${globalPct !== null ? (globalPct >= 75 ? 'safe' : (globalPct >= 70 ? 'warning' : 'danger')) : ''}`}
                 style={{
                   width: `${Math.min(100, globalPct || 0)}%`,
-                  background: globalPct !== null ? (globalPct >= 75 ? '#5eda9e' : (globalPct >= 70 ? '#fbbf24' : '#ff6961')) : 'rgba(255,255,255,0.1)'
                 }}
               />
             </div>
@@ -536,30 +560,68 @@ export const AttendanceModule = () => {
         )}
       </div>
 
-      {/* ── 7-DAY HORIZONTAL WEEK STRIP ── */}
-      <div className="att-week-strip">
-        {weekDates.map(dateStr => {
-          const d = new Date(dateStr + 'T00:00:00');
-          const dayName = DAY_SHORT[d.getDay()];
-          const dayNum = d.getDate();
-          const isSelected = dateStr === selectedDate;
-          const isToday = dateStr === todayStr;
-          const isHol = holidays.includes(dateStr);
+      {/* ── 7-DAY HORIZONTAL WEEK NAVIGATION & STRIP ── */}
+      <div>
+        <div className="att-week-nav-bar">
+          <div className="att-week-range-label">
+            <CalendarDays size={16} color="#a599ff" />
+            <span>{weekRangeLabel}</span>
+          </div>
 
-          return (
-            <div
-              key={dateStr}
-              className={`att-day-card ${isSelected ? 'active-day' : ''} ${isToday ? 'is-today' : ''}`}
-              onClick={() => setSelectedDate(dateStr)}
+          <div className="att-week-nav-controls">
+            <button
+              type="button"
+              className="att-week-nav-btn"
+              onClick={() => handleShiftWeek(-1)}
+              title="Previous Week"
             >
-              <span className="att-day-name">{dayName}</span>
-              <span className="att-day-number">{dayNum}</span>
-              <span className="att-day-badge">
-                {isHol ? '🌴 Off' : isToday ? 'Today' : ''}
-              </span>
-            </div>
-          );
-        })}
+              ‹ Prev
+            </button>
+            <button
+              type="button"
+              className="att-week-nav-btn"
+              onClick={() => setSelectedDate(todayStr)}
+              style={selectedDate === todayStr ? { borderColor: 'rgba(165,153,255,0.4)', color: '#a599ff', background: 'rgba(165,153,255,0.1)' } : {}}
+            >
+              This Week
+            </button>
+            <button
+              type="button"
+              className="att-week-nav-btn"
+              onClick={() => handleShiftWeek(1)}
+              title="Next Week"
+            >
+              Next ›
+            </button>
+          </div>
+        </div>
+
+        <div className="att-week-strip">
+          {weekDates.map(dateStr => {
+            const d = new Date(dateStr + 'T00:00:00');
+            const dayOfWeek = d.getDay();
+            const dayName = DAY_SHORT[dayOfWeek];
+            const dayNum = d.getDate();
+            const isSelected = dateStr === selectedDate;
+            const isToday = dateStr === todayStr;
+            const isHol = holidays.includes(dateStr);
+            const classCount = getClassCountForDay(dayOfWeek);
+
+            return (
+              <div
+                key={dateStr}
+                className={`att-day-card ${isSelected ? 'active-day' : ''} ${isToday ? 'is-today' : ''}`}
+                onClick={() => setSelectedDate(dateStr)}
+              >
+                <span className="att-day-name">{dayName}</span>
+                <span className="att-day-number">{dayNum}</span>
+                <span className={`att-day-badge ${isToday ? 'today-pill' : isHol ? 'holiday-pill' : ''}`}>
+                  {isHol ? '🌴 Off' : isToday ? (classCount > 0 ? `${classCount} Classes` : 'Today') : (classCount > 0 ? `${classCount} Classes` : 'Off')}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── TODAY'S SCHEDULED SESSIONS ── */}
@@ -626,12 +688,10 @@ export const AttendanceModule = () => {
                     {matchingLog ? (
                       <button
                         type="button"
-                        className="att-log-btn undo"
+                        className={`att-log-btn undo ${matchingLog.action}`}
                         onClick={() => handleUndoLog(matchingLog.id)}
                       >
-                        <span style={{
-                          color: matchingLog.action === 'attended' ? '#5eda9e' : matchingLog.action === 'missed' ? '#ff6961' : '#8e8e93'
-                        }}>
+                        <span>
                           {matchingLog.action === 'attended' ? '✓ Present' : matchingLog.action === 'missed' ? '✗ Absent' : 'Cancelled'}
                         </span>
                         <RotateCcw size={12} />
@@ -725,24 +785,30 @@ export const AttendanceModule = () => {
                 ? Math.round(((subject.labsAttended || 0) / subject.labsTotal) * 100)
                 : 100;
 
+              const target = subject.targetPercentage || 75;
+              const clsStatus = clsPct >= target ? 'safe' : (clsPct >= target - 5 ? 'warning' : 'danger');
+              const labStatus = labPct >= target ? 'safe' : (labPct >= target - 5 ? 'warning' : 'danger');
+              const clsColor = clsStatus === 'safe' ? '#5eda9e' : (clsStatus === 'warning' ? '#fbbf24' : '#ff6961');
+              const labColor = labStatus === 'safe' ? '#5eda9e' : (labStatus === 'warning' ? '#fbbf24' : '#ff6961');
+
               return (
                 <div key={subject.id} className="att-subject-card">
                   <div className="att-subject-card-top">
                     <h4 className="att-subject-name">{subject.name}</h4>
                     <span className="att-subject-total-pct" style={{
-                      color: totalPct >= (subject.targetPercentage || 75) ? '#5eda9e' : (totalPct >= (subject.targetPercentage || 75) - 5 ? '#fbbf24' : '#ff6961')
+                      color: totalPct >= target ? '#5eda9e' : (totalPct >= target - 5 ? '#fbbf24' : '#ff6961')
                     }}>
                       {tot > 0 ? `${totalPct}%` : '--%'}
                     </span>
                   </div>
 
-                  {/* Dual Class & Lab Bars */}
+                  {/* Dual Class & Lab Bars (Green / Red Mobile Parity) */}
                   <div className="att-subject-bars">
                     {/* Class Progress */}
                     <div className="att-sub-bar-row">
-                      <span className="att-sub-bar-tag" style={{ background: 'rgba(165,153,255,0.15)', color: '#a599ff' }}>CLASS</span>
+                      <span className="att-sub-bar-tag" style={{ background: `${clsColor}18`, color: clsColor, border: `1px solid ${clsColor}35` }}>CLASS</span>
                       <div className="att-progress-track">
-                        <div className="att-progress-fill" style={{ width: `${Math.min(100, clsPct)}%`, background: '#a599ff' }} />
+                        <div className={`att-progress-fill ${clsStatus}`} style={{ width: `${Math.min(100, clsPct)}%` }} />
                       </div>
                       <span className="att-sub-bar-count">{subject.classesAttended || 0}/{subject.classesTotal || 0}</span>
                     </div>
@@ -750,9 +816,9 @@ export const AttendanceModule = () => {
                     {/* Lab Progress */}
                     {(subject.labsTotal || 0) > 0 && (
                       <div className="att-sub-bar-row">
-                        <span className="att-sub-bar-tag" style={{ background: 'rgba(56,189,248,0.15)', color: '#38bdf8' }}>LAB</span>
+                        <span className="att-sub-bar-tag" style={{ background: `${labColor}18`, color: labColor, border: `1px solid ${labColor}35` }}>LAB</span>
                         <div className="att-progress-track">
-                          <div className="att-progress-fill" style={{ width: `${Math.min(100, labPct)}%`, background: '#38bdf8' }} />
+                          <div className={`att-progress-fill ${labStatus}`} style={{ width: `${Math.min(100, labPct)}%` }} />
                         </div>
                         <span className="att-sub-bar-count">{subject.labsAttended || 0}/{subject.labsTotal || 0}</span>
                       </div>

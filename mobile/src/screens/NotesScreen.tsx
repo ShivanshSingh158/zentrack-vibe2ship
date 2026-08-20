@@ -30,6 +30,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { timeAgo } from '../utils/dateUtils';
 import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
+import { safeAdd, safeUpdate, safeDelete } from '../utils/safeWrite';
 
 const UploadProgressRing = ({ progress }: { progress: number }) => {
   const { colors, isDark } = useTheme();
@@ -149,27 +150,36 @@ function NoteEditorModal({ note, userId, parentId, onClose }: {
     
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
     
-    setTimeout(() => {
-      if (isNew) {
-        addDoc(collection(db, 'storage_nodes'), {
-          userId,
-          tags: [],
-          type: 'note',
-          name: title.trim(),
-          content: content.trim(),
-          parentId,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        }).catch(handleSyncError);
-      } else {
-        updateDoc(doc(db, 'storage_nodes', note.id!), {
-          name: title.trim(),
-          tags: [],
-          content: content.trim(),
-          updatedAt: Date.now(),
-        }).catch(handleSyncError);
-      }
-    }, 150);
+    if (isNew) {
+      const noteData = {
+        userId,
+        tags: [],
+        type: 'note',
+        name: title.trim(),
+        content: content.trim(),
+        parentId,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      safeAdd(
+        'storage_nodes',
+        noteData,
+        () => addDoc(collection(db, 'storage_nodes'), noteData)
+      ).catch(handleSyncError);
+    } else {
+      const updateData = {
+        name: title.trim(),
+        tags: [],
+        content: content.trim(),
+        updatedAt: Date.now(),
+      };
+      safeUpdate(
+        note.id!,
+        'storage_nodes',
+        updateData,
+        () => updateDoc(doc(db, 'storage_nodes', note.id!), updateData)
+      ).catch(handleSyncError);
+    }
     
     onClose();
   };
@@ -686,7 +696,13 @@ export default function NotesScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive',
-        onPress: () => deleteDoc(doc(db, 'storage_nodes', id)).catch(handleSyncError)
+        onPress: () => {
+          safeDelete(
+            id,
+            'storage_nodes',
+            () => deleteDoc(doc(db, 'storage_nodes', id))
+          ).catch(handleSyncError);
+        }
       }
     ]);
   };
@@ -694,7 +710,13 @@ export default function NotesScreen() {
   const executeRename = async () => {
     if (!renameNode || !renameValue.trim()) return;
     try {
-      await updateDoc(doc(db, 'storage_nodes', renameNode.id!), { name: renameValue.trim(), updatedAt: Date.now() });
+      const updateData = { name: renameValue.trim(), updatedAt: Date.now() };
+      await safeUpdate(
+        renameNode.id!,
+        'storage_nodes',
+        updateData,
+        () => updateDoc(doc(db, 'storage_nodes', renameNode.id!), updateData)
+      );
       setRenameNode(null);
     } catch (e) {
       console.error(e);
@@ -705,7 +727,13 @@ export default function NotesScreen() {
   const executeMove = async (targetFolderId: string | null) => {
     if (!moveNode) return;
     try {
-      await updateDoc(doc(db, 'storage_nodes', moveNode.id!), { parentId: targetFolderId, updatedAt: Date.now() });
+      const updateData = { parentId: targetFolderId, updatedAt: Date.now() };
+      await safeUpdate(
+        moveNode.id!,
+        'storage_nodes',
+        updateData,
+        () => updateDoc(doc(db, 'storage_nodes', moveNode.id!), updateData)
+      );
       setMoveNode(null);
     } catch (e) {
       console.error(e);

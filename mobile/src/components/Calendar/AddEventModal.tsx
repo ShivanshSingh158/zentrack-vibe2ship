@@ -60,6 +60,8 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
   const [eventDate, setEventDate] = useState(selectedDate);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  // FIX 5.5: Recurrence Rule state
+  const [recurrenceRule, setRecurrenceRule] = useState<'none' | 'daily' | 'weekly' | 'monthly'>('none');
   const [loading, setLoading] = useState(false);
 
   const targetDate = eventDate || existingEvent?.date || selectedDate;
@@ -89,12 +91,14 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
         setEventDate(existingEvent.date);
         setStartTime(existingEvent.startTime || '');
         setEndTime(existingEvent.endTime || '');
+        setRecurrenceRule((existingEvent as any).recurrenceRule || 'none');
       } else {
         setTitle('');
         setType('exam');
         setEventDate(selectedDate);
         setStartTime(initialStartTime || '');
         setEndTime('');
+        setRecurrenceRule('none');
       }
     }
   }, [visible, existingEvent, initialStartTime, selectedDate]);
@@ -214,6 +218,7 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
       };
       if (startTime) payload.startTime = startTime;
       if (endTime) payload.endTime = endTime;
+      if (recurrenceRule && recurrenceRule !== 'none') payload.recurrenceRule = recurrenceRule;
 
       if (existingEvent) {
         await updateDoc(doc(db, COLLECTION.CALENDAR_EVENTS, existingEvent.id), payload);
@@ -375,6 +380,36 @@ export function AddEventModal({ visible, onClose, selectedDate, initialStartTime
                 value={endTime}
                 onChangeText={setEndTime}
               />
+            </View>
+          </View>
+
+          {/* FIX 5.5: Repeat / Recurrence Rule Selector */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Repeat</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {(['none', 'daily', 'weekly', 'monthly'] as const).map(rule => (
+                <TouchableOpacity
+                  key={rule}
+                  style={[
+                    styles.typeChip,
+                    recurrenceRule === rule && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+                    { paddingVertical: 8, paddingHorizontal: 12 }
+                  ]}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setRecurrenceRule(rule);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.typeLabel,
+                    { textTransform: 'capitalize', marginStart: 0 },
+                    recurrenceRule === rule && { color: isDark ? '#000000' : '#FFFFFF', fontFamily: FONT_FAMILY.bold }
+                  ]}>
+                    {rule === 'none' ? 'Does not repeat' : rule}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
 

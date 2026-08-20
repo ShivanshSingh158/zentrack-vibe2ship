@@ -199,6 +199,18 @@
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.att-progress-fill.safe {
+  background: linear-gradient(90deg, #5eda9e, #10b981) !important;
+}
+
+.att-progress-fill.warning {
+  background: linear-gradient(90deg, #fbbf24, #f59e0b) !important;
+}
+
+.att-progress-fill.danger {
+  background: linear-gradient(90deg, #ff6961, #ef4444) !important;
+}
+
 /* Warnings Card */
 .att-warning-card {
   background: rgba(251, 191, 36, 0.06);
@@ -231,12 +243,60 @@
   line-height: 1.4;
 }
 
-/* ── 7-DAY HORIZONTAL WEEK STRIP ── */
+/* ── 7-DAY HORIZONTAL WEEK STRIP (Full-Width Desktop Layout) ── */
+.att-week-nav-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 1rem 0 0.5rem 0;
+  padding: 0 0.2rem;
+}
+
+.att-week-range-label {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.att-week-nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.att-week-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 0.3rem 0.65rem;
+  color: #d1d1d6;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.att-week-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
 .att-week-strip {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 0.55rem;
-  width: 100%;
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr) !important;
+  gap: 0.75rem !important;
+  width: 100% !important;
+  margin: 0.5rem 0 1.25rem 0 !important;
+  box-sizing: border-box;
 }
 
 .att-day-card {
@@ -244,57 +304,92 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: var(--att-bg-surface);
-  border: 1px solid var(--att-border-subtle);
-  border-radius: 14px;
-  padding: 0.75rem 0.4rem;
+  background: rgba(22, 22, 24, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 16px;
+  padding: 0.85rem 0.5rem;
+  min-height: 84px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  gap: 0.2rem;
+  gap: 0.25rem;
   position: relative;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-sizing: border-box;
 }
 
 .att-day-card:hover {
-  background: var(--att-bg-surface-elevated);
-  border-color: var(--att-border-hover);
-  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-2px);
 }
 
 .att-day-card.active-day {
-  border-color: var(--att-accent-purple);
-  background: rgba(165, 153, 255, 0.12);
-  box-shadow: 0 0 15px rgba(165, 153, 255, 0.2);
+  border-color: #a599ff !important;
+  background: rgba(165, 153, 255, 0.14) !important;
+  box-shadow: 0 4px 20px rgba(165, 153, 255, 0.22);
+}
+
+.att-day-card.is-today {
+  border-color: rgba(165, 153, 255, 0.4);
 }
 
 .att-day-card.is-today::after {
   content: '';
   position: absolute;
-  bottom: 4px;
-  width: 4px;
-  height: 4px;
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--att-accent-purple);
+  background: #a599ff;
+  box-shadow: 0 0 8px #a599ff;
 }
 
 .att-day-name {
   font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--att-text-tertiary);
+  font-weight: 700;
+  color: #8e8e93;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+}
+
+.att-day-card.active-day .att-day-name {
+  color: #a599ff;
 }
 
 .att-day-number {
-  font-size: 1.15rem;
-  font-weight: 700;
+  font-size: 1.35rem;
+  font-weight: 800;
   color: #ffffff;
+  line-height: 1.1;
+  font-feature-settings: "tnum";
 }
 
 .att-day-badge {
-  font-size: 0.65rem;
+  font-size: 0.66rem;
   font-weight: 600;
-  color: var(--att-text-tertiary);
+  color: #8e8e93;
   margin-top: 0.15rem;
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.att-day-card.active-day .att-day-badge {
+  color: #e2e1ea;
+  background: rgba(165, 153, 255, 0.2);
+}
+
+.att-day-badge.today-pill {
+  color: #a599ff;
+  background: rgba(165, 153, 255, 0.15);
+  font-weight: 700;
+}
+
+.att-day-badge.holiday-pill {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.15);
 }
 
 /* ── TODAY'S SESSIONS LIST ── */
@@ -466,15 +561,33 @@
 }
 
 .att-log-btn.undo {
-  background: var(--att-bg-surface-elevated);
-  border-color: var(--att-border-subtle);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 0.4rem 0.85rem;
   font-size: 0.76rem;
 }
 
+.att-log-btn.undo.attended {
+  background: rgba(94, 218, 158, 0.12) !important;
+  border-color: rgba(94, 218, 158, 0.35) !important;
+  color: #5eda9e !important;
+}
+
+.att-log-btn.undo.missed {
+  background: rgba(255, 105, 97, 0.12) !important;
+  border-color: rgba(255, 105, 97, 0.35) !important;
+  color: #ff6961 !important;
+}
+
+.att-log-btn.undo.cancelled {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #8e8e93 !important;
+}
+
 .att-log-btn.undo:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  filter: brightness(1.15);
+  transform: translateY(-1px);
 }
 
 /* ── SUBJECT BREAKDOWN GRID ── */

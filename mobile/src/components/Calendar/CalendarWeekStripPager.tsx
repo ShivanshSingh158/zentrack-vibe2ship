@@ -168,9 +168,9 @@ export function CalendarWeekStripPager({ selectedDate, onSelectDate, markedDates
                     {day.dateNum}
                   </Text>
 
-                  {/* Dot Indicators */}
+                  {/* Dot Indicators — up to 5 dots for schedule density */}
                   <View style={styles.dotsRow}>
-                    {dots.slice(0, 3).map((dot, idx) => (
+                    {dots.slice(0, 5).map((dot, idx) => (
                       <View
                         key={idx}
                         style={[

@@ -97,8 +97,10 @@ export default function GymProgressScreen() {
       log.exercises?.forEach(ex => {
         let vol = 0;
         ex.setsLog?.forEach((s: any) => {
-          if (s.completed && s.weight && s.reps) {
-            vol += (s.weight * s.reps);
+          const w = (s?.weight !== null && s?.weight !== undefined && !isNaN(Number(s.weight))) ? Number(s.weight) : (s?.weightKg ? Number(s.weightKg) : 0);
+          const r = (s?.reps !== null && s?.reps !== undefined && !isNaN(Number(s.reps))) ? Number(s.reps) : 0;
+          if (s.completed && w > 0 && r > 0) {
+            vol += (w * r);
             isWorkout = true;
           }
         });

@@ -26,7 +26,8 @@ import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal'
 import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
 import { handleSyncError } from '../../utils/errorUtils';
-import { Task, useMobileData } from '../../contexts/MobileDataContext';
+import { Task } from '../../contexts/MobileDataContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { today, formatDisplayDate, formatTimeDisplay } from './taskConstants';
 import { makeTasksStyles } from './tasksStyles';
 
@@ -115,7 +116,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     }
   };
 
-  const { optimisticDeleteTask, optimisticUpdateTask } = useMobileData();
+  const { optimisticDeleteTask, optimisticUpdateTask } = useCoreData();
 
   const handleDelete = async () => {
     Keyboard.dismiss();

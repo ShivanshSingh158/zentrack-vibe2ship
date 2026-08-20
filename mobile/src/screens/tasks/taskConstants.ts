@@ -35,6 +35,7 @@ export const getToday = (): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// Backward-compatible alias for existing imports
 export const today = getToday();
 
 export const formatDisplayDate = (d: string): string => {

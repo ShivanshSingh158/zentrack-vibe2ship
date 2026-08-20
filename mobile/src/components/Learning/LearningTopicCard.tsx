@@ -5,11 +5,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useTheme } from '../../contexts/ThemeContext';
-import { FONT_FAMILY, SHADOW } from '../../theme/tokens';
+import { FONT_FAMILY, SHADOW, RADIUS } from '../../theme/tokens';
 import { LearningTopic, LearningSubTask } from '../../contexts/MobileDataContext';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import * as Haptics from 'expo-haptics';
 
 interface LearningTopicCardProps extends RenderItemParams<LearningTopic> {
@@ -42,6 +43,19 @@ export default function LearningTopicCard({
   const completedCount = subTasks.filter(s => s.isCompleted).length;
   const totalCount = subTasks.length;
   const progress = totalCount === 0 ? 0 : (completedCount / totalCount) * 100;
+
+  // FIX 6.6: Related assignments lookup
+  const { assignments } = useAcademicData();
+  const relatedAssignments = React.useMemo(() => {
+    if (!topic.title || !assignments || assignments.length === 0) return [];
+    const topicWords = topic.title.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    return assignments.filter(a => {
+      if (a.status === 'submitted' || a.status === 'graded') return false;
+      const titleLower = (a.title || '').toLowerCase();
+      const subjLower = (a.subjectName || '').toLowerCase();
+      return topicWords.some(w => titleLower.includes(w) || subjLower.includes(w));
+    }).slice(0, 2);
+  }, [topic.title, assignments]);
 
   const [scheduleSubtask, setScheduleSubtask] = useState<LearningSubTask | null>(null);
   const [scheduling, setScheduling] = useState(false);
@@ -224,8 +238,25 @@ export default function LearningTopicCard({
 
             <TouchableOpacity style={s.addSubBtn} onPress={() => { setActiveTopicId(topic.id!); setSubtaskModalVisible(true); }}>
               <Ionicons name="add" size={16} color={colors.accentPrimary} />
-              <Text style={s.addSubText}>Add Checkpoint</Text>
+              <Text style={s.addSubText}>Add Lecture / Subtask</Text>
             </TouchableOpacity>
+
+            {/* FIX 6.6: Related Assignments Badge */}
+            {relatedAssignments.length > 0 && (
+              <View style={{ marginTop: 8, padding: 10, borderRadius: RADIUS.md, backgroundColor: isDark ? 'rgba(165,153,255,0.08)' : 'rgba(108,92,231,0.06)', borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Ionicons name="document-text-outline" size={13} color={colors.accentPrimary} />
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.accentPrimary, letterSpacing: 0.4 }}>
+                    RELATED ASSIGNMENTS
+                  </Text>
+                </View>
+                {relatedAssignments.map(a => (
+                  <Text key={a.id} style={{ fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textPrimary, marginTop: 2 }} numberOfLines={1}>
+                    • {a.title} {a.dueDate ? `(Due ${a.dueDate})` : ''}
+                  </Text>
+                ))}
+              </View>
+            )}
           </View>
         )}
       </View>

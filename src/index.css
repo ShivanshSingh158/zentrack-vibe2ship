@@ -1,6 +1,7 @@
 @import './styles/animations.css';
 @import './styles/vars.css';
 @import './styles/layout.css';
+@import './styles/dashboard.css';
 @import './styles/todo.css';
 @import './styles/learning.css';
 @import './styles/notes.css';

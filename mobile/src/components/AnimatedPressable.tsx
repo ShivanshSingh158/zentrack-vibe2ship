@@ -57,8 +57,6 @@ export default function AnimatedPressable({
 
   return (
     <AnimatedPressableCore
-      entering={entering}
-      exiting={exiting}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       onPress={onPress}

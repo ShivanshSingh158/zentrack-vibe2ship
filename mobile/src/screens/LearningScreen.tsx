@@ -250,8 +250,15 @@ export default function LearningScreen() {
     const subtask = topic.subTasks?.find(s => s.id === subtaskId);
     const willBeCompleted = !subtask?.isCompleted;
 
+    const todayIso = new Date().toISOString().slice(0, 10);
     const updatedSubtasks = (topic.subTasks || []).map(s =>
-      s.id === subtaskId ? { ...s, isCompleted: willBeCompleted } : s
+      s.id === subtaskId
+        ? {
+            ...s,
+            isCompleted: willBeCompleted,
+            completedDate: willBeCompleted ? todayIso : undefined,
+          }
+        : s
     );
     try {
       await updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, topicId), { subTasks: updatedSubtasks });
@@ -282,13 +289,18 @@ export default function LearningScreen() {
   };
 
   const onDragEnd = async ({ data }: { data: LearningTopic[] }) => {
+    Haptics.selectionAsync();
     try {
       const batch = writeBatch(db);
       data.forEach((topic, index) => {
-        batch.update(doc(db, COLLECTION.LEARNING_TOPICS, topic.id!), { order: index });
+        if (topic.id) {
+          batch.update(doc(db, COLLECTION.LEARNING_TOPICS, topic.id), { order: index });
+        }
       });
       await batch.commit();
-    } catch (error) { console.error('Failed to reorder topics:', error); }
+    } catch (error) {
+      console.warn('[LearningScreen] Topic reorder offline sync pending:', error);
+    }
   };
 
 

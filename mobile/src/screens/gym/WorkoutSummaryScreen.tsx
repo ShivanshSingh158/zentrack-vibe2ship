@@ -108,12 +108,16 @@ export default function WorkoutSummaryScreen() {
       let exTotalReps = 0;
 
       ex.setsLog?.forEach((set: any) => {
-        if (set.completed || (todayLog as any).completed || (set.weight && set.reps)) {
+        const w = (set?.weight !== null && set?.weight !== undefined && !isNaN(Number(set.weight))) ? Number(set.weight) : (set?.weightKg ? Number(set.weightKg) : 0);
+        const r = (set?.reps !== null && set?.reps !== undefined && !isNaN(Number(set.reps))) ? Number(set.reps) : 0;
+        if (set.completed || (todayLog as any).completed || (w > 0 && r > 0)) {
           exSets++;
-          if (set.weight && set.reps) {
-            totalVolume += set.weight * set.reps;
-            if (set.weight > exMaxWeight) exMaxWeight = set.weight;
-            exTotalReps += set.reps;
+          if (w > 0 && r > 0) {
+            totalVolume += w * r;
+            if (w > exMaxWeight) exMaxWeight = w;
+            exTotalReps += r;
+          } else if (r > 0) {
+            exTotalReps += r;
           }
         }
       });

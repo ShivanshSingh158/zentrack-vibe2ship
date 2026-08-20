@@ -15,6 +15,8 @@ import { db } from '../../services/firebase';
 import { AttendanceSubject } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
 import { handleSyncError } from '../../utils/errorUtils';
+import { safeWrite } from '../../utils/safeWrite';
+import { queueWrite } from '../../services/offlineSync';
 import { DAY_NAMES } from './attendanceConstants';
 
 // Set the notification handler once at module level (previously in AttendanceScreen top-level)
@@ -64,9 +66,9 @@ export function useAttendanceFirestore({
     const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
     const newAttended = (subject[attendedKey as keyof AttendanceSubject] as number || 0) + (action === 'attended' ? 1 : 0);
     const newTotal    = (subject[totalKey    as keyof AttendanceSubject] as number || 0) + (action === 'cancelled' ? 0 : 1);
+    const subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
+
     try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), { [attendedKey]: newAttended, [totalKey]: newTotal });
       const logRef = doc(collection(db, COLLECTION.ATTENDANCE_LOGS));
       const newLog = {
         id: logRef.id,
@@ -75,11 +77,26 @@ export function useAttendanceFirestore({
       };
       
       // Optimistically update UI
-      optimisticUpdateAttendance(subject.id, { [attendedKey]: newAttended, [totalKey]: newTotal });
+      optimisticUpdateAttendance(subject.id, subjectUpdates);
       optimisticAddAttendanceLog(newLog);
 
-      batch.set(logRef, newLog);
-      batch.commit().catch(handleSyncError);
+      // WhatsApp Pattern: direct online write + offline queue fallback
+      safeWrite(
+        async () => {
+          const batch = writeBatch(db);
+          batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
+          batch.set(logRef, newLog);
+          await batch.commit();
+        },
+        COLLECTION.ATTENDANCE,
+        'update',
+        subjectUpdates,
+        subject.id
+      ).then(async (online) => {
+        if (!online) {
+          await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'set', newLog, newLog.id);
+        }
+      }).catch(handleSyncError);
 
       const oldPct         = (subject.classesTotal || 0) + (subject.labsTotal || 0) === 0
         ? 100
@@ -115,17 +132,29 @@ export function useAttendanceFirestore({
     const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
     const newAttended = Math.max(0, (subject[attendedKey as keyof AttendanceSubject] as number || 0) - (logToUndo.action === 'attended' ? 1 : 0));
     const newTotal    = Math.max(0, (subject[totalKey    as keyof AttendanceSubject] as number || 0) - (logToUndo.action === 'cancelled' ? 0 : 1));
+    const subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
 
     try {
-      const batch = writeBatch(db);
-      batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id), { [attendedKey]: newAttended, [totalKey]: newTotal });
-      batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, logId));
-      
       // Optimistically update UI
-      optimisticUpdateAttendance(subject.id, { [attendedKey]: newAttended, [totalKey]: newTotal });
+      optimisticUpdateAttendance(subject.id, subjectUpdates);
       optimisticRemoveAttendanceLog(logId);
 
-      batch.commit().catch(handleSyncError);
+      safeWrite(
+        async () => {
+          const batch = writeBatch(db);
+          batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
+          batch.delete(doc(db, COLLECTION.ATTENDANCE_LOGS, logId));
+          await batch.commit();
+        },
+        COLLECTION.ATTENDANCE,
+        'update',
+        subjectUpdates,
+        subject.id
+      ).then(async (online) => {
+        if (!online) {
+          await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'delete', null, logId);
+        }
+      }).catch(handleSyncError);
     } catch (err) { Alert.alert('Error', 'Failed to undo attendance log'); }
   };
 

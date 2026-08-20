@@ -178,7 +178,6 @@ export default function MoreScreen() {
               const isDimmed = isEditing && !isSelected && selected.length >= 4;
               return (
                 <AnimatedPressable
-                  entering={FadeIn.delay(index * 20).duration(200)}
                   key={mod.id}
                   style={[styles.gridItem, { opacity: isDimmed ? 0.3 : 1 }]}
                   activeOpacity={0.7}
@@ -197,7 +196,10 @@ export default function MoreScreen() {
                       </View>
                     )}
                   </View>
-                  <Text style={[styles.gridItemText, isEditing && isSelected && { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold }]}>
+                  <Text 
+                    style={[styles.gridItemText, isEditing && isSelected && { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold }]}
+                    numberOfLines={2}
+                  >
                     {mod.name}
                   </Text>
                 </AnimatedPressable>
@@ -205,12 +207,12 @@ export default function MoreScreen() {
             })}
 
             {/* Utility Row: Settings */}
-            <AnimatedPressable entering={FadeIn.delay(allModules.length * 20).duration(200)} style={styles.gridItem} activeOpacity={0.7} haptic="none" onPress={() => navigateWithClose('Settings')}>
+            <AnimatedPressable style={styles.gridItem} activeOpacity={0.7} haptic="none" onPress={() => navigateWithClose('Settings')}>
               <View style={styles.gridIconBox}>
                 <View style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? colors.textMuted : '#636366', opacity: isDark ? 0.12 : 0.08 }]} />
                 <Ionicons name="settings" size={26} color={isDark ? colors.textMuted : '#636366'} />
               </View>
-              <Text style={styles.gridItemText}>Settings</Text>
+              <Text style={styles.gridItemText} numberOfLines={1}>Settings</Text>
             </AnimatedPressable>
           </View>
         </ScrollView>
@@ -303,11 +305,13 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     shadowOpacity: isDark ? 0 : 0.5,
   },
   gridItemText: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 11,
-    color: colors.textMuted,
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11.5,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: SPACE.sm,
+    marginTop: SPACE.xs,
+    lineHeight: 14,
+    paddingHorizontal: 2,
   },
   selectedBadge: {
     position: 'absolute', top: -6, right: -6,

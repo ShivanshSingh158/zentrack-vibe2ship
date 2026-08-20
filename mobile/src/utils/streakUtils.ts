@@ -1,36 +1,53 @@
-import { Task } from '../contexts/MobileDataContext';
+import { Task, LearningTopic } from '../contexts/MobileDataContext';
+import { formatLocalDateStr } from './dateUtils';
 
-export function calculateAppStreak(tasks?: Task[], gymLogs?: any[], habitLogs?: any[]): number {
+export function calculateAppStreak(
+  tasks?: Task[],
+  gymLogs?: any[],
+  habitLogs?: any[],
+  learningTopics?: LearningTopic[]
+): number {
   let current = 0;
   for (let i = 0; i < 365; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dStr = d.toISOString().slice(0, 10);
+    const dStr = formatLocalDateStr(d);
     const dayOfWeek = d.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isSunday = dayOfWeek === 0;
 
     const dayTasks = tasks?.filter((t) => t.date === dStr) || [];
     const completedTasks = dayTasks.filter((t) => t.status === 'completed');
     const dayGym = gymLogs?.find((g) => g.date === dStr);
     const dayHabits = habitLogs?.filter((l) => l.date === dStr) || [];
 
-    const hadAnyActivity = completedTasks.length > 0 || !!dayGym || dayHabits.length > 0;
-    const hadUnfinishedWeekday =
-      !isWeekend && dayTasks.length > 0 && completedTasks.length === 0 && !dayGym && dayHabits.length === 0;
+    // Check if any learning topic has completed subtasks on this day
+    const hasLearningActivity = (learningTopics || []).some(t =>
+      (t.subTasks || []).some(s => s.isCompleted && s.completedDate === dStr)
+    );
+
+    const hadAnyActivity = completedTasks.length > 0 || !!dayGym || dayHabits.length > 0 || hasLearningActivity;
 
     if (hadAnyActivity) {
       current++;
-    } else if (hadUnfinishedWeekday && i > 0) {
-      break;
-    } else if (!hadAnyActivity && i > 0) {
-      // If today has no activity yet, don't break immediately on day 0, but break on past days with 0 activity
+    } else if (isSunday) {
+      // 🏖️ SUNDAY RELAXATION / REST DAY IMMUNITY:
+      // Sunday is an authorized recovery day. Inactivity on Sunday does NOT reset the streak.
+      // Streak passes seamlessly from Saturday through to Monday.
+      continue;
+    } else if (i > 0) {
+      // If today (i === 0) has no activity yet, don't break immediately; but break on past inactive weekdays
       break;
     }
   }
   return current;
 }
 
-export function calculateLongestAppStreak(tasks?: Task[], gymLogs?: any[], habitLogs?: any[]): number {
+export function calculateLongestAppStreak(
+  tasks?: Task[],
+  gymLogs?: any[],
+  habitLogs?: any[],
+  learningTopics?: LearningTopic[]
+): number {
   const activeDatesSet = new Set<string>();
 
   tasks?.forEach(t => {
@@ -41,6 +58,11 @@ export function calculateLongestAppStreak(tasks?: Task[], gymLogs?: any[], habit
   });
   habitLogs?.forEach(h => {
     if (h.date) activeDatesSet.add(h.date);
+  });
+  learningTopics?.forEach(t => {
+    t.subTasks?.forEach(s => {
+      if (s.isCompleted && s.completedDate) activeDatesSet.add(s.completedDate);
+    });
   });
 
   const sortedDates = Array.from(activeDatesSet).sort();
@@ -57,6 +79,10 @@ export function calculateLongestAppStreak(tasks?: Task[], gymLogs?: any[], habit
     if (diffDays === 1) {
       currentRun++;
       if (currentRun > maxStreak) maxStreak = currentRun;
+    } else if (diffDays === 2 && prev.getDay() === 6 && curr.getDay() === 1) {
+      // 🏖️ SUNDAY REST DAY BRIDGE: Saturday to Monday gap is a valid preserved streak!
+      currentRun++;
+      if (currentRun > maxStreak) maxStreak = currentRun;
     } else if (diffDays > 1) {
       currentRun = 1;
     }
@@ -65,7 +91,12 @@ export function calculateLongestAppStreak(tasks?: Task[], gymLogs?: any[], habit
   return maxStreak;
 }
 
-export function calculateTotalActiveDays(tasks?: Task[], gymLogs?: any[], habitLogs?: any[]): number {
+export function calculateTotalActiveDays(
+  tasks?: Task[],
+  gymLogs?: any[],
+  habitLogs?: any[],
+  learningTopics?: LearningTopic[]
+): number {
   const activeDatesSet = new Set<string>();
   tasks?.forEach(t => {
     if (t.status === 'completed' && t.date) activeDatesSet.add(t.date);
@@ -76,21 +107,35 @@ export function calculateTotalActiveDays(tasks?: Task[], gymLogs?: any[], habitL
   habitLogs?.forEach(h => {
     if (h.date) activeDatesSet.add(h.date);
   });
+  learningTopics?.forEach(t => {
+    t.subTasks?.forEach(s => {
+      if (s.isCompleted && s.completedDate) activeDatesSet.add(s.completedDate);
+    });
+  });
   return activeDatesSet.size;
 }
 
-export function calculateConsistencyRate(tasks?: Task[], gymLogs?: any[], habitLogs?: any[], windowDays = 30): number {
+export function calculateConsistencyRate(
+  tasks?: Task[],
+  gymLogs?: any[],
+  habitLogs?: any[],
+  windowDays = 30,
+  learningTopics?: LearningTopic[]
+): number {
   let activeDays = 0;
   for (let i = 0; i < windowDays; i++) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dStr = d.toISOString().slice(0, 10);
+    const dStr = formatLocalDateStr(d);
 
     const hasTask = (tasks || []).some(t => t.date === dStr && t.status === 'completed');
     const hasGym = (gymLogs || []).some(g => g.date === dStr);
     const hasHabit = (habitLogs || []).some(h => h.date === dStr);
+    const hasLearning = (learningTopics || []).some(t =>
+      (t.subTasks || []).some(s => s.isCompleted && s.completedDate === dStr)
+    );
 
-    if (hasTask || hasGym || hasHabit) {
+    if (hasTask || hasGym || hasHabit || hasLearning) {
       activeDays++;
     }
   }

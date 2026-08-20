@@ -1009,18 +1009,6 @@ html, body {
   margin-bottom: 1rem;
 }
 
-/* Week strip */
-.att-week-strip {
-  display: flex;
-  gap: 0.4rem;
-  margin-bottom: 1.25rem;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-bottom: 2px;
-}
-.att-week-strip::-webkit-scrollbar { display: none; }
-.att-week-pill { flex: 1; min-width: 42px; }
-
 /* Desktop-only elements (projection bar, subtitle etc.) */
 .att-desktop-only { display: flex; }
 

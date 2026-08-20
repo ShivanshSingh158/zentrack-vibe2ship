@@ -28,6 +28,7 @@ import { useClassNotifications } from './hooks/useClassNotifications';
 import { useGlobalData } from './contexts/GlobalDataContext';
 import { FloatingExtraWorks } from './features/_shared';
 import { HomeDashboard } from './features/dashboard/HomeDashboard';
+import { LifeHomeDashboard } from './features/dashboard/LifeHomeDashboard';
 import { MissionReport } from './features/dashboard/MissionReport';
 import { ReportArchive } from './features/dashboard/ReportArchive';
 
@@ -264,8 +265,10 @@ const AnimatedRoutes = () => {
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Navigate to="/home" replace />} />
-        <Route path="/home"        element={<ErrorBoundary name="Dashboard"><HomeDashboard /></ErrorBoundary>} />
+        <Route path="/home"        element={<ErrorBoundary name="LifeHome"><LifeHomeDashboard /></ErrorBoundary>} />
+        <Route path="/sara"        element={<ErrorBoundary name="SaraAgent"><HomeDashboard /></ErrorBoundary>} />
         <Route path="/tasks"       element={<PageTransition><ErrorBoundary name="Tasks"><Suspense fallback={<PageLoader />}><TodoListModule /></Suspense></ErrorBoundary></PageTransition>} />
+        <Route path="/todo"        element={<Navigate to="/tasks" replace />} />
         <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><Suspense fallback={<PageLoader />}><CalendarModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/notes"       element={<PageTransition><ErrorBoundary name="Notes"><Suspense fallback={<PageLoader />}><NotesModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/goals"       element={<PageTransition><ErrorBoundary name="Goals"><Suspense fallback={<PageLoader />}><GoalsModule /></Suspense></ErrorBoundary></PageTransition>} />

@@ -7,7 +7,7 @@ import {
   Folder, FileText, Image as ImageIcon, Trash2, X, ChevronRight,
   Upload, ArrowLeft, MoreVertical, Edit2, Move, Search, Sparkles,
   Download, AlignLeft, Columns, Eye, Loader2, Plus, File, Check,
-  FolderPlus, CheckSquare, Square, RefreshCw, FileDown, Pin
+  FolderPlus, CheckSquare, Square, RefreshCw, FileDown, Pin, ExternalLink
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -809,16 +809,28 @@ export const NotesModule = () => {
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {viewingFile.url && (
-                  <a
-                    href={viewingFile.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="notes-action-pill-btn"
-                    download
-                  >
-                    <Download size={13} />
-                    <span>Download</span>
-                  </a>
+                  <>
+                    <a
+                      href={viewingFile.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="notes-action-pill-btn"
+                      title="Open in new browser tab"
+                    >
+                      <ExternalLink size={13} />
+                      <span>Open in Tab</span>
+                    </a>
+                    <a
+                      href={viewingFile.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="notes-action-pill-btn"
+                      download
+                    >
+                      <Download size={13} />
+                      <span>Download</span>
+                    </a>
+                  </>
                 )}
                 <button
                   type="button"
@@ -836,12 +848,6 @@ export const NotesModule = () => {
                   src={viewingFile.url}
                   alt={viewingFile.name}
                   style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                />
-              ) : viewingFile.fileType === 'pdf' ? (
-                <iframe
-                  src={viewingFile.url}
-                  title={viewingFile.name}
-                  style={{ width: '100%', height: '100%', border: 'none' }}
                 />
               ) : (
                 <iframe

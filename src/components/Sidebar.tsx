@@ -2,7 +2,7 @@ import { NavLink, Link } from 'react-router-dom';
 import {
   Briefcase, ListTodo, GraduationCap, LogOut, Play, Pause, Zap,
   Home, Calendar, Target, BookOpen, X, Flame, BarChart3, Menu,
-  ClipboardCheck, ClipboardList, Settings2, GripVertical, Check, Wrench, Dumbbell, ShieldAlert, Bug
+  ClipboardCheck, ClipboardList, Settings2, GripVertical, Check, Wrench, Dumbbell, ShieldAlert, Bug, Bot
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { usePomodoroContext } from '../contexts/PomodoroContext';
@@ -29,7 +29,8 @@ interface ModuleDef {
 const ALL_MODULES: ModuleDef[] = [
   // ── Primary: Daily-use modules (Core AI Suite Focus) ──
   { id: 'home',        label: 'Home',          shortLabel: 'Home',    path: '/home',        icon: <Home size={20} /> },
-  { id: 'todo',        label: 'To-Do',         shortLabel: 'To-Do',   path: '/todo',        icon: <ListTodo size={20} /> },
+  { id: 'sara',        label: 'SARA AI',       shortLabel: 'SARA',    path: '/sara',        icon: <Bot size={20} color="#a599ff" /> },
+  { id: 'todo',        label: 'To-Do',         shortLabel: 'To-Do',   path: '/tasks',       icon: <ListTodo size={20} /> },
   { id: 'calendar',    label: 'Calendar',      shortLabel: 'Cal.',    path: '/calendar',    icon: <Calendar size={20} /> },
   { id: 'goals',       label: 'Goals & OKRs',  shortLabel: 'Goals',   path: '/goals',       icon: <Target size={20} /> },
 
@@ -48,8 +49,8 @@ const ALL_MODULES: ModuleDef[] = [
 const SECONDARY_START_INDEX = 5;
 
 // Home is always pinned first; max 4 more can be pinned to bottom bar
-const DEFAULT_PINNED = ['home', 'todo', 'goals', 'calendar'];
-const STORAGE_KEY = 'nav_pinned_v4';
+const DEFAULT_PINNED = ['home', 'sara', 'todo', 'calendar', 'goals'];
+const STORAGE_KEY = 'nav_pinned_v5';
 const MAX_PINNED = 5; // including home = 4 user slots
 
 function loadPinned(): string[] {

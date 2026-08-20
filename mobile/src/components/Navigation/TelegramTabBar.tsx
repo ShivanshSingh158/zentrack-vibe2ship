@@ -212,7 +212,7 @@ export function TelegramTabBar({ state, descriptors, navigation, badges = {} }: 
           // Navigate if the screen isn't the actual current screen. 
           // This allows tapping 'More' to open the More screen even if we're on an unpinned module and 'More' is visually focused.
           if (!isActuallyFocused && !event.defaultPrevented) {
-            navigation.navigate({ name: route.name, merge: true } as any);
+            navigation.navigate(route.name, { merge: true } as any);
           }
         };
 

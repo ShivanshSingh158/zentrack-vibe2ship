@@ -62,13 +62,15 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
   const playerRef = useRef<any>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
 
+  const DEFAULT_SPLIT_RATIO = 64; // Optimal 64% Video / 36% AI Companion split
+
   // Split resize state (persisted to localStorage)
   const [splitRatio, setSplitRatio] = useState<number>(() => {
     try {
       const saved = Number(localStorage.getItem('lp_theater_split_ratio'));
-      if (saved && saved >= 30 && saved <= 80) return saved;
+      if (saved && saved >= 35 && saved <= 78) return saved;
     } catch {}
-    return 58;
+    return DEFAULT_SPLIT_RATIO;
   });
   const [isDragging, setIsDragging] = useState(false);
 
@@ -81,7 +83,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
       const rect = splitContainerRef.current.getBoundingClientRect();
       const newWidth = moveEvent.clientX - rect.left;
       const newPct = (newWidth / rect.width) * 100;
-      const clampedPct = Math.max(30, Math.min(80, newPct));
+      const clampedPct = Math.max(35, Math.min(78, newPct));
       setSplitRatio(clampedPct);
       try {
         localStorage.setItem('lp_theater_split_ratio', String(clampedPct));
@@ -99,11 +101,11 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
   };
 
   const handleDoubleClickResizer = () => {
-    setSplitRatio(58);
+    setSplitRatio(DEFAULT_SPLIT_RATIO);
     try {
-      localStorage.setItem('lp_theater_split_ratio', '58');
+      localStorage.setItem('lp_theater_split_ratio', String(DEFAULT_SPLIT_RATIO));
     } catch {}
-    toast.info('Reset split ratio to 58% / 42%');
+    toast.info('Reset split ratio to default (64% / 36%)');
   };
 
 
@@ -223,9 +225,11 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
               <div className="lp-theater-lecture-badge">
                 #{idx + 1} of {total}
               </div>
+              <div className="lp-theater-topic-pill" title={topicName}>
+                {topicName}
+              </div>
               <div className="lp-theater-titles">
-                <span className="lp-theater-topic-name">{topicName}</span>
-                <h2 className="lp-theater-lecture-title">{playing.title}</h2>
+                <h2 className="lp-theater-lecture-title" title={playing.title}>{playing.title}</h2>
               </div>
               {resumeTs && (
                 <span className="lp-theater-resuming-pill">
@@ -238,7 +242,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
             <div className="lp-theater-header-actions">
               {/* Playback Speed */}
               <div className="lp-speed-selector">
-                <Gauge size={13} color="#8e8e93" />
+                <Gauge size={12} color="#8e8e93" />
                 {SPEEDS.map(s => (
                   <button
                     key={s}
@@ -258,7 +262,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                 onClick={() => setFocusMode(v => !v)}
                 title="Focus Mode (Cinema)"
               >
-                <Eye size={16} />
+                <Eye size={15} />
               </button>
 
               {/* Minimize to PiP */}
@@ -268,7 +272,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                 onClick={onMinimize}
                 title="Minimize player"
               >
-                <Minimize2 size={16} />
+                <Minimize2 size={15} />
               </button>
 
               {/* Close Player */}
@@ -278,7 +282,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                 onClick={onClose}
                 title="Close Theater"
               >
-                <X size={17} />
+                <X size={15} />
               </button>
             </div>
           </div>
@@ -337,7 +341,8 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                     disabled={!hasPrev}
                     title="Previous Lecture"
                   >
-                    <SkipBack size={14} /> Previous
+                    <SkipBack size={13} />
+                    <span>Previous</span>
                   </button>
                   <button
                     type="button"
@@ -346,7 +351,8 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                     disabled={!hasNext}
                     title="Next Lecture"
                   >
-                    Next <SkipForward size={14} />
+                    <span>Next</span>
+                    <SkipForward size={13} />
                   </button>
                 </div>
 
@@ -355,7 +361,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                   className={`lp-mark-complete-btn ${playing.isCompleted ? 'completed' : ''}`}
                   onClick={() => onMarkWatched(playing.topicId, playing.subtaskId)}
                 >
-                  <CheckCircle2 size={16} />
+                  <CheckCircle2 size={15} />
                   <span>{playing.isCompleted ? 'Completed (+25 XP)' : 'Mark as Completed'}</span>
                 </button>
               </div>
@@ -391,7 +397,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                   className={`lp-companion-tab ${activeTab === 'zengpt' ? 'active' : ''}`}
                   onClick={() => setActiveTab('zengpt')}
                 >
-                  <Sparkles size={14} color={activeTab === 'zengpt' ? '#a599ff' : '#8e8e93'} />
+                  <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: 15, height: 15, objectFit: 'contain', opacity: activeTab === 'zengpt' ? 1 : 0.65 }} />
                   <span>ZEN-GPT Tutor</span>
                 </button>
                 <button

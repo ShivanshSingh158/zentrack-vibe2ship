@@ -396,7 +396,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
       Alert.alert('No exercises', 'Please add exercises before starting the workout.');
       return;
     }
-    if (!log?.workoutStartTime) startWorkout();
+    startWorkout();
     navigation.navigate('ActiveLogging', { date: selectedDate });
   };
 
@@ -408,31 +408,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     }
 
     if (!log?.workoutStartTime) {
-      Alert.alert(
-        'Start Workout?',
-        'Do you want to start the workout timer, or just check the exercises?',
-        [
-          { 
-            text: 'Just Checking', 
-            style: 'cancel',
-            onPress: () => {
-              navigation.navigate('ActiveLogging', { date: selectedDate, initialIndex: typeof index === 'number' ? index : 0 });
-            }
-          },
-          { 
-            text: 'Start Workout', 
-            style: 'default',
-            onPress: () => {
-              resumeWorkout();
-              navigation.navigate('ActiveLogging', { date: selectedDate, initialIndex: typeof index === 'number' ? index : 0 });
-            }
-          },
-        ]
-      );
-      return;
-    }
-
-    if (log.workoutDurationMinutes !== undefined) {
       resumeWorkout();
     }
     navigation.navigate('ActiveLogging', { date: selectedDate, initialIndex: typeof index === 'number' ? index : 0 });
@@ -440,7 +415,12 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
 
   // Renderers
   const renderWorkoutBanner = () => {
-    if ((log as any)?.completed || (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime)) {
+    const isCompleted = Boolean(
+      (log as any)?.completed ||
+      (log?.workoutDurationMinutes !== undefined && !log?.workoutStartTime)
+    );
+
+    if (isCompleted) {
       return (
         <View style={s.completedBanner}>
           <View style={s.completedBannerLeft}>
@@ -449,16 +429,36 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               {log?.workoutDurationMinutes ? `${log.workoutDurationMinutes} min session` : 'Session completed'}
             </Text>
           </View>
-          {currentStreak > 0 && (
-            <View style={s.streakBadgeInline}>
-              <Ionicons name="flame" size={14} color={COLORS.accentAmber} />
-              <Text style={s.streakBadgeInlineText}>{currentStreak} Day</Text>
-            </View>
-          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <TouchableOpacity 
+              onPress={() => {
+                hapticMedium();
+                resumeWorkout();
+                navigation.navigate('ActiveLogging', { date: selectedDate });
+              }}
+              style={{
+                backgroundColor: 'rgba(94,218,158,0.15)',
+                borderColor: 'rgba(94,218,158,0.3)',
+                borderWidth: 1,
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 14,
+              }}
+            >
+              <Text style={{ color: '#5eda9e', fontSize: 12, fontWeight: '700' }}>Resume</Text>
+            </TouchableOpacity>
+            {currentStreak > 0 && (
+              <View style={s.streakBadgeInline}>
+                <Ionicons name="flame" size={14} color={COLORS.accentAmber} />
+                <Text style={s.streakBadgeInlineText}>{currentStreak} Day</Text>
+              </View>
+            )}
+          </View>
         </View>
       );
     }
-    if (log?.workoutStartTime && !(log as any)?.completed) {
+
+    if (log?.workoutStartTime) {
       return (
         <View style={s.activeBanner}>
           <View style={s.activeBannerLeft}>
@@ -469,27 +469,6 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
           <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center' }}>
             <TouchableOpacity onPress={() => {
               hapticMedium();
-              if (log?.workoutStartTime) {
-                const durationMins = Math.round((Date.now() - log.workoutStartTime) / 60000);
-                if (durationMins < 10) {
-                  Alert.alert(
-                    'Finish Workout 💪',
-                    `Your session is ${Math.max(1, durationMins)} min${durationMins !== 1 ? 's' : ''}. Complete this workout now?`,
-                    [
-                      { text: 'Keep Going', style: 'cancel' },
-                      { 
-                        text: 'Finish Workout', 
-                        style: 'default',
-                        onPress: () => {
-                          endWorkout(true);
-                          navigation.navigate('WorkoutSummary', { date: selectedDate });
-                        }
-                      }
-                    ]
-                  );
-                  return;
-                }
-              }
               endWorkout(true);
               navigation.navigate('WorkoutSummary', { date: selectedDate });
             }}>
@@ -591,7 +570,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
     let subText = '';
     if (completedSets.length > 0) {
       const avgReps = Math.round(completedSets.reduce((sum: number, s: any) => sum + (s.reps || 0), 0) / completedSets.length) || 0;
-      const maxWeight = Math.max(...completedSets.map((s: any) => s.weight || 0));
+      const maxWeight = Math.max(...completedSets.map((s: any) => s.weight || s.weightKg || 0));
       subText = `${completedSets.length}/${totalSets} sets, ~${avgReps} reps ${maxWeight > 0 ? `@ ${maxWeight}kg` : ''}`;
     } else {
       subText = `${totalSets} sets, ${ex.targetReps || '0'} reps`;
@@ -633,7 +612,28 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
           ]}
           activeOpacity={0.8}
           onPress={() => {
-            if (!isActive) handleResumeWorkout(ex.originalIndex);
+            if (isActive) return;
+            hapticLight();
+            if (log?.workoutStartTime) {
+              // Workout already in progress — go directly, no dialog
+              handleResumeWorkout(ex.originalIndex);
+            } else {
+              // Not started yet — confirm to avoid mistouch
+              Alert.alert(
+                ex.name,
+                'Ready to start logging this exercise?',
+                [
+                  { 
+                    text: 'Just Checking', 
+                    onPress: () => navigation.navigate('ActiveLogging', { date: selectedDate, initialIndex: ex.originalIndex })
+                  },
+                  { 
+                    text: 'Start Workout', 
+                    onPress: () => handleResumeWorkout(ex.originalIndex) 
+                  },
+                ]
+              );
+            }
           }}
           onLongPress={() => {
             hapticMedium();
@@ -1363,12 +1363,12 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   scrollContent: { paddingBottom: 95, paddingTop: 48 },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: isDark ? '#1C1C1E' : (colors.surfaceRaised || colors.surface), borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
+  modalContent: { backgroundColor: isDark ? '#000000' : (colors.surfaceRaised || colors.surface), borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   modalTitle: { fontSize: 15, fontWeight: '700', color: colors.textPrimary },
   moveActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : colors.accentDim, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : colors.border, paddingVertical: 10, borderRadius: 14 },
   moveActionText: { fontSize: 13, fontWeight: '700', color: isDark ? '#a599ff' : colors.accentPrimary },
-  posRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: isDark ? '#2C2C2E' : (colors.surface2 || colors.surface), marginBottom: 6 },
+  posRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12, backgroundColor: isDark ? '#0c0c0f' : (colors.surface2 || colors.surface), marginBottom: 6, borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
   posRowActive: { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary },
   posNum: { fontSize: 12, fontWeight: '700', color: colors.textMuted, width: 30 },
   posName: { flex: 1, fontSize: 13, color: colors.textPrimary, marginRight: 8 },

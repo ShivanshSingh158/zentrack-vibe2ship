@@ -17,10 +17,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   collection, addDoc, serverTimestamp, writeBatch, doc,
 } from 'firebase/firestore';
+import { safeAdd } from '../../utils/safeWrite';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import BottomSheet from '../../components/ui/BottomSheet';
 import NLPTaskInput from '../../components/Tasks/NLPTaskInput';
 import VoiceDictationOverlay from '../../components/Tasks/VoiceDictationOverlay';
@@ -49,7 +50,7 @@ export const NewTaskModal = React.memo(function NewTaskModal({
 }: Props) {
   const { colors, isDark } = useTheme();
   const styles = makeTasksStyles(colors, isDark);
-  const { optimisticAddTask } = useMobileData();
+  const { optimisticAddTask } = useCoreData();
 
   const [title, setTitle] = useState('');
   const [saving, setSaving] = useState(false);
@@ -357,13 +358,19 @@ export const NewTaskModal = React.memo(function NewTaskModal({
           }
           await batch.commit();
         } else {
-          await addDoc(collection(db, COLLECTION.TASKS), {
+          const taskData = {
             userId, title: finalTitle, text: finalTitle, status: 'pending',
             priority: finalPriority, date: finalDate, timeSlot: ts,
             estimatedMinutes: est, isRecurring: false, recurrenceRule: null,
             recurringSourceId: null, subject: null, tags: selectedTags,
-            createdAt: serverTimestamp(), order: listCount, subtasks: subtaskObjects,
-          });
+            order: listCount, subtasks: subtaskObjects,
+          };
+          // safeAdd: online → Firestore addDoc; offline → AsyncStorage queue (survives kill)
+          await safeAdd(
+            COLLECTION.TASKS,
+            taskData,
+            () => addDoc(collection(db, COLLECTION.TASKS), { ...taskData, createdAt: serverTimestamp() }),
+          );
         }
       } catch (e) {
         console.error('Error creating task(s):', e);

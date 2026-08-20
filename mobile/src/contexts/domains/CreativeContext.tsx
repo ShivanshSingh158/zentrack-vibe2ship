@@ -8,13 +8,14 @@
  * Notes, Learning, and Jobs screens show real data immediately, even when offline.
  * Firestore snapshots silently update the cache when online.
  */
-import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { InteractionManager } from 'react-native';
+import { InteractionManager, DeviceEventEmitter } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { StorageNode, Note, LearningTopic, JobApplication, ContentLog } from "../MobileDataContext";
 import { readCreativeCache, writeCreativeCache } from "../../utils/domainCache";
+import { parseStorageNode, parseLearningTopic } from "../../utils/schemaGuards";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface CreativeContextType {
@@ -60,8 +61,43 @@ export function CreativeProvider({
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
 
-  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  // ── Listener auto-restart on error ───────────────────────────────────────
+  const [subscriptionVersion, setSubscriptionVersion] = useState(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
+    console.warn(`[Creative] ${context} listener error — restarting in 5s`, err.message);
+    if (retryTimerRef.current) return;
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      subscribedRef.current = false;
+      unsubsRef.current.forEach(u => u());
+      unsubsRef.current = [];
+      setSubscriptionVersion(v => v + 1);
+    }, 5000);
+  }, []);
+
+  // ── Foreground reconnect: restart listeners after long background ─────────
+  // AppNavigator emits 'firestore_force_reconnect' on every AppState: active.
+  // Resets subscribedRef and bumps subscriptionVersion to force a clean
+  // listener teardown and reopen after the app returns from 6+ hours background.
   useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
+      if (user) {
+        console.log('[Creative] foreground reconnect — restarting Firestore listeners');
+        unsubsRef.current.forEach(u => u());
+        unsubsRef.current = [];
+        subscribedRef.current = false;
+        setSubscriptionVersion(v => v + 1);
+      }
+    });
+    return () => sub.remove();
+  }, [user]);
+
+  // ── Offline-first boot: seed from AsyncStorage when user uid is available ──
+  const userUid = user?.uid ?? null;
+  useEffect(() => {
+    if (!userUid) return;
     let cancelled = false;
     readCreativeCache().then(cached => {
       if (cancelled) return;
@@ -71,33 +107,33 @@ export function CreativeProvider({
       if (Array.isArray(cached.contentLogs))    setContentLogs(cached.contentLogs);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [userUid]);
 
-  const openSubscriptions = (uid: string) => {
+  const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.STORAGE_NODES), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as StorageNode)); setStorageNodes(fresh); writeCreativeCache({ storageNodes: fresh }); },
-      err => console.error("[Creative] storageNodes", err)
+      snap => { const fresh = snap.docs.map(d => parseStorageNode(d.data(), d.id)); setStorageNodes(fresh); writeCreativeCache({ storageNodes: fresh }); },
+      scheduleListenerRestart("storageNodes")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.LEARNING_TOPICS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as LearningTopic)); setLearningTopics(fresh); writeCreativeCache({ learningTopics: fresh }); },
-      err => console.error("[Creative] learningTopics", err)
+      snap => { const fresh = snap.docs.map(d => parseLearningTopic(d.data(), d.id)); setLearningTopics(fresh); writeCreativeCache({ learningTopics: fresh }); },
+      scheduleListenerRestart("learningTopics")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.JOBS), where("userId", "==", uid)),
       snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as JobApplication)); setJobs(fresh); writeCreativeCache({ jobs: fresh }); },
-      err => console.error("[Creative] jobs", err)
+      scheduleListenerRestart("jobs")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.CONTENT_LOGS), where("userId", "==", uid)),
       snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as ContentLog)); setContentLogs(fresh); writeCreativeCache({ contentLogs: fresh }); },
-      err => console.error("[Creative] contentLogs", err)
+      scheduleListenerRestart("contentLogs")
     ));
-  };
+  }, [scheduleListenerRestart]);
 
   useEffect(() => {
     if (user) {
@@ -106,14 +142,26 @@ export function CreativeProvider({
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
-  }, [user]);
+    // BUG FIX: missing cleanup return — without this, subscriptionVersion bumps
+    // cause new listeners to open WITHOUT tearing down the old (dead) ones first,
+    // resulting in duplicate listener registrations.
+    return () => {
+      unsubsRef.current.forEach(u => u());
+      unsubsRef.current = [];
+      subscribedRef.current = false;
+    };
+  }, [user, subscriptionVersion, openSubscriptions]);
 
-  useEffect(() => () => { unsubsRef.current.forEach(u => u()); }, []);
+  useEffect(() => () => {
+    unsubsRef.current.forEach(u => u());
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+  }, []);
 
-  const ensureSubscribed = () => {
+  const ensureSubscribed = useCallback(() => {
     if (user && !subscribedRef.current) openSubscriptions(user.uid);
-  };
+  }, [user, openSubscriptions]);
 
   // Notes are derived from storageNodes — no extra subscription needed
   const notes = useMemo(() =>

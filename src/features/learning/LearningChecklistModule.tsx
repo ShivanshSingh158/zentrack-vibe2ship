@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus, Search, Sparkles, BookOpen, Link as LinkIcon, Eye, EyeOff,
-  GraduationCap, RefreshCw, X, CheckCircle2
+  GraduationCap, RefreshCw, X, CheckCircle2, LayoutGrid, List
 } from 'lucide-react';
 import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
@@ -22,6 +22,14 @@ export function LearningChecklistModule() {
   const [searchQuery, setSearchQuery] = useState('');
   const [hideCompleted, setHideCompleted] = useState(false);
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
+    return (localStorage.getItem('zentrack_learning_view_mode') as 'grid' | 'list') || 'grid';
+  });
+
+  const handleSetViewMode = (mode: 'grid' | 'list') => {
+    setViewMode(mode);
+    localStorage.setItem('zentrack_learning_view_mode', mode);
+  };
 
 
   // Modal states
@@ -558,24 +566,47 @@ export function LearningChecklistModule() {
       </div>
 
       {/* ── SEARCH & FILTER ROW ── */}
-      <div className="learning-search-bar">
-        <Search size={15} className="search-icon" />
-        <input
-          type="text"
-          className="learning-search-input"
-          placeholder="Search learning topics, courses, or specific lecture titles..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-        />
-        {searchQuery && (
-          <button type="button" className="search-clear-btn" onClick={() => setSearchQuery('')}>
-            <X size={14} />
+      <div className="learning-filter-row">
+        <div className="learning-search-bar">
+          <Search size={15} className="search-icon" />
+          <input
+            type="text"
+            className="learning-search-input"
+            placeholder="Search learning topics, courses, or specific lecture titles..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button type="button" className="search-clear-btn" onClick={() => setSearchQuery('')}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        <div className="learning-view-mode-toggle">
+          <button
+            type="button"
+            className={`learning-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+            onClick={() => handleSetViewMode('grid')}
+            title="Grid View (Cards)"
+          >
+            <LayoutGrid size={14} />
+            <span>Cards</span>
           </button>
-        )}
+          <button
+            type="button"
+            className={`learning-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+            onClick={() => handleSetViewMode('list')}
+            title="List View (Compact)"
+          >
+            <List size={14} />
+            <span>List</span>
+          </button>
+        </div>
       </div>
 
       {/* ── TOPICS STACK ── */}
-      <div className="learning-topics-container">
+      <div className={`learning-topics-container ${viewMode === 'grid' ? 'grid-view' : 'list-view'}`}>
         {loading ? (
           <div className="learning-loading-state">
             <RefreshCw size={24} className="lp-spin" color="#a599ff" />
@@ -619,10 +650,12 @@ export function LearningChecklistModule() {
             </div>
           </div>
         ) : (
-          filteredTopics.map(topic => (
+          filteredTopics.map((topic, idx) => (
             <TopicCard
               key={topic.id}
               topic={topic}
+              index={idx}
+              viewMode={viewMode}
               isExpanded={expandedTopics.has(topic.id!)}
               onToggleExpand={() => handleToggleExpand(topic.id!)}
               onToggleSubtask={handleToggleSubtask}

@@ -139,6 +139,9 @@ export interface GymLog {
   completed?: boolean; dayPlanIndex?: number;
   startTime?: string; endTime?: string; updatedAt?: number;
   notes?: string;
+  restTimerStartTime?: number | null;
+  restTimerDurationSecs?: number | null;
+  restTimerExerciseName?: string | null;
 }
 
 export interface AttendanceSubject {
@@ -175,6 +178,7 @@ export interface LearningSubTask {
   timeSpentMinutes?: number; timeSpentMs?: number; resources?: any[];
   masteryLevel?: "not_started" | "learning" | "revising" | "mastered";
   estimatedHours?: number; revisionCount?: number; lastRevisedAt?: number; pinned?: boolean; pinnedAt?: number;
+  completedDate?: string;
 }
 
 export interface LearningTopic {
@@ -484,11 +488,7 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
 
 export function useMobileData(): MobileDataContextType {
   const ctx = useContext(MobileDataShimContext);
-  if (!ctx) {
-    console.warn('[MobileData] useMobileData called outside MobileDataProvider ΓÇö returning safe empty fallback.');
-    return DEFAULT_FALLBACK_CTX;
-  }
-  return ctx;
+  return ctx || DEFAULT_FALLBACK_CTX;
 }
 
 // Internal bridge: reads user from CoreDataContext, passes to demand-based providers

@@ -18,27 +18,9 @@ import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import { COLLECTION } from '../config/constants';
 import { deepSanitize } from '../utils/firebaseUtils';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 let currentRestTimerNotifId: string | null = null;
-
-// AsyncStorage key for the gym log daily cache
-const gymLogCacheKey = (dateStr: string) => `@zentrack_gymlog_${dateStr}`;
-
-// Saves a gym log snapshot to local cache for instant offline/cold-start reads
-async function writeGymLogCache(dateStr: string, log: GymDayLog) {
-  try {
-    await AsyncStorage.setItem(gymLogCacheKey(dateStr), JSON.stringify(log));
-  } catch (_) { /* silent */ }
-}
-
-async function readGymLogCache(dateStr: string): Promise<GymDayLog | null> {
-  try {
-    const raw = await AsyncStorage.getItem(gymLogCacheKey(dateStr));
-    return raw ? (JSON.parse(raw) as GymDayLog) : null;
-  } catch (_) { return null; }
-}
 
 // ── Date helpers — ALL use LOCAL date components, not UTC ────────────────────
 // Using `toISOString()` or `new Date(dateStr).getDay()` silently uses UTC,
@@ -124,22 +106,6 @@ export function useGymLog(dateStr: string) {
     logRef.current = log;
   }, [log]);
 
-  // ── AsyncStorage cache-first load ─────────────────────────────────────────
-  // Runs once per dateStr change. Populates the log from local cache INSTANTLY
-  // so the screen renders before Firestore has even responded.
-  useEffect(() => {
-    let cancelled = false;
-    readGymLogCache(dateStr).then(cached => {
-      if (cancelled || !cached) return;
-      // Only use cache if Firestore hasn't already populated (prevent stale overwrite)
-      setLog(prev => {
-        if (prev !== null) return prev; // Firestore beat us — keep fresher data
-        return cached;
-      });
-    });
-    return () => { cancelled = true; };
-  }, [dateStr]);
-
   const prevDateStrRef = useRef<string | null>(null);
   const prevPlanUpdatedRef = useRef<number | null>(null);
 
@@ -167,13 +133,16 @@ export function useGymLog(dateStr: string) {
     const planIdx = planDayIndexForDate(dateStr);
     const planDay = resolvePlanDay(userGymPlan, planIdx);
 
-    const existing = (gymLogs || []).find(l => l.date === dateStr);
-
     const sortedPastGymLogs = (gymLogs || [])
-      .filter(l => l.date !== dateStr && Array.isArray(l.exercises) && l.exercises.length > 0)
+      .filter(l => l.date < dateStr && Array.isArray(l.exercises) && l.exercises.length > 0)
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const clean = (s: string) => (s || '').toLowerCase().trim();
+
+    // Separate maps: one for reps history, one for best historical weight
     const pastExerciseHistoryMap = new Map<string, { reps: number | null; weight: number | null; completed: boolean }[]>();
+    const pastWeightHistoryMap = new Map<string, number>();
 
     for (let i = 0; i < sortedPastGymLogs.length; i++) {
       const pastLog = sortedPastGymLogs[i];
@@ -181,18 +150,47 @@ export function useGymLog(dateStr: string) {
         for (let j = 0; j < pastLog.exercises.length; j++) {
           const ex = pastLog.exercises[j];
           if (ex.setsLog && ex.setsLog.length > 0) {
+            const getWeight = (s: any) => {
+              const w = s?.weight !== undefined && s?.weight !== null ? s.weight : s?.weightKg;
+              return (w !== null && w !== undefined && !isNaN(Number(w)) && Number(w) > 0) ? Number(w) : null;
+            };
+            const getReps = (s: any) => {
+              const r = s?.reps;
+              return (r !== null && r !== undefined && !isNaN(Number(r)) && Number(r) > 0) ? Number(r) : null;
+            };
+
             const validSets = ex.setsLog.filter((s: any) =>
-              s.completed ||
-              (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ||
-              (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0)
+              s.completed || getWeight(s) !== null || getReps(s) !== null
             );
+            const setsWithWeight = ex.setsLog
+              .map((s: any) => getWeight(s))
+              .filter((w: number | null): w is number => w !== null);
+
+            const exId = ex.exerciseId || (ex as any).id;
+            const cName = clean(ex.name);
+            const nName = norm(ex.name);
+            const rName = nName.replace(/s$/, '');
+
             if (validSets.length > 0) {
-              if (ex.exerciseId && !pastExerciseHistoryMap.has(ex.exerciseId)) {
-                pastExerciseHistoryMap.set(ex.exerciseId, ex.setsLog);
+              if (exId && !pastExerciseHistoryMap.has(exId)) pastExerciseHistoryMap.set(exId, ex.setsLog);
+              if (cName && !pastExerciseHistoryMap.has(cName)) pastExerciseHistoryMap.set(cName, ex.setsLog);
+              if (nName && !pastExerciseHistoryMap.has(nName)) pastExerciseHistoryMap.set(nName, ex.setsLog);
+              if (rName && !pastExerciseHistoryMap.has(rName)) pastExerciseHistoryMap.set(rName, ex.setsLog);
+            }
+
+            if (setsWithWeight.length > 0) {
+              const maxW = Math.max(...setsWithWeight);
+              if (exId && (!pastWeightHistoryMap.has(exId) || maxW > (pastWeightHistoryMap.get(exId) ?? 0))) {
+                pastWeightHistoryMap.set(exId, maxW);
               }
-              const cleanName = (ex.name || '').toLowerCase().trim();
-              if (cleanName && !pastExerciseHistoryMap.has(cleanName)) {
-                pastExerciseHistoryMap.set(cleanName, ex.setsLog);
+              if (cName && (!pastWeightHistoryMap.has(cName) || maxW > (pastWeightHistoryMap.get(cName) ?? 0))) {
+                pastWeightHistoryMap.set(cName, maxW);
+              }
+              if (nName && (!pastWeightHistoryMap.has(nName) || maxW > (pastWeightHistoryMap.get(nName) ?? 0))) {
+                pastWeightHistoryMap.set(nName, maxW);
+              }
+              if (rName && (!pastWeightHistoryMap.has(rName) || maxW > (pastWeightHistoryMap.get(rName) ?? 0))) {
+                pastWeightHistoryMap.set(rName, maxW);
               }
             }
           }
@@ -201,26 +199,46 @@ export function useGymLog(dateStr: string) {
     }
 
     const getLastSessionSets = (exerciseId: string, exerciseName: string) => {
-      if (exerciseId && pastExerciseHistoryMap.has(exerciseId)) {
-        return pastExerciseHistoryMap.get(exerciseId)!;
-      }
-      const cleanName = (exerciseName || '').toLowerCase().trim();
-      if (cleanName && pastExerciseHistoryMap.has(cleanName)) {
-        return pastExerciseHistoryMap.get(cleanName)!;
-      }
+      if (exerciseId && pastExerciseHistoryMap.has(exerciseId)) return pastExerciseHistoryMap.get(exerciseId)!;
+      const cName = clean(exerciseName);
+      if (cName && pastExerciseHistoryMap.has(cName)) return pastExerciseHistoryMap.get(cName)!;
+      const nName = norm(exerciseName);
+      if (nName && pastExerciseHistoryMap.has(nName)) return pastExerciseHistoryMap.get(nName)!;
+      const rName = nName.replace(/s$/, '');
+      if (rName && pastExerciseHistoryMap.has(rName)) return pastExerciseHistoryMap.get(rName)!;
       return null;
     };
 
+    const getLastLoggedWeight = (exerciseId: string, exerciseName: string): number | null => {
+      if (exerciseId && pastWeightHistoryMap.has(exerciseId)) return pastWeightHistoryMap.get(exerciseId)!;
+      const cName = clean(exerciseName);
+      if (cName && pastWeightHistoryMap.has(cName)) return pastWeightHistoryMap.get(cName)!;
+      const nName = norm(exerciseName);
+      if (nName && pastWeightHistoryMap.has(nName)) return pastWeightHistoryMap.get(nName)!;
+      const rName = nName.replace(/s$/, '');
+      if (rName && pastWeightHistoryMap.has(rName)) return pastWeightHistoryMap.get(rName)!;
+      return null;
+    };
+
+    const existing = (gymLogs || []).find(l => l.date === dateStr);
+
     if (existing) {
-      // FIX (Bug 2): Firestore returns updatedAt as a Timestamp object (with .toMillis()),
-      // while local updatedAt is Date.now() (a number). Comparing them directly is always
-      // wrong — normalize both to milliseconds first.
       const existingTs: number =
         typeof existing.updatedAt === 'number'
           ? existing.updatedAt
           : (existing.updatedAt as any)?.toMillis?.() ?? 0;
       const localTs: number = logRef.current?.updatedAt ?? 0;
-      if (logRef.current && existingTs <= localTs && (logRef.current.exercises?.length ?? 0) > 0) {
+
+      // Only skip if: local state is newer AND local exercises have actual weight data
+      // Don't skip if our local sets are missing weights (weight: null) — Firestore has the truth
+      const localHasWeights = (logRef.current?.exercises || []).some((ex: any) =>
+        (ex.setsLog || []).some((s: any) => s.weight !== null && s.weight !== undefined && Number(s.weight) > 0)
+      );
+      const firestoreHasWeights = (existing.exercises || []).some((ex: any) =>
+        (ex.setsLog || []).some((s: any) => s.weight !== null && s.weight !== undefined && Number(s.weight) > 0)
+      );
+
+      if (logRef.current && existingTs <= localTs && (logRef.current.exercises?.length ?? 0) > 0 && (localHasWeights || !firestoreHasWeights)) {
         return; // Firestore snapshot is older than local state — skip
       }
 
@@ -229,6 +247,7 @@ export function useGymLog(dateStr: string) {
       if (existing.exercises && existing.exercises.length > 0) {
         patchedExercises = existing.exercises.map((ex, idx) => {
           const lastSets = getLastSessionSets(ex.exerciseId, ex.name);
+          const lastWeight = getLastLoggedWeight(ex.exerciseId, ex.name);
           const lastValidSet = lastSets && lastSets.length > 0
             ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
             : null;
@@ -241,13 +260,24 @@ export function useGymLog(dateStr: string) {
             }
           }
 
-          // Pre-fill any unlogged/null set values with last session's exact set data
+          // Pre-fill unlogged set values with last session's exact set data
           const patchedSetsLog = (ex.setsLog || []).map((s: any, sIdx: number) => {
             const lastSet = lastSets?.[sIdx] || lastValidSet;
+            const setWeight = (lastSet?.weight != null && Number(lastSet.weight) > 0)
+              ? Number(lastSet.weight)
+              : (lastWeight != null && Number(lastWeight) > 0 ? Number(lastWeight) : null);
+
+            const userLoggedWeight = (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? Number(s.weight) : null;
+            const finalWeight = userLoggedWeight ?? setWeight;
+
+            const userLoggedReps = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? Number(s.reps) : null;
+            const defaultTargetReps = parseInt(String(ex.targetReps || '8-12').split('-')[0], 10) || 8;
+            const finalReps = userLoggedReps ?? (lastSet?.reps ? Number(lastSet.reps) : defaultTargetReps);
+
             return {
               ...s,
-              reps: s.reps ?? lastSet?.reps ?? null,
-              weight: s.weight ?? lastSet?.weight ?? null,
+              reps: finalReps,
+              weight: finalWeight,
             };
           });
 
@@ -262,6 +292,7 @@ export function useGymLog(dateStr: string) {
       } else if (planDay && !planDay.isRest && Array.isArray(planDay.exercises) && planDay.exercises.length > 0) {
         patchedExercises = planDay.exercises.map((e: any, idx: number) => {
           const lastSets = getLastSessionSets(e.id, e.name);
+          const lastWeight = getLastLoggedWeight(e.id, e.name);
           const lastValidSet = lastSets && lastSets.length > 0
             ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
             : null;
@@ -278,10 +309,14 @@ export function useGymLog(dateStr: string) {
             lastSessionSets: lastSets ?? undefined,
             setsLog: Array.from({ length: e.targetSets }, (_, i) => {
               const lastSet = lastSets?.[i] || lastValidSet;
+              const setWeight = (lastSet?.weight != null && Number(lastSet.weight) > 0)
+                ? Number(lastSet.weight)
+                : (lastWeight != null && Number(lastWeight) > 0 ? Number(lastWeight) : null);
+              const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split('-')[0], 10) || 8;
               return {
                 setNumber: i + 1,
-                reps: lastSet?.reps ?? null,
-                weight: lastSet?.weight ?? null,
+                reps: lastSet?.reps ? Number(lastSet.reps) : defaultTargetReps,
+                weight: setWeight,
                 completed: false,
               };
             }),
@@ -302,10 +337,12 @@ export function useGymLog(dateStr: string) {
       // No existing record in Firestore -> create log from planDay
       const newExercises = (planDay && !planDay.isRest && Array.isArray(planDay.exercises)) ? planDay.exercises.map((e: any, idx: number) => {
         const lastSets = getLastSessionSets(e.id, e.name);
+        const lastWeight = getLastLoggedWeight(e.id, e.name);
         const lastValidSet = lastSets && lastSets.length > 0
           ? [...lastSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0)) || lastSets[lastSets.length - 1]
           : null;
 
+        const defaultTargetReps = parseInt(String(e.targetReps || '8-12').split('-')[0], 10) || 8;
         return {
           _idx: idx,
           exerciseId: e.id,
@@ -318,10 +355,13 @@ export function useGymLog(dateStr: string) {
           lastSessionSets: lastSets ?? undefined,
           setsLog: Array.from({ length: e.targetSets }, (_, i) => {
             const lastSet = lastSets?.[i] || lastValidSet;
+            const setWeight = (lastSet?.weight != null && Number(lastSet.weight) > 0)
+              ? Number(lastSet.weight)
+              : (lastWeight != null && Number(lastWeight) > 0 ? Number(lastWeight) : null);
             return {
               setNumber: i + 1,
-              reps: lastSet?.reps ?? null,
-              weight: lastSet?.weight ?? null,
+              reps: lastSet?.reps ? Number(lastSet.reps) : defaultTargetReps,
+              weight: setWeight,
               completed: false,
             };
           }),
@@ -361,41 +401,40 @@ export function useGymLog(dateStr: string) {
     const writeAt = Date.now();
     localWriteAtRef.current = writeAt;
 
-    // ── Write cache immediately (sync, ~0ms) so the UI always has fresh data ──
-    writeGymLogCache(updatedLog.date, updatedLog);
-
-    // Queue optimistic update asynchronously to prevent React setState-during-render errors
-    setTimeout(() => {
+    // Schedule optimistic update on next microtask to avoid updating WellnessProvider during ActiveLoggingScreen render
+    queueMicrotask(() => {
       if (gymLogs.some(l => l.id === logId || l.date === updatedLog.date)) {
         optimisticUpdateGymLog(logId, updatedLog as any);
       } else {
         optimisticAddGymLog(updatedLog as any);
       }
-    }, 0);
-
-    // ── Defer Firestore write until after animations complete ──────────────────
-    // InteractionManager.runAfterInteractions guarantees this won't block any
-    // navigation transition or spring animation currently in flight.
-    InteractionManager.runAfterInteractions(() => {
-      (async () => {
-        try {
-          const docRef = doc(db, COLLECTION.GYM_LOGS, logId);
-          const sanitizedLog: any = { id: logId };
-          Object.keys(updatedLog).forEach(key => {
-            if (key === '_idx') return;
-            const val = (updatedLog as any)[key];
-            if (val === undefined || val === null) {
-              sanitizedLog[key] = deleteField();
-            } else {
-              sanitizedLog[key] = deepSanitize(val);
-            }
-          });
-          await setDoc(docRef, sanitizedLog, { merge: true });
-        } catch (e) {
-          console.error('[Gym] Save error', e);
-        }
-      })();
     });
+
+    // Persist to Firestore
+    (async () => {
+      try {
+        const docRef = doc(db, COLLECTION.GYM_LOGS, logId);
+        const sanitizedLog: any = { id: logId };
+        Object.keys(updatedLog).forEach(key => {
+          if (key === '_idx') return;
+          const val = (updatedLog as any)[key];
+          if (val === undefined || val === null) {
+            sanitizedLog[key] = deleteField();
+          } else {
+            sanitizedLog[key] = deepSanitize(val);
+          }
+        });
+        if (updatedLog.completed) {
+          sanitizedLog.workoutStartTime = deleteField();
+          sanitizedLog.restTimerStartTime = deleteField();
+          sanitizedLog.restTimerDurationSecs = deleteField();
+          sanitizedLog.restTimerExerciseName = deleteField();
+        }
+        await setDoc(docRef, sanitizedLog, { merge: true });
+      } catch (e) {
+        console.error('[Gym] Save error', e);
+      }
+    })();
   }, [user, gymLogs, optimisticAddGymLog, optimisticUpdateGymLog]);
 
   const updateSet = useCallback((exerciseIndex: number, setIndex: number, set: GymSet) => {
@@ -663,24 +702,24 @@ export function useGymLog(dateStr: string) {
   const startWorkout = useCallback(() => {
     setLog(prev => {
       if (!prev) return prev;
-      const updated = { ...prev, workoutStartTime: Date.now(), updatedAt: Date.now() };
+      const updated: GymDayLog = {
+        ...prev,
+        completed: false,
+        workoutDurationMinutes: undefined,
+        workoutStartTime: Date.now(),
+        updatedAt: Date.now(),
+      };
       saveLog(updated);
       return updated;
     });
   }, [saveLog]);
 
-  const endWorkout = useCallback(async (force: boolean = false) => {
+  const endWorkout = useCallback(async (_force?: boolean) => {
     setLog(prev => {
       if (!prev) return prev;
       const startMs = prev.workoutStartTime || Date.now();
       const elapsedMins = Math.round((Date.now() - startMs) / 60000);
       const duration = Math.max(1, elapsedMins);
-
-      // ── 10-minute minimum guard ──────────────────────────────────
-      // A workout under 10 minutes is treated as a false-start UNLESS forced (e.g. user completes last exercise).
-      if (!force && elapsedMins < 10) {
-        return prev; // abort — do NOT mark complete
-      }
 
       const startD = new Date(startMs);
       const endD = new Date();
@@ -713,11 +752,12 @@ export function useGymLog(dateStr: string) {
     setLog(prev => {
       if (!prev) return prev;
       const pastDurationMs = (prev.workoutDurationMinutes || 0) * 60000;
-      const updated = {
+      const updated: GymDayLog = {
         ...prev,
-        workoutStartTime: Date.now() - pastDurationMs,
+        completed: false,
+        workoutStartTime: prev.workoutStartTime || (Date.now() - pastDurationMs),
         workoutDurationMinutes: undefined,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       };
       saveLog(updated);
       return updated;

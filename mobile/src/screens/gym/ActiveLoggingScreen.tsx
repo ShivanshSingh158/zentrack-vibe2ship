@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, TextInput,
   Platform, KeyboardAvoidingView, ScrollView, Modal, ActivityIndicator, AppState,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar, Keyboard
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -95,11 +95,15 @@ export default function ActiveLoggingScreen() {
 
   const { gymLogs } = useWellnessData();
 
-  // BUG FIX #1: Local controlled input state per set ΓÇö decoupled from log state.
+  // BUG FIX #1: Local controlled input state per set — decoupled from log state.
   // Initialised from exercise data, but never overwritten during typing.
   const [setInputs, setSetInputs] = useState<SetInputState[]>([]);
   const [isRefreshingVideo, setIsRefreshingVideo] = useState(false);
-  const inputInitKey = useRef('');
+  const userEditedFieldsRef = useRef<{ [idx: number]: { weight?: boolean; reps?: boolean } }>({});
+  const lastExerciseKeyRef = useRef<string>('');
+  // Tracks the LIVE value the user is typing — updated synchronously on every keystroke
+  // so the useEffect re-init never clobbers an in-progress edit.
+  const liveInputsRef = useRef<{ [idx: number]: { weight?: string; reps?: string } }>({});
 
   const handleRefreshVideo = async () => {
     if (!exercise || isRefreshingVideo) return;
@@ -136,7 +140,7 @@ export default function ActiveLoggingScreen() {
     );
   }, [exercise?.supersetGroup, activeExercises, safeIdx]);
 
-  // ΓöÇΓöÇΓöÇ Progressive overload suggestion ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ─── Progressive overload suggestion ──────────────────────────────────────────
   const overloadSuggestion = useMemo(() => {
     if (!log?.exercises || !gymLogs) return null;
     const activeExercisesList = log.exercises.filter((ex: any) => !ex.skipped);
@@ -154,29 +158,118 @@ export default function ActiveLoggingScreen() {
 
   // Initialize input state when exercise or set count changes
   useEffect(() => {
-    if (!exercise) return;
+    if (!exercise || !exercise.setsLog) return;
 
-    // A key that uniquely identifies "which exercise and how many sets"
-    const key = `${exercise.exerciseId}-${exercise.setsLog.length}-${activeExIndex}`;
-    if (key === inputInitKey.current) return; // don't reset if the key hasn't changed
+    const currentExId = exercise.exerciseId || exercise.name || '';
+    const key = `${currentExId}-${activeExIndex}`;
+    if (key !== lastExerciseKeyRef.current) {
+      lastExerciseKeyRef.current = key;
+      userEditedFieldsRef.current = {};
+      liveInputsRef.current = {};
+    }
 
-    inputInitKey.current = key;
-    setSetInputs(exercise.setsLog.map((s, idx) => {
-      let initialWeight = s.weight !== null && s.weight !== undefined ? String(s.weight) : '';
-      let initialReps = s.reps !== null && s.reps !== undefined ? String(s.reps) : '';
+    const lastSessionSets = exercise.lastSessionSets || [];
+    const lastValidPastSet = [...lastSessionSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0));
 
-      // Auto pre-fill Progressive Overload suggestion for the first incomplete set
-      if (idx === 0 && !s.completed && overloadSuggestion?.recommended) {
-        if (!initialWeight || initialWeight === '0') initialWeight = String(overloadSuggestion.recommended);
-        if (!initialReps || initialReps === '0') initialReps = String(parseInt(String(exercise.targetReps).split("-")[0], 10) || 8);
+    // Scan all past gymLogs to find the best logged weight and sets for this exercise (by ID or normalized name)
+    let historicalWeight: number | null = null;
+    let historicalSets: any[] | null = null;
+    if (gymLogs && exercise) {
+      const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const exNameNorm = norm(exercise.name);
+      const exNameRoot = exNameNorm.replace(/s$/, '');
+
+      const pastLogs = gymLogs
+        .filter(l => l.date < (date || todayStr()) && Array.isArray(l.exercises))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+      for (const pLog of pastLogs) {
+        const pEx = (pLog.exercises || []).find((e: any) => {
+          if (e.exerciseId && exercise.exerciseId && e.exerciseId === exercise.exerciseId) return true;
+          const pNameNorm = norm(e.name);
+          return pNameNorm === exNameNorm || (exNameRoot && pNameNorm.replace(/s$/, '') === exNameRoot);
+        });
+
+        if (pEx?.setsLog && pEx.setsLog.length > 0) {
+          const setsWithW = pEx.setsLog
+            .map((st: any) => {
+              const w = st?.weight !== undefined && st?.weight !== null ? st.weight : st?.weightKg;
+              return (w !== null && w !== undefined && !isNaN(Number(w)) && Number(w) > 0) ? Number(w) : null;
+            })
+            .filter((w: number | null): w is number => w !== null);
+
+          if (setsWithW.length > 0) {
+            if (!historicalSets) historicalSets = pEx.setsLog;
+            const maxSessionW = Math.max(...setsWithW);
+            if (!historicalWeight || maxSessionW > historicalWeight) {
+              historicalWeight = maxSessionW;
+            }
+          }
+        }
       }
+    }
 
-      return {
-        weight: initialWeight,
-        reps: initialReps,
-      };
-    }));
-  }, [exercise, activeExIndex, overloadSuggestion]);
+    setSetInputs(prev => {
+      return exercise.setsLog.map((s, idx) => {
+        // ── COMPLETED SETS: use persisted weight, but fall back gracefully ──
+        // Priority: s.weight (Firestore) → prev state (what was showing) → historical weight
+        if (s.completed) {
+          const savedW = (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '';
+          const savedR = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? String(s.reps) : '';
+          const prevW = prev?.[idx]?.weight || '';
+          const prevR = prev?.[idx]?.reps || '';
+          // Build a historical fallback for weight (same logic as incomplete sets)
+          const lastSet = lastSessionSets[idx] || historicalSets?.[idx] || lastValidPastSet;
+          const histW = (lastSet?.weight != null && Number(lastSet.weight) > 0) ? String(lastSet.weight)
+                      : (historicalWeight != null && historicalWeight > 0) ? String(historicalWeight) : '';
+          return {
+            weight: savedW || prevW || histW,
+            reps: savedR || prevR || '',
+          };
+        }
+
+        // ── INCOMPLETE SETS: respect user edits first, then prefill from history ──
+        const edited = userEditedFieldsRef.current[idx];
+        const existingWeight = prev?.[idx]?.weight;
+        const existingReps = prev?.[idx]?.reps;
+        // The LIVE value the user is currently typing (synced on every keystroke)
+        const liveWeight = liveInputsRef.current[idx]?.weight;
+        const liveReps = liveInputsRef.current[idx]?.reps;
+
+        const lastSet = lastSessionSets[idx] || historicalSets?.[idx] || lastValidPastSet;
+
+        // 1. Direct weight on set
+        let initialWeight = (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0)
+          ? String(s.weight)
+          : '';
+
+        // 2. Weight from last session for THIS specific set or historical max
+        if (!initialWeight) {
+          if (lastSet?.weight != null && Number(lastSet.weight) > 0) {
+            initialWeight = String(lastSet.weight);
+          } else if (idx === 0 && historicalWeight != null && historicalWeight > 0) {
+            initialWeight = String(historicalWeight);
+          }
+        }
+
+        // 4. Reps
+        let initialReps = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0)
+          ? String(s.reps)
+          : (lastSet?.reps ? String(lastSet.reps) : String(parseInt(String(exercise.targetReps || '8-12').split("-")[0], 10) || 8));
+
+        // 5. Overload suggestion for first set if no weight found at all
+        if (idx === 0 && !initialWeight && overloadSuggestion?.recommended) {
+          initialWeight = String(overloadSuggestion.recommended);
+        }
+
+        // If user has manually edited this field, use their live-typed value
+        return {
+          weight: edited?.weight ? (liveWeight !== undefined ? liveWeight : (existingWeight || '')) : (initialWeight || existingWeight || ''),
+          reps: edited?.reps ? (liveReps !== undefined ? liveReps : (existingReps || '')) : (initialReps || existingReps || ''),
+        };
+      });
+    });
+  }, [exercise?.exerciseId, exercise?.name, activeExIndex, exercise?.setsLog, gymLogs, overloadSuggestion, date]);
 
   // Real-time S.A.R.A AI Swap generator for ActiveLoggingScreen modal
   useEffect(() => {
@@ -316,28 +409,30 @@ export default function ActiveLoggingScreen() {
 
     // First check if the hook pre-filled lastSessionSets from history
     if (currentEx.lastSessionSets && currentEx.lastSessionSets.length > 0) {
-      const completed = currentEx.lastSessionSets.filter((s: any) => s.weight || s.reps);
+      const completed = currentEx.lastSessionSets.filter((s: any) => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0));
       if (completed.length > 0) {
-        const maxWeight = calculateExerciseMaxWeight(currentEx as any);
-        const avgReps = calculateExerciseAvgReps(currentEx as any);
-        return `Last time: ${completed.length} sets × ${avgReps} reps @ ${maxWeight}kg`;
+        const weightsWithVal = currentEx.lastSessionSets.filter((s: any) => s.weight != null && Number(s.weight) > 0);
+        const maxWeight = weightsWithVal.length > 0 ? Math.max(...weightsWithVal.map((s: any) => Number(s.weight))) : 0;
+        const avgReps = Math.round(completed.reduce((sum: number, s: any) => sum + (Number(s.reps) || 0), 0) / completed.length) || 0;
+        return `Last time: ${completed.length} sets × ${avgReps} reps ${maxWeight > 0 ? `@ ${maxWeight}kg` : ''}`;
       }
     }
 
     // Fall back to searching gym logs for completed sets
     const pastLogs = gymLogs
-      .filter(l => l.date < date && l.exercises)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      .filter(l => l.date < (date || todayStr()) && l.exercises)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     for (const pLog of pastLogs) {
-      const pastEx = pLog.exercises!.find(e => e.exerciseId === currentEx.exerciseId);
+      const pastEx = pLog.exercises!.find(e => e.exerciseId === currentEx.exerciseId || e.name.toLowerCase() === currentEx.name.toLowerCase());
       if (pastEx?.setsLog?.length > 0) {
-        const completedSets = pastEx.setsLog.filter((s: any) => s.completed);
+        const completedSets = pastEx.setsLog.filter((s: any) => s.completed || (s.weight != null && Number(s.weight) > 0));
         if (completedSets.length === 0) continue;
 
-        const avgReps = calculateExerciseAvgReps(pastEx as any);
-        const maxWeight = calculateExerciseMaxWeight(pastEx as any);
-        return `Last time: ${completedSets.length} sets × ${avgReps} reps @ ${maxWeight}kg`;
+        const weightsWithVal = pastEx.setsLog.filter((s: any) => s.weight != null && Number(s.weight) > 0);
+        const maxWeight = weightsWithVal.length > 0 ? Math.max(...weightsWithVal.map((s: any) => Number(s.weight))) : 0;
+        const avgReps = Math.round(completedSets.reduce((sum: number, s: any) => sum + (Number(s.reps) || 0), 0) / completedSets.length) || 0;
+        return `Last time: ${completedSets.length} sets × ${avgReps} reps ${maxWeight > 0 ? `@ ${maxWeight}kg` : ''}`;
       }
     }
     return null;
@@ -409,38 +504,57 @@ export default function ActiveLoggingScreen() {
   // SMART SET FORWARD AUTO-FILL:
   // When user types weight or reps in Set 1 (idx 0), auto-propagate forward to all uncompleted sets.
   const handleTextChange = (setIdx: number, field: 'reps' | 'weight', text: string) => {
+    if (!userEditedFieldsRef.current[setIdx]) userEditedFieldsRef.current[setIdx] = {};
+    userEditedFieldsRef.current[setIdx][field] = true;
+    // Keep live ref in sync so the useEffect never clobbers an in-progress edit
+    if (!liveInputsRef.current[setIdx]) liveInputsRef.current[setIdx] = {};
+    liveInputsRef.current[setIdx][field] = text;
+
     setSetInputs(prev => {
       const next = [...prev];
-      if (!next[setIdx]) next[setIdx] = { weight: '', reps: '' };
-      next[setIdx] = { ...next[setIdx], [field]: text };
-
-      // Propagate forward from Set 1 (index 0) to all subsequent incomplete sets
-      if (setIdx === 0 && exercise?.setsLog) {
-        for (let i = 1; i < exercise.setsLog.length; i++) {
-          if (!exercise.setsLog[i].completed) {
-            if (!next[i]) next[i] = { weight: '', reps: '' };
-            next[i] = { ...next[i], [field]: text };
-          }
-        }
-      }
-
+      const curSet = exercise?.setsLog?.[setIdx];
+      const current = next[setIdx] || {
+        weight: curSet?.weight != null ? String(curSet.weight) : '',
+        reps: curSet?.reps != null ? String(curSet.reps) : ''
+      };
+      next[setIdx] = { ...current, [field]: text };
       return next;
     });
   };
 
   // Flush local input state into the exercise when user leaves a field
-  const handleBlur = (_setIdx: number) => {
+  const handleBlur = (setIdx: number) => {
+    const input = setInputs[setIdx];
+    const curSet = exercise?.setsLog?.[setIdx];
+    const isWeightEdited = userEditedFieldsRef.current[setIdx]?.weight;
+    const isRepsEdited = userEditedFieldsRef.current[setIdx]?.reps;
+
+    let weightVal: number | null = null;
+    if (input?.weight !== '' && input?.weight !== undefined) {
+      weightVal = parseFloat(input.weight);
+    } else if (isWeightEdited) {
+      weightVal = null;
+    } else if (curSet?.weight != null && Number(curSet.weight) > 0) {
+      weightVal = Number(curSet.weight);
+    }
+
+    let repsVal: number | null = null;
+    if (input?.reps !== '' && input?.reps !== undefined) {
+      repsVal = parseInt(input.reps, 10);
+    } else if (isRepsEdited) {
+      repsVal = null;
+    } else if (curSet?.reps != null && Number(curSet.reps) > 0) {
+      repsVal = Number(curSet.reps);
+    }
+
     const newEx = {
       ...exercise,
       setsLog: exercise.setsLog.map((s, i) => {
-        const input = setInputs[i];
-        if (!input) return s;
-        const weight = input.weight === '' ? null : parseFloat(input.weight);
-        const reps = input.reps === '' ? null : parseInt(input.reps, 10);
+        if (i !== setIdx) return s;
         return {
           ...s,
-          weight: !isNaN(weight as number) && weight !== null ? weight : s.weight,
-          reps: !isNaN(reps as number) && reps !== null ? reps : s.reps,
+          weight: weightVal !== null && !isNaN(weightVal) ? weightVal : (isWeightEdited ? null : s.weight),
+          reps: repsVal !== null && !isNaN(repsVal) ? repsVal : (isRepsEdited ? null : s.reps),
         };
       }),
     };
@@ -449,25 +563,58 @@ export default function ActiveLoggingScreen() {
 
   const handleLogSet = () => {
     if (activeSetIndex === -1) return;
+    Keyboard.dismiss();
     hapticMedium();
 
-    // Flush the active set's inputs before marking it complete
+    const currentSet = exercise.setsLog[activeSetIndex];
     const input = setInputs[activeSetIndex];
-    const weight = input?.weight === '' ? null : parseFloat(input?.weight || '');
-    const reps = input?.reps === '' ? null : parseInt(input?.reps || '', 10);
+    const isWeightEdited = userEditedFieldsRef.current[activeSetIndex]?.weight;
+    const isRepsEdited = userEditedFieldsRef.current[activeSetIndex]?.reps;
+
+    let parsedWeight: number | null = null;
+    if (input?.weight !== '' && input?.weight !== undefined) {
+      parsedWeight = parseFloat(input.weight);
+    } else if (isWeightEdited) {
+      parsedWeight = null;
+    } else if (currentSet?.weight != null && Number(currentSet.weight) > 0) {
+      parsedWeight = Number(currentSet.weight);
+    } else if (overloadSuggestion?.recommended) {
+      parsedWeight = Number(overloadSuggestion.recommended);
+    }
+
+    let parsedReps: number | null = null;
+    if (input?.reps !== '' && input?.reps !== undefined) {
+      parsedReps = parseInt(input.reps, 10);
+    } else if (isRepsEdited) {
+      parsedReps = null;
+    } else if (currentSet?.reps != null && Number(currentSet.reps) > 0) {
+      parsedReps = Number(currentSet.reps);
+    } else {
+      parsedReps = parseInt(String(exercise.targetReps || '8').split('-')[0], 10) || 8;
+    }
 
     const newEx = {
       ...exercise,
       setsLog: exercise.setsLog.map((s, i) => {
-        if (i !== activeSetIndex) return s;
-        return {
-          ...s,
-          weight: !isNaN(weight as number) && weight !== null ? weight : s.weight,
-          reps: !isNaN(reps as number) && reps !== null ? reps : s.reps,
-          completed: true,
-        };
+        if (i === activeSetIndex) {
+          return {
+            ...s,
+            weight: parsedWeight,
+            reps: parsedReps,
+            completed: true,
+          };
+        }
+        return s;
       }),
     };
+
+    // Update local setInputs buffer for this specific set
+    setSetInputs(prev => prev.map((inp, i) => {
+      if (i === activeSetIndex) {
+        return { weight: parsedWeight !== null ? String(parsedWeight) : '', reps: parsedReps !== null ? String(parsedReps) : '' };
+      }
+      return inp;
+    }));
 
     // SUPERSET & GIANT SET ALTERNATING FLOW:
     let nextIndexToJump = -1;
@@ -509,6 +656,7 @@ export default function ActiveLoggingScreen() {
   };
 
   const handleNextExercise = () => {
+    Keyboard.dismiss();
     if (activeExIndex < exercises.length - 1) {
       hapticMedium();
       setActiveExIndex(activeExIndex + 1);
@@ -552,14 +700,39 @@ export default function ActiveLoggingScreen() {
     setSetInputs(prev => [...prev, { weight: '', reps: '' }]);
   };
 
-  // BUG FIX #5: Toggle completion can now be undone. We flip the completed flag
-  // and persist immediately through updateExercise.
+  // Toggle completion: flips completed flag and flushes current input state (weight/reps) immediately
   const handleToggleSetComplete = (setIdx: number) => {
+    Keyboard.dismiss();
     hapticLight();
+    const input = setInputs[setIdx];
+    const curSet = exercise.setsLog[setIdx];
+    const targetCompleted = !curSet.completed;
+
+    let weightVal: number | null = null;
+    if (input?.weight !== '' && input?.weight !== undefined) {
+      weightVal = parseFloat(input.weight);
+    } else if (curSet?.weight != null && Number(curSet.weight) > 0) {
+      weightVal = Number(curSet.weight);
+    }
+
+    let repsVal: number | null = null;
+    if (input?.reps !== '' && input?.reps !== undefined) {
+      repsVal = parseInt(input.reps, 10);
+    } else if (curSet?.reps != null && Number(curSet.reps) > 0) {
+      repsVal = Number(curSet.reps);
+    } else {
+      repsVal = parseInt(String(exercise.targetReps || '8').split('-')[0], 10) || 8;
+    }
+
     const newEx = {
       ...exercise,
       setsLog: exercise.setsLog.map((s, i) =>
-        i === setIdx ? { ...s, completed: !s.completed } : s
+        i === setIdx ? {
+          ...s,
+          completed: targetCompleted,
+          weight: weightVal !== null && !isNaN(weightVal) ? weightVal : s.weight,
+          reps: repsVal !== null && !isNaN(repsVal) ? repsVal : s.reps,
+        } : s
       ),
     };
     updateExercise(realExerciseIndex, newEx);
@@ -788,15 +961,28 @@ export default function ActiveLoggingScreen() {
             {exercise.setsLog.map((set, idx) => {
               const isActive = idx === activeSetIndex;
               const inputState = setInputs[idx] || { weight: '', reps: '' };
+              const setWeightStr = (set.weight !== null && set.weight !== undefined && Number(set.weight) > 0) ? String(set.weight) : '';
+              const setRepsStr = (set.reps !== null && set.reps !== undefined && Number(set.reps) > 0) ? String(set.reps) : '';
+
+              // For completed sets, always show the saved weight/reps
+              // For active/incomplete sets, show what's in inputState (which can be empty if user cleared it)
+              const isInputReady = setInputs.length > idx;
+              const displayWeight = set.completed
+                ? (setWeightStr || inputState.weight || '')
+                : (isInputReady ? inputState.weight : (setWeightStr || ''));
+
+              const displayReps = set.completed
+                ? (setRepsStr || inputState.reps || '')
+                : (isInputReady ? inputState.reps : (setRepsStr || ''));
 
               return (
                 <View key={`set-${idx}`} style={[styles.setRowWrapper, isActive && styles.setRowWrapperActive]}>
                   {isActive && <View style={styles.activeIndicator} />}
 
                   <View style={[styles.setRow, set.completed && styles.setRowCompleted, isActive && styles.setRowActive]}>
-                    {/* BUG FIX #5: Tap to toggle completed, long-press to delete */}
+                    {/* Tap checkmark circle to toggle completed, long-press to delete */}
                     <TouchableOpacity
-                      onPress={() => set.completed ? handleToggleSetComplete(idx) : undefined}
+                      onPress={() => handleToggleSetComplete(idx)}
                       onLongPress={() => handleDeleteSet(idx)}
                       style={styles.setIndexArea}
                     >
@@ -807,16 +993,16 @@ export default function ActiveLoggingScreen() {
                       )}
                     </TouchableOpacity>
 
-                    {/* BUG FIX #1: Controlled inputs with local state ΓÇö no defaultValue */}
+                    {/* Controlled inputs with local state - locked when completed */}
                     <View style={styles.inputGroup}>
-                      {inputState.weight === '' && (
+                      {displayWeight === '' && (
                         <View style={styles.fakePlaceholder} pointerEvents="none">
                           <Text style={styles.fakePlaceholderText}>kg</Text>
                         </View>
                       )}
                       <TextInput
-                        style={[styles.textInput, set.completed && { opacity: 0.5, color: colors.textMuted }]}
-                        value={inputState.weight}
+                        style={[styles.textInput, set.completed && { opacity: 0.85, color: colors.textPrimary }]}
+                        value={displayWeight}
                         keyboardType="numeric"
                         editable={!set.completed}
                         onChangeText={(text) => handleTextChange(idx, 'weight', text)}
@@ -825,14 +1011,14 @@ export default function ActiveLoggingScreen() {
                     </View>
 
                     <View style={styles.inputGroup}>
-                      {inputState.reps === '' && (
+                      {displayReps === '' && (
                         <View style={styles.fakePlaceholder} pointerEvents="none">
                           <Text style={styles.fakePlaceholderText}>reps</Text>
                         </View>
                       )}
                       <TextInput
-                        style={[styles.textInput, set.completed && { opacity: 0.5, color: colors.textMuted }]}
-                        value={inputState.reps}
+                        style={[styles.textInput, set.completed && { opacity: 0.85, color: colors.textPrimary }]}
+                        value={displayReps}
                         keyboardType="numeric"
                         editable={!set.completed}
                         onChangeText={(text) => handleTextChange(idx, 'reps', text)}
@@ -908,9 +1094,9 @@ export default function ActiveLoggingScreen() {
           </ScrollView>
         </View>
 
-        {/* Sticky Rest Timer Overlay ΓÇö Placed cleanly just a little above the bottom nav bar always */}
+        {/* Sticky Rest Timer Overlay — Placed cleanly exactly 2px above the bottom nav bar */}
         {(restTimerStartTime && restTimerDurationSecs) ? (
-          <View style={{ position: 'absolute', bottom: Platform.OS === 'ios' ? 112 : 98, left: 0, right: 0, alignItems: 'center', zIndex: 9999 }} pointerEvents="box-none">
+          <View style={{ position: 'absolute', bottom: 90, left: 0, right: 0, alignItems: 'center', zIndex: 9999 }} pointerEvents="box-none">
             <AnimatedRestTimer
               startTime={restTimerStartTime}
               durationSecs={restTimerDurationSecs}
@@ -1251,14 +1437,14 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
         justifyContent: 'center',
       },
       mainBtnComplete: { backgroundColor: isDark ? '#34C759' : colors.accentGreen },
-      mainBtnIncomplete: { backgroundColor: isDark ? '#1C1C1E' : colors.surface, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
+      mainBtnIncomplete: { backgroundColor: isDark ? '#0c0c0f' : colors.surface, borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
       mainBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
 
       modalOverlay: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.35)', justifyContent: 'flex-end' },
-      modalContent: { backgroundColor: isDark ? '#1C1C1E' : (colors.surfaceRaised || colors.surface), borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%', borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
+      modalContent: { backgroundColor: isDark ? '#000000' : (colors.surfaceRaised || colors.surface), borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, maxHeight: '80%', borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
       modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
       modalTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 20, color: colors.textPrimary },
       modalSubtitle: { fontFamily: FONT_FAMILY.body, fontSize: 13, color: colors.textMuted, marginTop: 4 },
-      altRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#2C2C2E' : (colors.surface2 || '#F0EFF7'), padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border },
+      altRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#0c0c0f' : (colors.surface2 || '#F0EFF7'), padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: isDark ? '#1c1c20' : colors.border },
       altText: { flex: 1, fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary, marginLeft: 12 },
     });

@@ -1,7 +1,7 @@
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React from 'react';
-import { View, ActivityIndicator, LogBox, AppState, AppStateStatus } from 'react-native';
+import { View, ActivityIndicator, LogBox, AppState, AppStateStatus, InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold } from '@expo-google-fonts/playfair-display';
@@ -47,12 +47,16 @@ LogBox.ignoreLogs([
   'Could not reach Cloud Firestore backend', // Safe to ignore — Firebase falls back to offline cache automatically
   '[OfflineSync]',
   'Missing or insufficient permissions',
+  '[Reanimated] Property "opacity"',
 ]);
 
 // Intercept console to completely silence Metro terminal spam for known safe warnings/errors
 const originalWarn = console.warn;
 console.warn = (...args) => {
-  if (typeof args[0] === 'string' && args[0].includes('setLayoutAnimationEnabledExperimental')) return;
+  if (typeof args[0] === 'string' && (
+    args[0].includes('setLayoutAnimationEnabledExperimental') ||
+    args[0].includes('[Reanimated] Property "opacity"')
+  )) return;
   originalWarn(...args);
 };
 
@@ -98,12 +102,20 @@ export default function App() {
     PlayfairDisplay_600SemiBold,
   });
 
+  // PERF: All 4 service registrations deferred behind InteractionManager.
+  // These have zero effect on Frame 0/1 — they only set up background OS tasks.
+  // Previously they fired immediately on mount, competing with auth, font loading,
+  // and Firestore subscription setup. Deferring frees ~50–150ms on the cold-boot path.
   React.useEffect(() => {
-    requestNotificationPermissions();
-    registerBackgroundNotificationFetch();
-    registerBackgroundProactiveAgent();
-    registerWeeklyReviewTask();
+    const handle = InteractionManager.runAfterInteractions(() => {
+      requestNotificationPermissions();
+      registerBackgroundNotificationFetch();
+      registerBackgroundProactiveAgent();
+      registerWeeklyReviewTask();
+    });
+    return () => handle.cancel();
   }, []);
+
 
   // Drain ALL queued offline writes (tasks, habits, notes, goals, gym logs)
   // as soon as connectivity is restored, and also on boot if already online.

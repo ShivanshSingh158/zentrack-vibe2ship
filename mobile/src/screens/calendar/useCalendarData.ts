@@ -22,7 +22,7 @@ import { formatLocalDateStr } from '../../utils/dateUtils';
 export function useCalendarData() {
   const { customEvents } = usePlannerData();
   const { tasks, user, googleAccessToken } = useCoreData();
-  const { attendance } = useAcademicData();
+  const { attendance, holidays } = useAcademicData();
   const { gymLogs, userGymPlan } = useWellnessData();
 
   // Stable reference to mount time
@@ -63,7 +63,7 @@ export function useCalendarData() {
       });
       setShowGymModal(false);
     } catch (e) {
-      console.warn('Failed to update gym time', e);
+      console.warn('Error saving gym time', e);
     }
   };
 
@@ -73,30 +73,36 @@ export function useCalendarData() {
     return () => clearInterval(timer);
   }, []);
 
-  // Fetch Google Calendar events
+  // Google Calendar Integration
   useEffect(() => {
-    if (!googleAccessToken) return;
     const fetchGcal = async () => {
+      if (!googleAccessToken) {
+        setGcalEvents([]);
+        return;
+      }
       try {
-        const start = new Date(selectedDate);
-        start.setHours(0,0,0,0);
-        const end = new Date(selectedDate);
-        end.setHours(23,59,59,999);
-        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${start.toISOString()}&timeMax=${end.toISOString()}&singleEvents=true`, {
+        const timeMin = new Date(selectedDate + 'T00:00:00Z').toISOString();
+        const timeMax = new Date(selectedDate + 'T23:59:59Z').toISOString();
+        const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${timeMin}&timeMax=${timeMax}&singleEvents=true`, {
           headers: { Authorization: `Bearer ${googleAccessToken}` }
         });
         const data = await res.json();
         if (data.items) {
           const mapped = data.items.map((item: any) => {
-            const dtStart = new Date(item.start.dateTime || item.start.date);
-            const dtEnd = new Date(item.end.dateTime || item.end.date);
+            const startRaw = item.start?.dateTime || item.start?.date;
+            const endRaw = item.end?.dateTime || item.end?.date;
+            const startD = new Date(startRaw);
+            const endD = new Date(endRaw);
+            const isAllDay = !item.start?.dateTime;
+            const startTime = isAllDay ? '' : `${startD.getHours().toString().padStart(2, '0')}:${startD.getMinutes().toString().padStart(2, '0')}`;
+            const endTime = isAllDay ? '' : `${endD.getHours().toString().padStart(2, '0')}:${endD.getMinutes().toString().padStart(2, '0')}`;
             return {
               id: item.id,
-              title: item.summary || 'Busy',
+              title: item.summary || 'Google Event',
+              type: 'gcal' as const,
               date: selectedDate,
-              type: 'gcal',
-              startTime: dtStart.getHours().toString().padStart(2, '0') + ':' + dtStart.getMinutes().toString().padStart(2, '0'),
-              endTime: dtEnd.getHours().toString().padStart(2, '0') + ':' + dtEnd.getMinutes().toString().padStart(2, '0'),
+              startTime,
+              endTime,
               location: item.location,
             } as CustomEvent;
           });
@@ -111,7 +117,21 @@ export function useCalendarData() {
 
   // Combine custom events, tasks, and gcal events for the day
   const { timedDayEvents, unscheduledDayEvents } = useMemo(() => {
-    const events = customEvents.filter((e: any) => e.date === selectedDate);
+    const selDateObj = new Date(selectedDate + 'T00:00:00');
+    const selDayOfWeek = selDateObj.getDay();
+    const selDayOfMonth = selDateObj.getDate();
+
+    const events = customEvents.filter((e: any) => {
+      if (e.date === selectedDate) return true;
+      if (!e.recurrenceRule || e.recurrenceRule === 'none') return false;
+      if (e.date > selectedDate) return false; // Event starts in the future
+
+      const origDateObj = new Date(e.date + 'T00:00:00');
+      if (e.recurrenceRule === 'daily') return true;
+      if (e.recurrenceRule === 'weekly') return origDateObj.getDay() === selDayOfWeek;
+      if (e.recurrenceRule === 'monthly') return origDateObj.getDate() === selDayOfMonth;
+      return false;
+    });
     const timedTasks: any[] = [];
     const unscheduledTasks: any[] = [];
     
@@ -124,6 +144,20 @@ export function useCalendarData() {
       }
     });
 
+    const isHoliday = holidays?.includes(selectedDate);
+    const holidayEvents: any[] = [];
+    if (isHoliday) {
+      holidayEvents.push({
+        id: `holiday-${selectedDate}`,
+        title: '🌴 Holiday / College Off',
+        type: 'holiday' as any,
+        date: selectedDate,
+        startTime: '',
+        endTime: '',
+        location: '',
+      });
+    }
+
     const dayOfWeekNum = new Date(selectedDate + 'T00:00:00').getDay();
     const dayOfWeek = dayOfWeekNum.toString();
     const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -132,33 +166,83 @@ export function useCalendarData() {
     const timedClasses: any[] = [];
     const unscheduledClasses: any[] = [];
 
-    attendance?.forEach((subj: any) => {
-      const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[dayOfWeekNum] || subj.schedule?.[dayName] || subj.schedule?.[dayNameLower];
-      if (!sch) return;
+    if (!isHoliday) {
+      attendance?.forEach((subj: any) => {
+        const sch = subj.schedule?.[dayOfWeek] || subj.schedule?.[dayOfWeekNum] || subj.schedule?.[dayName] || subj.schedule?.[dayNameLower];
+        if (!sch) return;
 
-      if (sch.classes && Array.isArray(sch.classes)) {
-        sch.classes.forEach((c: any, i: number) => {
-          if (c.time && c.time.trim() !== '') {
-            const { hour: sh, min: sm } = parseTimeTo24h(c.time);
-            const endH = Math.min(23, sh + 1);
-            timedClasses.push({ id: `${subj.id}-class-${i}`, title: `${subj.name} (Class)`, type: 'class', date: selectedDate, startTime: c.time, endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`, location: c.room || '' });
-          } else {
-            unscheduledClasses.push({ id: `${subj.id}-class-${i}`, title: `${subj.name} (Class)`, type: 'class', date: selectedDate, startTime: '', endTime: '', location: c.room || '' });
-          }
-        });
-      }
-      if (sch.labs && Array.isArray(sch.labs)) {
-        sch.labs.forEach((l: any, i: number) => {
-          if (l.time && l.time.trim() !== '') {
-            const { hour: sh, min: sm } = parseTimeTo24h(l.time);
-            const endH = Math.min(23, sh + 2);
-            timedClasses.push({ id: `${subj.id}-lab-${i}`, title: `${subj.name} (Lab)`, type: 'lab', date: selectedDate, startTime: l.time, endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`, location: l.room || '' });
-          } else {
-            unscheduledClasses.push({ id: `${subj.id}-lab-${i}`, title: `${subj.name} (Lab)`, type: 'lab', date: selectedDate, startTime: '', endTime: '', location: l.room || '' });
-          }
-        });
-      }
-    });
+        if (sch.classes && Array.isArray(sch.classes)) {
+          sch.classes.forEach((c: any, i: number) => {
+            if (c.time && c.time.trim() !== '') {
+              const { hour: sh, min: sm } = parseTimeTo24h(c.time);
+              const endH = Math.min(23, sh + 1);
+              timedClasses.push({
+                id: `${subj.id}-class-${i}`,
+                title: `${subj.name} (Class)`,
+                type: 'class',
+                date: selectedDate,
+                startTime: c.time,
+                endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`,
+                location: c.room || '',
+                subjectId: subj.id,
+                subjectName: subj.name,
+                sessionType: 'class',
+                sessionIdx: i,
+              });
+            } else {
+              unscheduledClasses.push({
+                id: `${subj.id}-class-${i}`,
+                title: `${subj.name} (Class)`,
+                type: 'class',
+                date: selectedDate,
+                startTime: '',
+                endTime: '',
+                location: c.room || '',
+                subjectId: subj.id,
+                subjectName: subj.name,
+                sessionType: 'class',
+                sessionIdx: i,
+              });
+            }
+          });
+        }
+        if (sch.labs && Array.isArray(sch.labs)) {
+          sch.labs.forEach((l: any, i: number) => {
+            if (l.time && l.time.trim() !== '') {
+              const { hour: sh, min: sm } = parseTimeTo24h(l.time);
+              const endH = Math.min(23, sh + 2);
+              timedClasses.push({
+                id: `${subj.id}-lab-${i}`,
+                title: `${subj.name} (Lab)`,
+                type: 'lab',
+                date: selectedDate,
+                startTime: l.time,
+                endTime: `${endH.toString().padStart(2, '0')}:${sm.toString().padStart(2, '0')}`,
+                location: l.room || '',
+                subjectId: subj.id,
+                subjectName: subj.name,
+                sessionType: 'lab',
+                sessionIdx: i,
+              });
+            } else {
+              unscheduledClasses.push({
+                id: `${subj.id}-lab-${i}`,
+                title: `${subj.name} (Lab)`,
+                type: 'lab',
+                date: selectedDate,
+                startTime: '',
+                endTime: '',
+                location: l.room || '',
+                subjectId: subj.id,
+                subjectName: subj.name,
+                sessionType: 'lab',
+                sessionIdx: i,
+              });
+            }
+          });
+        }
+      });
+    }
 
     const gLog = (gymLogs || []).find((g: any) => g.date === selectedDate);
     const planIdx = planDayIndexForDate(selectedDate);
@@ -169,14 +253,21 @@ export function useCalendarData() {
     
     const gymEvts = [];
     if (startTimeStr && (gLog?.startTime || !gPlan?.isRest)) {
-      gymEvts.push({ id: `gym-${selectedDate}`, title: gPlan?.focus ? `Workout: ${gPlan.focus}` : 'Gym Workout', type: 'gym' as any, date: selectedDate, startTime: startTimeStr, endTime: endTimeStr || '18:00', location: 'Gym' });
+      // FIX 4.4: Show ✓ when the workout was actually completed (any completed set exists)
+      const hasCompletedSets = gLog?.exercises?.some((ex: any) =>
+        ex.setsLog?.some((s: any) => s.completed)
+      );
+      const isCompleted = gLog?.completed || hasCompletedSets;
+      const baseTitle = gPlan?.focus ? `Workout: ${gPlan.focus}` : 'Gym Workout';
+      const gymTitle = isCompleted ? `✓ ${baseTitle}` : baseTitle;
+      gymEvts.push({ id: `gym-${selectedDate}`, title: gymTitle, type: 'gym' as any, date: selectedDate, startTime: startTimeStr, endTime: endTimeStr || '18:00', location: 'Gym' });
     }
 
     return {
       timedDayEvents: [...events, ...timedTasks, ...timedClasses, ...gymEvts, ...gcalEvents] as CustomEvent[],
-      unscheduledDayEvents: [...unscheduledTasks, ...unscheduledClasses] as CustomEvent[],
+      unscheduledDayEvents: [...holidayEvents, ...unscheduledTasks, ...unscheduledClasses] as CustomEvent[],
     };
-  }, [customEvents, tasks, attendance, gymLogs, userGymPlan, gcalEvents, selectedDate]);
+  }, [customEvents, tasks, attendance, gymLogs, userGymPlan, gcalEvents, holidays, selectedDate]);
 
   const dayEvents = useMemo(() => {
     const sortedTimed = [...timedDayEvents].sort((a, b) => {
@@ -405,6 +496,6 @@ export function useCalendarData() {
     timedDayEvents, unscheduledDayEvents, dayEvents, processedEvents, weekEvents,
     minHour, maxHour, DYNAMIC_HOURS,
     handleSaveGymTime,
-    tasks, attendance, customEvents, gymLogs, userGymPlan
+    tasks, attendance, customEvents, gymLogs, userGymPlan, holidays
   };
 }

@@ -100,10 +100,10 @@ h1.title, h2.title {
 }
 
 /* Progress bars in learning — violet */
-.topic-progress,
-.lecture-progress,
-[class*="progress-bar"],
-[class*="progress-fill"] {
+.learning-module .topic-progress,
+.learning-module .lecture-progress,
+.lp-topic-progress-fill,
+.lp-theater-progress-fill {
   background: linear-gradient(90deg, #9b8ec4, #b5a8d8) !important;
   border-radius: 999px !important;
 }

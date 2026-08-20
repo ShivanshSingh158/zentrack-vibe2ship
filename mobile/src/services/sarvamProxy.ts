@@ -177,9 +177,13 @@ export async function speakWithSarvam(
 
       // Wait for playback to finish before moving to next chunk
       await new Promise<void>((resolve) => {
-        sound.setOnPlaybackStatusUpdate((status: any) => {
+        sound.setOnPlaybackStatusUpdate(async (status: any) => {
           if (status.didJustFinish || status.error) {
-            _currentSound = null;
+            try {
+              await sound.stopAsync().catch(() => {});
+              await sound.unloadAsync().catch(() => {});
+            } catch (e) {}
+            if (_currentSound === sound) _currentSound = null;
             if (tmpUri) FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
             resolve();
           }
@@ -187,6 +191,13 @@ export async function speakWithSarvam(
       });
       return true;
     } catch (err: any) {
+      if (_currentSound) {
+        try {
+          await _currentSound.stopAsync().catch(() => {});
+          await _currentSound.unloadAsync().catch(() => {});
+        } catch (e) {}
+        _currentSound = null;
+      }
       if (tmpUri) FileSystem.deleteAsync(tmpUri, { idempotent: true }).catch(() => {});
       console.warn('[Sarvam] Chunk TTS failed:', err.message);
       return false;

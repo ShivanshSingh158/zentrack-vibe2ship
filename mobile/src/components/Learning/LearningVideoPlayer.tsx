@@ -91,7 +91,11 @@ export default function LearningVideoPlayer({
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', nextState => setAppState(nextState));
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      // Hardware resource cleanup: restore portrait orientation if player unmounts while in landscape
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    };
   }, []);
 
 

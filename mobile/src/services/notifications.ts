@@ -37,6 +37,7 @@ import {
 import { UserGymPlanDoc } from '../types/gym.types';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../data/gymPlan';
 import { COLLECTION } from '../config/constants';
+import { formatLocalDateStr } from '../utils/dateUtils';
 
 // ── Notification handler ──────────────────────────────────────────────────────
 
@@ -501,6 +502,7 @@ export interface ScheduleParams {
   sleepLogs?: SleepLog[];
   attendanceLogs?: AttendanceLog[];
   userGymPlan?: UserGymPlanDoc | null;
+  flashcards?: Array<{ nextReviewDate: string }>;
 }
 
 // ── Data Fingerprint Cache ────────────────────────────────────────────────────
@@ -522,6 +524,19 @@ function _buildFingerprint(params: ScheduleParams): string {
     .map(e => `${e.id}_${e.date}_${e.startTime || ''}`)
     .join(';');
 
+  const attendanceLogFingerprint = (params.attendanceLogs || [])
+    .map(l => `${l.id}_${l.action}_${l.date}`)
+    .join(';');
+
+  const flashcardDueCount = (params.flashcards || [])
+    .filter(f => f.nextReviewDate && f.nextReviewDate <= formatLocalDateStr(new Date())).length;
+
+  // Track today's total water logged to invalidate fingerprint immediately when goal is hit
+  const todayDateStr = formatLocalDateStr(new Date());
+  const waterTodayMl = (params.waterLogs || [])
+    .filter(w => (w.date || '').slice(0, 10) === todayDateStr)
+    .reduce((acc, w) => acc + (w.amountMl || 0), 0);
+
   return [
     taskFingerprint,
     eventFingerprint,
@@ -529,10 +544,12 @@ function _buildFingerprint(params: ScheduleParams): string {
     (params.gymLogs || []).length,
     (params.assignments || []).length,
     (params.waterLogs || []).length,
+    waterTodayMl,
     (params.sleepLogs || []).length,
-    (params.attendanceLogs || []).length,
+    attendanceLogFingerprint,
     (params.attendance || []).length,
     attendanceFingerprint,
+    flashcardDueCount,
     new Date().toISOString().slice(0, 13),
   ].join('|');
 }
@@ -576,6 +593,7 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
         sleepLogs = [],
         attendanceLogs = [],
         userGymPlan = null,
+        flashcards = [],
       } = currentParams;
 
       const fingerprint = _buildFingerprint(currentParams);
@@ -958,7 +976,12 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
             if (fireDate <= now) continue;
 
             const fdDateStr = dayOffset === 0 ? todayStr : tomorrowStr;
-            const alreadyLogged = habitLogs.some(l => l.habitId === habit.id && l.date === fdDateStr);
+            // FIX 7.5: Normalize date comparison so ISO or non-padded dates match properly
+            const alreadyLogged = habitLogs.some(l => {
+              if (l.habitId !== habit.id) return false;
+              const lDate = (l.date || '').slice(0, 10);
+              return lDate === fdDateStr;
+            });
             if (alreadyLogged) continue;
 
             const streakVal = habit.streak ?? 0;
@@ -1008,9 +1031,14 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
           }
 
           if (assignment24h) {
-            const t24 = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
+            // FIX 7.8: Resilient 24h deadline trigger — if 8:00 AM has passed today, fire in 15min
+            const dayBeforeDue = new Date(dueDate.getTime() - 24 * 60 * 60 * 1000);
+            let t24 = new Date(dayBeforeDue);
             t24.setHours(defaultTime.hours, defaultTime.minutes, 0, 0);
-            if (t24 > now && (t24.getTime() - now.getTime()) <= 24 * 60 * 60 * 1000) {
+            if (t24 <= now && dueDate.getTime() > now.getTime()) {
+              t24 = new Date(now.getTime() + 15 * 60 * 1000);
+            }
+            if (t24 > now && t24 < dueDate) {
               enqueue(
                 PRIORITY.CRITICAL,
                 'Kal Deadline Hai Bhai! 🚨',
@@ -1027,23 +1055,28 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
       // ── 8. Attendance Low-Percentage Warnings (<75%) — CRITICAL ───────────
       if (attendanceWarning && modAttendance) {
         const THRESHOLD = 75;
-        for (const subj of attendance) {
-          const totalAtt = (subj.classesAttended || 0) + (subj.labsAttended || 0);
-          const totalTotal = (subj.classesTotal || 0) + (subj.labsTotal || 0);
-          if (!totalTotal) continue;
-          const pct = (totalAtt / totalTotal) * 100;
-          if (pct < THRESHOLD) {
-            const trigger = dateAtHM(now, defaultTime.hours, defaultTime.minutes);
-            if (trigger > now) {
-              const needed = Math.ceil((THRESHOLD / 100 * totalTotal - totalAtt) / (1 - THRESHOLD / 100));
-              enqueue(
-                PRIORITY.CRITICAL,
-                'Bhai Class Chale Jao! 🚨',
-                getRandomMessage(ATTENDANCE_CRITICAL_POOLS(subj.name, pct.toFixed(0), needed)),
-                trigger,
-                { type: 'attendance_warning', subjectId: subj.id },
-                saraEscalation ? 'sara_critical' : 'default'
-              );
+        for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
+          const targetDay = new Date(now);
+          targetDay.setDate(targetDay.getDate() + dayOffset);
+
+          for (const subj of attendance) {
+            const totalAtt = (subj.classesAttended || 0) + (subj.labsAttended || 0);
+            const totalTotal = (subj.classesTotal || 0) + (subj.labsTotal || 0);
+            if (!totalTotal) continue;
+            const pct = (totalAtt / totalTotal) * 100;
+            if (pct < THRESHOLD) {
+              const trigger = dateAtHM(targetDay, defaultTime.hours, defaultTime.minutes);
+              if (trigger > now) {
+                const needed = Math.ceil((THRESHOLD / 100 * totalTotal - totalAtt) / (1 - THRESHOLD / 100));
+                enqueue(
+                  PRIORITY.CRITICAL,
+                  'Bhai Class Chale Jao! 🚨',
+                  getRandomMessage(ATTENDANCE_CRITICAL_POOLS(subj.name, pct.toFixed(0), needed)),
+                  trigger,
+                  { type: 'attendance_warning', subjectId: subj.id },
+                  saraEscalation ? 'sara_critical' : 'default'
+                );
+              }
             }
           }
         }
@@ -1118,8 +1151,30 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
             time: string;
             isLab: boolean;
             startMs: number;
+            durationMinutes?: number;
           }
           const daySessions: DaySession[] = [];
+
+          const parseSessionTimes = (timeStr: string, isLab: boolean) => {
+            const trimmed = (timeStr || '').trim();
+            const parts = trimmed.split(/[-–—•]| to /i).map(s => s.trim());
+            const startParsed = parseTimeString(parts[0]);
+            const startH = startParsed ? startParsed.hours : (isLab ? 14 : 9);
+            const startM = startParsed ? startParsed.minutes : 0;
+            let durationMinutes = isLab ? 120 : 60;
+
+            if (parts.length > 1) {
+              const endParsed = parseTimeString(parts[1]);
+              if (endParsed) {
+                let diff = (endParsed.hours * 60 + endParsed.minutes) - (startH * 60 + startM);
+                if (diff < 0) diff += 24 * 60;
+                if (diff >= 15 && diff <= 360) {
+                  durationMinutes = diff;
+                }
+              }
+            }
+            return { startH, startM, durationMinutes };
+          };
 
           attendance.forEach(subj => {
             const enabledRaw = kv[`@class_notif_enabled_${subj.id}`];
@@ -1138,34 +1193,46 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
 
             if (classes.length > 0) {
               classes.forEach((c: any) => {
-                const parsed = parseTimeString(c?.time ?? '');
-                const startMs = parsed
-                  ? dateAtHM(targetDate, parsed.hours, parsed.minutes).getTime()
-                  : dateAtHM(targetDate, 9, 0).getTime();
-                daySessions.push({ subject: subj.name, subjectId: subj.id!, time: c?.time ?? '', isLab: false, startMs });
+                const { startH, startM, durationMinutes } = parseSessionTimes(c?.time ?? '', false);
+                const startMs = dateAtHM(targetDate, startH, startM).getTime();
+                daySessions.push({
+                  subject: subj.name,
+                  subjectId: subj.id!,
+                  time: c?.time ?? '',
+                  isLab: false,
+                  startMs,
+                  durationMinutes,
+                });
               });
             } else {
               for (let ci = 0; ci < classCnt; ci++) {
                 daySessions.push({
                   subject: subj.name, subjectId: subj.id!, time: '', isLab: false,
                   startMs: dateAtHM(targetDate, 9, 0).getTime() + ci * 60 * 60 * 1000,
+                  durationMinutes: 60,
                 });
               }
             }
 
             if (labs.length > 0) {
               labs.forEach((l: any) => {
-                const parsed = parseTimeString(l?.time ?? '');
-                const startMs = parsed
-                  ? dateAtHM(targetDate, parsed.hours, parsed.minutes).getTime()
-                  : dateAtHM(targetDate, 14, 0).getTime();
-                daySessions.push({ subject: `${subj.name} Lab`, subjectId: subj.id!, time: l?.time ?? '', isLab: true, startMs });
+                const { startH, startM, durationMinutes } = parseSessionTimes(l?.time ?? '', true);
+                const startMs = dateAtHM(targetDate, startH, startM).getTime();
+                daySessions.push({
+                  subject: `${subj.name} Lab`,
+                  subjectId: subj.id!,
+                  time: l?.time ?? '',
+                  isLab: true,
+                  startMs,
+                  durationMinutes,
+                });
               });
             } else {
               for (let li = 0; li < labCnt; li++) {
                 daySessions.push({
                   subject: `${subj.name} Lab`, subjectId: subj.id!, time: '', isLab: true,
                   startMs: dateAtHM(targetDate, 14, 0).getTime() + li * 2 * 60 * 60 * 1000,
+                  durationMinutes: 120,
                 });
               }
             }
@@ -1204,7 +1271,7 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
             }
 
             const logDelay = parseInt(kv[`@class_notif_log_delay_${sid}`] || '0', 10);
-            const durationMs = sess.isLab ? 120 * 60 * 1000 : 60 * 60 * 1000;
+            const durationMs = (sess.durationMinutes ?? (sess.isLab ? 120 : 60)) * 60 * 1000;
             const endTriggerMs = sess.startMs + durationMs + logDelay * 60 * 1000;
             const alreadyLogged = attendanceLogs.some(
               l => l.subjectId === sid && l.date === dateStr && (sess.isLab ? l.type === 'lab' : (l.type === 'class' || !l.type)) && !l.isExtra
@@ -1258,7 +1325,7 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
       if (inactivityNudge) {
         const thresholdDate = new Date(now);
         thresholdDate.setDate(thresholdDate.getDate() - inactivityDays);
-        const thresholdStr = thresholdDate.toISOString().slice(0, 10);
+        const thresholdStr = formatLocalDateStr(thresholdDate);
 
         const recentTask = tasks.find(t => t.completedAt && t.completedAt >= thresholdStr);
         const recentHabit = habitLogs.find(l => l.date >= thresholdStr);
@@ -1355,6 +1422,21 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
               { type: 'water_reminder' }
             );
           }
+        }
+      }
+
+      // ── 14. Flashcard Spaced Repetition Due Review Nudge ─────────────────
+      const dueCards = (flashcards || []).filter(f => f.nextReviewDate && f.nextReviewDate <= todayStr);
+      if (dueCards.length > 0) {
+        const reviewTrigger = dateAtHM(now, 19, 0); // 7:00 PM
+        if (reviewTrigger.getTime() > now.getTime() + 15 * 60 * 1000) {
+          enqueue(
+            PRIORITY.LOW,
+            '🧠 Flashcards Due for Review!',
+            `You have ${dueCards.length} cards scheduled for active recall today. Strengthen your retention!`,
+            reviewTrigger,
+            { type: 'flashcard_review' }
+          );
         }
       }
 
@@ -1499,9 +1581,10 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
     const dStr = String(tmp.getDate()).padStart(2, '0');
     const todayStr = `${y}-${m}-${dStr}`;
 
+    // FIX 4.3 & 6.7: Fetch USER_GYM_PLANS & FLASHCARDS docs in headless reschedule
     const [
       tasksSnap, eventsSnap, gymSnap, attendanceSnap, attendanceLogsSnap,
-      habitsSnap, habitLogsSnap, assignmentsSnap, waterSnap, sleepSnap,
+      habitsSnap, habitLogsSnap, assignmentsSnap, waterSnap, sleepSnap, gymPlanSnap, flashcardsSnap,
     ] = await Promise.all([
       getDocs(query(collection(db, COLLECTION.TASKS), where('userId', '==', userId), where('status', 'in', ['pending', 'in_progress']))),
       getDocs(query(collection(db, COLLECTION.CALENDAR_EVENTS), where('userId', '==', userId))),
@@ -1513,7 +1596,12 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
       getDocs(query(collection(db, COLLECTION.ASSIGNMENTS), where('userId', '==', userId))),
       getDocs(query(collection(db, COLLECTION.WATER_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
       getDocs(query(collection(db, COLLECTION.SLEEP_LOGS), where('userId', '==', userId), where('date', '>=', todayStr))),
+      getDocs(query(collection(db, COLLECTION.USER_GYM_PLANS), where('userId', '==', userId))),
+      getDocs(query(collection(db, COLLECTION.FLASHCARDS), where('userId', '==', userId))),
     ]);
+
+    const rawGymPlanDoc = gymPlanSnap.docs[0];
+    const fetchedUserGymPlan = rawGymPlanDoc ? ({ id: rawGymPlanDoc.id, ...rawGymPlanDoc.data() } as UserGymPlanDoc) : null;
 
     await scheduleAllNotifications({
       tasks: tasksSnap.docs.map(d => ({ id: d.id, ...d.data() } as Task)),
@@ -1526,6 +1614,8 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_SYNC_TASK, async () => {
       assignments: assignmentsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Assignment)),
       waterLogs: waterSnap.docs.map(d => ({ id: d.id, ...d.data() } as WaterLog)),
       sleepLogs: sleepSnap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog)),
+      userGymPlan: fetchedUserGymPlan,
+      flashcards: flashcardsSnap.docs.map(d => d.data() as any),
     });
 
     return BackgroundFetch.BackgroundFetchResult.NewData;
@@ -1540,7 +1630,7 @@ export async function registerBackgroundNotificationFetch() {
     const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_NOTIFICATION_SYNC_TASK);
     if (!isRegistered) {
       await BackgroundFetch.registerTaskAsync(BACKGROUND_NOTIFICATION_SYNC_TASK, {
-        minimumInterval: 60 * 60 * 4,
+        minimumInterval: 60 * 60 * 2, // FIX 7.6: 2 hours instead of 4 hours
         stopOnTerminate: false,
         startOnBoot: true,
       });

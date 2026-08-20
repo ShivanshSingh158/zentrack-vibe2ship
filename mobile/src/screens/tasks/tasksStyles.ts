@@ -160,10 +160,10 @@ export const makeTasksStyles = (colors: any, isDark: boolean = true) => StyleShe
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: isDark ? (colors.surface2 || colors.surface) : '#F0EFF7',
+    backgroundColor: isDark ? '#0c0c0f' : '#F0EFF7',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: isDark ? '#1c1c22' : colors.border,
   },
   quickChipText: { fontSize: 13, fontWeight: '600', color: colors.textPrimary },
   addTaskBtnFull: {
@@ -177,13 +177,13 @@ export const makeTasksStyles = (colors: any, isDark: boolean = true) => StyleShe
     marginTop: 8,
   },
   addTaskBtnDisabled: {
-    backgroundColor: colors.border,
+    backgroundColor: isDark ? '#141418' : colors.border,
   },
   addTaskBtnFullText: { fontSize: 15, fontWeight: '700', color: isDark ? '#000000' : '#ffffff' },
   addTaskBtnDisabledText: { color: colors.textMuted, fontWeight: '600' },
 
   // Subtasks panel
-  subtasksPanel: { backgroundColor: isDark ? '#08080A' : '#F8F7FC', borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 10, marginBottom: 14, gap: 8 },
+  subtasksPanel: { backgroundColor: isDark ? '#050507' : '#F8F7FC', borderWidth: 1, borderColor: isDark ? '#1c1c22' : colors.border, borderRadius: 12, padding: 10, marginBottom: 14, gap: 8 },
   subtaskRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   subtaskRowText: { flex: 1, fontSize: 13, fontWeight: '400', color: colors.textPrimary },
   subtaskInputRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8 },

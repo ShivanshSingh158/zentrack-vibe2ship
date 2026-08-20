@@ -723,22 +723,29 @@
   flex-direction: column;
   background: var(--color-surface, #141416);
   border: 1px solid var(--color-border, #242428);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: hidden;
   position: relative;
-  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
   cursor: default;
   width: 100%;
 }
 
 .todo-card-row:hover {
-  border-color: rgba(165, 153, 255, 0.25);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  transform: translateY(-1px);
+  border-color: var(--color-border-hover, #2e2e34);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(165, 153, 255, 0.14);
 }
 
 .todo-card-row.selected-row {
   background: rgba(165, 153, 255, 0.08);
   border-color: #a599ff;
+  box-shadow: 0 0 0 1px rgba(165, 153, 255, 0.35);
+}
+
+.todo-card-row.completed-row {
+  opacity: 0.85;
+  background: rgba(20, 20, 22, 0.6);
 }
 
 .todo-priority-stripe {
@@ -747,13 +754,14 @@
   top: 0;
   bottom: 0;
   width: 3.5px;
+  border-radius: 4px 0 0 4px;
 }
 
 .todo-row-main {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 1.1rem;
+  padding: 0.8rem 1.15rem;
   width: 100%;
   box-sizing: border-box;
 }
@@ -764,6 +772,7 @@
   opacity: 0.4;
   display: flex;
   align-items: center;
+  transition: opacity 150ms ease, color 150ms ease;
 }
 
 .todo-drag-handle:hover {
@@ -772,28 +781,30 @@
 }
 
 .todo-circular-checkbox {
-  width: 19px;
-  height: 19px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border: 1.5px solid var(--color-border, #242428);
   background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #000000;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1), border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
   flex-shrink: 0;
 }
 
 .todo-circular-checkbox:hover {
-  transform: scale(1.1);
+  transform: scale(1.12);
   border-color: #5eda9e;
+  background: rgba(94, 218, 158, 0.12);
 }
 
 .todo-circular-checkbox.checked {
   background: #5eda9e;
   border-color: #5eda9e;
+  box-shadow: 0 0 10px rgba(94, 218, 158, 0.4);
 }
 
 .todo-circular-checkbox.bulk {
@@ -803,6 +814,7 @@
 .todo-circular-checkbox.bulk.checked {
   background: #a599ff;
   border-color: #a599ff;
+  box-shadow: 0 0 10px rgba(165, 153, 255, 0.4);
 }
 
 .todo-title-and-meta {
@@ -3641,4 +3653,124 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FROST QUARTZ (LIGHT MODE) — 100% Mobile Parity with mobile/src/theme/tokens.ts
+   ══════════════════════════════════════════════════════════════════════════════ */
+body.theme-light,
+.theme-light {
+  --color-bg: #F4F3F8;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F0EFF7;
+  --color-surface-raised: #FFFFFF;
+  --color-border: #E2E1EA;
+  --color-border-hover: #D1D0DA;
+  --color-text-1: #1C1C1E;
+  --color-text-2: #4B5563;
+  --color-text-3: #636366;
+  --color-text-4: #8E8E93;
+}
+
+.theme-light .tasks-module-root {
+  color: #1C1C1E;
+}
+
+.theme-light .tasks-action-pill-btn,
+.theme-light .tasks-icon-overflow-btn,
+.theme-light .task-date-strip-container,
+.theme-light .task-progress-card,
+.theme-light .todo-card-row,
+.theme-light .tasks-search-wrap,
+.theme-light .timeline-view-wrapper,
+.theme-light .task-modal-studio-container {
+  background: #FFFFFF;
+  border-color: #E2E1EA;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+}
+
+.theme-light .todo-card-row:hover {
+  background: #FFFFFF;
+  border-color: #D1D0DA;
+  box-shadow: 0 6px 20px rgba(108, 92, 231, 0.12);
+}
+
+.theme-light .todo-card-row.selected-row {
+  background: rgba(108, 92, 231, 0.06);
+  border-color: #6C5CE7;
+  box-shadow: 0 0 0 1px rgba(108, 92, 231, 0.3);
+}
+
+.theme-light .todo-card-row.completed-row {
+  background: #F8F8FC;
+  opacity: 0.85;
+}
+
+.theme-light .todo-circular-checkbox {
+  border-color: #D1D0DA;
+}
+
+.theme-light .todo-circular-checkbox:hover {
+  border-color: #059669;
+  background: rgba(5, 150, 105, 0.1);
+}
+
+.theme-light .todo-circular-checkbox.checked {
+  background: #059669;
+  border-color: #059669;
+}
+
+.theme-light .todo-circular-checkbox.bulk.checked {
+  background: #6C5CE7;
+  border-color: #6C5CE7;
+}
+
+.theme-light .tasks-primary-add-btn,
+.theme-light .studio-btn-primary {
+  background: #6C5CE7;
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(108, 92, 231, 0.3);
+}
+
+.theme-light .tasks-primary-add-btn:hover,
+.theme-light .studio-btn-primary:hover:not(:disabled) {
+  background: #5B4BC4;
+  box-shadow: 0 6px 18px rgba(108, 92, 231, 0.4);
+}
+
+.theme-light .date-pill.selected {
+  background: rgba(108, 92, 231, 0.12);
+  border-color: rgba(108, 92, 231, 0.4);
+  color: #6C5CE7;
+}
+
+.theme-light .date-pill.today .date-pill-num {
+  color: #6C5CE7;
+}
+
+.theme-light .date-pill.selected .date-pill-day,
+.theme-light .date-pill.selected .date-pill-num {
+  color: #6C5CE7;
+}
+
+.theme-light .todo-subtasks-drawer {
+  background: #F0EFF7;
+  border-top-color: #E2E1EA;
+}
+
+.theme-light .view-dropdown-menu {
+  background: #FFFFFF;
+  border-color: #E2E1EA;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
+}
+
+.theme-light .view-menu-item:hover {
+  background: rgba(108, 92, 231, 0.08);
+  color: #1C1C1E;
+}
+
+.theme-light .view-menu-item.active {
+  background: rgba(108, 92, 231, 0.12);
+  color: #6C5CE7;
+}
+
 

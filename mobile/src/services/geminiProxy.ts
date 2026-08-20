@@ -393,10 +393,12 @@ export async function extractTaskFromAudio(base64Audio: string): Promise<any[]> 
       return [];
     }
 
+    // Import formatLocalDateStr dynamically to prevent circular dependencies
+    const { formatLocalDateStr } = require('../utils/dateUtils');
     const prompt = `Parse this voice recording transcript into task(s): "${transcript.trim()}"
 Return ONLY a JSON array of tasks: [{"title": str, "date": "YYYY-MM-DD", "timeSlot": "HH:MM or null", "priority": "P1|P2|P3", "isRecurring": bool, "recurrenceRule": null}]
 If the transcript is silence, background noise, greetings, or does not explicitly contain a task, return an empty array [].
-Today's date is ${new Date().toISOString().slice(0, 10)}.`;
+Today's date is ${formatLocalDateStr(new Date())}.`;
 
     const response = await callProxy({
       model: 'gemini-2.5-flash',

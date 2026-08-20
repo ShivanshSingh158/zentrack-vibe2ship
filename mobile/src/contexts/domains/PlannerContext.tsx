@@ -8,13 +8,14 @@
  * Calendar and Goals screens show real data immediately, even when offline.
  * Firestore snapshots silently update the cache when online.
  */
-import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { InteractionManager } from 'react-native';
+import { InteractionManager, DeviceEventEmitter } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { CustomEvent, Goal, WeeklyReview } from "../MobileDataContext";
 import { readPlannerCache, writePlannerCache } from "../../utils/domainCache";
+import { parseCustomEvent, parseGoal } from "../../utils/schemaGuards";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface PlannerContextType {
@@ -67,8 +68,43 @@ export function PlannerProvider({
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
 
-  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  // ── Listener auto-restart on error ───────────────────────────────────────
+  const [subscriptionVersion, setSubscriptionVersion] = useState(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
+    console.warn(`[Planner] ${context} listener error — restarting in 5s`, err.message);
+    if (retryTimerRef.current) return;
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      subscribedRef.current = false;
+      unsubsRef.current.forEach(u => u());
+      unsubsRef.current = [];
+      setSubscriptionVersion(v => v + 1);
+    }, 5000);
+  }, []);
+
+  // ── Foreground reconnect: restart listeners after long background ─────────
+  // AppNavigator emits 'firestore_force_reconnect' on every AppState: active.
+  // Resets subscribedRef and bumps subscriptionVersion to force a clean
+  // listener teardown and reopen after the app returns from 6+ hours background.
   useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
+      if (user) {
+        console.log('[Planner] foreground reconnect — restarting Firestore listeners');
+        unsubsRef.current.forEach(u => u());
+        unsubsRef.current = [];
+        subscribedRef.current = false;
+        setSubscriptionVersion(v => v + 1);
+      }
+    });
+    return () => sub.remove();
+  }, [user]);
+
+  // ── Offline-first boot: seed from AsyncStorage when user uid is available ──
+  const userUid = user?.uid ?? null;
+  useEffect(() => {
+    if (!userUid) return;
     let cancelled = false;
     readPlannerCache().then(cached => {
       if (cancelled) return;
@@ -77,28 +113,28 @@ export function PlannerProvider({
       if (Array.isArray(cached.weeklyReviews)) setWeeklyReviews(cached.weeklyReviews);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [userUid]);
 
-  const openSubscriptions = (uid: string) => {
+  const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return;
     subscribedRef.current = true;
 
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.CALENDAR_EVENTS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomEvent)); setCustomEvents(fresh); writePlannerCache({ customEvents: fresh }); },
-      err => console.error("[Planner] customEvents", err)
+      snap => { const fresh = snap.docs.map(d => parseCustomEvent(d.data(), d.id)); setCustomEvents(fresh); writePlannerCache({ customEvents: fresh }); },
+      scheduleListenerRestart("customEvents")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.GOALS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Goal)); setGoals(fresh); writePlannerCache({ goals: fresh }); },
-      err => console.error("[Planner] goals", err)
+      snap => { const fresh = snap.docs.map(d => parseGoal(d.data(), d.id)); setGoals(fresh); writePlannerCache({ goals: fresh }); },
+      scheduleListenerRestart("goals")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.WEEKLY_REVIEWS), where("userId", "==", uid)),
       snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeeklyReview)); setWeeklyReviews(fresh); writePlannerCache({ weeklyReviews: fresh }); },
-      err => console.error("[Planner] weeklyReviews", err)
+      scheduleListenerRestart("weeklyReviews")
     ));
-  };
+  }, [scheduleListenerRestart]);
 
   useEffect(() => {
     if (user) {
@@ -107,14 +143,18 @@ export function PlannerProvider({
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
-  }, [user]);
+  }, [user, subscriptionVersion, openSubscriptions]);
 
-  useEffect(() => () => { unsubsRef.current.forEach(u => u()); }, []);
+  useEffect(() => () => {
+    unsubsRef.current.forEach(u => u());
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+  }, []);
 
-  const ensureSubscribed = () => {
+  const ensureSubscribed = useCallback(() => {
     if (user && !subscribedRef.current) openSubscriptions(user.uid);
-  };
+  }, [user, openSubscriptions]);
 
   // Optimistic write helpers
   const optimisticAddEvent = (event: CustomEvent) => {

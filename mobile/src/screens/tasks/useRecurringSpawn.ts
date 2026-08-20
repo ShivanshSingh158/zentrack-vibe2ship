@@ -12,13 +12,28 @@ import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { Task } from '../../contexts/MobileDataContext';
 import { handleSyncError } from '../../utils/errorUtils';
-import { today } from './taskConstants';
+import { getToday } from './taskConstants'; // use getToday() — never the stale `today` constant
 
-export function useRecurringSpawn(tasks: Task[], userId: string | undefined) {
+// Module-level dedup set: tracks userId+date combinations that have already been
+// spawned in this app session. Prevents duplicate task creation when Firestore is
+// slow to confirm newly-written tasks back via onSnapshot (Bug 4 fix).
+const _spawnedThisSession = new Set<string>();
+
+export function useRecurringSpawn(
+  tasks: Task[],
+  userId: string | undefined,
+  optimisticAddTask?: (task: Task) => void
+) {
   useEffect(() => {
     if (!userId || tasks.length === 0) return;
 
     const handle = InteractionManager.runAfterInteractions(async () => {
+      const today = getToday(); // fresh call — correct date even after midnight
+
+      // Dedup guard: if we've already spawned for this user+date in this session, skip.
+      const sessionKey = `${userId}|${today}`;
+      if (_spawnedThisSession.has(sessionKey)) return;
+
       // Only look at daily-type recurring tasks that haven't ended
       const recurringTasks = tasks.filter(t =>
         t.isRecurring &&
@@ -44,6 +59,20 @@ export function useRecurringSpawn(tasks: Task[], userId: string | undefined) {
         const existsForToday = todayTaskSourceIds.has(sourceId);
         if (!existsForToday && src.date !== today) {
           const newRef = doc(collection(db, COLLECTION.TASKS));
+          const newTask: Task = {
+            ...src,
+            id: newRef.id,
+            date: today,
+            recurringSourceId: sourceId,
+            status: 'pending',
+            completedAt: null,
+          };
+
+          // Optimistic local add — instant visibility offline
+          if (optimisticAddTask) {
+            optimisticAddTask(newTask);
+          }
+
           batch.set(newRef, {
             ...src,
             id: undefined,
@@ -57,9 +86,20 @@ export function useRecurringSpawn(tasks: Task[], userId: string | undefined) {
         }
       }
 
-      if (spawns > 0) await batch.commit().catch(handleSyncError);
+      if (spawns > 0) {
+        try {
+          await batch.commit();
+          // Only mark session-spawned AFTER successful commit so we retry on failure
+          _spawnedThisSession.add(sessionKey);
+        } catch (e) {
+          handleSyncError(e);
+        }
+      } else {
+        // Nothing to spawn — mark as done so we don't re-check on every tasks.length change
+        _spawnedThisSession.add(sessionKey);
+      }
     });
 
     return () => handle.cancel();
-  }, [userId, tasks.length]); // tasks.length is sufficient — avoids deep comparison
+  }, [userId, tasks.length, optimisticAddTask]);
 }

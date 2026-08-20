@@ -341,6 +341,8 @@ interface DraggableTaskBlockProps {
   isMissed?: boolean;
   actualMinutes?: number;
   actualStartTime?: string;
+  leftPercent?: number;
+  widthPercent?: number;
 }
 
 function DraggableTaskBlock({
@@ -361,6 +363,8 @@ function DraggableTaskBlock({
   isMissed = false,
   actualMinutes,
   actualStartTime,
+  leftPercent = 0,
+  widthPercent = 100,
 }: DraggableTaskBlockProps) {
   const translateY = useSharedValue(0);
   const scale = useSharedValue(1);
@@ -456,6 +460,9 @@ function DraggableTaskBlock({
           {
             top: initialTop,
             height: height - 4,
+            left: widthPercent < 100 ? `${leftPercent}%` : SPACE.sm,
+            width: widthPercent < 100 ? `${widthPercent - 2}%` : undefined,
+            right: widthPercent < 100 ? undefined : 0,
             backgroundColor: taskColors.bgColor,
             borderColor: taskColors.borderNormal,
             borderLeftColor: taskColors.accentColor,
@@ -681,7 +688,7 @@ const TimelineView = React.memo(function TimelineView({
 
   // •• Build positioned task blocks ••••••••••••••••••••••••••••••••••••••••••
   const positionedTasks = useMemo(() => {
-    return tasks
+    const raw = (tasks || [])
       .filter(t => t.timeSlot)
       .map(task => {
         const parts = task.timeSlot!.split(/[-–—•]| to /i);
@@ -709,6 +716,8 @@ const TimelineView = React.memo(function TimelineView({
           endFloat: endFloat || (startFloat + 0.75),
           durationFloat,
           isMissed,
+          leftPercent: 0,
+          widthPercent: 100,
         };
       })
       .filter(Boolean) as {
@@ -719,7 +728,45 @@ const TimelineView = React.memo(function TimelineView({
         endFloat: number;
         durationFloat: number;
         isMissed: boolean;
+        leftPercent: number;
+        widthPercent: number;
       }[];
+
+    // Partition overlapping blocks into side-by-side columns
+    const sorted = [...raw].sort((a, b) => a.startFloat - b.startFloat);
+    const groups: (typeof raw[0])[][] = [];
+    let currentGroup: (typeof raw[0])[] = [];
+    let lastGroupEnd = 0;
+
+    sorted.forEach((block) => {
+      if (currentGroup.length === 0) {
+        currentGroup.push(block);
+        lastGroupEnd = block.endFloat;
+      } else if (block.startFloat < lastGroupEnd) {
+        currentGroup.push(block);
+        lastGroupEnd = Math.max(lastGroupEnd, block.endFloat);
+      } else {
+        groups.push(currentGroup);
+        currentGroup = [block];
+        lastGroupEnd = block.endFloat;
+      }
+    });
+    if (currentGroup.length > 0) groups.push(currentGroup);
+
+    groups.forEach((group) => {
+      const count = group.length;
+      group.forEach((block, idx) => {
+        if (count > 1) {
+          block.leftPercent = (idx / count) * 100;
+          block.widthPercent = 100 / count;
+        } else {
+          block.leftPercent = 0;
+          block.widthPercent = 100;
+        }
+      });
+    });
+
+    return sorted;
   }, [tasks, START_HOUR, isToday, isPastDay, nowHours]);
 
   // •• Build positioned class/lab blocks from attendance schedule •••••••••••
@@ -1050,7 +1097,7 @@ const TimelineView = React.memo(function TimelineView({
         {/* Draggable Task Blocks */}
         {positionedTasks.map((pt) => {
           if (!pt) return null;
-          const { task, top, height, durationFloat, startFloat, isMissed } = pt;
+          const { task, top, height, durationFloat, startFloat, isMissed, leftPercent, widthPercent } = pt;
           return (
             <DraggableTaskBlock
               key={task.id}
@@ -1072,6 +1119,8 @@ const TimelineView = React.memo(function TimelineView({
               isMissed={isMissed}
               actualMinutes={task.actualMinutes}
               actualStartTime={task.actualStartTime}
+              leftPercent={leftPercent}
+              widthPercent={widthPercent}
             />
           );
         })}

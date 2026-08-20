@@ -1,99 +1,102 @@
 # ZenTrack Mobile — Machine-Navigable Architecture Report
 
-> **MANDATORY FIRST ACTION FOR ALL AI AGENTS**: Before ANY other action on the mobile app, read this file. This is the single source of truth. Use the File Index in Section 4 to jump directly to any file without searching the codebase.
+> **MANDATORY FIRST ACTION FOR ALL AI AGENTS**: Before ANY other action on the mobile codebase, read this file. This is the single source of truth. Use the Function & File Encyclopedia in Section 4 to jump directly to any function, hook, component, or service without searching or scanning the codebase.
 >
-> **KEYWORD TRIGGERS**: Any mention of "mobile app", "Expo", "React Native", "Sara on mobile", "mobile notification", "mobile screen", "mobile agent" → read this file first.
+> **KEYWORD TRIGGERS**: Any mention of "mobile app", "Expo", "React Native", "Sara on mobile", "mobile notification", "mobile screen", "mobile agent", "orchestrator.ts (mobile)" → read this file first.
 >
-> **UPDATE PROTOCOL**: Any time code changes — update the relevant section of this document in the same session.
+> **UPDATE PROTOCOL**: Any time mobile code changes — update the relevant section of this document in the same session.
 
 ---
 
-## 1. Project Overview
+## 1. Executive Overview & Core Principles
 
 - **App Name**: ZenTrack Mobile
-- **Platform**: React Native (Expo SDK 54) — iOS + Android
+- **Platform**: React Native (Expo SDK ~54.0.36, Hermes Engine) — iOS + Android
 - **Language**: TypeScript ~5.9.2
 - **Package Manager**: npm
 - **Entry Point**: `mobile/index.ts` → `mobile/App.tsx`
 - **Dev Command**: `npm start` (from `mobile/` directory, runs `expo start -c`)
-- **Full workspace path**: `zentrack-vibe2ship/mobile/`
+- **Full Workspace Path**: `zentrack-vibe2ship/mobile/`
 
-### Architecture Philosophy
-The mobile app calls Gemini **directly** using `callProxy()` in `geminiProxy.ts` — no Socket.IO, no Render backend. Sara's full agent pipeline runs on-device logic with direct Gemini REST API calls using a 9-key rotation pool. This gives **zero cold start, ~1-2 second responses**.
+### Architectural Pillars
+1. **Direct Gemini AI Engine (Zero Cold Start)**: SARA AI runs on-device orchestration via `callProxy()` in `src/services/geminiProxy.ts` with direct Gemini REST API calls using an autonomous 9-key round-robin rotation pool. Zero server cold starts, 1–2 second streaming responses.
+2. **WhatsApp-Grade Offline-First Resilience**: All Firestore writes route through `safeWrite()` and an AsyncStorage-backed write queue (`@zentrack_offline_write_queue`) with Last-Write-Wins (LWW) conflict resolution. Data is never lost offline, survives app force-kills, and syncs atomically on reconnect.
+3. **0ms Stale-While-Revalidate Boot**: Consolidated Root Boot Manifest (`loadBootManifest()`) loads all critical auth, route, layout, and domain caches in a single native C++ bridge call.
+4. **Domain-Isolated Context Pipeline**: Root data is split across 5 domain providers (`CoreDataContext`, `WellnessContext`, `AcademicContext`, `CreativeContext`, `PlannerContext`). Snapshot updates re-render only the affected domain consumers.
+5. **Self-Healing Background Auth**: Proactive Firestore channel reconnection (`firestore_force_reconnect`), fatal auth error routing, and an 8-second dead-session recovery window ensure seamless background recovery without silent data drops.
 
 ```
-Sara Chat → orchestrateAgent() → callProxy() → Gemini REST API (direct, 9-key rotation)
-                                               ↕
-                                        Firestore (direct)
-```
-
-### Key URLs
-```
-https://myzentrack.vercel.app           ← Gemini proxy + Voice proxy (Vercel serverless)
-https://generativelanguage.googleapis.com  ← Direct Gemini API (primary path)
+┌────────────────────────────────────────────────────────────────────────┐
+│                        ZenTrack Mobile Runtime                         │
+├────────────────────────────────────────────────────────────────────────┤
+│  App Entry (index.ts → App.tsx)                                        │
+│   ├── Fonts & Splash Screen Guard (preventAutoHideAsync)               │
+│   ├── Root Providers: GestureHandler → SafeArea → ErrorBoundary        │
+│   │   └── ThemeProvider (Dark/Light) → PortalProvider                  │
+│   │       └── MobileDataProvider (5 Domain Providers)                  │
+│   │           └── AppNavigator (Auth Gate + 0ms Boot Manifest)         │
+├────────────────────────────────────────────────────────────────────────┤
+│  SARA Engine v2                                                        │
+│   Intent Classifier → Orchestrator → 9-Key Gemini Proxy → Action Gate  │
+├────────────────────────────────────────────────────────────────────────┤
+│  Data Layer                                                            │
+│   AsyncStorage L1/L2 Cache ◄── safeWrite() ──► Firestore (18 Colls)    │
+│                                     │                                  │
+│                               Offline Queue                            │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Exact Package Versions (package.json)
+## 2. Verified Package Versions (`package.json`)
 
-### Runtime Dependencies
+### Core & Runtime Dependencies
 | Package | Version | Purpose |
 |---|---|---|
-| `expo` | ^54.0.0 | Core Expo SDK |
-| `react` | 19.1.0 | React library |
-| `react-native` | 0.81.5 | React Native runtime |
-| `typescript` | ~5.9.2 | TypeScript compiler |
-| `expo-status-bar` | ~3.0.9 | Status bar control |
-| `expo-font` | ~14.0.12 | Font loading (Inter + Playfair Display) |
-| `expo-blur` | ~15.0.8 | BlurView (frosted glass tab bar) |
-| `expo-haptics` | ~15.0.8 | Haptic feedback |
-| `expo-linear-gradient` | ~15.0.8 | Gradient backgrounds (onboarding) |
-| `expo-av` | ~16.0.8 | Audio recording + WAV playback (Sara voice) |
-| `expo-speech` | ~14.0.8 | Device TTS fallback when Sarvam fails |
-| `expo-file-system` | ~19.0.23 | Read/write audio files, temp WAV |
-| `expo-notifications` | ~0.32.17 | Local scheduled push notifications |
-| `expo-local-authentication` | ~17.0.8 | Biometric/face ID lock |
-| `expo-document-picker` | ~14.0.8 | File picker (Notes uploads) |
-| `expo-sharing` | ~14.0.8 | Share workout summaries |
-| `expo-crypto` | ~15.0.9 | Cryptographic utilities |
-| `expo-web-browser` | ~15.0.11 | In-app browser (OAuth flows) |
-| `expo-auth-session` | ~7.0.11 | OAuth session management |
-| `expo-apple-authentication` | ~8.0.8 | Apple Sign In (iOS only) |
-| `@expo/vector-icons` | ^15.0.3 | Ionicons icon set |
-| `@expo-google-fonts/inter` | ^0.4.2 | Inter font family (Regular/Medium/SemiBold) |
-| `@expo-google-fonts/playfair-display` | ^0.4.2 | Playfair Display SemiBold (editorial headings) |
-| `firebase` | ^12.15.0 | Firebase client SDK (Auth + Firestore) |
-| `@react-native-async-storage/async-storage` | 2.2.0 | Persistent key-value store |
-| `@react-native-community/datetimepicker` | 8.4.4 | Native date/time pickers |
-| `@react-navigation/native` | ^7.3.8 | Navigation core |
-| `@react-navigation/native-stack` | ^7.17.10 | Stack navigator |
-| `@react-navigation/bottom-tabs` | ^7.18.8 | Bottom tab navigator |
-| `@react-navigation/drawer` | ^7.12.8 | Drawer navigator |
-| `react-native-screens` | ~4.16.0 | Native screen containers |
-| `react-native-safe-area-context` | ~5.6.0 | Safe area insets (notch/home bar) |
-| `react-native-gesture-handler` | ~2.28.0 | Gesture recognition |
-| `react-native-reanimated` | 4.1.1 | Animation engine (Worklets-based) — **pinned** |
-| `react-native-worklets` | ^0.5.1 | Reanimated worklets runtime — **pinned** |
-| `react-native-svg` | 15.12.1 | SVG rendering (charts, progress rings) |
-| `react-native-calendars` | ^1.1314.0 | Calendar grid component |
-| `react-native-markdown-display` | ^7.0.2 | Markdown renderer (Sara responses) |
-| `react-native-webview` | 13.15.0 | WebView (YouTube exercise demos) |
-| `react-native-youtube-iframe` | ^2.4.1 | YouTube player wrapper |
-| `react-native-confetti-cannon` | ^1.5.2 | Confetti (workout completion) |
-| `react-native-view-shot` | 4.0.3 | Screenshot capture (share workout) |
+| `expo` | `~54.0.36` | Core Expo Framework |
+| `react` | `19.1.0` | React Library |
+| `react-native` | `0.81.5` | React Native Framework |
+| `typescript` | `~5.9.2` | TypeScript Compiler |
+| `firebase` | `^12.15.0` | Firebase Client SDK (Auth + Firestore) |
+| `@react-native-async-storage/async-storage` | `2.2.0` | Persistent Key-Value Storage |
+| `@react-native-community/netinfo` | `11.4.1` | Network Status & Offline Detection |
+| `@react-native-community/datetimepicker` | `8.4.4` | Native Date & Time Pickers |
+| `@react-native-google-signin/google-signin` | `^16.1.2` | Native Google Authentication |
+| `@shopify/flash-list` | `2.0.2` | High-Performance Virtualized Lists |
+| `react-native-reanimated` | `4.1.1` | Worklet-Based UI Thread Animations (Pinned) |
+| `react-native-worklets` | `^0.5.1` | Reanimated Runtime Engine (Pinned) |
+| `react-native-gesture-handler` | `~2.28.0` | Gesture Recognition & Native Touch |
+| `react-native-screens` | `~4.16.0` | Native Screen Containers |
+| `react-native-safe-area-context` | `~5.6.0` | Device Notch & Inset Handler |
+| `react-native-svg` | `15.12.1` | Vector Graphics & Chart Renders |
+| `expo-notifications` | `~0.32.17` | Local & Push Notification Scheduling |
+| `expo-av` | `~16.0.8` | Audio Recording & Audio Playback |
+| `expo-speech` | `~14.0.8` | Native Device Text-to-Speech Fallback |
+| `expo-file-system` | `~19.0.23` | Local Audio/Document File IO |
+| `expo-haptics` | `~15.0.8` | Tactical Haptic Feedback |
+| `expo-blur` | `~15.0.8` | Frosted Glass BlurView |
+| `expo-linear-gradient` | `~15.0.8` | UI Gradient Layers |
+| `expo-local-authentication` | `~17.0.8` | Biometric FaceID/Fingerprint Auth |
+| `expo-document-picker` | `~14.0.8` | File & PDF Selection |
+| `expo-print` | `~15.0.8` | HTML to PDF Generation |
+| `expo-sharing` | `~14.0.8` | Native OS Share Sheet |
+| `expo-crypto` | `~15.0.9` | Cryptographic Utilities & UUIDs |
+| `expo-web-browser` | `~15.0.11` | In-App Browser Modals |
+| `expo-auth-session` | `~7.0.11` | OAuth Session Coordinator |
+| `expo-apple-authentication` | `~8.0.8` | Apple Sign-In (iOS) |
+| `expo-font` | `~14.0.12` | Custom Typography Loader |
+| `@expo-google-fonts/inter` | `^0.4.2` | Inter Font Family (400, 500, 600, 700) |
+| `@expo-google-fonts/playfair-display` | `^0.4.2` | Playfair Display Font (600) |
+| `react-native-calendars` | `^1.1314.0` | Calendar Grid Engine |
+| `react-native-markdown-display` | `^7.0.2` | Markdown Renderer for AI Chat |
+| `react-native-webview` | `13.15.0` | Embedded Web Content & Demos |
+| `react-native-youtube-iframe` | `^2.4.1` | YouTube Video Player Bridge |
+| `react-native-confetti-cannon` | `^1.5.2` | Milestone Confetti Particle Emitter |
+| `react-native-view-shot` | `4.0.3` | View Snapshot Image Capture |
+| `react-native-syntax-highlighter` | `^2.1.0` | Code Block Syntax Formatter |
+| `xlsx` | `^0.18.5` | Excel Timetable & Attendance Parser |
 
-> [!IMPORTANT]
-> `socket.io-client` has been **removed** (2026-07-14). The mobile app no longer connects to a Socket.IO backend. All AI calls go through `callProxy()` in `geminiProxy.ts`.
-
-### Dev Dependencies
-| Package | Version |
-|---|---|
-| `@types/react` | ~19.1.10 |
-| `babel-preset-expo` | ~54.0.10 |
-| `typescript` | ~5.9.2 |
-
-### Version Overrides (pinned to prevent peer conflicts)
+### Version Overrides (in `package.json`)
 ```json
 "overrides": {
   "react-native-reanimated": "4.1.1",
@@ -103,912 +106,811 @@ https://generativelanguage.googleapis.com  ← Direct Gemini API (primary path)
 
 ---
 
-## 3. Folder Map
+## 3. Directory & Folder Map
 
 ```
 mobile/
-├── index.ts                              App entry: AppRegistry.registerComponent
-├── App.tsx                               Root: useFonts (Inter+Playfair), wraps AppNavigator
-├── app.json                              Expo config (bundle ID, permissions, build plugins)
-├── package.json                          All dependencies (see Section 2)
-├── tsconfig.json                         TypeScript configuration
-├── .env                                  Environment variables
+├── index.ts                              # AppRegistry Entry Point
+├── App.tsx                               # Root App: Fonts, Providers, Splash, Sync setup
+├── app.json                              # Expo Application Config & Permissions
+├── package.json                          # Pinned Runtime & Dev Dependencies
+├── tsconfig.json                         # TypeScript Project Settings
+├── .env                                  # Environment Secrets & Public API Keys
 ├── plugins/
-│   └── withAndroidManifestMod.js         Custom Expo plugin (Android manifest patches)
+│   └── withAndroidManifestMod.js         # Custom Expo Config Plugin (Android Manifest)
 └── src/
-    ├── agent/
-    │   ├── orchestrator.ts               SARA ENGINE v2: CMG+IRCI+BFE+Cap4+Cap6 wired (direct callProxy)
-    │   ├── intentClassifier.ts           IRCI: on-device intent + selective context (<5ms, 0 API calls)
-    │   ├── dagExecutor.ts                DAG executor for multi-node parallel tasks (uses webScraper)
-    │   └── saraAgent.ts                  processGymChat() — GYM-GPT elite coach (100+ books, S-Tier biomechanics)
-    ├── components/
-    │   ├── Academic/
-    │   │   └── AddSubjectModal.tsx        (12KB)
-    │   ├── AnimatedPressable.tsx          Reusable pressable with micro-animation
-    │   ├── Calendar/
-    │   │   └── AddEventModal.tsx          (7KB)
-    │   ├── Dashboard/
-    │   │   └── QuickCaptureSheet.tsx      Slide-up quick capture (Task/Note/Habit tabs, NL date parser)
-    │   ├── Gym/
-    │   │   ├── ExerciseCard.tsx           Set logging, RPE, rest timer (18KB)
-    │   │   ├── ZenGymAiModal.tsx          Full-screen ChatGPT OLED black modal with persistent Chat History drawer
-    │   │   ├── ZenGymAiFab.tsx            Luxury floating action button for ZenGym AI (GYM-GPT)
-    │   │   ├── GymAiIcon.tsx              High-precision vector SVG emblem with metallic plates & AI sparkles
-    │   │   ├── AddExerciseModal.tsx       Exercise search + add modal
-    │   │   ├── AddCardioModal.tsx         Cardio session add modal
-    │   │   ├── LogCardioModal.tsx         Cardio log entry modal
-    │   │   ├── CardioCard.tsx             Cardio session display card
-    │   │   ├── ExerciseHistoryDrawer.tsx  Per-exercise history drawer
-    │   │   ├── GymNotificationModal.tsx   Gym reminder notification settings
-    │   │   ├── GymProfileModal.tsx        User gym profile modal
-    │   │   ├── AnimatedRestTimer.tsx      Rest timer between sets (animated)
-    │   │   └── BeforeAfterSlider.tsx      Progress photo before/after slider
-    │   ├── SARA/
-    │   │   ├── SaraBubble.tsx             Bubble types: sara/user/action_card/quick_reply
-    │   │   ├── VoiceOrb.tsx               Animated orb: idle/listening/speaking states
-    │   │   ├── ActionConfirmationCard.tsx Confirm/reject proposed action (Tier 3)
-    │   │   ├── VoiceMicButton.tsx         Mic button in chat input bar
-    │   │   ├── StreamingText.tsx          Animated streaming text renderer
-    │   │   ├── ReasoningFeed.tsx          [v2 Cap4] Live reasoning steps feed during thinking
-    │   │   ├── SaraHUDBanner.tsx          [v2 Cap5] PSI dismissable surface banner (per-screen)
-    │   │   ├── SaraHUDToast.tsx           [v2 Cap3] Tier-1 auto-execute passive toast
-    │   │   └── InlineActionPill.tsx       [v2 Cap3] Tier-2 inline quick-confirm pill
-    │   ├── Learning/
-    │   │   ├── LearningTopicCard.tsx      Draggable topic card + subtask list renderer
-    │   │   ├── LearningVideoPlayer.tsx    YouTube player + controls + AI chat + notes panel
-    │   │   └── LearningModals.tsx         Add Topic / Add Subtask / Roadmap import modals
-    │   ├── Notes/                         Reserved for future NotesScreen splits
-    │   ├── Tasks/
-    │   │   ├── TaskRow.tsx                Task list row with swipe actions
-    │   │   ├── TimelineView.tsx           24-hour timeline rendering of tasks
-    │   │   ├── MatrixView.tsx             Eisenhower Matrix 4-quadrant rendering
-    │   │   ├── RecurrencePickerModal.tsx  Modal for configuring custom task recurrence
-    │   │   └── Modals/                    Reserved for future TasksScreen modal extraction
-    │   └── ui/
-    │       ├── FloatingActionButton.tsx   Reusable FAB component
-    │       └── GlassCard.tsx              Glassmorphism card wrapper
+    ├── agent/                            # SARA AI Engine v2 Pipeline
+    │   ├── orchestrator.ts               # SARA Orchestrator (CMG+IRCI+BFE+Cap4+Cap6)
+    │   ├── intentClassifier.ts           # IRCI: Intent Ranking & Context Pruning (<5ms)
+    │   ├── dagExecutor.ts                # Parallel DAG Task Executor
+    │   └── saraAgent.ts                  # GYM-GPT Coach & Action Parser
+    ├── components/                       # Domain Component Library
+    │   ├── Academic/                     # Attendance, Timetable & Predictor Modals
+    │   ├── Analytics/                    # Academic & Productivity Predictors
+    │   ├── Calendar/                     # Event Modal, Week Pager & Agenda Strips
+    │   ├── Dashboard/                    # Life Ring, Agenda, Vitality, QuickCapture Sheets
+    │   ├── Gym/                          # Set Loggers, Rest Timers, GYM-GPT FAB/Modal, Heatmaps
+    │   │   └── Charts/                   # Muscle Donut, Consistency, Volume & PR Charts
+    │   ├── Habits/                       # Habit Reminder & Streak Modals
+    │   ├── Learning/                     # Video Player, Flashcards, VSCode Highlighting, MindMaps
+    │   ├── Navigation/                   # Telegram-Style Floating Glass Tab Bar
+    │   ├── PlacementHub/                 # LeetCode Tracker, DSA Heatmap, Pattern Vault, Panic Modal
+    │   ├── SARA/                         # Voice Orb, Bubbles, Action Confirmation, Reasoning Feed
+    │   ├── Tasks/                        # Task Rows, Timeline, Matrix, Kanban, Pomodoro Sheets
+    │   ├── ui/                           # BottomSheet, FloatingActionButton, GlassCard, EmptyState
+    │   ├── AnimatedPressable.tsx         # Haptic-Enabled Animated Touch Wrapper
+    │   ├── ErrorBoundary.tsx             # Crash Guard with Auto-Recovery & Diagnostic Log
+    │   ├── NotificationPreferencesComponent.tsx # In-App Notification Configuration
+    │   ├── OfflineIndicator.tsx          # Real-Time Sync Status Toast & Pending Counter
+    │   ├── UniversalCalendarModal.tsx    # Global Multi-Mode Date Picker
+    │   └── UpdateBanner.tsx              # OTA Bundle Update Notification Bar
     ├── config/
-    │   ├── constants.ts                   Endpoints, storage keys, screen names, collection names, limits
-    │   └── saraActionPolicy.ts            [v2 Cap3] 3-tier action gateway (Tier1/2/3 routing table)
+    │   ├── constants.ts                  # Endpoints, Collections, Storage Keys, Screen Names
+    │   └── saraActionPolicy.ts           # 3-Tier Confidence-Gated Autonomous Action Gateway
     ├── contexts/
-    │   ├── MobileDataContext.tsx          Root data provider: composes all domain contexts + shared utils
-    │   ├── ThemeContext.tsx                Dark/light theme toggle (useTheme)
-    │   ├── PortalContext.tsx               Modal portal system
-    │   └── domains/                       Domain-split data contexts (each manages its Firestore subscriptions)
-    │       ├── CoreDataContext.tsx         Tasks, habits, habitLogs, notes, goals (with write-lock guards)
-    │       ├── AcademicContext.tsx         Attendance, assignments, semesters, subjects
-    │       ├── WellnessContext.tsx         Gym logs, user gym plans, water logs, sleep logs
-    │       ├── PlannerContext.tsx          Calendar events, weekly reviews
-    │       └── CreativeContext.tsx         Storage nodes (Notes file system), job applications, learning topics
+    │   ├── MobileDataContext.tsx         # Backward-Compatible Facade Provider & Unified Hook
+    │   ├── ThemeContext.tsx              # Dynamic Theme Engine (Obsidian Cosmos / Frost Quartz)
+    │   ├── PortalContext.tsx             # Root Modal Portal Coordinator
+    │   └── domains/                      # Domain-Split Data Contexts
+    │       ├── CoreDataContext.tsx       # Tasks, Habits, HabitLogs, Auth, Optimistic Handlers
+    │       ├── WellnessContext.tsx       # GymLogs, UserGymPlan, Water, Sleep, Weight Logs
+    │       ├── AcademicContext.tsx       # Attendance, AttendanceLogs, Assignments, Semesters
+    │       ├── CreativeContext.tsx       # StorageNodes, Notes, LearningTopics, JobApplications
+    │       └── PlannerContext.tsx        # CustomEvents, Goals, WeeklyReviews
     ├── data/
-    │   └── gymPlan.ts                     Static 6-day PPL gym plan + YouTube exercise IDs
+    │   ├── brutalQuotes.ts               # SARA Psychological Motivation Quotes Pool
+    │   ├── exerciseDatabase.ts           # 100+ Exercise Catalogue, Muscle Mapping & YouTube IDs
+    │   └── gymPlan.ts                    # Master 6-Day PPL & Arnold Split Templates
     ├── hooks/
-    │   ├── useSaraNavigation.ts           Parses [NAVIGATE:X] tokens from agent responses
-    │   ├── useSaraSurface.ts              [v2 Cap5] PSI hook: per-screen banners, 60s cooldown, cached
-    │   ├── useGymLog.ts                   Gym session state machine (set logging, swap, persistence)
-    │   └── useProactiveAgent.ts           Conflict detection trigger
+    │   ├── useGymLog.ts                  # Live Gym Workout Session State Machine
+    │   ├── useGymProfile.ts              # Gym Profile & Weight Stats Hook
+    │   ├── usePlacementData.ts           # LeetCode & DSA Placement Hub State Machine
+    │   ├── useSaraNavigation.ts          # [NAVIGATE:X] Token Parser & Route Navigator
+    │   ├── useSaraSurface.ts             # Predictive Surface Injection (PSI) Screen Hook
+    │   ├── useTabBarBadges.ts            # Dynamic Badge Counter for Tabs (Tasks, Attendance, Gym)
+    │   ├── useProactiveAgent.ts          # Conflict Detection Engine Trigger
+    │   ├── useCachedFirestoreCollection.ts # Generic Stale-While-Revalidate Firestore Hook
+    │   ├── useDeferredMemo.ts            # Frame-Deferred Complex Computation Hook
+    │   └── useSafeTimeout.ts             # Memory-Safe Auto-Clearing Timeout Hook
     ├── navigation/
-    │   ├── AppNavigator.tsx               Root navigator: auth gate, tab/stack + GlobalSaraButton
-    │   └── GymStack.tsx                   Nested gym screen stack
+    │   ├── AppNavigator.tsx              # Root Auth Gate, 0ms Manifest Boot, Tabs, Modal Stacks
+    │   └── GymStack.tsx                  # Dedicated Gym Workout Navigation Stack
     ├── screens/
-    │   ├── SaraScreen.tsx                 ChatGPT-style AI chat + voice mode (63KB — LARGEST)
-    │   ├── TasksScreen.tsx                Full task manager (72KB)
-    │   ├── NotesScreen.tsx                Rich notes + AI + PDF export + file storage (59KB)
-    │   ├── AttendanceScreen.tsx           Attendance tracker + timetable (45KB)
-    │   ├── CalendarScreen.tsx             Calendar grid + events (49KB)
-    │   ├── AnalyticsScreen.tsx            Productivity charts + XP stats (48KB)
-    │   ├── OnboardingScreen.tsx           5-step psychological onboarding (22KB)
-    │   ├── GoalsScreen.tsx                OKR goal tracking (24KB)
-    │   ├── GradesScreen.tsx               SGPA grade calculator (29KB)
-    │   ├── HabitsScreen.tsx               Habit tracking + streaks (22KB)
-    │   ├── SettingsScreen.tsx             App settings + notifications (25KB)
-    │   ├── NotificationsSettingsScreen.tsx Notification preferences (26KB)
-    │   ├── JobsScreen.tsx                 Kanban job tracker (15KB)
-    │   ├── AssignmentsScreen.tsx          Assignment tracker (14KB)
-    │   ├── LearningScreen.tsx             Thin orchestrator (heavy logic in components/Learning/)
-    │   ├── SocialScreen.tsx               Social module (18KB)
-    │   ├── MoreScreen.tsx                 Module launcher (17KB)
-    │   ├── DashboardScreen.tsx            Home: briefing, tasks, stats, nudge (35KB)
-    │   ├── AuthScreen.tsx                 Sign in (Google + Apple on iOS) (10KB)
-    │   ├── GuestDashboard.tsx             Guest mode landing (5KB)
-    │   ├── LandingScreen.tsx              Unauthenticated landing (4KB)
-    │   ├── StudyRoomScreen.tsx            Collaborative study room (11KB)
-    │   ├── WeeklyReviewScreen.tsx         Weekly reflection + review (5KB)
-    │   ├── GoalDetailScreen.tsx           Goal detail + key results (7KB)
-    │   ├── StreakDetailScreen.tsx         Habit streak detail (7KB)
-    │   └── gym/
-    │       ├── GymHomeScreen.tsx          Today's plan + muscle diagram (21KB)
-    │       ├── ActiveLoggingScreen.tsx    Live set-by-set logging (15KB)
-    │       ├── GymProgressScreen.tsx      Strength progress charts (11KB)
-    │       ├── GymHistoryScreen.tsx       Workout history (8KB)
-    │       ├── WorkoutSummaryScreen.tsx   Post-workout stats + share (7KB)
-    │       ├── ExerciseDetailScreen.tsx   Exercise info + history (7KB)
-    │       ├── ExerciseSwapScreen.tsx     Exercise swap with permanent override (6KB)
-    │       └── CardioLogScreen.tsx        Cardio session logging (6KB)
+    │   ├── SaraScreen.tsx                # ChatGPT-Style AI Workspace & Voice Orb Console
+    │   ├── DashboardScreen.tsx           # Home Dashboard: Life Matrix, Daily Briefing, Widgets
+    │   ├── TasksScreen.tsx               # Task Manager: List, 24h Timeline, Eisenhower Matrix
+    │   ├── AttendanceScreen.tsx          # Attendance Tracker, Bunk Calculator, Timetable View
+    │   ├── CalendarScreen.tsx            # Multi-View Calendar (Month, Week, Day, Agenda)
+    │   ├── HabitsScreen.tsx              # Habit Tracker, Streaks, Daily Check-Ins
+    │   ├── NotesScreen.tsx               # Markdown Notes, AI Co-Writer, PDF Exporter, Storage
+    │   ├── GoalsScreen.tsx               # OKR Goal Tracker & Milestone Breakdown
+    │   ├── GradesScreen.tsx              # SGPA/CGPA University Grade Calculator
+    │   ├── LearningScreen.tsx            # Video Lecture Player, Flashcards, AI Tutor, MindMap
+    │   ├── PlacementHubScreen.tsx        # LeetCode Tracker, DSA Sheet, Mock Prep, Panic Mode
+    │   ├── AnalyticsScreen.tsx           # Productivity Graphs, Discipline Score, XP Radar
+    │   ├── WellbeingDashboardScreen.tsx  # Sleep, Hydration, Recovery & Work-Life Balance
+    │   ├── XPConstellationScreen.tsx     # Gamification Constellation Map & Tier Badges
+    │   ├── StreakDetailScreen.tsx        # Deep Streak Analytics & Habit Continuity
+    │   ├── ContentLibraryScreen.tsx      # Books, Podcasts & Reading List Manager
+    │   ├── StudyRoomScreen.tsx           # Virtual Study Room & Live Pomodoro Sessions
+    │   ├── WeeklyReviewScreen.tsx        # Weekly Retrospective & Goal Alignment Engine
+    │   ├── AgentHistoryScreen.tsx        # SARA Autonomous Action Audit Log
+    │   ├── MoreScreen.tsx                # Extended Module Launcher Grid
+    │   ├── SettingsScreen.tsx            # App Preferences, Theme, Data Export, Biometrics
+    │   ├── NotificationsSettingsScreen.tsx # Multi-Channel Notification Scheduling Controls
+    │   ├── OnboardingScreen.tsx          # 5-Step Psychological Persona Setup
+    │   ├── AuthScreen.tsx                # Google & Apple One-Tap Sign In
+    │   ├── GuestDashboard.tsx            # Unauthenticated Offline Preview Mode
+    │   ├── LandingScreen.tsx             # Welcome Landing Screen
+    │   ├── TermsScreen.tsx               # Privacy Policy & Terms of Service
+    │   ├── attendance/                   # Attendance Helper Hooks, Styles & Week Strip
+    │   ├── calendar/                     # Calendar Views, Event Sheets & State Hooks
+    │   ├── dashboard/                    # Dashboard Data Aggregate Hook & Widget Layouts
+    │   ├── gym/                          # Gym Screens: ActiveLogging, History, Progress, Swap
+    │   └── tasks/                        # Task Modals, Recurring Engine, Task Style Tokens
     ├── services/
-    │   ├── firebase.ts                    Firebase init with AsyncStorage persistence + Firestore persistentLocalCache()
-    │   ├── geminiProxy.ts                 CRITICAL: Direct Gemini REST + 9-key rotation + transcription
-    │   ├── sarvamProxy.ts                 Sarvam AI TTS via Vercel voice-proxy (500-char chunk limit)
-    │   ├── voiceEngine.ts                 VAD (startVADRecording) + manual (startVoiceRecording)
-    │   ├── saraMemory.ts                  CMG + BFE: AsyncStorage memory graph + behavioral fingerprint
-    │   ├── notifications.ts               Local scheduled notifications (zero-cost, 6 categories)
-    │   ├── xpSystem.ts                    XP/gamification (Skinner variable rewards, 8 levels)
-    │   ├── conflictDetector.ts            Schedule conflict detection engine
-    │   ├── cloudinary.ts                  File upload for Notes storage nodes
-    │   ├── backgroundTasks.ts             Expo TaskManager background task registration
-    │   ├── backgroundProactiveAgent.ts    Background AI proactive check (registered in App.tsx)
-    │   ├── webScraper.ts                  Web search via DuckDuckGo (used by dagExecutor)
-    │   ├── offlineSync.ts                 OFFLINE WRITE QUEUE: queueWrite(), syncOfflineQueue(), setupNetworkListener(), subscribeToQueueChanges()
-    │   └── progressiveOverload.ts         Progressive overload calculator for gym coaching
+    │   ├── firebase.ts                   # Firebase Init, Auth Persistence, Memory Cache
+    │   ├── geminiProxy.ts                # Direct Gemini REST API Client with 9-Key Pool
+    │   ├── sarvamProxy.ts                # Sarvam AI Indic Voice TTS Proxy (500-char chunking)
+    │   ├── voiceEngine.ts                # Audio Recording, VAD Silence Detection & Base64 Encoder
+    │   ├── saraMemory.ts                 # Contextual Memory Graph (CMG) & Behavioral Fingerprint
+    │   ├── offlineSync.ts                # Offline Write Queue, LWW Resolution & NetInfo Sync
+    │   ├── notifications.ts              # Local Multi-Channel Notification Scheduler
+    │   ├── xpSystem.ts                   # Gamification XP Engine (Skinner Variable Rewards)
+    │   ├── conflictDetector.ts           # Calendar vs Task Schedule Conflict Engine
+    │   ├── cloudinary.ts                 # Secure File & Media Cloudinary Uploader
+    │   ├── youtubeTranscriptService.ts   # 4-Layer Resilient YouTube Transcript Ingestion
+    │   ├── flashcardService.ts           # SuperMemo SM-2 Spaced Repetition Algorithm
+    │   ├── exerciseVideoResolver.ts      # YouTube Exercise Demo Resolver
+    │   ├── progressiveOverload.ts        # Dynamic Gym Progressive Overload Calculator
+    │   ├── weeklyGymAnalysisEngine.ts    # Sunday Deep Gym Analytics & Volume Engine
+    │   ├── leetcode.ts                   # LeetCode Public GraphQL Profile Scraper
+    │   ├── agentHistory.ts               # SARA Action History Persistence
+    │   ├── backgroundTasks.ts            # Expo TaskManager Background Tasks
+    │   ├── backgroundProactiveAgent.ts   # Background AI Proactive Anomaly Check
+    │   └── webScraper.ts                 # DuckDuckGo AI Web Search Provider
     ├── theme/
-    │   ├── tokens.ts                      COLORS, RADIUS, SPACE, FONT_FAMILY, SHADOW (design system)
-    │   ├── animations.ts                  Reanimated animation presets
-    │   ├── motion.ts                      Timing/easing constants
-    │   └── (See ../.agents/DESIGN_SYSTEM_UNIFORMITY.md for cross-platform icon/color spec)
+    │   ├── tokens.ts                     # Obsidian Cosmos (Dark) & Frost Quartz (Light) Palettes
+    │   ├── animations.ts                 # Reanimated Micro-Interaction Presets
+    │   └── motion.ts                     # Timing & Spring Easing Curves
     ├── types/
-    │   └── gym.types.ts                   GymPlanDay, GymExercise TypeScript interfaces
+    │   └── gym.types.ts                  # Gym Sets, Exercises, Plans & History TypeScript Interfaces
     └── utils/
-        ├── haptics.ts                     feedback.tap/commit/success/warning
-        ├── errorUtils.ts                  Non-blocking transient sync error handler + cloud log
-        ├── coreCache.ts                   AsyncStorage cache for tasks/habits/habitLogs (stale-while-revalidate boot)
-        └── domainCache.ts                 AsyncStorage cache for ALL 4 domain contexts — Wellness/Academic/Planner/Creative
+        ├── safeWrite.ts                  # Resilient Offline-First Firestore Write Wrapper
+        ├── bootManifest.ts               # Atomic Cold Boot Manifest (0ms Bridge Access)
+        ├── coreCache.ts                  # Core Domain AsyncStorage Stale-While-Revalidate Cache
+        ├── domainCache.ts                # Wellness/Academic/Planner/Creative AsyncStorage Caches
+        ├── schemaGuards.ts               # Safe Schema Normalizers & Fallback Parsers
+        ├── ModulePrefetcher.tsx          # Cache-Aware Lazy Screen Background Warmer
+        ├── haptics.ts                    # Tactile Haptic Vibration Feedback Helpers
+        ├── errorUtils.ts                 # Non-Blocking Transient Error Logger
+        ├── dateUtils.ts                  # Timezone-Aware Local Date Calculation Engine
+        ├── streakUtils.ts                # Habit & Activity Streak Calculation Engine
+        ├── academicMath.ts               # SGPA, CGPA & Attendance Projection Math
+        ├── exportUtils.ts                # Excel & CSV Report Exporter
+        ├── gymUtils.ts                   # 1RM Calculation & Volume Metrics Formatter
+        ├── firebaseUtils.ts              # Firebase Helper Utilities
+        └── tabBarScroll.ts               # Tab Bar Auto-Scroll on Navigation
 ```
 
-## 3a. SARA Engine v2 — Capability Map (2026-07-19)
+---
 
-> All 7 capabilities are now live. Zero external dependencies added. Full TypeScript type check passes.
+## 4. Master File & Function Encyclopedia
 
-| Cap | Name | File | Key Mechanism |
+Use this section to look up the exact functions, hooks, classes, and exported constants inside any file.
+
+### 4.1. Top-Level Core Files
+| File Path | Key Exports & Functions | Description & Responsibilities |
+|---|---|---|
+| [`mobile/index.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/index.ts) | `AppRegistry.registerComponent('main', () => App)` | Native entry point. Boots React Native runtime. |
+| [`mobile/App.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/App.tsx) | `default App()` | Root UI Component. Loads fonts (Inter 400/500/600/700, Playfair 600), calls `SplashScreen.preventAutoHideAsync()`, mounts `ThemeProvider` → `PortalProvider` → `MobileDataProvider` → `AppNavigator` + `OfflineIndicator`. Registers notification & background proactive listeners. |
+| [`mobile/plugins/withAndroidManifestMod.js`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/plugins/withAndroidManifestMod.js) | `module.exports = withAndroidManifestMod` | Expo config plugin injecting custom permissions, vibration flags, and windowSoftInputMode into `AndroidManifest.xml`. |
+
+### 4.2. Agent AI Subsystem (`src/agent/`)
+| File Path | Function / Symbol | Signature / Type | Description & Purpose |
 |---|---|---|---|
-| **1** | Contextual Memory Graph (CMG) | `src/services/saraMemory.ts` | `extractAndStore()` async after every response, AsyncStorage JSON graph |
-| **2** | Intent-Ranked Context Injection (IRCI) | `src/agent/intentClassifier.ts` | `classifyIntent()` + `buildSelectiveContext()` — 0 API calls, <5ms |
-| **3** | Confidence-Gated Actions | `src/config/saraActionPolicy.ts` + `SaraHUDToast.tsx` + `InlineActionPill.tsx` | `getActionTier()` routes to Tier1/2/3 in SaraScreen |
-| **4** | Streaming Reasoning Transparency | `src/components/SARA/ReasoningFeed.tsx` | `reasoning_step` step type in `orchestrateAgent()` onStep |
-| **5** | Predictive Surface Injection (PSI) | `src/hooks/useSaraSurface.ts` + `SaraHUDBanner.tsx` | 60s cooldown, per-screen, dismiss tracked in AsyncStorage |
-| **6** | Dual-Stream Voice (VAD + sentence TTS) | `src/services/voiceEngine.ts` | `startVADRecording()` with RMS polling + `voice_sentence_ready` step |
-| **7** | Behavioral Fingerprint Engine (BFE) | `src/services/saraMemory.ts` | `updateFingerprint()` on every action, adapts tone/quotes/module order |
+| [`src/agent/orchestrator.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/agent/orchestrator.ts) | `orchestrateAgent` | `(instruction: string, appContext: AppContext, onStep: (step: any) => void, history?: any[], isVoiceMode?: boolean) => Promise<string>` | Main entry point for SARA chat missions. Coordinates IRCI intent classification, selective context pruning, direct Gemini REST call, and streaming step emissions (`thinking`, `reasoning_step`, `proposed_action`, `answer`). |
+| | `buildSystemPrompt` | `(appContext: AppContext, toneDirective?: string, responseStyle?: string, memorySummary?: string, personaContext?: string) => string` | Assembles full contextual system prompt including tasks, habits, goals, attendance, calendar, and SARA persona rules. |
+| | `buildSelectiveSystemPrompt` | `(selectedContext: Record<string, any>, toneDirective?: string, responseStyle?: string, memorySummary?: string, personaContext?: string) => string` | Assembles high-speed selective prompt containing ONLY domains classified by IRCI. |
+| | `generateInitialGreeting` | `(appContext: AppContext) => Promise<string>` | Generates a 1-sentence personalized blunt session opener without pleasantries based on user's highest critical risk signal. |
+| | `disconnectSocket` | `() => void` | Backwards-compatibility no-op stub for sign-out callers. |
+| [`src/agent/intentClassifier.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/agent/intentClassifier.ts) | `classifyIntent` | `(message: string, fingerprint?: BehavioralFingerprint \| null) => IntentProfile` | Pure on-device synchronous keyword/regex intent classifier (<5ms, 0 tokens). Returns ranked `primaryDomain`, `confidence`, and `urgency`. |
+| | `buildSelectiveContext` | `(profile: IntentProfile, appContext: AppContext) => Record<string, any>` | Extracts ONLY the data records matching ranked domains, reducing Gemini payload from ~4000 to ~400 tokens. |
+| | `domainToReasoningLabel` | `(domain: DataDomain) => string` | Returns human-friendly reasoning step label (e.g. `'Checking task commitments...'`, `'Analyzing gym workout logs...'`). |
+| [`src/agent/dagExecutor.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/agent/dagExecutor.ts) | `executeDag` | `(nodes: DagNode[], context: any, onProgress: (nodeId: string, status: string) => void) => Promise<DagResult[]>` | Topologically resolves and runs task graphs in parallel batches using rotated Gemini API keys and web scraping. |
+| [`src/agent/saraAgent.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/agent/saraAgent.ts) | `processGymChat` | `(instruction: string, gymContext: any, history?: any[]) => Promise<{ text: string, action?: any }>` | GYM-GPT expert biomechanics coach. Emits customized exercise substitutions, progressive overload plans, and set guidance. |
+| | `parseActionFromText` | `(text: string) => SaraAction \| null` | Regex parser extracting `[[ACTION:{...}]]` JSON blocks from model responses for UI confirmation cards. |
+| | `compressMemoryToSummary` | `(history: any[]) => Promise<string>` | Summarizes conversation histories (>20 messages) into a concise ≤200-word memory graph update. |
+| | `compressGymMemoryToSummary`| `(history: any[]) => Promise<string>` | Summarizes workout coaching chats into persistent long-term lifting preferences. |
 
-### Integration Points
-- **orchestrator.ts**: CMG (Cap1), IRCI (Cap2), Cap4 reasoning steps, Cap6 voice sentence streaming, Cap7 fingerprint update
-- **SaraScreen.tsx**: Cap3 3-tier gateway, Cap4 ReasoningFeed render, Cap6 VAD, Cap6 voice_sentence_ready → speakWithSarvam (`sarvamProxy.ts`)
-- **DashboardScreen.tsx**: Cap5 SaraHUDBanner, Cap7 BFE-powered daily quote
-- **AttendanceScreen.tsx**: Cap5 SaraHUDBanner (at-risk subject detection)
-- **MoreScreen.tsx**: Cap7 BFE module reordering in Quick Access row
-
----
-
-## 4. File Index — Direct Navigation Table
-
-### Agent & AI (go here first for any Sara issue)
-| Purpose | Exact File Path | Key Export |
-|---|---|---|
-| **Sara mission dispatch (MAIN ENTRY)** | `src/agent/orchestrator.ts` | `orchestrateAgent()` |
-| **IRCI intent classifier** | `src/agent/intentClassifier.ts` | `classifyIntent()`, `buildSelectiveContext()` |
-| Sara full context + system prompt | `src/agent/orchestrator.ts` | `buildSystemPrompt()` |
-| Sign-out cleanup (no-op stub) | `src/agent/orchestrator.ts` | `disconnectSocket()` |
-| GYM-GPT coaching | `src/agent/saraAgent.ts` | `processGymChat()` |
-| Parse `[[ACTION:{...}]]` from response | `src/agent/saraAgent.ts` | `parseActionFromText()` |
-| DAG parallel task executor | `src/agent/dagExecutor.ts` | `executeDag()` |
-| Direct Gemini REST + key rotation | `src/services/geminiProxy.ts` | `callProxy()` |
-| Parse Gemini REST response | `src/services/geminiProxy.ts` | `parseProxyResponse()` |
-| Audio transcription | `src/services/geminiProxy.ts` | `transcribeAudioViaProxy()` |
-| Quick text prompt | `src/services/geminiProxy.ts` | `callGeminiProxy()` |
-| Gym AI coaching | `src/services/geminiProxy.ts` | `askGymCoach()` |
-| Sara TTS playback | `src/services/sarvamProxy.ts` | `speakWithSarvam()` |
-| Stop Sara speaking | `src/services/sarvamProxy.ts` | `stopSpeech()` |
-| Language detection (hi-IN/en-IN) | `src/services/sarvamProxy.ts` | `detectLanguageCode()` |
-| Begin mic recording | `src/services/voiceEngine.ts` | `startVoiceRecording()` |
-| Stop + transcribe audio | `src/services/voiceEngine.ts` | `stopAndTranscribe()` |
-| Cancel recording | `src/services/voiceEngine.ts` | `cancelVoiceRecording()` |
-
-### Data Layer
-| Purpose | Exact File Path | Key Export |
-|---|---|---|
-| **ALL Firestore data (provider)** | `src/contexts/MobileDataContext.tsx` | `MobileDataProvider` |
-| Access data in components | `src/contexts/MobileDataContext.tsx` | `useMobileData()` |
-| **Theme (dark/light)** | `src/contexts/ThemeContext.tsx` | `useTheme()`, `ThemeProvider` |
-| Firebase init | `src/services/firebase.ts` | `auth`, `db`, `googleProvider` |
-| Rebuild notification schedule | `src/services/notifications.ts` | `scheduleTaskReminders()` |
-| Setup notification channels | `src/services/notifications.ts` | `requestNotificationPermissions()` |
-| Award XP (variable reward) | `src/services/xpSystem.ts` | `awardXP()` |
-| Get current XP/level | `src/services/xpSystem.ts` | `getXPData()` |
-| Detect schedule conflicts | `src/services/conflictDetector.ts` | `detectConflicts()` |
-| Upload file to Cloudinary | `src/services/cloudinary.ts` | `uploadFileToCloudinary()` |
-| Static gym plan data | `src/data/gymPlan.ts` | `GYM_PLAN`, `WEEKDAY_TO_PLAN` |
-
-### Config & Constants
-| Purpose | Exact File Path | Key Export |
-|---|---|---|
-| **All app constants (NEW)** | `src/config/constants.ts` | `COLLECTION`, `SCREENS`, `STORAGE_KEYS`, `XP_LEVELS`, etc. |
-
-### Navigation
-| Purpose | Exact File Path | Key Symbol |
-|---|---|---|
-| Root navigator (auth gate) | `src/navigation/AppNavigator.tsx` | `AppNavigator` |
-| Bottom tab navigator | `src/navigation/AppNavigator.tsx` | `MainTabNavigator` |
-| Floating Sara orb button | `src/navigation/AppNavigator.tsx` | `GlobalSaraButton` |
-| Gym stack | `src/navigation/GymStack.tsx` | `GymStack` |
-| Parse `[NAVIGATE:X]` | `src/hooks/useSaraNavigation.ts` | `useSaraNavigation()` |
-| Extract route from text | `src/hooks/useSaraNavigation.ts` | `extractNavigateToken()` |
-| Gym session state machine | `src/hooks/useGymLog.ts` | `useGymLog()` |
-| Conflict detection trigger | `src/hooks/useProactiveAgent.ts` | `useProactiveAgent()` |
-
-### Theme & Utils
-| Purpose | Exact File Path | Key Export |
-|---|---|---|
-| Color palette | `src/theme/tokens.ts` | `COLORS` |
-| Spacing scale | `src/theme/tokens.ts` | `SPACE` |
-| Border radius | `src/theme/tokens.ts` | `RADIUS` |
-| Font families | `src/theme/tokens.ts` | `FONT_FAMILY` |
-| Font sizes | `src/theme/tokens.ts` | `FONT_SIZE` |
-| Shadow presets | `src/theme/tokens.ts` | `SHADOW` |
-| Haptic feedback wrapper | `src/utils/haptics.ts` | `feedback` (tap/commit/success/warning) |
-
-### Screens — Direct Paths
-| Screen | File Path |
-|---|---|
-| Sara Chat + Voice | `src/screens/SaraScreen.tsx` |
-| Dashboard (Home) | `src/screens/DashboardScreen.tsx` |
-| Tasks | `src/screens/TasksScreen.tsx` |
-| Calendar | `src/screens/CalendarScreen.tsx` |
-| Habits | `src/screens/HabitsScreen.tsx` |
-| Notes + File Storage | `src/screens/NotesScreen.tsx` |
-| Goals + OKRs | `src/screens/GoalsScreen.tsx` |
-| Attendance Tracker | `src/screens/AttendanceScreen.tsx` |
-| Assignments | `src/screens/AssignmentsScreen.tsx` |
-| Grades / SGPA | `src/screens/GradesScreen.tsx` |
-| Learning Topics | `src/screens/LearningScreen.tsx` |
-| Jobs (Kanban) | `src/screens/JobsScreen.tsx` |
-| Analytics | `src/screens/AnalyticsScreen.tsx` |
-| Focus (Pomodoro) | **REMOVED** (2026-07-15) — module deleted, data in Firestore kept |
-| More (module launcher) | `src/screens/MoreScreen.tsx` |
-| Settings | `src/screens/SettingsScreen.tsx` |
-| Social | `src/screens/SocialScreen.tsx` |
-| Auth / Sign In | `src/screens/AuthScreen.tsx` |
-| Onboarding | `src/screens/OnboardingScreen.tsx` |
-| Landing (guest) | `src/screens/LandingScreen.tsx` |
-| Gym Home | `src/screens/gym/GymHomeScreen.tsx` |
-| Active Workout | `src/screens/gym/ActiveLoggingScreen.tsx` |
-| Workout Summary | `src/screens/gym/WorkoutSummaryScreen.tsx` |
-| Gym Progress | `src/screens/gym/GymProgressScreen.tsx` |
-| Gym History | `src/screens/gym/GymHistoryScreen.tsx` |
-| Exercise Detail | `src/screens/gym/ExerciseDetailScreen.tsx` |
-| Exercise Swap | `src/screens/gym/ExerciseSwapScreen.tsx` |
-| Cardio Log | `src/screens/gym/CardioLogScreen.tsx` |
-
----
-
-## 5. Navigation Architecture
-
-```
-AppNavigator (handles onAuthStateChanged)
-├── loading=true  → SplashLoader (pulsing animated logo)
-├── user=null     → Stack.Navigator
-│   ├── Landing
-│   ├── GuestDashboard
-│   └── Auth
-├── user + NOT onboarded → OnboardingScreen (OUTSIDE all navigators — no useNavigation() allowed)
-└── user + onboarded  → MobileDataProvider → RootNavigatorWithSara
-    ├── Stack.Navigator
-    │   ├── MainTabs (BottomTabNavigator)
-    │   │   ├── Home         → DashboardScreen
-    │   │   ├── [pinnedModules - from AsyncStorage '@zentrack_pinned_modules']
-    │   │   │    default:  Tasks | Sara | Calendar
-    │   │   │    all opts: Tasks Sara Calendar Habits Gym Attendance Analytics Goals Notes Social Assignments Grades Learning Jobs
-    │   │   └── More         → MoreScreen
-    │   ├── MoreStack (card presentation) → NestedScreens (has back-button header)
-    │   │   ├── Habits / Gym (GymStack) / Attendance / Analytics
-    │   │   ├── Goals / Notes / Settings / Social / Focus
-    │   │   ├── Tasks / Sara / Calendar
-    │   │   └── Assignments / Grades / Learning / Jobs
-    │   └── SaraModal (modal presentation) → SaraScreen
-    └── GlobalSaraButton (position:absolute)
-        hidden when: Gym GymHome ActiveLogging WorkoutSummary GymProgress GymHistory ExerciseDetail CardioLog ExerciseSwap SaraModal Sara
-        → press navigates to 'SaraModal'
-```
-
-### GymStack
-```
-GymStack.Navigator (default screen: GymHome)
-├── GymHome → GymHomeScreen
-├── ActiveLogging → ActiveLoggingScreen
-├── WorkoutSummary → WorkoutSummaryScreen
-├── GymProgress → GymProgressScreen
-├── GymHistory → GymHistoryScreen
-├── ExerciseDetail → ExerciseDetailScreen
-├── CardioLog → CardioLogScreen
-└── ExerciseSwap → ExerciseSwapScreen
-```
-
----
-
-## 6. Sara AI System — Full Data Flow
-
-### A. Text Chat Flow (Updated 2026-07-14 — Direct Gemini, no Socket.IO)
-```
-SaraScreen → sendMessage(instruction)
-  → orchestrateAgent(instruction, appContext, onStep, history)
-      (src/agent/orchestrator.ts)
-      → buildSystemPrompt(appContext) — rich context: tasks, habits, goals, calendar, etc.
-      → callProxy({ model, contents, systemInstruction }) [src/services/geminiProxy.ts]
-          → fetch() → generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash
-          → 9-key rotation on 429
-      → parseProxyResponse(data) → text | [[ACTION:{...}]]
-      → if [[ACTION:{...}]]: onStep({ type: 'proposed_action', action, title })
-      → else: onStep({ type: 'answer', title })
-  → SaraScreen receives step:
-      → 'thinking': update bubble text with "🧠 Sara is thinking..."
-      → 'proposed_action': show ActionConfirmationCard → user confirms → Firestore write
-      → 'answer': render final text in SaraBubble
-  → processAnswerForNavigation(result) [useSaraNavigation]
-      → extracts [NAVIGATE:X] token → navigates screen
-  → speakWithSarvam(cleanText)
-```
-
-### B. Voice Recording → Transcription Flow
-```
-VoiceMicButton tapped → startVoiceRecording(callbacks) [voiceEngine.ts]
-  → Audio.requestPermissionsAsync()
-  → Audio.setAudioModeAsync({ allowsRecordingIOS:true, playsInSilentModeIOS:true })
-  → Audio.Recording.createAsync(HIGH_QUALITY) → _recording
-
-User speaks...
-
-User taps stop → stopAndTranscribe(callbacks) [voiceEngine.ts]
-  → _recording.stopAndUnloadAsync() → audioUri (WAV file on device)
-  → FileSystem.readAsStringAsync(audioUri, Base64) → base64Audio
-  → FileSystem.deleteAsync(audioUri) — cleanup temp file
-  → transcribeAudioViaProxy(base64Audio) [geminiProxy.ts]
-      → callProxy({ model: 'gemini-2.5-flash', contents: [audio inline_data] })
-      → returns transcript string
-  → callbacks.onTranscript(transcript)
-  → sendMessage(transcript) → [Text Chat Flow above]
-```
-
-### C. Sara TTS Playback Flow
-```
-speakWithSarvam(rawText) [sarvaProxy.ts]
-  → stopSpeech() — kill any current playback
-  → stripMarkdown(rawText) — strip ##, **, [], etc.
-  → detectLanguageCode(text) — Devanagari ratio >15% → 'hi-IN', else 'en-IN'
-  → auth.currentUser.getIdToken() → idToken
-  → POST https://myzentrack.vercel.app/api/voice-proxy
-    { text, target_language_code, pace:1.0 }
-    Authorization: Bearer <idToken>
-  → response: { audios: [base64WAV] }
-  → FileSystem.writeAsStringAsync(tmpUri, base64, Base64)
-  → Audio.setAudioModeAsync({ playsInSilentModeIOS:true })
-  → Audio.Sound.createAsync({ uri:tmpUri }) → sound
-  → sound.playAsync()
-  → playbackStatusUpdate → didJustFinish: cleanup + onDone()
-
-  [FALLBACK if Sarvam proxy fails]:
-  → expo-speech device TTS speaks text
-```
-
-### D. Action Confirmation Flow (Write Operations)
-```
-Sara response contains [[ACTION:{"type":"createTask","title":"...","dueDate":"..."}]]
-  → orchestrateAgent onStep({ type:'proposed_action', action, title })
-  → SaraScreen: isAction=true → builds result with type:'function_call'
-  → ActionConfirmationCard shown with confirm/reject buttons
-  → User confirms → Firestore write (addDoc/updateDoc/deleteDoc)
-  → Haptics.notificationAsync(Success)
-  → ActionCard subtitle updated to "✓ Done"
-```
-
-### E. [NAVIGATE:X] Token Resolution
-```
-useSaraNavigation.processAnswerForNavigation(answer)
-  → extractNavigateToken(answer) → routeToken (e.g. 'gym')
-  → ROUTE_MAP[routeToken] → { stack: 'MoreStack', screen: 'Gym' }
-  → navigation.navigate('MoreStack', { screen: 'Gym' })
-```
-
-| Navigate Token | Stack | Screen |
-|---|---|---|
-| `[NAVIGATE:Gym]` | MoreStack | Gym |
-| `[NAVIGATE:Tasks]` | MoreStack | Tasks |
-| `[NAVIGATE:Habits]` | MoreStack | Habits |
-| `[NAVIGATE:Calendar]` | MoreStack | Calendar |
-| `[NAVIGATE:Goals]` | MoreStack | Goals |
-| `[NAVIGATE:Notes]` | MoreStack | Notes |
-| `[NAVIGATE:Analytics]` | MoreStack | Analytics |
-| `[NAVIGATE:Attendance]` | MoreStack | Attendance |
-| `[NAVIGATE:Focus]` | MoreStack | Focus |
-| `[NAVIGATE:Settings]` | MoreStack | Settings |
-| `[NAVIGATE:GymProgress]` | MoreStack | Gym (GymProgress nested) |
-| `[NAVIGATE:GymHistory]` | MoreStack | Gym (GymHistory nested) |
-
----
-
-## 7. Firestore Data Model (18 Collections)
-
-All in `MobileDataContext.tsx`. All queries: `where('userId', '==', uid)`.
-
-| Collection (Firestore) | State var | TypeScript Interface | Key Fields |
+### 4.3. Configuration & Action Policy (`src/config/`)
+| File Path | Function / Export | Signature / Type | Description & Purpose |
 |---|---|---|---|
-| `tasks` | `tasks` | `Task` | title, status, priority('P1'/'P2'/'P3'), date(YYYY-MM-DD), timeSlot, subtasks[], isRecurring, recurrenceRule{}, recurringSourceId, completedAt |
-| `habits` | `habits`/`allHabits` | `Habit` | name, emoji, frequency, streak, archived |
-| `habitLogs` | `habitLogs` | `HabitLog` | habitId, date |
-| `notes` | `notes` | `Note` | title, content, tags[], createdAt |
-| `storage_nodes` | `storageNodes` | `StorageNode` | type('folder'/'file'/'note'), name, parentId, url, content, size |
-| `goals` | `goals` | `Goal` | title, status, progress(0-100), deadline, keyResults[], firstStep |
-| `calendar_events` | `customEvents` | `CustomEvent` | title, date, type('todo'/'exam'/'gcal'/etc.), startTime, endTime |
-| `gym_logs` | `gymLogs` | `GymLog` | date, exercises[], cardio[] |
-| `attendance_subjects` | `attendance` | `AttendanceSubject` | name, classesAttended, classesTotal, schedule{dayName:[timeSlots]} |
-| `assignments` | `assignments` | `Assignment` | title, subjectName, dueDate, status, grade, weightage |
-| `semesters` | `semesters` | `Semester` | name, startDate, endDate, sgpa, totalCredits, order |
-| `semester_subjects` | `semesterSubjects` | `SemesterSubject` | semesterId, name, credits, gradePoints, grade |
-| `learning_topics` | `learningTopics` | `LearningTopic` | title, subTasks[], timeSpentMinutes |
-| `job_applications` | `jobs` | `JobApplication` | company, role, status('wishlist'/'applied'/'interviewing'/'offer'/'rejected') |
-| `weekly_reviews` | `weeklyReviews` | `WeeklyReview` | weekStart, weekEnd, wentWell, toImprove, nextWeekPriorities |
-| `water_logs` | `waterLogs` | `WaterLog` | date, amountMl _(future — subscriptions not yet active)_ |
-| `sleep_logs` | `sleepLogs` | `SleepLog` | date, hours _(future — subscriptions not yet active)_ |
-| `user_gym_plans` | via `gymLogs` | — | Custom gym plans per user (supplements static gymPlan.ts) |
+| [`src/config/constants.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/config/constants.ts) | `APP_NAME`, `APP_VERSION`, `GEMINI_PROXY_URL`, `VOICE_PROXY_URL`, `COLLECTION`, `STORAGE_KEYS`, `SCREENS` | Constants | Central app-wide constants: API endpoints, 18 Firestore collection names, AsyncStorage storage keys, and screen route identifiers. |
+| [`src/config/saraActionPolicy.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/config/saraActionPolicy.ts) | `evaluateActionPolicy` | `(action: any, rawConfidence?: number) => ActionExecutionProposal` | 3-tier action gateway: Tier 1 (auto-execute, conf > 0.95), Tier 2 (inline pill, conf 0.70–0.95), Tier 3 (confirmation card). |
+| | `getActionTier` | `(actionType: string, confidence: number) => ActionTier` | Evaluates action risk level against confidence score. |
+| | `recordActionHistory` | `(action: any, executed: boolean, undoFn?: () => void) => Promise<void>` | Appends action proposal to `@sara_action_history_v1` local audit log. |
+| | `getActionHistory` | `() => Promise<any[]>` | Returns recent action history for review in AgentHistoryScreen. |
 
-**All TypeScript interfaces defined in**: `src/contexts/MobileDataContext.tsx` (lines 10–247)
+### 4.4. Contexts & Data Layer (`src/contexts/` & `src/contexts/domains/`)
+| File Path | Function / Hook | Signature / Type | Description & Purpose |
+|---|---|---|---|
+| [`src/contexts/MobileDataContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/MobileDataContext.tsx) | `MobileDataProvider` | `React.FC<{ children: React.ReactNode }>` | Root composite data provider wrapping all 5 domain providers. Runs debounced 3.5s notification scheduler. |
+| | `useMobileData` | `() => MobileDataContextType` | Universal hook providing backward-compatible access to all 18 Firestore collection datasets and mutators. |
+| [`src/contexts/ThemeContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/ThemeContext.tsx) | `ThemeProvider` | `React.FC<{ children: React.ReactNode }>` | Theme state provider managing Obsidian Cosmos (dark) vs Frost Quartz (light). |
+| | `useTheme` | `() => { theme: ThemeMode, isDark: boolean, colors: ColorTokens, setTheme: (m: ThemeMode) => void }` | Hook providing active color tokens, dark mode boolean, and theme switcher. |
+| [`src/contexts/PortalContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/PortalContext.tsx) | `PortalProvider`, `Portal`, `PortalHost` | Components | Root modal portal coordinator rendering floating sheets at the root view hierarchy. |
+| [`src/contexts/domains/CoreDataContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/CoreDataContext.tsx) | `CoreDataProvider` | `React.FC<{ children: React.ReactNode }>` | Manages auth, tasks, habits, and habit logs. Listens for `firestore_force_reconnect` to auto-restart listeners on foreground. |
+| | `useCoreData` | `() => CoreDataContextType` | Hook returning `user`, `tasks`, `habits`, `habitLogs`, `optimisticAddTask`, `optimisticUpdateTask`, `optimisticDeleteTask`, etc. |
+| | `performSignOut` | `() => Promise<void>` | Explicit user sign-out: signs out of Firebase Auth, clears optimistic boot tokens, wipes offline write queue, and purges all domain caches. |
+| [`src/contexts/domains/WellnessContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/WellnessContext.tsx) | `WellnessProvider` | `React.FC<{ children: React.ReactNode, user: any }>` | Demand-based subscriptions for `gym_logs`, `user_gym_plans`, `water_logs`, `sleep_logs`, and `weight_logs`. |
+| | `useWellnessData` | `() => WellnessContextType` | Hook returning `gymLogs`, `userGymPlan`, `waterLogs`, `sleepLogs`, `updateMasterPlan`, `applyMasterTemplate`, etc. |
+| [`src/contexts/domains/AcademicContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/AcademicContext.tsx) | `AcademicProvider` | `React.FC<{ children: React.ReactNode, user: any }>` | Subscriptions for `attendance_subjects`, `attendance_logs`, `assignments`, `semesters`, `semester_subjects`, `attendance_holidays`. |
+| | `useAcademicData` | `() => AcademicContextType` | Hook returning `attendance`, `attendanceLogs`, `assignments`, `semesters`, `semesterSubjects`, `optimisticAddSubject`, etc. |
+| [`src/contexts/domains/CreativeContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/CreativeContext.tsx) | `CreativeProvider` | `React.FC<{ children: React.ReactNode, user: any }>` | Subscriptions for `storage_nodes`, `learning_topics`, `job_applications`, `content_logs`. Derives `notes` from storage nodes. |
+| | `useCreativeData` | `() => CreativeContextType` | Hook returning `storageNodes`, `notes`, `learningTopics`, `jobs`, `contentLogs`, `ensureSubscribed`. |
+| [`src/contexts/domains/PlannerContext.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/contexts/domains/PlannerContext.tsx) | `PlannerProvider` | `React.FC<{ children: React.ReactNode, user: any }>` | Subscriptions for `calendar_events`, `goals`, `weekly_reviews`. |
+| | `usePlannerData` | `() => PlannerContextType` | Hook returning `customEvents`, `goals`, `weeklyReviews`, `optimisticAddEvent`, `optimisticUpdateEvent`, `optimisticAddGoal`. |
 
-### Computed Context Values
-- `pendingTaskCount` = `tasks.filter(t => t.status==='pending').length`
-- `todayHabits` = active habits capped at 5
-- `pinnedModules` = from `AsyncStorage('@zentrack_pinned_modules')`, default `['Tasks','Sara','Calendar']`
-- Auto-trigger: `scheduleTaskReminders(tasks, customEvents, gymLogs, attendance)` on every data change
+### 4.5. Services & Backend Engines (`src/services/`)
+| File Path | Function / Export | Signature / Type | Description & Purpose |
+|---|---|---|---|
+| [`src/services/firebase.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/firebase.ts) | `auth`, `db`, `googleProvider` | Firebase Client Singletons | Initializes Firebase with AsyncStorage auth persistence and memory local cache. |
+| [`src/services/geminiProxy.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/geminiProxy.ts) | `callProxy` | `(payload: GeminiProxyPayload) => Promise<any>` | Direct Gemini REST client with 9-key round-robin rotation pool and exponential 429 backoff. |
+| | `streamProxy` | `(payload: GeminiProxyPayload, onChunk: (text: string) => void) => Promise<string>` | Streams server-sent event tokens from Gemini 2.5 Flash. |
+| | `transcribeAudioViaProxy` | `(base64Audio: string) => Promise<string>` | Sends Base64 audio directly to Gemini 2.5 Flash for high-accuracy multimodal transcription. |
+| | `parseProxyResponse` | `(data: any) => { text: string, isAction: boolean, action?: any }` | Parses candidate text and extracts action payloads. |
+| | `callGeminiProxy` | `(prompt: string, systemInstruction?: string) => Promise<string>` | High-level quick prompt runner. |
+| | `askGymCoach` | `(userQuery: string, gymContext: any) => Promise<string>` | Specialized prompt runner for GYM-GPT coaching. |
+| [`src/services/sarvamProxy.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/sarvamProxy.ts) | `speakWithSarvam` | `(text: string, onDone?: () => void, options?: SarvamOptions) => Promise<void>` | Sarvam AI Indic TTS voice player. Splits long text into 500-char chunks and plays audio through `expo-av`. |
+| | `stopSpeech` | `() => Promise<void>` | Immediately halts active TTS audio playback and unloads sound objects. |
+| | `detectLanguageCode` | `(text: string) => 'hi-IN' \| 'en-IN'` | Returns `hi-IN` if Devanagari character density > 15%, else `en-IN`. |
+| | `stripMarkdown` | `(text: string) => string` | Cleans bold, headers, links, and markdown syntax before feeding text to TTS. |
+| [`src/services/voiceEngine.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/voiceEngine.ts) | `startVoiceRecording` | `(callbacks: VoiceRecordingCallbacks) => Promise<void>` | Requests audio permissions, configures iOS/Android audio modes, and begins recording. |
+| | `stopAndTranscribe` | `(callbacks: VoiceRecordingCallbacks) => Promise<void>` | Stops audio recording, converts temporary WAV file to Base64, and transcribes via Gemini. |
+| | `startVADRecording` | `(callbacks: VADRecordingCallbacks) => Promise<void>` | Starts continuous Voice Activity Detection (VAD) using polling RMS power metering. |
+| | `cancelVoiceRecording` | `() => Promise<void>` | Cancels recording without triggering transcription callbacks and removes temp files. |
+| [`src/services/saraMemory.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/saraMemory.ts) | `buildMemorySummary` | `(userId: string) => Promise<string>` | Reads Contextual Memory Graph (CMG) from AsyncStorage and formats facts into system prompt text. |
+| | `extractAndStore` | `(userId: string, userMsg: string, saraMsg: string) => Promise<void>` | Background fact extractor analyzing conversation turns and updating memory graph entities. |
+| | `getFingerprint` | `(userId: string) => Promise<BehavioralFingerprint>` | Returns user's Behavioral Fingerprint (tone, verbosity, active hours, primary goals). |
+| | `updateFingerprint` | `(userId: string, actionType: string) => Promise<void>` | Adapts user fingerprint weights on every completed action or interaction. |
+| | `getSaraToneDirective` | `(fingerprint: BehavioralFingerprint) => string` | Computes tailored psychological persona instructions for SARA prompt. |
+| [`src/services/offlineSync.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/offlineSync.ts) | `queueWrite` | `(collection: string, operation: 'add'\|'update'\|'delete'\|'set', data: any, docId?: string) => Promise<void>` | Enqueues a Firestore write operation in AsyncStorage with LWW timestamp and coalesces rapid updates. |
+| | `syncOfflineQueue` | `() => Promise<{ synced: number, errors: number }>` | Drains all queued offline writes to Firestore using atomic batches and emits sync progress. |
+| | `setupNetworkListener` | `() => () => void` | Attaches NetInfo state listener to automatically trigger `syncOfflineQueue()` when transitioning online. |
+| | `subscribeToQueueChanges` | `(cb: (count: number) => void) => () => void` | Registers listener for offline queue count updates (used by `OfflineIndicator.tsx`). |
+| | `subscribeToSyncComplete` | `(cb: (count: number) => void) => () => void` | Registers listener for successful sync completion toasts. |
+| | `getQueueCount` | `() => Promise<number>` | Returns count of pending offline writes. |
+| | `clearOfflineQueue` | `() => Promise<void>` | Wipes offline queue on sign-out. |
+| [`src/services/notifications.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/notifications.ts) | `scheduleAllNotifications` | `(params: ScheduleParams) => Promise<void>` | Evaluates user data fingerprint and rebuilds all local scheduled notifications across both Android channels. |
+| | `requestNotificationPermissions`| `() => Promise<boolean>` | Configures Android channels (`default`, `reminders`) and requests OS permissions. |
+| | `registerBackgroundNotificationFetch`| `() => Promise<void>` | Registers background TaskManager worker to verify notifications when app is suspended. |
+| | `clearScheduleCache` | `() => void` | Bypasses fingerprint cache to force immediate full notification rescheduling. |
+| [`src/services/xpSystem.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/xpSystem.ts) | `awardXP` | `(source: XPSource, customAmount?: number) => Promise<{ newXP: number, levelUp: boolean, newLevel: XPLevel }>` | Awards XP using Skinner variable ratio schedule, checks rank thresholds, and plays milestone haptics. |
+| | `getXPData` | `() => Promise<{ xp: number, streak: number, level: XPLevel, progressPct: number }>` | Returns current user XP, rank level, and streak statistics. |
+| | `calculateLevel` | `(xp: number) => XPLevel` | Maps numeric XP to 1 of 8 rank titles (`Initiate` to `Mythic`). |
+| [`src/services/conflictDetector.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/conflictDetector.ts) | `detectConflicts` | `(tasks: Task[], events: CustomEvent[], timetable: AttendanceSubject[]) => ScheduleConflict[]` | Scans for timeSlot overlaps between calendar events, academic classes, and scheduled tasks. |
+| [`src/services/cloudinary.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/cloudinary.ts) | `uploadFileToCloudinary` | `(uri: string, type: 'image'\|'pdf'\|'raw') => Promise<string>` | Uploads local files/photos to Cloudinary CDN and returns secure URL. |
+| [`src/services/youtubeTranscriptService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/youtubeTranscriptService.ts) | `fetchYouTubeTranscript` | `(videoId: string) => Promise<TranscriptResult>` | 4-layer resilient transcript pipeline (InnerTube, Gemini multimodal, Supadata API, Audio fallback). |
+| | `transcriptToPlainText` | `(cues: TranscriptCue[], maxChars?: number) => string` | Formats transcript cues into timestamped `[MM:SS]` text blocks for AI ingestion. |
+| [`src/services/flashcardService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/flashcardService.ts) | `calculateSM2` | `(card: Flashcard, grade: 0\|1\|2\|3\|4\|5) => Flashcard` | SuperMemo SM-2 algorithm: updates ease factor, interval days, and repetition counts. |
+| | `generateFlashcardsFromNote` | `(noteContent: string) => Promise<Flashcard[]>` | Prompts Gemini to parse markdown notes and output structured Q&A flashcard pairs. |
+| [`src/services/exerciseVideoResolver.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/exerciseVideoResolver.ts) | `resolveExerciseVideoId` | `(exerciseName: string) => string \| null` | Maps exercise names to verified high-definition YouTube execution video IDs. |
+| [`src/services/progressiveOverload.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/progressiveOverload.ts) | `calculateNextTarget` | `(exerciseId: string, history: GymSet[]) => OverloadRecommendation` | Computes recommended weight & reps for next session based on RPE and completion rates. |
+| | `recommendWeight` | `(current1RM: number, targetReps: number, rpe: number) => number` | Formulates lifting weight target using Brzycki formula and RPE exertion curve. |
+| [`src/services/weeklyGymAnalysisEngine.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/weeklyGymAnalysisEngine.ts) | `generateWeeklyGymSummary` | `(gymLogs: GymLog[], userGymPlan: UserGymPlanDoc) => WeeklyGymReportData` | Aggregates 7-day volume totals, muscle group set distributions, and week-over-week deltas. |
+| | `calculateVolumeByMuscle` | `(gymLogs: GymLog[]) => Record<string, number>` | Sums weight × reps per anatomical muscle group. |
+| [`src/services/leetcode.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/leetcode.ts) | `fetchLeetCodeProfile` | `(username: string) => Promise<LeetCodeStats \| null>` | Queries LeetCode GraphQL public endpoint for solved counts and contest rating. |
+| [`src/services/agentHistory.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/agentHistory.ts) | `recordAgentAction` | `(action: AgentActionRecord) => Promise<void>` | Appends SARA autonomous action records to local audit log. |
+| | `getAgentHistory` | `() => Promise<AgentActionRecord[]>` | Returns recent action logs for `AgentHistoryScreen.tsx`. |
+| [`src/services/backgroundTasks.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/backgroundTasks.ts) | `registerWeeklyReviewTask` | `() => Promise<void>` | Registers Expo TaskManager task for Sunday review reminder notifications. |
+| [`src/services/backgroundProactiveAgent.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/backgroundProactiveAgent.ts) | `registerBackgroundProactiveAgent` | `() => Promise<void>` | Background task evaluating critical academic and task risks when app is suspended. |
+| [`src/services/webScraper.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/webScraper.ts) | `executeWebSearch` | `(query: string) => Promise<string>` | DuckDuckGo search integration for SARA DAG queries. |
+
+### 4.6. Navigation Layer (`src/navigation/`)
+| File Path | Component / Function | Purpose & Implementation Details |
+|---|---|---|
+| [`src/navigation/AppNavigator.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/navigation/AppNavigator.tsx) | `AppNavigator` | Root navigator managing auth gate (`onAuthStateChanged`), 0ms manifest boot (`loadBootManifest`), `isAuthFatalError` handler, 8-second dead session recovery window, `MainTabs` with dynamic Telegram tab bar, and `MoreStack` card transitions. |
+| | `navigationRef` | Exported `NavigationContainerRef` for imperative deep linking from notification handlers in `App.tsx`. |
+| [`src/navigation/GymStack.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/navigation/GymStack.tsx) | `GymStack` | Dedicated workout stack: `GymHome` → `ActiveLogging` → `WorkoutSummary`, `GymProgress`, `GymHistory`, `ExerciseDetail`, `ExerciseSwap`, `CardioLog`. |
+
+### 4.7. Screens & View Controllers (`src/screens/`)
+| File Path | Screen Component | Route Name | Key Screen Responsibilities |
+|---|---|---|---|
+| [`src/screens/DashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/DashboardScreen.tsx) | `DashboardScreen` | `Home` | Main Dashboard: Life Matrix ring, daily tasks briefing, habit streak rings, hydration logger, and quick speed-dial sheet. |
+| [`src/screens/SaraScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SaraScreen.tsx) | `SaraScreen` | `Sara`, `SaraModal` | ChatGPT OLED workspace: Voice Orb, real-time reasoning feed, 3-tier action confirmation cards, and memory summary drawer. |
+| [`src/screens/TasksScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TasksScreen.tsx) | `TasksScreen` | `Tasks` | Task Command Center: List view with swipe actions, 24-hour timeline view, Eisenhower 4-quadrant matrix, and Pomodoro focus sheet. |
+| [`src/screens/AttendanceScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AttendanceScreen.tsx) | `AttendanceScreen` | `Attendance` | Attendance Tracker: subject card list, bunk prediction calculator, danger zone banner, timetable grid, and Excel import/export. |
+| [`src/screens/CalendarScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/CalendarScreen.tsx) | `CalendarScreen` | `Calendar` | Calendar Hub: interactive month view, week strip pager, day agenda, event creator, and conflict markers. |
+| [`src/screens/HabitsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/HabitsScreen.tsx) | `HabitsScreen` | `Habits` | Habit Tracker: daily check-in pills, numerical counter buttons, streak freeze manager, and streak detail charts. |
+| [`src/screens/NotesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotesScreen.tsx) | `NotesScreen` | `Notes` | ZenNotes: Markdown editor, hierarchical file/folder storage nodes, AI co-writer assistance, and PDF document exporter. |
+| [`src/screens/GoalsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GoalsScreen.tsx) | `GoalsScreen` | `Goals` | OKR Goal Tracker: goal cards, milestone breakdown, and progress completion progress rings. |
+| [`src/screens/GradesScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GradesScreen.tsx) | `GradesScreen` | `Grades` | SGPA/CGPA University Grade Calculator with semester subject credit breakdown. |
+| [`src/screens/LearningScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/LearningScreen.tsx) | `LearningScreen` | `Learning` | Learning Hub: synchronized YouTube video player, AI tutor chat, VS Code syntax highlighter, interactive mind map, and flashcard deck. |
+| [`src/screens/PlacementHubScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/PlacementHubScreen.tsx) | `PlacementHubScreen` | `PlacementHub` | Placement Prep: LeetCode profile scraper, Striver SDE sheet checklist, DSA activity heatmap, Pattern Vault, and Panic Mode sheet. |
+| [`src/screens/AnalyticsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AnalyticsScreen.tsx) | `AnalyticsScreen` | `Analytics` | Analytics Hub: Discipline score gauge, task completion ratios, XP radar charts, and academic performance graphs. |
+| [`src/screens/WellbeingDashboardScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/WellbeingDashboardScreen.tsx) | `WellbeingDashboardScreen` | `WellbeingDashboard` | Wellbeing: sleep stage analysis, daily hydration metrics, recovery scores, and work-life balance insights. |
+| [`src/screens/XPConstellationScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/XPConstellationScreen.tsx) | `XPConstellationScreen` | `XPConstellation` | Gamification Constellation: visual galaxy nodes representing unlocked milestones, rank tiers, and badge achievements. |
+| [`src/screens/StreakDetailScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/StreakDetailScreen.tsx) | `StreakDetailScreen` | `StreakDetail` | Streak Analytics: habit consistency calendar, longest streak records, freeze history, and milestone progress. |
+| [`src/screens/ContentLibraryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/ContentLibraryScreen.tsx) | `ContentLibraryScreen` | `ContentLibrary` | Reading List: books, articles, and podcasts with progress sliders and completion dates. |
+| [`src/screens/StudyRoomScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/StudyRoomScreen.tsx) | `StudyRoomScreen` | `StudyRoom` | Virtual Study Room: Pomodoro timer, ambient background noise, and study session loggers. |
+| [`src/screens/WeeklyReviewScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/WeeklyReviewScreen.tsx) | `WeeklyReviewScreen` | `WeeklyReview` | Sunday Review: retrospective questions (Went well, To improve, Priorities) and goal alignment. |
+| [`src/screens/AgentHistoryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AgentHistoryScreen.tsx) | `AgentHistoryScreen` | `AgentHistory` | SARA Audit Log: list of all executed actions with undo buttons and execution timestamps. |
+| [`src/screens/MoreScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/MoreScreen.tsx) | `MoreScreen` | `More` | Module Launcher: 16-module icon grid with tab pinning configuration controls. |
+| [`src/screens/SettingsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/SettingsScreen.tsx) | `SettingsScreen` | `Settings` | Settings: theme switcher, biometric lock toggle, data export/import, and sign-out button. |
+| [`src/screens/NotificationsSettingsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/NotificationsSettingsScreen.tsx) | `NotificationsSettingsScreen` | `NotificationsSettings` | Notification Preferences: mission windows, briefings, class reminders, and hydration interval controls. |
+| [`src/screens/OnboardingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/OnboardingScreen.tsx) | `OnboardingScreen` | `Onboarding` | 5-step psychological onboarding: persona selection, goals, academic baseline, and SARA setup. |
+| [`src/screens/AuthScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/AuthScreen.tsx) | `AuthScreen` | `Auth` | Sign In: Google One-Tap and Apple Authentication buttons. |
+| [`src/screens/GuestDashboard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/GuestDashboard.tsx) | `GuestDashboard` | `GuestDashboard` | Offline Sample Preview: sample dashboard data for unauthenticated evaluation. |
+| [`src/screens/LandingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/LandingScreen.tsx) | `LandingScreen` | `Landing` | Welcome Hero: feature carousel and Get Started CTA. |
+| [`src/screens/TermsScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/TermsScreen.tsx) | `TermsScreen` | `Terms` | Legal: Privacy policy, data safety, and terms of service. |
+| [`src/screens/gym/GymHomeScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymHomeScreen.tsx) | `GymHomeScreen` | `GymHome` | Gym Launcher: today's workout split, muscle heatmap, GYM-GPT FAB, and Sunday weekly summary. |
+| [`src/screens/gym/ActiveLoggingScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ActiveLoggingScreen.tsx) | `ActiveLoggingScreen` | `ActiveLogging` | Workout Execution: set logging, rep/weight trackers, animated rest timer, and RPE inputs. |
+| [`src/screens/gym/WorkoutSummaryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/WorkoutSummaryScreen.tsx) | `WorkoutSummaryScreen` | `WorkoutSummary` | Workout Summary: volume stats, PR badges, confetti cannon, and view-shot shareable card. |
+| [`src/screens/gym/GymProgressScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymProgressScreen.tsx) | `GymProgressScreen` | `GymProgress` | Strength analytics: estimated 1RM progression charts, volume trend lines, and muscle distribution donuts. |
+| [`src/screens/gym/GymHistoryScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/GymHistoryScreen.tsx) | `GymHistoryScreen` | `GymHistory` | Workout calendar & history logs with search filtering and set breakdowns. |
+| [`src/screens/gym/ExerciseDetailScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ExerciseDetailScreen.tsx) | `ExerciseDetailScreen` | `ExerciseDetail` | Exercise Reference: YouTube technique demos, 1RM history, and personal records. |
+| [`src/screens/gym/ExerciseSwapScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/ExerciseSwapScreen.tsx) | `ExerciseSwapScreen` | `ExerciseSwap` | Equipment & muscle-based exercise substitution with permanent master split override. |
+| [`src/screens/gym/CardioLogScreen.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/CardioLogScreen.tsx) | `CardioLogScreen` | `CardioLog` | Cardio session logger: distance, duration, pace, incline, and calories burned. |
+
+### 4.8. Screen Sub-Modules & Style Factories
+| File Path | Function / Export | Purpose & Responsibilities |
+|---|---|---|
+| [`src/screens/tasks/useTasksFirestore.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useTasksFirestore.ts) | `addTask`, `completeTask`, `uncompleteTask`, `updateTask`, `deleteTask`, `saveTimeLog`, `bulkCompleteTasks`, `bulkRescheduleTasks`, `bulkDeleteTasks` | Firestore mutation coordinator for tasks routing through `safeWrite()`. |
+| [`src/screens/tasks/useTasksData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useTasksData.ts) | `useTasksData()` | Tasks filtering, sorting, tab selection (`all`, `today`, `upcoming`), and tag grouping hook. |
+| [`src/screens/tasks/useRecurringSpawn.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useRecurringSpawn.ts) | `useRecurringSpawn(tasks, optimisticAddTask)` | Client-side daily task recurrence spawner preventing duplicate clones for `today`. |
+| [`src/screens/tasks/NewTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/NewTaskModal.tsx) | `NewTaskModal` | Slide-up modal for task creation with NLP natural language parsing chips. |
+| [`src/screens/tasks/EditTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/EditTaskModal.tsx) | `EditTaskModal` | Modal for updating task title, priority, subtasks, recurrence, and dates. |
+| [`src/screens/tasks/taskConstants.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/taskConstants.ts) | `TASK_PRIORITY_COLORS`, `TASK_FILTERS` | Constants for task priorities and filtering modes. |
+| [`src/screens/tasks/tasksStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/tasksStyles.ts) | `makeTasksStyles(colors, isDark)` | Dynamic style factory for tasks screens across Obsidian Cosmos & Frost Quartz themes. |
+| [`src/screens/dashboard/useDashboardData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/dashboard/useDashboardData.ts) | `useDashboardData()` | Aggregates discipline metrics, life score, upcoming events, and hydration progress for Home. |
+| [`src/screens/dashboard/useXPLevel.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/dashboard/useXPLevel.ts) | `useXPLevel()` | Hook returning current rank level title, badge icon, and next tier threshold. |
+| [`src/screens/dashboard/dashboardStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/dashboard/dashboardStyles.ts) | `makeDashboardStyles(colors, isDark)` | Dynamic theme style generator for Dashboard. |
+| [`src/screens/attendance/useAttendanceFirestore.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/useAttendanceFirestore.ts) | `markAttendance`, `undoAttendance`, `addSubject`, `updateSubject`, `deleteSubject`, `addHoliday` | Firestore mutator for attendance subjects and logs with offline queueing. |
+| [`src/screens/attendance/useAttendanceData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/useAttendanceData.ts) | `useAttendanceData()` | Computes overall percentage, bunk safety margins, and at-risk subject lists. |
+| [`src/screens/attendance/useAttendanceExport.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/useAttendanceExport.ts) | `exportAttendanceExcel`, `importAttendanceExcel` | Parses and generates university attendance Excel `.xlsx` spreadsheets. |
+| [`src/screens/attendance/HorizontalWeekStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/HorizontalWeekStrip.tsx) | `HorizontalWeekStrip` | Interactive Monday–Saturday horizontal date selection strip. |
+| [`src/screens/attendance/attendanceConstants.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/attendanceConstants.ts) | `ATTENDANCE_STATUS_COLORS` | Constants for Present, Absent, and Cancelled attendance statuses. |
+| [`src/screens/attendance/attendanceStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/attendance/attendanceStyles.ts) | `makeAttendanceStyles(colors, isDark)` | Dynamic style factory for Attendance screen. |
+| [`src/screens/calendar/useCalendarData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/useCalendarData.ts) | `useCalendarData()` | Aggregates tasks, timetable classes, and custom events into unified calendar matrix. |
+| [`src/screens/calendar/CalendarDayView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarDayView.tsx) | `CalendarDayView` | 24-hour day schedule view with live real-time indicator line. |
+| [`src/screens/calendar/CalendarWeekView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarWeekView.tsx) | `CalendarWeekView` | 7-day multi-column calendar view. |
+| [`src/screens/calendar/CalendarAgendaView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarAgendaView.tsx) | `CalendarAgendaView` | Chronological agenda list view of upcoming schedule items. |
+| [`src/screens/calendar/CalendarGymModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/CalendarGymModal.tsx) | `CalendarGymModal` | Modal displaying gym workout logs scheduled on a calendar day. |
+| [`src/screens/calendar/EventDetailSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/EventDetailSheet.tsx) | `EventDetailSheet` | Bottom sheet displaying event time, location, description, and delete button. |
+| [`src/screens/calendar/calendarStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/calendarStyles.ts) | `makeCalendarStyles(colors, isDark)` | Dynamic style generator for Calendar views. |
+| [`src/screens/calendar/calendarUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/calendar/calendarUtils.ts) | `formatCalendarDayHeader`, `getMarkedDatesMap` | Calendar helper utilities. |
+| [`src/screens/gym/home/useGymModals.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/home/useGymModals.ts) | `useGymModals()` | Modal visibility state coordinator for GymHome. |
+| [`src/screens/gym/home/gymHomeStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/gym/home/gymHomeStyles.ts) | `makeGymHomeStyles(colors, isDark)` | Dynamic theme styling for Gym Home. |
+
+### 4.9. Component Library (`src/components/`)
+| Subfolder / File | Exported Component | Key Functionality & Props |
+|---|---|---|
+| [`src/components/Navigation/TelegramTabBar.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Navigation/TelegramTabBar.tsx) | `TelegramTabBar` | Floating frosted glass bottom tab bar with dynamic badge pills and haptic animations. |
+| [`src/components/OfflineIndicator.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/OfflineIndicator.tsx) | `OfflineIndicator` | Real-time amber "Offline" pill and green "Synced N items" toast. |
+| [`src/components/AnimatedPressable.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/AnimatedPressable.tsx) | `AnimatedPressable` | High-performance touch wrapper with scale micro-animations and haptic feedback. |
+| [`src/components/ErrorBoundary.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ErrorBoundary.tsx) | `ErrorBoundary` | React component crash guard with stack trace diagnostics and "Try Again" recovery. |
+| [`src/components/NotificationPreferencesComponent.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/NotificationPreferencesComponent.tsx) | `NotificationPreferencesComponent` | Reusable notification preferences form with time pickers and channel toggles. |
+| [`src/components/UniversalCalendarModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/UniversalCalendarModal.tsx) | `UniversalCalendarModal` | Global modal date picker supporting single date and date range selection. |
+| [`src/components/UpdateBanner.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/UpdateBanner.tsx) | `UpdateBanner` | In-app notification banner for OTA Expo Updates bundle downloads. |
+| **Academic Components** (`src/components/Academic/`) | | |
+| [`src/components/Academic/AddSubjectModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/AddSubjectModal.tsx) | `AddSubjectModal` | Modal for creating academic subjects with weekly schedule time slots and target percentages. |
+| [`src/components/Academic/ClassNotifSettingsModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/ClassNotifSettingsModal.tsx) | `ClassNotifSettingsModal` | Per-subject class alert notification timing configurator (15m before, post-class). |
+| [`src/components/Academic/TimetableModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/TimetableModal.tsx) | `TimetableModal` | Full weekly timetable grid display (Monday to Saturday). |
+| [`src/components/Academic/AcademicPredictorCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Academic/AcademicPredictorCard.tsx) | `AcademicPredictorCard` | Predictive card showing projected end-of-semester attendance based on current bunk rate. |
+| **Analytics Components** (`src/components/Analytics/`) | | |
+| [`src/components/Analytics/AcademicPredictorCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Analytics/AcademicPredictorCard.tsx) | `AcademicPredictorCard` | Grade and attendance risk forecasting card for Analytics screen. |
+| **Calendar Components** (`src/components/Calendar/`) | | |
+| [`src/components/Calendar/AddEventModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Calendar/AddEventModal.tsx) | `AddEventModal` | Slide-up modal for creating custom calendar events with location, type, and start/end times. |
+| [`src/components/Calendar/CalendarWeekStripPager.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Calendar/CalendarWeekStripPager.tsx) | `CalendarWeekStripPager` | Horizontal swipeable week pager with day selection indicators. |
+| **Dashboard Components** (`src/components/Dashboard/`) | | |
+| [`src/components/Dashboard/UnifiedLifeWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/UnifiedLifeWidget.tsx) | `UnifiedLifeWidget` | SVG donut score ring displaying overall life discipline score (0–100). |
+| [`src/components/Dashboard/AgendaWidget.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/AgendaWidget.tsx) | `AgendaWidget` | Today's timeline schedule card on Home dashboard. |
+| [`src/components/Dashboard/QuickCaptureSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/QuickCaptureSheet.tsx) | `QuickCaptureSheet` | 1-tap capture bottom sheet for Tasks, Notes, and Habits with NLP parser. |
+| [`src/components/Dashboard/WaterLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/WaterLogSheet.tsx) | `WaterLogSheet` | Hydration logging bottom sheet (+250ml, +500ml quick chips). |
+| [`src/components/Dashboard/SleepLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/SleepLogSheet.tsx) | `SleepLogSheet` | Sleep duration & quality (1–5 stars) logging sheet. |
+| [`src/components/Dashboard/VitalityGaugeCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/VitalityGaugeCard.tsx) | `VitalityGaugeCard` | Recovery and hydration vitality metric card. |
+| [`src/components/Dashboard/DashboardLayoutSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/DashboardLayoutSheet.tsx) | `DashboardLayoutSheet` | Drag-and-drop widget reordering sheet for customizing Dashboard layout. |
+| [`src/components/Dashboard/DashboardRings.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Dashboard/DashboardRings.tsx) | `DashboardRings` | Multi-ring Apple Watch style activity rings for tasks, habits, and gym. |
+| **Tasks Components** (`src/components/Tasks/`) | | |
+| [`src/components/Tasks/TaskRow.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskRow.tsx) | `TaskRow` | Reusable swipeable task row with checkbox, priority badge, and subtasks accordion. |
+| [`src/components/Tasks/TimelineView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TimelineView.tsx) | `TimelineView` | 24-hour visual block timeline mapping tasks, academic classes, and gym workouts. |
+| [`src/components/Tasks/MatrixView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/MatrixView.tsx) | `MatrixView` | Eisenhower Matrix (Do First, Schedule, Delegate, Don't Do) 4-quadrant layout. |
+| [`src/components/Tasks/KanbanView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/KanbanView.tsx) | `KanbanView` | Drag-and-drop Kanban board with Pending, In Progress, and Done columns. |
+| [`src/components/Tasks/PomodoroSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/PomodoroSheet.tsx) | `PomodoroSheet` | Animated SVG progress ring Pomodoro focus timer with task linker. |
+| [`src/components/Tasks/NLPTaskInput.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/NLPTaskInput.tsx) | `NLPTaskInput` | Natural language text input field with live parsing token chips. |
+| [`src/components/Tasks/RecurrencePickerModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/RecurrencePickerModal.tsx) | `RecurrencePickerModal` | Custom repeat rule configurator (Daily, Weekly, Monthly, Custom intervals). |
+| [`src/components/Tasks/TaskDateStrip.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskDateStrip.tsx) | `TaskDateStrip` | Horizontal calendar date pill picker for filtering tasks by date. |
+| [`src/components/Tasks/BulkRescheduleSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/BulkRescheduleSheet.tsx) | `BulkRescheduleSheet` | Bulk action bottom sheet for rescheduling multiple selected tasks at once. |
+| [`src/components/Tasks/TaskTemplatesSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskTemplatesSheet.tsx) | `TaskTemplatesSheet` | Predefined routine task templates (Morning routine, Exam prep, Workout setup). |
+| [`src/components/Tasks/TaskTimeLogSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TaskTimeLogSheet.tsx) | `TaskTimeLogSheet` | Post-completion time logging sheet capturing actual minutes spent on a task. |
+| [`src/components/Tasks/TimeSpentSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/TimeSpentSheet.tsx) | `TimeSpentSheet` | Time tracking analytics sheet. |
+| [`src/components/Tasks/VoiceDictationOverlay.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Tasks/VoiceDictationOverlay.tsx) | `VoiceDictationOverlay` | Full-screen voice dictation overlay converting spoken tasks to NLP tokens. |
+| **Gym Components** (`src/components/Gym/` & `Charts/`) | | |
+| [`src/components/Gym/ZenGymAiModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ZenGymAiModal.tsx) | `ZenGymAiModal` | Full-screen GYM-GPT AI coach modal with persistent workout chat history. |
+| [`src/components/Gym/ZenGymAiFab.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ZenGymAiFab.tsx) | `ZenGymAiFab` | Luxury floating action button with metallic plates & AI sparkles. |
+| [`src/components/Gym/GymAiIcon.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymAiIcon.tsx) | `GymAiIcon` | High-precision vector SVG emblem with metallic weight plates & sparkles. |
+| [`src/components/Gym/AddExerciseModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AddExerciseModal.tsx) | `AddExerciseModal` | Search-as-you-type modal auto-filling sets, reps, videoId, and last session weights. |
+| [`src/components/Gym/AnimatedRestTimer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AnimatedRestTimer.tsx) | `AnimatedRestTimer` | Countdown rest timer with audio beep and background push alerts. |
+| [`src/components/Gym/WeeklyGymReport.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/WeeklyGymReport.tsx) | `WeeklyGymReport` | Sunday recovery card: volume totals, muscle donuts, and untrained muscle warnings. |
+| [`src/components/Gym/BodyMetricsSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/BodyMetricsSheet.tsx) | `BodyMetricsSheet` | Bodyweight, body fat %, and progress photo logging sheet. |
+| [`src/components/Gym/BeforeAfterSlider.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/BeforeAfterSlider.tsx) | `BeforeAfterSlider` | Interactive touch comparison slider for transformation photos. |
+| [`src/components/Gym/ExerciseList.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ExerciseList.tsx) | `ExerciseList` | Virtualized exercise card list in active workout session. |
+| [`src/components/Gym/ExerciseHistoryDrawer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/ExerciseHistoryDrawer.tsx) | `ExerciseHistoryDrawer` | Slide-out drawer displaying past historical sets for an individual exercise. |
+| [`src/components/Gym/GymProfileModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymProfileModal.tsx) | `GymProfileModal` | User fitness profile: height, weight, lifting experience, and primary goal. |
+| [`src/components/Gym/GymScheduleSettingsModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymScheduleSettingsModal.tsx) | `GymScheduleSettingsModal` | Custom 7-day schedule pattern editor (e.g. Tue–Sun with Mon Rest). |
+| [`src/components/Gym/GymTemplateModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/GymTemplateModal.tsx) | `GymTemplateModal` | Workout routine template importer (PPL, Arnold Split, Upper/Lower, Full Body). |
+| [`src/components/Gym/AddCardioModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/AddCardioModal.tsx) | `AddCardioModal` | Modal for adding cardio exercises (Treadmill, Cycle, Stairmaster). |
+| [`src/components/Gym/LogCardioModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/LogCardioModal.tsx) | `LogCardioModal` | Cardio session metric logger (distance, duration, calories, incline). |
+| [`src/components/Gym/CardioSection.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/CardioSection.tsx) | `CardioSection` | Cardio block container inside ActiveLoggingScreen. |
+| [`src/components/Gym/PRHallOfFameSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/PRHallOfFameSheet.tsx) | `PRHallOfFameSheet` | Personal Records Hall of Fame displaying all-time best lifts per exercise. |
+| [`src/components/Gym/SwapRoutineModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/SwapRoutineModal.tsx) | `SwapRoutineModal` | Modal for switching between PPL and Arnold Split routines. |
+| [`src/components/Gym/WorkoutBanner.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/WorkoutBanner.tsx) | `WorkoutBanner` | Today's workout split summary hero banner on GymHome. |
+| [`src/components/Gym/WorkoutTimer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/WorkoutTimer.tsx) | `WorkoutTimer` | Elapsed workout duration stopwatch component. |
+| [`src/components/Gym/Charts/ConsistencyHeatmap.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/ConsistencyHeatmap.tsx) | `ConsistencyHeatmap` | 52-week GitHub-style workout consistency heatmap grid. |
+| [`src/components/Gym/Charts/StrengthProgressionChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/StrengthProgressionChart.tsx) | `StrengthProgressionChart` | Estimated 1RM strength curve chart over 30/60/90 days. |
+| [`src/components/Gym/Charts/MuscleDonutChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/MuscleDonutChart.tsx) | `MuscleDonutChart` | SVG donut chart showing set volume breakdown by muscle group. |
+| [`src/components/Gym/Charts/MuscleDistributionChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/MuscleDistributionChart.tsx) | `MuscleDistributionChart` | Horizontal bar chart of sets performed per muscle group. |
+| [`src/components/Gym/Charts/VolumeBarChart.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/VolumeBarChart.tsx) | `VolumeBarChart` | 7-day daily volume comparison bar chart. |
+| [`src/components/Gym/Charts/VolumeTrendLine.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/VolumeTrendLine.tsx) | `VolumeTrendLine` | Line chart displaying total lifting tonnage progression. |
+| [`src/components/Gym/Charts/PRFeed.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Gym/Charts/PRFeed.tsx) | `PRFeed` | Feed of recent Personal Record achievements. |
+| **Habits Components** (`src/components/Habits/`) | | |
+| [`src/components/Habits/HabitReminderModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Habits/HabitReminderModal.tsx) | `HabitReminderModal` | Modal for configuring daily habit notification reminder times. |
+| **Learning Components** (`src/components/Learning/`) | | |
+| [`src/components/Learning/LearningVideoPlayer.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/LearningVideoPlayer.tsx) | `LearningVideoPlayer` | YouTube iframe player with synchronized interactive transcript drawer and AI chat. |
+| [`src/components/Learning/FlashcardReviewModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/FlashcardReviewModal.tsx) | `FlashcardReviewModal` | 3D flippable card deck with SM-2 grading buttons (Again, Hard, Good, Easy). |
+| [`src/components/Learning/VsCodeSyntaxHighlighter.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/VsCodeSyntaxHighlighter.tsx) | `VsCodeSyntaxHighlighter` | VS Code Dark+ syntax highlighter with line numbers and 1-tap copy. |
+| [`src/components/Learning/LearningTopicCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/LearningTopicCard.tsx) | `LearningTopicCard` | Course curriculum topic card with video checkpoints and progress rings. |
+| [`src/components/Learning/LearningModals.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/LearningModals.tsx) | `AddTopicModal`, `ImportSyllabusModal` | Modals for creating learning topics and importing AI syllabuses. |
+| [`src/components/Learning/LectureChatHistoryModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/LectureChatHistoryModal.tsx) | `LectureChatHistoryModal` | Drawer displaying past lecture AI conversation sessions with 1-tap switching. |
+| [`src/components/Learning/LectureMindMap.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/LectureMindMap.tsx) | `LectureMindMap` | Interactive SVG mind map visualizing hierarchical lecture concepts. |
+| [`src/components/Learning/InlineCodeRunner.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/Learning/InlineCodeRunner.tsx) | `InlineCodeRunner` | Code snippet sandbox runner with syntax highlighting. |
+| **Placement Hub Components** (`src/components/PlacementHub/`) | | |
+| [`src/components/PlacementHub/LeetCodeTracker.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/PlacementHub/LeetCodeTracker.tsx) | `LeetCodeTracker` | LeetCode user stat card with live problem breakdown and rating trends. |
+| [`src/components/PlacementHub/DSAHeatmap.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/PlacementHub/DSAHeatmap.tsx) | `DSAHeatmap` | Coding activity heatmap displaying daily submission intensity. |
+| [`src/components/PlacementHub/DSALogger.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/PlacementHub/DSALogger.tsx) | `DSALogger` | Sheet for logging solved algorithmic problem notes and approaches. |
+| [`src/components/PlacementHub/PanicModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/PlacementHub/PanicModal.tsx) | `PanicModal` | High-yield emergency interview formula sheet & algorithm cheatsheet. |
+| [`src/components/PlacementHub/PatternVaultModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/PlacementHub/PatternVaultModal.tsx) | `PatternVaultModal` | 14 core coding patterns vault (Two Pointers, Sliding Window, Top K, etc.). |
+| [`src/components/PlacementHub/BlockCalendar.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/PlacementHub/BlockCalendar.tsx) | `BlockCalendar` | Block time schedule grid for placement interview rounds. |
+| [`src/components/PlacementHub/SundayReflectionModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/PlacementHub/SundayReflectionModal.tsx) | `SundayReflectionModal` | Weekly career reflection & job application review modal. |
+| **SARA Components** (`src/components/SARA/`) | | |
+| [`src/components/SARA/VoiceOrb.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/VoiceOrb.tsx) | `VoiceOrb` | Animated fluid canvas orb displaying idle, listening, thinking, and speaking states. |
+| [`src/components/SARA/VoiceMicButton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/VoiceMicButton.tsx) | `VoiceMicButton` | Mic icon button with animated soundwave ripple in chat input bar. |
+| [`src/components/SARA/ReasoningFeed.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/ReasoningFeed.tsx) | `ReasoningFeed` | Live step-by-step thinking drawer showing SARA's internal decisions during inference. |
+| [`src/components/SARA/SaraBubble.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/SaraBubble.tsx) | `SaraBubble` | AI chat bubble with Markdown rendering, code highlighting, and action cards. |
+| [`src/components/SARA/ActionConfirmationCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/ActionConfirmationCard.tsx) | `ActionConfirmationCard` | Tier 3 action confirmation card with Confirm / Dismiss controls. |
+| [`src/components/SARA/BatchActionCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/BatchActionCard.tsx) | `BatchActionCard` | Card confirming multiple sequential actions (DAG batch execution). |
+| [`src/components/SARA/InlineActionPill.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/InlineActionPill.tsx) | `InlineActionPill` | Tier 2 lightweight action pill embedded inside chat text. |
+| [`src/components/SARA/SaraHUDBanner.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/SaraHUDBanner.tsx) | `SaraHUDBanner` | Predictive Surface Injection (PSI) top banner on screens with critical alerts. |
+| [`src/components/SARA/SaraHUDToast.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/SaraHUDToast.tsx) | `SaraHUDToast` | Ambient notification toast for completed background actions. |
+| [`src/components/SARA/StreamingText.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/SARA/StreamingText.tsx) | `StreamingText` | Smooth token-by-token typewriter text animator for streaming responses. |
+| **UI Primitives** (`src/components/ui/`) | | |
+| [`src/components/ui/BottomSheet.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/BottomSheet.tsx) | `BottomSheet` | Ultra-fast 180ms cubic-bezier bottom sheet modal wrapper with drag-to-dismiss. |
+| [`src/components/ui/FloatingActionButton.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/FloatingActionButton.tsx) | `FloatingActionButton` | Reusable floating action button with icon and glow effects. |
+| [`src/components/ui/GlassCard.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/GlassCard.tsx) | `GlassCard` | Frosted glassmorphism card wrapper using `expo-blur`. |
+| [`src/components/ui/EmptyState.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/EmptyState.tsx) | `EmptyState` | Consistent placeholder component for empty lists with icon, title, and CTA button. |
+| [`src/components/ui/FadeModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/FadeModal.tsx) | `FadeModal` | Alpha-fading modal backdrop container with centered content dialog. |
+| [`src/components/ui/IOSScrollView.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/components/ui/IOSScrollView.tsx) | `IOSScrollView` | ScrollView wrapper with bounce physics and content insets. |
+
+### 4.10. Custom Hooks (`src/hooks/`)
+| File Path | Hook Export | Signature / Return Type | Purpose & Details |
+|---|---|---|---|
+| [`src/hooks/useGymLog.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useGymLog.ts) | `useGymLog` | `(overrideDateStr?: string) => GymLogHookState` | Workout session state machine. Exports `log`, `updateSet`, `toggleSetComplete`, `addSet`, `removeSet`, `addExercise`, `deleteExercise`, `swapExercise`, `startWorkout`, `endWorkout`, `startRestTimer`, `prMap`. |
+| | `todayStr` | `() => string` | Returns local `YYYY-MM-DD` date string (eliminates UTC midnight bugs in IST). |
+| | `dateStrOffset` | `(offsetDays: number, fromStr?: string) => string` | Adds/subtracts days relative to a local date string. |
+| | `planDayIndexForDate` | `(dateStr: string) => number` | Maps a date to 1 of 7 day indexes in the master split. |
+| [`src/hooks/useGymProfile.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useGymProfile.ts) | `useGymProfile` | `() => { profile: GymProfile, updateProfile: (p: Partial<GymProfile>) => Promise<void> }` | Manages user gym profile and body stats persistence. |
+| [`src/hooks/usePlacementData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/usePlacementData.ts) | `usePlacementData` | `() => PlacementHookState` | Placement Hub state machine: LeetCode profile scraper, DSA problem checkboxes, Pattern Vault notes, and mock interview logs. |
+| [`src/hooks/useSaraNavigation.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useSaraNavigation.ts) | `useSaraNavigation` | `() => { processAnswerForNavigation: (text: string) => void }` | Regex extractor searching for `[NAVIGATE:ScreenName]` in SARA responses and executing React Navigation transitions. |
+| [`src/hooks/useSaraSurface.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useSaraSurface.ts) | `useSaraSurface` | `(screenName: string, options?: any) => { activeBanner: any, dismissBanner: () => void }` | **Capability 5 (PSI)**: Evaluates per-screen anomaly triggers (e.g. attendance < 75%) and displays non-intrusive HUD banners with 60s cooldowns. |
+| [`src/hooks/useTabBarBadges.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useTabBarBadges.ts) | `useTabBarBadges` | `() => Record<string, number>` | Computes active notification badge counts for bottom tab navigation icons (pending tasks, at-risk classes, gym workouts). |
+| [`src/hooks/useProactiveAgent.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useProactiveAgent.ts) | `useProactiveAgent` | `() => void` | Runs background conflict detection and anomaly checks when app state changes. |
+| [`src/hooks/useCachedFirestoreCollection.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useCachedFirestoreCollection.ts) | `useCachedFirestoreCollection` | `<T>(collection: string, cacheKey: string, parser: (d: any) => T) => { data: T[], loading: boolean }` | Generic hook providing instant AsyncStorage stale-while-revalidate cache hydration followed by live Firestore updates. |
+| [`src/hooks/useDeferredMemo.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useDeferredMemo.ts) | `useDeferredMemo` | `<T>(factory: () => T, deps: any[]) => T` | Defers expensive computations to `InteractionManager.runAfterInteractions` to preserve 60/120fps UI animations. |
+| [`src/hooks/useSafeTimeout.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/hooks/useSafeTimeout.ts) | `useSafeTimeout` | `() => { setSafeTimeout: (fn: () => void, ms: number) => void }` | Memory-safe timeout wrapper automatically clearing pending handles on component unmount. |
+
+### 4.11. Utilities & Algorithmic Engines (`src/utils/`)
+| File Path | Exported Function | Signature / Type | Description & Purpose |
+|---|---|---|---|
+| [`src/utils/safeWrite.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/safeWrite.ts) | `safeWrite` | `(firestoreFn: () => Promise<any>, collection: string, op: 'add'\|'update'\|'delete'\|'set', data: any, docId?: string) => Promise<any>` | Universal write router: executes Firestore writes directly when online, falls back to AsyncStorage queue when offline without throwing exceptions. |
+| | `safeAdd`, `safeUpdate`, `safeDelete` | Convenience Wrappers | Shorthand helper functions for document mutations. |
+| [`src/utils/bootManifest.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/bootManifest.ts) | `loadBootManifest` | `() => Promise<BootManifest>` | Fetches all cold-start storage keys in 1 atomic native C++ `AsyncStorage.multiGet` call, saving ~50ms on cold boot. |
+| | `getBootManifestSync` | `() => BootManifest \| null` | 0.00ms synchronous in-memory L1 cache lookup. |
+| | `updateL1Cache` | `<K extends keyof BootManifest>(key: K, value: BootManifest[K]) => void` | Updates in-memory L1 cache on write operations to maintain instant consistency. |
+| | `clearBootManifest` | `() => void` | Wipes boot cache on user sign-out. |
+| [`src/utils/coreCache.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/coreCache.ts) | `readCoreCacheMulti` | `() => Promise<{ tasks: Task[], habits: Habit[], habitLogs: HabitLog[] }>` | Reads tasks, habits, and habit logs from AsyncStorage. |
+| | `writeCoreCacheMulti` | `(partial: { tasks?: Task[], habits?: Habit[], habitLogs?: HabitLog[] }) => Promise<void>` | Writes tasks, habits, and habit logs to AsyncStorage cache. |
+| | `clearCoreCache` | `() => Promise<void>` | Clears core data cache on logout. |
+| [`src/utils/domainCache.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/domainCache.ts) | `readWellnessCache`, `writeWellnessCache` | Async Functions | AsyncStorage caching for Gym, Water, Sleep, and Weight logs. |
+| | `readAcademicCache`, `writeAcademicCache` | Async Functions | AsyncStorage caching for Attendance, Timetable, and Assignments. |
+| | `readCreativeCache`, `writeCreativeCache` | Async Functions | AsyncStorage caching for Storage Nodes, Learning Topics, and Jobs. |
+| | `readPlannerCache`, `writePlannerCache` | Async Functions | AsyncStorage caching for Calendar Events, Goals, and Reviews. |
+| | `clearAllDomainCaches` | `() => Promise<void>` | Wipes all 4 domain storage caches on logout. |
+| [`src/utils/schemaGuards.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/schemaGuards.ts) | `parseTask`, `parseHabit`, `parseHabitLog`, `parseGymLog`, `parseAttendanceSubject`, `parseAssignment`, `parseStorageNode`, `parseGoal`, `parseCustomEvent`, `parseLearningTopic` | `(data: any, id: string) => ValidatedDocumentType` | Strict defensive schema parsers injecting fallback defaults for corrupted or legacy Firestore documents. |
+| | `sanitizeString`, `sanitizeNumber`, `sanitizeEnum`, `sanitizeDateStr` | Normalizer Functions | Clamps numerical ranges, handles Unicode surrogate pairs (emojis), and validates enums. |
+| [`src/utils/ModulePrefetcher.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/ModulePrefetcher.tsx) | `cacheAwareLazy` | `(id: string, importer: () => Promise<any>) => React.ComponentType<any>` | Creates lazy component wrapper that renders synchronously on frame 1 once cached in memory. |
+| | `startPrefetching` | `(pinnedModules?: string[]) => void` | Background-loads tab screen JS bundles in staggered 35ms frames after interaction settles. |
+| | `preloadNow` | `(id: string) => Promise<void>` | Immediately imports a specific screen module into memory. |
+| [`src/utils/haptics.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/haptics.ts) | `feedback.tap`, `feedback.commit`, `feedback.success`, `feedback.warning`, `feedback.error` | Helper Functions | Standardized tactile vibration wrappers using `expo-haptics`. |
+| [`src/utils/dateUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/dateUtils.ts) | `parseNaturalLanguageTask` | `(text: string) => ParsedTaskNLPResult` | Industry-leading natural language date/time/recurrence/priority parser with live token highlighting spans. |
+| | `formatDateLong`, `formatDateShort`, `formatDateWithDay`, `formatDateFull`, `formatDateNumeric` | Formatters | Day-first date formatting helpers (`DD-MM-YYYY` Indian convention). |
+| | `formatLocalDateStr`, `getTodayLocalDateStr` | `(d?: Date) => string` | Local timezone date string assembler preventing UTC midnight date shifts. |
+| | `timeAgo` | `(dateInput: any) => string` | Converts timestamps to relative time strings (`"2h ago"`, `"yesterday"`). |
+| [`src/utils/streakUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/streakUtils.ts) | `calculateAppStreak` | `(tasks, gymLogs, habitLogs, learningTopics) => number` | Computes global user streak with Sunday rest day immunity. |
+| | `calculateLongestAppStreak` | `(tasks, gymLogs, habitLogs, learningTopics) => number` | Computes all-time longest streak record. |
+| | `calculateHabitStreak` | `(habitLogs, habitId) => { streak: number, longestStreak: number }` | Computes individual habit streak count and freeze continuity. |
+| [`src/utils/academicMath.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/academicMath.ts) | `calculateBunkMath` | `(attended: number, total: number, targetPct?: number) => BunkMathResult` | Calculates exact number of classes user can safely bunk or must attend consecutively to maintain target %. |
+| [`src/utils/gymUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/gymUtils.ts) | `calculate1RM` | `(weight: number, reps: number) => number` | Calculates Estimated 1-Rep Max using Brzycki formula. |
+| | `calculateVolume` | `(sets: GymSet[]) => number` | Sums weight × reps for completed workout sets. |
+| | `toCanonicalMuscle` | `(raw: string) => string` | Maps micro-target muscle strings to 1 of 12 canonical muscle groups. |
+| [`src/utils/exportUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/exportUtils.ts) | `exportToCSV`, `exportToExcel` | File Exporters | Generates downloadable CSV and Excel spreadsheets using `xlsx` and `expo-sharing`. |
+| [`src/utils/errorUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/errorUtils.ts) | `handleSyncError` | `(err: any) => void` | Non-blocking error handler suppressing transient network timeouts in console. |
+| [`src/utils/firebaseUtils.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/firebaseUtils.ts) | `deepSanitize` | `(obj: any) => any` | Recursively strips `undefined` keys to prevent Firestore write crashes. |
+| [`src/utils/tabBarScroll.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/utils/tabBarScroll.ts) | `scrollToActiveTab` | `(scrollViewRef: any, tabIndex: number) => void` | Centers the active tab button in the horizontal Telegram tab bar. |
+
+### 4.12. Theme, Design Tokens & Animation Presets (`src/theme/`)
+| File Path | Exported Symbol | Type / Structure | Description & Purpose |
+|---|---|---|---|
+| [`src/theme/tokens.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/theme/tokens.ts) | `DARK_COLORS`, `LIGHT_COLORS` | `ColorTokens` | Comprehensive color palettes for Obsidian Cosmos (dark) and Frost Quartz (light). |
+| | `FONT_FAMILY` | `Record<string, string>` | Typography font families (`title`, `body`, `medium`, `bold`). |
+| | `SPACE`, `RADIUS`, `FONT_SIZE`, `SHADOW` | Tokens | Standardized 8px spacing scale, border radii, font sizes, and elevation presets. |
+| [`src/theme/animations.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/theme/animations.ts) | `CARD_PRESS_ANIMATION`, `SPRING_PRESETS` | Reanimated Presets | UI thread worklet spring and timing animation configurations. |
+| [`src/theme/motion.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/theme/motion.ts) | `DURATION`, `EASING` | Motion Constants | Standardized animation transition durations and cubic easing curves. |
+
+### 4.13. Static Data & Templates (`src/data/`)
+| File Path | Exported Constant | Structure / Description |
+|---|---|---|
+| [`src/data/gymPlan.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/gymPlan.ts) | `GYM_PLAN`, `GYM_PLAN_PPL`, `GYM_PLAN_ARNOLD`, `WEEKDAY_TO_PLAN` | Master 6-day Push/Pull/Legs and Arnold Split routine templates with target sets/reps and YouTube demo IDs. |
+| [`src/data/exerciseDatabase.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/exerciseDatabase.ts) | `EXERCISE_CATALOGUE`, `EXERCISE_ALTERNATIVES` | Comprehensive 100+ exercise library with anatomical muscle mappings and equipment requirements. |
+| [`src/data/brutalQuotes.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/data/brutalQuotes.ts) | `BRUTAL_QUOTES` | Curated psychological discipline and accountability quotes pool used by SARA on Dashboard. |
+
+### 4.14. TypeScript Type Definitions (`src/types/`)
+| File Path | Key TypeScript Interfaces | Description & Data Structures |
+|---|---|---|
+| [`src/types/gym.types.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/types/gym.types.ts) | `GymExercise`, `GymPlanDay`, `GymSet`, `GymDayLog`, `GymCardioLog`, `UserGymPlanDoc` | Complete typed interfaces for workout plans, exercise logs, set entries, cardio logs, and custom user splits. |
 
 ---
 
-## 8. Notification System (Local, Zero-Cost)
+## 5. Navigation & Screen Graph
 
-- **Library**: `expo-notifications ~0.32.17`
-- **Cost**: Free — 100% on-device scheduling, no server
-- **Expo Go support**: Local scheduling works. FCM remote push needs a dev build (SDK 53+)
+```
+AppNavigator (Auth Gate & Boot Coordinator)
+├── State: appReady === false ──► Splash Background (0ms native window paint)
+├── State: user === null
+│   └── Stack.Navigator (animation: 'fade')
+│       ├── Landing          ──► LandingScreen (Welcome Hero)
+│       ├── GuestDashboard   ──► GuestDashboard (Offline Sample Preview)
+│       ├── Auth             ──► AuthScreen (Google / Apple One-Tap)
+│       └── Terms            ──► TermsScreen (Privacy & Terms)
+├── State: user !== null && !onboarded
+│   └── OnboardingStack
+│       └── Onboarding       ──► OnboardingScreen (5-Step Psychological Persona Setup)
+└── State: user !== null && onboarded
+    └── RootNavigatorWithSara
+        ├── Stack.Navigator (Root Stack)
+        │   ├── MainTabs (BottomTabNavigator via TelegramTabBar)
+        │   │   ├── Home             ──► DashboardScreen
+        │   │   ├── [Pinned Tab 1]   ──► TasksScreen (default)
+        │   │   ├── [Pinned Tab 2]   ──► GymStack (default)
+        │   │   ├── [Pinned Tab 3]   ──► CalendarScreen (default)
+        │   │   ├── [Pinned Tab 4]   ──► AttendanceScreen (default)
+        │   │   └── More             ──► MoreScreen (Module Launcher)
+        │   └── MoreStack (Group: card presentation, slide_from_right)
+        │       ├── Settings               ──► SettingsScreen
+        │       ├── NotificationsSettings  ──► NotificationsSettingsScreen
+        │       ├── Habits                 ──► HabitsScreen
+        │       ├── Notes                  ──► NotesScreen
+        │       ├── Goals                  ──► GoalsScreen
+        │       ├── Grades                 ──► GradesScreen
+        │       ├── Learning               ──► LearningScreen
+        │       ├── PlacementHub           ──► PlacementHubScreen
+        │       ├── Analytics              ──► AnalyticsScreen
+        │       ├── WellbeingDashboard     ──► WellbeingDashboardScreen
+        │       ├── XPConstellation        ──► XPConstellationScreen
+        │       ├── ContentLibrary         ──► ContentLibraryScreen
+        │       ├── StreakDetail           ──► StreakDetailScreen
+        │       ├── StudyRoom              ──► StudyRoomScreen
+        │       ├── WeeklyReview           ──► WeeklyReviewScreen
+        │       └── AgentHistory           ──► AgentHistoryScreen
+        ├── GlobalSaraButton (Floating Action Orb on Home/Tasks/Analytics)
+        └── SaraScreen (transparentModal overlay on orb tap)
+```
+
+---
+
+## 6. SARA AI Engine v2 — Full Data Flow
+
+```
+User Voice / Text Input
+         │
+         ▼
+[1] Intent-Ranked Context Injection (IRCI — intentClassifier.ts)
+    • Synchronous on-device regex classification (<5ms)
+    • Ranks domains (tasks, gym, attendance, calendar, goals)
+    • Injects ONLY relevant domain records (~400 tokens vs ~4,000 tokens)
+         │
+         ▼
+[2] Contextual Memory Graph (CMG) & Behavioral Fingerprint (BFE — saraMemory.ts)
+    • Injects long-term facts, preferences, stress level, and customized tone directive
+         │
+         ▼
+[3] Direct Gemini REST API (geminiProxy.ts)
+    • Direct HTTPS call to generativelanguage.googleapis.com (gemini-2.5-flash)
+    • Autonomous 9-key round-robin rotation on 429 rate limits
+    • Live streaming reasoning steps emitted to ReasoningFeed.tsx
+         │
+         ▼
+[4] Output Parsing & Action Policy Gateway (saraActionPolicy.ts)
+    ┌─────────────────────────────────────────────────────────────┐
+    │ Case A: Standard Conversational Answer                      │
+    │   • Clean text rendered in SaraBubble.tsx                   │
+    │   • Spoken aloud via Sarvam Indic TTS (sarvamProxy.ts)      │
+    │   • Extracts [NAVIGATE:X] token for automatic screen jumps  │
+    ├─────────────────────────────────────────────────────────────┤
+    │ Case B: Autonomous Action ([[ACTION:{...}]])                │
+    │   • Tier 1 (Confidence > 0.95, Reversible): Auto-execute    │
+    │   • Tier 2 (Confidence 0.70-0.95): Inline Action Pill      │
+    │   • Tier 3 (Confidence < 0.70 / Destructive): Confirm Card  │
+    │   • Approved writes route through safeWrite() to Firestore │
+    ├─────────────────────────────────────────────────────────────┤
+    │ Case C: Bulk / Multi-Step Intent ([[DAG:[...]]])            │
+    │   • Parsed into Directed Acyclic Graph (dagExecutor.ts)     │
+    │   • Parallel node execution across multiple rotated keys    │
+    └─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 7. Data Layer & 18 Firestore Collections
+
+All document operations enforce `where('userId', '==', uid)` queries.
+
+| Collection Name (`COLLECTION`) | State Variable | TS Interface | Description & Primary Fields |
+|---|---|---|---|
+| `todos` (`TASKS`) | `tasks` | `Task` | Tasks & missions (`title`, `status`, `priority`, `date`, `timeSlot`, `subtasks`, `isRecurring`, `recurrenceRule`, `recurringSourceId`, `completedAt`). |
+| `habits` | `habits`, `allHabits` | `Habit` | Daily/weekly habits (`name`, `emoji`, `frequency`, `streak`, `longestStreak`, `archived`, `type`). |
+| `habitLogs` | `habitLogs` | `HabitLog` | Daily habit completion log (`habitId`, `date`, `count`, `isFreeze`). |
+| `gym_logs` | `gymLogs` | `GymLog` | Gym sessions (`date`, `exercises`, `cardio`, `workoutStartTime`, `workoutDurationMinutes`, `completed`, `dayPlanIndex`). |
+| `user_gym_plans` | `userGymPlan` | `UserGymPlanDoc` | Custom 7-day workout split & exercise overrides (`customDays`, `templateId`, `schedulePattern`). |
+| `attendance_subjects` | `attendance` | `AttendanceSubject` | University courses (`name`, `classesAttended`, `classesTotal`, `labsAttended`, `labsTotal`, `targetPercentage`, `schedule`). |
+| `attendance_logs` | `attendanceLogs` | `AttendanceLog` | Class-by-class attendance history (`subjectId`, `date`, `type`, `action`, `isExtra`, `timestamp`). |
+| `attendance_holidays` | `holidays` | `string[]` | Scheduled college holidays (`date`). |
+| `assignments` | `assignments` | `Assignment` | Academic homework & submissions (`title`, `subjectName`, `dueDate`, `status`, `grade`, `weightage`). |
+| `semesters` | `semesters` | `Semester` | Academic semester terms (`name`, `startDate`, `endDate`, `sgpa`, `totalCredits`, `order`). |
+| `semester_subjects` | `semesterSubjects` | `SemesterSubject` | Subjects enrolled in semester (`semesterId`, `name`, `credits`, `gradePoints`, `grade`). |
+| `calendar_events` | `customEvents` | `CustomEvent` | Calendar schedule (`title`, `date`, `startTime`, `endTime`, `type`, `location`, `description`). |
+| `goals` | `goals` | `Goal` | OKR Goals (`title`, `status`, `progress`, `deadline`, `keyResults`, `firstStep`). |
+| `storage_nodes` | `storageNodes` | `StorageNode` | Filesystem & ZenNotes (`name`, `type`, `parentId`, `url`, `content`, `size`, `tags`). |
+| `learning_topics` | `learningTopics` | `LearningTopic` | Curriculums & Video lectures (`title`, `subTasks`, `timeSpentMinutes`, `lastStudiedAt`). |
+| `flashcards` | `flashcards` | `Flashcard` | SM-2 spaced repetition cards (`topicId`, `front`, `back`, `interval`, `repetitions`, `easeFactor`, `dueDate`). |
+| `job_applications` | `jobs` | `JobApplication` | Career Kanban (`company`, `role`, `status`, `dateApplied`, `expectedSalary`, `prepChecklist`). |
+| `weekly_reviews` | `weeklyReviews` | `WeeklyReview` | Sunday retrospective reviews (`weekStart`, `weekEnd`, `wentWell`, `toImprove`, `nextWeekPriorities`). |
+| `water_logs` | `waterLogs` | `WaterLog` | Daily hydration entries (`date`, `amountMl`). |
+| `sleep_logs` | `sleepLogs` | `SleepLog` | Sleep tracking entries (`date`, `hours`, `quality`, `bedTime`, `wakeTime`). |
+| `weight_logs` | `weightLogs` | `WeightLog` | Bodyweight entries (`date`, `weightKg`, `photoUrl`). |
+| `content_logs` | `contentLogs` | `ContentLog` | Reading list items (`title`, `contentType`, `status`, `progressPercentage`). |
+| `pomodoro_sessions` | — | `PomodoroSession` | Completed focus intervals (`taskId`, `durationMinutes`, `mode`, `completedAt`). |
+| `user_profiles` | — | `UserProfile` | User device profile (`pushToken`, `displayName`, `email`). |
+
+---
+
+## 8. Offline-First & Data Loss Prevention Architecture
+
+ZenTrack Mobile guarantees zero data loss and immediate visual feedback using an asynchronous, non-blocking offline pipeline.
+
+```
+UI Interaction (User edits task, logs gym set, marks attendance)
+         │
+         ▼
+[1] Optimistic UI State Update (Local React State)
+    • Local state updates in < 1ms — zero loading spinner or freeze.
+         │
+         ▼
+[2] L1/L2 Cache Write-Through (AsyncStorage)
+    • Updates `readCoreCacheMulti()` / `domainCache` immediately.
+    • Survives immediate app kill or phone crash.
+         │
+         ▼
+[3] safeWrite() Execution Router (safeWrite.ts)
+    ┌───────────────────────────────┴───────────────────────────────┐
+    ▼ Online                                                        ▼ Offline
+Direct Firestore Write                                  Queue Write (offlineSync.ts)
+• Calls setDoc / updateDoc / addDoc                     • Writes to `@zentrack_offline_write_queue`
+• If network drops mid-request ──► Catches error ──────► • Coalesces rapid updates to same doc
+                                                        • Broadcasts queue count to OfflineIndicator
+                                                                    │
+                                                                    ▼
+                                                        NetInfo Reconnection Event
+                                                        • NetInfo detects network active
+                                                        • syncOfflineQueue() drains queue in batch
+                                                        • Shows green "Synced N items" toast
+```
+
+---
+
+## 9. Notification Engine & Schedule Matrix
+
+- **Driver**: `expo-notifications ~0.32.17` (Local On-Device Engine — $0.00 cloud cost).
+- **Trigger Strategy**: Debounced evaluation (`scheduleAllNotifications()`) in `MobileDataContext.tsx` fires 3.5s after data settles.
 
 ### Android Channels
-| Channel ID | Name | Importance | Vibration Pattern |
+| Channel ID | Channel Name | Importance | Vibration Pattern |
 |---|---|---|---|
-| `default` | ZenTrack | MAX | `[0, 250, 250, 250]` |
-| `reminders` | Task Reminders | HIGH | `[0, 500, 200, 500]` |
+| `default` | ZenTrack Primary | `MAX` | `[0, 250, 250, 250]` |
+| `reminders` | Task & Class Reminders | `HIGH` | `[0, 500, 200, 500]` |
 
-### Notification Schedule Logic (`scheduleTaskReminders()`)
-Called every time `tasks`, `customEvents`, `gymLogs`, or `attendance` changes.
-
-| Data Source | Title | Timing | Channel |
+### Schedule Decision Matrix
+| Event Trigger | Timing | Title Pattern | Channel |
 |---|---|---|---|
-| Task with `timeSlot` | `Mission Window 🎯` | 60min before task | `reminders` |
-| Task with `timeSlot` | `T-15 Minutes ⚡` | 15min before task | `reminders` |
-| Task without `timeSlot` | `Daily Briefing 📋` | User's preferred time (AsyncStorage `zentrack_default_notif_time`, default `08:00`) | `default` |
-| Calendar event with `startTime` | `Incoming Comm 📅` | 60min before event | `default` |
-| Gym day + not yet logged | `Physical Momentum 🏋️` | 6:00 PM daily | `default` |
-| Class day (from `schedule`) | `Academic Protocol 📚` | 8:00 AM daily | `default` |
+| Task with `timeSlot` | 60 min before | `Mission Window 🎯` | `reminders` |
+| Task with `timeSlot` | 15 min before | `T-15 Minutes ⚡` | `reminders` |
+| Daily Tasks Pending | Configured time (default `08:00`) | `Daily Briefing 📋` | `default` |
+| Calendar Event with `startTime` | 60 min before | `Incoming Comm 📅` | `default` |
+| Scheduled Gym Day (Not Logged) | Configured time (default `18:00`) | `Physical Momentum 🏋️` | `default` |
+| Scheduled Class / Lab Day | 15 min before class | `Academic Protocol 📚` | `reminders` |
+| Attendance Under Target (<75%) | Configured briefing time | `Attendance Danger Zone ⚠️` | `default` |
+| Hydration Reminder | Every 2.5h (8 AM – 8 PM) | `Hydration Check 💧` | `default` |
 
 ---
 
-## 9. Environment Variables (`mobile/.env`)
+## 10. Design System & Theme Tokens
 
-### Public (EXPO_PUBLIC_ prefix — baked into bundle)
-| Variable | Value / Purpose |
-|---|---|
-| `EXPO_PUBLIC_FIREBASE_API_KEY` | Firebase API key |
-| `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN` | `job-tracker-6b672.firebaseapp.com` |
-| `EXPO_PUBLIC_FIREBASE_PROJECT_ID` | `job-tracker-6b672` |
-| `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET` | `job-tracker-6b672.firebasestorage.app` |
-| `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | `336719988763` |
-| `EXPO_PUBLIC_FIREBASE_APP_ID` | Full app ID string |
-| `EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID` | Analytics ID |
-| `EXPO_PUBLIC_FIREBASE_VAPID_KEY` | FCM VAPID key |
-| `EXPO_PUBLIC_GOOGLE_CALENDAR_CLIENT_ID` | Google OAuth client ID |
-| `EXPO_PUBLIC_GEMINI_API_KEY` | Comma-separated Gemini keys (9 keys, direct API rotation) |
-| `EXPO_PUBLIC_GEMINI_LIVE_KEY` | Single key for Gemini Live API WebSocket |
-| `EXPO_PUBLIC_SARVAM_API_KEY_1/2/3` | Sarvam TTS keys (client-side fallback) |
-| `EXPO_PUBLIC_SARVAM_VOICE_ID` | Voice ID (e.g. `Shubh`) |
-| `EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME` | `drc8jwyjf` |
-| `EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET` | `aoaogtkw` |
+File: `src/theme/tokens.ts` (Dynamic theme via `useTheme()`)
 
-### Private (no prefix — server-only, NEVER in bundle)
-| Variable | Purpose |
-|---|---|
-| `INNERTUBE_KEY` | YouTube InnerTube API key |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-| `FIREBASE_SERVICE_ACCOUNT_JSON` | Full Admin SDK JSON (one line) |
-| `CRON_SECRET` | Cron watchdog authentication |
-| `SARVAM_API_KEY_1/2/3` | Server-side Sarvam keys (Vercel proxy) |
-
----
-
-## 10. Design System — "Obsidian Cosmos" Theme
-
-File: `src/theme/tokens.ts`
-
-### Color Palette
-| Token | Hex | Psychological Purpose |
-|---|---|---|
-| `background` | `#000000` | True black — OLED-friendly, infinite depth |
-| `surface` | `#1c1c1e` | Primary card surface |
-| `surface2` | `#141416` | Secondary/nested card |
-| `surfaceRaised` | `#2c2c2e` | Modal surfaces |
-| `border` | `#2c2c2e` | Hairline dividers |
-| `borderGlow` | `rgba(165,153,255,0.40)` | Focus ring |
-| `textPrimary` | `#ffffff` | Headings, key numbers |
-| `textSecondary` | `#f2f2f7` | Body text |
-| `textMuted` | `#8e8e93` | Labels, subtitles |
-| `textTertiary` | `#636366` | Timestamps, least important |
-| `accentPrimary` | `#a599ff` | Sara's color — interactive elements |
-| `accentGreen` | `#5eda9e` | Completed, present, success |
-| `accentAmber` | `#ff9f4d` | At-risk, warnings, urgency |
-| `accentBlue` | `#89dceb` | Calendar, schedule items |
-| `error` | `#ff6961` | Absent, overdue, below threshold |
-| `priorityHigh` | `#ff6961` | P1 tasks |
-| `priorityMed` | `#ff9f4d` | P2 tasks |
-| `priorityLow` | `#5eda9e` | P3 tasks |
-
-### Typography
-| Token | Font | Use Case |
-|---|---|---|
-| `FONT_FAMILY.title` | `PlayfairDisplay_600SemiBold` | Hero text, editorial headings |
-| `FONT_FAMILY.body` | `Inter_400Regular` | Body text, labels, lists |
-| `FONT_FAMILY.medium` | `Inter_500Medium` | Subheadings, emphasis |
-| `FONT_FAMILY.bold` | `Inter_600SemiBold` | CTAs, stats, key numbers |
-
-### Scale
-- **Font Sizes**: `xs=10, sm=12, md=14, base=15, lg=17, xl=20, xxl=26, hero=40`
-- **Spacing** (8px grid): `xs=4, sm=8, md=12, lg=16, xl=20, xxl=28, xxxl=40`
-- **Border Radius**: `sm=4, md=8, lg=12, xl=16, xxl=24, full=999`
-
----
-
-## 11. XP / Gamification System (`src/services/xpSystem.ts`)
-
-| Event | XP | Type |
-|---|---|---|
-| Task complete | 25–50 | Variable (random) |
-| Habit logged | 15 | Fixed |
-| 7-day habit streak | +75 | Milestone bonus |
-| 30-day habit streak | +300 | Milestone bonus |
-| Goal milestone | 200 | Fixed |
-| Perfect day | 500 | Fixed |
-| Gym session | 40–60 | Variable |
-| Onboarding complete | 100 | One-time |
-| Surprise bonus | 50–200 extra | 10% random trigger |
-
-### Level Thresholds
-`0→Initiate | 500→Operator | 1500→Commander | 3500→Strategist | 7000→Vanguard | 13000→Architect | 22000→Legend | 35000→Mythic`
-
----
-
-## 12. AsyncStorage Keys Reference
-
-| Key | Default | Purpose |
-|---|---|---|
-| `@zentrack_pinned_modules` | `['Tasks','Sara','Calendar']` | Bottom tab module configuration |
-| `zentrack_default_notif_time` | `'08:00'` | User's preferred daily notification time (HH:MM) |
-| `zentrack_gym_notif_time` | `'18:00'` | Gym reminder time |
-| `zentrack_xp_v1` | `'0'` | Total accumulated XP |
-| `zentrack_xp_streak` | `'0'` | Daily streak count |
-| `zentrack_onboarded_v2` | `null` | Onboarding flag (`'true'` = onboarded) |
-| `google_workspace_token` | `null` | Google OAuth access token |
-| `@zentrack_theme` | `'dark'` | User's theme preference (`'dark'` \| `'light'`) |
-
-> All keys are also available as constants in `src/config/constants.ts → STORAGE_KEYS`.
-
----
-
-## 13. Gym Plan Data (`src/data/gymPlan.ts`)
-
-Static 6-day PPL program. `WEEKDAY_TO_PLAN` maps `new Date().getDay()` (0=Sun) to plan `dayIndex`.
-
-| dayIndex | Day | Name | Focus |
+### Dual Color Palette
+| Token Name | Obsidian Cosmos (Dark) | Frost Quartz (Light) | Semantic Purpose |
 |---|---|---|---|
-| 1 | Mon | Chest & Back A | Upper chest shelf + lat width |
-| 2 | Tue | Shoulders & Arms A | Anterior delt + arm mass |
-| 3 | Wed | Legs A | Quad dominance + hamstrings |
-| 4 | Thu | Chest & Back B | Mid chest + upper back |
-| 5 | Fri | Shoulders & Arms B | Lateral delt + arm detail |
-| 6 | Sat | Legs B | Hip dominance + calves |
-| 7 | Sun | Rest | Active recovery |
+| `background` | `#000000` | `#F4F3F8` | True OLED black / Frosted quartz canvas |
+| `surface` | `#1c1c1e` | `#FFFFFF` | Primary card container surface |
+| `surface2` | `#141416` | `#F0EFF7` | Secondary / nested container |
+| `surfaceRaised`| `#2c2c2e` | `#FFFFFF` | Elevated bottom sheets and modals |
+| `border` | `#2c2c2e` | `#E2E1EA` | Hairline dividers and borders |
+| `borderGlow` | `rgba(165,153,255,0.40)` | `rgba(108,92,231,0.25)` | Active focus ring |
+| `textPrimary` | `#ffffff` | `#1C1C1E` | Headings, hero stats, primary labels |
+| `textSecondary`| `#f2f2f7` | `#48484A` | Body prose and descriptions |
+| `textMuted` | `#8e8e93` | `#8E8E93` | Subtitles, timestamps, placeholders |
+| `accentPrimary`| `#a599ff` | `#6C5CE7` | SARA interactive accent / Purple glow |
+| `accentGreen` | `#5eda9e` | `#059669` | Success, completed tasks, present |
+| `accentAmber` | `#ff9f4d` | `#D97706` | Warning, pending, at-risk attendance |
+| `accentBlue` | `#89dceb` | `#0284C7` | Calendar, schedule, hydration |
+| `error` | `#ff6961` | `#DC2626` | Destructive, overdue, absent, P1 high |
 
-Each exercise: `{ id, name, targetSets, targetReps, muscle, videoId (YouTube ID) }`
+### Typography (`FONT_FAMILY`)
+- `FONT_FAMILY.title`: `PlayfairDisplay_600SemiBold` (Hero editorial titles)
+- `FONT_FAMILY.body`: `Inter_400Regular` (Prose, descriptions, inputs)
+- `FONT_FAMILY.medium`: `Inter_500Medium` (Card headers, chip labels)
+- `FONT_FAMILY.bold`: `Inter_600SemiBold` (CTAs, metric numbers, badges)
 
 ---
 
-## 14. Known Hotspots & Active Bugs
+## 11. Gamification & XP System
 
-| File | Severity | Issue |
+File: `src/services/xpSystem.ts`
+
+### Reward Allocation Matrix
+| User Action | Base XP | Bonus / Multiplier |
 |---|---|---|
-| `sarvaProxy.ts` | **HIGH** | 500-char chunk limit NOT yet implemented on mobile (web app chunks correctly). Long Sara responses silently fail TTS. Add chunking before `speakWithSarvam()`. |
-| `MobileDataContext.tsx:scheduleTaskReminders` | **MEDIUM** | Fires on every data change with 3s debounce (previously no debounce — fixed 2026-07-14). |
-| `MobileDataContext.tsx` | ~~MEDIUM~~ **FIXED 2026-07-23** | `waterLogs` and `sleepLogs` now have active Firestore subscriptions in `WellnessContext`. |
-| `voiceEngine.ts` | **MEDIUM** | Transcription fails silently on recordings under ~0.5s — Gemini rejects near-empty audio. |
-| `AppNavigator.tsx` | **HIGH** | `OnboardingScreen` renders OUTSIDE all Stack/Tab navigators. Any `useNavigation()` inside OnboardingScreen will throw. Pass navigation callbacks via props only. |
-| `conflictDetector.ts` | LOW | Simplified placeholder. Web app has a more sophisticated conflict engine. |
-| `DashboardScreen.tsx:49-60` | LOW | Streak logic breaks on any day with no tasks AND no gym — penalizes rest days and weekends unfairly. |
-| `notifications.ts` | MEDIUM | FCM remote push (for killed-app delivery) needs a dev build — fails in Expo Go SDK 53+. Local scheduling works fine. |
-| `notifications.ts` | ~~HIGH~~ **FIXED 2026-07-23** | Water/sleep reminders had no UI controls (keys never written) → always silently skipped. Fixed: `NotificationsSettingsScreen` now has a WELLNESS REMINDERS section. Export `clearScheduleCache()` added so pref changes always force a full reschedule past the fingerprint cache. `GymNotificationModal` now calls `onSaved` callback for immediate reschedule after save. |
+| Task Completed | 25–50 XP | Variable Skinner reward |
+| Habit Completed | 15 XP | Fixed |
+| 7-Day Habit Streak | +75 XP | Milestone badge |
+| 30-Day Habit Streak | +300 XP | Milestone badge |
+| Gym Workout Completed | 40–60 XP | Scaled by workout volume |
+| Lecture Completed | +25 XP | Fixed |
+| Flashcard Deck Reviewed | +10 XP | Fixed |
+| Lecture Quiz 3/3 Perfect | +50 XP | Achievement bonus |
+| Goal Key Result Achieved | +200 XP | Fixed |
+| Perfect Day (All Tasks + Habits + Gym) | +500 XP | Daily completion bonus |
+| Onboarding Finished | +100 XP | One-time bootstrap |
+| Surprise Dopamine Bonus | +50–200 XP | 10% random probability |
+
+### Rank Thresholds
+`Initiate (0 XP) ➔ Operator (500) ➔ Commander (1,500) ➔ Strategist (3,500) ➔ Vanguard (7,000) ➔ Architect (13,000) ➔ Legend (22,000) ➔ Mythic (35,000+ XP)`
 
 ---
 
-## 15. Code Conventions
+## 12. AsyncStorage Registry
 
-### Design Rules
-- Import colors from `COLORS` — never hardcode hex values
-- Import spacing from `SPACE` — never hardcode pixel values
-- Use `FONT_FAMILY` keys — never hardcode font names
-- Use `feedback.tap/commit/success/warning` from `haptics.ts` — never call `Haptics.*` directly
-- Access Firestore data via `useMobileData()` — never query Firestore directly inside components
-- Never call `useNavigation()` inside `OnboardingScreen` — it renders outside all navigators
-- Import constants from `src/config/constants.ts` — never hardcode URLs, keys, or screen names
+All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS`.
 
-### Where New Code Goes
-| Task | Location |
-|---|---|
-| New screen | `src/screens/NewScreen.tsx` + register in `AppNavigator.tsx:NestedScreens` |
-| New tab screen | Also add to `MainTabNavigator` component map |
-| New reusable component | `src/components/Domain/ComponentName.tsx` |
-| New Firestore collection | Interface in `MobileDataContext.tsx` + new `onSnapshot` subscription |
-| New agent tool (mobile) | Handled entirely in `src/agent/orchestrator.ts` system prompt + SaraScreen.tsx action handler |
-| New local notification type | `src/services/notifications.ts` → inside `scheduleTaskReminders()` |
-| New design token | `src/theme/tokens.ts` |
-| New AsyncStorage key | `src/config/constants.ts → STORAGE_KEYS` + add to Section 12 of this doc |
-| New XP event | `src/services/xpSystem.ts → XP_SOURCES` + call `awardXP()` at event site |
-| New screen name constant | `src/config/constants.ts → SCREENS` |
+| Key Constant | Storage Key String | Default Value | Purpose |
+|---|---|---|---|
+| `PINNED_MODULES` | `@zentrack_pinned_modules` | `['Tasks','Gym','Calendar','Attendance']` | Pinned bottom navigation tab configuration. |
+| `DEFAULT_NOTIF_TIME` | `zentrack_default_notif_time` | `'08:00'` | User's preferred daily morning brief notification time. |
+| `GYM_NOTIF_TIME` | `zentrack_gym_notif_time` | `'18:00'` | User's preferred gym reminder notification time. |
+| `XP_DATA` | `zentrack_xp_v1` | `'0'` | Total user XP accumulated. |
+| `XP_STREAK` | `zentrack_xp_streak` | `'0'` | Consecutive active user day streak. |
+| `ONBOARDED` | `zentrack_onboarded_v2` | `null` | Flag indicating onboarding questionnaire completion. |
+| `GOOGLE_TOKEN` | `google_workspace_token` | `null` | Google OAuth workspace access token. |
+| `THEME` | `@zentrack_theme` | `'dark'` | Theme preference (`'dark'`, `'light'`, `'system'`). |
+| `SARA_CMG` | `@sara_cmg_v1` | `null` | SARA Contextual Memory Graph JSON. |
+| `SARA_FINGERPRINT` | `@sara_fingerprint_v1` | `null` | SARA Behavioral Fingerprint JSON. |
+| `SARA_SURFACE_LAST`| `@sara_surface_last_v1` | `{}` | PSI injection timestamps per screen (JSON). |
+| `DASHBOARD_LAYOUT` | `@zentrack_dashboard_layout` | `null` | User-configured Dashboard widget arrangement. |
+| `OFFLINE_QUEUE` | `@zentrack_offline_write_queue` | `[]` | Pending offline Firestore write operations. |
+| `OPTIMISTIC_USER` | `@zentrack_optimistic_user` | `null` | Cached user profile for 0ms offline boot. |
 
-### 2026-08-17 — Tasks Module TimelineView Light/Dark Overhaul & Schedule Sync
-- **UPDATED** `src/components/Tasks/TimelineView.tsx` — Complete overhaul of the 24-hour timeline rendering engine:
-  1. **Dual-Theme Support (Frost Quartz & Obsidian Cosmos)**: Dynamic palette for tasks (P1/High: Crimson `#DC2626` / Coral `#FF6961`, P2/Medium: Amber `#D97706` / `#FF9F4D`, P3/Low: Royal Amethyst `#6C5CE7` / Lavender `#A599FF`, Done: Emerald `#059669` / `#5EDA9E`, Missed: Red `#DC2626` / `#FF6961`), Academic Classes (Soft Purple/Blue `#6C5CE7` / `#89DCEB`), Academic Labs (Deep Sky Blue `#0284C7` / Gold `#FAD7A1`), and Gym Sessions (Emerald `#059669` / `#5EDA9E`).
-  2. **Academic & Gym Schedule Parsing**: Fixed `START_HOUR` dynamic calculation to inspect both classes and labs across single-time and range formats (`"10:00 AM - 11:00 AM"`, `"10:00 - 11:00"`). Fixed default gym workout rendering for scheduled days fallback (`18:00 - 19:30`).
-  3. **Live Time Indicator**: Added real-time dot and horizontal indicator line on "Today" matching `CalendarDayView`.
-  4. **Interactive Navigation**: Tapping gym blocks opens Gym module (`MoreStack → Gym`) and tapping class blocks opens Attendance module (`MoreStack → Attendance`).
-  5. **Hatch Pattern**: Dynamic SVG hatch overlays for done, past, and missed events adapted for light and dark contrast.
-- **UPDATED** `src/screens/TasksScreen.tsx` — Wired `useAcademicData()` and `useWellnessData()` to pass `attendance`, `attendanceLogs`, `gymLogs`, `userGymPlan`, and `isDark` directly to `TimelineView`.
-- **VERIFIED** — TypeScript type checker clean with 0 errors (`npx tsc --noEmit` exited with code 0).
+---
 
-### 2026-08-16 — Streak Detail & Wellbeing Dashboard Light Mode Implementation
-- **UPDATED** `src/screens/WellbeingDashboardScreen.tsx` — Dynamic Frost Quartz palette: pure `#FFFFFF` quartz cards with `#E2E1EA` borders in light mode, `#F4F3F8` canvas, high-contrast `#1C1C1E` numbers and labels, theme-aware cyan/blue SVG line and area gradients, clean `#F0EFF7` inset AI insight box with dynamic amethyst sparkle icon. Dark mode BlurView glass card is 100% untouched.
-- **UPDATED** `src/screens/StreakDetailScreen.tsx` — Full light mode conversion: `#F4F3F8` canvas, `#FFFFFF` pure quartz cards, dynamic `#1C1C1E` streak day counts, amber flame orb glow, `#E2E1EA` milestone progress track, high-contrast Overview 2x2 grid, Apple Watch style milestone achievement medals, semantic Activity breakdown cards (Amber, Sky Blue, Emerald, Amethyst), and theme-aware Apple Health activity history calendar.
-- **VERIFIED** — Clean TypeScript compilation with 0 errors (`npx tsc --noEmit` exits with 0).
+## 13. Security, Biometrics & Auth State Machine
 
-### 2026-08-16 — Tasks Screen & Subcomponents Light Mode Implementation
-- **UPDATED** `src/screens/tasks/tasksStyles.ts` — Implemented `makeTasksStyles(colors, isDark)` dynamically rendering Frost Quartz surfaces (#F4F3F8 canvas, #FFFFFF card surfaces, #F8F7FC recessed subtask insets, #E2E1EA borders, #6C5CE7 royal amethyst accent, #DC2626 overdue banners, #D97706 priority badges, #059669 completion green). Dark mode is 100% untouched.
-- **UPDATED** `src/screens/TasksScreen.tsx` — Dynamic root view, header action icons, progress ring SVG track & fill, overdue alert banner, NLP quick input container, segmented control filters, and floating bulk action bar.
-- **UPDATED** `src/components/Tasks/TaskRow.tsx` — Replaced hardcoded black rows with dynamic `colors.surface`, theme-aware checkbox border/fill, dynamic tag pills, subtask progress bar, and nested subtask accordion items.
-- **UPDATED** `src/components/Tasks/TaskDateStrip.tsx` — Full light/dark support with dynamic capsule items, day text, date number, today indicator dot, and active day highlight.
-- **UPDATED** `src/components/Tasks/NLPTaskInput.tsx` — Dynamic natural language token chips using translucent light tints with high-contrast text in light mode, dynamic mic state styling.
-- **UPDATED** `src/components/Tasks/RecurrencePickerModal.tsx`, `BulkRescheduleSheet.tsx`, `TaskTimeLogSheet.tsx`, `TaskTemplatesSheet.tsx`, `NewTaskModal.tsx`, `EditTaskModal.tsx` — Converted all task sheets and modals to use dynamic theme tokens and `makeStyles(colors, isDark)`.
-- **VERIFIED** — Zero compile errors (`npx tsc --noEmit` exits with 0).
+### Authentication Lifecycle & Self-Healing
+1. **0ms Optimistic Boot**: `AppNavigator` reads `@zentrack_optimistic_user` during `loadBootManifest()`. If found, boots into the main interface immediately without waiting for network.
+2. **Foreground Token Handshake**: On `AppState: active`, `AppNavigator` triggers `auth.currentUser.getIdToken(true)`.
+   - If token refresh succeeds: broadcasts `DeviceEventEmitter('firestore_force_reconnect')` to wake dead listeners.
+   - If fatal error (`FATAL_AUTH_CODES` like `invalid_grant`, `auth/user-disabled`, `auth/id-token-revoked`): calls `performSignOut()` and redirects to `AuthScreen`.
+3. **8-Second Dead Session Recovery Window**: When Firebase `onAuthStateChanged(null)` fires:
+   - If user explicitly logged out: wipes storage immediately.
+   - If user was logged in: initiates an 8-second timer. If Firebase restores the user (standard token rotation blip), the timer is cancelled. If `auth.currentUser` remains null after 8s, executes `performSignOut()` and returns to `AuthScreen`.
+4. **Biometric Security Gate**: `expo-local-authentication` secures app resume when biometrics are enabled in Settings.
 
-### 2026-08-16 — Home Screen & Core Design System Light Mode Implementation
-- **IMPLEMENTED** `src/theme/tokens.ts` — Updated `LIGHT_COLORS` with the complete Frost Quartz palette (#F4F3F8 canvas, #FFFFFF pure quartz cards, #F0EFF7 soft inset surface, #E2E1EA titanium lavender border, #1C1C1E Apple charcoal text, #6C5CE7 royal amethyst accent, #059669 emerald green, #D97706 golden amber, #0284C7 sky blue, #DC2626 crimson red). Dark mode palette (`DARK_COLORS`) 100% untouched.
-- **UPDATED** `src/navigation/AppNavigator.tsx` — Dynamic root canvas background (#F4F3F8) and `RootNavigatorWithSara` container matching active theme.
-- **UPDATED** `src/screens/dashboard/dashboardStyles.ts` & `DashboardScreen.tsx` — Full theme awareness: speed dial floating action buttons use `colors.surface`, `colors.border`, `colors.accentPrimary`, and `colors.accentBlue`; avatar dropdown menu uses dynamic borders and high-contrast close button; Flashcard Recall Due Widget updated to pure `colors.surface`, `colors.border`, and dynamic action CTAs; streak pill uses `colors.accentAmberDim` and `colors.accentAmber`.
-- **UPDATED** `src/components/Dashboard/UnifiedLifeWidget.tsx` — Dynamic card background (`colors.surface` in light mode), SVG donut track ring (`#EAE9F2` in light mode), center score text (`colors.textPrimary`), vertical divider (`colors.border`), and metric rows (Momentum in `colors.accentGreen`, Hydration in `colors.accentBlue`, Classes in `colors.accentAmber`).
-- **UPDATED** `src/components/Dashboard/AgendaWidget.tsx` — Replaced hardcoded orange with `colors.accentAmber`; empty state button text and icons use dynamic theme colors.
-- **UPDATED** `src/components/Navigation/TelegramTabBar.tsx` — Tab badges styled with dynamic `colors.error` and `isDark ? 'rgba(25, 25, 28, 1)' : '#ffffff'` borders.
-- **UPDATED** `src/components/Dashboard/QuickCaptureSheet.tsx` & `WaterLogSheet.tsx` — Fully dynamic sheets, drag handles, input containers, quick add bottle chips, and CTA buttons.
+---
 
-### 2026-08-12 — WorkoutSummaryScreen Redesign (Minimalist & Structured)
-- **REDESIGNED** `src/screens/gym/WorkoutSummaryScreen.tsx` — Replaced the loud glowing purple elements, oversized trophy icon, and unformatted chart container with a subtle, high-end minimalist design:
-  1. **Minimalist Top Hero** — Clean checkmark-circle indicator in a dark glass frame (`colors.textPrimary` + subtle hairline border), elegant title & subtitle.
-  2. **Quick Session Metrics Grid** — 4-column summary grid showing Exercises count, Sets Done, Volume (kg), and Best Lift.
-  3. **Session Breakdown Card** — Structured list of completed exercises with set badges & max weight logged today.
-  4. **Structured 90-Day Progression** — Minimalist pill chips for exercise selection (no neon glow), compact 2-option Segmented Control (`Est. 1RM` | `Total Volume`), and clean translucent chart styling with a compact empty state card when data points are sparse.
-  5. **Minimalist Primary Action** — Clean primary "Done" button with dark/light neutral contrast, haptic feedback, zero loud glowing purple borders.
+## 14. Developer Hotspots & Active Conventions
 
-### 2026-07-26 — AddExerciseModal v2: Search-as-you-type + Auto-fill
-- **REWRITTEN** `src/components/Gym/AddExerciseModal.tsx` — Completely replaced the old UX (full plan-day list dumped upfront) with a search-driven experience:
-  1. **No upfront list** — input field is focused immediately, no exercise dump visible.
-  2. **Search-as-you-type** — builds a `EXERCISE_CATALOGUE` (100+ exercises) by deduplicating `GYM_PLAN` + `EXERCISE_ALTERNATIVES` entries at module load time. As the user types, a compact inline `FlatList` dropdown appears (max 5 rows, scrollable) filtered by substring match.
-  3. **Auto-fill on tap** — tapping any suggestion populates sets, reps, rest timer, muscle group, and videoId from the catalogue entry's metadata.
-  4. **Last-session pre-load** — after a suggestion is selected, `gymLogs` is scanned (newest-first) to find the last completed session for that `exerciseId`/name; the found `setsLog` is fed into the new exercise's `setsLog` as default weight/reps values AND stored in `lastSessionSets`.
-  5. **Compact layout** — sets/reps/rest are now a single 3-column row. YouTube link field moved to bottom. Muscle pills unchanged. "Save to Master Split" toggle preserved.
-
-### 2026-07-26 — Sunday Weekly Gym Report
-- **ADDED** `src/components/Gym/WeeklyGymReport.tsx` — New component shown on Sundays (rest day). Displays: global session/sets/volume stats with week-over-week delta badges; a 7-column daily volume bar chart (Mon–Sun); muscle-group donut rings (SVG, colour-coded by `MUSCLE_COLORS` map); a sets-by-muscle bar breakdown; an "untrained muscles" amber warning card with chips; and a vs-last-week comparison table. Pure computed stats from existing `gymLogs` Firestore data — zero new API calls.
-- **MODIFIED** `src/screens/gym/GymHomeScreen.tsx` — Imported `WeeklyGymReport`. Added `isSundaySelected` memo using LOCAL date components (avoids UTC midnight → wrong day bug in IST). Conditionally renders `<WeeklyGymReport>` on Sunday in place of the normal START WORKOUT UI.
-- **FIXED** `src/hooks/useGymLog.ts` — Removed both hardcoded Treadmill cardio insertions (lines 214–226, 265–275). Cardio now starts empty; users add it explicitly via AddCardioModal.
-- **FIXED** `src/components/Gym/AddCardioModal.tsx` — Updated title from "Add Extra Cardio" → "Add Cardio" and replaced "Treadmill is always included" hint with a generic prompt.
-
-### 2026-07-26 — AttendanceScreen Scroll Fix
-- **FIXED** `src/screens/AttendanceScreen.tsx` — Eliminated the "sidebar" effect during scroll. Root cause: semester overview, warning banner, week strip, and section header were rendered as fixed siblings above a `flex:1` `FlatList`, causing the content above to appear as a static block while only the list scrolled — making the UI feel broken and split. Fix: moved all those elements into `ListHeaderComponent` so the entire screen scrolls as one unified flow. Added `showsVerticalScrollIndicator={false}` to hide the native Android scroll indicator bar on the right edge. Increased `paddingBottom` from 100→120 to clear the floating tab bar.
-
-### 2026-07-22 — Section 5 UI Improvements & Fixes
-- **OPTIMIZED** `src/screens/TasksScreen.tsx` — AnimatedSectionList performance: added `extraData={useMemo(() => ({ isBulkEdit, selectedTaskIds }), [...])}` to prevent full re-renders on unrelated state changes; added `getItemLayout` for 72px rows to allow scroll position prediction; set `removeClippedSubviews={false}` to eliminate "blank scroll" flash on fast flings; wired the existing memoized `renderItem` callback instead of an inline closure.
-- **FIXED** `src/screens/DashboardScreen.tsx` — WaterRing hardcoded colors: replaced `#0A84FF` (iOS system blue, outside Obsidian Cosmos palette) and `#5E5CE6` (outside palette) with `colors.accentBlue` (#89dceb — semantically water = blue, completed state) and `colors.accentPrimary` (#a599ff — in-progress state). Fixes high-contrast clash in light mode.
-- **FIXED** `src/components/SARA/ReasoningFeed.tsx` — Added `ScrollView` import and `scrollRef`. Wrapped the step map in a `maxHeight: 180` constrained `View + ScrollView` with `onContentSizeChange → scrollToEnd({ animated: true })`. Prevents ReasoningFeed from pushing the input bar off-screen on iPhone SE / budget Android when 5+ reasoning steps accumulate.
-- **ADDED** `src/screens/gym/GymHomeScreen.tsx` — Dynamic muscle heatmap replacing the static placeholder. Uses `react-native-svg` `Path` + `Ellipse` elements for 12 muscle groups (Chest, Back, Shoulders, Biceps, Triceps, Abs, Forearms, Traps, Glutes, Quads, Hamstrings, Calves). Color intensity maps weekly session counts: 0→`COLORS.surface2`, 1→`accentPrimary` at 25%, 2→60%, 3+→full. Computed via `useMemo` from `gymLogs` (current week Mon–Sun, completed sets only). Renders above the workout banner with a 4-item legend.
-
-### 2026-07-25 — Recurring Task Permanent Delete Fix
-- **FIXED** `src/screens/TasksScreen.tsx:handleDelete` — Two bugs in the recurring task deletion dialog:
-  1. **"All future instances"** was using `data.date > task.date` (strictly greater), so the clicked task's date was never included in the batch delete — it only deleted the one doc individually then skipped that date in the batch. Changed to `>= task.date` so the selected day AND all future dates are cleaned up together in a single batch commit.
-  2. **Group matching** was using `data.title === task.title` which is fragile (matches any recurring task with the same title). Now uses `data.recurringSourceId === task.recurringSourceId` when `recurringSourceId` is present (all tasks created post-implementation), with title+isRecurring as a fallback for older docs.
-  3. Removed the redundant separate `deleteDoc(task.id)` before the batch — the current task is now included in the batch via the `>= task.date` predicate, reducing Firestore round-trips by 1.
-
-### 2026-07-24 — SARA Engine v2 Upgrade: Bulk Actions, Session Memory, App Scan, About Modal
-- **UPGRADED** `src/agent/orchestrator.ts` — `buildActionRules()`: rewrote the DAG trigger from a soft suggestion to a hard rule. Any request with **2+ items, a number word, multiple dates, or list words ("each", "all", "both")** now mandates a `[[DAG:...]]` block instead of individual `[[ACTION:...]]` blocks. Added day-sequence date map (today→day5), typed DAG node reference, and 7 concrete bulk examples Gemini can pattern-match against.
-- **ADDED** `src/agent/orchestrator.ts` — `buildSessionAwareness(history)`: scans the last 12 history turns (6 pairs), extracts confirmed `[[ACTION:...]]` and `[[DAG:...]]` blocks, and injects a "What I did this session" block into every system prompt. Sara now remembers created tasks, logged habits, marked attendance, etc. from earlier in the same conversation.
-
-### 2026-07-24 — Tasks Module Complete Overhaul
-- **FIXED** `src/screens/TasksScreen.tsx` — Delete button inside EditTaskModal is now properly aligned to the far right next to the title input, improving layout and touch targets.
-- **FIXED** `src/screens/TasksScreen.tsx` — Implemented proper daily recurrence. Added a `useEffect` that auto-spawns daily clones of `isRecurring` tasks for `today`, using `recurringSourceId` as a deduplication key to prevent duplicates. Client-side only, no backend cron needed.
-- **ADDED** `src/contexts/MobileDataContext.tsx` — Extended the Task schema with `recurrenceRule?: RecurrenceRule` and `recurringSourceId?: string` to support flexible custom recurrences.
-- **ADDED** `src/components/Tasks/RecurrencePickerModal.tsx` — A full-featured bottom sheet to configure task repeat settings (Once, Daily, Weekly, Monthly, Custom) with day-of-week and end-date selectors. Integrated into NewTaskModal and EditTaskModal, replacing the simple "Once/Daily" toggle.
-- **ADDED** `src/components/Tasks/MatrixView.tsx` — Implemented a 4-quadrant Eisenhower Matrix view, separating tasks by Urgent vs. Important axes. Added a 3-way toggle in the TasksScreen header (`list` → `timeline` → `matrix`).
-- **ADDED** `src/agent/orchestrator.ts` — `buildProactiveScan(ctx)`: runs a full cross-module analysis on every orchestrator call. Surfaces overdue tasks, habits not yet logged, at-risk/critical attendance subjects, assignments due in 3 days, upcoming exams, no gym session today, stalled goals, and active job applications as a "PROACTIVE SCAN" block injected before the action rules.
-- **REFACTORED** `src/agent/orchestrator.ts` — `buildSystemPrompt()`: split into a cached `basePrompt` (data-fingerprint TTL) and a freshly-computed `dynamicSuffix` (session awareness + proactive scan injected before action rules on every call). Both `buildSelectiveSystemPrompt()` and fallback `buildSystemPrompt()` paths now receive `history[]` parameter for session awareness.
-- **REDESIGNED** `src/screens/SaraScreen.tsx` — About Sara modal: complete rewrite from 3 generic paragraphs to a rich multi-section layout with: "What I can do right now" (7 capability rows with color-tinted icon badges), "Intelligence Architecture" (all 7 SARA Engine v2 capabilities), "Ecosystem reach" (12-module chip grid), "Coming next" (5-item future roadmap), and "Sara's current view of your world" (live stat strip with task/habit/goal/gym-log counts). Card now uses a purple glow border + `aboutOrbBadge` with accent shadow instead of plain gray.
-
-
-- **RENAMED** `src/services/sarvaProxy.ts` → `src/services/sarvamProxy.ts` — fixed the typo in the filename. Updated import in `SaraScreen.tsx`. All references in this doc updated.
-- **DELETED** `mobile/src/hooks/useSpotify.ts` — Spotify integration hook (9.4KB), not an active feature
-- **DELETED** `mobile/src/components/Gym/SpotifyMiniPlayer.tsx` — Spotify mini player component dependent on deleted hook
-- **DELETED** `mobile/bundle.js` — compiled bundle artifact (should never be in source control)
-- **UPDATED** folder map: added all previously undocumented files (`dagExecutor.ts`, `GoalDetailScreen.tsx`, `StreakDetailScreen.tsx`, `StudyRoomScreen.tsx`, `WeeklyReviewScreen.tsx`, `NotificationsSettingsScreen.tsx`, all gym sub-components, all services)
-- **UPDATED** contexts section: documented the `domains/` split (5 sub-contexts: Core, Academic, Wellness, Planner, Creative)
-- **UPDATED** screens list: corrected all file sizes to match actual disk sizes; sorted by size descending for quick reference
-- **UPDATED** file index: removed `processSaraChat` entry (no longer called from any screen after orchestrateAgent swap), added `dagExecutor.ts` entry
-- **TypeScript check**: `npx tsc --noEmit` passes with zero errors after all changes
-
-### 2026-07-14 — Direct Gemini Orchestrator (Critical Architecture Change)
-- **REPLACED** `src/agent/orchestrator.ts` — removed all Socket.IO code. The mobile app no longer connects to a Render backend via WebSocket. Sara now calls `callProxy()` (direct Gemini REST) with a full system prompt containing all app context. Same `orchestrateAgent(instruction, appContext, onStep, history)` signature preserved — all callers unchanged.
-- **UPDATED** `src/screens/SaraScreen.tsx` — swapped `processSaraChat` → `orchestrateAgent`. Thinking steps now stream into Sara bubble. All Firestore write handlers (task/habit/attendance/note/calendar) unchanged.
-- **REMOVED** `socket.io-client` from `mobile/package.json`
-- **ADDED** `disconnectSocket()` no-op stub in `orchestrator.ts` for API compatibility with sign-out callers.
-
-
-### 2026-07-14 — Constants Config File Added
-- **ADDED** `src/config/constants.ts` — central source of truth for all mobile constants: API endpoints, storage keys, screen names, Firestore collection names, data limits, XP levels.
-
-### 2026-07-13 — CRITICAL FREEZE FIX + AI Overhaul
-- **FIXED** `geminiProxy.ts` — removed `global.fetch` monkey-patch that was corrupting React Native's networking layer. Replaced with direct HTTP REST calls.
-- **FIXED** `saraAgent.ts` — complete rewrite. Added 7 full-CRUD tools via `[[ACTION:{...}]]` pattern.
-- **FIXED** `SaraScreen.tsx` — Sara now writes tasks to `collection(db, 'tasks')` and notes to `collection(db, 'notes')` with proper `userId` field.
-- **FIXED** `SaraScreen.tsx:330` — 30-second idle timer now calls `closeVoiceMode()` instead of empty callback.
-
-### 2026-07-13 — Security & Proxy Architecture
-- **ADDED** `geminiProxy.ts` — `callProxy()` with direct Gemini REST + 9-key round-robin rotation.
-- **ADDED** `geminiProxy.ts:getGeminiProxyClient()` — centralized client factory.
-
-### 2026-07-12 — Initial Architecture Document
-- Full codebase audit. Document created from scratch.
-
-### 2026-07-12 — Bug Fixes
-- **FIXED** `voiceEngine.ts` — `stopAndTranscribe()` now sends real base64 audio to Gemini. Old code returned hardcoded string `"This is a simulated transcript"`.
-- **FIXED** `notifications.ts` — wrapped in try/catch to prevent SDK 53 FCM crash in Expo Go.
-- **FIXED** `AppNavigator.tsx:GlobalSaraButton` — Added try/catch + null safety to `useNavigationState` selector.
-
-### 2026-07-15 — Critical Gym Data Persistence Fix
-- **FIXED** `src/hooks/useGymLog.ts:saveLog()` — was writing to Firestore collection `'gymLogs'` (ghost collection). `MobileDataContext` subscribes to `'gym_logs'`. All workout data was written but never read back — appeared deleted on app restart. Corrected to `'gym_logs'`.
-- **FIXED** `src/hooks/useGymLog.ts:makeSwapPermanent()` — was writing permanent exercise swaps to `'gymPlans'`. `MobileDataContext` subscribes to `'user_gym_plans'`. Corrected to `'user_gym_plans'`.
-- **FIXED** `src/services/offlineSync.ts:syncOfflineLogs()` — same `'gymLogs'` → `'gym_logs'` mismatch in the offline queue drain path.
-
-### 2026-07-17 — Habit Flicker Fix + Dashboard Navigation + Notes AI Overhaul
-- **FIXED** `src/contexts/domains/CoreDataContext.tsx` — Habit card flickering: added `habitWriteLockRef`/`habitLogWriteLockRef` write-lock (2s) so Firestore snapshots don't overwrite in-flight optimistic updates.
-- **FIXED** `src/screens/HabitsScreen.tsx` — Added `estimatedItemSize={160}` + `extraData={todayLogs}` to FlashList; memoized `todayLogs`.
-- **ADDED** `src/screens/DashboardScreen.tsx` — HABITS ring now navigates to `MoreStack → Habits` on tap with haptic feedback.
-- **FIXED** `src/screens/NotesScreen.tsx` — Preview white-box bug: `markdownStyles` now explicitly overrides ALL node types the `react-native-markdown-display` library uses (`body`, `paragraph`, `fence`, `pre`, `code_block`, `code_inline`, `blockquote`, `bullet_list`, `ordered_list`, `list_item`, etc.) with dark backgrounds (`transparent` or `#1a1a2e` for code). No white areas possible.
-- **FIXED** `src/screens/NotesScreen.tsx` — PDF export: replaced simple regex replace with a proper line-by-line parser that handles code fences correctly, escapes HTML, and produces a polished Inter-font document with proper footer.
-- **OVERHAULED** `src/screens/NotesScreen.tsx:handleAiSubmit` — Sara's AI system prompt completely rewritten: ultra-personalized, expert-level, no markdown symbols (*, ##, ===), uses NUMBERED SECTIONS + CAPITALISED SUBHEADINGS + complete prose. Added 6 contextual quick-action buttons (Deep Summary, Action Items, Polish, Expand, Explain, Study Guide).
-
-### 2026-07-16 — Complete Gym Module Bug Fix Sprint
-- **FIXED** `src/screens/gym/ActiveLoggingScreen.tsx` — TextInput flickering: was using `defaultValue` (uncontrolled), which reset the cursor every time `saveLog` triggered `setLog`. Replaced with controlled `value` + per-set local `setInputs` state. Inputs only sync to log state on `onBlur` or on "Log Set" press.
-- **FIXED** `src/hooks/useGymLog.ts` — Duplicate exercises on edit: `updateExercise` was looking up exercise by `exercise.id` which is an optional field never assigned, so `findIndex` returned `-1`. `splice(-1)` mutated the last element, making it appear as a duplicate. Fixed by using array index directly + guard for out-of-bounds.
-- **FIXED** `src/hooks/useGymLog.ts` — Exercises disappearing on back navigation: `useEffect` re-ran on every Firestore `gymLogs` snapshot. If the live document had a different `id` format, it fell through to the `else` branch and replaced local state with a fresh template. Fixed with a `hasInitialised` ref — Firestore initialises the log once; after that, local state is authoritative.
-- **FIXED** `src/screens/gym/ActiveLoggingScreen.tsx` — Last session data not showing: `lastTimeData` only checked *completed* sets. New sessions have no completed sets yet, so the banner was always empty. Now reads `lastSessionSets` pre-filled by the hook (from previous workout) and shows it immediately.
-- **FIXED** `src/screens/gym/ActiveLoggingScreen.tsx` — No way to uncheck a completed set: checkmark was one-way. Added `handleToggleSetComplete` — tapping a completed set's checkmark now reverts it to incomplete.
-- **FIXED** `src/hooks/useGymLog.ts` — All mutators (updateSet, toggleSetComplete, deleteExercise, addSet, removeSet, addCardio, updateCardio, swapExercise, startWorkout, endWorkout, resumeWorkout, startRestTimer, clearRestTimer, updateRestTimerDuration) rewritten to use `setLog(prev => ...)` functional updates + call `saveLog` inside — decouples UI from async Firestore write.
-- **FIXED** `src/screens/gym/ActiveLoggingScreen.tsx` — realExerciseIndex now derived by name+exerciseId match against `log.exercises` (unfiltered), so skipped exercises don't corrupt the index passed to `updateExercise`.
-
-### 2026-07-18 — Gym Module: 5 Root-Cause Exercise Loading Bugs Fixed
-- **FIXED** `src/hooks/useGymLog.ts:todayStr()` — replaced `toISOString().slice(0,10)` (UTC) with local date component assembly. In IST (UTC+5:30), `toISOString()` returns the previous calendar date before 5:30 AM.
-- **FIXED** `src/hooks/useGymLog.ts:dateStrOffset()` — same UTC→local fix. `new Date(fromStr)` on an ISO date string parses as UTC midnight; replaced with `new Date(y, m-1, d)`.
-- **FIXED** `src/hooks/useGymLog.ts:planDayIndexForDate()` — `new Date(dateStr).getDay()` returns UTC day-of-week. In IST, every date mapped to the previous day's plan. Primary cause of "wrong exercises shown" and "Sunday shows Saturday's legs instead of rest day". Fixed with local-component parse.
-- **FIXED** `src/hooks/useGymLog.ts` — `updatedAt` staleness guard type mismatch: Firestore `updatedAt` is a `Timestamp` object (`.toMillis()`), local `updatedAt` is `Date.now()` (number). `Timestamp <= number` is always `false`, so the guard never fired and every snapshot overwrote local state. Fixed by normalizing both sides to milliseconds.
-- **FIXED** `src/hooks/useGymLog.ts` — `hasInitialised` ref was assigned but never read as a guard. Any Firestore snapshot finding 0 results for today replaced the in-progress workout with a blank template. Added `if (hasInitialised.current) return;` guard to `else if (gymLogsReady)` branch.
-- **FIXED** `src/hooks/useGymLog.ts` — `hasInitialised.current` never reset when `dateStr` changes. Switching dates got stuck because the guard blocked exercise initialization for the new day. Added `hasInitialised.current = false` to the dateStr-change effect.
-
-### 2026-08-03 — AppNavigator Heartbeat Listener + DateTimePicker Flicker Fix
-
-- **ROOT CAUSE (grey screen + kill→Home)**: The `SESSION_ALIVE_KEY` heartbeat was fully documented in comments and architecture docs but the `AppState` listener was **never implemented**. `sessionAlive` was always `null` → every boot indistinguishable from a cold kill.
-- **FIXED** `src/navigation/AppNavigator.tsx` — Added `AppState.addEventListener('change', handleAppStateChange)` inside the boot `useEffect`. On `'active'`: writes `SESSION_ALIVE_KEY='1'` + calls `forceUpdate(n=>n+1)` to nudge React's reconciler awake on screen unlock (eliminates grey frames). On `'background'`/`'inactive'`: deletes `SESSION_ALIVE_KEY` so a subsequent OS kill is detectable. Also writes initial heartbeat on cold boot. Cleanup: `appStateSub.remove()` alongside `unsubAuth()`.
-- **FIXED** `src/navigation/AppNavigator.tsx` — Added `[, forceUpdate] = useState(0)` counter state incremented on every `'active'` AppState transition. This is the anti-grey-frame reconciler paint trigger.
-- **FIXED** `src/screens/TasksScreen.tsx` — All 4 `DateTimePicker` `onChange` handlers (`onStartTimeChange`/`onEndTimeChange` in `NewTaskModal`; `onStartChange`/`onEndChange` in `EditTaskModalComponent`) now check `event.type` before committing. Android: `'set'` → close + commit; `'dismissed'` → close only; `'change'` (scroll tick) → no-op. iOS: inline spinner, live update. Eliminates flicker caused by committing state on scroll ticks.
-
-### 2026-08-01 — Notification System Full Audit & Bug Fix Sprint
-
-- **FIXED** `src/services/notifications.ts` — **BUG-N1**: Post-class and post-lab "Log attendance" reminders now skip scheduling if the user already marked present/absent/cancelled for that session. Previously fired regardless, even mid-class.
-- **FIXED** `src/contexts/MobileDataContext.tsx` — **BUG-N2 (root cause of N1)**: `attendanceLogs` was never passed to `scheduleAllNotifications()`. Now passed and added to the dependency array so logging attendance triggers a reschedule that removes the stale reminder.
-- **FIXED** `src/services/notifications.ts` — **BUG-N4**: Sleep morning reminder now checks **yesterday's** sleep log, not today's. Previously always fired even if user logged sleep last night.
-- **FIXED** `src/services/notifications.ts` — **BUG-N5**: Gym reminders now respect `userGymPlan.customDays` before falling back to the static PPL template.
-- **FIXED** `src/contexts/MobileDataContext.tsx` — Passes `userGymPlan` to `scheduleAllNotifications()` for BUG-N5.
-- **FIXED** `src/services/notifications.ts` — **BUG-N6**: Attendance warning now fires at user's configured `defaultTime` instead of hardcoded 9 AM.
-- **FIXED** `src/services/notifications.ts` — **BUG-N7**: Habit reminders now have personalised body text based on streak length (30+/7+/1+/0 days).
-- **FIXED** `src/services/notifications.ts` — **BUG-N8**: Morning brief "missed gym yesterday" check now uses local date (not `.toISOString()` UTC) — fixes IST midnight off-by-one.
-- **FIXED** `src/services/notifications.ts` — **BUG-N3**: Water reminders now check daily water total. If 2000ml goal is already met, all today's reminders are skipped. Shows remaining goal in body text.
-- **IMPROVED** `src/services/notifications.ts` — Attendance warning body now shows exact classes needed to recover above 75%.
-- **IMPROVED** `src/services/notifications.ts` — Morning brief appends worst-performing attendance subject name and percentage.
-- **IMPROVED** `src/services/notifications.ts` — Gym reminder title includes workout name + exercise count.
-- **IMPROVED** `src/services/notifications.ts` — Water reminders extended to 3-day coverage, start hour moved to 8 AM, fixed base-date mutation bug.
-- **IMPROVED** `src/services/notifications.ts` — Background fetch now queries `attendance_logs` so BUG-N1 fix works even when app is killed.
-- **MODIFIED** `src/services/notifications.ts:ScheduleParams` — Added `attendanceLogs?: AttendanceLog[]` and `userGymPlan?: UserGymPlanDoc | null`.
-- **MODIFIED** `src/services/notifications.ts:_buildFingerprint()` — Added `attendanceLogs.length` so attendance log changes bypass the fingerprint cache.
-- **REMOVED** `src/services/gymInsightEngine.ts`, `src/components/Gym/WorkoutInsightCard.tsx`, `src/screens/gym/home/useGymInsight.ts` — Completely deleted intrusive pre-workout modal blocker and engine so workouts start immediately with 0 delay.
-- **CONSOLIDATED** `src/components/Gym/WorkoutTimer.tsx` & `src/features/gym/components/LiveTimer.tsx` — Eliminated duplicate inline timers across Mobile and Web (`useWorkoutTimer.ts` removed).
-- **CLEANED** `src/screens/DashboardScreen.tsx` & `src/components/Dashboard/UnifiedLifeWidget.tsx` — Purged orphan `contentLogs` state/props; consolidated water storage on `zentrack_water_goal_ml` with automatic migration; streamlined header by merging layout configuration into the interactive Avatar menu.
-
-### 2026-08-15 — Learning Module & Deep Work Gamification Sprint
-- **ADDED** `src/services/youtubeTranscriptService.ts` — High-speed timedtext JSON3 parser + Gemini fallback transcript extraction with millisecond timestamps.
-- **ADDED** `src/services/flashcardService.ts` — SuperMemo SM-2 spaced repetition algorithm with Gemini active recall flashcard generation and Firestore sync (`COLLECTION.FLASHCARDS`).
-- **ADDED** `src/components/Learning/FlashcardReviewModal.tsx` — 3D Flippable card deck review modal with grading buttons (`Again`, `Hard`, `Good`, `Easy`) and completion XP rewards.
-- **ADDED** `src/components/Learning/LearningVideoPlayer.tsx` — Interactive synchronized transcript drawer with real-time video seeking, keyword search, and 1-tap `+ Flashcards` creation chips.
-- **OVERHAULED** `src/components/Learning/LearningTopicCard.tsx` — Replaced native `Alert.alert` with a ZenTrack OLED Dark Bottom Sheet Modal for study slot scheduling (supports tap-to-dismiss on empty background space and top close button).
-- **INTEGRATED** `src/services/xpSystem.ts` & `src/screens/LearningScreen.tsx` — Added Learning XP sources: `+25 XP` per completed lecture chapter (`LECTURE_COMPLETE`), `+50 XP` for 3/3 score on lecture quiz (`QUIZ_PERFECT`), and `+10 XP` for daily flashcard review (`FLASHCARD_REVIEW`).
-- **FIXED** `src/screens/tasks/taskConstants.ts` & `src/screens/tasks/EditTaskModal.tsx` — Resolved `Cannot read property 'toString' of undefined` crash when editing tasks created with named time slots (e.g. `evening`, `morning`). `formatTimeDisplay` and `EditTaskModal` now safely handle named slots, 24-hour ranges, and non-colon formatted strings without error.
-- **IMPROVED** `src/components/Learning/LearningModals.tsx:handleImportAiSyllabus` — S.A.R.A AI Syllabus generator now imports the complete curriculum as **1 unified topic card** with all sequential module checkpoints grouped under that single roadmap, eliminating duplicate fragmented cards.
-- **ADDED** `server/routes/youtube-transcript.js` — 4-Layer Resilient YouTube Transcript Backend: Layer 1 InnerTube Android PlayerResponse + TimedText (~150ms), Layer 2 Gemini 2.5 Flash native multimodal URL ingestion (no captions required), Layer 3 Supadata.ai edge API cloud proxy (SUPADATA_API_KEY optional), Layer 4 Gemini deep audio analysis fallback. Returns `{ cues[], source, latencyMs, layers_tried }`. Registered at `GET /api/youtube/transcript?videoId=xxx`.
-- **UPGRADED** `src/services/youtubeTranscriptService.ts` — Now calls backend 4-layer pipeline first. Returns `TranscriptResult { cues, source, latencyMs, layersTried }` instead of bare array. Falls back to client-side InnerTube then Gemini `callProxy` if backend unreachable. Exports `transcriptToPlainText(cues, maxChars)` helper for ZEN-GPT context ingestion.
-- **UPDATED** `src/components/Learning/LearningVideoPlayer.tsx` — Consumes `TranscriptResult` type, logs transcript source and latency to console for debugging.
-- **ADDED** `src/components/Learning/LearningVideoPlayer.tsx:handleExportResponseToNotes` & `src/features/learning/ChatMessage.tsx` — 1-Tap **"Export to Notes"** / **"+ Notes"** buttons on every ZEN-GPT assistant response. Instantly appends the AI explanation formatted with video playback timestamps (`[MM:SS]`) into the student's lecture notes draft, with 1-click cloud sync to ZenNotes workspace (`COLLECTION.STORAGE_NODES`).
-- **PERSISTED** `src/screens/LearningScreen.tsx` — Lecture chat conversations (`@lecture_chat_${sub.id}`), transcripts (`@lecture_transcript_${vidId}`), and notes (`@lecture_notes_${sub.id}`) are now fully cached and restored per lecture. Re-opening any lecture restores the full ZEN-GPT conversation history and notes draft without re-scraping. Added a 1-tap "Clear Chat" (`resetChatHistory`) option in both standard and fullscreen views.
-- **VERIFIED** 4-Layer Transcript Pipeline on Expo Go — Operates 100% in Expo Go via standard HTTP `fetch` to `https://zentrackworld.vercel.app/api/youtube/transcript` (0 custom native modules needed).
-- **REDESIGNED** `src/components/Learning/LearningVideoPlayer.tsx` — Made the overall chat container (`aiPanel`), input row (`aiInputRow`), and suggestion chips (`Quiz Me` & `+ Flashcards`) transparent, while keeping **only the message input field capsule (`aiInputCapsule`) solid and opaque (`#18181b`)**, ensuring clean readable text input with a floating glass aesthetic. Streamlined assistant message bubbles to keep compact `[+ Notes]` and `[+ Flashcards]` action chips solely in the top header. Removed redundant Focus Mode (`scan-outline`) and PiP (`copy-outline`) buttons from the player controls header.
-- **FIXED** `src/screens/LearningScreen.tsx` & `src/components/Learning/LearningVideoPlayer.tsx` — Purged CP437 corrupted character artifacts (`≡ƒÆí`, `┬╖`, `ΓåÆ`) from system prompt. Added `sanitizeMarkdownText` to prevent markdown typographer from converting quiz option `(C)` into the copyright symbol `©` and cleanly normalize all MCQ options to `A)`, `B)`, `C)`, `D)`.
-- **REPLACED** `src/screens/LearningScreen.tsx` — Removed 300+ lines of dead legacy on-device HTML/TimedText scrapers and migrated `openVideo` to directly consume the 4-layer resilient pipeline from `src/services/youtubeTranscriptService.ts`, preventing "Scraper V3 Failed" timeout errors.
-- **ADDED** `src/components/Learning/VsCodeSyntaxHighlighter.tsx` & `LearningVideoPlayer.tsx` — Built authentic **VS Code Dark+ Syntax Highlighting** for all code blocks in ZEN-GPT tutor chat. Colorizes keywords (`#569cd6`), control flow (`#c586c0`), types (`#4ec9b0`), strings & preprocessors (`#ce9178` / `#c586c0`), comments (`#6a9955` italic), numbers (`#b5cea8`), functions (`#dcdcaa`), and variables (`#9cdcfe`) with line numbers and copy action.
-- **UPDATED** `LearningVideoPlayer.tsx` & `LearningScreen.tsx` — Suggestion pills (`Quiz Me` & `+ Flashcards`) now automatically auto-hide as soon as the student asks their first question in chat. Chat history is preserved with dual-layer storage: offline in `AsyncStorage` (`@lecture_chat_${sub.id}`) and synchronized to Firestore cloud (`lectureChats/${userId}/videos/${sub.id}`). Clear chat deletes both local and remote chat history cleanly.
-- **ADDED** `src/components/Learning/LectureChatHistoryModal.tsx` & `LearningVideoPlayer.tsx` — Added a **"Chat History"** button (`time-outline`) right beside the Delete button in both standard and fullscreen player modes. Tapping it opens a sleek bottom sheet showing all past lecture conversations, message counts, latest snippets, search filtering, and 1-tap switching between lectures. Capped total chat sessions to the **latest 5**, automatically pruning older sessions from storage. Fixed header text overflow using `flexShrink: 1` and right padding so topic titles truncate cleanly with `...` without colliding into the delete icon.
-- **REWRITTEN** `src/components/ui/BottomSheet.tsx` — Replaced spring physics with instant fluid 180ms cubic deceleration (0 bounce). Added Android hardware back button handler (`BackHandler`), immediate keyboard dismissal, touch-outside handling, and 140ms quick exit.
-- **UPGRADED** `src/contexts/domains/WellnessContext.tsx:applyMasterTemplate` & `src/hooks/useGymLog.ts` — Made workout template importing 100% robust when overriding existing AI or custom plans. Correctly maps all 7 days for every schedule pattern (e.g. Tuesday–Sunday with Monday Rest, Monday–Saturday with Sunday Rest, Mid-Week Rest, and Weekday-only splits). Automatically preserves earlier completed workouts (e.g., Monday & Tuesday logged sessions remain untouched) when importing mid-week from Wednesday onwards, aligning Wednesday–Saturday/Sunday for the current week, while establishing the full 7-day recurring split for all future weeks.
-- **UPDATED** `src/screens/dashboard/useDashboardData.ts` & `src/components/Dashboard/DashboardLayoutSheet.tsx` — Made the Quick Capture input widget **hidden by default (`{ id: 'capture', hidden: true }`)** for all users and new sessions, giving the home dashboard the clean streamlined look with zero clutter. Added a 1-time layout migration so existing local storage automatically updates to hide quick capture while allowing users to re-enable it anytime from Customize Layout.
-
-### 2026-08-15 — Exercise Swap: Template Exercises & Database Integration
-- **OVERHAULED** `src/screens/gym/ExerciseSwapScreen.tsx` — When swapping any exercise (e.g. Thursday Long Tricep), the screen now automatically scans all days in the workout template (`GYM_PLAN_PPL`, `GYM_PLAN_ARNOLD`, user `customDays`), matching by exact sub-muscle (e.g. `Long Tricep` → Monday's `Overhead Cable Extension (rope)`) and parent muscle category (`Triceps`).
-  1. **"From Workout Template" Section**: Prominently renders matching template exercises with origin day badges (e.g. `Monday (Push A)`, `Friday (Shoulders & Arms)`), sets, reps, rest times, and video indicators.
-  2. **"S.A.R.A AI Biomechanical Swaps" Section**: Live AI analysis + instant 0ms fallback displaying curated database alternatives tailored to movement mechanics.
-  3. **"All Exercises" Tab**: Unified catalog combining template exercises (badged) + entire exercise database with filter chips (`All`, `In Template`, `[Target Muscle]`, `[Muscle Category]`) and fast multi-attribute search.
-  4. **Master Split Update**: Tapping to swap updates the active session log and prompts to optionally save permanently to the master routine.
-- **UPDATED** `src/screens/gym/ActiveLoggingScreen.tsx` — Tapping the `SWAP` button on any active exercise card now navigates directly to `ExerciseSwapScreen`.
-- **UPDATED** `src/screens/gym/GymHomeScreen.tsx` — Added a **"Swap Exercise..."** option to the exercise context menu (ellipsis button) on the main gym screen.
-- **UPDATED** `src/features/gym/components/AddExerciseModal.tsx` (Web) — Added routine day selection so web users can browse and select exercises across all template days (e.g. selecting Monday exercises when on Thursday).
-- **CURATED & INTEGRATED** `src/data/gymPlan.ts` & `src/services/exerciseVideoResolver.ts` — Complete verified YouTube Shorts (< 120s) form guide video library for all 6 days of the PPL Split (**Monday to Saturday, 55 total exercises**). Tapping any exercise form video in ZenTrack opens high-yield, verified Shorts with concise biomechanical tutorials from TylerPath, Hazzytrainer, DeltaBolic, Gerardi Performance, and Davis Diley.
-
-### 2026-08-16 — Attendance Screen & Academic Modals Light Mode Implementation
-- **UPDATED** `src/screens/attendance/attendanceStyles.ts` — Refactored `makeStyles(colors, isDark = true)` providing dynamic styling for both *Obsidian Cosmos* (OLED Dark Mode) and *Frost Quartz* (Light Mode). Styled overview card (`#FFFFFF` background, `#E2E1EA` border), warning banner (`#FEF2F2` background, `#F87171` border in light), week strip, subject cards, log rows (`#F5F4FA` in light), session status buttons (Present `#059669` / `#ECFDF5`, Absent `#DC2626` / `#FEF2F2`, Cancelled `#636366` / `#F5F4FA`), history modal, and extra class logging bottom sheet.
-- **UPDATED** `src/screens/AttendanceScreen.tsx` — Integrated `isDark` and `getThemeProgressColor` mapped dynamically to `colors.priorityLow` (`#059669` light / `#5eda9e` dark), `colors.priorityMed` (`#D97706` light / `#ff9f4d` dark), and `colors.priorityHigh` (`#DC2626` light / `#ff6961` dark). All headers, progress tracks, subject cards, and interactive modal dialogs adapt instantly to theme switching.
-- **UPDATED** `src/screens/attendance/HorizontalWeekStrip.tsx` — Converted week selector with dynamic active day text (`#FFFFFF` in light / `#000000` in dark), today outline indicator (`rgba(108, 92, 231, 0.12)` background, `rgba(108, 92, 231, 0.35)` border), and high-contrast weekday numbers.
-- **UPDATED** `src/components/Academic/TimetableModal.tsx` — Dynamic timetable list with `#FFFFFF` subject cards, `#F5F4FA` metric chips, `#6C5CE7` add button, emerald green CSV export button, and crimson reset button.
-- **UPDATED** `src/components/Academic/AddSubjectModal.tsx` — Full light/dark support with high-contrast inputs, segmented baseline mode selector, dynamic `#F8F7FC` calibration card with live safe/risk indicators, and schedule day cards.
-- **UPDATED** `src/components/Academic/ClassNotifSettingsModal.tsx` — Dynamic subject alert configuration with theme-aware cards, chip toggles, lab notification sections, and save button.
-- **VERIFIED** — Dual theme ready across all attendance submodules and modal dialogs.
-
-### 2026-08-16 — Grades & GPA Calculator Screen Light Mode Implementation
-- **UPDATED** `src/screens/GradesScreen.tsx` — Full dual-theme (*Obsidian Cosmos* & *Frost Quartz*) implementation:
-  1. **Dynamic Theme Foundation**: Integrated `useTheme()` with `makeStyles(colors, isDark)` and native `<StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />`.
-  2. **Hero & Target Predictor Cards**: Pure `#FFFFFF` card surfaces with `#E2E1EA` borders in light mode, `#1C1C1E` bold inputs, `#F0EFF7` recessed numeric fields, and dynamic Needed SGPA result box with semantic alert states (Emerald Green for achieved, Crimson Red for impossible, Royal Amethyst for standard target).
-  3. **SVG Progression Graph**: Dynamic SVG reference grid lines (`#E2E1EA`), SGPA semester bars (`#E2E1EA` with `#D1D0DC` border), and royal amethyst CGPA trajectory line with crisp circular data nodes.
-  4. **Semester Accordion & Subject Chips**: High-contrast semester headers, `#F0EFF7` letter grade badges, `#6C5CE7` Add Subject button, and dynamic Direct SGPA quick mode controls.
-  5. **Dialog Modals**: Elevated `#FFFFFF` dialog surfaces for New Semester, Add Subject, and Direct SGPA modals with titanium lavender input styling and royal amethyst save CTA.
-- **VERIFIED** — Clean TypeScript compilation with 0 errors.
-
-### 2026-08-16 — More Screen (Launcher) & Telegram Tab Bar Light Mode Implementation
-- **UPDATED** `src/screens/MoreScreen.tsx` — Dynamic frosted bottom sheet adapting between Obsidian Cosmos (`BlurView tint="dark"`, `rgba(28,28,30,0.4)`) and Frost Quartz (`BlurView tint="light"`, `#FFFFFF` with `#E2E1EA` border). Integrated dynamic module semantic color mappings (`#059669` Tasks, `#D97706` Habits/Notes/Gym, `#DC2626` Calendar, `#6C5CE7` Attendance/Grades, `#0284C7` Assignments/Learning/Analytics). Styled `#F0EFF7` Edit Nav pill, `#FFFFFF` pure quartz elevated squircles, and Royal Amethyst checkmark badges.
-- **UPDATED** `src/components/Navigation/TelegramTabBar.tsx` — Floating capsule styled with dynamic `#E2E1EA` border and soft shadow in light mode, precision animated sliding dot indicator with `#6C5CE7` accent glow, and dynamic unread notification badges.
-- **VERIFIED** — Clean TypeScript compilation with 0 errors.
-
-### 2026-08-16 — Assignments Module & BottomSheet Dual-Theme Implementation
-- **UPDATED** `src/components/ui/BottomSheet.tsx` — Converted `BottomSheet` to dynamic theme tokens. Replaced hardcoded dark background (`#0c0c0e`), border, and handle bar with dynamic theme support (`#FFFFFF` in Frost Quartz Light Mode, `#121214` in Obsidian Cosmos Dark Mode, `#E2E1EA` border in Light, and dynamic drag handle).
-- **UPDATED** `src/screens/AssignmentsScreen.tsx` — Complete dual-theme (*Obsidian Cosmos* & *Frost Quartz*) implementation:
-  1. **Dynamic Theme Foundation**: Integrated `useTheme()` with `makeStyles(colors, isDark)` and native `<StatusBar style={isDark ? 'light' : 'dark'} backgroundColor={colors.background} />`.
-  2. **Filter Bar & Segmented Chips**: `#FFFFFF` quartz capsules with `#E2E1EA` borders and `#636366` subtext in light mode, transitioning to Royal Amethyst (`#6C5CE7`) when active.
-  3. **Assignment Cards & Status Squircles**: Elevated `#FFFFFF` card surfaces with soft drop shadows, dynamic status badges (Not Started `#64748B`, In Progress `#D97706`, Submitted `#0284C7`, Graded `#059669`), and semantic urgency calculations (Overdue Crimson `#DC2626`, Due Today Amber `#D97706`, Safe Emerald `#059669`).
-  4. **BottomSheet Modal & Form**: Removed nested `modalOverlay` / `modalCard` double nesting. Direct `#F0EFF7` recessed input boxes, `#E2E1EA` hairline borders, dynamic date picker button, status selector chips with high-contrast text, and Royal Amethyst save CTA.
-- **VERIFIED** — Clean TypeScript compilation with 0 errors.
-
-### 2026-08-17 — Mobile Performance Optimization Sprint
-- **OPTIMIZED** `src/contexts/MobileDataContext.tsx` — Exported domain-specific hooks (`useCoreData`, `useAcademicData`, `useWellnessData`, `useCreativeData`, `usePlannerData`) directly from `MobileDataContext.tsx` to enable fine-grained, zero-overhead subscriptions and eliminate cross-screen re-render cascades.
-- **OPTIMIZED** `src/components/Tasks/TaskRow.tsx` — Added strict custom comparator `areTaskRowPropsEqual` to `React.memo` preventing unneeded cell re-renders during bulk actions, filtering, and unrelated context updates.
-- **OPTIMIZED** `src/agent/intentClassifier.ts` — Compacted task payload serialization in `buildSelectiveContext()` (filtering to essential id, title, priority, date, timeSlot, subtasks), reducing S.A.R.A mobile AI prompt token overhead by ~50% and improving Gemini API response latency.
-- **OPTIMIZED** `src/services/offlineSync.ts` — Upgraded offline write queue with deterministic document IDs, in-flight mutation coalescing for rapid multi-updates, exponential backoff retry delays (1.5s, 3s, 6s... up to 30s), and Internet reachability verification via NetInfo reconnect listener.
-- **VERIFIED** — `npx tsc --noEmit` compiles with 0 errors.
-
-
-
-
-
+### Critical Code Conventions
+1. **Design System Adherence**: Always import colors from `useTheme().colors` — NEVER hardcode hex values.
+2. **Touch Feedback**: Always use `feedback.tap()`, `feedback.commit()`, `feedback.success()` from `src/utils/haptics.ts` — NEVER call `Haptics.*` directly.
+3. **Data Access Standard**: Access domain data via `useMobileData()` or dedicated domain hooks (`useCoreData`, `useWellnessData`, `useAcademicData`, `useCreativeData`, `usePlannerData`) — NEVER query Firestore directly inside UI components.
+4. **Resilient Writes**: Route data mutations through `safeWrite()`, `safeAdd()`, `safeUpdate()`, `safeDelete()` or domain optimistic functions.
+5. **No Navigation in Onboarding**: `OnboardingScreen` renders outside navigation containers — pass navigation callbacks via props only.
+6. **Timezone Correctness**: Use `dateUtils.ts` (`todayStr()`) instead of `.toISOString().slice(0,10)` to prevent UTC midnight date shift bugs in Indian Standard Time (IST).

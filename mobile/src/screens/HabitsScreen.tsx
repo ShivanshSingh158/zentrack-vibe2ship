@@ -14,6 +14,7 @@ import AnimatedPressable from '../components/AnimatedPressable';
 import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { safeWrite } from '../utils/safeWrite';
 import { db } from '../services/firebase';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import type { Habit, HabitLog } from '../contexts/MobileDataContext';
@@ -32,7 +33,9 @@ import { formatLocalDateStr } from '../utils/dateUtils';
 import BottomSheet from '../components/ui/BottomSheet';
 
 const getTodayStr = () => formatLocalDateStr(new Date());
-const today = formatLocalDateStr(new Date());
+// IMPORTANT: never use a module-level `today` constant here — it gets frozen at app launch
+// and breaks habit date tracking when the app is left open past midnight.
+// Always call getTodayStr() so the date is re-evaluated each time it's used.
 
 // Helper for heat map dates
 const getPastDays = (numDays: number) => {
@@ -236,7 +239,7 @@ function CreateHabitModal({ visible, userId, onClose }: {
   );
 }
 
-// ─── Habit Card ────────────────────────────────────────────────────────ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─── Habit Card (Redesigned iOS Design) ──────────────────────────────────────
 
 const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, onToggle, onArchive, onDelete, habitLogs, onFireConfetti, freezesLeft }: {
   habit: Habit;
@@ -254,6 +257,8 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
   const checkScale = useSharedValue(1);
   const emojiScale = useSharedValue(1);
   const isNegative = habit.type === 'negative';
+  const habitColor = habit.color || (isDark ? colors.accentPrimary : '#6C5CE7');
+  const today = getTodayStr();
 
   let daysClean = 0;
   let moneySaved = 0;
@@ -270,22 +275,28 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
     if (habit.costPerDay) moneySaved = daysClean * habit.costPerDay;
   }
 
-  // Calculate 15-day heatmap (for positive habits only) — O(1) indexed lookup
-  const heatmapSquares = useMemo(() => {
+  // Calculate 7-Day Week History (Clean iOS Rolling Week Strip)
+  const weekHistory = useMemo(() => {
     if (isNegative) return null;
     const logDateMap = new Map<string, HabitLog>();
     for (const l of habitLogs) {
-      if (l.date) logDateMap.set(l.date, l);
+      if (l.date) logDateMap.set((l.date || '').slice(0, 10), l);
     }
 
-    const squares = [];
-    const nowMs = new Date().getTime();
-    for (let i = 14; i >= 0; i--) {
-      const d = new Date(nowMs - i * 24 * 60 * 60 * 1000);
+    const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const days = [];
+    const now = new Date();
+    
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
       const dateStr = formatLocalDateStr(d);
+      const dayOfWeek = d.getDay();
+      const dayLabel = DAY_LABELS[dayOfWeek];
+      const isToday = i === 0;
       const log = logDateMap.get(dateStr);
+      
       let status: 'completed' | 'missed' | 'freeze' | 'future' = 'missed';
-
       if (log) {
         if (log.isFreeze) status = 'freeze';
         else if (habit.targetCount && habit.targetCount > 0) {
@@ -293,16 +304,21 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
         } else {
           status = 'completed';
         }
-      } else if (dateStr >= today) {
+      } else if (isToday) {
         status = 'future';
-      } else {
-        if (habit.startDate && dateStr < habit.startDate) {
-          status = 'future';
-        }
+      } else if (habit.startDate && dateStr < habit.startDate) {
+        status = 'future';
       }
-      squares.push({ date: dateStr, status });
+      
+      days.push({
+        dateStr,
+        dayLabel,
+        dayNum: d.getDate(),
+        isToday,
+        status,
+      });
     }
-    return squares;
+    return days;
   }, [isNegative, habitLogs, habit.targetCount, habit.startDate]);
 
   const animatedCheckStyle = useAnimatedStyle(() => ({
@@ -314,7 +330,6 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
     const pageY = e.nativeEvent?.pageY;
     if (isNegative) {
       if (isCompleted) {
-        // Undo relapse
         Alert.alert("Undo Relapse", "Remove the relapse logged for today?", [
           { text: "Cancel", style: "cancel" },
           { text: "Remove", onPress: () => onToggle(pageX, pageY) }
@@ -341,15 +356,15 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
 
     onToggle(pageX, pageY);
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
-    checkScale.value = withSpring(1.2, { damping: 10, stiffness: 300 }, () => {
+    checkScale.value = withSpring(1.25, { damping: 10, stiffness: 300 }, () => {
       checkScale.value = withSpring(1, { damping: 14, stiffness: 200 });
     });
     emojiScale.value = withSequence(
-      withTiming(0.8, { duration: 100 }),
+      withTiming(0.85, { duration: 80 }),
       withSpring(1.2, { damping: 8, stiffness: 250 }),
       withSpring(1.0, { damping: 14, stiffness: 200 })
     );
-  }, [isNegative, isCompleted, onToggle, habit.name, checkScale]);
+  }, [isNegative, isCompleted, onToggle, habit.name, checkScale, emojiScale]);
 
   const handleLongPress = useCallback(() => {
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
@@ -366,121 +381,162 @@ const HabitCard = React.memo(function HabitCard({ habit, isCompleted, todayLog, 
 
   return (
     <AnimatedPressable 
-      activeOpacity={0.7} 
+      activeOpacity={0.9} 
       onLongPress={handleLongPress} 
       delayLongPress={300}
       onPress={handlePress}
       style={[
         styles.habitCard, 
-        isCompleted && !isNegative && styles.habitCardCompleted,
-        isNegative && { 
+        {
           borderColor: isCompleted 
-            ? (isDark ? 'rgba(255,105,97,0.3)' : '#FCA5A5') 
-            : (isDark ? 'rgba(255,255,255,0.05)' : '#E2E1EA'), 
-          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' 
-        },
-        !isNegative && { 
-          backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
-          borderColor: isCompleted && !isDark 
-            ? 'rgba(16, 185, 129, 0.35)' 
-            : (isDark ? 'rgba(255,255,255,0.05)' : '#E2E1EA')
+            ? (isNegative ? 'rgba(239,68,68,0.4)' : `${habitColor}50`) 
+            : (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'),
+          backgroundColor: isDark ? colors.surface : '#FFFFFF',
         }
       ]}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', width: '100%' }}>
-        
-        {!isNegative && (
-          <View style={{ paddingRight: SPACE.md }}>
-            {habit.targetCount && habit.targetCount > 0 ? (
-              <View style={[
-                styles.checkCircle, 
-                { 
-                  borderColor: isCompleted 
-                    ? (isDark ? colors.accentPrimary : colors.accentGreen) 
-                    : (isDark ? 'rgba(255,255,255,0.2)' : '#D1D1D6'), 
-                  backgroundColor: isCompleted 
-                    ? (isDark ? 'rgba(94, 218, 158, 0.15)' : 'rgba(16, 185, 129, 0.12)') 
-                    : (isDark ? 'transparent' : '#F4F3F8') 
-                }
-              ]}>
-                <Text style={{ color: isCompleted ? (isDark ? colors.accentPrimary : colors.accentGreen) : colors.textPrimary, fontSize: 10, fontFamily: FONT_FAMILY.bold }}>
-                  {todayLog?.count || 0}/{habit.targetCount}
-                </Text>
-              </View>
-            ) : (
-              <Reanimated.View style={[
-                styles.checkCircle,
-                isCompleted && { 
-                  backgroundColor: isDark ? colors.accentPrimary : colors.accentGreen, 
-                  borderColor: isDark ? colors.accentPrimary : colors.accentGreen 
-                },
-                animatedCheckStyle,
-              ]}>
-                {isCompleted && <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />}
-              </Reanimated.View>
-            )}
-          </View>
-        )}
-
+      {/* ── TOP SECTION: Icon, Title, Streak & Check Action Button ── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {/* Emoji Avatar */}
         <View style={[
           styles.avatar, 
-          isNegative 
-            ? { backgroundColor: isDark ? 'rgba(255,105,97,0.12)' : 'rgba(239,68,68,0.10)' } 
-            : { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : (habit.color ? `${habit.color}15` : 'rgba(108,92,231,0.10)') }
+          { 
+            backgroundColor: isNegative 
+              ? (isDark ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.10)') 
+              : (isDark ? `${habitColor}22` : `${habitColor}14`),
+            borderColor: isNegative 
+              ? (isDark ? 'rgba(239,68,68,0.3)' : 'rgba(239,68,68,0.2)') 
+              : (isDark ? `${habitColor}40` : `${habitColor}30`),
+            borderWidth: 1,
+          }
         ]}>
-          <Reanimated.Text style={[styles.avatarEmoji, { transform: [{ scale: emojiScale }] }]}>{habit.emoji}</Reanimated.Text>
+          <Reanimated.Text style={[styles.avatarEmoji, { transform: [{ scale: emojiScale }] }]}>
+            {habit.emoji || (isNegative ? '🚫' : '⭐')}
+          </Reanimated.Text>
         </View>
 
-        <View style={{ flex: 1, marginLeft: 12, justifyContent: 'center' }}>
-          <Text style={[styles.habitName, isCompleted && !isNegative && styles.habitNameCompleted]} numberOfLines={1}>{habit.name}</Text>
+        {/* Title & Streak Badge */}
+        <View style={{ flex: 1, marginLeft: 12, marginRight: 8 }}>
+          <Text style={[styles.habitName, isCompleted && !isNegative && styles.habitNameCompleted]} numberOfLines={1}>
+            {habit.name}
+          </Text>
           
           {isNegative ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 8 }}>
-              {isCompleted ? (
-                <Text style={[styles.habitStreak, { color: '#ff6961' }]}>Relapsed today</Text>
-              ) : (
-                <Text style={[styles.habitStreak, { color: isDark ? '#ff6961' : '#DC2626', fontFamily: FONT_FAMILY.bold }]}>{daysClean} days clean</Text>
-              )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 }}>
+              <View style={[styles.streakBadge, { backgroundColor: isCompleted ? 'rgba(239,68,68,0.14)' : (isDark ? 'rgba(16,185,129,0.14)' : 'rgba(16,185,129,0.10)') }]}>
+                <Text style={{ color: isCompleted ? '#EF4444' : (isDark ? '#5EDA9E' : '#059669'), fontSize: 11, fontFamily: FONT_FAMILY.bold }}>
+                  {isCompleted ? 'Relapsed Today' : `🌿 ${daysClean} days clean`}
+                </Text>
+              </View>
               {moneySaved > 0 && !isCompleted && (
-                <Text style={[styles.habitStreak, { color: isDark ? colors.accentGreen : '#059669', fontFamily: FONT_FAMILY.bold }]}>+${moneySaved.toFixed(0)} saved</Text>
+                <Text style={{ fontSize: 11, fontFamily: FONT_FAMILY.bold, color: isDark ? '#5EDA9E' : '#059669' }}>
+                  +${moneySaved.toFixed(0)} saved
+                </Text>
               )}
             </View>
           ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
-              {isCompleted ? (
-                <Text style={styles.completedSub}>✓ Completed today</Text>
-              ) : (
-                <Text style={styles.habitStreak}>
-                  {habitLogs.some(l => l.date === new Date(new Date().getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0] && l.isFreeze)
-                    ? `❄️ Streak saved! ${freezesLeft || 0} freeze(s) left`
-                    : `🔥 ${habit.streak || 0} day streak`
-                  }
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 }}>
+              <View style={[
+                styles.streakBadge, 
+                { backgroundColor: isCompleted ? (isDark ? 'rgba(94,218,158,0.15)' : 'rgba(16,185,129,0.12)') : (isDark ? 'rgba(245,158,11,0.15)' : 'rgba(245,158,11,0.10)') }
+              ]}>
+                <Text style={{ 
+                  color: isCompleted ? (isDark ? '#5EDA9E' : '#059669') : (isDark ? '#FBBF24' : '#D97706'), 
+                  fontSize: 11, 
+                  fontFamily: FONT_FAMILY.bold 
+                }}>
+                  {isCompleted ? '✓ Completed today' : `🔥 ${habit.streak || 0} day streak`}
+                </Text>
+              </View>
+              {habit.targetCount && habit.targetCount > 0 && (
+                <Text style={{ fontSize: 11, fontFamily: FONT_FAMILY.medium, color: colors.textSecondary }}>
+                  {todayLog?.count || 0}/{habit.targetCount}
                 </Text>
               )}
             </View>
           )}
-
-          {!isNegative && heatmapSquares && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 4 }}>
-              {heatmapSquares.map((sq, idx) => (
-                <View 
-                  key={idx}
-                  style={{
-                    width: 11, 
-                    height: 11, 
-                    borderRadius: 2.5,
-                    backgroundColor: sq.status === 'completed' ? (isDark ? (habit.color || colors.accentPrimary) : (habit.color || '#6C5CE7')) :
-                                     sq.status === 'freeze' ? '#06B6D4' :
-                                     sq.status === 'missed' ? (isDark ? 'rgba(255,255,255,0.06)' : '#E5E4EE') : 'transparent',
-                    borderWidth: sq.status === 'future' ? 1 : 0,
-                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#D1D1D6'
-                  }} 
-                />
-              ))}
-            </View>
-          )}
         </View>
+
+        {/* Big iOS Action Check Ring */}
+        {!isNegative ? (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handlePress}
+            style={[
+              styles.actionCheckRing,
+              {
+                backgroundColor: isCompleted ? habitColor : (isDark ? 'rgba(255,255,255,0.06)' : '#F5F4FA'),
+                borderColor: isCompleted ? habitColor : (isDark ? 'rgba(255,255,255,0.15)' : '#D1D1D6'),
+              }
+            ]}
+          >
+            <Reanimated.View style={animatedCheckStyle}>
+              <Ionicons
+                name={isCompleted ? "checkmark-sharp" : "add"}
+                size={isCompleted ? 18 : 16}
+                color={isCompleted ? (isDark ? '#000000' : '#FFFFFF') : colors.textMuted}
+              />
+            </Reanimated.View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handlePress}
+            style={[
+              styles.actionCheckRing,
+              {
+                backgroundColor: isCompleted ? '#EF4444' : (isDark ? 'rgba(255,255,255,0.06)' : '#F5F4FA'),
+                borderColor: isCompleted ? '#EF4444' : (isDark ? 'rgba(255,255,255,0.15)' : '#D1D1D6'),
+              }
+            ]}
+          >
+            <Ionicons
+              name={isCompleted ? "close" : "shield-checkmark-outline"}
+              size={16}
+              color={isCompleted ? '#FFFFFF' : (isDark ? '#5EDA9E' : '#059669')}
+            />
+          </TouchableOpacity>
+        )}
       </View>
+
+      {/* ── BOTTOM SECTION: 7-Day Clean Rolling Week Strip ── */}
+      {!isNegative && weekHistory && (
+        <View style={styles.weekStripContainer}>
+          {weekHistory.map((item, idx) => {
+            const isDone = item.status === 'completed';
+            const isFreeze = item.status === 'freeze';
+            const isCurrentDay = item.isToday;
+
+            return (
+              <View key={idx} style={styles.weekDayColumn}>
+                <Text style={[
+                  styles.weekDayLabel,
+                  isCurrentDay && { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold }
+                ]}>
+                  {item.dayLabel}
+                </Text>
+                <View style={[
+                  styles.weekDayDot,
+                  isDone && { backgroundColor: habitColor, borderColor: habitColor },
+                  isFreeze && { backgroundColor: '#06B6D4', borderColor: '#06B6D4' },
+                  !isDone && !isFreeze && isCurrentDay && { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F0EFF7', 
+                    borderWidth: 1.5, 
+                    borderColor: habitColor,
+                  },
+                  !isDone && !isFreeze && !isCurrentDay && {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#ECEBF2',
+                    borderColor: 'transparent'
+                  }
+                ]}>
+                  {isDone && <Ionicons name="checkmark" size={11} color={isDark ? '#000000' : '#FFFFFF'} />}
+                  {isFreeze && <Ionicons name="snow" size={10} color="#FFFFFF" />}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </AnimatedPressable>
   );
 });
@@ -498,10 +554,13 @@ export default function HabitsScreen() {
 
   const headerFade = useRef(new Animated.Value(0)).current;
   const headerSlide = useRef(new Animated.Value(-10)).current;
+  const today = getTodayStr();
 
-  // ΓöÇΓöÇ Streak Freeze Evaluator ΓöÇΓöÇ
+  // ── Streak Freeze Evaluator ──
   const [freezes, setFreezes] = useState<number>(0);
   const evaluatorRan = useRef(false);
+  // IDEMPOTENCY GUARD: Per-habit action timestamp lock prevents multi-tap race conditions
+  const inFlightHabitLocks = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     if (!user || loading || evaluatorRan.current) return;
@@ -525,7 +584,10 @@ export default function HabitsScreen() {
         }
 
         let updatedFreezes = currentFreezes;
-        const yesterday = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const yesterdayDate = new Date(nowMs - 24 * 60 * 60 * 1000);
+        const yesterday = yesterdayDate.toISOString().split('T')[0];
+        const isYesterdaySunday = yesterdayDate.getDay() === 0;
+        const saturdayDate = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
 
         // Evaluate misses for active daily positive habits
         for (const habit of allHabits) {
@@ -535,14 +597,18 @@ export default function HabitsScreen() {
           if (logs.length === 0) continue;
 
           const latestLog = logs[0];
-          // Did we miss yesterday? (Latest log is older than yesterday)
-          if (latestLog.date < yesterday) {
+          
+          // 🏖️ SUNDAY RELAXATION: If yesterday was Sunday, Sunday is an approved rest day.
+          // We only evaluate a streak break if Saturday was ALSO missed.
+          const targetMissDate = isYesterdaySunday ? saturdayDate : yesterday;
+
+          if (latestLog.date < targetMissDate) {
             if (updatedFreezes > 0) {
               updatedFreezes -= 1;
-              const freezeDocId = `${habit.id}_${yesterday}`;
+              const freezeDocId = `${habit.id}_${targetMissDate}`;
               await setDoc(doc(db, COLLECTION.HABIT_LOGS, freezeDocId), {
                 habitId: habit.id, userId: user.uid,
-                date: yesterday, isFreeze: true, count: 1,
+                date: targetMissDate, isFreeze: true, count: 1,
                 timestamp: serverTimestamp(),
               });
               // Streak is protected!
@@ -617,8 +683,18 @@ export default function HabitsScreen() {
 
   const toggleHabit = (habit: Habit, x?: number, y?: number) => {
     if (!user) return;
-    const existingLog = todayLogs.find(l => l.habitId === habit.id);
+    const now = Date.now();
+    const lastTap = inFlightHabitLocks.current.get(habit.id) || 0;
     const isQuantitative = typeof habit.targetCount === 'number' && habit.targetCount > 0;
+
+    // IDEMPOTENCY GUARD: 280ms lock for binary toggles, 140ms for quantitative taps
+    const minDelay = isQuantitative ? 140 : 280;
+    if (now - lastTap < minDelay) {
+      return;
+    }
+    inFlightHabitLocks.current.set(habit.id, now);
+
+    const existingLog = todayLogs.find(l => l.habitId === habit.id);
 
     if (isQuantitative) {
        const currentCount = existingLog ? (existingLog.count || 1) : 0;
@@ -640,12 +716,10 @@ export default function HabitsScreen() {
          import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light));
        }
 
-       // Optimistic UI: use deterministic doc id so snapshot replacement is seamless
        const logDocId = `${habit.id}_${today}`;
        if (existingLog) {
           optimisticUpdateHabitLog(existingLog.id, { count: newCount });
        } else {
-          // Use deterministic id for optimistic log ΓÇö matches the Firestore doc id we'll create
           optimisticAddHabitLog({ id: logDocId, habitId: habit.id, userId: user.uid, date: today, count: newCount });
        }
        if (isNowComplete) {
@@ -658,23 +732,20 @@ export default function HabitsScreen() {
 
        (async () => {
          try {
-           // ROOT FIX: Use setDoc with deterministic ID.
-           // This is a pure upsert ΓÇö no delete+recreate, no stale IDs, no race conditions.
-           // On first tap: Firestore creates the doc (ownsNewDoc() passes).
-           // On subsequent taps: Firestore updates it (ownsDoc() passes because userId matches).
            const isFirstTap = !existingLog;
            if (isFirstTap) await awardXP('HABIT_LOG');
-           await setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), {
-             habitId: habit.id, userId: user.uid,
-             date: today, count: newCount,
-             timestamp: serverTimestamp(),
-           });
+           const logData = { habitId: habit.id, userId: user.uid, date: today, count: newCount };
+           await safeWrite(
+             () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), { ...logData, timestamp: serverTimestamp() }),
+             COLLECTION.HABIT_LOGS, 'set', logData, logDocId,
+           );
            if (isNowComplete) {
              const newStreak = (habit.streak || 0) + 1;
-             await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { 
-               streak: newStreak,
-               longestStreak: Math.max(newStreak, habit.longestStreak || 0)
-             });
+             const streakData = { streak: newStreak, longestStreak: Math.max(newStreak, habit.longestStreak || 0) };
+             await safeWrite(
+               () => updateDoc(doc(db, COLLECTION.HABITS, habit.id), streakData),
+               COLLECTION.HABITS, 'update', streakData, habit.id,
+             );
            }
          } catch (e) {
            console.error('[HabitsScreen] Error updating quantitative habit', e);
@@ -700,26 +771,34 @@ export default function HabitsScreen() {
       });
     }
 
-    // 2. Background Sync
+    // 2. Background Sync — via safeWrite so offline writes survive force-kills
     (async () => {
       try {
         if (existingLog) {
-          await deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId));
-          await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: Math.max(0, (habit.streak || 1) - 1) });
+          // Unlog: delete the log doc and decrement streak
+          await safeWrite(
+            () => deleteDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId)),
+            COLLECTION.HABIT_LOGS, 'delete', null, logDocId,
+          );
+          const streakData = { streak: Math.max(0, (habit.streak || 1) - 1) };
+          await safeWrite(
+            () => updateDoc(doc(db, COLLECTION.HABITS, habit.id), streakData),
+            COLLECTION.HABITS, 'update', streakData, habit.id,
+          );
         } else {
+          // Log: set the log doc (upsert with deterministic ID) and increment streak
           await awardXP('HABIT_LOG');
-          await setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), {
-            habitId: habit.id,
-            userId: user.uid,
-            date: today,
-            count: 1,
-            timestamp: serverTimestamp(),
-          });
+          const logData = { habitId: habit.id, userId: user.uid, date: today, count: 1 };
+          await safeWrite(
+            () => setDoc(doc(db, COLLECTION.HABIT_LOGS, logDocId), { ...logData, timestamp: serverTimestamp() }),
+            COLLECTION.HABIT_LOGS, 'set', logData, logDocId,
+          );
           const newStreak = (habit.streak || 0) + 1;
-          await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { 
-            streak: newStreak,
-            longestStreak: Math.max(newStreak, habit.longestStreak || 0)
-          });
+          const streakData = { streak: newStreak, longestStreak: Math.max(newStreak, habit.longestStreak || 0) };
+          await safeWrite(
+            () => updateDoc(doc(db, COLLECTION.HABITS, habit.id), streakData),
+            COLLECTION.HABITS, 'update', streakData, habit.id,
+          );
         }
       } catch (e) {
         console.error('[HabitsScreen] Error toggling habit', e);
@@ -900,57 +979,77 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
 
   habitCard: {
-    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
     padding: 16,
-    borderRadius: RADIUS.lg,
-    marginBottom: 10,
+    borderRadius: 20,
+    marginBottom: 12,
     borderWidth: 1, 
-    borderColor: isDark ? 'rgba(255,255,255,0.05)' : '#E2E1EA',
+    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
     flexDirection: 'column',
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: isDark ? 0.3 : 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.35 : 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
   habitCardCompleted: {
-    opacity: isDark ? 0.7 : 0.8,
-  },
-  checkCircle: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 1.5, borderColor: isDark ? colors.border : '#D1D1D6',
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: isDark ? 'transparent' : '#F4F3F8',
-  },
-  burstEffect: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 10,
+    opacity: isDark ? 0.85 : 0.9,
   },
   avatar: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: isDark ? colors.accentDim : 'rgba(108,92,231,0.10)',
+    width: 46, height: 46, borderRadius: 14,
     alignItems: 'center', justifyContent: 'center',
   },
-  avatarEmoji: { fontSize: 20 },
-  habitName: { fontFamily: FONT_FAMILY.bold, fontSize: 15, color: colors.textPrimary },
-  habitNameCompleted: { fontFamily: FONT_FAMILY.medium, fontSize: 15, color: colors.textMuted, textDecorationLine: 'line-through' },
-  habitStreak: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: FONT_SIZE.xs,
-    color: isDark ? colors.textMuted : '#B45309',
-    marginTop: 2,
+  avatarEmoji: { fontSize: 24 },
+  habitName: { 
+    fontFamily: FONT_FAMILY.bold, 
+    fontSize: 16, 
+    color: colors.textPrimary,
+    letterSpacing: -0.2,
   },
-  completedSub: {
+  habitNameCompleted: { 
+    fontFamily: FONT_FAMILY.medium, 
+    fontSize: 16, 
+    color: colors.textMuted,
+  },
+  streakBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  actionCheckRing: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekStripContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+  },
+  weekDayColumn: {
+    alignItems: 'center',
+    gap: 5,
+  },
+  weekDayLabel: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.xs,
-    color: isDark ? colors.accentGreen : '#059669',
-    marginTop: 2,
+    fontSize: 10,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
   },
-  freqBadge: {
-  },
-  heatMapSquare: {
-    width: 11, height: 11,
-    borderRadius: 2.5,
+  weekDayDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   empty: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, Alert, Switch } from 'react-native';
 import AnimatedPressable from '../components/AnimatedPressable';
 import BottomSheet from '../components/ui/BottomSheet';
 import { FlashList } from '@shopify/flash-list';
@@ -19,6 +19,8 @@ import { useSaraSurface } from '../hooks/useSaraSurface';
 import SaraHUDBanner from '../components/SARA/SaraHUDBanner';
 import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
+import { formatLocalDateStr } from '../utils/dateUtils';
+import { safeAdd, safeUpdate, safeDelete } from '../utils/safeWrite';
 
 const getStatusConfig = (isDark: boolean) => ({
   not_started: {
@@ -59,8 +61,8 @@ const getDaysUntilDue = (dueDateStr: string) => {
 export default function AssignmentsScreen() {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors, isDark);
-  const { assignments } = useAcademicData();
-  const { user } = useCoreData();
+  const { assignments, optimisticAddAssignment, optimisticUpdateAssignment, optimisticDeleteAssignment } = useAcademicData();
+  const { user, optimisticAddTask } = useCoreData();
 
   const statusConfig = useMemo(() => getStatusConfig(isDark), [isDark]);
 
@@ -78,6 +80,7 @@ export default function AssignmentsScreen() {
   const [dueDate, setDueDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [status, setStatus] = useState<Assignment['status']>('not_started');
+  const [createTask, setCreateTask] = useState(false); // FIX 8.5
   const [saving, setSaving] = useState(false);
 
   const resetForm = () => {
@@ -86,6 +89,7 @@ export default function AssignmentsScreen() {
     setDueDate(new Date());
     setStatus('not_started');
     setEditingId(null);
+    setCreateTask(false);
   };
 
   const handleSave = () => {
@@ -93,7 +97,7 @@ export default function AssignmentsScreen() {
     
     import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
     
-    const dueDateStr = dueDate.toISOString().split('T')[0];
+    const dueDateStr = formatLocalDateStr(dueDate);
     const data = {
       userId: user.uid,
       title: title.trim(),
@@ -103,13 +107,50 @@ export default function AssignmentsScreen() {
       updatedAt: Date.now(),
     };
 
-    setTimeout(() => {
-      if (editingId) {
-        updateDoc(doc(db, COLLECTION.ASSIGNMENTS, editingId), data).catch(handleSyncError);
-      } else {
-        addDoc(collection(db, COLLECTION.ASSIGNMENTS), { ...data, createdAt: Date.now() }).catch(handleSyncError);
+    if (editingId) {
+      optimisticUpdateAssignment(editingId, data);
+      safeUpdate(
+        editingId,
+        COLLECTION.ASSIGNMENTS,
+        data,
+        () => updateDoc(doc(db, COLLECTION.ASSIGNMENTS, editingId), data)
+      ).catch(handleSyncError);
+    } else {
+      const docRef = doc(collection(db, COLLECTION.ASSIGNMENTS));
+      const newAssignment: Assignment = {
+        id: docRef.id,
+        ...data,
+        createdAt: Date.now(),
+      };
+      optimisticAddAssignment(newAssignment);
+      safeAdd(
+        COLLECTION.ASSIGNMENTS,
+        newAssignment,
+        () => addDoc(collection(db, COLLECTION.ASSIGNMENTS), newAssignment)
+      ).catch(handleSyncError);
+      
+      // Automatically create a synced Task if user opted in
+      if (createTask) {
+        const taskRef = doc(collection(db, COLLECTION.TASKS));
+        const newTask = {
+          id: taskRef.id,
+          userId: user.uid,
+          title: `Submit: ${title.trim()} (${subjectName.trim()})`,
+          text: `Submit: ${title.trim()} (${subjectName.trim()})`,
+          date: dueDateStr,
+          status: 'pending' as const,
+          priority: 'high' as const,
+          category: 'academic',
+          createdAt: Date.now(),
+        };
+        if (optimisticAddTask) optimisticAddTask(newTask);
+        safeAdd(
+          COLLECTION.TASKS,
+          newTask,
+          () => addDoc(collection(db, COLLECTION.TASKS), newTask)
+        ).catch(handleSyncError);
       }
-    }, 150);
+    }
     
     setModalVisible(false);
     resetForm();
@@ -120,7 +161,12 @@ export default function AssignmentsScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => {
         try {
-          await deleteDoc(doc(db, COLLECTION.ASSIGNMENTS, id));
+          optimisticDeleteAssignment(id);
+          await safeDelete(
+            id,
+            COLLECTION.ASSIGNMENTS,
+            () => deleteDoc(doc(db, COLLECTION.ASSIGNMENTS, id))
+          );
         } catch (e) {
           console.error(e);
         }
@@ -279,7 +325,7 @@ export default function AssignmentsScreen() {
             <Text style={styles.inputLabel}>Due Date</Text>
             <AnimatedPressable style={styles.dateBtn} onPress={() => setShowPicker(true)}>
               <Ionicons name="calendar-outline" size={20} color={colors.accentPrimary} />
-              <Text style={styles.dateBtnText}>{dueDate.toISOString().split('T')[0]}</Text>
+              <Text style={styles.dateBtnText}>{formatLocalDateStr(dueDate)}</Text>
             </AnimatedPressable>
 
             {showPicker && (
@@ -318,6 +364,28 @@ export default function AssignmentsScreen() {
                 );
               })}
             </View>
+
+            {/* FIX 8.5: Also create task switch */}
+            {!editingId && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: SPACE.md, paddingVertical: 6 }}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.textPrimary }}>
+                    Add to Daily Tasks Timeline
+                  </Text>
+                  <Text style={{ fontFamily: FONT_FAMILY.body, fontSize: 11, color: colors.textSecondary, marginTop: 2 }}>
+                    Creates a task on the due date
+                  </Text>
+                </View>
+                <Switch
+                  value={createTask}
+                  onValueChange={setCreateTask}
+                  trackColor={{ false: isDark ? '#3A3A3C' : '#E2E1EA', true: colors.accentPrimary }}
+                  thumbColor={'#FFFFFF'}
+                  ios_backgroundColor={isDark ? '#3A3A3C' : '#E2E1EA'}
+                  style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                />
+              </View>
+            )}
 
             <AnimatedPressable style={[styles.saveBtn, saving && { opacity: 0.5 }]} onPress={handleSave} disabled={saving}>
               <Text style={styles.saveBtnText}>{saving ? 'Saving...' : 'Save'}</Text>

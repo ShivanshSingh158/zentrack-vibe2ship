@@ -24,6 +24,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../contexts/ThemeContext';
 import { scheduleAllNotifications, clearScheduleCache, sendTestNotification } from '../services/notifications';
@@ -123,6 +124,25 @@ export default function NotificationsSettingsScreen() {
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<TimePickerTarget>('morningBriefTime');
   const [pickerDate, setPickerDate] = useState(new Date());
+
+  // FIX 7.7: Active Alarms Debug Modal state
+  const [activeAlarmsModalVisible, setActiveAlarmsModalVisible] = useState(false);
+  const [scheduledAlarms, setScheduledAlarms] = useState<any[]>([]);
+  const [loadingAlarms, setLoadingAlarms] = useState(false);
+
+  const handleOpenActiveAlarms = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setLoadingAlarms(true);
+    setActiveAlarmsModalVisible(true);
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      setScheduledAlarms(scheduled);
+    } catch (e) {
+      console.error('[NotificationsSettings] Failed to get scheduled notifications', e);
+    } finally {
+      setLoadingAlarms(false);
+    }
+  };
 
   // Load all settings fast to prevent transition stutter
   useEffect(() => {
@@ -303,6 +323,22 @@ export default function NotificationsSettingsScreen() {
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>Send Test Notification</Text>
               <Text style={s.rowSub}>Verify S.A.R.A comms are working</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+          <Hairline />
+          {/* FIX 7.7: View Scheduled Active Alarms */}
+          <TouchableOpacity 
+            style={s.row} 
+            activeOpacity={0.7} 
+            onPress={handleOpenActiveAlarms}
+          >
+            <View style={[s.iconBox, { backgroundColor: isDark ? 'rgba(56,189,248,0.15)' : 'rgba(2,132,199,0.12)' }]}>
+              <Ionicons name="notifications-outline" size={15} color={isDark ? '#38BDF8' : '#0284C7'} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.rowTitle}>View Scheduled Alarms</Text>
+              <Text style={s.rowSub}>Inspect OS-queued notifications</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -575,7 +611,90 @@ export default function NotificationsSettingsScreen() {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* Time Picker Modal */}
+      {/* FIX 7.7: Scheduled Alarms Modal */}
+      {activeAlarmsModalVisible && (
+        <Modal transparent animationType="slide" visible={activeAlarmsModalVisible}>
+          <View style={s.pickerModalOverlay}>
+            <View style={[s.pickerCard, { maxHeight: '80%', paddingHorizontal: 16 }]}>
+              <View style={s.pickerHeader}>
+                <View>
+                  <Text style={{ fontFamily: 'Inter_700Bold', fontSize: 17, color: colors.textPrimary }}>
+                    Scheduled Alarms ({scheduledAlarms.length})
+                  </Text>
+                  <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                    Active notifications scheduled in the OS
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setActiveAlarmsModalVisible(false)} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={24} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              {loadingAlarms ? (
+                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                  <Text style={{ color: colors.textSecondary, fontFamily: 'Inter_500Medium' }}>Loading scheduled alarms...</Text>
+                </View>
+              ) : scheduledAlarms.length === 0 ? (
+                <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                  <Ionicons name="checkmark-circle-outline" size={40} color={colors.accentPrimary} />
+                  <Text style={{ color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', marginTop: 12, fontSize: 15 }}>
+                    No Active Alarms Queued
+                  </Text>
+                  <Text style={{ color: colors.textSecondary, fontFamily: 'Inter_400Regular', marginTop: 4, fontSize: 12 }}>
+                    Alarms are scheduled on-demand when upcoming events/tasks are due.
+                  </Text>
+                </View>
+              ) : (
+                <ScrollView showsVerticalScrollIndicator={false} style={{ marginVertical: 12 }}>
+                  {scheduledAlarms.map((item, idx) => {
+                    const trigger = item.trigger;
+                    let triggerLabel = 'Immediate';
+                    if (trigger) {
+                      if (trigger.value) {
+                        triggerLabel = new Date(trigger.value).toLocaleString();
+                      } else if (trigger.date) {
+                        triggerLabel = new Date(trigger.date).toLocaleString();
+                      } else if (trigger.seconds) {
+                        triggerLabel = `In ${Math.round(trigger.seconds / 60)} minutes`;
+                      }
+                    }
+                    const title = item.content?.title || 'Notification';
+                    const body = item.content?.body || '';
+
+                    return (
+                      <View 
+                        key={item.identifier || idx}
+                        style={{
+                          backgroundColor: isDark ? '#1C1C1E' : '#F5F4FA',
+                          borderRadius: 12,
+                          padding: 12,
+                          marginBottom: 8,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                          <Text style={{ fontFamily: 'Inter_600SemiBold', fontSize: 13, color: colors.accentPrimary, flex: 1 }}>
+                            {title}
+                          </Text>
+                          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 11, color: colors.textMuted }}>
+                            {triggerLabel}
+                          </Text>
+                        </View>
+                        {body ? (
+                          <Text style={{ fontFamily: 'Inter_400Regular', fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                            {body}
+                          </Text>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
       {pickerVisible && (
         Platform.OS === 'ios' ? (
           <Modal transparent animationType="slide">

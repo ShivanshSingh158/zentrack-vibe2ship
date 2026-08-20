@@ -175,12 +175,32 @@ export async function saveFlashcardsToFirestore(
   const today = getLocalDateString();
   let count = 0;
 
+  // FIX 6.4: Fetch existing user flashcards to deduplicate by question text
+  const existingQuestions = new Set<string>();
+  try {
+    const q = query(collection(db, COLLECTION.FLASHCARDS), where('userId', '==', userId));
+    const snap = await getDocs(q);
+    snap.docs.forEach(docSnap => {
+      const data = docSnap.data();
+      if (data.question) {
+        existingQuestions.add(data.question.trim().toLowerCase());
+      }
+    });
+  } catch (e) {
+    console.warn('[FlashcardService] Failed to query existing cards for deduplication:', e);
+  }
+
   for (const card of cards) {
     if (!card.question || !card.answer) continue;
+    const normQuestion = card.question.trim().toLowerCase();
+    if (existingQuestions.has(normQuestion)) {
+      continue; // Skip duplicate card
+    }
+
     await addDoc(collection(db, COLLECTION.FLASHCARDS), {
       userId,
-      question: card.question,
-      answer: card.answer,
+      question: card.question.trim(),
+      answer: card.answer.trim(),
       hint: card.hint || '',
       topicTitle,
       lectureTitle,
@@ -190,6 +210,7 @@ export async function saveFlashcardsToFirestore(
       nextReviewDate: today,
       createdAt: Date.now(),
     });
+    existingQuestions.add(normQuestion);
     count++;
   }
 

@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, addDoc, updateDoc, deleteDoc, collection, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { doc, setDoc, addDoc, updateDoc, deleteDoc, collection, serverTimestamp, writeBatch, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from './firebase';
 import NetInfo from '@react-native-community/netinfo';
@@ -20,6 +20,7 @@ export interface OfflineQueueItem {
   data: any;
   docId?: string;
   createdAt: number;
+  clientUpdatedAt: number; // LWW Vector Clock timestamp
   retryCount: number;
   lastAttemptAt?: number;
 }
@@ -81,6 +82,85 @@ export async function getQueueCount(): Promise<number> {
  *   - If the same document has a pending 'update' or 'set', merges data in-place
  *     to prevent redundant network round-trips and race conditions.
  */
+/**
+ * Last-Write-Wins (LWW) Vector Clock Reconciler
+ *
+ * Compares offline local mutation timestamp with remote server timestamp.
+ * - If local edit is newer (localClientUpdatedAt >= remoteUpdatedAt): writes localData.
+ * - If remote edit is newer (remoteUpdatedAt > localClientUpdatedAt): performs field-level
+ *   3-way merge to preserve newer remote values while applying non-conflicting local fields.
+ */
+async function reconcileLWW(
+  collectionName: string,
+  docId: string,
+  localData: any,
+  localClientUpdatedAt: number,
+  operation: 'update' | 'set'
+): Promise<{ shouldWrite: boolean; resolvedData: any }> {
+  try {
+    if (!docId || typeof localData !== 'object' || localData === null) {
+      return { shouldWrite: true, resolvedData: localData };
+    }
+
+    const docRef = doc(db, collectionName, docId);
+    const remoteSnap = await getDoc(docRef);
+
+    if (!remoteSnap.exists()) {
+      return { shouldWrite: true, resolvedData: localData };
+    }
+
+    const remoteData = remoteSnap.data() || {};
+    let remoteUpdatedAt = remoteData.updatedAt || remoteData.clientUpdatedAt || remoteData.lastUpdated || 0;
+
+    // Convert Firestore Timestamp object if present
+    if (remoteUpdatedAt && typeof remoteUpdatedAt === 'object' && typeof remoteUpdatedAt.toMillis === 'function') {
+      remoteUpdatedAt = remoteUpdatedAt.toMillis();
+    } else if (typeof remoteUpdatedAt === 'string') {
+      remoteUpdatedAt = new Date(remoteUpdatedAt).getTime() || 0;
+    } else if (typeof remoteUpdatedAt !== 'number' || isNaN(remoteUpdatedAt)) {
+      remoteUpdatedAt = 0;
+    }
+
+    // Fast path: Local mutation is newer or equal -> Local wins
+    if (localClientUpdatedAt >= remoteUpdatedAt) {
+      return {
+        shouldWrite: true,
+        resolvedData: {
+          ...localData,
+          updatedAt: localClientUpdatedAt,
+          clientUpdatedAt: localClientUpdatedAt,
+        },
+      };
+    }
+
+    // MULTI-MASTER CONFLICT: Remote document was edited on another device AFTER this offline mutation
+    console.log(
+      `[OfflineSync/LWW] Conflict on ${collectionName}/${docId}! Remote (${remoteUpdatedAt}) > Local (${localClientUpdatedAt}). Performing field-level 3-way merge.`
+    );
+
+    // 3-Way Field-Level Merge:
+    // Base is remoteData (since it is newer), overlay only fields that remote did NOT touch
+    const resolvedData = { ...remoteData };
+
+    for (const key of Object.keys(localData)) {
+      if (key === 'id' || key === 'userId' || key === 'createdAt') continue;
+
+      // If remote doesn't have this field or it was empty, take local
+      if (remoteData[key] === undefined || remoteData[key] === null) {
+        resolvedData[key] = localData[key];
+      }
+    }
+
+    resolvedData.updatedAt = Date.now();
+    resolvedData.clientUpdatedAt = Date.now();
+
+    return { shouldWrite: true, resolvedData };
+  } catch (err) {
+    console.warn(`[OfflineSync/LWW] Reconcile error for ${collectionName}/${docId}, defaulting to local:`, err);
+    return { shouldWrite: true, resolvedData: localData };
+  }
+}
+
 export async function queueWrite(
   collectionName: string,
   operation: 'add' | 'update' | 'delete' | 'set',
@@ -91,13 +171,17 @@ export async function queueWrite(
     const existingStr = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
     let queue: OfflineQueueItem[] = existingStr ? JSON.parse(existingStr) : [];
 
+    const now = Date.now();
     const currentUser = auth.currentUser;
     const payload = data && typeof data === 'object' ? { ...data } : data;
     if (currentUser && payload && typeof payload === 'object' && !payload.userId && operation !== 'delete') {
       payload.userId = currentUser.uid;
     }
+    if (payload && typeof payload === 'object' && operation !== 'delete') {
+      payload.clientUpdatedAt = now;
+      payload.updatedAt = now;
+    }
 
-    const now = Date.now();
     const deterministicId = docId
       ? `${collectionName}_${docId}_${operation}`
       : `${collectionName}_auto_${now}_${Math.random().toString(36).substring(7)}`;
@@ -112,7 +196,7 @@ export async function queueWrite(
         const prev = queue[existingIndex];
         const mergedData =
           typeof prev.data === 'object' && typeof payload === 'object'
-            ? { ...prev.data, ...payload }
+            ? { ...prev.data, ...payload, clientUpdatedAt: now, updatedAt: now }
             : payload;
 
         queue[existingIndex] = {
@@ -120,6 +204,7 @@ export async function queueWrite(
           data: mergedData,
           operation: operation === 'set' ? 'set' : prev.operation,
           createdAt: now,
+          clientUpdatedAt: now,
           retryCount: 0,
         };
 
@@ -138,6 +223,7 @@ export async function queueWrite(
       data: payload,
       docId,
       createdAt: now,
+      clientUpdatedAt: now,
       retryCount: 0,
     });
 
@@ -276,9 +362,22 @@ export async function syncOfflineQueue(silent = false): Promise<number> {
           }
         }
 
-        const dataToWrite = item.data && typeof item.data === 'object' ? { ...item.data } : item.data;
+        let dataToWrite = item.data && typeof item.data === 'object' ? { ...item.data } : item.data;
         if (uid && dataToWrite && typeof dataToWrite === 'object' && !dataToWrite.userId && item.operation !== 'delete') {
           dataToWrite.userId = uid;
+        }
+
+        // LWW Multi-Master Conflict Reconciler:
+        // If document was modified remotely, merge field-by-field without overwriting newer server data
+        if ((item.operation === 'update' || item.operation === 'set') && item.docId) {
+          const lwwResult = await reconcileLWW(
+            item.collection,
+            item.docId,
+            dataToWrite,
+            item.clientUpdatedAt || item.createdAt || Date.now(),
+            item.operation
+          );
+          dataToWrite = lwwResult.resolvedData;
         }
 
         // Restore serialized sentinel timestamps if parsed as empty object

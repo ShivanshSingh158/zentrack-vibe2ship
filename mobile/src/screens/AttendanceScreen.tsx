@@ -190,7 +190,7 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
                   height: '100%', borderRadius: 3, width: `${Math.min(100, classStatus.pct || 0)}%`, backgroundColor: getThemeProgressColor(classStatus.urgency),
                 }} />
               </View>
-              <Text style={{ color: colors.textTertiary, fontSize: 11, width: 24, textAlign: 'right' }}>
+              <Text style={{ color: colors.textTertiary, fontSize: 11, minWidth: 44, textAlign: 'right' }} numberOfLines={1}>
                 {subject.classesAttended || 0}/{subject.classesTotal || 0}
               </Text>
             </View>
@@ -205,16 +205,16 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
                   height: '100%', borderRadius: 3, width: `${Math.min(100, labStatus.pct || 0)}%`, backgroundColor: getThemeProgressColor(labStatus.urgency),
                 }} />
               </View>
-              <Text style={{ color: colors.textTertiary, fontSize: 11, width: 24, textAlign: 'right' }}>
+              <Text style={{ color: colors.textTertiary, fontSize: 11, minWidth: 44, textAlign: 'right' }} numberOfLines={1}>
                 {subject.labsAttended || 0}/{subject.labsTotal || 0}
               </Text>
             </View>
           )}
           
-          {!hasLabs && (() => {
+          {(() => {
             const bunk = calculateBunkMath(
-              subject.classesAttended || 0,
-              subject.classesTotal || 0,
+              totalAtt,
+              totalCls,
               subject.targetPercentage || 75
             );
             if ((bunk.status === 'safe' && bunk.count > 0) || bunk.status === 'warning') {
@@ -430,6 +430,7 @@ export default function AttendanceScreen() {
             value={new Date(selectedDate + 'T00:00:00')}
             mode="date"
             display="default"
+            maximumDate={new Date()}
             onChange={(e, date) => {
               setShowDatePicker(false);
               if (date) setSelectedDate(getLocalDateString(date));

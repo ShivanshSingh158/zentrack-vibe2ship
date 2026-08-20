@@ -25,8 +25,10 @@ import * as Updates from 'expo-updates';
 import * as SplashScreen from 'expo-splash-screen';
 import { Image } from 'react-native';
 import { auth } from '../services/firebase';
+import { performSignOut } from '../contexts/domains/CoreDataContext';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { cacheAwareLazy, startPrefetching, preloadNow } from '../utils/ModulePrefetcher';
+import { loadBootManifest, updateL1Cache, clearBootManifest } from '../utils/bootManifest';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FONT_FAMILY, SPACE, FONT_SIZE } from '../theme/tokens';
 import AnimatedPressable from '../components/AnimatedPressable';
@@ -119,6 +121,30 @@ const NAV_ROUTE_KEY = '@zentrack_last_route';
 // 0ms background/foreground tracking (no async needed)
 let lastBackgroundTimestamp: number | null = null;
 
+// --- Fatal auth error codes (session dead, cannot recover without login) -----
+// These are permanent failures — NOT transient network errors.
+// When getIdToken(forceRefresh: true) throws one of these, the session is gone.
+const FATAL_AUTH_CODES = new Set([
+  'auth/user-disabled',
+  'auth/user-not-found',
+  'auth/invalid-user-token',
+  'auth/user-token-expired',
+  'auth/invalid-credential',
+  'auth/requires-recent-login',
+  'auth/token-expired',
+  'auth/id-token-expired',
+  'auth/id-token-revoked',
+  'auth/session-cookie-expired',
+]);
+
+function isAuthFatalError(error: any): boolean {
+  const code: string = error?.code ?? '';
+  if (FATAL_AUTH_CODES.has(code)) return true;
+  // Also catch generic 'invalid_grant' from Google OAuth token revocation
+  const msg: string = (error?.message ?? '').toLowerCase();
+  return msg.includes('invalid_grant') || msg.includes('token has been revoked');
+}
+
 const ALLOWED_SAVE_ROUTES = new Set([
   'Home', 'Tasks', 'Gym', 'Calendar', 'Habits',
   'Attendance', 'Analytics', 'WeeklyReview',
@@ -197,12 +223,16 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
 
   useEffect(() => { 
     startPrefetching(prefetchIdsRef.current);
-    // Instant pre-warm for core tabs so switching is 100% immediate (< 5ms)
+    // Staggered pre-warm for core tabs so switching is 100% immediate (< 5ms) while keeping 60/120fps fluid
     InteractionManager.runAfterInteractions(() => {
-      preloadNow('GymStack');
-      preloadNow('TasksScreen');
-      preloadNow('CalendarScreen');
-      preloadNow('AttendanceScreen');
+      const coreScreens = ['GymStack', 'TasksScreen', 'CalendarScreen', 'AttendanceScreen'];
+      let delay = 0;
+      coreScreens.forEach(id => {
+        setTimeout(() => {
+          requestAnimationFrame(() => preloadNow(id));
+        }, delay);
+        delay += 35; // 35ms stagger ensures zero frame drops during animation
+      });
     });
   }, []);
 
@@ -362,28 +392,28 @@ export default function AppNavigator() {
 
   const firstAuthAt = useRef<number>(0);
   const hasResolved = useRef(false);
-
-  const [wasLoggedIn, setWasLoggedIn] = useState(false);
+  // Tracks whether the user was logged in at any point in this session.
+  // Used to discriminate onAuthStateChanged(null) as "session died" vs "never logged in".
+  const wasLoggedInRef = useRef(false);
+  // Abort controller for the 8-second dead-session recovery window.
+  const deadSessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const boot = async () => {
       try {
-        const [[, savedTab], [, onboardedVal], [, optimisticUserStr]] =
-          await AsyncStorage.multiGet([NAV_ROUTE_KEY, ONBOARDING_KEY, '@zentrack_optimistic_user']);
+        const manifest = await loadBootManifest();
         
         // Cold boot: always Home (WhatsApp/Instagram standard).
         setInitialTab('Home');
-        if (onboardedVal) setOnboarded(onboardedVal === 'true');
+        setOnboarded(manifest.onboarded);
         
         // WhatsApp-style Optimistic Boot: If we have a cached user profile, boot instantly!
-        if (optimisticUserStr) {
-          try {
-            const optimisticUser = JSON.parse(optimisticUserStr);
-            setUser(optimisticUser as User);
-            setAppReady(true);
-            hasResolved.current = true; // Mark as resolved so Firebase background check doesn't double-boot
-            firstAuthAt.current = Date.now();
-          } catch {}
+        if (manifest.optimisticUser) {
+          setUser(manifest.optimisticUser);
+          setAppReady(true);
+          wasLoggedInRef.current = true;
+          hasResolved.current = true; // Mark as resolved so Firebase background check doesn't double-boot
+          firstAuthAt.current = Date.now();
         }
       } catch {
         // Safe fallback: Home, onboarded=true
@@ -397,6 +427,7 @@ export default function AppNavigator() {
       await bootPromise;
 
       const saveOptimisticUser = (u: User | null) => {
+        updateL1Cache('optimisticUser', u);
         if (u) {
           AsyncStorage.setItem('@zentrack_optimistic_user', JSON.stringify({
             uid: u.uid,
@@ -405,12 +436,21 @@ export default function AppNavigator() {
           })).catch(() => {});
         } else {
           AsyncStorage.removeItem('@zentrack_optimistic_user').catch(() => {});
+          clearBootManifest();
         }
       };
 
       if (!hasResolved.current) {
-        // We only hit this block if we did NOT have an optimistic user (i.e. fresh install or logged out)
-        await auth.authStateReady();
+        // We only hit this block if we did NOT have an optimistic user (i.e. fresh install or logged out).
+        // OFFLINE-FIRST FIX: Race authStateReady() against a 2-second timeout.
+        // Without this, no-internet cold boot hangs forever on a blank screen because
+        // Firebase's authStateReady() never resolves when offline with no cached token.
+        // If the timeout wins, auth.currentUser will be null → show Landing (correct).
+        // If Firebase wins first (online or token cached) → show the app normally.
+        await Promise.race([
+          auth.authStateReady(),
+          new Promise<void>(resolve => setTimeout(resolve, 2000)),
+        ]);
         const realUser = auth.currentUser;
 
         hasResolved.current = true;
@@ -423,17 +463,56 @@ export default function AppNavigator() {
 
       // Background Validation: We booted optimistically, now Firebase is checking the real token
       if (usr) {
+        // Session confirmed alive — update state and persist
+        wasLoggedInRef.current = true;
+        if (deadSessionTimerRef.current) {
+          clearTimeout(deadSessionTimerRef.current);
+          deadSessionTimerRef.current = null;
+        }
         setUser(usr);
         saveOptimisticUser(usr);
       } else {
-        // WhatsApp / Instagram Offline-First Architecture:
-        // An offline app NEVER logs out the user when network is unavailable!
-        // We only clear the user if the user explicitly signed out (which removes @zentrack_optimistic_user).
-        AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
-          if (!raw) {
-            setUser(null);
+        // Firebase fired null. Three possible causes:
+        // A) User explicitly signed out (performSignOut cleared @zentrack_optimistic_user)
+        // B) Transient blip during routine 60-min token refresh → Firebase will fire user again
+        // C) Session permanently dead (token revoked, Google account deactivated, etc.)
+        //
+        // STRATEGY: Give Firebase an 8-second recovery window.
+        // If a non-null user event arrives within 8s → it was a transient blip (case B) → cancel timer.
+        // If 8s pass with no recovery AND we had a cached optimistic user → session is dead → force logout.
+        // If no cached optimistic user → user explicitly signed out → log out immediately.
+        const raw = await AsyncStorage.getItem('@zentrack_optimistic_user').catch(() => null);
+        if (!raw) {
+          // Case A: explicit logout — clear immediately
+          setUser(null);
+          return;
+        }
+
+        if (!wasLoggedInRef.current) {
+          // Firebase fired null before we ever authenticated — transient cold-boot null, ignore
+          return;
+        }
+
+        // Cases B or C: we had a valid session but Firebase now says null.
+        // Start an 8-second dead-session detection window.
+        // The `if (usr)` branch above will cancel this timer if Firebase recovers.
+        if (deadSessionTimerRef.current) clearTimeout(deadSessionTimerRef.current);
+        deadSessionTimerRef.current = setTimeout(async () => {
+          deadSessionTimerRef.current = null;
+          // After 8s, check if Firebase has recovered.
+          if (auth.currentUser) {
+            // Recovered — Firebase auto-refreshed the token, all good
+            setUser(auth.currentUser);
+            saveOptimisticUser(auth.currentUser);
+            return;
           }
-        }).catch(() => {});
+          // Session confirmed dead. auth.currentUser is still null after 8s.
+          // Force logout and return user to the login screen.
+          console.warn('[Auth] Dead session confirmed after 8s — forcing logout');
+          try { await performSignOut(); } catch {}
+          setUser(null);
+          clearBootManifest();
+        }, 8000);
       }
     });
 
@@ -459,6 +538,31 @@ export default function AppNavigator() {
     // AppState heartbeat & Lifecycle
     const handleAppStateChange = async (nextState: AppStateStatus) => {
       if (nextState === 'active') {
+        // STEP 1: Force-refresh the Firebase ID token.
+        // Firebase Auth tokens expire every 60 min. getIdToken(true) updates the
+        // Auth module's internal token — necessary for new requests to Firestore.
+        try {
+          if (auth.currentUser) {
+            await auth.currentUser.getIdToken(/* forceRefresh */ true);
+          }
+          // STEP 2: Token refresh succeeded → force-restart all Firestore listeners.
+          // Refreshing the auth token is NOT sufficient to reconnect Firestore's internal
+          // gRPC/WebSocket channel. Emitting this event causes all 5 domain contexts to
+          // bump subscriptionVersion, tearing down dead listeners and reopening fresh ones.
+          // The Firestore SDK resumes from the last known resume token — no full re-download.
+          DeviceEventEmitter.emit('firestore_force_reconnect');
+        } catch (error: any) {
+          // Discriminate: network errors are transient → stay logged in.
+          // Fatal auth errors (revoked token, user disabled, etc.) → force logout.
+          if (isAuthFatalError(error)) {
+            console.warn('[Auth] Fatal token refresh error on foreground —', error?.code, '— forcing logout');
+            try { await performSignOut(); } catch {}
+            setUser(null);
+            clearBootManifest();
+          }
+          // Network error or unknown → skip reconnect, stay logged in
+        }
+
         if (lastBackgroundTimestamp) {
           if (Date.now() - lastBackgroundTimestamp > 30 * 60 * 1000) {
             if (navigationRef.isReady()) {
@@ -484,6 +588,11 @@ export default function AppNavigator() {
     return () => {
       unsubAuth();
       appStateSub.remove();
+      // Cancel any pending dead-session logout timer on unmount
+      if (deadSessionTimerRef.current) {
+        clearTimeout(deadSessionTimerRef.current);
+        deadSessionTimerRef.current = null;
+      }
     };
   }, []);
 

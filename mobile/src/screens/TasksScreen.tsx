@@ -38,7 +38,7 @@ import TaskRow from '../components/Tasks/TaskRow';
 import EmptyState from '../components/ui/EmptyState';
 import BulkRescheduleSheet from '../components/Tasks/BulkRescheduleSheet';
 import TaskTimeLogSheet from '../components/Tasks/TaskTimeLogSheet';
-import TimeSpentSheet from '../components/Tasks/TimeSpentSheet';
+import PomodoroSheet from '../components/Tasks/PomodoroSheet';
 import TaskTemplatesSheet from '../components/Tasks/TaskTemplatesSheet';
 import EditTaskModal from './tasks/EditTaskModal';
 import NewTaskModal from './tasks/NewTaskModal';
@@ -69,12 +69,12 @@ export default function TasksScreen() {
   const { colors, isDark } = useTheme();
   const styles = makeTasksStyles(colors, isDark);
   
-  const { tasks, user, optimisticUpdateTask, optimisticDeleteTask } = useCoreData();
+  const { tasks, user, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
   const { attendance, attendanceLogs } = useAcademicData();
   const { gymLogs, userGymPlan } = useWellnessData();
   
   // 1. Recurring Spawn Logic
-  useRecurringSpawn(tasks, user?.uid);
+  useRecurringSpawn(tasks, user?.uid, optimisticAddTask);
 
   // 2. Data/State Hook
   const {
@@ -104,6 +104,7 @@ export default function TasksScreen() {
     skipTimeLog,
   } = useTasksFirestore({
     optimisticUpdateTask,
+    optimisticDeleteTask,
     setTimeLogTask,
     setIsBulkEdit,
     setSelectedTaskIds,
@@ -562,7 +563,7 @@ export default function TasksScreen() {
       {/* SHEETS */}
       {isTemplatesSheetOpen && <TaskTemplatesSheet visible={isTemplatesSheetOpen} onClose={() => setIsTemplatesSheetOpen(false)} userId={user?.uid!} onApplyTemplate={(template) => addTaskFromTemplate(user?.uid!, template, selectedDate, tasks.length)} />}
       {!!timeLogTask && <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />}
-      {isTimeSpentOpen && <TimeSpentSheet visible={isTimeSpentOpen} onClose={() => setIsTimeSpentOpen(false)} tasks={tasks} selectedDate={selectedDate} />}
+      {isTimeSpentOpen && <PomodoroSheet visible={isTimeSpentOpen} onClose={() => setIsTimeSpentOpen(false)} tasks={tasks} />}
 
     </SafeAreaView>
   );

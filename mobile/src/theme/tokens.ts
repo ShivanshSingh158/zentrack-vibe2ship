@@ -14,13 +14,13 @@ export const DARK_COLORS = {
 
   // ── Backgrounds ─────────────────────────────────────────────────────────────
   background:    '#000000',              // true OLED pitch black canvas
-  surface:       '#141416',              // sleek elevated greyish surface for cards & rows
-  surface2:      '#1c1c1f',              // secondary elevated grey for chips & inner sections
-  surfaceRaised: '#18181b',              // elevated modals, sheets & action cards
+  surface:       '#000000',              // true OLED pitch black surface for cards & rows
+  surface2:      '#0d0d10',              // secondary elevated deep black for chips & inner sections
+  surfaceRaised: '#000000',              // elevated modals, sheets & action cards (pure OLED black)
 
   // ── Borders ─────────────────────────────────────────────────────────────────
-  border:        '#242428',              // 1px sleek dark border for cards
-  borderHover:   '#2e2e34',              // Interactive hover state
+  border:        '#1c1c20',              // 1px sleek hairline dark border
+  borderHover:   '#28282e',              // Interactive hover state
   borderGlow:    'rgba(165,153,255,0.40)', // Focus / active glow
 
   // ── Text ────────────────────────────────────────────────────────────────────

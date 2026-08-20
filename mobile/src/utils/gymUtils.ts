@@ -248,19 +248,28 @@ import { GymExerciseLog, GymDayLog } from '../types/gym.types';
 
 export const calculateExerciseMaxWeight = (exercise: GymExerciseLog | undefined | null): number => {
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
-  const validSets = exercise.setsLog.filter(s => (s.completed || (s.weight && s.reps)) && s.weight && Number(s.weight) > 0);
+  const validSets = exercise.setsLog.filter(s => {
+    const w = s?.weight !== undefined && s?.weight !== null ? s.weight : (s as any)?.weightKg;
+    return (s.completed || (w && s.reps)) && w && Number(w) > 0;
+  });
   if (validSets.length === 0) return 0;
-  return Math.max(...validSets.map(s => Number(s.weight)));
+  return Math.max(...validSets.map(s => {
+    const w = s?.weight !== undefined && s?.weight !== null ? s.weight : (s as any)?.weightKg;
+    return Number(w);
+  }));
 };
 
 export const calculateEstimated1RM = (exercise: GymExerciseLog | undefined | null): number => {
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
-  const validSets = exercise.setsLog.filter(s => (s.completed || (s.weight && s.reps)) && s.weight && Number(s.weight) > 0 && s.reps && Number(s.reps) > 0);
+  const validSets = exercise.setsLog.filter(s => {
+    const w = s?.weight !== undefined && s?.weight !== null ? s.weight : (s as any)?.weightKg;
+    return (s.completed || (w && s.reps)) && w && Number(w) > 0 && s.reps && Number(s.reps) > 0;
+  });
   if (validSets.length === 0) return 0;
   
   // Epley Formula: 1RM = Weight * (1 + (Reps / 30))
   const oneRepMaxes = validSets.map(s => {
-    const w = Number(s.weight);
+    const w = Number(s?.weight !== undefined && s?.weight !== null ? s.weight : (s as any)?.weightKg);
     const r = Number(s.reps);
     return w * (1 + (r / 30));
   });

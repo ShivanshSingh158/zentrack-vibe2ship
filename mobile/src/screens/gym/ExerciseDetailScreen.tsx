@@ -118,15 +118,24 @@ export default function ExerciseDetailScreen() {
     return () => { isCancelled = true; };
   }, [name, videoLink]);
 
-  // Find history
-  const history = gymLogs
-    .map(l => ({
-      date: l.date,
-      ex: l.exercises?.find(e => e.exerciseId === exerciseId) as GymExerciseLog | undefined
-    }))
-    .filter(item => item.ex)
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 5); // Last 5 times
+  // Find history (matches by exerciseId or normalized name)
+  const history = useMemo(() => {
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const targetNameNorm = currentExercise?.name ? norm(currentExercise.name) : (name ? norm(name) : '');
+
+    return gymLogs
+      .map(l => ({
+        date: l.date,
+        ex: l.exercises?.find(e => {
+          if (exerciseId && (e.exerciseId === exerciseId || (e as any).id === exerciseId)) return true;
+          if (targetNameNorm && norm(e.name) === targetNameNorm) return true;
+          return false;
+        }) as GymExerciseLog | undefined
+      }))
+      .filter(item => item.ex && (item.ex.setsLog || []).some(s => s.completed || (s.weight != null && Number(s.weight) > 0)))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+      .slice(0, 5);
+  }, [gymLogs, exerciseId, currentExercise?.name, name]);
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);

@@ -74,46 +74,65 @@ function GlassCard({ children, style }: { children: React.ReactNode; style?: any
   );
 }
 
-// ─── Period Pill Selector ──────────────────────────────────────────────────
+// ─── Period Pill Selector (iOS Segmented Control) ──────────────────────────
 function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const PERIODS: Period[] = ['week', 'month', 'semester'];
   const LABELS: Record<Period, string> = { week: '7D', month: '30D', semester: '90D' };
   return (
-    <View style={styles.periodRow}>
-      {PERIODS.map(p => (
-        <TouchableOpacity
-          key={p}
-          style={[styles.periodBtn, value === p && styles.periodBtnActive]}
-          onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-        >
-          <Text style={[styles.periodBtnText, value === p && styles.periodBtnTextActive]}>
-            {LABELS[p]}
-          </Text>
-        </TouchableOpacity>
-      ))}
+    <View style={styles.periodSegmentContainer}>
+      {PERIODS.map(p => {
+        const isActive = value === p;
+        return (
+          <TouchableOpacity
+            key={p}
+            style={[styles.periodSegmentBtn, isActive && styles.periodSegmentBtnActive]}
+            onPress={() => { onChange(p); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.periodSegmentText, isActive && styles.periodSegmentTextActive]}>
+              {LABELS[p]}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
 
-// ─── Delta badge ───────────────────────────────────────────────────────────
+// ─── Delta badge (Dynamic, Real calculations) ──────────────────────────────
 function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: string }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  
   if (prev === 0 && cur === 0) return null;
+  
   const diff = cur - prev;
-  const pct = prev > 0 ? Math.round((diff / prev) * 100) : (cur > 0 ? 100 : 0);
   const up = diff >= 0;
   const posBg = isDark ? 'rgba(94,218,158,0.15)' : 'rgba(5,150,105,0.10)';
   const negBg = isDark ? 'rgba(255,105,97,0.15)' : 'rgba(220,38,38,0.10)';
-  const posColor = isDark ? colors.accentGreen : '#059669';
-  const negColor = isDark ? colors.error : '#DC2626';
+  const posColor = isDark ? '#5EDA9E' : '#059669';
+  const negColor = isDark ? '#EF4444' : '#DC2626';
+
+  let text = '';
+  if (unit === 'pts') {
+    // Points diff for Zen Score
+    text = diff > 0 ? `+${diff} pts` : diff < 0 ? `${diff} pts` : `0 pts`;
+  } else if (prev > 0) {
+    // Percentage diff when previous period had data
+    const pct = Math.round((diff / prev) * 100);
+    text = pct >= 0 ? `+${pct}%` : `${pct}%`;
+  } else {
+    // When previous period was 0, display the actual gain count instead of fake +100%
+    text = `+${cur}`;
+  }
+
   return (
     <View style={[styles.delta, { backgroundColor: up ? posBg : negBg }]}>
       <Ionicons name={up ? 'trending-up' : 'trending-down'} size={10} color={up ? posColor : negColor} />
       <Text style={[styles.deltaText, { color: up ? posColor : negColor }]}>
-        {up ? '+' : ''}{pct}%{unit ? ` ${unit}` : ''}
+        {text}
       </Text>
     </View>
   );
@@ -340,49 +359,208 @@ function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD
   );
 }
 
-// ─── Heatmap ───────────────────────────────────────────────────────────────
-function ActivityHeatmap({ dates, tasks, gymLogs, habitLogs }: {
-  dates: string[];
+// ─── Heatmap (Apple Health / GitHub Grid) ───────────────────────────────────
+function ActivityHeatmap({ tasks, gymLogs, habitLogs }: {
+  dates?: string[];
   tasks: any[];
   gymLogs: any[];
   habitLogs: any[];
 }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
+  // Compute 5 aligned calendar weeks (Monday to Sunday)
+  const { weeks, activeDaysCount, totalDays } = useMemo(() => {
+    const today = new Date();
+    const todayStr = today.toISOString().slice(0, 10);
+    
+    // Day of week: 0 = Mon, 1 = Tue, ..., 6 = Sun
+    const dayOfWeek = (today.getDay() + 6) % 7; 
+    
+    // Monday of current week
+    const currentMonday = new Date(today);
+    currentMonday.setDate(today.getDate() - dayOfWeek);
+
+    // Monday 4 weeks prior (5 weeks total: week -4, -3, -2, -1, 0)
+    const startMonday = new Date(currentMonday);
+    startMonday.setDate(currentMonday.getDate() - 28);
+
+    const weeksArr: Array<Array<{
+      date: string;
+      dayNum: number;
+      isToday: boolean;
+      isFuture: boolean;
+      total: number;
+      tasksDone: number;
+      gymDone: number;
+      habitDone: number;
+    }>> = [];
+
+    let activeCount = 0;
+    let daysPastOrToday = 0;
+
+    for (let w = 0; w < 5; w++) {
+      const weekDays = [];
+      for (let d = 0; d < 7; d++) {
+        const cellDate = new Date(startMonday);
+        cellDate.setDate(startMonday.getDate() + (w * 7 + d));
+        const dateStr = cellDate.toISOString().slice(0, 10);
+        const isToday = dateStr === todayStr;
+        const isFuture = dateStr > todayStr;
+
+        let total = 0;
+        let tasksDone = 0;
+        let gymDone = 0;
+        let habitDone = 0;
+
+        if (!isFuture) {
+          daysPastOrToday++;
+          tasksDone = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '').startsWith(dateStr)).length;
+          gymDone = gymLogs.some(g => g.date === dateStr) ? 1 : 0;
+          habitDone = habitLogs.filter(l => l.date === dateStr).length;
+          total = tasksDone + gymDone + (habitDone > 0 ? 1 : 0);
+          if (total > 0) activeCount++;
+        }
+
+        weekDays.push({
+          date: dateStr,
+          dayNum: cellDate.getDate(),
+          isToday,
+          isFuture,
+          total,
+          tasksDone,
+          gymDone,
+          habitDone,
+        });
+      }
+      weeksArr.push(weekDays);
+    }
+
+    return { weeks: weeksArr, activeDaysCount: activeCount, totalDays: daysPastOrToday };
+  }, [tasks, gymLogs, habitLogs]);
+
+  // 7 columns (M T W T F S S)
+  const daysHeader = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: SPACE.md }}>
-      {dates.map((date, i) => {
-        const tasksDone = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '').startsWith(date)).length;
-        const gymDone   = gymLogs.some(g => g.date === date) ? 1 : 0;
-        const habitDone = habitLogs.filter(l => l.date === date).length;
-        const total = tasksDone + gymDone + (habitDone > 0 ? 1 : 0);
+    <View style={{ marginTop: 4 }}>
+      {/* Day of Week Headers */}
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+        {daysHeader.map((d, i) => (
+          <View key={i} style={{ flex: 1, alignItems: 'center' }}>
+            <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted }}>{d}</Text>
+          </View>
+        ))}
+      </View>
 
-        let bg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
-        let borderColor = isDark ? 'rgba(255,255,255,0.07)' : colors.border;
-        if (total === 1) {
-          bg = isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.20)';
-          borderColor = isDark ? 'rgba(165,153,255,0.40)' : 'rgba(108,92,231,0.30)';
-        }
-        if (total === 2) {
-          bg = isDark ? 'rgba(165,153,255,0.55)' : 'rgba(108,92,231,0.50)';
-          borderColor = isDark ? 'rgba(165,153,255,0.70)' : 'rgba(108,92,231,0.60)';
-        }
-        if (total >= 3) {
-          bg = colors.accentPrimary;
-          borderColor = colors.accentPrimary;
-        }
+      {/* 5 Rows of exactly 7 Columns each (Guaranteed NO wrapping or stranded columns) */}
+      <View style={{ gap: 6 }}>
+        {weeks.map((week, wIdx) => (
+          <View key={wIdx} style={{ flexDirection: 'row', gap: 6 }}>
+            {week.map((item, dIdx) => {
+              if (item.isFuture) {
+                return (
+                  <View
+                    key={dIdx}
+                    style={{
+                      flex: 1,
+                      aspectRatio: 1,
+                      borderRadius: 8,
+                      backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
+                      borderWidth: 1,
+                      borderColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+                      borderStyle: 'dashed',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{ fontFamily: FONT_FAMILY.body, fontSize: 10, color: colors.textTertiary, opacity: 0.35 }}>
+                      {item.dayNum}
+                    </Text>
+                  </View>
+                );
+              }
 
-        return (
-          <View key={i} style={{
-            width: (SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2 - 4 * 6) / 7,
-            aspectRatio: 1,
-            borderRadius: 4,
-            backgroundColor: bg,
-            borderWidth: 1,
-            borderColor,
-          }} />
-        );
-      })}
+              let bg = isDark ? 'rgba(255,255,255,0.04)' : '#F0EFF7';
+              let borderColor = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
+              let textColor = colors.textMuted;
+
+              if (item.total === 1) {
+                bg = isDark ? 'rgba(165,153,255,0.28)' : 'rgba(108,92,231,0.22)';
+                borderColor = isDark ? 'rgba(165,153,255,0.45)' : 'rgba(108,92,231,0.35)';
+                textColor = isDark ? '#C7BEFF' : '#5E48E8';
+              } else if (item.total === 2) {
+                bg = isDark ? 'rgba(165,153,255,0.60)' : 'rgba(108,92,231,0.55)';
+                borderColor = isDark ? 'rgba(165,153,255,0.75)' : 'rgba(108,92,231,0.65)';
+                textColor = '#FFFFFF';
+              } else if (item.total >= 3) {
+                bg = colors.accentPrimary;
+                borderColor = colors.accentPrimary;
+                textColor = isDark ? '#000000' : '#FFFFFF';
+              }
+
+              return (
+                <View
+                  key={dIdx}
+                  style={{
+                    flex: 1,
+                    aspectRatio: 1,
+                    borderRadius: 8,
+                    backgroundColor: bg,
+                    borderWidth: item.isToday ? 2 : 1,
+                    borderColor: item.isToday ? colors.accentPrimary : borderColor,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{
+                    fontFamily: item.isToday ? FONT_FAMILY.bold : FONT_FAMILY.medium,
+                    fontSize: 10.5,
+                    color: item.isToday ? colors.accentPrimary : textColor
+                  }}>
+                    {item.dayNum}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+
+      {/* Active Days Summary Footer & Legend */}
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 14,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+      }}>
+        <View style={{
+          backgroundColor: isDark ? 'rgba(94,218,158,0.15)' : 'rgba(5,150,105,0.10)',
+          paddingHorizontal: 8,
+          paddingVertical: 3,
+          borderRadius: 6,
+        }}>
+          <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: isDark ? '#5EDA9E' : '#059669' }}>
+            {activeDaysCount} of {totalDays} Days Active ({totalDays > 0 ? Math.round((activeDaysCount / totalDays) * 100) : 0}%)
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 10.5, color: colors.textMuted }}>Less</Text>
+          {[
+            isDark ? 'rgba(255,255,255,0.04)' : '#F0EFF7',
+            isDark ? 'rgba(165,153,255,0.28)' : 'rgba(108,92,231,0.22)',
+            isDark ? 'rgba(165,153,255,0.60)' : 'rgba(108,92,231,0.55)',
+            colors.accentPrimary,
+          ].map((c, idx) => (
+            <View key={idx} style={{ width: 10, height: 10, borderRadius: 2.5, backgroundColor: c }} />
+          ))}
+          <Text style={{ fontFamily: FONT_FAMILY.medium, fontSize: 10.5, color: colors.textMuted }}>More</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -687,12 +865,20 @@ export default function AnalyticsScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── 1. ZEN SCORE RING ── */}
-          <Animated.View style={[styles.heroSection, {
+          {/* ── 1. ZEN SCORE RING (Apple Health Activity Card) ── */}
+          <Animated.View style={[styles.heroCard, {
             opacity: animRing,
-            transform: [{ scale: animRing.interpolate({ inputRange: [0,1], outputRange: [0.85,1] }) }],
+            transform: [{ scale: animRing.interpolate({ inputRange: [0,1], outputRange: [0.92,1] }) }],
           }]}>
-            <View style={{ alignItems: 'center' }}>
+            <View style={styles.heroCardHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="sparkles" size={15} color={colors.accentPrimary} />
+                <Text style={styles.heroCardTitle}>OVERALL ZEN SCORE</Text>
+              </View>
+              <Delta cur={stats.zenScore} prev={stats.prevZen} unit="pts" />
+            </View>
+
+            <View style={{ alignItems: 'center', marginVertical: 10 }}>
               <Svg width={RING_SIZE} height={RING_SIZE} style={{ transform: [{ rotate: '-90deg' }] }}>
                 <Defs>
                   <SvgLinearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
@@ -701,33 +887,33 @@ export default function AnalyticsScreen() {
                   </SvgLinearGradient>
                 </Defs>
                 <Circle cx={RING_SIZE/2} cy={RING_SIZE/2} r={RING_R}
-                  stroke={isDark ? "rgba(255,255,255,0.05)" : colors.border} strokeWidth="10" fill="none" />
+                  stroke={isDark ? "rgba(255,255,255,0.06)" : colors.border} strokeWidth="12" fill="none" />
                 <AnimatedCircle cx={RING_SIZE/2} cy={RING_SIZE/2} r={RING_R}
-                  stroke="url(#ringGrad)" strokeWidth="13" fill="none"
+                  stroke="url(#ringGrad)" strokeWidth="14" fill="none"
                   strokeDasharray={CIRC} strokeDashoffset={strokeDashoffset} strokeLinecap="round" />
               </Svg>
               <View style={styles.ringInner}>
                 <Text style={styles.ringScore}>{stats.zenScore}</Text>
-                <Text style={styles.ringLabel}>ZEN SCORE</Text>
+                <Text style={styles.ringLabel}>OUT OF 100</Text>
               </View>
             </View>
 
             {/* 3 summary stats */}
             <View style={styles.summaryRow}>
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryVal, { color: isDark ? colors.accentGreen : '#059669' }]}>{stats.curTasks}</Text>
+                <Text style={[styles.summaryVal, { color: isDark ? '#5EDA9E' : '#059669' }]}>{stats.curTasks}</Text>
                 <Text style={styles.summaryKey}>Tasks</Text>
                 <Delta cur={stats.curTasks} prev={stats.prevTasks} />
               </View>
               <View style={styles.summaryDivider} />
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryVal, { color: isDark ? colors.accentPrimary : '#D97706' }]}>{stats.curGym}</Text>
+                <Text style={[styles.summaryVal, { color: isDark ? '#FBBF24' : '#D97706' }]}>{stats.curGym}</Text>
                 <Text style={styles.summaryKey}>Gym Days</Text>
                 <Delta cur={stats.curGym} prev={stats.prevGym} />
               </View>
               <View style={styles.summaryDivider} />
               <View style={styles.summaryItem}>
-                <Text style={[styles.summaryVal, { color: isDark ? colors.accentSecondary : '#0284C7' }]}>
+                <Text style={[styles.summaryVal, { color: isDark ? '#38BDF8' : '#0284C7' }]}>
                   {stats.curFocus >= 60 ? `${Math.floor(stats.curFocus / 60)}h ${stats.curFocus % 60}m` : `${stats.curFocus}m`}
                 </Text>
                 <Text style={styles.summaryKey}>Focus Time</Text>
@@ -736,26 +922,32 @@ export default function AnalyticsScreen() {
             </View>
           </Animated.View>
 
-          {/* ── 2. STAT CARDS ROW ── */}
+          {/* ── 2. STAT CARDS ROW (3 Columns) ── */}
           <Animated.View style={[styles.cardRow, {
             opacity: animCards,
             transform: [{ translateY: animCards.interpolate({ inputRange: [0,1], outputRange: [20,0] }) }],
           }]}>
-            <GlassCard style={styles.statCard}>
-              <Ionicons name="flame" size={20} color={isDark ? colors.accentPrimary : '#D97706'} style={{ marginBottom: 6 }} />
+            <View style={styles.statCard}>
+              <View style={[styles.statIconBox, { backgroundColor: 'rgba(251,191,36,0.15)' }]}>
+                <Ionicons name="flame" size={18} color="#FBBF24" />
+              </View>
               <Text style={styles.statCardVal}>{stats.bestStreak}d</Text>
               <Text style={styles.statCardLabel}>Best Streak</Text>
-            </GlassCard>
-            <GlassCard style={styles.statCard}>
-              <Ionicons name="checkmark-circle-outline" size={20} color={isDark ? colors.accentSecondary : '#059669'} style={{ marginBottom: 6 }} />
+            </View>
+            <View style={styles.statCard}>
+              <View style={[styles.statIconBox, { backgroundColor: 'rgba(94,218,158,0.15)' }]}>
+                <Ionicons name="checkmark-circle" size={18} color="#5EDA9E" />
+              </View>
               <Text style={styles.statCardVal}>{stats.curHabits}</Text>
               <Text style={styles.statCardLabel}>Habits Done</Text>
-            </GlassCard>
-            <GlassCard style={styles.statCard}>
-              <Ionicons name="school-outline" size={20} color={isDark ? colors.success : '#0284C7'} style={{ marginBottom: 6 }} />
+            </View>
+            <View style={styles.statCard}>
+              <View style={[styles.statIconBox, { backgroundColor: 'rgba(56,189,248,0.15)' }]}>
+                <Ionicons name="school" size={18} color="#38BDF8" />
+              </View>
               <Text style={styles.statCardVal}>{stats.curAttended}</Text>
-              <Text style={styles.statCardLabel}>Classes Attended</Text>
-            </GlassCard>
+              <Text style={styles.statCardLabel}>Attended</Text>
+            </View>
           </Animated.View>
 
           {/* ── 3. TASK COMPLETION CHART ── */}
@@ -873,17 +1065,19 @@ export default function AnalyticsScreen() {
               <View style={styles.chartHeader}>
                 <View>
                   <Text style={styles.chartTitle}>Activity Heatmap</Text>
-                  <Text style={styles.chartSub}>Last 35 days</Text>
+                  <Text style={styles.chartSub}>Last 5 weeks (35 days)</Text>
                 </View>
-                <View style={styles.legendRow}>
-                  {[
-                    isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
-                    isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
-                    isDark ? 'rgba(165,153,255,0.6)' : 'rgba(108,92,231,0.55)',
-                    colors.accentPrimary
-                  ].map((c, i) => (
-                    <View key={i} style={[styles.heatLegendDot, { backgroundColor: c }]} />
-                  ))}
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+                  paddingHorizontal: 8,
+                  paddingVertical: 3,
+                  borderRadius: 6,
+                }}>
+                  <Ionicons name="calendar-outline" size={12} color={colors.accentPrimary} />
+                  <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.accentPrimary }}>5 Weeks</Text>
                 </View>
               </View>
               <ActivityHeatmap
@@ -892,10 +1086,6 @@ export default function AnalyticsScreen() {
                 gymLogs={gymLogs}
                 habitLogs={habitLogs}
               />
-              <View style={styles.heatLegendLabels}>
-                <Text style={styles.legendText}>Less</Text>
-                <Text style={styles.legendText}>More</Text>
-              </View>
             </GlassCard>
           </Animated.View>
 
@@ -949,123 +1139,158 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   syncDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: isDark ? colors.accentGreen : '#059669', marginRight: 6 },
   syncText: { color: colors.textPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
 
-  // Period selector
-  periodRow: {
+  // Period Segmented Control
+  periodSegmentContainer: {
     flexDirection: 'row',
-    gap: SPACE.sm,
-    paddingHorizontal: 16,
-    marginBottom: SPACE.lg,
-  },
-  periodBtn: {
-    flex: 1, alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: RADIUS.full,
-    backgroundColor: isDark ? '#18181B' : '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-    elevation: isDark ? 0 : 1,
-    shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.04)',
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 2,
-    shadowOpacity: isDark ? 0 : 1,
-  },
-  periodBtnActive: {
-    backgroundColor: colors.accentPrimary,
-    borderColor: colors.accentPrimary,
-  },
-  periodBtnText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.sm,
-    color: colors.textSecondary,
-  },
-  periodBtnTextActive: { color: '#ffffff' },
-
-  scrollContent: { paddingTop: 0 },
-
-  // Hero ring
-  heroSection: {
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: SPACE.lg,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#ECEBF2',
+    marginHorizontal: 16,
+    borderRadius: 12,
+    padding: 3,
+    height: 38,
+    marginBottom: 14,
+  },
+  periodSegmentBtn: {
+    flex: 1,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+  },
+  periodSegmentBtnActive: {
+    backgroundColor: isDark ? (colors.surfaceRaised || '#2C2C2E') : '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.35 : 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  periodSegmentText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 13,
+    color: colors.textMuted,
+  },
+  periodSegmentTextActive: {
+    fontFamily: FONT_FAMILY.bold,
+    color: isDark ? '#FFFFFF' : '#000000',
+  },
+
+  scrollContent: { paddingTop: 2, paddingBottom: 140 },
+
+  // Hero Activity Card
+  heroCard: {
+    marginHorizontal: 16,
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.35 : 0.04,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  heroCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  heroCardTitle: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 11,
+    color: colors.textMuted,
+    letterSpacing: 0.8,
   },
   ringInner: {
     position: 'absolute',
     top: 0, left: 0, right: 0, bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    transform: [{ translateY: -15 }],
   },
   ringScore: {
-    fontFamily: FONT_FAMILY.title,
-    fontSize: 52,
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 48,
     color: colors.textPrimary,
-    lineHeight: 60,
+    letterSpacing: -1,
   },
   ringLabel: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 10,
     color: colors.textTertiary,
-    letterSpacing: 3,
-    marginTop: 8,
-    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+    marginTop: 2,
   },
 
-  // Summary stats row
+  // Summary stats row inside hero card
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
-    marginTop: SPACE.xl,
-    backgroundColor: colors.surface,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: SPACE.lg,
-    paddingHorizontal: 8,
-    elevation: isDark ? 0 : 1,
-    shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.04)',
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-    shadowOpacity: isDark ? 0 : 1,
+    marginTop: 10,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
   },
   summaryItem: { alignItems: 'center', flex: 1 },
-  summaryVal: { fontFamily: FONT_FAMILY.bold, fontSize: 22, lineHeight: 26 },
-  summaryKey: { fontFamily: FONT_FAMILY.body, fontSize: FONT_SIZE.xs, color: colors.textSecondary, marginTop: 2, marginBottom: 4 },
-  summaryDivider: { width: 1, height: 36, backgroundColor: colors.border },
+  summaryVal: { fontFamily: FONT_FAMILY.bold, fontSize: 20, letterSpacing: -0.3 },
+  summaryKey: { fontFamily: FONT_FAMILY.medium, fontSize: 11, color: colors.textMuted, marginTop: 2, marginBottom: 4 },
+  summaryDivider: { width: 1, height: 32, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
 
   // Delta badge
   delta: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
     borderRadius: 8,
-    gap: 2,
+    gap: 3,
   },
-  deltaText: { fontFamily: FONT_FAMILY.bold, fontSize: 10 },
+  deltaText: { fontFamily: FONT_FAMILY.bold, fontSize: 10.5 },
 
-  // Stat cards
+  // Stat cards row (3 Columns)
   cardRow: {
     flexDirection: 'row',
-    gap: SPACE.md,
+    gap: 10,
     paddingHorizontal: 16,
-    marginBottom: SPACE.md,
+    marginBottom: 14,
   },
   statCard: {
     flex: 1,
     alignItems: 'center',
-    padding: SPACE.lg,
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+    borderRadius: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0.25 : 0.03,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  statIconBox: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   statCardVal: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.xxl,
+    fontSize: 20,
     color: colors.textPrimary,
+    letterSpacing: -0.3,
   },
   statCardLabel: {
-    fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.xs,
-    color: colors.textSecondary,
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11,
+    color: colors.textMuted,
     textAlign: 'center',
     marginTop: 2,
   },
@@ -1073,26 +1298,36 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   // Chart cards
   fullCard: {
     paddingHorizontal: 16,
-    marginBottom: SPACE.md,
+    marginBottom: 14,
   },
   chartCard: {
     padding: CARD_PAD,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.35 : 0.04,
+    shadowRadius: 10,
+    elevation: 3,
   },
   chartHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: SPACE.lg,
+    marginBottom: SPACE.md,
   },
   chartTitle: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: FONT_SIZE.base,
+    fontSize: 16,
     color: colors.textPrimary,
+    letterSpacing: -0.2,
   },
   chartSub: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.xs,
-    color: colors.textSecondary,
+    fontSize: 12,
+    color: colors.textMuted,
     marginTop: 2,
   },
 

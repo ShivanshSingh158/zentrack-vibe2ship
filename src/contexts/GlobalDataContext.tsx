@@ -21,6 +21,8 @@ interface GlobalDataContextType {
   goals: any[];
   learningTopics: any[];
   gymLogs: any[];
+  waterLogs: any[];
+  sleepLogs: any[];
   gymSchedule: any;
   notes: any[];
   attendanceSubjects: any[];
@@ -86,6 +88,8 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [goals, setGoals] = useState<any[]>([]);
   const [learningTopics, setLearningTopics] = useState<any[]>([]);
   const [gymLogs, setGymLogs] = useState<any[]>([]);
+  const [waterLogs, setWaterLogs] = useState<any[]>([]);
+  const [sleepLogs, setSleepLogs] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   const [attendanceSubjects, setAttendanceSubjects] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
@@ -294,7 +298,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // A permanent global listener here costs reads with zero functional benefit.
 
       // ✅ D2: limit(500) on todos for power users with 2+ years of task history
-      const TOTAL = 12; // was 14: removed calendar_events and daily_logs subscriptions
+      const TOTAL = 14; // includes waterLogs and sleepLogs subscriptions
       let firedCount = 0;
       const onFirstFire = () => {
         firedCount++;
@@ -320,11 +324,14 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         safeSnapshot(query(collection(db, 'learning_topics'), where('userId', '==', uid)), makeHandler(setLearningTopics), 'learning_topics'),
         // ✅ D2: limit(365) — one year of gym history sufficient for fitness analytics
         safeSnapshot(query(collection(db, 'gymLogs'), where('userId', '==', uid), limit(365)), makeHandler(setGymLogs), 'gymLogs'),
+        // ✅ Real-time Firestore sync with mobile app water & sleep logs
+        safeSnapshot(query(collection(db, 'waterLogs'), where('userId', '==', uid), limit(365)), makeHandler(setWaterLogs), 'waterLogs'),
+        safeSnapshot(query(collection(db, 'sleepLogs'), where('userId', '==', uid), limit(365)), makeHandler(setSleepLogs), 'sleepLogs'),
         safeSnapshot(query(collection(db, 'notes'), where('userId', '==', uid)), makeHandler(setNotes), 'notes'),
         safeSnapshot(query(collection(db, 'attendance_subjects'), where('userId', '==', uid)), makeHandler(setAttendanceSubjects), 'attendance_subjects'),
         safeSnapshot(query(collection(db, 'assignments'), where('userId', '==', uid)), makeHandler(setAssignments), 'assignments'),
         safeSnapshot(query(collection(db, 'pomodoro_sessions'), where('userId', '==', uid)), makeHandler(setPomodoroSessions), 'pomodoro_sessions'),
-        // users doc listener (12th = TOTAL)
+        // users doc listener (14th = TOTAL)
         onSnapshot(doc(db, 'users', uid), (snap) => {
           if (snap.exists() && snap.data().preferences) {
             setUserPreferences(snap.data().preferences);
@@ -332,7 +339,6 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           onFirstFire();
         })
       ];
-
 
       dataUnsubsRef.current = unsubs;
       failsafeRef.current = setTimeout(() => setIsLoading(false), 3000);
@@ -344,20 +350,16 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     };
   }, []);
 
-  // ✅ BUG-H1 FIX: Memoize gymSchedule so it only recomputes once per day (when weekday changes),
-  // not on every GlobalDataContext render. Previously GYM_PLAN.find() was called inline in JSX,
-  // creating a new object reference on every render and re-rendering all gymSchedule consumers.
+  // Memoize gymSchedule so it only recomputes once per day
   const gymSchedule = useMemo(
     () => GYM_PLAN.find(p => p.dayIndex === WEEKDAY_TO_PLAN[new Date().getDay()]) || { isRest: true, name: 'Rest Day' },
-    // The day of week only changes once per day, so an empty dep array is correct here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
   return (
     <GlobalDataContext.Provider value={{
       tasks, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
-      learningTopics, gymLogs, notes, attendanceSubjects, assignments,
+      learningTopics, gymLogs, waterLogs, sleepLogs, notes, attendanceSubjects, assignments,
       pomodoroSessions, userPreferences, isLoading, gymSchedule,
       isGoogleConnected, googleStatus, connectGoogle, disconnectGoogle,
     } as any}>

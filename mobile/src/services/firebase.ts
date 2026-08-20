@@ -29,13 +29,10 @@ export const auth = initializeAuth(app, {
   persistence: getReactNativePersistence ? getReactNativePersistence(AsyncStorage) : undefined
 });
 
-// Configure Firestore local cache with graceful fallback
-let localCacheSetting: any;
-try {
-  localCacheSetting = persistentLocalCache({ tabManager: persistentSingleTabManager({}) });
-} catch {
-  localCacheSetting = memoryLocalCache({ garbageCollector: memoryLruGarbageCollector() });
-}
+// React Native (Hermes) does not have browser IndexedDB.
+// ZenTrack manages its own full offline persistence via AsyncStorage & domain caches.
+// Using memoryLocalCache prevents Firebase from attempting and failing an IndexedDB initialization.
+const localCacheSetting = memoryLocalCache({ garbageCollector: memoryLruGarbageCollector() });
 
 export const db = initializeFirestore(app, {
   localCache: localCacheSetting,

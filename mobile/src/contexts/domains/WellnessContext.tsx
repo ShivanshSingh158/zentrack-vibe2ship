@@ -8,9 +8,9 @@
  * AsyncStorage instantly (~5ms). Gym screens show real data immediately,
  * even when offline. Firestore snapshots silently update the cache when online.
  */
-import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from "react";
+import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { collection, query, where, onSnapshot, doc, setDoc } from "firebase/firestore";
-import { InteractionManager } from 'react-native';
+import { InteractionManager, DeviceEventEmitter } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
@@ -18,6 +18,7 @@ import { UserGymPlanDoc, GymPlanDay } from "../../types/gym.types";
 import type { GymLog, WaterLog, SleepLog, WeightLog } from "../MobileDataContext";
 import { GYM_PLAN_ARNOLD, GYM_PLAN_PPL } from "../../data/gymPlan";
 import { readWellnessCache, writeWellnessCache } from "../../utils/domainCache";
+import { parseGymLog } from "../../utils/schemaGuards";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface WellnessContextType {
@@ -72,8 +73,10 @@ export function WellnessProvider({
   user: { uid: string } | null;
 }) {
   const [gymLogs, setGymLogs]         = useState<GymLog[]>([]);
-  // WHATSAPP PATTERN: gymLogsReady is derived — never a boolean flag that starts false.
-  // Gym screens show cached data the instant the cache is seeded, with no spinner.
+  // gymLogsSnapshotFired: true once the FIRST Firestore gymLogs snapshot fires (even if empty).
+  // This is the correct "ready" signal — not `gymLogs.length > 0` which is always false
+  // for new users and breaks the loading skeleton logic.
+  const [gymLogsSnapshotFired, setGymLogsSnapshotFired] = useState(false);
   const [userGymPlan, setUserGymPlan] = useState<UserGymPlanDoc | null>(null);
   const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
   const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
@@ -81,32 +84,76 @@ export function WellnessProvider({
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
 
-  // ── Offline-first boot: seed from AsyncStorage before Firestore responds ──
+  // ── Listener auto-restart on error ───────────────────────────────────────
+  // Firebase ID tokens expire every 60 min. If a network blip coincides with
+  // token expiry, onSnapshot fires its error callback and the listener dies.
+  // Incrementing subscriptionVersion causes openSubscriptions to re-run fresh.
+  const [subscriptionVersion, setSubscriptionVersion] = useState(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
+    console.warn(`[Wellness] ${context} listener error — restarting in 5s`, err.message);
+    if (retryTimerRef.current) return; // already scheduled
+    retryTimerRef.current = setTimeout(() => {
+      retryTimerRef.current = null;
+      subscribedRef.current = false;  // allow openSubscriptions to re-enter
+      unsubsRef.current.forEach(u => u());
+      unsubsRef.current = [];
+      setSubscriptionVersion(v => v + 1);
+    }, 5000);
+  }, []);
+
+  // ── Foreground reconnect: restart listeners after long background ─────────
+  // AppNavigator emits 'firestore_force_reconnect' on every AppState: active.
+  // This resets subscribedRef so openSubscriptions can re-enter, then bumps
+  // subscriptionVersion which triggers the subscription useEffect to clean up
+  // dead listeners and open fresh ones. This is the real fix for the
+  // "gym/wellness data not showing after 6+ hours" bug.
   useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
+      if (user) {
+        console.log('[Wellness] foreground reconnect — restarting Firestore listeners');
+        // Tear down existing (dead) listeners before reopening
+        unsubsRef.current.forEach(u => u());
+        unsubsRef.current = [];
+        subscribedRef.current = false;
+        setSubscriptionVersion(v => v + 1);
+      }
+    });
+    return () => sub.remove();
+  }, [user]);
+
+  // ── Offline-first boot: seed from AsyncStorage when user uid is available ──
+  // Re-runs on uid change (login, optimistic-user restore, logout) so screens
+  // immediately show cached data even if Firestore hasn't responded yet.
+  const userUid = user?.uid ?? null;
+  useEffect(() => {
+    if (!userUid) return; // never seed with another user's data
     let cancelled = false;
     readWellnessCache().then(cached => {
       if (cancelled) return;
-      if (Array.isArray(cached.gymLogs))   setGymLogs(cached.gymLogs);
-      if (cached.userGymPlan)              setUserGymPlan(cached.userGymPlan);
-      if (Array.isArray(cached.waterLogs)) setWaterLogs(cached.waterLogs);
-      if (Array.isArray(cached.sleepLogs)) setSleepLogs(cached.sleepLogs);
+      if (Array.isArray(cached.gymLogs))    setGymLogs(cached.gymLogs);
+      if (cached.userGymPlan)               setUserGymPlan(cached.userGymPlan);
+      if (Array.isArray(cached.waterLogs))  setWaterLogs(cached.waterLogs);
+      if (Array.isArray(cached.sleepLogs))  setSleepLogs(cached.sleepLogs);
       if (Array.isArray(cached.weightLogs)) setWeightLogs(cached.weightLogs);
     });
     return () => { cancelled = true; };
-  }, []);
+  }, [userUid]);
 
-  const openSubscriptions = (uid: string) => {
+  const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return; // idempotent
     subscribedRef.current = true;
 
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid)),
       snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as GymLog));
+        const fresh = snap.docs.map(d => parseGymLog(d.data(), d.id));
         setGymLogs(fresh);
+        setGymLogsSnapshotFired(true); // mark first snapshot fired — even if empty
         writeWellnessCache({ gymLogs: fresh });
       },
-      err => console.error("[Wellness] gymLogs", err)
+      scheduleListenerRestart("gymLogs")
     ));
 
     unsubsRef.current.push(onSnapshot(
@@ -116,7 +163,7 @@ export function WellnessProvider({
         setUserGymPlan(plan);
         writeWellnessCache({ userGymPlan: plan });
       },
-      err => console.error("[Wellness] userGymPlan", err)
+      scheduleListenerRestart("userGymPlan")
     ));
 
     unsubsRef.current.push(onSnapshot(
@@ -126,7 +173,7 @@ export function WellnessProvider({
         setWaterLogs(fresh);
         writeWellnessCache({ waterLogs: fresh });
       },
-      err => console.error("[Wellness] waterLogs", err)
+      scheduleListenerRestart("waterLogs")
     ));
 
     unsubsRef.current.push(onSnapshot(
@@ -136,7 +183,7 @@ export function WellnessProvider({
         setSleepLogs(fresh);
         writeWellnessCache({ sleepLogs: fresh });
       },
-      err => console.error("[Wellness] sleepLogs", err)
+      scheduleListenerRestart("sleepLogs")
     ));
 
     unsubsRef.current.push(onSnapshot(
@@ -146,11 +193,13 @@ export function WellnessProvider({
         setWeightLogs(fresh);
         writeWellnessCache({ weightLogs: fresh });
       },
-      err => console.error("[Wellness] weightLogs", err)
+      scheduleListenerRestart("weightLogs")
     ));
-  };
+  }, [scheduleListenerRestart]);
 
-  // Reset or open on user change
+  // Reset or open on user change.
+  // subscriptionVersion is included so a listener error retry (scheduleListenerRestart)
+  // cleanly re-runs this effect and re-opens all subscriptions.
   useEffect(() => {
     if (user) {
       openSubscriptions(user.uid);
@@ -158,20 +207,24 @@ export function WellnessProvider({
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
+      if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
     return () => {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
     };
-  }, [user]);
+  }, [user, subscriptionVersion, openSubscriptions]);
 
   // Cleanup on unmount
-  useEffect(() => () => { unsubsRef.current.forEach(u => u()); }, []);
+  useEffect(() => () => {
+    unsubsRef.current.forEach(u => u());
+    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+  }, []);
 
-  const ensureSubscribed = () => {
+  const ensureSubscribed = useCallback(() => {
     if (user && !subscribedRef.current) openSubscriptions(user.uid);
-  };
+  }, [user, openSubscriptions]);
 
   const updateMasterPlan = async (dayIndex: number, planDay: GymPlanDay) => {
     if (!user) return;
@@ -328,15 +381,25 @@ export function WellnessProvider({
 
   const optimisticUpdateGymLog = (logId: string, partial: Partial<GymLog>) => {
     setGymLogs(prev => {
-      const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
+      const next = prev.map(l => {
+        if (l.id === logId || (partial.date && l.date === partial.date)) {
+          const merged: GymLog = { ...l, ...partial };
+          if (partial.workoutStartTime === undefined || partial.completed) {
+            delete (merged as any).workoutStartTime;
+          }
+          return merged;
+        }
+        return l;
+      });
       writeWellnessCache({ gymLogs: next });
       return next;
     });
   };
 
-  // gymLogsReady: true if we have any gym logs (from cache OR Firestore).
-  // Gym screens use this to decide whether to show a skeleton vs real content.
-  const gymLogsReady = gymLogs.length > 0;
+  // gymLogsReady: true once the first Firestore snapshot has fired (even if user has no logs).
+  // Previously derived as `gymLogs.length > 0` which was always false for new users,
+  // causing an infinite loading skeleton. Now a proper boolean sentinel.
+  const gymLogsReady = gymLogsSnapshotFired;
 
   const value = useMemo(() => ({
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,

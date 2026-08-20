@@ -64,10 +64,28 @@ export const CalendarDayView = React.memo(function CalendarDayView({
             {unscheduledDayEvents.map(evt => {
               const eventColor = eventColorMap[evt.type] || { bg: colors.accentPrimary, text: colors.textPrimary, border: colors.accentPrimary };
               return (
-                <View key={evt.id} style={[styles.unscheduledChip, { backgroundColor: isDark ? `${eventColor.border}30` : eventColor.bg, borderColor: eventColor.border }]}>
+                <TouchableOpacity
+                  key={evt.id}
+                  style={[styles.unscheduledChip, { backgroundColor: isDark ? `${eventColor.border}30` : eventColor.bg, borderColor: eventColor.border }]}
+                  onPress={() => {
+                    if (evt.type === 'gym') {
+                      const log = gymLogs?.find((g: any) => g.id === evt.id);
+                      if (log) {
+                        setSelectedGymLog(log);
+                        setGymStartTimeInput(evt.startTime || '10:00');
+                        setGymEndTimeInput(evt.endTime || '11:00');
+                        setShowGymModal(true);
+                      }
+                    } else {
+                      setSelectedEvent(evt);
+                      setShowEventModal(true);
+                    }
+                  }}
+                  activeOpacity={0.75}
+                >
                   <View style={[styles.unscheduledDot, { backgroundColor: eventColor.border }]} />
                   <Text style={[styles.unscheduledChipText, { color: isDark ? eventColor.border : colors.textPrimary }]} numberOfLines={1}>{evt.title}</Text>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </ScrollView>
