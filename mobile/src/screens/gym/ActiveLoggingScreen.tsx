@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import {
   View, Text, StyleSheet, SafeAreaView, TouchableOpacity, Alert, TextInput,
   Platform, KeyboardAvoidingView, ScrollView, Modal, ActivityIndicator, AppState,
-  StatusBar as RNStatusBar, Keyboard
+  StatusBar as RNStatusBar, Keyboard, Animated, PanResponder
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Reanimated, { FadeIn, FadeOut } from 'react-native-reanimated';
@@ -35,6 +35,160 @@ interface SetInputState {
   weight: string;
   reps: string;
 }
+
+interface SwipeableSetRowProps {
+  set: GymSet;
+  idx: number;
+  isActive: boolean;
+  isCompleted: boolean;
+  displayWeight: string;
+  displayReps: string;
+  colors: any;
+  isDark: boolean;
+  styles: any;
+  onTextChange: (field: 'weight' | 'reps', text: string) => void;
+  onBlur: () => void;
+  onToggleComplete: () => void;
+  onLongPress: () => void;
+  onSwipeComplete: () => void;
+}
+
+const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
+  set,
+  idx,
+  isActive,
+  isCompleted,
+  displayWeight,
+  displayReps,
+  colors,
+  isDark,
+  styles,
+  onTextChange,
+  onBlur,
+  onToggleComplete,
+  onLongPress,
+  onSwipeComplete,
+}) => {
+  const translateX = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          return !isCompleted && gestureState.dx > 12 && Math.abs(gestureState.dy) < 16;
+        },
+        onPanResponderMove: (_, gestureState) => {
+          if (gestureState.dx > 0) {
+            const dx = gestureState.dx > 80 ? 80 + (gestureState.dx - 80) * 0.25 : gestureState.dx;
+            translateX.setValue(Math.min(dx, 110));
+          }
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          if (gestureState.dx > 50 || gestureState.vx > 0.45) {
+            Animated.timing(translateX, {
+              toValue: 120,
+              duration: 130,
+              useNativeDriver: true,
+            }).start(() => {
+              translateX.setValue(0);
+              onSwipeComplete();
+            });
+          } else {
+            Animated.spring(translateX, {
+              toValue: 0,
+              bounciness: 5,
+              useNativeDriver: true,
+            }).start();
+          }
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(translateX, {
+            toValue: 0,
+            bounciness: 4,
+            useNativeDriver: true,
+          }).start();
+        },
+      }),
+    [isCompleted, onSwipeComplete]
+  );
+
+  return (
+    <View style={[styles.setRowWrapper, isActive && styles.setRowWrapperActive]}>
+      {!isCompleted && (
+        <View style={styles.swipeTrack}>
+          <View style={styles.swipeTrackContent}>
+            <Ionicons name="checkmark-circle" size={18} color="#34C759" />
+            <Text style={styles.swipeTrackText}>Swipe to complete</Text>
+          </View>
+        </View>
+      )}
+
+      {isActive && <View style={styles.activeIndicator} />}
+
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          styles.setRow,
+          isCompleted && styles.setRowCompleted,
+          isActive && styles.setRowActive,
+          { transform: [{ translateX }] },
+        ]}
+      >
+        <TouchableOpacity
+          onPress={onToggleComplete}
+          onLongPress={onLongPress}
+          style={styles.setIndexArea}
+        >
+          {isCompleted ? (
+            <Ionicons name="checkmark-circle" size={20} color={colors.accentPrimary} />
+          ) : (
+            <Text style={[styles.setIndexText, isActive && { color: colors.accentPrimary }]}>{set.setNumber}</Text>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.inputGroup}>
+          {displayWeight === '' && (
+            <View style={styles.fakePlaceholder} pointerEvents="none">
+              <Text style={styles.fakePlaceholderText}>kg</Text>
+            </View>
+          )}
+          <TextInput
+            style={[styles.textInput, isCompleted && { opacity: 0.85, color: colors.textPrimary }]}
+            value={displayWeight}
+            keyboardType="numeric"
+            editable={!isCompleted}
+            onChangeText={(text) => onTextChange('weight', text)}
+            onBlur={onBlur}
+          />
+        </View>
+
+        <View style={styles.inputGroup}>
+          {displayReps === '' && (
+            <View style={styles.fakePlaceholder} pointerEvents="none">
+              <Text style={styles.fakePlaceholderText}>reps</Text>
+            </View>
+          )}
+          <TextInput
+            style={[styles.textInput, isCompleted && { opacity: 0.85, color: colors.textPrimary }]}
+            value={displayReps}
+            keyboardType="numeric"
+            editable={!isCompleted}
+            onChangeText={(text) => onTextChange('reps', text)}
+            onBlur={onBlur}
+          />
+        </View>
+
+        <View style={{ width: 28, alignItems: 'center', justifyContent: 'center' }}>
+          {!isCompleted ? (
+            <Ionicons name="chevron-forward" size={14} color={isActive ? colors.accentPrimary : colors.textMuted} style={{ opacity: 0.35 }} />
+          ) : (
+            <Ionicons name="lock-closed-outline" size={12} color={colors.textMuted} style={{ opacity: 0.35 }} />
+          )}
+        </View>
+      </Animated.View>
+    </View>
+  );
+};
 
 export default function ActiveLoggingScreen() {
     const { colors, isDark } = useTheme();
@@ -506,6 +660,164 @@ export default function ActiveLoggingScreen() {
     }
   };
 
+  // Smart Quick-Stepper: adjust weight on active set
+  const handleAdjustWeight = (delta: number) => {
+    const targetIdx = activeSetIndex !== -1 ? activeSetIndex : exercise.setsLog.length - 1;
+    if (targetIdx < 0) return;
+    hapticLight();
+    const curSet = exercise.setsLog[targetIdx];
+    const curInput = setInputs[targetIdx];
+    const prevSet = targetIdx > 0 ? exercise.setsLog[targetIdx - 1] : null;
+
+    let baseWeight = 0;
+    if (curInput?.weight !== '' && curInput?.weight !== undefined) {
+      baseWeight = parseFloat(curInput.weight) || 0;
+    } else if (curSet?.weight != null && Number(curSet.weight) > 0) {
+      baseWeight = Number(curSet.weight);
+    } else if (prevSet?.weight != null && Number(prevSet.weight) > 0) {
+      baseWeight = Number(prevSet.weight);
+    } else if (overloadSuggestion?.recommended) {
+      baseWeight = Number(overloadSuggestion.recommended);
+    }
+
+    const newWeight = Math.max(0, Math.round((baseWeight + delta) * 10) / 10);
+    handleTextChange(targetIdx, 'weight', String(newWeight));
+  };
+
+  // Smart Quick-Stepper: adjust reps on active set
+  const handleAdjustReps = (delta: number) => {
+    const targetIdx = activeSetIndex !== -1 ? activeSetIndex : exercise.setsLog.length - 1;
+    if (targetIdx < 0) return;
+    hapticLight();
+    const curSet = exercise.setsLog[targetIdx];
+    const curInput = setInputs[targetIdx];
+    const prevSet = targetIdx > 0 ? exercise.setsLog[targetIdx - 1] : null;
+
+    let baseReps = 8;
+    if (curInput?.reps !== '' && curInput?.reps !== undefined) {
+      baseReps = parseInt(curInput.reps, 10) || 8;
+    } else if (curSet?.reps != null && Number(curSet.reps) > 0) {
+      baseReps = Number(curSet.reps);
+    } else if (prevSet?.reps != null && Number(prevSet.reps) > 0) {
+      baseReps = Number(prevSet.reps);
+    } else {
+      baseReps = parseInt(String(exercise.targetReps || '8').split('-')[0], 10) || 8;
+    }
+
+    const newReps = Math.max(1, baseReps + delta);
+    handleTextChange(targetIdx, 'reps', String(newReps));
+  };
+
+  // Smart Quick-Fill: copy previous set or target
+  const handleRepeatPreviousSet = () => {
+    const targetIdx = activeSetIndex !== -1 ? activeSetIndex : exercise.setsLog.length - 1;
+    if (targetIdx < 0) return;
+    hapticLight();
+    const prevSet = targetIdx > 0 ? exercise.setsLog[targetIdx - 1] : null;
+    const prevInput = targetIdx > 0 ? setInputs[targetIdx - 1] : null;
+
+    const repWeight = prevInput?.weight || (prevSet?.weight != null ? String(prevSet.weight) : (overloadSuggestion?.recommended ? String(overloadSuggestion.recommended) : ''));
+    const repReps = prevInput?.reps || (prevSet?.reps != null ? String(prevSet.reps) : (String(exercise.targetReps || '8').split('-')[0] || '8'));
+
+    if (repWeight) handleTextChange(targetIdx, 'weight', repWeight);
+    if (repReps) handleTextChange(targetIdx, 'reps', repReps);
+  };
+
+  // 1-Swipe Set Completion & Auto-Flow
+  const handleSwipeCompleteSet = (setIdx: number) => {
+    hapticSuccess();
+    const currentSet = exercise.setsLog[setIdx];
+    const input = setInputs[setIdx];
+    const prevSet = setIdx > 0 ? exercise.setsLog[setIdx - 1] : null;
+    const prevInput = setIdx > 0 ? setInputs[setIdx - 1] : null;
+
+    // 1. Resolve weight: current input -> current set -> previous input -> previous set -> overload suggestion
+    let parsedWeight: number | null = null;
+    if (input?.weight !== '' && input?.weight !== undefined) {
+      parsedWeight = parseFloat(input.weight);
+    } else if (currentSet?.weight != null && Number(currentSet.weight) > 0) {
+      parsedWeight = Number(currentSet.weight);
+    } else if (prevInput?.weight !== '' && prevInput?.weight !== undefined) {
+      parsedWeight = parseFloat(prevInput.weight);
+    } else if (prevSet?.weight != null && Number(prevSet.weight) > 0) {
+      parsedWeight = Number(prevSet.weight);
+    } else if (overloadSuggestion?.recommended) {
+      parsedWeight = Number(overloadSuggestion.recommended);
+    }
+
+    // 2. Resolve reps: current input -> current set -> previous input -> previous set -> target reps
+    let parsedReps: number | null = null;
+    if (input?.reps !== '' && input?.reps !== undefined) {
+      parsedReps = parseInt(input.reps, 10);
+    } else if (currentSet?.reps != null && Number(currentSet.reps) > 0) {
+      parsedReps = Number(currentSet.reps);
+    } else if (prevInput?.reps !== '' && prevInput?.reps !== undefined) {
+      parsedReps = parseInt(prevInput.reps, 10);
+    } else if (prevSet?.reps != null && Number(prevSet.reps) > 0) {
+      parsedReps = Number(prevSet.reps);
+    } else {
+      parsedReps = parseInt(String(exercise.targetReps || '8').split('-')[0], 10) || 8;
+    }
+
+    const newEx = {
+      ...exercise,
+      setsLog: exercise.setsLog.map((s, i) => {
+        if (i === setIdx) {
+          return {
+            ...s,
+            weight: parsedWeight,
+            reps: parsedReps,
+            completed: true,
+          };
+        }
+        return s;
+      }),
+    };
+
+    setSetInputs(prev => prev.map((inp, i) => {
+      if (i === setIdx) {
+        return {
+          weight: parsedWeight !== null ? String(parsedWeight) : '',
+          reps: parsedReps !== null ? String(parsedReps) : '',
+        };
+      }
+      return inp;
+    }));
+
+    // SUPERSET & GIANT SET ALTERNATING FLOW:
+    let nextIndexToJump = -1;
+    let isSupersetPartner = false;
+
+    if (exercise.supersetGroup) {
+      const supersetIndices = exercises
+        .map((ex, idx) => (ex.supersetGroup === exercise.supersetGroup ? idx : -1))
+        .filter(idx => idx !== -1);
+      
+      if (supersetIndices.length > 1) {
+        const currentIndexInGroup = supersetIndices.indexOf(activeExIndex);
+        for (let i = 1; i < supersetIndices.length; i++) {
+          const checkIndex = supersetIndices[(currentIndexInGroup + i) % supersetIndices.length];
+          const checkEx = exercises[checkIndex];
+          const hasIncompleteSets = checkEx.setsLog.some(s => !s.completed);
+          if (hasIncompleteSets) {
+            nextIndexToJump = checkIndex;
+            isSupersetPartner = true;
+            break;
+          }
+        }
+      }
+    }
+
+    const restSecs = isSupersetPartner ? 30 : getRestDuration(exercise);
+    logSetAndStartTimer(realExerciseIndex, newEx, restSecs, exercise.name);
+
+    if (nextIndexToJump !== -1) {
+      setTimeout(() => {
+        setActiveExIndex(nextIndexToJump);
+      }, 400);
+    }
+  };
+
   const handleNextExercise = () => {
     Keyboard.dismiss();
     if (activeExIndex < exercises.length - 1) {
@@ -809,14 +1121,80 @@ export default function ActiveLoggingScreen() {
               </View>
             )}
 
+            {/* Smart Quick-Fill Chips & Quick-Steppers */}
+            {!isAllComplete && (
+              <View style={styles.quickChipsContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickChipsScroll}>
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    style={styles.quickChipRepeat}
+                    onPress={handleRepeatPreviousSet}
+                  >
+                    <Ionicons name="flash" size={12} color="#a599ff" />
+                    <Text style={styles.quickChipTextHighlight}>
+                      {activeSetIndex > 0 ? `Same as Set ${activeSetIndex}` : 'Match Target'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    style={styles.quickChip}
+                    onPress={() => handleAdjustWeight(2.5)}
+                  >
+                    <Text style={styles.quickChipText}>+2.5 kg</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    style={styles.quickChip}
+                    onPress={() => handleAdjustWeight(5)}
+                  >
+                    <Text style={styles.quickChipText}>+5 kg</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    style={styles.quickChip}
+                    onPress={() => handleAdjustWeight(-2.5)}
+                  >
+                    <Text style={styles.quickChipText}>-2.5 kg</Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.quickChipDivider} />
+
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    style={styles.quickChip}
+                    onPress={() => handleAdjustReps(1)}
+                  >
+                    <Text style={styles.quickChipText}>+1 Rep</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    style={styles.quickChip}
+                    onPress={() => handleAdjustReps(2)}
+                  >
+                    <Text style={styles.quickChipText}>+2 Reps</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.75}
+                    style={styles.quickChip}
+                    onPress={() => handleAdjustReps(-1)}
+                  >
+                    <Text style={styles.quickChipText}>-1 Rep</Text>
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            )}
+
             {exercise.setsLog.map((set, idx) => {
               const isActive = idx === activeSetIndex;
               const inputState = setInputs[idx] || { weight: '', reps: '' };
               const setWeightStr = (set.weight !== null && set.weight !== undefined && Number(set.weight) > 0) ? String(set.weight) : '';
               const setRepsStr = (set.reps !== null && set.reps !== undefined && Number(set.reps) > 0) ? String(set.reps) : '';
 
-              // For completed sets, always show the saved weight/reps
-              // For active/incomplete sets, show what's in inputState (which can be empty if user cleared it)
               const isInputReady = setInputs.length > idx;
               const displayWeight = set.completed
                 ? (setWeightStr || inputState.weight || '')
@@ -827,59 +1205,23 @@ export default function ActiveLoggingScreen() {
                 : (isInputReady ? inputState.reps : (setRepsStr || ''));
 
               return (
-                <View key={`set-${idx}`} style={[styles.setRowWrapper, isActive && styles.setRowWrapperActive]}>
-                  {isActive && <View style={styles.activeIndicator} />}
-
-                  <View style={[styles.setRow, set.completed && styles.setRowCompleted, isActive && styles.setRowActive]}>
-                    {/* Tap checkmark circle to toggle completed, long-press to delete */}
-                    <TouchableOpacity
-                      onPress={() => handleToggleSetComplete(idx)}
-                      onLongPress={() => handleDeleteSet(idx)}
-                      style={styles.setIndexArea}
-                    >
-                      {set.completed ? (
-                        <Ionicons name="checkmark-circle" size={20} color={colors.accentPrimary} />
-                      ) : (
-                        <Text style={[styles.setIndexText, isActive && { color: colors.accentPrimary }]}>{set.setNumber}</Text>
-                      )}
-                    </TouchableOpacity>
-
-                    {/* Controlled inputs with local state - locked when completed */}
-                    <View style={styles.inputGroup}>
-                      {displayWeight === '' && (
-                        <View style={styles.fakePlaceholder} pointerEvents="none">
-                          <Text style={styles.fakePlaceholderText}>kg</Text>
-                        </View>
-                      )}
-                      <TextInput
-                        style={[styles.textInput, set.completed && { opacity: 0.85, color: colors.textPrimary }]}
-                        value={displayWeight}
-                        keyboardType="numeric"
-                        editable={!set.completed}
-                        onChangeText={(text) => handleTextChange(idx, 'weight', text)}
-                        onBlur={() => handleBlur(idx)}
-                      />
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                      {displayReps === '' && (
-                        <View style={styles.fakePlaceholder} pointerEvents="none">
-                          <Text style={styles.fakePlaceholderText}>reps</Text>
-                        </View>
-                      )}
-                      <TextInput
-                        style={[styles.textInput, set.completed && { opacity: 0.85, color: colors.textPrimary }]}
-                        value={displayReps}
-                        keyboardType="numeric"
-                        editable={!set.completed}
-                        onChangeText={(text) => handleTextChange(idx, 'reps', text)}
-                        onBlur={() => handleBlur(idx)}
-                      />
-                    </View>
-
-                    <View style={{ width: 32 }} />
-                  </View>
-                </View>
+                <SwipeableSetRow
+                  key={`set-${idx}`}
+                  set={set}
+                  idx={idx}
+                  isActive={isActive}
+                  isCompleted={!!set.completed}
+                  displayWeight={displayWeight}
+                  displayReps={displayReps}
+                  colors={colors}
+                  isDark={isDark}
+                  styles={styles}
+                  onTextChange={(field, text) => handleTextChange(idx, field, text)}
+                  onBlur={() => handleBlur(idx)}
+                  onToggleComplete={() => handleToggleSetComplete(idx)}
+                  onLongPress={() => handleDeleteSet(idx)}
+                  onSwipeComplete={() => handleSwipeCompleteSet(idx)}
+                />
               );
             })}
 
@@ -1203,10 +1545,79 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
       overloadChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: RADIUS.md, marginTop: 12, gap: 6 },
       overloadChipText: { fontFamily: FONT_FAMILY.medium, fontSize: 12 },
 
+      quickChipsContainer: {
+        marginBottom: SPACE.md,
+        marginHorizontal: -SPACE.xl,
+        paddingHorizontal: SPACE.xl,
+      },
+      quickChipsScroll: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingVertical: 2,
+      },
+      quickChipRepeat: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: 'rgba(165,153,255,0.14)',
+        borderWidth: 1,
+        borderColor: 'rgba(165,153,255,0.32)',
+        paddingHorizontal: 11,
+        paddingVertical: 6,
+        borderRadius: RADIUS.full,
+      },
+      quickChipTextHighlight: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 11.5,
+        color: '#a599ff',
+      },
+      quickChip: {
+        backgroundColor: isDark ? '#1C1C1E' : colors.surface2,
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: RADIUS.full,
+      },
+      quickChipText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 11.5,
+        color: colors.textPrimary,
+      },
+      quickChipDivider: {
+        width: 1,
+        height: 16,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
+        marginHorizontal: 2,
+      },
+
+      swipeTrack: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(52,199,89,0.15)',
+        borderWidth: 1,
+        borderColor: 'rgba(52,199,89,0.3)',
+        borderRadius: RADIUS.md,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingLeft: SPACE.md,
+      },
+      swipeTrackContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+      },
+      swipeTrackText: {
+        fontFamily: FONT_FAMILY.bold,
+        fontSize: 12,
+        color: '#34C759',
+      },
+
       setRowWrapper: {
         marginBottom: 8,
         borderRadius: RADIUS.md,
         overflow: 'hidden',
+        position: 'relative',
       },
       setRowWrapperActive: {
         paddingLeft: 4,
