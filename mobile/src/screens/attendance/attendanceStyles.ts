@@ -10,13 +10,13 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
 
   overviewCard: {
     marginHorizontal: 0,
-    marginTop: 12,
-    marginBottom: 12,
-    padding: SPACE.lg,
+    marginTop: 4,
+    marginBottom: 4,
+    padding: SPACE.md,
     backgroundColor: isDark ? colors.surface : '#FFFFFF',
     borderWidth: 1,
     borderColor: isDark ? colors.border : '#E2E1EA',
-    borderRadius: RADIUS.xl,
+    borderRadius: RADIUS.lg,
   },
   overviewTitle: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: isDark ? colors.textPrimary : colors.textMuted },
   overviewStats: { fontFamily: FONT_FAMILY.body, fontSize: 12, color: colors.textTertiary },

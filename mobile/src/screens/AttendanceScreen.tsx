@@ -471,13 +471,13 @@ export default function AttendanceScreen() {
           ListHeaderComponent={
           <>
             {/* ── Semester Overview ── */}
-            <View style={{ paddingHorizontal: 8, marginBottom: 8 }}>
+            <View style={{ paddingHorizontal: 8, marginBottom: 4 }}>
               <View style={styles.overviewCard}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                   <Text style={styles.overviewTitle}>Semester overview</Text>
                   <Text style={styles.overviewStats}>{globalAttended}/{globalTotal} classes</Text>
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                   <Text style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.priorityHigh)) : colors.textMuted }]}>
                     {globalPct !== null ? `${Math.round(globalPct)}%` : '--%'}
                   </Text>

@@ -201,7 +201,8 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    marginBottom: 16,
+    marginTop: 2,
+    marginBottom: 8,
   },
   weekRow: {
     flexDirection: 'row',
@@ -211,7 +212,7 @@ const styles = StyleSheet.create({
   dayCol: {
     alignItems: 'center',
     paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     borderRadius: 10,
     minWidth: 38,
   },
