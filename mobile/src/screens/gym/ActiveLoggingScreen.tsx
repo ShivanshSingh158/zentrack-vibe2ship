@@ -1005,6 +1005,7 @@ export default function ActiveLoggingScreen() {
                   {exercise.name}
                 </Text>
                 <TouchableOpacity
+                  activeOpacity={0.8}
                   onPress={() => {
                     hapticMedium();
                     if (!exercise.videoId) {
@@ -1018,9 +1019,17 @@ export default function ActiveLoggingScreen() {
                       setShowVideo(prev => !prev);
                     }
                   }}
-                  style={styles.videoBtn}
+                  style={[
+                    styles.videoBtn,
+                    showVideo && styles.videoBtnActive,
+                  ]}
                 >
-                  <Ionicons name={showVideo ? "close-circle" : "play-circle"} size={26} color={colors.accentPrimary} />
+                  <Ionicons
+                    name={showVideo ? "close" : "play"}
+                    size={showVideo ? 16 : 14}
+                    color={showVideo ? colors.textPrimary : "#000000"}
+                    style={!showVideo ? { marginLeft: 2 } : {}}
+                  />
                 </TouchableOpacity>
               </View>
 
@@ -1734,7 +1743,26 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
         marginTop: SPACE.sm,
       },
       addSetBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.accentPrimary },
-      videoBtn: { padding: 4 },
+      videoBtn: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#a599ff',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#a599ff',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 5,
+        elevation: 3,
+      },
+      videoBtnActive: {
+        backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : colors.surface2,
+        shadowOpacity: 0,
+        elevation: 0,
+        borderWidth: 1,
+        borderColor: isDark ? 'rgba(255,255,255,0.2)' : colors.border,
+      },
       videoContainer: { borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: SPACE.xl },
 
       mainBtnWrapper: { marginTop: SPACE.md, ...SHADOW.lg },
