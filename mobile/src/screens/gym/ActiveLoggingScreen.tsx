@@ -1005,7 +1005,7 @@ export default function ActiveLoggingScreen() {
                   {exercise.name}
                 </Text>
                 <TouchableOpacity
-                  activeOpacity={0.8}
+                  activeOpacity={0.75}
                   onPress={() => {
                     hapticMedium();
                     if (!exercise.videoId) {
@@ -1019,16 +1019,12 @@ export default function ActiveLoggingScreen() {
                       setShowVideo(prev => !prev);
                     }
                   }}
-                  style={[
-                    styles.videoBtn,
-                    showVideo && styles.videoBtnActive,
-                  ]}
+                  style={styles.videoBtn}
                 >
                   <Ionicons
-                    name={showVideo ? "close" : "play"}
-                    size={showVideo ? 16 : 14}
-                    color={showVideo ? colors.textPrimary : "#000000"}
-                    style={!showVideo ? { marginLeft: 2 } : {}}
+                    name={showVideo ? "close-circle" : "logo-youtube"}
+                    size={showVideo ? 24 : 28}
+                    color={showVideo ? colors.textMuted : "#FF0000"}
                   />
                 </TouchableOpacity>
               </View>
@@ -1744,24 +1740,9 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
       },
       addSetBtnText: { fontFamily: FONT_FAMILY.bold, fontSize: 13, color: colors.accentPrimary },
       videoBtn: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: '#a599ff',
+        padding: 4,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: '#a599ff',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.35,
-        shadowRadius: 5,
-        elevation: 3,
-      },
-      videoBtnActive: {
-        backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : colors.surface2,
-        shadowOpacity: 0,
-        elevation: 0,
-        borderWidth: 1,
-        borderColor: isDark ? 'rgba(255,255,255,0.2)' : colors.border,
       },
       videoContainer: { borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: SPACE.xl },
 
