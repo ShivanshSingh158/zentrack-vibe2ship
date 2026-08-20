@@ -70,57 +70,99 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
   onSwipeComplete,
 }) => {
   const translateX = useRef(new Animated.Value(0)).current;
+  const isTriggeringRef = useRef(false);
+
+  useEffect(() => {
+    if (isCompleted) {
+      translateX.setValue(0);
+      isTriggeringRef.current = false;
+    }
+  }, [isCompleted]);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_, gestureState) => {
-          return !isCompleted && gestureState.dx > 12 && Math.abs(gestureState.dy) < 16;
+          // Accurate horizontal gesture detection that never interferes with vertical scrolling
+          return (
+            !isCompleted &&
+            !isTriggeringRef.current &&
+            gestureState.dx > 8 &&
+            Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.3
+          );
+        },
+        onPanResponderGrant: () => {
+          Keyboard.dismiss();
         },
         onPanResponderMove: (_, gestureState) => {
-          if (gestureState.dx > 0) {
-            const dx = gestureState.dx > 80 ? 80 + (gestureState.dx - 80) * 0.25 : gestureState.dx;
-            translateX.setValue(Math.min(dx, 110));
+          if (gestureState.dx > 0 && !isTriggeringRef.current) {
+            // Smooth resistance curve
+            const dx = gestureState.dx > 70 ? 70 + (gestureState.dx - 70) * 0.35 : gestureState.dx;
+            translateX.setValue(Math.min(dx, 120));
           }
         },
         onPanResponderRelease: (_, gestureState) => {
-          if (gestureState.dx > 50 || gestureState.vx > 0.45) {
+          if (isTriggeringRef.current) return;
+
+          // Threshold: 45px rightward drag or fast swipe velocity
+          if (gestureState.dx > 45 || gestureState.vx > 0.35) {
+            isTriggeringRef.current = true;
             Animated.timing(translateX, {
-              toValue: 120,
-              duration: 130,
+              toValue: 130,
+              duration: 110,
               useNativeDriver: true,
             }).start(() => {
               translateX.setValue(0);
               onSwipeComplete();
+              setTimeout(() => {
+                isTriggeringRef.current = false;
+              }, 250);
             });
           } else {
             Animated.spring(translateX, {
               toValue: 0,
-              bounciness: 5,
+              tension: 140,
+              friction: 12,
               useNativeDriver: true,
             }).start();
           }
         },
         onPanResponderTerminate: () => {
-          Animated.spring(translateX, {
-            toValue: 0,
-            bounciness: 4,
-            useNativeDriver: true,
-          }).start();
+          if (!isTriggeringRef.current) {
+            Animated.spring(translateX, {
+              toValue: 0,
+              tension: 140,
+              friction: 12,
+              useNativeDriver: true,
+            }).start();
+          }
         },
       }),
     [isCompleted, onSwipeComplete]
   );
 
+  const trackOpacity = translateX.interpolate({
+    inputRange: [0, 40, 90],
+    outputRange: [0.4, 0.85, 1],
+    extrapolate: 'clamp',
+  });
+
+  const iconScale = translateX.interpolate({
+    inputRange: [0, 45, 90],
+    outputRange: [0.85, 1.15, 1.25],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={[styles.setRowWrapper, isActive && styles.setRowWrapperActive]}>
+      {/* Background Animated Swipe Track */}
       {!isCompleted && (
-        <View style={styles.swipeTrack}>
-          <View style={styles.swipeTrackContent}>
-            <Ionicons name="checkmark-circle" size={18} color="#34C759" />
-            <Text style={styles.swipeTrackText}>Swipe to complete</Text>
-          </View>
-        </View>
+        <Animated.View style={[styles.swipeTrack, { opacity: trackOpacity }]}>
+          <Animated.View style={[styles.swipeTrackContent, { transform: [{ scale: iconScale }] }]}>
+            <Ionicons name="checkmark-circle" size={20} color="#34C759" />
+            <Text style={styles.swipeTrackText}>Release to log</Text>
+          </Animated.View>
+        </Animated.View>
       )}
 
       {isActive && <View style={styles.activeIndicator} />}
@@ -134,6 +176,7 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
           { transform: [{ translateX }] },
         ]}
       >
+        {/* Tap checkmark circle to toggle completed, long-press to delete */}
         <TouchableOpacity
           onPress={onToggleComplete}
           onLongPress={onLongPress}
@@ -146,6 +189,7 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
           )}
         </TouchableOpacity>
 
+        {/* Controlled inputs with local state - locked when completed */}
         <View style={styles.inputGroup}>
           {displayWeight === '' && (
             <View style={styles.fakePlaceholder} pointerEvents="none">
@@ -178,9 +222,10 @@ const SwipeableSetRow: React.FC<SwipeableSetRowProps> = ({
           />
         </View>
 
+        {/* Right Action / Subtle Swipe Hint */}
         <View style={{ width: 28, alignItems: 'center', justifyContent: 'center' }}>
           {!isCompleted ? (
-            <Ionicons name="chevron-forward" size={14} color={isActive ? colors.accentPrimary : colors.textMuted} style={{ opacity: 0.35 }} />
+            <Ionicons name="chevron-forward" size={14} color={isActive ? colors.accentPrimary : colors.textMuted} style={{ opacity: 0.4 }} />
           ) : (
             <Ionicons name="lock-closed-outline" size={12} color={colors.textMuted} style={{ opacity: 0.35 }} />
           )}
