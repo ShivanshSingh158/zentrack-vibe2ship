@@ -24,7 +24,7 @@ function isLegacySecondaryCompound(name: string): boolean {
   return SECONDARY_COMPOUND.some(k => lower.includes(k));
 }
 
-import { calculateExerciseMaxWeight, calculateExerciseAvgReps } from '../utils/gymUtils';
+import { calculateExerciseMaxWeight, calculateExerciseAvgReps, normalizeExerciseKey } from '../utils/gymUtils';
 
 /** REST time in seconds based on exercise type */
 export function getRestDuration(exercise: { name: string, isCompound?: boolean }): number {
@@ -65,12 +65,12 @@ export function getOverloadSuggestion(
   const targetReps = parseInt(String(targetRepsStr).split("-")[0], 10) || 8;
 
   // Find sessions with this exercise (sorted newest-first, early-exit at 3)
-  const cleanTargetName = exercise.name.toLowerCase().trim();
+  const targetKey = normalizeExerciseKey(exercise.name);
   const sortedLogs = (gymLogs || []).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   const relevantSessions: any[] = [];
   for (const log of sortedLogs) {
     if (Array.isArray(log.exercises)) {
-      const hasEx = log.exercises.some((e: any) => e.name?.toLowerCase().trim() === cleanTargetName);
+      const hasEx = log.exercises.some((e: any) => e?.name && normalizeExerciseKey(e.name) === targetKey);
       if (hasEx) {
         relevantSessions.push(log);
         if (relevantSessions.length === 3) break;
@@ -82,7 +82,7 @@ export function getOverloadSuggestion(
 
   // Extract set data for this exercise from each session
   const sessionData = relevantSessions.map(log => {
-    const ex = log.exercises.find((e: any) => e.name?.toLowerCase().trim() === exercise.name.toLowerCase().trim());
+    const ex = log.exercises.find((e: any) => e?.name && normalizeExerciseKey(e.name) === targetKey);
     const avgReps = calculateExerciseAvgReps(ex as any);
     const maxWeight = calculateExerciseMaxWeight(ex as any);
     const completedSetsCount = ex ? (ex.setsLog || []).filter((s: any) => s.completed).length : 0;

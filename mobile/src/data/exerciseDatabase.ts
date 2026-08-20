@@ -1055,10 +1055,10 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "muscle": "Lat/Med Tricep (Lateral / Medial Head)"
   },
   {
-    "id": "lat_med_tricep__lateral___medial_head__cable_glute_kickbacks",
+    "id": "glutes_cable_glute_kickbacks",
     "name": "Cable Glute Kickbacks",
     "aliases": [],
-    "muscle": "Lat/Med Tricep (Lateral / Medial Head)"
+    "muscle": "Glutes"
   },
   {
     "id": "lat_med_tricep__lateral___medial_head__cable_kickback",
@@ -2357,5 +2357,755 @@ export const EXERCISE_DATABASE: ExerciseDBEntry[] = [
     "name": "Scapular Pushup",
     "aliases": ["scap pushups", "scap pushup"],
     "muscle": "Serratus Anterior"
+  },
+  {
+    "id": "upper_chest_converging_incline_chest_press",
+    "name": "Converging Incline Chest Press",
+    "aliases": ["plate loaded incline press"],
+    "muscle": "Upper Chest"
+  },
+  {
+    "id": "mid_chest_plate_loaded_chest_press",
+    "name": "Plate-Loaded Chest Press",
+    "aliases": ["converging chest press"],
+    "muscle": "Mid Chest"
+  },
+  {
+    "id": "mid_chest_deficit_pushup",
+    "name": "Deficit Pushup",
+    "aliases": ["deficit push-ups"],
+    "muscle": "Mid Chest"
+  },
+  {
+    "id": "lat_width_single_arm_iliac_lat_pulldown",
+    "name": "Single Arm Iliac Lat Pulldown",
+    "aliases": ["iliac lat pulldown"],
+    "muscle": "Lat Width (Lats)"
+  },
+  {
+    "id": "lat_width_lat_prayer_cable_pullover",
+    "name": "Lat Prayer (Kneeling Cable Pullover)",
+    "aliases": ["lat prayer", "cable lat pullover"],
+    "muscle": "Lat Width (Lats)"
+  },
+  {
+    "id": "mid_back_kelso_shrug",
+    "name": "Kelso Shrug",
+    "aliases": ["scapular retraction row"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "mid_back_chest_supported_y_raise",
+    "name": "Chest Supported Incline Y-Raise",
+    "aliases": ["incline y raise", "lower trap y raise"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "side_delts_dual_cable_cross_body_lateral_raise",
+    "name": "Dual Cable Cross-Body Lateral Raise",
+    "aliases": ["cross body cable lateral raise"],
+    "muscle": "Side Delts"
+  },
+  {
+    "id": "side_delts_egyptian_cable_lateral_raise",
+    "name": "Egyptian Cable Lateral Raise",
+    "aliases": ["leaning cable lateral raise"],
+    "muscle": "Side Delts"
+  },
+  {
+    "id": "side_delts_lu_raise",
+    "name": "Lu Raise",
+    "aliases": ["olympic lateral raise"],
+    "muscle": "Side Delts"
+  },
+  {
+    "id": "rear_delts_high_cable_rear_delt_fly",
+    "name": "High Cable Rear Delt Fly",
+    "aliases": ["high cable rear delt crossover"],
+    "muscle": "Rear Delts"
+  },
+  {
+    "id": "long_bicep_bayesian_cable_curl",
+    "name": "Bayesian Cable Curl",
+    "aliases": ["facing away cable curl"],
+    "muscle": "Long Bicep"
+  },
+  {
+    "id": "brachialis_preacher_hammer_curl",
+    "name": "Preacher Hammer Curl",
+    "aliases": ["dumbbell preacher hammer curl"],
+    "muscle": "Brachialis"
+  },
+  {
+    "id": "long_tricep_katana_extension",
+    "name": "Katana Extension (Dual Cable Overhead)",
+    "aliases": ["katana cable extension"],
+    "muscle": "Long Tricep (Long Head)"
+  },
+  {
+    "id": "lat_med_tricep_cross_body_cable_tricep_extension",
+    "name": "Cross-Body Cable Tricep Extension",
+    "aliases": ["cuffed cable tricep extension"],
+    "muscle": "Lat/Med Tricep (Lateral / Medial Head)"
+  },
+  {
+    "id": "quads_pendulum_squat",
+    "name": "Pendulum Squat",
+    "aliases": ["pendulum squat machine"],
+    "muscle": "Quads"
+  },
+  {
+    "id": "quads_belt_squat",
+    "name": "Belt Squat",
+    "aliases": ["pit shark belt squat"],
+    "muscle": "Quads"
+  },
+  {
+    "id": "quads_heel_elevated_goblet_squat",
+    "name": "Heel-Elevated Goblet Squat",
+    "aliases": ["atg goblet squat"],
+    "muscle": "Quads"
+  },
+  {
+    "id": "hamstrings_nordic_hamstring_curl",
+    "name": "Nordic Hamstring Curl",
+    "aliases": ["nordic curl", "natural glute ham raise"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "hamstrings_b_stance_romanian_deadlift",
+    "name": "B-Stance Romanian Deadlift",
+    "aliases": ["b-stance rdl"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "glutes_kas_glute_bridge",
+    "name": "Kas Glute Bridge",
+    "aliases": ["kas bridge"],
+    "muscle": "Glutes"
+  },
+  {
+    "id": "abs_dragon_flag",
+    "name": "Dragon Flag",
+    "aliases": ["bruce lee dragon flag"],
+    "muscle": "Upper Abs"
+  },
+  {
+    "id": "abs_cable_pallof_press",
+    "name": "Cable Pallof Press",
+    "aliases": ["pallof press"],
+    "muscle": "Obliques"
+  },
+  {
+    "id": "upper_chest_incline_hex_press",
+    "name": "Incline Hex Press",
+    "aliases": ["dumbbell hex press", "incline squeeze press"],
+    "muscle": "Upper Chest"
+  },
+  {
+    "id": "upper_chest_reverse_grip_incline_barbell_press",
+    "name": "Reverse-Grip Incline Barbell Press",
+    "aliases": ["reverse grip incline bench press"],
+    "muscle": "Upper Chest"
+  },
+  {
+    "id": "upper_chest_cable_upper_chest_scoops",
+    "name": "Cable Upper Chest Scoops",
+    "aliases": ["low-to-high cable scoops", "cable chest scoops"],
+    "muscle": "Upper Chest"
+  },
+  {
+    "id": "upper_chest_smith_machine_guillotine_incline_press",
+    "name": "Smith Machine Guillotine Incline Press",
+    "aliases": ["incline guillotine press"],
+    "muscle": "Upper Chest"
+  },
+  {
+    "id": "upper_chest_single_arm_incline_cable_press",
+    "name": "Single-Arm Incline Cable Press",
+    "aliases": ["one arm incline cable press"],
+    "muscle": "Upper Chest"
+  },
+  {
+    "id": "mid_chest_spoto_press",
+    "name": "Spoto Press",
+    "aliases": ["paused bench press", "spoto bench"],
+    "muscle": "Mid Chest"
+  },
+  {
+    "id": "mid_chest_floor_dumbbell_flyes",
+    "name": "Floor Dumbbell Flyes",
+    "aliases": ["floor db fly", "dumbbell floor fly"],
+    "muscle": "Mid Chest"
+  },
+  {
+    "id": "mid_chest_cable_fly_constant_tension",
+    "name": "Cable Fly with Constant Tension",
+    "aliases": ["standing cable chest fly"],
+    "muscle": "Mid Chest"
+  },
+  {
+    "id": "mid_chest_resistance_band_pushups",
+    "name": "Resistance Band Pushups",
+    "aliases": ["banded pushups", "banded push ups"],
+    "muscle": "Mid Chest"
+  },
+  {
+    "id": "mid_chest_isometric_squeeze_machine_fly",
+    "name": "Isometric Squeeze Machine Fly",
+    "aliases": ["paused machine chest fly"],
+    "muscle": "Mid Chest"
+  },
+  {
+    "id": "lower_chest_gironda_dips",
+    "name": "Gironda Dips (Flared Elbows)",
+    "aliases": ["vince gironda dips", "pec dips"],
+    "muscle": "Lower Chest"
+  },
+  {
+    "id": "lower_chest_decline_standing_cable_crossover",
+    "name": "Decline Standing Cable Crossover",
+    "aliases": ["high to low standing cable fly"],
+    "muscle": "Lower Chest"
+  },
+  {
+    "id": "serratus_incline_dumbbell_pullover",
+    "name": "Incline Dumbbell Pullover",
+    "aliases": ["incline db pullover"],
+    "muscle": "Serratus / Pec Minor"
+  },
+  {
+    "id": "serratus_cable_serratus_punch",
+    "name": "Cable Serratus Punch",
+    "aliases": ["cable punch", "serratus push"],
+    "muscle": "Serratus / Pec Minor"
+  },
+  {
+    "id": "lower_chest_decline_hammer_strength_press",
+    "name": "Decline Hammer Strength Press",
+    "aliases": ["hammer strength decline chest press"],
+    "muscle": "Lower Chest"
+  },
+  {
+    "id": "lat_width_half_kneeling_single_arm_lat_pulldown",
+    "name": "Half-Kneeling Single-Arm Lat Pulldown",
+    "aliases": ["kneeling single arm pulldown", "one arm kneeling pulldown"],
+    "muscle": "Lat Width (Lats)"
+  },
+  {
+    "id": "lat_width_meadows_single_arm_lat_pulldown",
+    "name": "Meadows Single-Arm Lat Pulldown",
+    "aliases": ["meadows lat pulldown"],
+    "muscle": "Lat Width (Lats)"
+  },
+  {
+    "id": "lat_width_dual_rope_straight_arm_lat_pushdown",
+    "name": "Dual-Rope Straight-Arm Lat Pushdown",
+    "aliases": ["double rope lat pushdown", "long rope pullover"],
+    "muscle": "Lat Width (Lats)"
+  },
+  {
+    "id": "lat_width_cross_body_cable_lat_extension",
+    "name": "Cross-Body Cable Lat Extension",
+    "aliases": ["cross body lat pullover"],
+    "muscle": "Lat Width (Lats)"
+  },
+  {
+    "id": "lat_width_neutral_underhand_close_grip_pulldown",
+    "name": "Neutral Underhand Close-Grip Pulldown",
+    "aliases": ["close grip reverse pulldown"],
+    "muscle": "Lat Width (Lats)"
+  },
+  {
+    "id": "mid_back_seal_row",
+    "name": "Seal Row (Bench Elevated)",
+    "aliases": ["bench seal row", "elevated prone row"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "mid_back_chest_supported_incline_row_45_deg",
+    "name": "Chest-Supported Incline Row (45° Elbows)",
+    "aliases": ["incline db row 45 degrees", "flared incline row"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "mid_back_fat_gripz_barbell_bent_over_row",
+    "name": "Fat Gripz Barbell Bent-Over Row",
+    "aliases": ["thick bar bent over row"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "mid_back_wide_grip_seated_cable_row_to_sternum",
+    "name": "Wide-Grip Seated Cable Row to Sternum",
+    "aliases": ["wide cable row", "scapular retraction cable row"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "mid_back_landmine_single_arm_meadows_row",
+    "name": "Landmine Single-Arm Meadows Row",
+    "aliases": ["landmine meadows row", "one arm landmine row"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "mid_back_batwing_row",
+    "name": "Batwing Row (Paused on Bench)",
+    "aliases": ["batwing db row", "paused prone row"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "mid_back_incline_prone_dumbbell_shrug",
+    "name": "Incline Prone Dumbbell Shrug",
+    "aliases": ["prone incline shrug", "lower trap shrug"],
+    "muscle": "Mid-Back"
+  },
+  {
+    "id": "upper_traps_behind_the_back_smith_machine_shrug",
+    "name": "Behind-the-Back Smith Machine Shrug",
+    "aliases": ["smith machine rear shrug", "lee haney shrug"],
+    "muscle": "Upper Traps"
+  },
+  {
+    "id": "upper_traps_trap_bar_farmers_carry",
+    "name": "Trap Bar Farmer's Carry",
+    "aliases": ["trap bar carry", "farmer walk with trap bar"],
+    "muscle": "Upper Traps"
+  },
+  {
+    "id": "upper_traps_cable_rope_face_pull_overhead_reach",
+    "name": "Cable Rope Face Pull with Overhead Reach",
+    "aliases": ["face pull overhead press", "face pull y press"],
+    "muscle": "Upper Traps"
+  },
+  {
+    "id": "lower_back_jefferson_curl",
+    "name": "Jefferson Curl",
+    "aliases": ["jefferson curls", "spinal flexion deadlift"],
+    "muscle": "Lower Back"
+  },
+  {
+    "id": "lower_back_snatch_grip_romanian_deadlift",
+    "name": "Snatch-Grip Romanian Deadlift",
+    "aliases": ["snatch grip rdl"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "lower_back_45_degree_barbell_hyperextension",
+    "name": "45-Degree Barbell Hyperextension",
+    "aliases": ["weighted back extension", "barbell back extension"],
+    "muscle": "Lower Back"
+  },
+  {
+    "id": "lower_back_zercher_good_morning",
+    "name": "Zercher Good Morning",
+    "aliases": ["zercher good mornings"],
+    "muscle": "Lower Back"
+  },
+  {
+    "id": "side_delts_behind_the_back_cable_lateral_raise",
+    "name": "Behind-the-Back Cable Lateral Raise",
+    "aliases": ["rear cable lateral raise"],
+    "muscle": "Side Delts"
+  },
+  {
+    "id": "side_delts_dumbbell_lateral_raise_3s_eccentric",
+    "name": "Dumbbell Lateral Raise (3s Eccentric)",
+    "aliases": ["slow eccentric lateral raise", "tempo db lateral raise"],
+    "muscle": "Side Delts"
+  },
+  {
+    "id": "side_delts_kneeling_cable_lateral_raise",
+    "name": "Kneeling Cable Lateral Raise",
+    "aliases": ["half kneeling lateral raise"],
+    "muscle": "Side Delts"
+  },
+  {
+    "id": "side_delts_bottoms_up_kettlebell_lateral_raise",
+    "name": "Bottoms-Up Kettlebell Lateral Raise",
+    "aliases": ["kettlebell lateral raise"],
+    "muscle": "Side Delts"
+  },
+  {
+    "id": "side_delts_seated_chest_supported_lateral_raise",
+    "name": "Seated Chest-Supported Lateral Raise",
+    "aliases": ["chest supported lateral raise", "strict seated lateral raise"],
+    "muscle": "Side Delts"
+  },
+  {
+    "id": "rear_delts_prone_incline_rear_delt_w_raise",
+    "name": "Prone Incline Rear Delt W-Raise",
+    "aliases": ["incline w raise", "rear delt w raise"],
+    "muscle": "Rear Delts"
+  },
+  {
+    "id": "rear_delts_cross_cable_rear_delt_fly_no_handles",
+    "name": "Cross-Cable Rear Delt Fly (No Handles)",
+    "aliases": ["cable rear delt crossover", "cuff rear delt fly"],
+    "muscle": "Rear Delts"
+  },
+  {
+    "id": "rear_delts_single_arm_cable_rear_delt_pull",
+    "name": "Single-Arm Cable Rear Delt Pull",
+    "aliases": ["one arm rear delt cable fly"],
+    "muscle": "Rear Delts"
+  },
+  {
+    "id": "rear_delts_skiier_rear_delt_swings",
+    "name": "Skiier Rear Delt Swings",
+    "aliases": ["rear delt swings", "meadows rear delt swings"],
+    "muscle": "Rear Delts"
+  },
+  {
+    "id": "rear_delts_incline_bench_rear_delt_row",
+    "name": "Incline Bench Rear Delt Row",
+    "aliases": ["incline flared db row"],
+    "muscle": "Rear Delts"
+  },
+  {
+    "id": "front_delts_z_press",
+    "name": "Z-Press (Seated on Floor)",
+    "aliases": ["seated z press", "floor overhead press"],
+    "muscle": "Front Delts"
+  },
+  {
+    "id": "front_delts_half_kneeling_landmine_shoulder_press",
+    "name": "Half-Kneeling Landmine Shoulder Press",
+    "aliases": ["half kneeling landmine press"],
+    "muscle": "Front Delts"
+  },
+  {
+    "id": "front_delts_dumbbell_front_raise_with_pronation",
+    "name": "Dumbbell Front Raise with Pronation",
+    "aliases": ["thumbs down front raise", "pronated db front raise"],
+    "muscle": "Front Delts"
+  },
+  {
+    "id": "shoulders_kettlebell_halos",
+    "name": "Kettlebell Halos",
+    "aliases": ["kb halos", "shoulder halo"],
+    "muscle": "Shoulders"
+  },
+  {
+    "id": "shoulders_cable_external_shoulder_rotation",
+    "name": "Cable External Shoulder Rotation",
+    "aliases": ["rotator cuff external rotation"],
+    "muscle": "Shoulders"
+  },
+  {
+    "id": "shoulders_cuban_press",
+    "name": "Cuban Press",
+    "aliases": ["cuban rotation press"],
+    "muscle": "Shoulders"
+  },
+  {
+    "id": "long_bicep_incline_dumbbell_curl_with_supination",
+    "name": "Incline Dumbbell Curl with Supination",
+    "aliases": ["incline supinating db curl"],
+    "muscle": "Long Bicep"
+  },
+  {
+    "id": "brachialis_cable_rope_hammer_curl",
+    "name": "Cable Rope Hammer Curl",
+    "aliases": ["rope hammer curl"],
+    "muscle": "Brachialis"
+  },
+  {
+    "id": "brachialis_zottman_curl",
+    "name": "Zottman Curl",
+    "aliases": ["zottman curls"],
+    "muscle": "Brachialis"
+  },
+  {
+    "id": "short_bicep_ez_bar_21s",
+    "name": "EZ-Bar 21s (7-7-7)",
+    "aliases": ["21s bicep curl", "bicep 21s"],
+    "muscle": "Short Bicep (Inner head)"
+  },
+  {
+    "id": "short_bicep_hercules_cable_curl",
+    "name": "Hercules Cable Curl (High Pulley)",
+    "aliases": ["high cable curl", "overhead bicep cable curl"],
+    "muscle": "Short Bicep (Inner head)"
+  },
+  {
+    "id": "short_bicep_fat_gripz_dumbbell_preacher_curl",
+    "name": "Fat Gripz Dumbbell Preacher Curl",
+    "aliases": ["thick bar preacher curl"],
+    "muscle": "Short Bicep (Inner head)"
+  },
+  {
+    "id": "brachialis_cross_body_pinwheel_curl",
+    "name": "Cross-Body Pinwheel Curl",
+    "aliases": ["pinwheel curl", "cross body db hammer curl"],
+    "muscle": "Brachialis"
+  },
+  {
+    "id": "lat_med_tricep_dual_rope_tricep_pushdown",
+    "name": "Dual-Rope Tricep Pushdown",
+    "aliases": ["double rope pushdown", "long rope pushdowns"],
+    "muscle": "Lat/Med Tricep (Lateral / Medial Head)"
+  },
+  {
+    "id": "long_tricep_floor_ez_bar_skull_crusher_dead_stop",
+    "name": "Floor EZ-Bar Skull Crusher (Dead-Stop)",
+    "aliases": ["dead stop skull crusher", "floor skull crushers"],
+    "muscle": "Long Tricep (Long Head)"
+  },
+  {
+    "id": "lat_med_tricep_single_arm_reverse_grip_pushdown",
+    "name": "Single-Arm Reverse Grip Pushdown",
+    "aliases": ["one arm underhand tricep pushdown"],
+    "muscle": "Lat/Med Tricep (Lateral / Medial Head)"
+  },
+  {
+    "id": "long_tricep_two_handed_overhead_db_extension",
+    "name": "Two-Handed Overhead DB Extension",
+    "aliases": ["seated two arm db overhead extension"],
+    "muscle": "Long Tricep (Long Head)"
+  },
+  {
+    "id": "long_tricep_incline_cable_skull_crusher_30_deg",
+    "name": "Incline Cable Skull Crusher (30° Bench)",
+    "aliases": ["incline bench cable skull crusher"],
+    "muscle": "Long Tricep (Long Head)"
+  },
+  {
+    "id": "lat_med_tricep_barbell_bodyweight_tricep_extension",
+    "name": "Barbell Bodyweight Tricep Extension",
+    "aliases": ["bodyweight skull crusher", "rack tricep extension"],
+    "muscle": "Lat/Med Tricep (Lateral / Medial Head)"
+  },
+  {
+    "id": "lat_med_tricep_tate_press_on_flat_bench",
+    "name": "Tate Press on Flat Bench",
+    "aliases": ["dumbbell tate press"],
+    "muscle": "Lat/Med Tricep (Lateral / Medial Head)"
+  },
+  {
+    "id": "forearms_behind_the_back_barbell_wrist_curl",
+    "name": "Behind-the-Back Barbell Wrist Curl",
+    "aliases": ["standing wrist curl"],
+    "muscle": "Forearm Flexors"
+  },
+  {
+    "id": "forearms_reverse_barbell_wrist_curl",
+    "name": "Reverse Barbell Wrist Curl",
+    "aliases": ["overhand wrist curl"],
+    "muscle": "Forearm Extensors"
+  },
+  {
+    "id": "forearms_wrist_roller",
+    "name": "Wrist Roller (Plate on Rope)",
+    "aliases": ["wrist roller extension"],
+    "muscle": "Forearms"
+  },
+  {
+    "id": "forearms_dumbbell_finger_curls",
+    "name": "Dumbbell Finger Curls",
+    "aliases": ["finger curls"],
+    "muscle": "Forearms"
+  },
+  {
+    "id": "forearms_pinch_grip_plate_hold",
+    "name": "Pinch-Grip Plate Hold",
+    "aliases": ["plate pinch hold"],
+    "muscle": "Forearms"
+  },
+  {
+    "id": "forearms_towel_grip_pull_ups",
+    "name": "Towel Grip Pull-ups",
+    "aliases": ["towel pullups"],
+    "muscle": "Forearms"
+  },
+  {
+    "id": "quads_bulgarian_split_squat_front_foot_elevated",
+    "name": "Bulgarian Split Squat (Front Foot Elevated)",
+    "aliases": ["deficit bulgarian split squat"],
+    "muscle": "Quads"
+  },
+  {
+    "id": "quads_cyclist_squat_heels_high_wedge",
+    "name": "Cyclist Squat (Heels High Wedge)",
+    "aliases": ["cyclist squat", "vmo squat"],
+    "muscle": "Quad Teardrop"
+  },
+  {
+    "id": "quads_high_box_step_up",
+    "name": "High Box Step-Up",
+    "aliases": ["deficit step up", "weighted high step up"],
+    "muscle": "Quads"
+  },
+  {
+    "id": "quads_spanish_squat_band_behind_knees",
+    "name": "Spanish Squat (Band Behind Knees)",
+    "aliases": ["banded spanish squat"],
+    "muscle": "Quads"
+  },
+  {
+    "id": "quads_zercher_squat",
+    "name": "Zercher Squat",
+    "aliases": ["barbell zercher squat"],
+    "muscle": "Quads"
+  },
+  {
+    "id": "hamstrings_seated_leg_curl_torso_lean",
+    "name": "Seated Leg Curl with Torso Lean",
+    "aliases": ["forward lean seated leg curl"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "hamstrings_deficit_romanian_deadlift",
+    "name": "Deficit Romanian Deadlift (Standing on Plate)",
+    "aliases": ["deficit rdl"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "hamstrings_single_leg_kettlebell_rdl",
+    "name": "Single-Leg Kettlebell RDL",
+    "aliases": ["one leg kb rdl"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "hamstrings_copenhagen_plank",
+    "name": "Copenhagen Plank",
+    "aliases": ["copenhagen adductor plank"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "hamstrings_glute_ham_raise_ghr",
+    "name": "Glute-Ham Raise (GHR Machine)",
+    "aliases": ["ghr raise"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "hamstrings_swiss_ball_leg_curl",
+    "name": "Swiss Ball Leg Curl",
+    "aliases": ["stability ball leg curl", "swiss ball hamstring curl"],
+    "muscle": "Hamstrings"
+  },
+  {
+    "id": "glutes_single_leg_hip_thrust",
+    "name": "Single-Leg Barbell / DB Hip Thrust",
+    "aliases": ["one leg hip thrust"],
+    "muscle": "Glutes"
+  },
+  {
+    "id": "glutes_cable_pull_through",
+    "name": "Cable Pull-Through",
+    "aliases": ["rope pull through"],
+    "muscle": "Glutes"
+  },
+  {
+    "id": "glutes_curtsy_lunge",
+    "name": "Curtsy Lunge",
+    "aliases": ["dumbbell curtsy lunge"],
+    "muscle": "Glutes"
+  },
+  {
+    "id": "glutes_frog_pumps",
+    "name": "Frog Pumps",
+    "aliases": ["dumbbell frog pump"],
+    "muscle": "Glutes"
+  },
+  {
+    "id": "glutes_eccentric_step_down",
+    "name": "Eccentric Step-Down",
+    "aliases": ["peterson step down"],
+    "muscle": "Glutes"
+  },
+  {
+    "id": "calves_single_leg_standing_db_calf_raise",
+    "name": "Single-Leg Standing DB Calf Raise",
+    "aliases": ["one leg standing calf raise"],
+    "muscle": "Gastrocnemius"
+  },
+  {
+    "id": "calves_leg_press_calf_extension",
+    "name": "Leg Press Calf Extension",
+    "aliases": ["45 degree leg press calf press"],
+    "muscle": "Gastrocnemius"
+  },
+  {
+    "id": "calves_seated_tibialis_bar_raise",
+    "name": "Seated Tibialis Bar Raise",
+    "aliases": ["tib bar raise"],
+    "muscle": "Tibialis Anterior"
+  },
+  {
+    "id": "calves_deficit_calf_raise_3s_stretch",
+    "name": "Deficit Calf Raise with 3-Second Stretch Pause",
+    "aliases": ["paused deficit calf raise"],
+    "muscle": "Calves"
+  },
+  {
+    "id": "lower_abs_garhammer_raise",
+    "name": "Garhammer Raise",
+    "aliases": ["hanging garhammer raise"],
+    "muscle": "Lower Abs"
+  },
+  {
+    "id": "abs_decline_bench_dragon_flag",
+    "name": "Decline Bench Dragon Flag",
+    "aliases": ["dragon flag on decline"],
+    "muscle": "Upper Abs"
+  },
+  {
+    "id": "upper_abs_swiss_ball_crunch_extended_stretch",
+    "name": "Swiss Ball Crunch (Extended Stretch)",
+    "aliases": ["stability ball crunch"],
+    "muscle": "Upper Abs"
+  },
+  {
+    "id": "lower_abs_l_sit_hold_parallettes",
+    "name": "L-Sit Hold on Parallettes",
+    "aliases": ["parallette l sit hold"],
+    "muscle": "Lower Abs"
+  },
+  {
+    "id": "abs_ab_wheel_rollout_to_pike",
+    "name": "Ab Wheel Rollout to Pike",
+    "aliases": ["rollout pike"],
+    "muscle": "Upper Abs"
+  },
+  {
+    "id": "abs_hollow_body_rock",
+    "name": "Hollow Body Rock",
+    "aliases": ["gymnastic hollow rock"],
+    "muscle": "Upper Abs"
+  },
+  {
+    "id": "obliques_landmine_180s",
+    "name": "Landmine 180s (Rotations)",
+    "aliases": ["landmine rotation", "landmine twists"],
+    "muscle": "Obliques"
+  },
+  {
+    "id": "obliques_standing_low_to_high_cable_woodchopper",
+    "name": "Standing Low-to-High Cable Woodchopper",
+    "aliases": ["diagonal cable woodchopper"],
+    "muscle": "Obliques"
+  },
+  {
+    "id": "obliques_side_plank_with_hip_dips",
+    "name": "Side Plank with Hip Dips",
+    "aliases": ["side plank hip drops"],
+    "muscle": "Obliques"
+  },
+  {
+    "id": "obliques_heavy_suitcase_carry",
+    "name": "Heavy Suitcase Carry",
+    "aliases": ["single arm farmer walk"],
+    "muscle": "Obliques"
+  },
+  {
+    "id": "obliques_kettlebell_windmill",
+    "name": "Kettlebell Windmill",
+    "aliases": ["kb windmill"],
+    "muscle": "Obliques"
+  },
+  {
+    "id": "abs_bird_dog_on_bench_band",
+    "name": "Bird Dog on Bench with Resistance Band",
+    "aliases": ["banded bird dog"],
+    "muscle": "Transverse Abs"
   }
 ];

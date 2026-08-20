@@ -22,6 +22,7 @@ import { clearAllDomainCaches } from "../../utils/domainCache";
 import { registerForPushNotificationsAsync } from "../../services/notifications";
 import { handleSyncError } from '../../utils/errorUtils';
 import { parseTask, parseHabit, parseHabitLog } from "../../utils/schemaGuards";
+import { syncXPWithFirestore } from "../../services/xpSystem";
 
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -310,6 +311,20 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
         }
       },
       scheduleListenerRestart("habitLogs")
+    ));
+
+    // Cloud Database XP Sync: always loads user's permanent XP progress on login/reconnect
+    unsubs.push(onSnapshot(
+      doc(db, COLLECTION.USER_PROFILES, uid),
+      snap => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (typeof data?.xp === 'number') {
+            syncXPWithFirestore(data.xp);
+          }
+        }
+      },
+      scheduleListenerRestart("user_profiles")
     ));
 
     return () => {

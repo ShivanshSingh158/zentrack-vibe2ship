@@ -32,6 +32,7 @@ import { springs } from '../../theme/motion';
 import { feedback } from '../../utils/haptics';
 import { useMobileData } from '../../contexts/MobileDataContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { awardXP } from '../../services/xpSystem';
 
 export default function WorkoutSummaryScreen() {
   const insets = useSafeAreaInsets();
@@ -82,6 +83,9 @@ export default function WorkoutSummaryScreen() {
           }
         }
         if (todayMax > pastMax) { found = { name: ex.name, weight: todayMax }; break; }
+      }
+      if (found) {
+        awardXP('GYM_PR').catch(() => {});
       }
       setNewPR(found);
     }, 300);

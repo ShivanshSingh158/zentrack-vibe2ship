@@ -51,7 +51,7 @@ type Level = {
   description: string;
 };
 
-import { getXPState, LEVEL_TITLES, LEVEL_THRESHOLDS } from '../services/xpSystem';
+import { getXPState, LEVEL_TITLES, LEVEL_THRESHOLDS, subscribeXPChanges } from '../services/xpSystem';
 
 const LEVEL_COLORS: [string, string][] = [
   ['#34d399', '#22d3ee'], // 0
@@ -347,6 +347,10 @@ export default function XPConstellationScreen() {
     getXPState().then(state => {
       setCurrentXP(state.xp);
     });
+    const unsub = subscribeXPChanges(({ xp: newXp }) => {
+      setCurrentXP(newXp);
+    });
+    return unsub;
   }, []);
 
   const currentLevelIndex = useMemo(() => {

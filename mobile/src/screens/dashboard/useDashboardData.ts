@@ -27,6 +27,7 @@ import { NextClassData } from '../../components/Dashboard/UnifiedLifeWidget';
 import { calculateAppStreak } from '../../utils/streakUtils';
 import { formatLocalDateStr } from '../../utils/dateUtils';
 import { getBootManifestSync, loadBootManifest, updateL1Cache } from '../../utils/bootManifest';
+import { subscribeXPChanges } from '../../services/xpSystem';
 
 const DEFAULT_LAYOUT: LayoutItem[] = [
   { id: 'quote', hidden: false },
@@ -159,6 +160,17 @@ export function useDashboardData() {
       setQuote(await getDailyQuote());
     }
   }, [user?.uid]);
+
+  // ── Real-time XP sync across all screens ──────────────────────────────────
+  useEffect(() => {
+    const unsub = subscribeXPChanges(({ xp: newXp, added }) => {
+      setXp(cur => {
+        if (added > 0) setXpGain(added);
+        return newXp;
+      });
+    });
+    return unsub;
+  }, []);
 
   // ── Quote + XP load on focus ───────────────────────────────────────────────
   useFocusEffect(

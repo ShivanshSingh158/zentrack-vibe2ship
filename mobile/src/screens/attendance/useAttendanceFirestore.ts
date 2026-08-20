@@ -18,6 +18,7 @@ import { handleSyncError } from '../../utils/errorUtils';
 import { safeWrite } from '../../utils/safeWrite';
 import { queueWrite } from '../../services/offlineSync';
 import { DAY_NAMES } from './attendanceConstants';
+import { awardXP } from '../../services/xpSystem';
 
 // Set the notification handler once at module level (previously in AttendanceScreen top-level)
 Notifications.setNotificationHandler({
@@ -79,6 +80,9 @@ export function useAttendanceFirestore({
       // Optimistically update UI
       optimisticUpdateAttendance(subject.id, subjectUpdates);
       optimisticAddAttendanceLog(newLog);
+      if (action === 'attended') {
+        awardXP('ATTENDANCE_LOG').catch(() => {});
+      }
 
       // WhatsApp Pattern: direct online write + offline queue fallback
       safeWrite(

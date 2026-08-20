@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE, SHADOW } from '../../theme/tokens';
 import { useGymLog, todayStr } from '../../hooks/useGymLog';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
-import { resolveMuscleColor, hexToRgba, calculateExerciseMaxWeight, calculateExerciseAvgReps, calculateHistorical1RM } from '../../utils/gymUtils';
+import { resolveMuscleColor, hexToRgba, calculateExerciseMaxWeight, calculateExerciseAvgReps, calculateHistorical1RM, getPreviousExerciseSession, resolveExerciseTargetMuscle, getExerciseSwapAlternatives } from '../../utils/gymUtils';
 import { hapticLight, hapticMedium, hapticSuccess } from '../../utils/haptics';
 import { callProxy } from '../../services/geminiProxy';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
@@ -132,6 +132,12 @@ export default function ActiveLoggingScreen() {
   const exercise = activeExercises[safeIdx];
   const exercises = activeExercises;
 
+  const realExerciseIndex = useMemo(() => {
+    if (!log?.exercises || !exercise) return safeIdx;
+    const idx = log.exercises.findIndex(e => e.name === exercise.name);
+    return idx !== -1 ? idx : safeIdx;
+  }, [log?.exercises, exercise?.name, safeIdx]);
+
   // Superset partner exercise lookup
   const partnerExercise = useMemo(() => {
     if (!exercise?.supersetGroup) return null;
@@ -168,101 +174,46 @@ export default function ActiveLoggingScreen() {
       liveInputsRef.current = {};
     }
 
-    const lastSessionSets = exercise.lastSessionSets || [];
-    const lastValidPastSet = [...lastSessionSets].reverse().find(s => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0));
-
-    // Scan all past gymLogs to find the best logged weight and sets for this exercise (by ID or normalized name)
-    let historicalWeight: number | null = null;
-    let historicalSets: any[] | null = null;
-    if (gymLogs && exercise) {
-      const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const exNameNorm = norm(exercise.name);
-      const exNameRoot = exNameNorm.replace(/s$/, '');
-
-      const pastLogs = gymLogs
-        .filter(l => l.date < (date || todayStr()) && Array.isArray(l.exercises))
-        .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-      for (const pLog of pastLogs) {
-        const pEx = (pLog.exercises || []).find((e: any) => {
-          if (e.exerciseId && exercise.exerciseId && e.exerciseId === exercise.exerciseId) return true;
-          const pNameNorm = norm(e.name);
-          return pNameNorm === exNameNorm || (exNameRoot && pNameNorm.replace(/s$/, '') === exNameRoot);
-        });
-
-        if (pEx?.setsLog && pEx.setsLog.length > 0) {
-          const setsWithW = pEx.setsLog
-            .map((st: any) => {
-              const w = st?.weight !== undefined && st?.weight !== null ? st.weight : st?.weightKg;
-              return (w !== null && w !== undefined && !isNaN(Number(w)) && Number(w) > 0) ? Number(w) : null;
-            })
-            .filter((w: number | null): w is number => w !== null);
-
-          if (setsWithW.length > 0) {
-            if (!historicalSets) historicalSets = pEx.setsLog;
-            const maxSessionW = Math.max(...setsWithW);
-            if (!historicalWeight || maxSessionW > historicalWeight) {
-              historicalWeight = maxSessionW;
-            }
-          }
-        }
-      }
-    }
+    const prevSession = getPreviousExerciseSession(exercise.name, gymLogs, date || todayStr());
+    const lastSessionSets = exercise.lastSessionSets || prevSession?.sets || [];
+    const lastValidPastSet = lastSessionSets.length > 0 ? lastSessionSets[lastSessionSets.length - 1] : null;
 
     setSetInputs(prev => {
       return exercise.setsLog.map((s, idx) => {
-        // ── COMPLETED SETS: use persisted weight, but fall back gracefully ──
-        // Priority: s.weight (Firestore) → prev state (what was showing) → historical weight
+        // ── COMPLETED SETS: use persisted weight/reps from log ──
         if (s.completed) {
           const savedW = (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0) ? String(s.weight) : '';
           const savedR = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0) ? String(s.reps) : '';
-          const prevW = prev?.[idx]?.weight || '';
-          const prevR = prev?.[idx]?.reps || '';
-          // Build a historical fallback for weight (same logic as incomplete sets)
-          const lastSet = lastSessionSets[idx] || historicalSets?.[idx] || lastValidPastSet;
-          const histW = (lastSet?.weight != null && Number(lastSet.weight) > 0) ? String(lastSet.weight)
-                      : (historicalWeight != null && historicalWeight > 0) ? String(historicalWeight) : '';
           return {
-            weight: savedW || prevW || histW,
-            reps: savedR || prevR || '',
+            weight: savedW || prev?.[idx]?.weight || '',
+            reps: savedR || prev?.[idx]?.reps || '',
           };
         }
 
-        // ── INCOMPLETE SETS: respect user edits first, then prefill from history ──
+        // ── INCOMPLETE SETS: respect user edits first, then prefill from exact last session ──
         const edited = userEditedFieldsRef.current[idx];
         const existingWeight = prev?.[idx]?.weight;
         const existingReps = prev?.[idx]?.reps;
-        // The LIVE value the user is currently typing (synced on every keystroke)
         const liveWeight = liveInputsRef.current[idx]?.weight;
         const liveReps = liveInputsRef.current[idx]?.reps;
 
-        const lastSet = lastSessionSets[idx] || historicalSets?.[idx] || lastValidPastSet;
+        const lastSet = lastSessionSets[idx] || lastValidPastSet;
 
-        // 1. Direct weight on set
+        // 1. Weight: set's existing weight -> previous session set weight -> previous session last weight
         let initialWeight = (s.weight !== null && s.weight !== undefined && Number(s.weight) > 0)
           ? String(s.weight)
           : '';
 
-        // 2. Weight from last session for THIS specific set or historical max
-        if (!initialWeight) {
-          if (lastSet?.weight != null && Number(lastSet.weight) > 0) {
-            initialWeight = String(lastSet.weight);
-          } else if (idx === 0 && historicalWeight != null && historicalWeight > 0) {
-            initialWeight = String(historicalWeight);
-          }
+        if (!initialWeight && lastSet?.weight != null && Number(lastSet.weight) > 0) {
+          initialWeight = String(lastSet.weight);
         }
 
-        // 4. Reps
+        // 2. Reps: set's existing reps -> previous session set reps -> default target reps
+        const defaultTargetReps = String(parseInt(String(exercise.targetReps || '8-12').split("-")[0], 10) || 8);
         let initialReps = (s.reps !== null && s.reps !== undefined && Number(s.reps) > 0)
           ? String(s.reps)
-          : (lastSet?.reps ? String(lastSet.reps) : String(parseInt(String(exercise.targetReps || '8-12').split("-")[0], 10) || 8));
+          : (lastSet?.reps ? String(lastSet.reps) : defaultTargetReps);
 
-        // 5. Overload suggestion for first set if no weight found at all
-        if (idx === 0 && !initialWeight && overloadSuggestion?.recommended) {
-          initialWeight = String(overloadSuggestion.recommended);
-        }
-
-        // If user has manually edited this field, use their live-typed value
         return {
           weight: edited?.weight ? (liveWeight !== undefined ? liveWeight : (existingWeight || '')) : (initialWeight || existingWeight || ''),
           reps: edited?.reps ? (liveReps !== undefined ? liveReps : (existingReps || '')) : (initialReps || existingReps || ''),
@@ -276,102 +227,32 @@ export default function ActiveLoggingScreen() {
     if (!showSwapModal || !exercise) return;
     let isCancelled = false;
 
-    const origName = exercise.name || 'Exercise';
-    const rawMuscle = exercise.muscle || 'Chest';
-    const inferredMuscle = (rawMuscle === 'None' || !rawMuscle)
-      ? (origName.toLowerCase().includes('bicep') ? 'Biceps' : origName.toLowerCase().includes('tricep') ? 'Triceps' : origName.toLowerCase().includes('row') || origName.toLowerCase().includes('pull') ? 'Back' : origName.toLowerCase().includes('press') || origName.toLowerCase().includes('dip') ? 'Chest' : origName.toLowerCase().includes('squat') || origName.toLowerCase().includes('leg') ? 'Quads' : origName.toLowerCase().includes('shoulder') || origName.toLowerCase().includes('raise') ? 'Shoulders' : 'Chest')
-      : rawMuscle;
-
-    const origNameLower = origName.toLowerCase().trim();
-    const muscleLower = inferredMuscle.toLowerCase();
-
-    // 1. Find matching exercises from the workout template across all days
-    const templateMatches: any[] = [];
-    const seenNames = new Set<string>();
-    seenNames.add(origNameLower);
-
-    const DAY_NAMES: Record<number, string> = {
-      1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday', 5: 'Friday', 6: 'Saturday', 7: 'Sunday'
-    };
-
-    const daysToScan = GYM_PLAN;
-    for (const d of daysToScan) {
-      if (!d || !d.exercises) continue;
-      const dayLabel = DAY_NAMES[d.dayIndex] ? `${DAY_NAMES[d.dayIndex]} (${d.name || d.subtitle || ''})` : (d.name || 'Routine Day');
-      for (const ex of d.exercises) {
-        const exName = (ex.name || '').trim();
-        const exNameLower = exName.toLowerCase();
-        if (!exName || seenNames.has(exNameLower)) continue;
-        const exMuscleLower = (ex.muscle || '').toLowerCase();
-        const isMatch = exMuscleLower === muscleLower ||
-          (muscleLower.includes('tricep') && exMuscleLower.includes('tricep')) ||
-          (muscleLower.includes('bicep') && (exMuscleLower.includes('bicep') || exMuscleLower.includes('brachialis'))) ||
-          (muscleLower.includes('chest') && exMuscleLower.includes('chest')) ||
-          (muscleLower.includes('back') && (exMuscleLower.includes('back') || exMuscleLower.includes('lat'))) ||
-          (muscleLower.includes('delt') && (exMuscleLower.includes('delt') || exMuscleLower.includes('shoulder'))) ||
-          (muscleLower.includes('quad') && exMuscleLower.includes('quad')) ||
-          (muscleLower.includes('ham') && exMuscleLower.includes('ham')) ||
-          (muscleLower.includes('calf') && (exMuscleLower.includes('calf') || exMuscleLower.includes('soleus'))) ||
-          (muscleLower.includes('ab') && (exMuscleLower.includes('ab') || exMuscleLower.includes('core')));
-        
-        if (isMatch) {
-          seenNames.add(exNameLower);
-          templateMatches.push({
-            name: exName,
-            muscle: ex.muscle || inferredMuscle,
-            targetSets: ex.targetSets || 3,
-            targetReps: ex.targetReps || '8-12',
-            restTimeSecs: (ex as any).restTimeSecs || 90,
-            videoId: ex.videoId,
-            isFromTemplate: true,
-            dayName: dayLabel,
-          });
-        }
-      }
-    }
-
-    // 2. Offline exercise database matches
-    let alternativesList = EXERCISE_DATABASE.filter(db => db.muscle.toLowerCase() === muscleLower);
-    if (alternativesList.length === 0) {
-      alternativesList = EXERCISE_DATABASE.filter(db => 
-        db.muscle.toLowerCase().includes(muscleLower) || 
-        muscleLower.includes(db.muscle.toLowerCase())
-      );
-    }
-    if (alternativesList.length === 0) {
-      alternativesList = EXERCISE_DATABASE.filter(db => db.muscle.includes('Chest'));
-    }
-    
-    const dbList = alternativesList
-      .filter(alt => !seenNames.has(alt.name.toLowerCase().trim()))
-      .slice(0, 6);
+    const { targetMuscle, canonicalGroup } = resolveExerciseTargetMuscle(exercise.name, exercise.muscle);
+    const swaps = getExerciseSwapAlternatives(exercise.name, exercise.muscle);
 
     setAiSwapList([]);
     setIsAiSwapLoading(true);
 
     async function loadAllSwaps() {
       try {
-        const combined = [...templateMatches];
-        for (const alt of dbList) {
-          let vidId = (alt as any).videoId && (alt as any).videoId !== '1' ? (alt as any).videoId : undefined;
-          if (!vidId) {
-            vidId = (await autoResolveExerciseVideoId(alt.name)) || '';
-          }
-          combined.push({
-            name: alt.name,
-            muscle: inferredMuscle,
-            targetSets: 3,
-            targetReps: '8-12',
-            restTimeSecs: 60,
-            videoId: vidId,
-            isFromTemplate: false,
-          });
-        }
-        
+        const enriched = await Promise.all(
+          swaps.map(async (alt) => {
+            let vidId = alt.videoId && alt.videoId !== '1' ? alt.videoId : undefined;
+            if (!vidId) {
+              vidId = (await autoResolveExerciseVideoId(alt.name)) || '';
+            }
+            return {
+              ...alt,
+              videoId: vidId,
+            };
+          })
+        );
+
         if (isCancelled) return;
-        setAiSwapList(combined);
+        setAiSwapList(enriched);
       } catch (e) {
         console.warn('[Swap Load] Error:', e);
+        if (!isCancelled) setAiSwapList(swaps);
       } finally {
         if (!isCancelled) setIsAiSwapLoading(false);
       }
@@ -379,7 +260,7 @@ export default function ActiveLoggingScreen() {
 
     loadAllSwaps();
     return () => { isCancelled = true; };
-  }, [showSwapModal, exercise]);
+  }, [showSwapModal, exercise?.name, exercise?.muscle]);
 
   // S.A.R.A AI Auto-Form Video ID Resolver & Automatic Video Mismatch Auto-Healer
   useEffect(() => {
@@ -407,35 +288,12 @@ export default function ActiveLoggingScreen() {
     const currentEx = exercisesList[safeExerciseIdx];
     if (!currentEx) return null;
 
-    // First check if the hook pre-filled lastSessionSets from history
-    if (currentEx.lastSessionSets && currentEx.lastSessionSets.length > 0) {
-      const completed = currentEx.lastSessionSets.filter((s: any) => (s.weight != null && Number(s.weight) > 0) || (s.reps != null && Number(s.reps) > 0));
-      if (completed.length > 0) {
-        const weightsWithVal = currentEx.lastSessionSets.filter((s: any) => s.weight != null && Number(s.weight) > 0);
-        const maxWeight = weightsWithVal.length > 0 ? Math.max(...weightsWithVal.map((s: any) => Number(s.weight))) : 0;
-        const avgReps = Math.round(completed.reduce((sum: number, s: any) => sum + (Number(s.reps) || 0), 0) / completed.length) || 0;
-        return `Last time: ${completed.length} sets × ${avgReps} reps ${maxWeight > 0 ? `@ ${maxWeight}kg` : ''}`;
-      }
-    }
+    const prevSession = getPreviousExerciseSession(currentEx.name, gymLogs, date || todayStr());
+    if (!prevSession || prevSession.sets.length === 0) return null;
 
-    // Fall back to searching gym logs for completed sets
-    const pastLogs = gymLogs
-      .filter(l => l.date < (date || todayStr()) && l.exercises)
-      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-    for (const pLog of pastLogs) {
-      const pastEx = pLog.exercises!.find(e => e.exerciseId === currentEx.exerciseId || e.name.toLowerCase() === currentEx.name.toLowerCase());
-      if (pastEx?.setsLog?.length > 0) {
-        const completedSets = pastEx.setsLog.filter((s: any) => s.completed || (s.weight != null && Number(s.weight) > 0));
-        if (completedSets.length === 0) continue;
-
-        const weightsWithVal = pastEx.setsLog.filter((s: any) => s.weight != null && Number(s.weight) > 0);
-        const maxWeight = weightsWithVal.length > 0 ? Math.max(...weightsWithVal.map((s: any) => Number(s.weight))) : 0;
-        const avgReps = Math.round(completedSets.reduce((sum: number, s: any) => sum + (Number(s.reps) || 0), 0) / completedSets.length) || 0;
-        return `Last time: ${completedSets.length} sets × ${avgReps} reps ${maxWeight > 0 ? `@ ${maxWeight}kg` : ''}`;
-      }
-    }
-    return null;
+    const weightPart = prevSession.lastWeight ? `@ ${prevSession.lastWeight}kg` : '';
+    const repsPart = prevSession.avgReps ? `${prevSession.avgReps} reps` : '';
+    return `Last time: ${prevSession.sets.length} sets ${repsPart ? `× ${repsPart}` : ''} ${weightPart}`.trim();
   }, [log, activeExIndex, gymLogs, date]);
 
 
@@ -488,13 +346,6 @@ export default function ActiveLoggingScreen() {
 
   const activeSetIndex = exercise.setsLog.findIndex(s => !s.completed);
   const isAllComplete = activeSetIndex === -1;
-
-  // BUG FIX #2: Find the real array index in log.exercises (not the filtered list)
-  // so updateExercise always gets the correct position even when some are skipped.
-  // Use the stable _idx injected by useGymLog if available, otherwise fallback.
-  const realExerciseIndex = exercise._idx !== undefined ? exercise._idx : log.exercises.findIndex(
-    ex => ex.exerciseId === exercise.exerciseId && ex.name === exercise.name
-  );
 
   const handleBack = () => {
     hapticMedium();
@@ -1218,7 +1069,9 @@ export default function ActiveLoggingScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.modalSubtitle}>Recommended Alternatives for {exercise.muscle}</Text>
+                <Text style={styles.modalSubtitle}>
+                  Alternatives for {resolveExerciseTargetMuscle(exercise.name, exercise.muscle).targetMuscle}
+                </Text>
 
                 {isAiSwapLoading && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 8, paddingHorizontal: 4 }}>

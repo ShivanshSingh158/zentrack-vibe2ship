@@ -12,7 +12,7 @@ import { useGymLog, todayStr, planDayIndexForDate, getCustomPlanDay } from '../.
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { GYM_PLAN, GYM_PLAN_PPL, GYM_PLAN_ARNOLD, EXERCISE_ALTERNATIVES } from '../../data/gymPlan';
 import { EXERCISE_DATABASE } from '../../data/exerciseDatabase';
-import { resolveMuscleColor, hexToRgba, canonicalizeMuscle } from '../../utils/gymUtils';
+import { resolveMuscleColor, hexToRgba, canonicalizeMuscle, resolveExerciseTargetMuscle, getExerciseSwapAlternatives } from '../../utils/gymUtils';
 import { hapticMedium, hapticSuccess, hapticLight } from '../../utils/haptics';
 import { callProxy } from '../../services/geminiProxy';
 import { autoResolveExerciseVideoId } from '../../services/exerciseVideoResolver';
@@ -74,22 +74,10 @@ export default function ExerciseSwapScreen() {
 
   const origName = originalExercise?.name || 'Exercise';
   const rawMuscle = originalExercise?.muscle || '';
-  const origMuscle = useMemo(() => {
-    if (rawMuscle && rawMuscle !== 'None') return rawMuscle;
-    const lower = origName.toLowerCase();
-    if (lower.includes('bicep')) return 'Biceps';
-    if (lower.includes('tricep')) return 'Triceps';
-    if (lower.includes('row') || lower.includes('pull')) return 'Back';
-    if (lower.includes('press') || lower.includes('dip') || lower.includes('fly') || lower.includes('pec')) return 'Chest';
-    if (lower.includes('squat') || lower.includes('leg') || lower.includes('lunge')) return 'Quads';
-    if (lower.includes('shoulder') || lower.includes('raise') || lower.includes('delt')) return 'Shoulders';
-    if (lower.includes('calf') || lower.includes('calves')) return 'Calves';
-    if (lower.includes('abs') || lower.includes('crunch') || lower.includes('plank')) return 'Abs';
-    if (lower.includes('curl') && lower.includes('wrist')) return 'Forearms';
-    return 'Chest';
-  }, [origName, rawMuscle]);
-
-  const canonicalMuscle = useMemo(() => canonicalizeMuscle(origMuscle), [origMuscle]);
+  const { targetMuscle: origMuscle, canonicalGroup: canonicalMuscle } = useMemo(
+    () => resolveExerciseTargetMuscle(origName, rawMuscle),
+    [origName, rawMuscle]
+  );
 
   // ── Extract matching exercises from the gym template across all days ───────
   // (e.g. For Thursday's Long Tricep -> extracts Monday's Long Tricep exercise, Friday's, etc.)
@@ -187,19 +175,12 @@ export default function ExerciseSwapScreen() {
       }
     };
 
-    // 1. Scan user custom days if configured
-    if (userGymPlan?.customDays) {
-      Object.values(userGymPlan.customDays).forEach((day: any) => processDay(day, 'My Custom Routine'));
+    // 1. Scan active routine days only (avoids multi-plan clutter)
+    if (userGymPlan?.customDays && Object.keys(userGymPlan.customDays).length > 0) {
+      Object.values(userGymPlan.customDays).forEach((day: any) => processDay(day, 'My Routine'));
+    } else {
+      GYM_PLAN_ARNOLD.forEach(day => processDay(day, 'Arnold Routine'));
     }
-
-    // 2. Scan active PPL routine
-    GYM_PLAN_PPL.forEach(day => processDay(day, 'PPL Routine'));
-
-    // 3. Scan Arnold Split routine
-    GYM_PLAN_ARNOLD.forEach(day => processDay(day, 'Arnold Routine'));
-
-    // 4. Scan base GYM_PLAN
-    GYM_PLAN.forEach(day => processDay(day, 'Standard Plan'));
 
     // Sort: Exact sub-muscle matches first (e.g. Long Tricep -> Long Tricep), then by day
     return results.sort((a, b) => {
@@ -213,86 +194,18 @@ export default function ExerciseSwapScreen() {
   useEffect(() => {
     let isCancelled = false;
 
-    // 1. Immediate Instant Fallback (0ms latency)
-    // Gather matching exercises from EXERCISE_DATABASE
-    let dbMatches = EXERCISE_DATABASE.filter(db => db.muscle.toLowerCase() === origMuscle.toLowerCase());
-    if (dbMatches.length === 0) {
-      dbMatches = EXERCISE_DATABASE.filter(db =>
-        db.muscle.toLowerCase().includes(origMuscle.toLowerCase()) ||
-        origMuscle.toLowerCase().includes(db.muscle.toLowerCase()) ||
-        canonicalizeMuscle(db.muscle).toLowerCase() === canonicalMuscle.toLowerCase()
-      );
-    }
-    if (dbMatches.length === 0) {
-      dbMatches = EXERCISE_DATABASE.filter(db => db.muscle.includes('Chest'));
-    }
-
-    // Curated alternatives from EXERCISE_ALTERNATIVES
-    const curatedAlt = EXERCISE_ALTERNATIVES[canonicalMuscle] || EXERCISE_ALTERNATIVES[origMuscle] || [];
-
-    const instantList: AiSwapRecommendation[] = [];
-    const seenInstant = new Set<string>();
-    const origLower = origName.toLowerCase().trim();
-    seenInstant.add(origLower);
-
-    // Add curated alternatives first
-    for (const alt of curatedAlt) {
-      const n = (alt.name || '').trim();
-      const nLower = n.toLowerCase();
-      if (!n || seenInstant.has(nLower)) continue;
-      seenInstant.add(nLower);
-      instantList.push({
-        id: `curated_${instantList.length}_${Date.now()}`,
-        name: n,
-        muscle: origMuscle,
-        targetSets: 3,
-        targetReps: '8–12',
-        restTimeSecs: 90,
-        reason: 'Curated biomechanical alternative',
-        videoId: alt.videoId && alt.videoId !== '1' ? alt.videoId : undefined,
-      });
-      if (instantList.length >= 6) break;
-    }
-
-    // Fill remaining from EXERCISE_DATABASE
-    for (const db of dbMatches) {
-      if (instantList.length >= 6) break;
-      const n = (db.name || '').trim();
-      const nLower = n.toLowerCase();
-      if (!n || seenInstant.has(nLower)) continue;
-      seenInstant.add(nLower);
-
-      let targetSets = 3;
-      let targetReps = '10–12';
-      let restTimeSecs = 75;
-
-      if (nLower.includes('farmer') || nLower.includes('hang') || nLower.includes('hold')) {
-        targetSets = 3; targetReps = '30–45s hold'; restTimeSecs = 45;
-      } else if (origMuscle.toLowerCase().includes('forearm') || nLower.includes('wrist') || nLower.includes('reverse curl')) {
-        targetSets = 3; targetReps = '15–20'; restTimeSecs = 45;
-      } else if (origMuscle.toLowerCase().includes('calf') || nLower.includes('calf') || nLower.includes('soleus')) {
-        targetSets = 4; targetReps = '15–20'; restTimeSecs = 60;
-      } else if (origMuscle.toLowerCase().includes('abs') || nLower.includes('crunch') || nLower.includes('plank')) {
-        targetSets = 3; targetReps = '15–20'; restTimeSecs = 45;
-      } else if (nLower.includes('deadlift') || nLower.includes('squat') || nLower.includes('barbell row') || nLower.includes('bench press') || nLower.includes('military press') || nLower.includes('t-bar') || nLower.includes('rdl')) {
-        targetSets = 4; targetReps = '6–8'; restTimeSecs = 120;
-      } else if (nLower.includes('press') || nLower.includes('pulldown') || nLower.includes('dips') || nLower.includes('row')) {
-        targetSets = 3; targetReps = '8–12'; restTimeSecs = 90;
-      } else if (nLower.includes('raise') || nLower.includes('fly') || nLower.includes('extension') || nLower.includes('curl')) {
-        targetSets = 3; targetReps = '12–15'; restTimeSecs = 60;
-      }
-
-      instantList.push({
-        id: `db_fallback_${instantList.length}_${Date.now()}`,
-        name: n,
-        muscle: db.muscle || origMuscle,
-        targetSets,
-        targetReps,
-        restTimeSecs,
-        reason: '',
-        videoId: (db as any).videoId && (db as any).videoId !== '1' ? (db as any).videoId : undefined,
-      });
-    }
+    // 1. Immediate Instant Fallback (0ms latency) using strict target muscle resolver
+    const instantSwaps = getExerciseSwapAlternatives(origName, rawMuscle);
+    const instantList: AiSwapRecommendation[] = instantSwaps.map((alt, idx) => ({
+      id: alt.id || `curated_${idx}_${Date.now()}`,
+      name: alt.name,
+      muscle: alt.muscle,
+      targetSets: alt.targetSets,
+      targetReps: alt.targetReps,
+      restTimeSecs: alt.restTimeSecs,
+      reason: alt.reason || `Direct alternative targeting ${alt.muscle}`,
+      videoId: alt.videoId,
+    }));
 
     setAiSwaps(instantList);
     setIsAiLoading(true);

@@ -1,3 +1,6 @@
+import { EXERCISE_DATABASE } from '../data/exerciseDatabase';
+import { GymExerciseLog, GymDayLog } from '../types/gym.types';
+
 export const MUSCLE_COLORS: Record<string, string> = {
   'Chest': '#FF6B6B', 'Back': '#4DABF7', 'Shoulders': '#9775FA',
   'Side Delts': '#B197FC', 'Rear Delts': '#845EF7', 'Triceps': '#38D9A9',
@@ -244,8 +247,6 @@ export const calculateGymStreak = (logs: any[] | null | undefined, userGymPlan?:
   return streak;
 };
 
-import { GymExerciseLog, GymDayLog } from '../types/gym.types';
-
 export const calculateExerciseMaxWeight = (exercise: GymExerciseLog | undefined | null): number => {
   if (!exercise || !exercise.setsLog || exercise.setsLog.length === 0) return 0;
   const validSets = exercise.setsLog.filter(s => {
@@ -277,12 +278,13 @@ export const calculateEstimated1RM = (exercise: GymExerciseLog | undefined | nul
   return Math.round(Math.max(...oneRepMaxes));
 };
 
-export const calculateHistorical1RM = (gymLogs: any[], exerciseId: string): number => {
-  if (!gymLogs || gymLogs.length === 0) return 0;
+export const calculateHistorical1RM = (gymLogs: any[], exerciseIdOrName: string): number => {
+  if (!gymLogs || gymLogs.length === 0 || !exerciseIdOrName) return 0;
+  const targetKey = normalizeExerciseKey(exerciseIdOrName);
   let max1RM = 0;
   
   gymLogs.forEach(log => {
-    const ex = log.exercises?.find((e: any) => e.exerciseId === exerciseId);
+    const ex = log.exercises?.find((e: any) => e?.name && normalizeExerciseKey(e.name) === targetKey);
     if (ex) {
       const ex1RM = calculateEstimated1RM(ex);
       if (ex1RM > max1RM) max1RM = ex1RM;
@@ -310,3 +312,444 @@ export const calculateWorkoutMaxWeight = (log: GymDayLog | undefined | null): nu
   }
   return maxW;
 };
+
+export interface PreviousExerciseSession {
+  sets: { setNumber: number; weight: number | null; reps: number | null; completed: boolean }[];
+  lastWeight: number | null;
+  avgReps: number | null;
+  maxWeight: number | null;
+  sessionDate: string;
+}
+
+/**
+ * Normalizes an exercise name for strict identity matching (e.g. "Incline Dumbbell Press" -> "inclinedumbbellpress").
+ * Preserves distinct exercise identities while ignoring casing, spaces, hyphens, and punctuation.
+ */
+export function normalizeExerciseKey(name?: string | null): string {
+  if (!name) return '';
+  return name.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Builds an ultra-fast O(1) in-memory history index from past gym logs.
+ * Performs a single O(N) pass over chronologically sorted logs (newest first).
+ * Ensures that each exercise key maps strictly to its TRUE most recent completed session.
+ */
+export function buildExerciseHistoryIndex(
+  gymLogs: any[] | null | undefined,
+  beforeDate?: string
+): Map<string, PreviousExerciseSession> {
+  const index = new Map<string, PreviousExerciseSession>();
+  if (!gymLogs || gymLogs.length === 0) return index;
+
+  const sorted = gymLogs
+    .filter(l => (!beforeDate || l.date < beforeDate) && Array.isArray(l.exercises) && l.exercises.length > 0)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  for (const log of sorted) {
+    for (const ex of log.exercises) {
+      if (!ex || !ex.name) continue;
+      const key = normalizeExerciseKey(ex.name);
+      if (!key || index.has(key)) continue; // Already mapped the latest session for this exercise
+
+      if (Array.isArray(ex.setsLog) && ex.setsLog.length > 0) {
+        const completedSets = ex.setsLog.filter((s: any) => {
+          const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
+          const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
+          const hasValidNum = (w !== null && !isNaN(w) && w > 0) || (r !== null && !isNaN(r) && r > 0);
+          return s.completed === true && hasValidNum;
+        });
+
+        if (completedSets.length > 0) {
+          const mappedSets = completedSets.map((s: any, idx: number) => {
+            const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
+            const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
+            return {
+              setNumber: idx + 1,
+              weight: w !== null && !isNaN(w) && w > 0 ? w : null,
+              reps: r !== null && !isNaN(r) && r > 0 ? r : null,
+              completed: true,
+            };
+          });
+
+          const weights = mappedSets.map((s: { weight: number | null }) => s.weight).filter((w: number | null): w is number => w !== null && w > 0);
+          const reps = mappedSets.map((s: { reps: number | null }) => s.reps).filter((r: number | null): r is number => r !== null && r > 0);
+
+          const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null;
+          const maxWeight = weights.length > 0 ? Math.max(...weights) : null;
+          const avgReps = reps.length > 0 ? Math.round(reps.reduce((a: number, b: number) => a + b, 0) / reps.length) : null;
+
+          index.set(key, {
+            sets: mappedSets,
+            lastWeight,
+            avgReps,
+            maxWeight,
+            sessionDate: log.date,
+          });
+        }
+      }
+    }
+  }
+
+  return index;
+}
+
+/**
+ * Finds the most recent legitimately completed workout session for a given exercise.
+ * Guarantees:
+ * 1. STRICT name-only matching: an exercise will NEVER load data from a different exercise.
+ * 2. Only considers sets that were ACTUALLY completed (s.completed === true).
+ * 3. Returns null (blank) if the user has never done this specific exercise before.
+ */
+export function getPreviousExerciseSession(
+  exerciseName: string,
+  gymLogs: any[] | null | undefined,
+  beforeDate?: string
+): PreviousExerciseSession | null {
+  if (!exerciseName || !gymLogs || gymLogs.length === 0) return null;
+  const key = normalizeExerciseKey(exerciseName);
+  if (!key) return null;
+
+  const sorted = gymLogs
+    .filter(l => (!beforeDate || l.date < beforeDate) && Array.isArray(l.exercises) && l.exercises.length > 0)
+    .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  for (const log of sorted) {
+    const match = log.exercises.find((e: any) => e?.name && normalizeExerciseKey(e.name) === key);
+
+    if (match && Array.isArray(match.setsLog) && match.setsLog.length > 0) {
+      const completedSets = match.setsLog.filter((s: any) => {
+        const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
+        const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
+        const hasValidNum = (w !== null && !isNaN(w) && w > 0) || (r !== null && !isNaN(r) && r > 0);
+        return s.completed === true && hasValidNum;
+      });
+
+      if (completedSets.length > 0) {
+        const mappedSets = completedSets.map((s: any, idx: number) => {
+          const w = s?.weight !== undefined && s?.weight !== null ? Number(s.weight) : (s?.weightKg !== undefined ? Number(s.weightKg) : null);
+          const r = s?.reps !== undefined && s?.reps !== null ? Number(s.reps) : null;
+          return {
+            setNumber: idx + 1,
+            weight: w !== null && !isNaN(w) && w > 0 ? w : null,
+            reps: r !== null && !isNaN(r) && r > 0 ? r : null,
+            completed: true,
+          };
+        });
+
+        const weights = mappedSets.map((s: { weight: number | null }) => s.weight).filter((w: number | null): w is number => w !== null && w > 0);
+        const reps = mappedSets.map((s: { reps: number | null }) => s.reps).filter((r: number | null): r is number => r !== null && r > 0);
+
+        const lastWeight = weights.length > 0 ? weights[weights.length - 1] : null;
+        const maxWeight = weights.length > 0 ? Math.max(...weights) : null;
+        const avgReps = reps.length > 0 ? Math.round(reps.reduce((a: number, b: number) => a + b, 0) / reps.length) : null;
+
+        return {
+          sets: mappedSets,
+          lastWeight,
+          avgReps,
+          maxWeight,
+          sessionDate: log.date,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+export interface MuscleTargetResolution {
+  targetMuscle: string;      // e.g. "Upper Chest", "Long Head Triceps", "Lats", "Side Delts", "Quads"
+  canonicalGroup: string;    // e.g. "Chest", "Triceps", "Back", "Shoulders", "Quads"
+}
+
+/**
+ * Accurately determines the true biomechanical target muscle and parent group for any exercise.
+ * 1. Checks EXERCISE_DATABASE for exact metadata.
+ * 2. Uses explicitMuscle if provided.
+ * 3. Falls back to precise biomechanical keyword analysis (never blind 'Chest' fallbacks).
+ */
+export function resolveExerciseTargetMuscle(
+  exerciseName: string,
+  explicitMuscle?: string | null
+): MuscleTargetResolution {
+  // 1. Try to find the exercise in EXERCISE_DATABASE
+  if (exerciseName) {
+    const key = normalizeExerciseKey(exerciseName);
+    const dbMatch = EXERCISE_DATABASE.find(e => normalizeExerciseKey(e.name) === key);
+    if (dbMatch && dbMatch.muscle && dbMatch.muscle !== 'None') {
+      return {
+        targetMuscle: dbMatch.muscle,
+        canonicalGroup: canonicalizeMuscle(dbMatch.muscle),
+      };
+    }
+  }
+
+  // 2. Try explicitMuscle if valid and not generic
+  if (explicitMuscle && explicitMuscle !== 'None' && explicitMuscle.trim().length > 0) {
+    return {
+      targetMuscle: explicitMuscle.trim(),
+      canonicalGroup: canonicalizeMuscle(explicitMuscle),
+    };
+  }
+
+  // 3. Keyword Biomechanical Classifier
+  const lower = (exerciseName || '').toLowerCase();
+
+  // Upper Chest
+  if (
+    lower.includes('incline') ||
+    lower.includes('low-to-high') ||
+    lower.includes('low to high') ||
+    lower.includes('clavicular') ||
+    lower.includes('reverse grip bench')
+  ) {
+    return { targetMuscle: 'Upper Chest', canonicalGroup: 'Chest' };
+  }
+
+  // Lower / Mid Chest
+  if (
+    lower.includes('high-to-low') ||
+    lower.includes('high to low') ||
+    lower.includes('decline') ||
+    lower.includes('pec deck') ||
+    lower.includes('chest fly') ||
+    lower.includes('bench press') ||
+    lower.includes('chest press') ||
+    lower.includes('cable crossover') ||
+    lower.includes('dips') ||
+    lower.includes('pushup') ||
+    lower.includes('push-up')
+  ) {
+    return { targetMuscle: 'Chest', canonicalGroup: 'Chest' };
+  }
+
+  // Biceps
+  if (
+    lower.includes('bicep') ||
+    lower.includes('curl') ||
+    lower.includes('preacher') ||
+    lower.includes('hammer') ||
+    lower.includes('spider') ||
+    lower.includes('chin-up') ||
+    lower.includes('chin up')
+  ) {
+    return { targetMuscle: 'Biceps', canonicalGroup: 'Biceps' };
+  }
+
+  // Triceps
+  if (
+    lower.includes('tricep') ||
+    lower.includes('pushdown') ||
+    lower.includes('skull crusher') ||
+    lower.includes('skullcrusher') ||
+    lower.includes('overhead extension') ||
+    lower.includes('french press') ||
+    lower.includes('kickback') ||
+    lower.includes('close-grip bench') ||
+    lower.includes('close grip bench') ||
+    lower.includes('jm press')
+  ) {
+    return { targetMuscle: 'Triceps', canonicalGroup: 'Triceps' };
+  }
+
+  // Side Delts
+  if (
+    lower.includes('lateral raise') ||
+    lower.includes('side raise') ||
+    lower.includes('side delt') ||
+    lower.includes('upright row') ||
+    lower.includes('egyptian')
+  ) {
+    return { targetMuscle: 'Side Delts', canonicalGroup: 'Shoulders' };
+  }
+
+  // Rear Delts
+  if (
+    lower.includes('rear delt') ||
+    lower.includes('reverse fly') ||
+    lower.includes('reverse pec') ||
+    lower.includes('face pull')
+  ) {
+    return { targetMuscle: 'Rear Delts', canonicalGroup: 'Shoulders' };
+  }
+
+  // Front Delts / Shoulders
+  if (
+    lower.includes('shoulder') ||
+    lower.includes('military') ||
+    lower.includes('overhead press') ||
+    lower.includes('front raise') ||
+    lower.includes('arnold press') ||
+    lower.includes('delt')
+  ) {
+    return { targetMuscle: 'Shoulders', canonicalGroup: 'Shoulders' };
+  }
+
+  // Lats / Back
+  if (
+    lower.includes('lat pulldown') ||
+    lower.includes('pull down') ||
+    lower.includes('pulldown') ||
+    lower.includes('pullup') ||
+    lower.includes('pull up') ||
+    lower.includes('straight arm')
+  ) {
+    return { targetMuscle: 'Lats', canonicalGroup: 'Back' };
+  }
+
+  // Mid-Back / Rows
+  if (
+    lower.includes('row') ||
+    lower.includes('t-bar') ||
+    lower.includes('shrug') ||
+    lower.includes('trap') ||
+    lower.includes('deadlift') ||
+    lower.includes('back')
+  ) {
+    return { targetMuscle: 'Back', canonicalGroup: 'Back' };
+  }
+
+  // Quads
+  if (
+    lower.includes('squat') ||
+    lower.includes('leg press') ||
+    lower.includes('leg extension') ||
+    lower.includes('hack') ||
+    lower.includes('lunge') ||
+    lower.includes('split squat') ||
+    lower.includes('sissy') ||
+    lower.includes('quad')
+  ) {
+    return { targetMuscle: 'Quads', canonicalGroup: 'Quads' };
+  }
+
+  // Hamstrings
+  if (
+    lower.includes('leg curl') ||
+    lower.includes('hamstring') ||
+    lower.includes('romanian') ||
+    lower.includes('rdl') ||
+    lower.includes('stiff leg') ||
+    lower.includes('good morning')
+  ) {
+    return { targetMuscle: 'Hamstrings', canonicalGroup: 'Hamstrings' };
+  }
+
+  // Calves
+  if (lower.includes('calf') || lower.includes('calves') || lower.includes('soleus') || lower.includes('tibialis')) {
+    return { targetMuscle: 'Calves', canonicalGroup: 'Calves' };
+  }
+
+  // Abs
+  if (
+    lower.includes('ab') ||
+    lower.includes('crunch') ||
+    lower.includes('plank') ||
+    lower.includes('leg raise') ||
+    lower.includes('knee raise') ||
+    lower.includes('rollout') ||
+    lower.includes('woodchopper')
+  ) {
+    return { targetMuscle: 'Abs', canonicalGroup: 'Abs' };
+  }
+
+  // Forearms
+  if (lower.includes('wrist') || lower.includes('forearm') || lower.includes('farmers')) {
+    return { targetMuscle: 'Forearms', canonicalGroup: 'Forearms' };
+  }
+
+  // Glutes
+  if (lower.includes('hip thrust') || lower.includes('glute') || lower.includes('abductor')) {
+    return { targetMuscle: 'Glutes', canonicalGroup: 'Hamstrings' };
+  }
+
+  return { targetMuscle: explicitMuscle || 'Full Body', canonicalGroup: explicitMuscle ? canonicalizeMuscle(explicitMuscle) : 'Mixed' };
+}
+
+export interface ExerciseSwapOption {
+  id: string;
+  name: string;
+  muscle: string;
+  canonicalGroup: string;
+  targetSets: number;
+  targetReps: string;
+  restTimeSecs: number;
+  videoId?: string;
+  reason?: string;
+  isFromTemplate?: boolean;
+  dayName?: string;
+}
+
+/**
+ * Returns clean, strictly relevant swap alternatives for the exercise's target muscle.
+ * Never dumps unrelated exercises or mixes different muscle groups.
+ */
+export function getExerciseSwapAlternatives(
+  currentExerciseName: string,
+  explicitMuscle?: string | null,
+  activePlanDays?: any[] | null
+): ExerciseSwapOption[] {
+  const { targetMuscle, canonicalGroup } = resolveExerciseTargetMuscle(currentExerciseName, explicitMuscle);
+  const currentKey = normalizeExerciseKey(currentExerciseName);
+  const seenKeys = new Set<string>();
+  seenKeys.add(currentKey);
+
+  const results: ExerciseSwapOption[] = [];
+
+  // 1. First, search for exact same target muscle matches in EXERCISE_DATABASE
+  const exactSubMatches = EXERCISE_DATABASE.filter(db => {
+    if (!db.name || seenKeys.has(normalizeExerciseKey(db.name))) return false;
+    const dbMuscleLower = (db.muscle || '').toLowerCase();
+    const targetLower = targetMuscle.toLowerCase();
+    return dbMuscleLower === targetLower || dbMuscleLower.includes(targetLower) || targetLower.includes(dbMuscleLower);
+  });
+
+  for (const db of exactSubMatches) {
+    if (results.length >= 8) break;
+    const key = normalizeExerciseKey(db.name);
+    if (seenKeys.has(key)) continue;
+    seenKeys.add(key);
+
+    results.push({
+      id: db.id || `swap_db_${results.length}`,
+      name: db.name,
+      muscle: db.muscle || targetMuscle,
+      canonicalGroup,
+      targetSets: 3,
+      targetReps: '8-12',
+      restTimeSecs: 90,
+      isFromTemplate: false,
+      reason: `Direct alternative targeting ${targetMuscle}`,
+    });
+  }
+
+  // 2. If needed, fill from same canonical group in EXERCISE_DATABASE (e.g. Other Chest / Back / Biceps / Quads)
+  if (results.length < 8) {
+    const groupMatches = EXERCISE_DATABASE.filter(db => {
+      if (!db.name || seenKeys.has(normalizeExerciseKey(db.name))) return false;
+      return canonicalizeMuscle(db.muscle).toLowerCase() === canonicalGroup.toLowerCase();
+    });
+
+    for (const db of groupMatches) {
+      if (results.length >= 10) break;
+      const key = normalizeExerciseKey(db.name);
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+
+      results.push({
+        id: db.id || `swap_db_${results.length}`,
+        name: db.name,
+        muscle: db.muscle || canonicalGroup,
+        canonicalGroup,
+        targetSets: 3,
+        targetReps: '8-12',
+        restTimeSecs: 90,
+        isFromTemplate: false,
+        reason: `${canonicalGroup} alternative`,
+      });
+    }
+  }
+
+  return results;
+}

@@ -14,8 +14,12 @@
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DeviceEventEmitter } from 'react-native';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
+import { updateL1Cache } from '../utils/bootManifest';
+import { safeWrite } from '../utils/safeWrite';
+import { COLLECTION } from '../config/constants';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -58,9 +62,11 @@ export const XP_SOURCES = {
   HABIT_LOG:        { base: 50, range: 0  },    // 50 flat
   HABIT_STREAK_7:   { base: 300, range: 0  },   // 7-day streak bonus
   HABIT_STREAK_30:  { base: 1500, range: 0 },   // 30-day streak bonus
+  ATTENDANCE_LOG:   { base: 35, range: 15 },    // 35–50 XP per class/lab attended
   GOAL_MILESTONE:   { base: 1000, range: 0 },   // Goal marked complete
   PERFECT_DAY:      { base: 1000, range: 0 },   // All tasks + habits done
-  GYM_SESSION:      { base: 100, range: 50  },  // 100–150 XP
+  GYM_SET:          { base: 10, range: 5  },    // 10–15 XP per logged set
+  GYM_SESSION:      { base: 150, range: 50 },   // 150–200 XP for workout completion
   GYM_PR:           { base: 300, range: 200 },  // 300–500 XP for a new PR 🏆
   ONBOARDING:       { base: 500, range: 0 },    // First-run bonus
   LECTURE_COMPLETE: { base: 25, range: 0 },     // +25 XP per completed lecture chapter
@@ -94,25 +100,38 @@ export interface XPState {
   progress: number;  // 0.0 → 1.0 progress to next level
 }
 
-// ── In-Memory & Debounced Remote Sync ────────────────────────────────────────
+// ── In-Memory & Resilient Remote Sync ────────────────────────────────────────
 let _inMemoryXP: number | null = null;
-let _pendingFirestoreXP: number | null = null;
-let _xpSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
-export async function flushXPSync(): Promise<void> {
-  if (_xpSyncTimer) {
-    clearTimeout(_xpSyncTimer);
-    _xpSyncTimer = null;
-  }
-  const xpToWrite = _pendingFirestoreXP;
-  _pendingFirestoreXP = null;
-  const uid = auth.currentUser?.uid;
-  if (uid && xpToWrite !== null) {
+/**
+ * Reconciles incoming Firestore XP with local in-memory/AsyncStorage cache.
+ * Always takes the highest cumulative XP to ensure zero progress loss across devices.
+ */
+export function syncXPWithFirestore(firestoreXP: number) {
+  if (typeof firestoreXP !== 'number' || isNaN(firestoreXP)) return;
+  const currentLocal = _inMemoryXP ?? 0;
+  
+  if (firestoreXP >= currentLocal) {
+    _inMemoryXP = firestoreXP;
+    updateL1Cache('xp', firestoreXP);
+    AsyncStorage.setItem(XP_KEY, String(firestoreXP)).catch(() => {});
     try {
-      await setDoc(doc(db, 'user_profiles', uid), { xp: xpToWrite }, { merge: true });
-    } catch (e: any) {
-      console.warn('[XP] Firestore flush failed:', e?.message);
-    }
+      DeviceEventEmitter.emit('zentrack_xp_updated', {
+        xp: firestoreXP,
+        added: 0,
+        source: 'firestore_sync',
+      });
+    } catch {}
+  } else if (currentLocal > firestoreXP && auth.currentUser?.uid) {
+    // Local offline progress was ahead of Firestore — push local value to Firestore!
+    const uid = auth.currentUser.uid;
+    safeWrite(
+      () => setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { xp: currentLocal }, { merge: true }),
+      COLLECTION.USER_PROFILES,
+      'set',
+      { xp: currentLocal },
+      uid
+    ).catch(() => {});
   }
 }
 
@@ -126,22 +145,36 @@ export async function getXP(): Promise<number> {
     const stored = await AsyncStorage.getItem(XP_KEY);
     if (stored !== null) {
       _inMemoryXP = parseInt(stored, 10) || 0;
+      updateL1Cache('xp', _inMemoryXP);
+      
+      // Proactively fetch Firestore in background to ensure sync if local was stale
+      const uid = auth.currentUser?.uid;
+      if (uid) {
+        getDoc(doc(db, COLLECTION.USER_PROFILES, uid)).then(snap => {
+          if (snap.exists()) {
+            const fsXP = snap.data()?.xp;
+            if (typeof fsXP === 'number') syncXPWithFirestore(fsXP);
+          }
+        }).catch(() => {});
+      }
       return _inMemoryXP;
     }
 
-    // FIX #12: No local cache (fresh install or reinstall) — load from Firestore
+    // No local cache (fresh install or reinstall) — load from Firestore
     const uid = auth.currentUser?.uid;
     if (uid) {
-      const snap = await getDoc(doc(db, 'user_profiles', uid));
+      const snap = await getDoc(doc(db, COLLECTION.USER_PROFILES, uid));
       if (snap.exists()) {
         const firestoreXP = snap.data()?.xp ?? 0;
         _inMemoryXP = firestoreXP;
+        updateL1Cache('xp', firestoreXP);
         // Seed local cache so future reads are instant
         await AsyncStorage.setItem(XP_KEY, String(firestoreXP));
         return firestoreXP;
       }
     }
     _inMemoryXP = 0;
+    updateL1Cache('xp', 0);
     return 0;
   } catch {
     _inMemoryXP = 0;
@@ -175,13 +208,14 @@ export function getLevel(xp: number): XPState {
 
 /**
  * Award XP for a given source.
- * Applies variable reward logic — the amount is never exactly the same.
- * Returns full XPResult with bonus information for the reward animation.
+ * 1. Updates in-memory and local cache for 0ms UI reactivity.
+ * 2. Emits live device event for instant visual feedback.
+ * 3. Persists directly to Firestore via safeWrite (with AsyncStorage offline queue fallback).
  */
 export async function awardXP(
   source: keyof typeof XP_SOURCES,
 ): Promise<XPResult> {
-  const config = XP_SOURCES[source];
+  const config = XP_SOURCES[source] || { base: 30, range: 10 };
 
   // Variable reward: base + random range
   const baseAwarded = config.base + Math.floor(Math.random() * (config.range + 1));
@@ -199,16 +233,33 @@ export async function awardXP(
 
   const newXP = currentXP + totalAdded;
   _inMemoryXP = newXP;
+  updateL1Cache('xp', newXP);
 
   // 1. Instant local write (0ms UI latency)
   AsyncStorage.setItem(XP_KEY, String(newXP)).catch(() => {});
 
-  // 2. Debounced Firestore sync (2000ms) to coalesce rapid task/habit completions
-  _pendingFirestoreXP = newXP;
-  if (_xpSyncTimer) clearTimeout(_xpSyncTimer);
-  _xpSyncTimer = setTimeout(() => {
-    flushXPSync();
-  }, 2000);
+  // 2. Broadcast reactive event to all mounted screens
+  try {
+    DeviceEventEmitter.emit('zentrack_xp_updated', {
+      xp: newXP,
+      added: totalAdded,
+      source,
+      surprise: surpriseTriggered,
+      bonusXP,
+    });
+  } catch {}
+
+  // 3. Reliable Firestore Database write via safeWrite (online + offline queue fallback)
+  const uid = auth.currentUser?.uid;
+  if (uid) {
+    safeWrite(
+      () => setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { xp: newXP, lastXpAwardedAt: Date.now() }, { merge: true }),
+      COLLECTION.USER_PROFILES,
+      'set',
+      { xp: newXP, lastXpAwardedAt: Date.now() },
+      uid
+    ).catch(e => console.warn('[XP] Firestore safeWrite failed:', e));
+  }
 
   const newState = getLevel(newXP);
 
@@ -229,18 +280,32 @@ export async function getXPState(): Promise<XPState> {
   return getLevel(xp);
 }
 
+/** Subscribe to live XP updates across the app */
+export function subscribeXPChanges(callback: (data: { xp: number; added: number; source?: string }) => void): () => void {
+  const sub = DeviceEventEmitter.addListener('zentrack_xp_updated', callback);
+  return () => sub.remove();
+}
+
 /** Reset XP (for testing / account linking) */
 export async function resetXP(): Promise<void> {
   _inMemoryXP = 0;
-  _pendingFirestoreXP = null;
-  if (_xpSyncTimer) {
-    clearTimeout(_xpSyncTimer);
-    _xpSyncTimer = null;
-  }
+  updateL1Cache('xp', 0);
   await AsyncStorage.setItem(XP_KEY, '0');
+  try {
+    DeviceEventEmitter.emit('zentrack_xp_updated', {
+      xp: 0,
+      added: 0,
+      source: 'reset',
+    });
+  } catch {}
   const uid = auth.currentUser?.uid;
   if (uid) {
-    setDoc(doc(db, 'user_profiles', uid), { xp: 0 }, { merge: true })
-      .catch(e => console.warn('[XP] Firestore reset failed:', e.message));
+    safeWrite(
+      () => setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { xp: 0 }, { merge: true }),
+      COLLECTION.USER_PROFILES,
+      'set',
+      { xp: 0 },
+      uid
+    ).catch(e => console.warn('[XP] Firestore reset failed:', e?.message));
   }
 }
