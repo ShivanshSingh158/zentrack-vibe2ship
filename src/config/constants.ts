@@ -46,15 +46,17 @@ export const VOICE_IDLE_TIMEOUT_MS = 30_000;
 
 // ── Firestore Collections ─────────────────────────────────────────────────────
 export const COLLECTION = {
-  TASKS: 'tasks',
+  TASKS: 'todos',
   HABITS: 'habits',
-  HABIT_LOGS: 'habitLogs',
+  HABIT_LOGS: 'habit_logs',
   GOALS: 'goals',
   NOTES: 'notes',
-  GYM_LOGS: 'gym_logs',
-  JOBS: 'jobs',
-  LEARNING_TOPICS: 'learningTopics',
+  GYM_LOGS: 'gymLogs',
+  JOBS: 'job_applications',
+  LEARNING_TOPICS: 'learning_topics',
   ATTENDANCE: 'attendance_subjects',
+  ATTENDANCE_LOGS: 'attendance_logs',
+  ATTENDANCE_HOLIDAYS: 'attendance_holidays',
   ASSIGNMENTS: 'assignments',
   POMODORO: 'pomodoro_sessions',
   CALENDAR_EVENTS: 'calendar_events',

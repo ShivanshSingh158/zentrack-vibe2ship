@@ -34,6 +34,9 @@ interface GlobalDataContextType {
   gymSchedule: any;
   notes: any[];
   attendanceSubjects: any[];
+  attendanceLogs: any[];
+  attendanceHolidays: string[];
+  allHabits: any[];
   assignments: any[];
   pomodoroSessions: any[];
   userXP: number;
@@ -103,6 +106,8 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [sleepLogs, setSleepLogs] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   const [attendanceSubjects, setAttendanceSubjects] = useState<any[]>([]);
+  const [attendanceLogs, setAttendanceLogs] = useState<any[]>([]);
+  const [attendanceHolidays, setAttendanceHolidays] = useState<string[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [pomodoroSessions, setPomodoroSessions] = useState<any[]>([]);
   const [userPreferences, setUserPreferences] = useState<GlobalDataContextType['userPreferences']>({ peakEnergyTime: 'morning' });
@@ -292,7 +297,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       if (!user) {
         setTasks([]); setDailyLogs([]); setHabitLogs([]); setHabits([]);
         setJobs([]); setGoals([]); setLearningTopics([]); setGymLogs([]);
-        setNotes([]); setAttendanceSubjects([]); setAssignments([]); setPomodoroSessions([]);
+        setNotes([]); setAttendanceSubjects([]); setAttendanceLogs([]); setAttendanceHolidays([]); setAssignments([]); setPomodoroSessions([]);
         setIsLoading(false);
         return;
       }
@@ -305,28 +310,8 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         if (key) console.log('[ZenAI] ✅ Personal Gemini key loaded for user.');
       });
 
-      // ✅ D2 FIX: Added limit() clauses to prevent unbounded Firestore reads on power users.
-      // Power user with 2 years of data = 2500+ reads per session open. At scale, this is costly.
-      // todos: limit 500 (ordered by date desc so most recent tasks are included)
-      // habit_logs: limit 365 (one year of daily logs is sufficient for habit analytics)
-      // gymLogs: limit 365 (one year of gym history is sufficient)
-      // All others: no pagination needed (collections stay small by design)
-      //
-      // ✅ D1 FIX: calendar_events Firestore subscription REMOVED.
-      // The 'calendar_events' collection in Firestore is only written by CalendarModule
-      // for user-created custom events. Google Calendar API events are fetched via
-      // pollGoogleCalendarChanges() below, never via Firestore onSnapshot.
-      // Keeping this listener alive permanently returned empty arrays to CHRONOS, ENIGMA,
-      // and ARGUS for the first ~15 minutes of every session (before Google API poll fires).
-      //
-      // ✅ D3 FIX: daily_logs Firestore subscription REMOVED from GlobalDataContext.
-      // daily_logs IS a real collection (PomodoroContext writes to it), but no one in
-      // GlobalDataContext consumes dailyLogs. Each consumer (PomodoroContext, FloatingExtraWorks,
-      // CommandPalette, WeeklyReviewModule) subscribes directly with targeted where clauses.
-      // A permanent global listener here costs reads with zero functional benefit.
-
       // ✅ D2: limit(500) on todos for power users with 2+ years of task history
-      const TOTAL = 14; // includes waterLogs and sleepLogs subscriptions
+      const TOTAL = 16; // includes waterLogs, sleepLogs, attendance_logs, attendance_holidays
       let firedCount = 0;
       const onFirstFire = () => {
         firedCount++;
@@ -355,6 +340,8 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         safeSnapshot(query(collection(db, 'sleepLogs'), where('userId', '==', uid), limit(365)), makeHandler(setSleepLogs), 'sleepLogs'),
         safeSnapshot(query(collection(db, 'notes'), where('userId', '==', uid)), makeHandler(setNotes), 'notes'),
         safeSnapshot(query(collection(db, 'attendance_subjects'), where('userId', '==', uid)), makeHandler(setAttendanceSubjects), 'attendance_subjects'),
+        safeSnapshot(query(collection(db, 'attendance_logs'), where('userId', '==', uid), limit(365)), makeHandler(setAttendanceLogs), 'attendance_logs'),
+        safeSnapshot(query(collection(db, 'attendance_holidays'), where('userId', '==', uid)), (docs) => setAttendanceHolidays(docs.map((d: any) => d.date).filter(Boolean)), 'attendance_holidays'),
         safeSnapshot(query(collection(db, 'assignments'), where('userId', '==', uid)), makeHandler(setAssignments), 'assignments'),
         safeSnapshot(query(collection(db, 'pomodoro_sessions'), where('userId', '==', uid)), makeHandler(setPomodoroSessions), 'pomodoro_sessions'),
         // users doc listener
@@ -394,10 +381,10 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   return (
     <GlobalDataContext.Provider value={{
-      tasks, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
-      learningTopics, gymLogs, waterLogs, sleepLogs, notes, attendanceSubjects, assignments,
-      pomodoroSessions, userXP, xpState, awardXP, userPreferences, isLoading, gymSchedule,
-      isGoogleConnected, googleStatus, connectGoogle, disconnectGoogle,
+      tasks, calendarEvents, dailyLogs, habitLogs, habits, allHabits: habits, jobs, goals,
+      learningTopics, gymLogs, waterLogs, sleepLogs, notes, attendanceSubjects, attendanceLogs,
+      attendanceHolidays, assignments, pomodoroSessions, userXP, xpState, awardXP, userPreferences,
+      isLoading, gymSchedule, isGoogleConnected, googleStatus, connectGoogle, disconnectGoogle,
     } as any}>
       {children}
     </GlobalDataContext.Provider>
