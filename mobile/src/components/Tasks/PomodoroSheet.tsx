@@ -21,6 +21,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { db } from '../../services/firebase';
 import { feedback } from '../../utils/haptics';
+import { formatLocalDateStr } from '../../utils/dateUtils';
 import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../../theme/tokens';
 
 type PomodoroMode = 'focus' | 'shortBreak' | 'longBreak';
@@ -49,7 +50,9 @@ interface PomodoroSheetProps {
     timeSlot?: string;
     estimatedMinutes?: number;
     text?: string;
+    date?: string;
   }>;
+  selectedDate?: string;
 }
 
 const RING_SIZE = 256;
@@ -202,7 +205,7 @@ function formatDurationLabel(secs: number): string {
   return `${Math.round(secs / 60)}m`;
 }
 
-export default function PomodoroSheet({ visible, onClose, tasks = [] }: PomodoroSheetProps) {
+export default function PomodoroSheet({ visible, onClose, tasks = [], selectedDate }: PomodoroSheetProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const { user } = useCoreData();
@@ -403,8 +406,15 @@ export default function PomodoroSheet({ visible, onClose, tasks = [] }: Pomodoro
   }, [onClose]);
 
   const currentAccent = accent(mode);
-  const pendingTasks = useMemo(() => tasks.filter(t => t.status === 'pending' || t.status === 'in_progress'), [tasks]);
-  const linkedTask = useMemo(() => pendingTasks.find(t => t.id === linkedTaskId), [pendingTasks, linkedTaskId]);
+  const targetDateStr = useMemo(() => selectedDate || formatLocalDateStr(new Date()), [selectedDate]);
+  const pendingTasks = useMemo(() => {
+    return tasks.filter(t => {
+      const isPending = t.status === 'pending' || t.status === 'in_progress';
+      if (!isPending) return false;
+      return t.date === targetDateStr;
+    });
+  }, [tasks, targetDateStr]);
+  const linkedTask = useMemo(() => tasks.find(t => t.id === linkedTaskId), [tasks, linkedTaskId]);
 
   // Auto-detect when linked task is completed externally
   useEffect(() => {
@@ -627,27 +637,35 @@ export default function PomodoroSheet({ visible, onClose, tasks = [] }: Pomodoro
             </Pressable>
 
             {/* Task Picker Dropdown */}
-            {showTaskPicker && pendingTasks.length > 0 && (
+            {showTaskPicker && (
               <View style={s.taskPickerList}>
-                {pendingTasks.slice(0, 8).map(t => {
-                  const itemSecs = calculateTaskDurationSeconds(t);
-                  const isSelected = t.id === linkedTaskId;
-                  return (
-                    <Pressable
-                      key={t.id}
-                      style={[s.taskPickerItem, isSelected && { backgroundColor: currentAccent + '15' }]}
-                      onPress={() => handleSelectTask(t.id!)}
-                    >
-                      <View style={[s.taskPickerBullet, isSelected && { backgroundColor: currentAccent }]} />
-                      <Text style={[s.taskPickerLabel, isSelected && { color: currentAccent, fontWeight: '600' }]} numberOfLines={1}>
-                        {t.title}
-                      </Text>
-                      <View style={s.taskDurationPill}>
-                        <Text style={s.taskDurationPillText}>{formatDurationLabel(itemSecs)}</Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
+                {pendingTasks.length === 0 ? (
+                  <View style={{ paddingVertical: 14, paddingHorizontal: 16, alignItems: 'center' }}>
+                    <Text style={{ color: colors.textMuted, fontFamily: 'Inter_400Regular', fontSize: 12.5 }}>
+                      No pending tasks for today.
+                    </Text>
+                  </View>
+                ) : (
+                  pendingTasks.slice(0, 10).map(t => {
+                    const itemSecs = calculateTaskDurationSeconds(t);
+                    const isSelected = t.id === linkedTaskId;
+                    return (
+                      <Pressable
+                        key={t.id}
+                        style={[s.taskPickerItem, isSelected && { backgroundColor: currentAccent + '15' }]}
+                        onPress={() => handleSelectTask(t.id!)}
+                      >
+                        <View style={[s.taskPickerBullet, isSelected && { backgroundColor: currentAccent }]} />
+                        <Text style={[s.taskPickerLabel, isSelected && { color: currentAccent, fontWeight: '600' }]} numberOfLines={1}>
+                          {t.title}
+                        </Text>
+                        <View style={s.taskDurationPill}>
+                          <Text style={s.taskDurationPillText}>{formatDurationLabel(itemSecs)}</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })
+                )}
               </View>
             )}
           </View>

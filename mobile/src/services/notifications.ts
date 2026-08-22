@@ -161,6 +161,15 @@ function getRandomMessage(messages: string[]): string {
   return messages[Math.floor(Math.random() * messages.length)];
 }
 
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
 // ── Priority Tiers ─────────────────────────────────────────────────────────────
 const PRIORITY = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4 } as const;
 
@@ -424,25 +433,59 @@ const ASSIGNMENT_24H_POOLS = (title: string) => [
   `Last chance to make "${title}" good. 24 hours. Submit before midnight and sleep peacefully 🥺`,
 ];
 
+// ── 21. Hydration — Titles ───────────────────────────────────────────────────
+
+const WATER_TITLES_POOL = [
+  'Hydration Check Bestie 💧',
+  'Sip Check! Paani Piya Kya? 🥤',
+  'Water Alert 🚨 Stay Hydrated!',
+  'Gatak Lo Ek Glass 💦',
+  'Skin & Brain Fuel 🧠💧',
+  'Refill That Bottle! 🧊',
+  'Sara Hydration Check 💙',
+  'Dehydration Is NOT The Vibe 🚫🌵',
+  'Power Sip Time ⚡💧',
+  'Paani Break, Champ! 🚰',
+  'Drink Up, Slay Down ✨🥤',
+  'Hydrate Or Diedrate 💀💧',
+  'H2O Refuel Alert 🌊',
+  'Glow Mode: Drink Water ✨💧',
+];
+
 // ── 21. Hydration — With Progress ────────────────────────────────────────────
 
 const WATER_PROGRESS_POOLS = (loggedL: string, remainingL: string, goalL: string) => [
-  `Bestie you've had ${loggedL}L! Just ${remainingL}L more for your ${goalL}L goal 💧 One glass NOW! 🥤`,
-  `Hydration check: ${loggedL}L done, ${remainingL}L to go. Skin, brain, energy — all say drink up! 💆`,
-  `Almost there! ${remainingL}L away from your ${goalL}L water goal. Grab that bottle and finish! 💧`,
-  `${loggedL}L logged! ${remainingL}L baki hai ${goalL}L target ke liye. Ek glass abhi gatak lo 🥤`,
-  `Nearly there — ${loggedL}L in, ${remainingL}L to go. One more glass! 💧✨`,
+  `Hydration check: ${loggedL}L down, only ${remainingL}L left for ${goalL}L! Almost at the finish line 💧`,
+  `${loggedL}L logged so far! Sirf ${remainingL}L baki hai for today's ${goalL}L target. Ek aur glass finish karo 🥤`,
+  `Bestie you're crushing it — ${loggedL}L in! Keep the momentum, ${remainingL}L more to hit ${goalL}L 🎯`,
+  `Skin glowing, brain buzzing! 💆 ${remainingL}L away from your ${goalL}L goal. Grab that bottle!`,
+  `Progress report: ${loggedL}L / ${goalL}L complete 📊 Just one or two more glasses to seal the deal 💦`,
+  `Almost in the hydrated elite club! ${remainingL}L left to reach ${goalL}L. Take a big gulp right now 🏆`,
+  `${loggedL}L logged! Halfway there is good, but hitting ${goalL}L is legendary 🔥 Sip up!`,
+  `Level up your hydration stats: ${remainingL}L baki hai ${goalL}L target ke liye. Don't stop now ⚡`,
+  `Your body is loving this ${loggedL}L hydration! Finish the remaining ${remainingL}L and celebrate 🎉`,
+  `Target in sight: ${remainingL}L remaining for ${goalL}L goal 🎯 Ek glass abhi gatak lo aur win today!`,
+  `Great pace! ${loggedL}L done, ${remainingL}L to go. Refill that bottle and stay unstoppable 💧🚀`,
 ];
 
 // ── 22. Hydration — Zero Logged ───────────────────────────────────────────────
 
 const WATER_EMPTY_POOLS = () => [
-  `Sara emergency: NO WATER TODAY 💧 You're running on fumes. One big glass. Now. Please. 🥺`,
-  `Zero hydration detected 🚨 This is NOT the dehydrated era. Drink water. Your body begs you!`,
-  `The audacity of going this long without water 😤 One glass, right now — your future self demands it 💧`,
-  `Your brain is literally shrinking rn (dehydration does that) 💀 Ek glass paani — it's free therapy 🥤`,
-  `Paani pi lo jaaneman! 💧 Glowing skin aur sharp brain chahiye? Start with ONE glass NOW 🥤`,
-  `Water check! Body dehydrated ho rahi hai champ — ek bada sip lo aur refresh ho jao 💦`,
+  `Sara emergency: ZERO water logged today 💧 Running on 1% battery? Ek bada glass gatak lo right now! 🥤`,
+  `Your brain is literally 75% water and currently running dry 💀 Go grab a cold glass, fast!`,
+  `Dehydration is NOT aesthetic bestie 😤 Skin glow aur energy boost ke liye go drink a glass now! ✨`,
+  `Bottle dhoondo aur paani piyo! 🚰 Future productive you will thank you for this one sip 💙`,
+  `Are you waiting for a written invitation to drink water? 🤨 Break lo aur bottle khatam karo!`,
+  `Energy drop feel ho raha hai? It's not tiredness, it's dehydration! 🚨 Drink 300ml right now.`,
+  `Coffee/chai se pehle paani zaroori hai boss ☕➡️💧 Ek bada sip and back to slaying!`,
+  `No water logged yet today? 😱 Don't let your body run on empty. Sip up immediately!`,
+  `Reminder: Plants need water and so do YOU 🌱 Paani pi lo aur refresh ho jao champ!`,
+  `Slump antidote: ONE chilled glass of water 🧊 Drink now and level up your focus!`,
+  `Hustle tabhi hogi jab body hydrated hogi 🔥 Chalo jaldi se bottle bhar lo!`,
+  `Brain fog clearing protocol: Drink 1 glass of water 🧠💧 Works 10x faster than doomscrolling!`,
+  `Friendly aggressive reminder to DRINK WATER 🔫💧 Hydrate yourself right now!`,
+  `The audacity of going this long without water 😤 One glass, right now — your body demands it 💧`,
+  `Glowing skin aur sharp focus chahiye? Start with ONE full glass of water right now 🥤✨`,
 ];
 
 // ── 23. Sleep Wind-Down ───────────────────────────────────────────────────────
@@ -1392,6 +1435,12 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
           .reduce((sum, w) => sum + (w.amountMl || 0), 0);
         const waterGoalMet = waterLoggedTodayMl >= DAILY_WATER_GOAL_ML;
 
+        // Pre-shuffle titles and body pools so each reminder throughout the day is unique & non-repetitive
+        const shuffledTitles = shuffleArray(WATER_TITLES_POOL);
+        const shuffledEmptyBodies = shuffleArray(WATER_EMPTY_POOLS());
+        let titleIdx = 0;
+        let bodyIdx = 0;
+
         for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
           const isToday = dayOffset === 0;
           if (isToday && waterGoalMet) continue;
@@ -1409,14 +1458,19 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
               const remainingL = (remaining / 1000).toFixed(1);
               const goalL = (DAILY_WATER_GOAL_ML / 1000).toFixed(1);
               const loggedL = (waterLoggedTodayMl / 1000).toFixed(1);
-              waterBody = getRandomMessage(WATER_PROGRESS_POOLS(loggedL, remainingL, goalL));
+              const progressPool = shuffleArray(WATER_PROGRESS_POOLS(loggedL, remainingL, goalL));
+              waterBody = progressPool[bodyIdx % progressPool.length];
             } else {
-              waterBody = getRandomMessage(WATER_EMPTY_POOLS());
+              waterBody = shuffledEmptyBodies[bodyIdx % shuffledEmptyBodies.length];
             }
+
+            const waterTitle = shuffledTitles[titleIdx % shuffledTitles.length];
+            titleIdx++;
+            bodyIdx++;
 
             enqueue(
               PRIORITY.LOW,
-              'Paani Pi Lo Jaaneman! 💧',
+              waterTitle,
               waterBody,
               waterTrigger,
               { type: 'water_reminder' }
@@ -1424,6 +1478,7 @@ export async function scheduleAllNotifications(params: ScheduleParams) {
           }
         }
       }
+
 
       // ── 14. Flashcard Spaced Repetition Due Review Nudge ─────────────────
       const dueCards = (flashcards || []).filter(f => f.nextReviewDate && f.nextReviewDate <= todayStr);

@@ -314,9 +314,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       };
 
       const unsubs: (() => void)[] = [
-        // ✅ D2: limit(500) so power users don't read 2000+ todo documents (ordered recent-first)
-        safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid), orderBy('date', 'desc'), limit(500)), makeHandler(setTasks), 'todos'),
-        // ✅ D2: limit(365) — one year of habit logs sufficient for all analytics
+        safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTasks), 'todos'),
         safeSnapshot(query(collection(db, 'habit_logs'), where('userId', '==', uid), limit(365)), makeHandler(setHabitLogs), 'habit_logs'),
         safeSnapshot(query(collection(db, 'habits'), where('userId', '==', uid)), makeHandler(setHabits), 'habits'),
         safeSnapshot(query(collection(db, 'job_applications'), where('userId', '==', uid)), makeHandler(setJobs), 'jobs'),

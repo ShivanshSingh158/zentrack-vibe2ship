@@ -203,15 +203,19 @@ export const NewTaskModal = React.memo(function NewTaskModal({
   };
   const removeSubtask = (i: number) => setSubtasks(prev => prev.filter((_, idx) => idx !== i));
 
-  const resetAndClose = () => {
-    Keyboard.dismiss();
+  const resetForm = useCallback(() => {
     setTitle(''); setSaving(false); setPriority('low');
     setStartTime(''); setEndTime(''); setRecurrenceRule(null);
     setSubtasks([]); setSubtaskInput(''); setShowSubtasks(false);
     setIsCalendarOpen(false); setNlpParsed(null); setNlpDuration(null);
     setSelectedTags([]); setNewTagInput(''); setShowTagInput(false);
+  }, []);
+
+  const resetAndClose = useCallback(() => {
+    Keyboard.dismiss();
     onClose();
-  };
+    setTimeout(resetForm, 250);
+  }, [onClose, resetForm]);
 
   const [showDictationOverlay, setShowDictationOverlay] = useState(false);
 

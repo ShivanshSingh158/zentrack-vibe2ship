@@ -55,6 +55,8 @@ export const TypingDots = () => (
 const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, value }) => {
   const [copied, setCopied] = useState(false);
 
+  if (!value || !value.trim()) return null;
+
   const handleCopy = () => {
     navigator.clipboard.writeText(value);
     setCopied(true);
@@ -100,27 +102,6 @@ export const NotesAIPanel: React.FC<NotesAIPanelProps> = ({
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [chatHistory, isAiLoading]);
-
-  // Native non-passive wheel isolation — detaches AI chat stream from outer window scroll
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      let delta = e.deltaY;
-      if (e.deltaMode === 1) delta *= 20;
-      else if (e.deltaMode === 2) delta *= el.clientHeight;
-
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      const canScrollDown = scrollTop + clientHeight < scrollHeight - 1;
-      const canScrollUp = scrollTop > 0;
-      if ((delta > 0 && canScrollDown) || (delta < 0 && canScrollUp)) {
-        e.preventDefault();
-        el.scrollBy({ top: delta, behavior: 'auto' });
-      }
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
 
   // Auto-expand textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -261,7 +242,9 @@ export const NotesAIPanel: React.FC<NotesAIPanelProps> = ({
                         components={{
                           code({ node, className, children, ...props }) {
                             const match = /language-(\w+)/.exec(className || '');
-                            const isInline = !match && !String(children).includes('\n');
+                            const codeString = String(children || '').replace(/\n$/, '');
+                            if (!codeString.trim()) return null;
+                            const isInline = !match && !codeString.includes('\n');
                             return isInline ? (
                               <code className="lp-chatgpt-inline-code" {...props}>
                                 {children}
@@ -269,7 +252,7 @@ export const NotesAIPanel: React.FC<NotesAIPanelProps> = ({
                             ) : (
                               <CodeBlock
                                 language={match ? match[1] : ''}
-                                value={String(children).replace(/\n$/, '')}
+                                value={codeString}
                               />
                             );
                           },

@@ -46,8 +46,8 @@ export default function BottomSheet({
 
   const handleClose = useCallback(() => {
     Keyboard.dismiss();
-    translateY.value = withTiming(600, { duration: 140, easing: Easing.in(Easing.quad) });
-    backdropOpacity.value = withTiming(0, { duration: 130, easing: Easing.in(Easing.quad) }, (finished) => {
+    translateY.value = withTiming(600, { duration: 180, easing: Easing.inOut(Easing.cubic) });
+    backdropOpacity.value = withTiming(0, { duration: 160, easing: Easing.inOut(Easing.cubic) }, (finished) => {
       if (finished) {
         runOnJS(setMounted)(false);
         runOnJS(onClose)();
@@ -71,8 +71,8 @@ export default function BottomSheet({
       setMounted(true);
       // Instant, smooth fluid entrance with ZERO bounce
       translateY.value = 600;
-      translateY.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.cubic) });
-      backdropOpacity.value = withTiming(1, { duration: 160, easing: Easing.out(Easing.cubic) });
+      translateY.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
+      backdropOpacity.value = withTiming(1, { duration: 180, easing: Easing.out(Easing.cubic) });
     } else if (mounted) {
       handleClose();
     }

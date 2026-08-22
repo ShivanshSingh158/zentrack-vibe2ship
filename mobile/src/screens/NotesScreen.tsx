@@ -31,6 +31,9 @@ import { timeAgo } from '../utils/dateUtils';
 import { handleSyncError } from '../utils/errorUtils';
 import EmptyState from '../components/ui/EmptyState';
 import { safeAdd, safeUpdate, safeDelete } from '../utils/safeWrite';
+import { feedback } from '../utils/haptics';
+import VaultDocumentViewer from '../components/Vault/VaultDocumentViewer';
+import { cacheLocalFile } from '../services/vaultCacheService';
 
 const UploadProgressRing = ({ progress }: { progress: number }) => {
   const { colors, isDark } = useTheme();
@@ -58,52 +61,6 @@ const UploadProgressRing = ({ progress }: { progress: number }) => {
     </View>
   );
 };
-
-// ─── Document Viewer Modal ──────────────────────────────────────────────────
-function DocumentViewer({ node, onClose }: { node: StorageNode | null, onClose: () => void }) {
-  const { colors, isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  if (!node) return null;
-  const isImage = node.fileType === 'image';
-  const url = node.url || '';
-
-  // Google Docs viewer works best for docx/pdf
-  const viewerUrl = (node.fileType === 'pdf' || node.fileType === 'docx')
-    ? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(url)}`
-    : url;
-
-  return (
-    <Modal visible={!!node} animationType="slide" transparent>
-      <View style={styles.viewerOverlay}>
-        <SafeAreaView style={{ flex: 1 }}>
-          <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={onClose} style={styles.detailBack}>
-              <Ionicons name="close" size={24} color={colors.textPrimary} />
-            </TouchableOpacity>
-            <Text style={styles.detailHeaderTitle} numberOfLines={1}>{node.name}</Text>
-            <View style={{ width: 24 }} />
-          </View>
-          <View style={{ flex: 1, backgroundColor: isDark ? '#000000' : colors.background }}>
-            {isImage ? (
-              <Image source={{ uri: url }} style={{ flex: 1, resizeMode: 'contain' }} />
-            ) : (
-              <WebView
-                source={{ uri: viewerUrl }}
-                style={{ flex: 1, backgroundColor: isDark ? '#000000' : '#FFFFFF' }}
-                startInLoadingState
-                renderLoading={() => (
-                  <View style={styles.webviewLoader}>
-                    <ActivityIndicator size="large" color={colors.accentPrimary} />
-                  </View>
-                )}
-              />
-            )}
-          </View>
-        </SafeAreaView>
-      </View>
-    </Modal>
-  );
-}
 
 // ─── Note Editor + AI Panel ────────────────────────────────────────────────
 function NoteEditorModal({ note, userId, parentId, onClose }: {
@@ -148,7 +105,7 @@ function NoteEditorModal({ note, userId, parentId, onClose }: {
       return;
     }
     
-    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));
+    feedback.commit();
     
     if (isNew) {
       const noteData = {
@@ -644,7 +601,7 @@ export default function NotesScreen() {
     try {
       const res = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'image/*', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-        copyToCacheDirectory: true
+        copyToCacheDirectory: true,
       });
 
       if (res.canceled || !res.assets?.[0]) return;
@@ -653,30 +610,42 @@ export default function NotesScreen() {
       setUploading(true);
       setUploadProgress(0);
       setUploadSize((file.size ? (file.size / (1024 * 1024)).toFixed(1) : '1.0') + ' MB');
-      setUploadFileName(file.name);
+      setUploadFileName(file.name || 'Document');
       const mime = file.mimeType || 'application/octet-stream';
       let ftype: 'pdf' | 'docx' | 'image' | 'other' = 'other';
-      if (mime.includes('pdf')) ftype = 'pdf';
-      else if (mime.includes('image')) ftype = 'image';
-      else if (mime.includes('word')) ftype = 'docx';
+      if (mime.includes('pdf') || file.name?.toLowerCase().endsWith('.pdf')) ftype = 'pdf';
+      else if (mime.includes('image') || /\.(jpg|jpeg|png|gif|webp)$/i.test(file.name || '')) ftype = 'image';
+      else if (mime.includes('word') || /\.(doc|docx)$/i.test(file.name || '')) ftype = 'docx';
 
       const uploadRes = await uploadFileToCloudinary(file.uri, mime, file.name, (p) => setUploadProgress(p));
 
-      await addDoc(collection(db, 'storage_nodes'), {
+      // ⚡ Pre-cache local file into vault cache (safe fallback if copy fails)
+      try {
+        await cacheLocalFile(file.uri, uploadRes.url, file.name);
+      } catch (cacheErr) {
+        console.warn('[NotesScreen] Pre-cache non-fatal warning:', cacheErr);
+      }
+
+      const docPayload = {
         userId: user.uid,
-        type: 'file',
+        type: 'file' as const,
         fileType: ftype,
-        name: file.name,
+        name: file.name || 'Uploaded Document',
         url: uploadRes.url,
-        size: uploadRes.size,
+        size: uploadRes.size || file.size || 0,
         parentId: currentFolderId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
-      });
+      };
 
-      } catch (e) {
-      console.error(e);
-      Alert.alert('Upload Failed', 'There was an error uploading the file.');
+      await safeAdd('storage_nodes', docPayload, () =>
+        addDoc(collection(db, 'storage_nodes'), docPayload)
+      );
+
+      feedback.success();
+    } catch (e: any) {
+      console.error('[NotesScreen] Upload error:', e);
+      Alert.alert('Upload Issue', e?.message || 'There was an error uploading the file.');
     } finally {
       setUploading(false);
     }
@@ -1057,7 +1026,7 @@ export default function NotesScreen() {
           onClose={() => setEditorNote(null)}
         />
       )}
-      <DocumentViewer node={viewerNode} onClose={() => setViewerNode(null)} />
+      <VaultDocumentViewer node={viewerNode} onClose={() => setViewerNode(null)} />
     </SafeAreaView>
   );
 }

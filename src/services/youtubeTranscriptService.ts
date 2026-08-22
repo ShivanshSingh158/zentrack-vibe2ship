@@ -271,7 +271,7 @@ export async function fetchVideoTranscript(
   };
 }
 
-export function transcriptToPlainText(cues: TranscriptCue[], maxChars = 12000): string {
+export function transcriptToPlainText(cues: TranscriptCue[], maxChars = 400000): string {
   let out = '';
   for (const cue of cues) {
     const line = `[${cue.formattedTime}] ${cue.text}\n`;

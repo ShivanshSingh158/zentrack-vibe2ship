@@ -4,15 +4,19 @@
  * Bottom-sheet modal for editing an existing task. Extracted from TasksScreen.tsx
  * (was lines 623–1033). Heavy Firestore ops (delete recurring, getDocs) only run
  * when user explicitly taps delete — never on mount.
+ *
+ * Features full NLP natural language parsing, live token chips & highlights,
+ * voice dictation overlay, and synchronous re-parsing on save.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
-  View, Text, TextInput, ScrollView,
+  View, Text, ScrollView,
   Alert, Platform, Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   collection, updateDoc, deleteDoc, doc,
   serverTimestamp, writeBatch, query, where, getDocs,
@@ -22,13 +26,19 @@ import { COLLECTION } from '../../config/constants';
 import { SPACE } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
 import BottomSheet from '../../components/ui/BottomSheet';
+import NLPTaskInput from '../../components/Tasks/NLPTaskInput';
 import RecurrencePickerModal from '../../components/Tasks/RecurrencePickerModal';
 import UniversalCalendarModal from '../../components/UniversalCalendarModal';
 import AnimatedPressable from '../../components/AnimatedPressable';
+import { parseNLTask, ParsedTask, NLPToken, parseLocalDate, toYMD } from '../../utils/dateUtils';
+import { isSilenceOrNoise } from '../../services/voiceEngine';
 import { handleSyncError } from '../../utils/errorUtils';
 import { Task } from '../../contexts/MobileDataContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { today, formatDisplayDate, formatTimeDisplay } from './taskConstants';
+import {
+  TAG_STORAGE_KEY,
+  today, formatDisplayDate, formatTimeDisplay,
+} from './taskConstants';
 import { makeTasksStyles } from './tasksStyles';
 
 interface Props {
@@ -47,6 +57,12 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const { colors, isDark } = useTheme();
   const styles = makeTasksStyles(colors, isDark);
 
+  const lastTaskRef = useRef<Task | null>(task);
+  if (task) {
+    lastTaskRef.current = task;
+  }
+  const currentTask = task || lastTaskRef.current;
+
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [taskDate, setTaskDate] = useState(today);
@@ -59,20 +75,56 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
   const [showCalendar, setShowCalendar] = useState(false);
   const [subtasks, setSubtasks] = useState<{ id: string; title: string; completed: boolean }[]>([]);
 
+  // NLP States
+  const [nlpParsed, setNlpParsed] = useState<ParsedTask | null>(null);
+  const [nlpDuration, setNlpDuration] = useState<number | null>(null);
+  const nlpDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Tags
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagLibrary, setTagLibrary] = useState<string[]>([]);
+
   useEffect(() => {
-    if (!task) return;
-    setTitle(task.title || '');
+    if (!visible) return;
+    AsyncStorage.getItem(TAG_STORAGE_KEY).then(raw => {
+      if (raw) setTagLibrary(JSON.parse(raw));
+    });
+  }, [visible]);
+
+  const addTag = useCallback((tag: string) => {
+    const clean = tag.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!clean) return;
+    setSelectedTags(prev => prev.includes(clean) ? prev : [...prev, clean]);
+    setTagLibrary(prev => {
+      const next = prev.includes(clean) ? prev : [clean, ...prev];
+      AsyncStorage.setItem(TAG_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const removeSelectedTag = useCallback((tag: string) => {
+    setSelectedTags(prev => prev.filter(t => t !== tag));
+  }, []);
+
+  useEffect(() => {
+    if (!currentTask) return;
+    setTitle(currentTask.title || '');
     setPriority(
-      (task.priority as any) === 'P1' ? 'high'
-        : (task.priority as any) === 'P2' ? 'medium'
-        : (task.priority as any) === 'P3' ? 'low'
-        : (task.priority as 'low' | 'medium' | 'high') || 'medium'
+      (currentTask.priority as any) === 'P1' ? 'high'
+        : (currentTask.priority as any) === 'P2' ? 'medium'
+        : (currentTask.priority as any) === 'P3' ? 'low'
+        : (currentTask.priority as 'low' | 'medium' | 'high') || 'medium'
     );
-    setTaskDate(task.date || today);
-    setRecurrenceRule(task.recurrenceRule || null);
-    setSubtasks(task.subtasks || []);
-    if (task.timeSlot) {
-      const trimmed = task.timeSlot.trim();
+    setTaskDate(currentTask.date || today);
+    setRecurrenceRule(currentTask.recurrenceRule || null);
+    setSubtasks(currentTask.subtasks || []);
+    setSelectedTags(currentTask.tags || []);
+    setNlpParsed(null);
+    setNlpDuration(null);
+    if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
+
+    if (currentTask.timeSlot) {
+      const trimmed = currentTask.timeSlot.trim();
       const lower = trimmed.toLowerCase();
       if (lower === 'morning') {
         setStartTime('09:00');
@@ -97,7 +149,74 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     }
   }, [task, visible]);
 
-  if (!task) return null;
+  const handleTitleChange = useCallback((text: string) => {
+    setTitle(text);
+
+    if (nlpDebounceRef.current) clearTimeout(nlpDebounceRef.current);
+
+    if (text.length < 3) {
+      setNlpParsed(null);
+      return;
+    }
+
+    nlpDebounceRef.current = setTimeout(() => {
+      const parsed = parseNLTask(text);
+      setNlpParsed(parsed.tokens.length > 0 ? parsed : null);
+      if (parsed.date && parsed.tokens.some(t => t.type === 'date')) setTaskDate(parsed.date);
+      if (parsed.timeSlot && parsed.tokens.some(t => t.type === 'time')) {
+        setStartTime(parsed.timeSlot);
+        if (parsed.endTimeSlot) setEndTime(parsed.endTimeSlot);
+      }
+      if (parsed.tokens.some(t => t.type === 'priority')) setPriority(parsed.priority);
+      if (parsed.isRecurring && parsed.recurrenceRule && parsed.tokens.some(t => t.type === 'recurrence')) setRecurrenceRule(parsed.recurrenceRule);
+      if (parsed.tags && parsed.tags.length > 0) {
+        parsed.tags.forEach(tag => addTag(tag));
+      }
+      if (parsed.durationMinutes != null) setNlpDuration(parsed.durationMinutes);
+    }, 300);
+  }, [addTag]);
+
+  const handleDismissToken = useCallback((token: NLPToken) => {
+    const { type, start, end, display } = token;
+    if (type === 'date')       { setTaskDate(task?.date || today); }
+    if (type === 'time')       {
+      if (task?.timeSlot) {
+        const parts = task.timeSlot.split(/[-–]/).map((s: string) => s.trim());
+        setStartTime(parts[0] || '');
+        setEndTime(parts[1] || '');
+      } else {
+        setStartTime('');
+        setEndTime('');
+      }
+    }
+    if (type === 'priority')   {
+      setPriority(
+        (task?.priority as any) === 'P1' ? 'high'
+          : (task?.priority as any) === 'P2' ? 'medium'
+          : (task?.priority as any) === 'P3' ? 'low'
+          : (task?.priority as 'low' | 'medium' | 'high') || 'medium'
+      );
+    }
+    if (type === 'recurrence') { setRecurrenceRule(task?.recurrenceRule || null); }
+    if (type === 'duration')   { setNlpDuration(null); }
+    if (type === 'tag')        { removeSelectedTag(display.replace(/^#/, '')); }
+
+    // Splice the matched span out of the raw title and re-parse
+    const cleaned = (title.slice(0, start) + title.slice(end)).replace(/\s{2,}/g, ' ').trim();
+    setTitle(cleaned);
+    const reparsed = parseNLTask(cleaned);
+    setNlpParsed(reparsed.tokens.length > 0 ? reparsed : null);
+  }, [title, task, removeSelectedTag]);
+
+  const calcEstMinutes = (s: string, e: string) => {
+    if (!s || !e || !s.includes(':') || !e.includes(':')) return 0;
+    const [sH, sM] = s.split(':').map(Number);
+    const [eH, eM] = e.split(':').map(Number);
+    if (isNaN(sH) || isNaN(sM) || isNaN(eH) || isNaN(eM)) return 0;
+    let diff = (eH * 60 + eM) - (sH * 60 + sM);
+    if (diff < 0) diff += 24 * 60;
+    return diff;
+  };
 
   const onStartChange = (event: any, d?: Date) => {
     if (Platform.OS === 'android') {
@@ -118,30 +237,32 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
 
   const { optimisticDeleteTask, optimisticUpdateTask } = useCoreData();
 
+  if (!currentTask) return null;
+
   const handleDelete = async () => {
     Keyboard.dismiss();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    if (task.isRecurring) {
+    if (currentTask.isRecurring) {
       Alert.alert('Delete Recurring Task', 'Do you want to delete only this instance, or this and all future instances?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'This instance only', style: 'destructive', onPress: async () => {
           onClose();
-          optimisticDeleteTask(task.id);
-          try { await deleteDoc(doc(db, COLLECTION.TASKS, task.id)); } catch (e) { console.error(e); }
+          optimisticDeleteTask(currentTask.id);
+          try { await deleteDoc(doc(db, COLLECTION.TASKS, currentTask.id)); } catch (e) { console.error(e); }
         }},
         { text: 'All future instances', style: 'destructive', onPress: async () => {
           onClose();
-          optimisticDeleteTask(task.id);
+          optimisticDeleteTask(currentTask.id);
           try {
-            const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', task.userId));
+            const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
             const snap = await getDocs(q);
             const deleteBatch = writeBatch(db);
             snap.docs.forEach(d => {
               const data = d.data();
-              const inSameGroup = task.recurringSourceId
-                ? data.recurringSourceId === task.recurringSourceId
-                : (data.title === task.title && data.isRecurring === true);
-              if (inSameGroup && data.date && task.date && data.date >= task.date) {
+              const inSameGroup = currentTask.recurringSourceId
+                ? data.recurringSourceId === currentTask.recurringSourceId
+                : (data.title === currentTask.title && data.isRecurring === true);
+              if (inSameGroup && data.date && currentTask.date && data.date >= currentTask.date) {
                 optimisticDeleteTask(d.id);
                 deleteBatch.delete(d.ref);
               }
@@ -153,19 +274,19 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     } else {
       onClose();
       setTimeout(() => {
-        Alert.alert('Delete Task', `"${task.title}"`, [
+        Alert.alert('Delete Task', `"${currentTask.title}"`, [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Today only', style: 'destructive', onPress: () => {
-            optimisticDeleteTask(task.id);
-            deleteDoc(doc(db, COLLECTION.TASKS, task.id)).catch(handleSyncError);
+            optimisticDeleteTask(currentTask.id);
+            deleteDoc(doc(db, COLLECTION.TASKS, currentTask.id)).catch(handleSyncError);
           }},
           { text: 'All tasks', style: 'destructive', onPress: async () => {
             try {
-              const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', task.userId));
+              const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
               const snap = await getDocs(q);
               const batch = writeBatch(db);
               snap.docs.forEach(d => { 
-                if (d.data().title === task.title) {
+                if (d.data().title === currentTask.title) {
                   optimisticDeleteTask(d.id);
                   batch.delete(d.ref); 
                 }
@@ -178,50 +299,93 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (overrideTitle?: string) => {
     Keyboard.dismiss();
-    if (!title.trim()) return;
-    const ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
-    const updatePayload = { title: title.trim(), text: title.trim(), priority, date: taskDate, timeSlot: ts, isRecurring: !!recurrenceRule, recurrenceRule: recurrenceRule || null, subtasks };
+    const isOverride = typeof overrideTitle === 'string';
+    const rawText = isOverride ? overrideTitle : title;
+    if (!rawText.trim() || isSilenceOrNoise(rawText)) return;
 
-    if (task.isRecurring || recurrenceRule) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Synchronous re-parse at save time
+    const rawForParse = isOverride ? rawText : title;
+    const saveParsed = rawForParse.trim().length >= 2 ? parseNLTask(rawForParse) : null;
+
+    let finalTitle = saveParsed?.title?.trim() || nlpParsed?.title?.trim() || rawForParse.trim();
+    let ts = startTime ? (endTime ? `${startTime} - ${endTime}` : startTime) : null;
+    let est = calcEstMinutes(startTime, endTime) || nlpDuration || saveParsed?.durationMinutes || currentTask.estimatedMinutes || 0;
+    let finalPriority = priority;
+    let finalDate = taskDate;
+    let finalRecurrence = recurrenceRule;
+
+    if (saveParsed?.tokens.length) {
+      if (!ts && saveParsed.timeSlot) {
+        ts = saveParsed.endTimeSlot ? `${saveParsed.timeSlot} - ${saveParsed.endTimeSlot}` : saveParsed.timeSlot;
+      }
+      if (saveParsed.tokens.some(t => t.type === 'priority')) finalPriority = saveParsed.priority;
+      if (saveParsed.date && saveParsed.tokens.some(t => t.type === 'date')) finalDate = saveParsed.date;
+      if (saveParsed.isRecurring && saveParsed.recurrenceRule && saveParsed.tokens.some(t => t.type === 'recurrence')) finalRecurrence = saveParsed.recurrenceRule;
+    }
+
+    const updatePayload = {
+      title: finalTitle,
+      text: finalTitle,
+      priority: finalPriority,
+      date: finalDate,
+      timeSlot: ts || undefined,
+      estimatedMinutes: est,
+      isRecurring: !!finalRecurrence,
+      recurrenceRule: finalRecurrence || undefined,
+      tags: selectedTags,
+      subtasks,
+    };
+
+    const firestorePayload = {
+      ...updatePayload,
+      timeSlot: ts || null,
+      recurrenceRule: finalRecurrence || null,
+    };
+
+    optimisticUpdateTask(currentTask.id, updatePayload);
+
+    if (currentTask.isRecurring || finalRecurrence) {
       Alert.alert('Edit Task', 'Apply changes to this instance only, or recreate all future instances?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'This instance only', onPress: async () => {
-          try { await updateDoc(doc(db, COLLECTION.TASKS, task.id), updatePayload); onClose(); } catch (e) { console.error(e); }
+          try { await updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload); onClose(); } catch (e) { console.error(e); }
         }},
         { text: 'All future instances', onPress: async () => {
           try {
-            await updateDoc(doc(db, COLLECTION.TASKS, task.id), updatePayload);
-            const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', task.userId));
+            await updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload);
+            const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
             const snap = await getDocs(q);
             const deleteBatch = writeBatch(db);
             snap.docs.forEach(d => {
               const data = d.data();
-              if (data.title === task.title && data.isRecurring === true && data.date && task.date && data.date > task.date) deleteBatch.delete(d.ref);
+              if (data.title === currentTask.title && data.isRecurring === true && data.date && currentTask.date && data.date > currentTask.date) deleteBatch.delete(d.ref);
             });
             await deleteBatch.commit();
-            if (recurrenceRule) {
+            if (finalRecurrence) {
               const createBatch = writeBatch(db);
-              let current = new Date(taskDate);
-              if (recurrenceRule.type === 'daily' || recurrenceRule.type === 'custom') { current.setDate(current.getDate() + (recurrenceRule.interval || 1)); }
-              else if (recurrenceRule.type === 'weekly') {
-                if (recurrenceRule.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (!recurrenceRule.daysOfWeek.includes(current.getDay())); }
-                else { current.setDate(current.getDate() + 7 * (recurrenceRule.interval || 1)); }
-              } else if (recurrenceRule.type === 'monthly') { current.setMonth(current.getMonth() + (recurrenceRule.interval || 1)); }
-              const end = recurrenceRule.endDate ? new Date(recurrenceRule.endDate) : new Date(new Date(taskDate).getTime() + 90 * 24 * 60 * 60 * 1000);
+              let current = new Date(finalDate);
+              if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
+              else if (finalRecurrence.type === 'weekly') {
+                if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (!finalRecurrence.daysOfWeek.includes(current.getDay())); }
+                else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
+              } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
+              const end = finalRecurrence.endDate ? new Date(finalRecurrence.endDate) : new Date(new Date(finalDate).getTime() + 90 * 24 * 60 * 60 * 1000);
               let count = 0;
               const MAX_INSTANCES = 90;
-              const sourceId = task.recurringSourceId || `rec_${Date.now()}`;
+              const sourceId = currentTask.recurringSourceId || `rec_${Date.now()}`;
               while (current <= end && count < MAX_INSTANCES) {
                 const docRef = doc(collection(db, COLLECTION.TASKS));
-                createBatch.set(docRef, { ...updatePayload, userId: task.userId, date: current.toISOString().slice(0, 10), recurringSourceId: sourceId, createdAt: serverTimestamp(), status: 'pending', order: task.order || 0 });
+                createBatch.set(docRef, { ...firestorePayload, userId: currentTask.userId, date: current.toISOString().slice(0, 10), recurringSourceId: sourceId, createdAt: serverTimestamp(), status: 'pending', order: currentTask.order || 0 });
                 count++;
-                if (recurrenceRule.type === 'daily' || recurrenceRule.type === 'custom') { current.setDate(current.getDate() + (recurrenceRule.interval || 1)); }
-                else if (recurrenceRule.type === 'weekly') {
-                  if (recurrenceRule.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (current <= end && !recurrenceRule.daysOfWeek.includes(current.getDay())); }
-                  else { current.setDate(current.getDate() + 7 * (recurrenceRule.interval || 1)); }
-                } else if (recurrenceRule.type === 'monthly') { current.setMonth(current.getMonth() + (recurrenceRule.interval || 1)); }
+                if (finalRecurrence.type === 'daily' || finalRecurrence.type === 'custom') { current.setDate(current.getDate() + (finalRecurrence.interval || 1)); }
+                else if (finalRecurrence.type === 'weekly') {
+                  if (finalRecurrence.daysOfWeek?.length > 0) { do { current.setDate(current.getDate() + 1); } while (!finalRecurrence.daysOfWeek.includes(current.getDay())); }
+                  else { current.setDate(current.getDate() + 7 * (finalRecurrence.interval || 1)); }
+                } else if (finalRecurrence.type === 'monthly') { current.setMonth(current.getMonth() + (finalRecurrence.interval || 1)); }
                 else break;
               }
               await createBatch.commit();
@@ -232,35 +396,31 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       ]);
     } else {
       onClose();
-      updateDoc(doc(db, COLLECTION.TASKS, task.id), updatePayload).catch(handleSyncError);
+      updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload).catch(handleSyncError);
     }
   };
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>
       <View>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: SPACE.md, paddingHorizontal: SPACE.lg }}>
-          <TextInput
-            style={[
-              styles.newTaskInputLarge,
-              {
-                flex: 1,
-                marginBottom: 0,
-                paddingHorizontal: 0,
-                borderWidth: 0,
-                backgroundColor: 'transparent',
-                color: colors.textPrimary,
-                fontSize: 18,
-                fontFamily: 'Inter_600SemiBold',
-              }
-            ]}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Task title"
-            placeholderTextColor={colors.textMuted}
-            autoFocus={visible}
-          />
-          <AnimatedPressable onPress={handleDelete} style={{ padding: SPACE.sm, marginLeft: 'auto' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: SPACE.xs, paddingHorizontal: 0 }}>
+          <View style={{ flex: 1 }}>
+            <NLPTaskInput
+              value={title}
+              onChangeText={handleTitleChange}
+              parsed={nlpParsed ?? { title, date: null, timeSlot: null, priority: 'low', isRecurring: false, recurrenceRule: null, tokens: [] }}
+              onDismissToken={handleDismissToken}
+              autoFocus={visible}
+              placeholder="Task title... try 'tomorrow 5pm high'"
+              onSubmitEditing={() => handleSave()}
+              hideMic={true}
+            />
+          </View>
+          <AnimatedPressable
+            onPress={handleDelete}
+            style={{ padding: SPACE.sm, marginTop: 4, marginLeft: SPACE.xs }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <Ionicons name="trash-outline" size={20} color="#ff6961" />
           </AnimatedPressable>
         </View>
@@ -287,7 +447,7 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
               </Text>
             </AnimatedPressable>
 
-            {startTime && (
+            {startTime !== '' && (
               <AnimatedPressable
                 style={[styles.quickChip, !!endTime && { backgroundColor: 'rgba(52, 211, 153, 0.12)', borderColor: '#34d399' }]}
                 onPress={() => setShowEndPicker(true)}
@@ -375,8 +535,19 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
           title="Pick a Date"
         />
 
-        <AnimatedPressable style={styles.addTaskBtnFull} onPress={handleSave}>
-          <Text style={styles.addTaskBtnFullText}>Save Changes</Text>
+        <AnimatedPressable
+          style={[styles.addTaskBtnFull, !title.trim() && styles.addTaskBtnDisabled]}
+          onPress={() => handleSave()}
+          disabled={!title.trim()}
+        >
+          <Ionicons
+            name="checkmark-circle-outline"
+            size={16}
+            color={title.trim() ? (isDark ? '#000000' : '#ffffff') : colors.textMuted}
+          />
+          <Text style={[styles.addTaskBtnFullText, !title.trim() && styles.addTaskBtnDisabledText]}>
+            Save Changes
+          </Text>
         </AnimatedPressable>
       </View>
       <RecurrencePickerModal visible={showRecurrenceModal} onClose={() => setShowRecurrenceModal(false)} initialRule={recurrenceRule} onSave={setRecurrenceRule} />
@@ -386,3 +557,4 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
 
 export const EditTaskModal = React.memo(EditTaskModalComponent);
 export default EditTaskModal;
+

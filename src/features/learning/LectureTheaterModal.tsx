@@ -446,6 +446,7 @@ export const LectureTheaterModal: React.FC<LectureTheaterModalProps> = ({
                     getCurrentSecond={getCurrentSecond}
                     onSeek={handleSeek}
                     lectureTitle={playing.title}
+                    transcriptText={transcriptToPlainText(transcriptCues)}
                   />
                 )}
               </div>

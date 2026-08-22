@@ -137,6 +137,7 @@ mobile/
     │   ├── PlacementHub/                 # LeetCode Tracker, DSA Heatmap, Pattern Vault, Panic Modal
     │   ├── SARA/                         # Voice Orb, Bubbles, Action Confirmation, Reasoning Feed
     │   ├── Tasks/                        # Task Rows, Timeline, Matrix, Kanban, Pomodoro Sheets
+    │   ├── Vault/                        # Local Offline Document Viewer & Download HUD
     │   ├── ui/                           # BottomSheet, FloatingActionButton, GlassCard, EmptyState
     │   ├── AnimatedPressable.tsx         # Haptic-Enabled Animated Touch Wrapper
     │   ├── ErrorBoundary.tsx             # Crash Guard with Auto-Recovery & Diagnostic Log
@@ -218,7 +219,8 @@ mobile/
     │   ├── notifications.ts              # Local Multi-Channel Notification Scheduler
     │   ├── xpSystem.ts                   # Gamification XP Engine (Skinner Variable Rewards)
     │   ├── conflictDetector.ts           # Calendar vs Task Schedule Conflict Engine
-    │   ├── cloudinary.ts                 # Secure File & Media Cloudinary Uploader
+    │   ├── cloudinary.ts                 # Secure Direct File & Media Cloudinary Uploader
+    │   ├── vaultCacheService.ts          # Local-First Offline Vault Document & PDF Caching Engine
     │   ├── youtubeTranscriptService.ts   # 4-Layer Resilient YouTube Transcript Ingestion
     │   ├── flashcardService.ts           # SuperMemo SM-2 Spaced Repetition Algorithm
     │   ├── exerciseVideoResolver.ts      # YouTube Exercise Demo Resolver
@@ -350,7 +352,8 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | | `getXPData` | `() => Promise<{ xp: number, streak: number, level: XPLevel, progressPct: number }>` | Returns current user XP, rank level, and streak statistics. |
 | | `calculateLevel` | `(xp: number) => XPLevel` | Maps numeric XP to 1 of 8 rank titles (`Initiate` to `Mythic`). |
 | [`src/services/conflictDetector.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/conflictDetector.ts) | `detectConflicts` | `(tasks: Task[], events: CustomEvent[], timetable: AttendanceSubject[]) => ScheduleConflict[]` | Scans for timeSlot overlaps between calendar events, academic classes, and scheduled tasks. |
-| [`src/services/cloudinary.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/cloudinary.ts) | `uploadFileToCloudinary` | `(uri: string, type: 'image'\|'pdf'\|'raw') => Promise<string>` | Uploads local files/photos to Cloudinary CDN and returns secure URL. |
+| [`src/services/cloudinary.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/cloudinary.ts) | `uploadFileToCloudinary` | `(uri: string, type: string, name: string, onProgress?: (p: number) => void) => Promise<{ url: string, size: number }>` | Uploads local files/photos directly to Cloudinary CDN with progress. |
+| [`src/services/vaultCacheService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/vaultCacheService.ts) | `getCachedFilePath`, `downloadAndCacheFile`, `cacheLocalFile`, `isUrlCached`, `getVaultCacheStats` | Helper Functions | Local-first disk caching engine for Notes Vault documents, images, and PDFs in `${FileSystem.documentDirectory}zentrack_vault_cache/`. Guarantees 0ms opening and full offline persistence. |
 | [`src/services/youtubeTranscriptService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/youtubeTranscriptService.ts) | `fetchYouTubeTranscript` | `(videoId: string) => Promise<TranscriptResult>` | 4-layer resilient transcript pipeline (InnerTube, Gemini multimodal, Supadata API, Audio fallback). |
 | | `transcriptToPlainText` | `(cues: TranscriptCue[], maxChars?: number) => string` | Formats transcript cues into timestamped `[MM:SS]` text blocks for AI ingestion. |
 | [`src/services/flashcardService.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/services/flashcardService.ts) | `calculateSM2` | `(card: Flashcard, grade: 0\|1\|2\|3\|4\|5) => Flashcard` | SuperMemo SM-2 algorithm: updates ease factor, interval days, and repetition counts. |
@@ -420,7 +423,7 @@ Use this section to look up the exact functions, hooks, classes, and exported co
 | [`src/screens/tasks/useTasksData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useTasksData.ts) | `useTasksData()` | Tasks filtering, sorting, tab selection (`all`, `today`, `upcoming`), and tag grouping hook. |
 | [`src/screens/tasks/useRecurringSpawn.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/useRecurringSpawn.ts) | `useRecurringSpawn(tasks, optimisticAddTask)` | Client-side daily task recurrence spawner preventing duplicate clones for `today`. |
 | [`src/screens/tasks/NewTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/NewTaskModal.tsx) | `NewTaskModal` | Slide-up modal for task creation with NLP natural language parsing chips. |
-| [`src/screens/tasks/EditTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/EditTaskModal.tsx) | `EditTaskModal` | Modal for updating task title, priority, subtasks, recurrence, and dates. |
+| [`src/screens/tasks/EditTaskModal.tsx`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/EditTaskModal.tsx) | `EditTaskModal` | Modal for updating tasks with full NLP natural language parsing, live token chips, and save-time re-parsing (mic hidden). |
 | [`src/screens/tasks/taskConstants.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/taskConstants.ts) | `TASK_PRIORITY_COLORS`, `TASK_FILTERS` | Constants for task priorities and filtering modes. |
 | [`src/screens/tasks/tasksStyles.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/tasks/tasksStyles.ts) | `makeTasksStyles(colors, isDark)` | Dynamic style factory for tasks screens across Obsidian Cosmos & Frost Quartz themes. |
 | [`src/screens/dashboard/useDashboardData.ts`](file:///c:/Users/perso/.gemini/antigravity/scratch/zentrack-vibe2ship/mobile/src/screens/dashboard/useDashboardData.ts) | `useDashboardData()` | Aggregates discipline metrics, life score, upcoming events, and hydration progress for Home. |

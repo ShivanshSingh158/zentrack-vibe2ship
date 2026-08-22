@@ -1,6 +1,16 @@
 import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
-import Animated, { useSharedValue, useAnimatedStyle, withSpring, withSequence, withTiming, Easing } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
+  Easing,
+  FadeInDown,
+  FadeOut,
+  LinearTransition,
+} from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -177,7 +187,12 @@ const TaskRow = React.memo(function TaskRow({ task, onComplete, onCompleteStart,
       onSwipeableOpen={handleSwipeOpen}
       containerStyle={{ backgroundColor: 'transparent' }}
     >
-      <Animated.View style={animatedRowStyle}>
+      <Animated.View
+        entering={FadeInDown.duration(220).springify().damping(20).stiffness(200)}
+        exiting={FadeOut.duration(160)}
+        layout={LinearTransition.springify().damping(20).stiffness(200)}
+        style={animatedRowStyle}
+      >
         <View
           style={[styles.row, isSelected && { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.08)' : 'rgba(108, 92, 231, 0.08)' }]}
         >

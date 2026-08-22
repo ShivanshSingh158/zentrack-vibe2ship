@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Clock, Printer, Copy, Check, Bold, Italic, Heading2,
-  List, Sigma, Sparkles, HelpCircle
+  List, Sigma, Sparkles, HelpCircle, Loader2
 } from 'lucide-react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 import { formatSeconds } from '../../services/youtubeTranscriptService';
+import { callWithFallback } from '../../services/gemini/core';
 import { toast } from 'sonner';
 
 interface LectureNotesPaneProps {
@@ -14,6 +15,7 @@ interface LectureNotesPaneProps {
   getCurrentSecond: () => number;
   onSeek: (seconds: number) => void;
   lectureTitle: string;
+  transcriptText?: string;
 }
 
 export const LectureNotesPane: React.FC<LectureNotesPaneProps> = ({
@@ -22,9 +24,11 @@ export const LectureNotesPane: React.FC<LectureNotesPaneProps> = ({
   getCurrentSecond,
   onSeek,
   lectureTitle,
+  transcriptText = '',
 }) => {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [generatingNotes, setGeneratingNotes] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalChangeRef = useRef(false);
 
@@ -60,23 +64,6 @@ export const LectureNotesPane: React.FC<LectureNotesPaneProps> = ({
     }
     isInternalChangeRef.current = false;
   }, [initialNotes]);
-
-  // Wheel isolation
-  useEffect(() => {
-    const el = editorRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      const canScrollDown = scrollTop + clientHeight < scrollHeight - 1;
-      const canScrollUp = scrollTop > 0;
-      if ((e.deltaY > 0 && canScrollDown) || (e.deltaY < 0 && canScrollUp)) {
-        e.preventDefault();
-        el.scrollTop += e.deltaY;
-      }
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
 
   const saveTimerRef = useRef<any>(null);
 
@@ -165,6 +152,71 @@ export const LectureNotesPane: React.FC<LectureNotesPaneProps> = ({
         onSeek(seconds);
         toast.success(`Jumped video to ${tsBtn.textContent?.trim()}`);
       }
+    }
+  };
+
+  const handleGenerateAiNotes = async () => {
+    if (!transcriptText || transcriptText.length < 20) {
+      toast.error('No lecture transcript available to generate notes.');
+      return;
+    }
+    setGeneratingNotes(true);
+    toast.info('Generating complete full-lecture study notes...');
+
+    const prompt = `You are a world-class educational note-taker and instructor.
+Lecture Title: "${lectureTitle}"
+
+Create a THOROUGH, END-TO-END MASTER STUDY NOTE synthesized across the entire lecture from start to finish.
+Do NOT summarize only a single snippet. Cover every concept, algorithm, formula, code example, and nuance taught in the video.
+
+Format with clean, rich HTML elements:
+<h2>📌 Lecture Overview</h2>
+<p>Big picture roadmap and core objectives of the lecture.</p>
+
+<h2>🧠 Core Concepts & Chronological Deep-Dive</h2>
+<p>Breakdown of key sections taught in order with approximate [MM:SS] timestamp references.</p>
+
+<h2>💻 Code Implementations & Algorithms</h2>
+<pre><code>// Complete code snippet with explanation</code></pre>
+
+<h2>💡 Real-World Mental Models & Analogies</h2>
+<p>Intuitive breakdown explaining the concepts simply.</p>
+
+<h2>⚠️ Gotchas & Common Pitfalls</h2>
+<ul><li>Key edge cases to watch out for</li></ul>
+
+<h2>📝 Master Review Checklist</h2>
+<ul><li>Core takeaways and summary points</li></ul>
+
+=== FULL-LENGTH VIDEO TRANSCRIPT ===
+${transcriptText}
+=== END TRANSCRIPT ===
+
+Return ONLY the raw HTML body without wrapping in markdown code fences (\`\`\`html).`;
+
+    try {
+      const htmlResponse = await callWithFallback(async (genAI: any, modelName: string) => {
+        const model = genAI.getGenerativeModel({ model: modelName || 'gemini-2.5-flash' });
+        const res = await model.generateContent(prompt);
+        return res.response.text();
+      });
+
+      const cleanHtml = (htmlResponse || '')
+        .replace(/^```html\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+      if (editorRef.current && cleanHtml) {
+        editorRef.current.innerHTML = cleanHtml;
+        handleContentChange();
+        toast.success('Full-lecture master notes generated successfully!');
+      }
+    } catch (e: any) {
+      console.error('[LectureNotesPane] Generate AI Notes failed:', e);
+      toast.error('Failed to generate full notes: ' + (e?.message || 'Network error'));
+    } finally {
+      setGeneratingNotes(false);
     }
   };
 
@@ -268,6 +320,20 @@ export const LectureNotesPane: React.FC<LectureNotesPaneProps> = ({
         </div>
 
         <div className="lp-notes-actions">
+          {transcriptText && (
+            <button
+              type="button"
+              className="lp-stamp-ts-btn"
+              onClick={handleGenerateAiNotes}
+              disabled={generatingNotes}
+              title="Generate comprehensive master study notes for this full lecture with AI"
+              style={{ background: 'rgba(94, 218, 158, 0.15)', borderColor: 'rgba(94, 218, 158, 0.35)', color: '#5eda9e' }}
+            >
+              {generatingNotes ? <Loader2 size={12} className="lp-spin" /> : <Sparkles size={12} />}
+              <span>{generatingNotes ? 'Generating...' : '✨ Full AI Notes'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="lp-stamp-ts-btn"

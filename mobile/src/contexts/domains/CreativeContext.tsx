@@ -25,6 +25,8 @@ export interface CreativeContextType {
   jobs: JobApplication[];
   contentLogs: ContentLog[];
   ensureSubscribed: () => void;
+  optimisticUpdateLearningTopic: (id: string, updates: Partial<LearningTopic>) => void;
+  optimisticToggleSubtask: (topicId: string, subtaskId: string, isCompleted: boolean) => void;
 }
 
 const DEFAULT_CREATIVE_DATA: CreativeContextType = {
@@ -34,6 +36,8 @@ const DEFAULT_CREATIVE_DATA: CreativeContextType = {
   jobs: [],
   contentLogs: [],
   ensureSubscribed: () => {},
+  optimisticUpdateLearningTopic: () => {},
+  optimisticToggleSubtask: () => {},
 };
 
 const CreativeContext = createContext<CreativeContextType | null>(null);
@@ -178,10 +182,40 @@ export function CreativeProvider({
     [storageNodes]
   );
 
+  const optimisticUpdateLearningTopic = useCallback((id: string, updates: Partial<LearningTopic>) => {
+    setLearningTopics(prev => {
+      const fresh = prev.map(t => t.id === id ? { ...t, ...updates } : t);
+      writeCreativeCache({ learningTopics: fresh });
+      return fresh;
+    });
+  }, []);
+
+  const optimisticToggleSubtask = useCallback((topicId: string, subtaskId: string, isCompleted: boolean) => {
+    const todayIso = new Date().toISOString().slice(0, 10);
+    setLearningTopics(prev => {
+      const fresh = prev.map(topic => {
+        if (topic.id !== topicId) return topic;
+        const updatedSubs = (topic.subTasks || []).map(sub => {
+          if (sub.id !== subtaskId) return sub;
+          return {
+            ...sub,
+            isCompleted,
+            completedDate: isCompleted ? todayIso : undefined,
+          };
+        });
+        return { ...topic, subTasks: updatedSubs };
+      });
+      writeCreativeCache({ learningTopics: fresh });
+      return fresh;
+    });
+  }, []);
+
   const value = useMemo(() => ({
-    storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed
+    storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed,
+    optimisticUpdateLearningTopic, optimisticToggleSubtask,
   }), [
-    storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed
+    storageNodes, notes, learningTopics, jobs, contentLogs, ensureSubscribed,
+    optimisticUpdateLearningTopic, optimisticToggleSubtask,
   ]);
 
   return (

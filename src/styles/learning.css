@@ -1265,6 +1265,7 @@
   border-radius: 12px;
   overflow: hidden;
   height: 100%;
+  min-height: 0;
   box-shadow: 0 16px 50px rgba(0, 0, 0, 0.8);
 }
 
@@ -1308,6 +1309,7 @@
 
 .lp-companion-tab-content {
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -1319,11 +1321,11 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow-x: hidden !important;
-  overflow-y: hidden;
+  overflow: hidden;
   background: #000000;
   position: relative;
   box-sizing: border-box;
@@ -1748,21 +1750,38 @@
 /* ── MESSAGES STREAM ── */
 .lp-chatgpt-messages {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden !important;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  padding: 1rem 0.85rem;
+  padding: 1.15rem 0.95rem;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
   background: #000000;
-  /* Contain wheel scroll inside this pane */
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(165, 153, 255, 0.25) transparent;
+}
+
+.lp-chatgpt-messages::-webkit-scrollbar {
+  width: 5px;
+}
+
+.lp-chatgpt-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lp-chatgpt-messages::-webkit-scrollbar-thumb {
+  background: rgba(165, 153, 255, 0.2);
+  border-radius: 9999px;
+}
+
+.lp-chatgpt-messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(165, 153, 255, 0.45);
 }
 
 /* Welcome / Empty State */
@@ -1855,7 +1874,6 @@
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  overflow-x: hidden;
 }
 
 .lp-chatgpt-msg-row.user {
@@ -1881,7 +1899,7 @@
 }
 
 .lp-chatgpt-msg-body {
-  max-width: 88%;
+  max-width: 90%;
   min-width: 0;
   box-sizing: border-box;
   word-break: break-word;
@@ -1893,7 +1911,6 @@
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  overflow-x: hidden;
 }
 
 .lp-chatgpt-user-bubble {
@@ -1911,9 +1928,9 @@
 .lp-chatgpt-model-content {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  font-size: 0.84rem;
-  line-height: 1.6;
+  gap: 0.55rem;
+  font-size: 0.85rem;
+  line-height: 1.65;
   color: var(--lp-text-secondary);
   width: 100%;
   min-width: 0;
@@ -2061,6 +2078,7 @@
   margin: 0;
   padding: 0.85rem 0.95rem;
   overflow-x: auto;
+  overflow-y: hidden;
   font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.55;
@@ -2068,6 +2086,23 @@
   color: #d4d4d4;
   scrollbar-width: thin;
   scrollbar-color: rgba(165, 153, 255, 0.25) transparent;
+}
+
+.lp-chatgpt-code-pre::-webkit-scrollbar {
+  height: 4px;
+}
+
+.lp-chatgpt-code-pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.lp-chatgpt-code-pre::-webkit-scrollbar-thumb {
+  background: rgba(165, 153, 255, 0.2);
+  border-radius: 9999px;
+}
+
+.lp-chatgpt-code-pre::-webkit-scrollbar-thumb:hover {
+  background: rgba(165, 153, 255, 0.45);
 }
 
 /* ── EXPANDED BIG-SCREEN CODE MODAL ── */
@@ -2223,6 +2258,7 @@
   background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.95) 20%, #000000 100%);
   position: relative;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .lp-chatgpt-prompt-chips {
@@ -2230,7 +2266,13 @@
   align-items: center;
   gap: 0.35rem;
   overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   padding-bottom: 2px;
+}
+
+.lp-chatgpt-prompt-chips::-webkit-scrollbar {
+  display: none;
 }
 
 .lp-chatgpt-chip {

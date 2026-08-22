@@ -34,19 +34,19 @@ const buildZenGptBasePrompt = (videoTitle: string, topicName: string, transcript
 The student is studying: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"
 
 == THE 8 LAWS OF ZEN TUTORING (NEVER BREAK) ==
-1. RICHARD FEYNMAN TECHNIQUE: Explain concepts simply, as if teaching a beginner. Strip away all jargon. Use clear, vivid everyday analogies.
-2. CODE = WORKING + EXPLAINED: For any code question provide:
+1. FULL TRANSCRIPT MASTERY: You have full access to the complete lecture transcript from 00:00 to the end. Maintain a deep mental model of the entire video.
+2. RICHARD FEYNMAN TECHNIQUE: Explain concepts simply, as if teaching a beginner. Strip away all jargon. Use clear, vivid everyday analogies.
+3. CODE = WORKING + EXPLAINED: For any code question provide:
    a) Minimal working code example (< 30 lines)
    b) Line-by-line explanation of key parts
    c) Common beginner mistake
-   Always use fenced code blocks with language tags (\`\`\`javascript, \`\`\`python, etc.).
-3. ANALOGIES ARE MANDATORY: Provide a real-world analogy BEFORE technical explanation.
-4. CONFUSION DETECTION: If student expresses confusion, break down into smaller steps and provide a new analogy.
-5. CROSS-TOPIC CONNECTIONS: Link concepts to core programming or engineering fundamentals.
-6. FOLLOW-UP QUESTIONS: End every response with 2 specific follow-up questions:
+   Always use fenced code blocks with language tags (\`\`\`javascript, \`\`\`cpp, \`\`\`python, etc.).
+4. ANALOGIES ARE MANDATORY: Provide a real-world analogy BEFORE technical explanation.
+5. CONFUSION DETECTION: If student expresses confusion, break down into smaller steps and provide a new analogy.
+6. FOLLOW-UP QUESTIONS: End standard explanations with 2 specific follow-up questions:
    💡 **Ask next:** "Question 1?" · "Question 2?"
 7. QUIZ MODE (triggered by "quiz", "test me", "rapid-fire quiz"):
-   - Exactly 3 MCQ questions labeled Q1, Q2, Q3.
+   - Exactly 3 MCQ questions labeled Q1, Q2, Q3 testing understanding across the full lecture.
    - Format each question with clean options on separate lines:
      Q1: [Question text]
      A) [Option A]
@@ -54,10 +54,18 @@ The student is studying: 📺 "${videoTitle}" — 📚 Topic: "${topicName}"
      C) [Option C]
      D) [Option D]
    - Do NOT reveal answers initially in the quiz. Wait for student submission.
-8. NOTES MODE (triggered by "summarize for notes", "save note"):
-   - Structured ## Title, Key Concepts, Code, Gotchas.
+8. COMPREHENSIVE FULL-LECTURE NOTES MODE (triggered by "summarize for notes", "create notes", "lecture notes", "study notes", "full lecture notes"):
+   - YOU MUST SYNTHESIZE THE ENTIRE LECTURE FROM START TO FINISH. Never summarize only a small fragment or single timestamp unless explicitly asked "explain current timestamp".
+   - Produce a structured, thorough, master-level study note covering ALL major concepts, milestones, and details taught in the lecture:
+     • ## 📌 Lecture Overview & Big-Picture Roadmap
+     • ## 🧠 Core Concepts & In-Depth Explanations (Chronological breakdown of key sections with [MM:SS] timestamp references)
+     • ## 💻 Code Implementations & Algorithms (Complete runnable code snippets with line-by-line breakdown)
+     • ## 💡 Real-World Mental Models & Analogies
+     • ## ⚠️ Gotchas, Edge Cases & Common Pitfalls
+     • ## 📝 Quick Review Checklist & Summary
+   - Ensure the notes are rich, detailed, and comprehensive so the student can master the full 1-hour+ lecture at a glance!
 
-${transcript ? `=== VIDEO TRANSCRIPT (with timestamps) ===\n${transcript}\n=== END TRANSCRIPT ===` : '(No transcript available)'}`;
+${transcript ? `=== COMPLETE FULL-LENGTH VIDEO TRANSCRIPT (from 00:00 to end) ===\n${transcript}\n=== END TRANSCRIPT ===` : '(No transcript available)'}`;
 };
 
 // ── QUIZ PARSER & INTERACTIVE QUIZ CARD COMPONENT ─────────────────────────────
@@ -449,6 +457,8 @@ const CodeBlock: React.FC<{ language?: string; value: string }> = ({ language, v
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
 
+  if (!value || !value.trim()) return null;
+
   const handleCopy = () => {
     navigator.clipboard.writeText(value);
     setCopied(true);
@@ -674,23 +684,6 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
     }
   }, [messages, loading]);
 
-  // Native non-passive wheel isolation
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      const canScrollDown = scrollTop + clientHeight < scrollHeight - 1;
-      const canScrollUp = scrollTop > 0;
-      if ((e.deltaY > 0 && canScrollDown) || (e.deltaY < 0 && canScrollUp)) {
-        e.preventDefault();
-        el.scrollTop += e.deltaY;
-      }
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
-
   // Auto-expand textarea height as user types
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
@@ -766,7 +759,10 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
       : '';
 
     const currentSec = getCurrentSecond();
-    const timestampHeader = `[Student is currently at timestamp ${formatSeconds(currentSec)} in the lecture]`;
+    const isFullLectureRequest = /(?:full|complete|entire|whole|all)\s*(?:lecture|video|notes|summary)|summarize for notes|create notes|lecture notes|study notes|make notes|generate notes/i.test(userText);
+    const timestampHeader = isFullLectureRequest
+      ? `[CRITICAL DIRECTIVE: Student requested FULL-LECTURE MASTER STUDY NOTES covering the ENTIRE video from start [00:00] to finish. You have the complete transcript above. Synthesize the whole lecture comprehensively across all concepts taught without restricting to a single timestamp.]`
+      : `[Student is currently at timestamp ${formatSeconds(currentSec)} in the lecture. You have access to the COMPLETE full-length transcript of the whole video.]`;
     const basePrompt = buildZenGptBasePrompt(lectureTitle, topicTitle, transcriptText);
 
     const fullPrompt = `${basePrompt}\n\n${historyBlock}\n\n${timestampHeader}\n\nStudent's New Input:\n${userText}`;
@@ -1043,10 +1039,10 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
               <button
                 type="button"
                 className="lp-chatgpt-starter-card"
-                onClick={() => handleSend("Create a structured summary of the key takeaways from this lecture formatted for study notes.")}
+                onClick={() => handleSend("Generate a comprehensive, end-to-end master study note covering the entire lecture from start to finish. Include chronological concept breakdowns with timestamps, complete working code snippets, edge cases, and key takeaways.")}
               >
-                <div className="starter-card-title">📝 Summarize for Notes</div>
-                <div className="starter-card-desc">Extract bullet points, definitions & formulas</div>
+                <div className="starter-card-title">📝 Full Lecture Notes</div>
+                <div className="starter-card-desc">End-to-end master study guide for the whole video</div>
               </button>
 
               <button
@@ -1090,7 +1086,9 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
                           components={{
                             code({ node, className, children, ...props }) {
                               const match = /language-(\w+)/.exec(className || '');
-                              const isInline = !match && !String(children).includes('\n');
+                              const codeString = String(children || '').replace(/\n$/, '');
+                              if (!codeString.trim()) return null;
+                              const isInline = !match && !codeString.includes('\n');
                               return isInline ? (
                                 <code className="lp-chatgpt-inline-code" {...props}>
                                   {children}
@@ -1098,7 +1096,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
                               ) : (
                                 <CodeBlock
                                   language={match ? match[1] : ''}
-                                  value={String(children).replace(/\n$/, '')}
+                                  value={codeString}
                                 />
                               );
                             },
@@ -1195,9 +1193,9 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
           <button
             type="button"
             className="lp-chatgpt-chip"
-            onClick={() => handleSend("Create a structured summary of the key takeaways from this lecture formatted for study notes.")}
+            onClick={() => handleSend("Generate a comprehensive, end-to-end master study note covering the entire lecture from start to finish. Include chronological concept breakdowns with timestamps, complete working code snippets, edge cases, and key takeaways.")}
           >
-            📝 Summarize for Notes
+            📝 Full Lecture Notes
           </button>
           <button
             type="button"

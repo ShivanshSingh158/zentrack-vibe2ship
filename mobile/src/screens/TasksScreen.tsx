@@ -342,8 +342,8 @@ export default function TasksScreen() {
         />
       )}
 
-      {editingTask && <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />}
-      {user && isNewTaskOpen && <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />}
+      <EditTaskModal visible={!!editingTask} onClose={() => setEditingTask(null)} task={editingTask} />
+      {user && <NewTaskModal visible={isNewTaskOpen} onClose={() => setIsNewTaskOpen(false)} userId={user.uid} selectedDate={selectedDate} listCount={selectedDateTasks.length} />}
 
       {/* VIEWS */}
       {viewMode === 'timeline' ? (
@@ -563,7 +563,7 @@ export default function TasksScreen() {
       {/* SHEETS */}
       {isTemplatesSheetOpen && <TaskTemplatesSheet visible={isTemplatesSheetOpen} onClose={() => setIsTemplatesSheetOpen(false)} userId={user?.uid!} onApplyTemplate={(template) => addTaskFromTemplate(user?.uid!, template, selectedDate, tasks.length)} />}
       {!!timeLogTask && <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />}
-      {isTimeSpentOpen && <PomodoroSheet visible={isTimeSpentOpen} onClose={() => setIsTimeSpentOpen(false)} tasks={tasks} />}
+      {isTimeSpentOpen && <PomodoroSheet visible={isTimeSpentOpen} onClose={() => setIsTimeSpentOpen(false)} tasks={tasks} selectedDate={selectedDate} />}
 
     </SafeAreaView>
   );

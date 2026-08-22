@@ -133,7 +133,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 export default function LearningScreen() {
-  const { learningTopics } = useCreativeData();
+  const { learningTopics, optimisticToggleSubtask } = useCreativeData();
   const { user } = useCoreData();
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
@@ -248,25 +248,41 @@ export default function LearningScreen() {
     const topic = learningTopics.find(t => t.id === topicId);
     if (!topic) return;
     const subtask = topic.subTasks?.find(s => s.id === subtaskId);
-    const willBeCompleted = !subtask?.isCompleted;
+    if (!subtask) return;
+    const willBeCompleted = !subtask.isCompleted;
 
+    // 1. 0ms Instant Optimistic UI Update
+    optimisticToggleSubtask(topicId, subtaskId, willBeCompleted);
+
+    // 2. Tactical Haptic & XP Feedback
+    if (willBeCompleted) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      awardXP('LECTURE_COMPLETE').catch(() => {});
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+
+    // 3. Clean Firestore Payload (NEVER pass undefined inside array elements)
     const todayIso = new Date().toISOString().slice(0, 10);
-    const updatedSubtasks = (topic.subTasks || []).map(s =>
-      s.id === subtaskId
-        ? {
-            ...s,
-            isCompleted: willBeCompleted,
-            completedDate: willBeCompleted ? todayIso : undefined,
-          }
-        : s
-    );
+    const updatedSubtasks = (topic.subTasks || []).map(s => {
+      if (s.id !== subtaskId) return s;
+      const cleanSub: any = {
+        ...s,
+        isCompleted: willBeCompleted,
+      };
+      if (willBeCompleted) {
+        cleanSub.completedDate = todayIso;
+      } else {
+        delete cleanSub.completedDate;
+      }
+      return cleanSub;
+    });
+
     try {
       await updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, topicId), { subTasks: updatedSubtasks });
-      if (willBeCompleted) {
-        await awardXP('LECTURE_COMPLETE');
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[LearningScreen] toggleSubtask Firestore sync error:', e);
+    }
   };
 
   const togglePin = async (topicId: string, subtaskId: string) => {
