@@ -28,7 +28,8 @@ export interface AttendanceSubject {
   labsTotal: number;
   targetPercentage: number;
   order: number;
-  schedule: Record<string, { classCount: number; labCount: number }>;
+  schedule: Record<string, any>;
+  schemaVersion?: number;
 }
 
 const defaultSchedule: Record<string, { classCount: number; labCount: number }> = {
@@ -43,6 +44,83 @@ const defaultSchedule: Record<string, { classCount: number; labCount: number }> 
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+export function parseTimeToMinutes(timeStr: string | undefined): number {
+  if (!timeStr) return 999;
+  const upper = timeStr.trim().toUpperCase();
+  const isPM = upper.includes('PM');
+  const isAM = upper.includes('AM');
+  const cleaned = upper.replace(/[APM\s]+$/i, '').trim();
+  const parts = cleaned.split(':');
+  let h = parseInt(parts[0], 10) || 0;
+  const m = parts.length >= 2 ? (parseInt(parts[1], 10) || 0) : 0;
+  if (isPM || isAM) {
+    if (isPM && h !== 12) h += 12;
+    if (isAM && h === 12) h = 0;
+  }
+  return h * 60 + m;
+}
+
+export function resolveSubjectDaySchedule(
+  subject: AttendanceSubject,
+  dateOrDayIndex: string | number
+): {
+  classCount: number;
+  labCount: number;
+  classes: Array<{ time?: string; room?: string }>;
+  labs: Array<{ time?: string; room?: string }>;
+} {
+  let dayIdx = 0;
+  if (typeof dateOrDayIndex === 'number') {
+    dayIdx = dateOrDayIndex;
+  } else if (dateOrDayIndex.includes('-')) {
+    dayIdx = new Date(dateOrDayIndex + 'T00:00:00').getDay();
+  } else {
+    dayIdx = parseInt(dateOrDayIndex, 10) || 0;
+  }
+
+  if (!subject || !subject.schedule) {
+    const fallback = defaultSchedule[String(dayIdx)] || { classCount: 0, labCount: 0 };
+    return {
+      classCount: fallback.classCount || 0,
+      labCount: fallback.labCount || 0,
+      classes: [],
+      labs: []
+    };
+  }
+
+  const dayName = DAY_NAMES[dayIdx];
+  const dayNameLower = dayName.toLowerCase();
+  const dayShort = DAY_SHORT[dayIdx];
+  const dayShortLower = dayShort.toLowerCase();
+  const dayStr = String(dayIdx);
+
+  const sch: any =
+    subject.schedule[dayStr] ??
+    subject.schedule[dayIdx] ??
+    subject.schedule[dayName] ??
+    subject.schedule[dayNameLower] ??
+    subject.schedule[dayShort] ??
+    subject.schedule[dayShortLower] ??
+    null;
+
+  if (!sch) {
+    return { classCount: 0, labCount: 0, classes: [], labs: [] };
+  }
+
+  const rawClasses: any[] = Array.isArray(sch.classes) ? sch.classes : [];
+  const rawLabs: any[] = Array.isArray(sch.labs) ? sch.labs : [];
+
+  const classCount = rawClasses.length > 0 ? rawClasses.length : (typeof sch.classCount === 'number' ? sch.classCount : 0);
+  const labCount = rawLabs.length > 0 ? rawLabs.length : (typeof sch.labCount === 'number' ? sch.labCount : 0);
+
+  return {
+    classCount,
+    labCount,
+    classes: rawClasses,
+    labs: rawLabs
+  };
+}
 
 function getWeekDates(dateStr: string): string[] {
   const d = new Date(dateStr + 'T00:00:00');
@@ -163,11 +241,10 @@ export const AttendanceModule = () => {
   };
 
   const getClassCountForDay = useCallback((dayIndex: number) => {
-    const dayKey = String(dayIndex);
     let count = 0;
     for (const s of subjects) {
-      const daySched = s.schedule?.[dayKey] || defaultSchedule[dayKey];
-      count += (daySched?.classCount || 0) + (daySched?.labCount || 0);
+      const daySched = resolveSubjectDaySchedule(s, dayIndex);
+      count += daySched.classCount + daySched.labCount;
     }
     return count;
   }, [subjects]);
@@ -181,12 +258,18 @@ export const AttendanceModule = () => {
     return `${startStr} – ${endStr}`;
   }, [weekDates]);
 
-  // Group logs by subject
+  // Group logs by subject (indexes both subjectId and subjectName for 100% resilient lookup)
   const logsBySubjectId = useMemo(() => {
     const map: Record<string, any[]> = {};
     for (const l of logs) {
-      if (!map[l.subjectId]) map[l.subjectId] = [];
-      map[l.subjectId].push(l);
+      if (l.subjectId) {
+        if (!map[l.subjectId]) map[l.subjectId] = [];
+        map[l.subjectId].push(l);
+      }
+      if (l.subjectName) {
+        if (!map[l.subjectName]) map[l.subjectName] = [];
+        map[l.subjectName].push(l);
+      }
     }
     return map;
   }, [logs]);
@@ -203,43 +286,55 @@ export const AttendanceModule = () => {
     return { globalAttended: attended, globalTotal: total, globalPct: pct };
   }, [subjects]);
 
-  // Today's Scheduled Sessions
+  // Today's Scheduled Sessions — accurately resolved across mobile & web formats
   const todaySessions = useMemo(() => {
+    if (isSelectedHoliday) return [];
     const sessions: Array<{
       id: string;
       subject: AttendanceSubject;
       type: 'class' | 'lab';
       idx: number;
+      timeMins: number;
       timeStr: string;
     }> = [];
 
     for (const s of subjects) {
-      const daySched = s.schedule?.[selectedDayOfWeek] || defaultSchedule[selectedDayOfWeek];
-      const classCount = daySched?.classCount || 0;
-      const labCount = daySched?.labCount || 0;
+      const daySched = resolveSubjectDaySchedule(s, selectedDate);
+      const { classCount, labCount, classes, labs } = daySched;
 
       for (let i = 0; i < classCount; i++) {
+        const item = classes[i];
+        const timeStr = item?.time
+          ? [item.time, item.room].filter(Boolean).join(' • ')
+          : `Class #${i + 1}`;
         sessions.push({
           id: `${s.id}-class-${i}`,
           subject: s,
           type: 'class',
           idx: i,
-          timeStr: `${9 + sessions.length}:00 AM - ${10 + sessions.length}:00 AM`,
+          timeMins: parseTimeToMinutes(item?.time),
+          timeStr,
         });
       }
 
       for (let i = 0; i < labCount; i++) {
+        const item = labs[i];
+        const timeStr = item?.time
+          ? [item.time, item.room].filter(Boolean).join(' • ')
+          : `Lab #${i + 1}`;
         sessions.push({
           id: `${s.id}-lab-${i}`,
           subject: s,
           type: 'lab',
           idx: i,
-          timeStr: `${10 + sessions.length}:15 AM - ${12 + sessions.length}:15 PM`,
+          timeMins: parseTimeToMinutes(item?.time),
+          timeStr,
         });
       }
     }
-    return sessions;
-  }, [subjects, selectedDayOfWeek]);
+
+    return sessions.sort((a, b) => a.timeMins - b.timeMins);
+  }, [subjects, selectedDate, isSelectedHoliday]);
 
   // At-Risk Warning Subjects
   const warningSubjects = useMemo(() => {
@@ -662,7 +757,7 @@ export const AttendanceModule = () => {
           <div className="att-sessions-list">
             {todaySessions.map(session => {
               const { subject, type, idx } = session;
-              const subLogs = logsBySubjectId[subject.id!] || [];
+              const subLogs = (subject.id ? logsBySubjectId[subject.id] : null) || logsBySubjectId[subject.name] || [];
               let matchingLog = null;
               let matchIdx = 0;
 
@@ -932,7 +1027,7 @@ export const AttendanceModule = () => {
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.45rem' }}>
                     {['1', '2', '3', '4', '5', '6'].map(dayKey => {
-                      const daySched = sub.schedule?.[dayKey] || { classCount: 0, labCount: 0 };
+                      const daySched = resolveSubjectDaySchedule(sub, Number(dayKey));
                       return (
                         <div
                           key={dayKey}
@@ -1024,12 +1119,16 @@ export const AttendanceModule = () => {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {(logsBySubjectId[selectedHistorySubject.id!] || []).length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--att-text-tertiary)', fontSize: '0.85rem' }}>
-                  No attendance logs recorded for this subject yet.
-                </div>
-              ) : (
-                logsBySubjectId[selectedHistorySubject.id!].map(l => (
+              {(() => {
+                const histLogs = (selectedHistorySubject.id ? logsBySubjectId[selectedHistorySubject.id] : null) || logsBySubjectId[selectedHistorySubject.name] || [];
+                if (histLogs.length === 0) {
+                  return (
+                    <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--att-text-tertiary)', fontSize: '0.85rem' }}>
+                      No attendance logs recorded for this subject yet.
+                    </div>
+                  );
+                }
+                return histLogs.map(l => (
                   <div
                     key={l.id}
                     style={{
@@ -1064,8 +1163,8 @@ export const AttendanceModule = () => {
                       <span>Undo</span>
                     </button>
                   </div>
-                ))
-              )}
+                ));
+              })()}
             </div>
           </div>
         </div>
