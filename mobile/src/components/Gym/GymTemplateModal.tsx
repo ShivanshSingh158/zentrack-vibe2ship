@@ -54,7 +54,7 @@ export const GymTemplateModal: React.FC<Props> = ({ visible, onClose, onApply })
                   <Text style={[s.splitCardTitle, selected === 'ppl' && s.splitCardTitleActive]}>Push / Pull / Legs</Text>
                   {selected === 'ppl' && <Ionicons name="checkmark-circle" size={16} color={colors.accentPrimary} />}
                 </View>
-                <Text style={s.splitCardBadge}>6 Days • 158 Sets</Text>
+                <Text style={s.splitCardBadge}>6 Days • 126 Sets (High Efficiency)</Text>
                 <Text style={s.splitCardDetail} numberOfLines={2}>Modernized balanced hypertrophy hitting each muscle 2x/week.</Text>
               </TouchableOpacity>
 
