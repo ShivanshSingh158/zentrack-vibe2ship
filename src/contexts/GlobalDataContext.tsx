@@ -13,10 +13,9 @@ import {
   getLevel,
   awardXP,
   subscribeXPChanges,
-  XPResult,
-  XPState,
   XP_SOURCES
 } from '../services/xpSystem';
+import type { XPResult, XPState } from '../services/xpSystem';
 
 interface GlobalDataContextType {
   tasks: Task[];
