@@ -60,6 +60,8 @@ export const COLLECTION = {
   ASSIGNMENTS: 'assignments',
   POMODORO: 'pomodoro_sessions',
   CALENDAR_EVENTS: 'calendar_events',
+  WATER_LOGS: 'water_logs',
+  SLEEP_LOGS: 'sleep_logs',
   USER_PROFILES: 'user_profiles',
   AGENT_MEMORY: 'agent_memory',
   RATE_LIMITS: 'rate_limits',

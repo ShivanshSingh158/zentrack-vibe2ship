@@ -78,6 +78,14 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
     if (!isNaN(val) && val > 0) {
       onUpdateTarget(val);
       AsyncStorage.setItem(WATER_GOAL_KEY, String(val));
+      if (userId) {
+        queueWrite(COLLECTION.USER_PROFILES, 'update', {
+          id: userId,
+          waterGoalMl: val,
+          waterTarget: val,
+          updatedAt: Date.now(),
+        }).catch(() => {});
+      }
     }
     setEditingTarget(false);
   };
@@ -90,6 +98,14 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
       const autoGoal = Math.round(w * 40);
       onUpdateTarget(autoGoal);
       await AsyncStorage.setItem(WATER_GOAL_KEY, String(autoGoal));
+      if (userId) {
+        queueWrite(COLLECTION.USER_PROFILES, 'update', {
+          id: userId,
+          waterGoalMl: autoGoal,
+          waterTarget: autoGoal,
+          updatedAt: Date.now(),
+        }).catch(() => {});
+      }
       setShowWeightPrompt(false);
       setWeightInput('');
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

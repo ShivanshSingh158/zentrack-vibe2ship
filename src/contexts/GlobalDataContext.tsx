@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo } from 'react';
-import { collection, query, where, onSnapshot, doc, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, limit, orderBy, setDoc } from 'firebase/firestore';
 
 import type { Query, DocumentData } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -30,6 +30,8 @@ interface GlobalDataContextType {
   learningTopics: any[];
   gymLogs: any[];
   waterLogs: any[];
+  waterGoalMl: number;
+  setWaterGoal: (targetMl: number) => Promise<void>;
   sleepLogs: any[];
   gymSchedule: any;
   notes: any[];
@@ -275,8 +277,21 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     signOutGoogle();
     setIsGoogleConnected(false);
     setGoogleStatus('disconnected');
-    window.dispatchEvent(new CustomEvent('google-token-disconnected'));
   };
+
+  // ✅ BUG-H1: Poll Google Calendar every 3 minutes if connected.
+  // Polling runs entirely on the main thread via standard fetch.
+  useEffect(() => {
+    if (!isGoogleConnected) {
+      setCalendarEvents([]);
+      return;
+    }
+    const updateEvents = (events: CalendarEvent[]) => {
+      setCalendarEvents(events);
+    };
+    const pollInterval = pollGoogleCalendarChanges(updateEvents, 180000);
+    return () => clearInterval(pollInterval);
+  }, [isGoogleConnected]);
 
   const dataUnsubsRef = useRef<(() => void)[]>([]);
   const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -290,29 +305,37 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  // Auth + Firestore Subscriptions
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
+    const unsubAuth = onAuthStateChanged(auth, async (currentUser) => {
       cleanupDataListeners();
 
-      if (!user) {
-        setTasks([]); setDailyLogs([]); setHabitLogs([]); setHabits([]);
-        setJobs([]); setGoals([]); setLearningTopics([]); setGymLogs([]);
-        setNotes([]); setAttendanceSubjects([]); setAttendanceLogs([]); setAttendanceHolidays([]); setAssignments([]); setPomodoroSessions([]);
+      if (!currentUser) {
+        setTasks([]);
+        setHabitLogs([]);
+        setHabits([]);
+        setJobs([]);
+        setGoals([]);
+        setLearningTopics([]);
+        setGymLogs([]);
+        setWaterLogs([]);
+        setSleepLogs([]);
+        setNotes([]);
+        setAttendanceSubjects([]);
+        setAttendanceLogs([]);
+        setAttendanceHolidays([]);
+        setAssignments([]);
+        setPomodoroSessions([]);
         setIsLoading(false);
         return;
       }
 
-      const uid = user.uid;
+      const uid = currentUser.uid;
+      loadUserGeminiKey(uid);
       setIsLoading(true);
 
-      // ── Load personal Gemini key so ALL AI calls use it immediately ──
-      loadUserGeminiKey().then(key => {
-        if (key) console.log('[ZenAI] ✅ Personal Gemini key loaded for user.');
-      });
-
-      // ✅ D2: limit(500) on todos for power users with 2+ years of task history
-      const TOTAL = 16; // includes waterLogs, sleepLogs, attendance_logs, attendance_holidays
       let firedCount = 0;
+      const TOTAL = 14;
       const onFirstFire = () => {
         firedCount++;
         if (firedCount >= TOTAL) setIsLoading(false);
@@ -326,6 +349,32 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         };
       };
 
+      let mobileWater: any[] = [];
+      let legacyWater: any[] = [];
+      const handleWaterMerge = () => {
+        const seen = new Set<string>();
+        const combined: any[] = [];
+        for (const item of [...mobileWater, ...legacyWater]) {
+          if (item.id && seen.has(item.id)) continue;
+          if (item.id) seen.add(item.id);
+          combined.push(item);
+        }
+        setWaterLogs(combined);
+      };
+
+      let mobileSleep: any[] = [];
+      let legacySleep: any[] = [];
+      const handleSleepMerge = () => {
+        const seen = new Set<string>();
+        const combined: any[] = [];
+        for (const item of [...mobileSleep, ...legacySleep]) {
+          if (item.id && seen.has(item.id)) continue;
+          if (item.id) seen.add(item.id);
+          combined.push(item);
+        }
+        setSleepLogs(combined);
+      };
+
       const unsubs: (() => void)[] = [
         safeSnapshot(query(collection(db, 'todos'), where('userId', '==', uid)), makeHandler(setTasks), 'todos'),
         safeSnapshot(query(collection(db, 'habit_logs'), where('userId', '==', uid), limit(365)), makeHandler(setHabitLogs), 'habit_logs'),
@@ -335,9 +384,25 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         safeSnapshot(query(collection(db, 'learning_topics'), where('userId', '==', uid)), makeHandler(setLearningTopics), 'learning_topics'),
         // ✅ D2: limit(365) — one year of gym history sufficient for fitness analytics
         safeSnapshot(query(collection(db, 'gymLogs'), where('userId', '==', uid), limit(365)), makeHandler(setGymLogs), 'gymLogs'),
-        // ✅ Real-time Firestore sync with mobile app water & sleep logs
-        safeSnapshot(query(collection(db, 'waterLogs'), where('userId', '==', uid), limit(365)), makeHandler(setWaterLogs), 'waterLogs'),
-        safeSnapshot(query(collection(db, 'sleepLogs'), where('userId', '==', uid), limit(365)), makeHandler(setSleepLogs), 'sleepLogs'),
+        // ✅ Real-time Firestore sync with mobile app water & sleep logs (both mobile snake_case and web formats)
+        safeSnapshot(query(collection(db, 'water_logs'), where('userId', '==', uid), limit(365)), (docs) => {
+          mobileWater = docs;
+          handleWaterMerge();
+          onFirstFire();
+        }, 'water_logs'),
+        safeSnapshot(query(collection(db, 'waterLogs'), where('userId', '==', uid), limit(365)), (docs) => {
+          legacyWater = docs;
+          handleWaterMerge();
+        }, 'waterLogs'),
+        safeSnapshot(query(collection(db, 'sleep_logs'), where('userId', '==', uid), limit(365)), (docs) => {
+          mobileSleep = docs;
+          handleSleepMerge();
+          onFirstFire();
+        }, 'sleep_logs'),
+        safeSnapshot(query(collection(db, 'sleepLogs'), where('userId', '==', uid), limit(365)), (docs) => {
+          legacySleep = docs;
+          handleSleepMerge();
+        }, 'sleepLogs'),
         safeSnapshot(query(collection(db, 'notes'), where('userId', '==', uid)), makeHandler(setNotes), 'notes'),
         safeSnapshot(query(collection(db, 'attendance_subjects'), where('userId', '==', uid)), makeHandler(setAttendanceSubjects), 'attendance_subjects'),
         safeSnapshot(query(collection(db, 'attendance_logs'), where('userId', '==', uid), limit(365)), makeHandler(setAttendanceLogs), 'attendance_logs'),
@@ -346,17 +411,34 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         safeSnapshot(query(collection(db, 'pomodoro_sessions'), where('userId', '==', uid)), makeHandler(setPomodoroSessions), 'pomodoro_sessions'),
         // users doc listener
         onSnapshot(doc(db, 'users', uid), (snap) => {
-          if (snap.exists() && snap.data().preferences) {
-            setUserPreferences(snap.data().preferences);
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data?.preferences) {
+              setUserPreferences(data.preferences);
+            }
+            const goal = data?.waterGoalMl || data?.waterTarget || data?.preferences?.waterTarget || data?.preferences?.waterGoalMl;
+            if (typeof goal === 'number' && goal > 0) {
+              setWaterGoalMl(goal);
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('zentrack_water_goal_ml', String(goal));
+              }
+            }
           }
           onFirstFire();
         }),
-        // ✅ user_profiles doc listener — Real-time cross-platform XP sync with mobile app
+        // ✅ user_profiles doc listener — Real-time cross-platform XP & Water Target sync with mobile app
         onSnapshot(doc(db, 'user_profiles', uid), (snap) => {
           if (snap.exists()) {
             const data = snap.data();
             if (typeof data?.xp === 'number') {
               syncXPWithFirestore(data.xp);
+            }
+            const goal = data?.waterGoalMl || data?.waterTarget || data?.preferences?.waterTarget || data?.preferences?.waterGoalMl;
+            if (typeof goal === 'number' && goal > 0) {
+              setWaterGoalMl(goal);
+              if (typeof localStorage !== 'undefined') {
+                localStorage.setItem('zentrack_water_goal_ml', String(goal));
+              }
             }
           }
           onFirstFire();
@@ -382,9 +464,10 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return (
     <GlobalDataContext.Provider value={{
       tasks, calendarEvents, dailyLogs, habitLogs, habits, allHabits: habits, jobs, goals,
-      learningTopics, gymLogs, waterLogs, sleepLogs, notes, attendanceSubjects, attendanceLogs,
-      attendanceHolidays, assignments, pomodoroSessions, userXP, xpState, awardXP, userPreferences,
-      isLoading, gymSchedule, isGoogleConnected, googleStatus, connectGoogle, disconnectGoogle,
+      learningTopics, gymLogs, waterLogs, waterGoalMl, setWaterGoal, sleepLogs, notes,
+      attendanceSubjects, attendanceLogs, attendanceHolidays, assignments, pomodoroSessions,
+      userXP, xpState, awardXP, userPreferences, isLoading, gymSchedule, isGoogleConnected,
+      googleStatus, connectGoogle, disconnectGoogle,
     } as any}>
       {children}
     </GlobalDataContext.Provider>

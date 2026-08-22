@@ -18,7 +18,9 @@ import {
   ChevronRight,
   Timer,
   BookOpen,
-  RotateCcw
+  RotateCcw,
+  Settings,
+  X
 } from 'lucide-react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { auth, db } from '../../services/firebase';
@@ -244,15 +246,30 @@ export const LifeHomeDashboard: React.FC = () => {
   }, [attendanceSubjects]);
 
   // Water / Hydration State (Real-time Firestore Sync with Mobile App)
-  const todayWaterLogs = useMemo(() => {
-    return (globalData.waterLogs || []).filter((w: any) => w.date === todayStr);
-  }, [globalData.waterLogs, todayStr]);
+  const [isWaterTargetModalOpen, setIsWaterTargetModalOpen] = useState(false);
+  const [customGoalInput, setCustomGoalInput] = useState('');
 
-  const waterTarget = 2500; // 2.5L daily target
+  const waterTarget = globalData.waterGoalMl || 3800;
+
+  const todayWaterLogs = useMemo(() => {
+    return (globalData.waterLogs || []).filter((w: any) => {
+      if (!w) return false;
+      if (w.date === todayStr) return true;
+      if (w.timestamp) {
+        const d = new Date(w.timestamp);
+        return getLocalDateString(d) === todayStr;
+      }
+      if (w.createdAt?.seconds) {
+        const d = new Date(w.createdAt.seconds * 1000);
+        return getLocalDateString(d) === todayStr;
+      }
+      return false;
+    });
+  }, [globalData.waterLogs, todayStr]);
 
   const waterAmount = useMemo(() => {
     const firestoreTotal = todayWaterLogs.reduce((acc: number, curr: any) => {
-      const val = Number(curr.amount ?? curr.amountMl ?? 0);
+      const val = Number(curr.amountMl ?? curr.amount ?? 0);
       return acc + (isNaN(val) ? 0 : val);
     }, 0);
 
@@ -272,12 +289,12 @@ export const LifeHomeDashboard: React.FC = () => {
 
     if (user?.uid) {
       try {
-        await addDoc(collection(db, 'waterLogs'), {
+        await addDoc(collection(db, 'water_logs'), {
           userId: user.uid,
-          amount: delta,
           amountMl: delta,
+          amount: delta,
           date: todayStr,
-          createdAt: Date.now(),
+          timestamp: Date.now(),
         });
         toast.success(`+${delta}ml logged (${(updated / 1000).toFixed(1)}L total) 💧`);
       } catch (e) {
@@ -293,7 +310,9 @@ export const LifeHomeDashboard: React.FC = () => {
     localStorage.setItem(`zen_water_${todayStr}`, '0');
     if (user?.uid && todayWaterLogs.length > 0) {
       try {
-        const deletePromises = todayWaterLogs.map((w: any) => deleteDoc(doc(db, 'waterLogs', w.id)));
+        const deletePromises = todayWaterLogs.map((w: any) => {
+          return deleteDoc(doc(db, 'water_logs', w.id)).catch(() => deleteDoc(doc(db, 'waterLogs', w.id)));
+        });
         await Promise.all(deletePromises);
         toast.info('Hydration reset for today');
       } catch (e) {
@@ -303,6 +322,13 @@ export const LifeHomeDashboard: React.FC = () => {
     } else {
       toast.info('Hydration reset for today');
     }
+  };
+
+  const handleSaveWaterTarget = async (ml: number) => {
+    if (!ml || isNaN(ml) || ml <= 0) return;
+    await globalData.setWaterGoal(ml);
+    toast.success(`Daily water target set to ${(ml / 1000).toFixed(1)}L 💧`);
+    setIsWaterTargetModalOpen(false);
   };
 
   // Next Event
@@ -531,7 +557,15 @@ export const LifeHomeDashboard: React.FC = () => {
                   </span>
                 </Link>
 
-                <div className="matrix-metric-item" onClick={() => logWater(250)}>
+                <div
+                  className="matrix-metric-item"
+                  onClick={() => {
+                    setCustomGoalInput(String(waterTarget));
+                    setIsWaterTargetModalOpen(true);
+                  }}
+                  style={{ cursor: 'pointer' }}
+                  title="Click to customize daily hydration goal"
+                >
                   <div className="metric-left" style={{ color: '#38bdf8' }}>
                     <span>💧</span>
                     <span>Hydration</span>
@@ -744,12 +778,21 @@ export const LifeHomeDashboard: React.FC = () => {
             {/* Compact Water Logger */}
             <div className="water-tracker-compact">
               <div className="water-header-row">
-                <div className="water-text-wrap">
+                <div
+                  className="water-text-wrap"
+                  onClick={() => {
+                    setCustomGoalInput(String(waterTarget));
+                    setIsWaterTargetModalOpen(true);
+                  }}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                  title="Click to customize daily hydration goal"
+                >
                   <span>💧</span>
                   <span>{(waterAmount / 1000).toFixed(1)} / {(waterTarget / 1000).toFixed(1)} L</span>
                   <span style={{ fontSize: '0.7rem', color: '#71717a', fontWeight: 500 }}>
-                    ({Math.round((waterAmount / waterTarget) * 100)}%)
+                    ({Math.round((waterAmount / (waterTarget || 1)) * 100)}%)
                   </span>
+                  <Settings size={12} color="#71717a" style={{ opacity: 0.8 }} />
                 </div>
                 <div className="water-btn-group">
                   <button type="button" className="water-chip" onClick={() => logWater(250)} title="Add 250ml water">+250ml</button>
@@ -772,7 +815,7 @@ export const LifeHomeDashboard: React.FC = () => {
               <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '9999px', overflow: 'hidden' }}>
                 <div
                   style={{
-                    width: `${Math.min(100, Math.round((waterAmount / waterTarget) * 100))}%`,
+                    width: `${Math.min(100, Math.round((waterAmount / (waterTarget || 1)) * 100))}%`,
                     height: '100%',
                     background: 'linear-gradient(90deg, #38bdf8, #0ea5e9)',
                     borderRadius: '9999px',
@@ -808,6 +851,112 @@ export const LifeHomeDashboard: React.FC = () => {
         onClose={() => setIsXPModalOpen(false)}
         currentXP={activeXP}
       />
+
+      {/* ── DAILY HYDRATION GOAL CUSTOMIZER MODAL ── */}
+      {isWaterTargetModalOpen && (
+        <div className="notes-modal-overlay" onClick={() => setIsWaterTargetModalOpen(false)}>
+          <div
+            className="notes-modal-content"
+            style={{ maxWidth: '420px', padding: '1.5rem', background: '#121215', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: 16 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '1.25rem' }}>💧</span>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#fff', margin: 0 }}>Daily Hydration Target</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsWaterTargetModalOpen(false)}
+                style={{ background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', padding: 4 }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: '#a1a1aa', margin: '0 0 1rem 0', lineHeight: 1.5 }}>
+              Choose a quick preset or enter your custom daily target (e.g. calculated based on 40ml per kg body weight).
+            </p>
+
+            {/* Preset Buttons */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginBottom: '1.25rem' }}>
+              {[
+                { label: '2.5 L', ml: 2500 },
+                { label: '3.0 L', ml: 3000 },
+                { label: '3.8 L', ml: 3800 },
+                { label: '4.0 L', ml: 4000 },
+              ].map(preset => (
+                <button
+                  key={preset.ml}
+                  type="button"
+                  onClick={() => handleSaveWaterTarget(preset.ml)}
+                  style={{
+                    padding: '0.55rem 0.25rem',
+                    background: waterTarget === preset.ml ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.04)',
+                    border: `1px solid ${waterTarget === preset.ml ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`,
+                    color: waterTarget === preset.ml ? '#38bdf8' : '#fff',
+                    borderRadius: 10,
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Custom Input */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1.25rem' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Custom Target (in Millilitres / ml)
+              </label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  type="number"
+                  min="500"
+                  max="10000"
+                  step="100"
+                  value={customGoalInput}
+                  onChange={e => setCustomGoalInput(e.target.value)}
+                  placeholder="e.g. 3800"
+                  style={{
+                    flex: 1,
+                    padding: '0.65rem 0.85rem',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 10,
+                    color: '#fff',
+                    fontSize: '0.9rem',
+                    outline: 'none'
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleSaveWaterTarget(parseInt(customGoalInput, 10))}
+                  style={{
+                    padding: '0.65rem 1.25rem',
+                    background: '#38bdf8',
+                    border: 'none',
+                    borderRadius: 10,
+                    color: '#000',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.75rem', color: '#52525b', textAlign: 'center' }}>
+              Syncs in real-time across both mobile app and web dashboard.
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

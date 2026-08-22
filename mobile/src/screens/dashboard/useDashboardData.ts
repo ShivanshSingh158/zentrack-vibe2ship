@@ -29,6 +29,9 @@ import { formatLocalDateStr } from '../../utils/dateUtils';
 import { getBootManifestSync, loadBootManifest, updateL1Cache } from '../../utils/bootManifest';
 import { subscribeXPChanges } from '../../services/xpSystem';
 
+import { queueWrite } from '../../services/offlineSync';
+import { COLLECTION } from '../../config/constants';
+
 const DEFAULT_LAYOUT: LayoutItem[] = [
   { id: 'quote', hidden: false },
   { id: 'stats', hidden: false },
@@ -75,6 +78,14 @@ export function useDashboardData() {
     setWaterTotalState(val);
     updateL1Cache('waterGoalMl', val);
     AsyncStorage.setItem('zentrack_water_goal_ml', String(val)).catch(() => {});
+    if (user?.uid) {
+      queueWrite(COLLECTION.USER_PROFILES, 'update', {
+        id: user.uid,
+        waterGoalMl: val,
+        waterTarget: val,
+        updatedAt: Date.now(),
+      }).catch(() => {});
+    }
   };
 
   // ── Clock tick (1min) ─────────────────────────────────────────────────────
