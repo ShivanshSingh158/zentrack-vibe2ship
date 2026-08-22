@@ -110,7 +110,14 @@ export const GYM_PLAN_ARNOLD: GymPlanDay[] = [
   {
     dayIndex: 7,
     name: 'Rest Day',
-    subtitle: 'Completexport const GYM_PLAN_PPL: GymPlanDay[] = [
+    subtitle: 'Complete Rest',
+    focus: 'No lifting. Light walk allowed. Focus on recovery.',
+    exercises: [],
+    isRest: true,
+  },
+];
+
+export const GYM_PLAN_PPL: GymPlanDay[] = [
   {
     dayIndex: 1,
     name: 'Push A',
