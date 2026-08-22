@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo, memo, useCallback } from 'react';
 import WorkoutTimer from '../../components/Gym/WorkoutTimer';
-import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Animated, Image, Modal, LayoutAnimation, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, Animated, Image, Modal, LayoutAnimation, Dimensions, ScrollView } from 'react-native';
 import { BlurView } from 'expo-blur';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { hapticLight, hapticMedium } from '../../utils/haptics';
@@ -16,7 +16,7 @@ import { COLLECTION } from '../../config/constants';
 
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useCoreData } from '../../contexts/domains/CoreDataContext';
-import { useGymLog, todayStr, dateStrOffset, planDayIndexForDate } from '../../hooks/useGymLog';
+import { useGymLog, todayStr, dateStrOffset, planDayIndexForDate, resolvePlanDay } from '../../hooks/useGymLog';
 import { GYM_PLAN_PPL, GYM_PLAN_ARNOLD } from '../../data/gymPlan';
 import type { GymPlanDay } from '../../types/gym.types';
 import { calculateGymStreak } from '../../utils/gymUtils';
@@ -98,6 +98,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
   const [showSwapRoutineModal, setShowSwapRoutineModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [showWeeklyRecap, setShowWeeklyRecap] = useState(false);
   const [historyFor, setHistoryFor] = useState<{ id: string; name: string } | null>(null);
   const [logCardioFor, setLogCardioFor] = useState<GymCardioLog | null>(null);
   const [showBodyMetrics, setShowBodyMetrics] = useState(false);
@@ -849,6 +850,14 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
                 <Text style={s.headerBtnText}>Swap</Text>
               </TouchableOpacity>
 
+              <TouchableOpacity onPress={() => { hapticMedium(); setShowWeeklyRecap(true); }} style={s.morphBtn} activeOpacity={0.7}>
+                <View style={s.morphBtnIconWrap}>
+                  <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
+                  <Ionicons name="bar-chart-outline" size={16} color={COLORS.textMuted} />
+                </View>
+                <Text style={s.headerBtnText}>Recap</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity onPress={() => { hapticMedium(); setShowProfileModal(true); }} style={s.morphBtn} activeOpacity={0.7}>
                 <View style={s.morphBtnIconWrap}>
                   <Animated.View style={[s.morphBtnPill, { opacity: pillAnim }]} />
@@ -1070,6 +1079,27 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
         {showBodyMetrics && <BodyMetricsSheet visible={showBodyMetrics} onClose={() => setShowBodyMetrics(false)} />}
         {showPRHallOfFame && <PRHallOfFameSheet visible={showPRHallOfFame} onClose={() => setShowPRHallOfFame(false)} />}
 
+        {/* ─── Weekly Recap Modal (accessible any day via Recap button) ──────── */}
+        <Modal
+          visible={showWeeklyRecap}
+          animationType="slide"
+          transparent={false}
+          onRequestClose={() => setShowWeeklyRecap(false)}
+          statusBarTranslucent
+        >
+          <SafeAreaView style={{ flex: 1, backgroundColor: '#000000' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' }}>
+              <Text style={{ fontSize: 17, fontFamily: FONT_FAMILY.bold, color: '#FFFFFF' }}>Weekly Recap</Text>
+              <TouchableOpacity onPress={() => { hapticLight(); setShowWeeklyRecap(false); }} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Ionicons name="close" size={22} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+              <WeeklyGymReport gymLogs={gymLogs} weekAnchorDate={selectedDate} userGymPlan={userGymPlan} />
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+
         {/* ─── Themed Exercise Options Bottom Sheet ──────────────────────────────── */}
         <BottomSheet
           visible={!!exerciseMenuFor}
@@ -1090,7 +1120,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               onPress={() => {
                 const ex = exerciseMenuFor;
                 setExerciseMenuFor(null);
-                navigation.navigate('ExerciseDetail', { exerciseId: ex.exerciseId, date: log!.date });
+                navigation.navigate('ExerciseDetail', { exerciseId: ex.exerciseId, date: log?.date ?? selectedDate });
               }}
             >
               <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)' }]}>
@@ -1110,7 +1140,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               onPress={() => {
                 const ex = exerciseMenuFor;
                 setExerciseMenuFor(null);
-                navigation.navigate('ExerciseSwap', { originalExerciseId: ex.exerciseId, date: log!.date });
+                navigation.navigate('ExerciseSwap', { originalExerciseId: ex.exerciseId, date: log?.date ?? selectedDate });
               }}
             >
               <View style={[s.menuActionIcon, { backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.08)' }]}>
@@ -1176,7 +1206,38 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               onPress={() => {
                 const ex = exerciseMenuFor;
                 setExerciseMenuFor(null);
-                deleteExercise(ex.exerciseId);
+                hapticMedium();
+                Alert.alert(
+                  'Delete Exercise',
+                  `Remove "${ex?.name}" from your workout?`,
+                  [
+                    {
+                      text: 'Today Only',
+                      style: 'destructive',
+                      onPress: () => {
+                        deleteExercise(ex.exerciseId);
+                      },
+                    },
+                    {
+                      text: 'Remove from Plan',
+                      style: 'destructive',
+                      onPress: async () => {
+                        // Remove from today's log
+                        deleteExercise(ex.exerciseId);
+                        // Also remove from the recurring master plan day
+                        const planIdx = log?.dayPlanIndex ?? planDayIndexForDate(selectedDate);
+                        const existing = resolvePlanDay(userGymPlan, planIdx);
+                        if (existing && !existing.isRest) {
+                          const updatedExercises = (existing.exercises || []).filter(
+                            (e: any) => e.id !== ex.exerciseId && e.name !== ex.name
+                          );
+                          await updateMasterPlan(planIdx, { ...existing, exercises: updatedExercises });
+                        }
+                      },
+                    },
+                    { text: 'Cancel', style: 'cancel' },
+                  ]
+                );
               }}
             >
               <View style={[s.menuActionIcon, { backgroundColor: 'rgba(255,105,97,0.12)' }]}>
@@ -1184,7 +1245,7 @@ export const GymHomeScreen = memo(function GymHomeScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[s.menuActionTitle, { color: '#ff6961' }]}>Delete Exercise</Text>
-                <Text style={s.menuActionSub}>Remove from today's workout</Text>
+                <Text style={s.menuActionSub}>Remove from today or from plan</Text>
               </View>
             </TouchableOpacity>
 

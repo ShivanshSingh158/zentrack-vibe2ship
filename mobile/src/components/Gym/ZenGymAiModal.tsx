@@ -60,7 +60,7 @@ interface Props {
     currentWeight?: number;
   };
   onAddExercise?: (name: string, targetSets: number, targetReps: string) => void;
-  onDeleteExercise?: (exerciseIndex: number) => void;
+  onDeleteExercise?: (exerciseId: string) => void;
   onLogSet?: (exerciseIndex: number, setIndex: number, weightKg: number, reps: number) => void;
   onGenerateWorkoutPlan?: (planName: string, exercises: { name: string, sets: number, reps: string }[]) => void;
   onAutoregulateDeload?: () => void;
@@ -717,8 +717,8 @@ export function ZenGymAiModal({
           responseText = `âœ… Added **${args.exerciseName}** (${args.targetSets}Ã—${args.targetReps}) to today's workout.`;
 
         } else if ((actionType === 'removeExercise' || actionType === 'deleteExercise') && onDeleteExercise) {
-          const idx = typeof args.exerciseIndex === 'number' ? args.exerciseIndex : 0;
-          onDeleteExercise(idx);
+          const exId: string = args.exerciseId || args.exerciseName || '';
+          if (exId) onDeleteExercise(exId);
           responseText = `âœ… Removed **${args.exerciseName || 'exercise'}** from your workout.`;
 
         } else if (actionType === 'logWorkoutSet' && onLogSet) {

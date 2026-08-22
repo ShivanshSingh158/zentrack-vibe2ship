@@ -90,6 +90,33 @@ export const HabitsModule = () => {
   const allHabits = (rawHabits || []) as Habit[];
   const habitLogs = (rawLogs || []) as HabitLog[];
 
+  // PERFECT_DAY helper — call after every habit is logged
+  const checkPerfectDay = async (
+    justLoggedHabitId: string,
+    justLoggedCount: number,
+    existingTodayLogs: HabitLog[],
+  ) => {
+    const key = `zentrack_perfect_day_${todayStr}`;
+    if (localStorage.getItem(key)) return;
+    const positiveHabits = allHabits.filter(h => h.type !== 'negative' && !h.archived);
+    if (positiveHabits.length === 0) return;
+    const mergedLogs = [
+      ...existingTodayLogs.filter(l => l.habitId !== justLoggedHabitId),
+      { habitId: justLoggedHabitId, date: todayStr, count: justLoggedCount } as HabitLog,
+    ];
+    const allDone = positiveHabits.every(h => {
+      const log = mergedLogs.find(l => l.habitId === h.id);
+      if (!log) return false;
+      if (h.targetCount && h.targetCount > 0) return (log.count || 1) >= h.targetCount;
+      return true;
+    });
+    if (!allDone) return;
+    localStorage.setItem(key, '1');
+    const res = await awardXP('PERFECT_DAY');
+    toast.success(`★ PERFECT DAY! All habits done! +${res.added} XP 🏆`);
+    if (res.leveledUp) toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+  };
+
   // Filter & UI States
   const [filterType, setFilterType] = useState<'all' | 'positive' | 'negative' | 'archived'>('all');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -248,6 +275,9 @@ export const HabitsModule = () => {
           if (res.leveledUp) {
             toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
           }
+          // PERFECT_DAY check
+          const todayLogs = habitLogs.filter(l => l.date === todayStr);
+          await checkPerfectDay(habit.id, newCount, todayLogs);
         });
       } else {
         toast.info(`${habit.name}: ${newCount}/${habit.targetCount}`);
@@ -290,6 +320,9 @@ export const HabitsModule = () => {
         if (res.leveledUp) {
           toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
         }
+        // PERFECT_DAY check
+        const todayLogs = habitLogs.filter(l => l.date === todayStr);
+        await checkPerfectDay(habit.id, 1, todayLogs);
       });
     }
   };

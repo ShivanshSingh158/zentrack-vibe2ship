@@ -51,10 +51,35 @@ import { BulkRescheduleSheet } from './BulkRescheduleSheet';
 import { InboxOverdueDrawer } from './InboxOverdueDrawer';
 
 export const TodoListModule: React.FC = () => {
-  const { tasks: globalTodos, isLoading } = useGlobalData();
+  const { tasks: globalTodos, habits: rawHabits, habitLogs: rawHabitLogs, isLoading } = useGlobalData();
   const user = auth.currentUser;
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+
+  // PERFECT_DAY: fires once per day when all today's tasks + all habits are done
+  const checkPerfectDayAfterTask = useCallback(async (justCompletedId: string) => {
+    const key = `zentrack_perfect_day_${todayStr}`;
+    if (localStorage.getItem(key)) return;
+    // All tasks for selectedDate must be done (include the one just optimistically completed)
+    const todayTasks = globalTodos.filter(t => t.date === todayStr);
+    const allTasksDone = todayTasks.every(t => t.status === 'completed' || t.id === justCompletedId);
+    if (!allTasksDone || todayTasks.length === 0) return;
+    // All positive non-archived habits must have a log for today
+    const positiveHabits = ((rawHabits || []) as any[]).filter((h: any) => h.type !== 'negative' && !h.archived);
+    if (positiveHabits.length === 0) return;
+    const todayHabitLogs = ((rawHabitLogs || []) as any[]).filter((l: any) => l.date === todayStr);
+    const allHabitsDone = positiveHabits.every((h: any) => {
+      const log = todayHabitLogs.find((l: any) => l.habitId === h.id);
+      if (!log) return false;
+      if (h.targetCount && h.targetCount > 0) return (log.count || 1) >= h.targetCount;
+      return true;
+    });
+    if (!allHabitsDone) return;
+    localStorage.setItem(key, '1');
+    const res = await awardXP('PERFECT_DAY');
+    toast.success(`★ PERFECT DAY! All tasks + habits done! +${res.added} XP 🏆`);
+    if (res.leveledUp) toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+  }, [globalTodos, rawHabits, rawHabitLogs, todayStr]);
 
   // Filter tasks for selected date
   const todos = useMemo(() => {
@@ -134,17 +159,19 @@ export const TodoListModule: React.FC = () => {
     if (newStatus) {
       playPopSound();
       import('../../utils/notifications').then(({ sendSystemNotification }) => {
-        sendSystemNotification('Task Completed! 🎉', { body: `You finished: "${todo.title || todo.text}". Keep it up!` }, true);
+        sendSystemNotification('Task Completed! 🏁', { body: `You finished: "${todo.title || todo.text}". Keep it up!` }, true);
       });
-      awardXP('TASK_COMPLETE').then((res) => {
+      awardXP('TASK_COMPLETE').then(async (res) => {
         if (res.bonus) {
-          toast.success(`Task completed! +${res.added} XP ⚡ Dopamine Bonus Triggered! 🎉`);
+          toast.success(`Task completed! +${res.added} XP ⚡ Dopamine Bonus Triggered! 🏁`);
         } else {
-          toast.success(`Task completed! +${res.added} XP 🎉`);
+          toast.success(`Task completed! +${res.added} XP 🏁`);
         }
         if (res.leveledUp) {
           toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
         }
+        // PERFECT_DAY check
+        await checkPerfectDayAfterTask(todo.id!);
       });
       // Trigger time log sheet
       setJustCompletedTask(todo);

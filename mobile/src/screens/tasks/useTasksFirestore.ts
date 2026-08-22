@@ -31,6 +31,11 @@ interface UseTasksFirestoreProps {
   setIsBulkEdit: (v: boolean) => void;
   setSelectedTaskIds: (v: Set<string>) => void;
   setBulkRescheduleModal: (v: boolean) => void;
+  // PERFECT_DAY detection — pass live data from the screen
+  todayTasks: Task[];
+  habits: Array<{ id: string; type?: string; archived?: boolean; targetCount?: number | null }>;
+  habitLogs: Array<{ habitId: string; date: string; count?: number }>;
+  todayDateStr: string;
 }
 
 export function useTasksFirestore({
@@ -40,7 +45,45 @@ export function useTasksFirestore({
   setIsBulkEdit,
   setSelectedTaskIds,
   setBulkRescheduleModal,
+  todayTasks,
+  habits,
+  habitLogs,
+  todayDateStr,
 }: UseTasksFirestoreProps) {
+
+  // Helper: award PERFECT_DAY if all today's tasks done AND all positive habits logged
+  const checkAndAwardPerfectDay = useCallback(async (justCompletedTaskId: string) => {
+    try {
+      const perfectDayKey = `zentrack_perfect_day_${todayDateStr}`;
+      const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+      const alreadyClaimed = await AsyncStorage.getItem(perfectDayKey);
+      if (alreadyClaimed) return;
+
+      // All today's tasks must be completed (include the one just completed optimistically)
+      const allTasksDone = todayTasks.every(
+        t => t.status === 'completed' || t.id === justCompletedTaskId
+      );
+      if (!allTasksDone || todayTasks.length === 0) return;
+
+      // All positive non-archived habits must have a log today
+      const positiveHabits = habits.filter(h => h.type !== 'negative' && !h.archived);
+      if (positiveHabits.length === 0) return;
+      const todayHabitLogs = habitLogs.filter(l => l.date === todayDateStr);
+      const allHabitsDone = positiveHabits.every(h => {
+        const log = todayHabitLogs.find(l => l.habitId === h.id);
+        if (!log) return false;
+        if (h.targetCount && h.targetCount > 0) return (log.count || 1) >= h.targetCount;
+        return true;
+      });
+      if (!allHabitsDone) return;
+
+      await AsyncStorage.setItem(perfectDayKey, '1');
+      await awardXP('PERFECT_DAY');
+      import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+      const { DeviceEventEmitter } = await import('react-native');
+      DeviceEventEmitter.emit('zentrack_perfect_day', { date: todayDateStr });
+    } catch (e) { /* non-critical — never block task completion */ }
+  }, [todayTasks, habits, habitLogs, todayDateStr]);
 
   // IDEMPOTENCY GUARD: Per-task action timestamp lock prevents double-tap race conditions
   const inFlightTaskLocks = useRef<Map<string, number>>(new Map());
@@ -63,7 +106,10 @@ export function useTasksFirestore({
     }
     (async () => {
       try {
-        if (newStatus === 'completed') await awardXP('TASK_COMPLETE');
+        if (newStatus === 'completed') {
+          await awardXP('TASK_COMPLETE');
+          await checkAndAwardPerfectDay(task.id!);
+        }
         // safeUpdate: online → direct Firestore; offline → AsyncStorage queue (survives kill)
         await safeUpdate(
           task.id,
@@ -73,7 +119,7 @@ export function useTasksFirestore({
         );
       } catch (error) { console.error('[useTasksFirestore] completeTask error', error); }
     })();
-  }, [optimisticUpdateTask]);
+  }, [optimisticUpdateTask, checkAndAwardPerfectDay]);
 
   const clearCompletedTasks = useCallback(async (tasks: Task[]) => {
     try {
@@ -198,13 +244,14 @@ export function useTasksFirestore({
     (async () => {
       try {
         await awardXP('TASK_COMPLETE');
+        await checkAndAwardPerfectDay(taskId);
         await safeUpdate(
           taskId, COLLECTION.TASKS, updates,
           () => updateDoc(doc(db, COLLECTION.TASKS, taskId), updates),
         );
       } catch (e) { console.error('[useTasksFirestore] saveTimeLog error', e); }
     })();
-  }, [setTimeLogTask]);
+  }, [setTimeLogTask, checkAndAwardPerfectDay]);
 
   const skipTimeLog = useCallback((
     taskId: string,
@@ -217,13 +264,14 @@ export function useTasksFirestore({
     (async () => {
       try {
         await awardXP('TASK_COMPLETE');
+        await checkAndAwardPerfectDay(taskId);
         await safeUpdate(
           taskId, COLLECTION.TASKS, updates,
           () => updateDoc(doc(db, COLLECTION.TASKS, taskId), updates),
         );
       } catch (e) { console.error('[useTasksFirestore] skipTimeLog error', e); }
     })();
-  }, [setTimeLogTask]);
+  }, [setTimeLogTask, checkAndAwardPerfectDay]);
 
   return {
     completeTask,

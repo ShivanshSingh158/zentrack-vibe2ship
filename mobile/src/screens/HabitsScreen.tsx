@@ -746,6 +746,31 @@ export default function HabitsScreen() {
                () => updateDoc(doc(db, COLLECTION.HABITS, habit.id), streakData),
                COLLECTION.HABITS, 'update', streakData, habit.id,
              );
+             // Streak milestone bonuses (matches web HabitsModule logic)
+             if (newStreak === 7) {
+               await awardXP('HABIT_STREAK_7');
+             } else if (newStreak === 30) {
+               await awardXP('HABIT_STREAK_30');
+             }
+             // PERFECT_DAY — check if every positive non-archived habit is done today
+             const perfectDayKey = `zentrack_perfect_day_${today}`;
+             const alreadyClaimed = await AsyncStorage.getItem(perfectDayKey);
+             if (!alreadyClaimed) {
+               const positiveHabits = allHabits.filter(h => h.type !== 'negative' && !h.archived);
+               const updatedLogs = [...todayLogs, { habitId: habit.id, date: today, count: newCount }];
+               const allDone = positiveHabits.every(h => {
+                 const log = updatedLogs.find(l => l.habitId === h.id);
+                 if (!log) return false;
+                 if (h.targetCount && h.targetCount > 0) return (log.count || 1) >= h.targetCount;
+                 return true;
+               });
+               if (allDone && positiveHabits.length > 0) {
+                 await AsyncStorage.setItem(perfectDayKey, '1');
+                 await awardXP('PERFECT_DAY');
+                 import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+                 DeviceEventEmitter.emit('zentrack_perfect_day', { date: today });
+               }
+             }
            }
          } catch (e) {
            console.error('[HabitsScreen] Error updating quantitative habit', e);
@@ -799,6 +824,29 @@ export default function HabitsScreen() {
             () => updateDoc(doc(db, COLLECTION.HABITS, habit.id), streakData),
             COLLECTION.HABITS, 'update', streakData, habit.id,
           );
+          // Streak milestone bonuses (matches web HabitsModule logic)
+          if (newStreak === 7) {
+            await awardXP('HABIT_STREAK_7');
+          } else if (newStreak === 30) {
+            await awardXP('HABIT_STREAK_30');
+          }
+          // PERFECT_DAY — check if every positive non-archived habit is done today
+          const perfectDayKey = `zentrack_perfect_day_${today}`;
+          const alreadyClaimed = await AsyncStorage.getItem(perfectDayKey);
+          if (!alreadyClaimed) {
+            const positiveHabits = allHabits.filter(h => h.type !== 'negative' && !h.archived);
+            const updatedLogs = [...todayLogs, { habitId: habit.id, date: today, count: 1 }];
+            const allDone = positiveHabits.every(h => {
+              const log = updatedLogs.find(l => l.habitId === h.id);
+              return !!log;
+            });
+            if (allDone && positiveHabits.length > 0) {
+              await AsyncStorage.setItem(perfectDayKey, '1');
+              await awardXP('PERFECT_DAY');
+              import('expo-haptics').then(H => H.notificationAsync(H.NotificationFeedbackType.Success));
+              DeviceEventEmitter.emit('zentrack_perfect_day', { date: today });
+            }
+          }
         }
       } catch (e) {
         console.error('[HabitsScreen] Error toggling habit', e);

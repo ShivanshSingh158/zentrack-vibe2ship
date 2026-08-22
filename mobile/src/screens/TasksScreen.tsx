@@ -69,9 +69,10 @@ export default function TasksScreen() {
   const { colors, isDark } = useTheme();
   const styles = makeTasksStyles(colors, isDark);
   
-  const { tasks, user, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
+  const { tasks, user, habits, habitLogs, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
   const { attendance, attendanceLogs } = useAcademicData();
   const { gymLogs, userGymPlan } = useWellnessData();
+  const todayDateStr = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
   
   // 1. Recurring Spawn Logic
   useRecurringSpawn(tasks, user?.uid, optimisticAddTask);
@@ -109,6 +110,10 @@ export default function TasksScreen() {
     setIsBulkEdit,
     setSelectedTaskIds,
     setBulkRescheduleModal,
+    todayTasks: selectedDateTasks,
+    habits,
+    habitLogs,
+    todayDateStr,
   });
 
   // Animations

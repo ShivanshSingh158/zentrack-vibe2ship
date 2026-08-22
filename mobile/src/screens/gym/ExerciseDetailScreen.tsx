@@ -153,10 +153,10 @@ export default function ExerciseDetailScreen() {
           text: "Today Only", 
           onPress: () => {
             if (!log) return;
-            const index = log.exercises.findIndex(e => e.exerciseId === exerciseId);
-            if (index !== -1) {
+            const found = log.exercises.find(e => e.exerciseId === exerciseId);
+            if (found) {
               hapticMedium();
-              deleteExercise(index);
+              deleteExercise(exerciseId);
               navigation.goBack();
             }
           } 
@@ -166,10 +166,10 @@ export default function ExerciseDetailScreen() {
           style: "destructive",
           onPress: async () => {
             if (!log) return;
-            const index = log.exercises.findIndex(e => e.exerciseId === exerciseId);
-            if (index !== -1) {
+            const found = log.exercises.find(e => e.exerciseId === exerciseId);
+            if (found) {
               hapticMedium();
-              deleteExercise(index);
+              deleteExercise(exerciseId);
               
               if (date) {
                 const planIdx = planDayIndexForDate(date);

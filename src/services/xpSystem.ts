@@ -15,9 +15,26 @@ import { db, auth } from './firebase';
 const XP_KEY = 'zentrack_xp_v1';
 
 export const LEVEL_THRESHOLDS = [
-  0, 500, 1200, 2500, 4200, 6500, 9500, 13500, 
-  18000, 23000, 29000, 36000, 44000, 53000, 
-  63500, 75500, 89000, 104000, 121000, 140000
+  0,        //  0 — Seeker
+  1000,     //  1 — Warden
+  3000,     //  2 — Sentinel
+  7000,     //  3 — Guardian
+  14000,    //  4 — Vanguard
+  27000,    //  5 — Luminary
+  59500,    //  6 — Legend         ← user anchor point
+  110000,   //  7 — Mythic
+  180000,   //  8 — Paragon
+  270000,   //  9 — Titan
+  390000,   // 10 — Ascendant
+  550000,   // 11 — Exalted
+  760000,   // 12 — Sovereign
+  1030000,  // 13 — Archon
+  1380000,  // 14 — Celestial
+  1820000,  // 15 — Ethereal
+  2380000,  // 16 — Empyrean
+  3080000,  // 17 — Astral
+  3950000,  // 18 — Zenith
+  5000000,  // 19 — Apex
 ];
 
 export const LEVEL_TITLES = [

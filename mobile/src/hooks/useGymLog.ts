@@ -377,10 +377,11 @@ export function useGymLog(dateStr: string) {
     });
   }, [saveLog]);
 
-  const deleteExercise = useCallback((exerciseIndex: number) => {
+  const deleteExercise = useCallback((exerciseId: string) => {
     setLog(prev => {
       if (!prev) return prev;
-      const exercises = prev.exercises.filter((_, i) => i !== exerciseIndex)
+      const exercises = prev.exercises
+        .filter(ex => ex.exerciseId !== exerciseId)
         .map((ex, i) => ({ ...ex, _idx: i }));
       const updated = { ...prev, exercises, updatedAt: Date.now() };
       saveLog(updated);
