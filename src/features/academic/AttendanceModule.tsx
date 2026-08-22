@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { playPopSound } from '../../utils/sound';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { awardXP } from '../../services/xpSystem';
 
 // ── Constants & Helpers ──
 export interface AttendanceSubject {
@@ -293,7 +294,16 @@ export const AttendanceModule = () => {
         }
       }
 
-      toast.success(`Marked ${subject.name} as ${action}`);
+      if (action === 'attended') {
+        awardXP('ATTENDANCE_LOG').then((res) => {
+          toast.success(`Attended ${subject.name}! +${res.added} XP 🎓`);
+          if (res.leveledUp) {
+            toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+          }
+        });
+      } else {
+        toast.success(`Marked ${subject.name} as ${action}`);
+      }
     } catch (err) {
       console.error(err);
       toast.error('Failed to log attendance');

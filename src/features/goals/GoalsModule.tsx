@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { autoBreakdownGoal } from '../../services/gemini';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { GoalCard } from './GoalCard';
+import { awardXP } from '../../services/xpSystem';
 
 export const GoalsModule = () => {
   // All external data comes from GlobalDataContext — zero additional Firestore listeners.
@@ -259,6 +260,16 @@ export const GoalsModule = () => {
         delete copy[krId];
         return copy;
       });
+
+      const target = currentKR.targetValue || 100;
+      if (finalValue >= target && currentKR.currentValue < target) {
+        awardXP('GOAL_MILESTONE').then((res) => {
+          toast.success(`🎯 Key Result Achieved: "${currentKR.title}"! +${res.added} XP 🏆`);
+          if (res.leveledUp) {
+            toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+          }
+        });
+      }
     } catch (err) {
       console.error(err);
       toast.error('Failed to update progress');

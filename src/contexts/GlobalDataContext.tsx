@@ -8,6 +8,15 @@ import { initGoogleCalendar, isSignedInToGoogle, signInWithGoogle, signOutGoogle
 import { loadUserGeminiKey } from '../services/userGeminiAuth';
 import type { Task, CalendarEvent } from '../types/domain';
 import { GYM_PLAN, WEEKDAY_TO_PLAN } from '../features/gym/data/gymPlan';
+import {
+  syncXPWithFirestore,
+  getLevel,
+  awardXP,
+  subscribeXPChanges,
+  XPResult,
+  XPState,
+  XP_SOURCES
+} from '../services/xpSystem';
 
 interface GlobalDataContextType {
   tasks: Task[];
@@ -28,6 +37,9 @@ interface GlobalDataContextType {
   attendanceSubjects: any[];
   assignments: any[];
   pomodoroSessions: any[];
+  userXP: number;
+  xpState: XPState;
+  awardXP: (source: keyof typeof XP_SOURCES) => Promise<XPResult>;
   userPreferences: {
     peakEnergyTime: 'morning' | 'midday' | 'evening';
     isGymDay?: boolean;
@@ -97,6 +109,23 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [userPreferences, setUserPreferences] = useState<GlobalDataContextType['userPreferences']>({ peakEnergyTime: 'morning' });
   const [isLoading, setIsLoading] = useState(true);
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
+
+  // ── Universal Real-Time XP State ────────────────────────────────────────────
+  const [userXP, setUserXP] = useState<number>(() => {
+    if (typeof localStorage !== 'undefined') {
+      return parseInt(localStorage.getItem('zentrack_xp_v1') || '0', 10);
+    }
+    return 0;
+  });
+
+  const xpState = useMemo(() => getLevel(userXP), [userXP]);
+
+  useEffect(() => {
+    const unsub = subscribeXPChanges((data) => {
+      setUserXP(data.xp);
+    });
+    return () => unsub();
+  }, []);
 
   // ── Google Connection Status ────────────────────────────────────────────────
   // 'checking'    = we are in the middle of a silent token refresh attempt
@@ -329,10 +358,20 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         safeSnapshot(query(collection(db, 'attendance_subjects'), where('userId', '==', uid)), makeHandler(setAttendanceSubjects), 'attendance_subjects'),
         safeSnapshot(query(collection(db, 'assignments'), where('userId', '==', uid)), makeHandler(setAssignments), 'assignments'),
         safeSnapshot(query(collection(db, 'pomodoro_sessions'), where('userId', '==', uid)), makeHandler(setPomodoroSessions), 'pomodoro_sessions'),
-        // users doc listener (14th = TOTAL)
+        // users doc listener
         onSnapshot(doc(db, 'users', uid), (snap) => {
           if (snap.exists() && snap.data().preferences) {
             setUserPreferences(snap.data().preferences);
+          }
+          onFirstFire();
+        }),
+        // ✅ user_profiles doc listener — Real-time cross-platform XP sync with mobile app
+        onSnapshot(doc(db, 'user_profiles', uid), (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (typeof data?.xp === 'number') {
+              syncXPWithFirestore(data.xp);
+            }
           }
           onFirstFire();
         })
@@ -358,7 +397,7 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     <GlobalDataContext.Provider value={{
       tasks, calendarEvents, dailyLogs, habitLogs, habits, jobs, goals,
       learningTopics, gymLogs, waterLogs, sleepLogs, notes, attendanceSubjects, assignments,
-      pomodoroSessions, userPreferences, isLoading, gymSchedule,
+      pomodoroSessions, userXP, xpState, awardXP, userPreferences, isLoading, gymSchedule,
       isGoogleConnected, googleStatus, connectGoogle, disconnectGoogle,
     } as any}>
       {children}

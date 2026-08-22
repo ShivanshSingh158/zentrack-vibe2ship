@@ -12,6 +12,7 @@ import { db, auth } from '../../services/firebase';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import { playPopSound } from '../../utils/sound';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { awardXP } from '../../services/xpSystem';
 
 export interface Habit {
   id: string;
@@ -235,7 +236,19 @@ export const HabitsModule = () => {
           streak: newStreak,
           longestStreak: Math.max(newStreak, habit.longestStreak || 0),
         });
-        toast.success(`Completed ${habit.name}! 🔥 ${newStreak} day streak`);
+        awardXP('HABIT_LOG').then(async (res) => {
+          toast.success(`Completed ${habit.name}! +${res.added} XP 🔥 ${newStreak} day streak`);
+          if (newStreak === 7) {
+            const streakRes = await awardXP('HABIT_STREAK_7');
+            toast.success(`🔥 7-DAY STREAK MILESTONE! +${streakRes.added} XP Bonus!`);
+          } else if (newStreak === 30) {
+            const streakRes = await awardXP('HABIT_STREAK_30');
+            toast.success(`🏆 30-DAY STREAK LEGEND! +${streakRes.added} XP Bonus!`);
+          }
+          if (res.leveledUp) {
+            toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+          }
+        });
       } else {
         toast.info(`${habit.name}: ${newCount}/${habit.targetCount}`);
       }
@@ -265,7 +278,19 @@ export const HabitsModule = () => {
         streak: newStreak,
         longestStreak: Math.max(newStreak, habit.longestStreak || 0),
       });
-      toast.success(`Completed ${habit.name}! 🔥 ${newStreak} day streak`);
+      awardXP('HABIT_LOG').then(async (res) => {
+        toast.success(`Completed ${habit.name}! +${res.added} XP 🔥 ${newStreak} day streak`);
+        if (newStreak === 7) {
+          const streakRes = await awardXP('HABIT_STREAK_7');
+          toast.success(`🔥 7-DAY STREAK MILESTONE! +${streakRes.added} XP Bonus!`);
+        } else if (newStreak === 30) {
+          const streakRes = await awardXP('HABIT_STREAK_30');
+          toast.success(`🏆 30-DAY STREAK LEGEND! +${streakRes.added} XP Bonus!`);
+        }
+        if (res.leveledUp) {
+          toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+        }
+      });
     }
   };
 

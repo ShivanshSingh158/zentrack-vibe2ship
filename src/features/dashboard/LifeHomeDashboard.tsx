@@ -137,14 +137,13 @@ function calculateLevel(xp: number) {
 
 export const LifeHomeDashboard: React.FC = () => {
   const globalData = useGlobalData();
-  const { tasks, habits, habitLogs, attendanceSubjects, calendarEvents } = globalData;
+  const { tasks, habits, habitLogs, attendanceSubjects, calendarEvents, userXP, xpState, awardXP } = globalData;
   const user = auth.currentUser;
   const navigate = useNavigate();
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const { startTimer } = usePomodoroContext();
 
-  // Firestore Profile Sync
-  const [profileXP, setProfileXP] = useState<number | null>(null);
+  // Firestore Profile App Streak Sync
   const [appStreak, setAppStreak] = useState<number>(5);
   const [isXPModalOpen, setIsXPModalOpen] = useState(false);
 
@@ -153,7 +152,6 @@ export const LifeHomeDashboard: React.FC = () => {
     const unsub = onSnapshot(doc(db, 'user_profiles', user.uid), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (typeof data?.xp === 'number') setProfileXP(data.xp);
         if (typeof data?.appStreak === 'number') setAppStreak(data.appStreak);
       }
     });
@@ -326,12 +324,8 @@ export const LifeHomeDashboard: React.FC = () => {
     return null;
   }, [calendarEvents, todayStr, pendingTasks]);
 
-  // Cumulative XP & Level
-  const calculatedXP = useMemo(() => {
-    return doneTasks.length * 50 + completedHabitsCount * 40 + (appStreak * 30) + 1200;
-  }, [doneTasks, completedHabitsCount, appStreak]);
-
-  const activeXP = profileXP ?? calculatedXP;
+  // Cumulative Real-Time XP & Level (Syncs directly with Mobile)
+  const activeXP = userXP;
   const levelInfo = useMemo(() => calculateLevel(activeXP), [activeXP]);
   const levelGradient = useMemo(() => getGradientForLevel(levelInfo.label), [levelInfo.label]);
   const mascotImg = MASCOT_FILES[levelInfo.label] || '/mascots/level0.png';
@@ -346,7 +340,19 @@ export const LifeHomeDashboard: React.FC = () => {
         status: isDone ? 'pending' : 'completed',
         completedAt: !isDone ? Date.now() : null,
       });
-      toast.success(isDone ? 'Task marked pending' : 'Task completed! +50 XP 🎉');
+      if (!isDone) {
+        const res = await awardXP('TASK_COMPLETE');
+        if (res.bonus) {
+          toast.success(`Task completed! +${res.added} XP ⚡ Dopamine Bonus! 🎉`);
+        } else {
+          toast.success(`Task completed! +${res.added} XP 🎉`);
+        }
+        if (res.leveledUp) {
+          toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+        }
+      } else {
+        toast.info('Task marked pending');
+      }
     } catch (e) {
       console.error(e);
     }
@@ -365,7 +371,11 @@ export const LifeHomeDashboard: React.FC = () => {
           date: todayStr,
           createdAt: Date.now(),
         });
-        toast.success('Habit logged! +50 XP 🔥');
+        const res = await awardXP('HABIT_LOG');
+        toast.success(`Habit logged! +${res.added} XP 🔥`);
+        if (res.leveledUp) {
+          toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+        }
       }
     } catch (e) {
       console.error(e);

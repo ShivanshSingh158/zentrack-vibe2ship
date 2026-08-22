@@ -33,6 +33,7 @@ import type { TodoItem, TodoSubtask, TaskTemplate } from '../../types';
 import { playPopSound } from '../../utils/sound';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
 import { DragDropContext, Droppable } from '@hello-pangea/dnd';
+import { awardXP } from '../../services/xpSystem';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { EditTodoModal } from './EditTodoModal';
@@ -135,6 +136,16 @@ export const TodoListModule: React.FC = () => {
       import('../../utils/notifications').then(({ sendSystemNotification }) => {
         sendSystemNotification('Task Completed! 🎉', { body: `You finished: "${todo.title || todo.text}". Keep it up!` }, true);
       });
+      awardXP('TASK_COMPLETE').then((res) => {
+        if (res.bonus) {
+          toast.success(`Task completed! +${res.added} XP ⚡ Dopamine Bonus Triggered! 🎉`);
+        } else {
+          toast.success(`Task completed! +${res.added} XP 🎉`);
+        }
+        if (res.leveledUp) {
+          toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+        }
+      });
       // Trigger time log sheet
       setJustCompletedTask(todo);
     }
@@ -230,7 +241,16 @@ export const TodoListModule: React.FC = () => {
       if (allDone && task.status !== 'completed') {
         playPopSound();
         setJustCompletedTask(task);
-        toast.success(`All subtasks finished! Task completed.`);
+        awardXP('TASK_COMPLETE').then((res) => {
+          if (res.bonus) {
+            toast.success(`All subtasks finished! +${res.added} XP ⚡ Dopamine Bonus! 🎉`);
+          } else {
+            toast.success(`All subtasks finished! +${res.added} XP 🎉`);
+          }
+          if (res.leveledUp) {
+            toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+          }
+        });
       }
     } catch (e) {
       console.error('Failed to toggle subtask:', e);
@@ -289,6 +309,7 @@ export const TodoListModule: React.FC = () => {
 
   const handleBulkComplete = async () => {
     if (selectedTaskIds.size === 0) return;
+    const count = selectedTaskIds.size;
     const batch = writeBatch(db);
     selectedTaskIds.forEach(id => {
       const ref = doc(db, 'todos', id);
@@ -297,7 +318,12 @@ export const TodoListModule: React.FC = () => {
     await batch.commit();
     setSelectedTaskIds(new Set());
     setIsBulkEdit(false);
-    toast.success(`Completed ${selectedTaskIds.size} tasks!`);
+    awardXP('TASK_COMPLETE').then((res) => {
+      toast.success(`Completed ${count} tasks! +${res.added} XP 🚀`);
+      if (res.leveledUp) {
+        toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+      }
+    });
   };
 
   const handleBulkDelete = async () => {

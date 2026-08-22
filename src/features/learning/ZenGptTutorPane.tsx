@@ -14,6 +14,7 @@ import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { formatSeconds } from '../../services/youtubeTranscriptService';
 import { toast } from 'sonner';
+import { awardXP } from '../../services/xpSystem';
 
 interface Message {
   role: 'user' | 'model';
@@ -182,6 +183,13 @@ const InteractiveQuizCard: React.FC<{
     const answersText = quiz.questions
       .map(q => `- ${q.id}: ${selected[q.id] || '(No answer selected)'}`)
       .join('\n');
+
+    awardXP('QUIZ_PERFECT').then((res) => {
+      toast.success(`🎯 Quiz submitted! +${res.added} XP`);
+      if (res.leveledUp) {
+        toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+      }
+    });
 
     onSendAnswer(
       `Here are my answers to the quiz:\n${answersText}\n\nPlease evaluate my answers, tell me my score out of ${quiz.questions.length}, and explain the reasoning for each!`

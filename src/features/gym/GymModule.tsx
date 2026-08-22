@@ -22,6 +22,7 @@ import { RestTimerPill } from './components/RestTimerPill';
 import { WeeklyGymInsights } from './components/WeeklyGymInsights';
 import { LiveTimer } from './components/LiveTimer';
 import type { GymExerciseLog } from '../../types/gym.types';
+import { awardXP } from '../../services/xpSystem';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -89,9 +90,14 @@ const GymModuleInner = () => {
   // Muscle heatmap: last 7 days of data — populate from all logs in memory
   // We pass the current log only; the heatmap fetches week data itself
 
-  // Handle set completion → start rest timer + PR check
+  // Handle set completion → start rest timer + PR check + XP award
   const handleSetComplete = useCallback((exerciseName: string, restSecs: number) => {
     startRestTimer(restSecs, exerciseName);
+    awardXP('GYM_SET').then(res => {
+      if (res.leveledUp) {
+        toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+      }
+    });
   }, [startRestTimer]);
 
   // PR detection: check if any completed set beats all-time PR
@@ -111,6 +117,12 @@ const GymModuleInner = () => {
       };
       setAllTimePRs(prev => ({ ...prev, [ex.exerciseId]: newRecord }));
       setNewPR({ exerciseName: ex.name, weight: maxCompleted });
+      awardXP('GYM_PR').then(res => {
+        toast.success(`🏆 NEW PR CRUSHED! +${res.added} XP!`);
+        if (res.leveledUp) {
+          toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+        }
+      });
       setTimeout(() => setNewPR(null), 4000);
     }
   }, [allTimePRs, selectedDate, setAllTimePRs]);
@@ -128,9 +140,12 @@ const GymModuleInner = () => {
       if (log?.workoutStartTime) {
         endWorkout();
       }
-      setTimeout(() => {
-        toast.success('🏆 Workout complete! Open ZenGym AI for recovery advice and form tips.', { duration: 5000 });
-      }, 500);
+      awardXP('GYM_SESSION').then(res => {
+        toast.success(`🏆 Workout complete! +${res.added} XP! Open ZenGym AI for recovery advice.`, { duration: 5000 });
+        if (res.leveledUp) {
+          toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+        }
+      });
     }
   }, [allWorkoutDone, selectedDate, log?.workoutStartTime, endWorkout]);
 

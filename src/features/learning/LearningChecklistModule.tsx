@@ -15,6 +15,7 @@ import { CurriculumBuilderModal } from './CurriculumBuilderModal';
 import { playPopSound } from '../../utils/sound';
 import { toast } from 'sonner';
 import { uniqueId } from './learningHelpers';
+import { awardXP } from '../../services/xpSystem';
 
 export function LearningChecklistModule() {
   const [topics, setTopics] = useState<LearningTopic[]>([]);
@@ -176,7 +177,12 @@ export function LearningChecklistModule() {
 
       if (willComplete) {
         playPopSound();
-        toast.success(`🎉 Completed "${sub?.title}"! (+25 XP)`);
+        awardXP('LECTURE_COMPLETE').then((res) => {
+          toast.success(`🎉 Completed "${sub?.title}"! +${res.added} XP 📺`);
+          if (res.leveledUp) {
+            toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+          }
+        });
       }
     } catch (err: any) {
       toast.error('Failed to update task: ' + err.message);
