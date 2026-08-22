@@ -105,6 +105,35 @@ export const GlobalDataProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [learningTopics, setLearningTopics] = useState<any[]>([]);
   const [gymLogs, setGymLogs] = useState<any[]>([]);
   const [waterLogs, setWaterLogs] = useState<any[]>([]);
+  const [waterGoalMl, setWaterGoalMl] = useState<number>(() => {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('zentrack_water_goal_ml') || localStorage.getItem('@zentrack_water_target');
+      const val = parseInt(saved || '0', 10);
+      if (!isNaN(val) && val > 0) return val;
+    }
+    return 3800;
+  });
+
+  const setWaterGoal = async (targetMl: number) => {
+    if (!targetMl || isNaN(targetMl)) return;
+    setWaterGoalMl(targetMl);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('zentrack_water_goal_ml', String(targetMl));
+    }
+    const user = auth.currentUser;
+    if (user?.uid) {
+      try {
+        await setDoc(doc(db, 'user_profiles', user.uid), {
+          waterGoalMl: targetMl,
+          waterTarget: targetMl,
+          updatedAt: Date.now()
+        }, { merge: true });
+      } catch (e) {
+        console.warn('[GlobalData] Failed to save water goal to user_profiles:', e);
+      }
+    }
+  };
+
   const [sleepLogs, setSleepLogs] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   const [attendanceSubjects, setAttendanceSubjects] = useState<any[]>([]);
