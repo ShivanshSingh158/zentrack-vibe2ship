@@ -153,28 +153,27 @@ export const SARA_MAX_HISTORY_TURNS = 12;
 /** Max committed actions kept in Sara action history log */
 export const AGENT_HISTORY_MAX_ENTRIES = 50;
 
-// ── XP System ─────────────────────────────────────────────────────────────────
 export const XP_LEVELS = [
-  { xp: 0,      label: 'Seeker' },
-  { xp: 500,    label: 'Warden' },
-  { xp: 1200,   label: 'Sentinel' },
-  { xp: 2500,   label: 'Guardian' },
-  { xp: 4200,   label: 'Vanguard' },
-  { xp: 6500,   label: 'Luminary' },
-  { xp: 9500,   label: 'Legend' },
-  { xp: 13500,  label: 'Mythic' },
-  { xp: 18000,  label: 'Paragon' },
-  { xp: 23000,  label: 'Titan' },
-  { xp: 29000,  label: 'Ascendant' },
-  { xp: 36000,  label: 'Exalted' },
-  { xp: 44000,  label: 'Sovereign' },
-  { xp: 53000,  label: 'Archon' },
-  { xp: 63500,  label: 'Celestial' },
-  { xp: 75500,  label: 'Ethereal' },
-  { xp: 89000,  label: 'Empyrean' },
-  { xp: 104000, label: 'Astral' },
-  { xp: 121000, label: 'Zenith' },
-  { xp: 140000, label: 'Apex' },
+  { xp: 0,       label: 'Seeker' },
+  { xp: 1000,    label: 'Warden' },
+  { xp: 3000,    label: 'Sentinel' },
+  { xp: 7000,    label: 'Guardian' },
+  { xp: 14000,   label: 'Vanguard' },
+  { xp: 27000,   label: 'Luminary' },
+  { xp: 59500,   label: 'Legend' },
+  { xp: 110000,  label: 'Mythic' },
+  { xp: 180000,  label: 'Paragon' },
+  { xp: 270000,  label: 'Titan' },
+  { xp: 390000,  label: 'Ascendant' },
+  { xp: 550000,  label: 'Exalted' },
+  { xp: 760000,  label: 'Sovereign' },
+  { xp: 1030000, label: 'Archon' },
+  { xp: 1380000, label: 'Celestial' },
+  { xp: 1820000, label: 'Ethereal' },
+  { xp: 2380000, label: 'Empyrean' },
+  { xp: 3080000, label: 'Astral' },
+  { xp: 3950000, label: 'Zenith' },
+  { xp: 5000000, label: 'Apex' },
 ] as const;
 
 // ── Default Tab Modules ───────────────────────────────────────────────────────

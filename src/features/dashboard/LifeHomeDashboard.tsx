@@ -31,35 +31,7 @@ import { toast } from 'sonner';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
 import { XPConstellationModal } from './XPConstellationModal';
 
-// ── Level System Constants matching mobile/src/services/xpSystem.ts ──────────
-const LEVEL_THRESHOLDS = [
-  0, 500, 1200, 2500, 4200, 6500, 9500, 13500, 
-  18000, 23000, 29000, 36000, 44000, 53000, 
-  63500, 75500, 89000, 104000, 121000, 140000
-];
-
-const LEVEL_TITLES = [
-  'Seeker',       // 0
-  'Warden',       // 500
-  'Sentinel',     // 1200
-  'Guardian',     // 2500
-  'Vanguard',     // 4200
-  'Luminary',     // 6500
-  'Legend',       // 9500
-  'Mythic',       // 13500
-  'Paragon',      // 18000
-  'Titan',        // 23000
-  'Ascendant',    // 29000
-  'Exalted',      // 36000
-  'Sovereign',    // 44000
-  'Archon',       // 53000
-  'Celestial',    // 63500
-  'Ethereal',     // 75500
-  'Empyrean',     // 89000
-  'Astral',       // 104000
-  'Zenith',       // 121000
-  'Apex',         // 140000
-];
+import { LEVEL_THRESHOLDS, LEVEL_TITLES } from '../../services/xpSystem';
 
 const MASCOT_FILES: Record<string, string> = {
   'Seeker': '/mascots/level0.png',

@@ -2,18 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Zap, Lock, CheckCircle2, Sparkles, Trophy, Award, Flame, Dumbbell, BookOpen, Target } from 'lucide-react';
 
-const LEVEL_THRESHOLDS = [
-  0, 500, 1200, 2500, 4200, 6500, 9500, 13500, 
-  18000, 23000, 29000, 36000, 44000, 53000, 
-  63500, 75500, 89000, 104000, 121000, 140000
-];
-
-const LEVEL_TITLES = [
-  'Seeker', 'Warden', 'Sentinel', 'Guardian', 'Vanguard',
-  'Luminary', 'Legend', 'Mythic', 'Paragon', 'Titan',
-  'Ascendant', 'Exalted', 'Sovereign', 'Archon', 'Celestial',
-  'Ethereal', 'Empyrean', 'Astral', 'Zenith', 'Apex'
-];
+import { LEVEL_THRESHOLDS, LEVEL_TITLES } from '../../services/xpSystem';
 
 const LEVEL_COLORS: [string, string][] = [
   ['#34d399', '#22d3ee'], // 0 Seeker
