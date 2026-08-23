@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated,
-  Dimensions, Platform
+  Dimensions, Image, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -30,8 +30,8 @@ export default function LandingScreen() {
 
   // Entrance Animations
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(24)).current;
-  const orbScale = useRef(new Animated.Value(0.9)).current;
+  const slideAnim = useRef(new Animated.Value(20)).current;
+  const orbScale = useRef(new Animated.Value(0.92)).current;
   const orbPulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -45,8 +45,8 @@ export default function LandingScreen() {
       // Continuous ambient orb pulse
       const pulse = Animated.loop(
         Animated.sequence([
-          Animated.timing(orbPulse, { toValue: 1.08, duration: 2200, useNativeDriver: true }),
-          Animated.timing(orbPulse, { toValue: 1, duration: 2200, useNativeDriver: true }),
+          Animated.timing(orbPulse, { toValue: 1.05, duration: 2400, useNativeDriver: true }),
+          Animated.timing(orbPulse, { toValue: 1, duration: 2400, useNativeDriver: true }),
         ])
       );
       pulse.start();
@@ -88,10 +88,10 @@ export default function LandingScreen() {
 
         {/* Hero Section */}
         <View style={styles.heroSection}>
-          {/* Ambient Glowing Orb Icon */}
+          {/* Logo Container */}
           <Animated.View
             style={[
-              styles.orbContainer,
+              styles.logoContainer,
               {
                 transform: [
                   { scale: Animated.multiply(orbScale, orbPulse) }
@@ -99,14 +99,18 @@ export default function LandingScreen() {
               }
             ]}
           >
-            <View style={styles.orbInnerGlow}>
-              <Ionicons name="sparkles" size={28} color={colors.accentPrimary} />
+            <View style={styles.logoInnerGlow}>
+              <Image
+                source={require('../../assets/logo_white.png')}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
             </View>
           </Animated.View>
 
-          {/* Sparkle Pill */}
+          {/* Minimal Tag Pill */}
           <View style={styles.welcomePill}>
-            <Text style={styles.welcomePillText}>AUTONOMOUS MULTI-AGENT INTELLIGENCE</Text>
+            <Text style={styles.welcomePillText}>AUTONOMOUS LIFE OS</Text>
           </View>
 
           {/* Editorial Title */}
@@ -115,24 +119,8 @@ export default function LandingScreen() {
             <Text style={styles.heroTitleBold}>orchestrated.</Text>
 
             <Text style={styles.heroSubtitle}>
-              Tasks, gym progression, college attendance, and habit streaks — handled alongside you with zero cognitive friction.
+              Tasks, time, academics, and habits, handled alongside you. No dashboard clutter. Zero cognitive friction.
             </Text>
-          </View>
-
-          {/* Feature Highlight Pills */}
-          <View style={styles.pillRow}>
-            <View style={styles.featurePill}>
-              <Text style={styles.featurePillText}>🎙️ S.A.R.A Voice</Text>
-            </View>
-            <View style={styles.featurePill}>
-              <Text style={styles.featurePillText}>🏋️ PPL Strength</Text>
-            </View>
-            <View style={styles.featurePill}>
-              <Text style={styles.featurePillText}>🎓 Bunk Safety</Text>
-            </View>
-            <View style={styles.featurePill}>
-              <Text style={styles.featurePillText}>⭐ 0ms Boot</Text>
-            </View>
           </View>
         </View>
 
@@ -162,7 +150,7 @@ export default function LandingScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Date & Legal */}
+          {/* Date & Meta */}
           <View style={styles.footerMeta}>
             <Text style={styles.dateText}>{dateStr}</Text>
             <Text style={styles.metaSubText}>Private • Local-First • Encrypted</Text>
@@ -224,26 +212,30 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'flex-start',
-    marginTop: -10,
+    marginTop: -20,
   },
-  orbContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+  logoContainer: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.06)',
     borderWidth: 1.5,
-    borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
+    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
-  orbInnerGlow: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.15)',
+  logoInnerGlow: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.16)' : 'rgba(108,92,231,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoImage: {
+    width: 28,
+    height: 28,
   },
   welcomePill: {
     flexDirection: 'row',
@@ -254,7 +246,7 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     borderRadius: RADIUS.full,
     backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.06)',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.22)' : 'rgba(108,92,231,0.18)',
+    borderColor: isDark ? 'rgba(165,153,255,0.20)' : 'rgba(108,92,231,0.16)',
     marginBottom: 16,
   },
   welcomePillText: {
@@ -265,49 +257,27 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   },
   heroTextContainer: {
     width: '100%',
-    marginBottom: 20,
   },
   heroTitleItalic: {
     color: colors.accentPrimary,
     fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
-    fontSize: 48,
-    lineHeight: 54,
+    fontSize: 52,
+    lineHeight: 58,
   },
   heroTitleBold: {
     color: colors.textPrimary,
     fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 38,
-    lineHeight: 44,
-    letterSpacing: -0.5,
-    marginBottom: 16,
+    fontSize: 42,
+    lineHeight: 48,
+    letterSpacing: -0.8,
+    marginBottom: 18,
   },
   heroSubtitle: {
     color: colors.textSecondary,
     fontFamily: FONT_FAMILY.body,
-    fontSize: 13.5,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 22,
     maxWidth: width - 64,
-  },
-
-  // Highlight Pills
-  pillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 4,
-  },
-  featurePill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: RADIUS.full,
-    backgroundColor: isDark ? colors.surface : '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  featurePillText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: colors.textSecondary,
   },
 
   // Footer & CTAs
