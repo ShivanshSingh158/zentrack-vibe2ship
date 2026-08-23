@@ -108,11 +108,6 @@ export default function LandingScreen() {
             </View>
           </Animated.View>
 
-          {/* Minimal Tag Pill */}
-          <View style={styles.welcomePill}>
-            <Text style={styles.welcomePillText}>AUTONOMOUS LIFE OS</Text>
-          </View>
-
           {/* Editorial Title */}
           <View style={styles.heroTextContainer}>
             <Text style={styles.heroTitleItalic}>Quietly</Text>
@@ -236,24 +231,6 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   logoImage: {
     width: 44,
     height: 44,
-  },
-  welcomePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.06)',
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.20)' : 'rgba(108,92,231,0.16)',
-    marginBottom: 16,
-  },
-  welcomePillText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 9.5,
-    letterSpacing: 0.8,
-    color: colors.accentPrimary,
   },
   heroTextContainer: {
     width: '100%',
