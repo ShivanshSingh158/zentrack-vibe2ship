@@ -58,7 +58,7 @@ export const ONBOARDING_KEY = 'zentrack_onboarded_v2';
 interface PersonaConfig {
   id: string;
   label: string;
-  icon: string;
+  icon: keyof typeof Ionicons.glyphMap;
   tagline: string;
   defaultModules: string[];
 }
@@ -67,28 +67,28 @@ const PERSONAS: PersonaConfig[] = [
   {
     id: 'scholar',
     label: 'The Scholar',
-    icon: '🎓',
+    icon: 'school-outline',
     tagline: 'Attendance, timetable, grades & study goals',
     defaultModules: ['Tasks', 'Attendance', 'Calendar', 'Notes'],
   },
   {
     id: 'builder',
     label: 'The Builder',
-    icon: '⚡',
+    icon: 'flash-outline',
     tagline: 'Deep work, habit streaks & daily execution',
     defaultModules: ['Tasks', 'Habits', 'Learning', 'Notes'],
   },
   {
     id: 'athlete',
     label: 'The Athlete',
-    icon: '🏋️',
+    icon: 'barbell-outline',
     tagline: 'PPL workouts, progressive overload & rest',
     defaultModules: ['Gym', 'Habits', 'Tasks', 'Calendar'],
   },
   {
     id: 'allrounder',
     label: 'The All-Rounder',
-    icon: '👑',
+    icon: 'infinite-outline',
     tagline: 'Balanced life matrix across work, fitness & study',
     defaultModules: ['Tasks', 'Gym', 'Calendar', 'Attendance'],
   },
@@ -355,7 +355,13 @@ function StepPersona({ selected, onSelect, onNext, styles, colors, isDark }: any
               activeOpacity={0.8}
               style={[styles.personaRow, active && styles.personaRowActive]}
             >
-              <Text style={styles.personaEmoji}>{p.icon}</Text>
+              <View style={[styles.personaIconWrap, active && styles.personaIconWrapActive]}>
+                <Ionicons
+                  name={p.icon}
+                  size={20}
+                  color={active ? colors.accentPrimary : colors.textSecondary}
+                />
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.personaTitle, active && { color: colors.accentPrimary }]}>{p.label}</Text>
                 <Text style={styles.personaTagline}>{p.tagline}</Text>
@@ -565,22 +571,24 @@ function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, 
         </View>
 
         <View style={styles.systemSpecBox}>
-          {/* Archetype Column */}
-          <View style={styles.specColumn}>
+          {/* Row 1: Archetype */}
+          <View style={styles.specRow}>
             <Text style={styles.specLabel}>ARCHETYPE</Text>
-            <View style={styles.specValueRow}>
-              <Text style={styles.specEmoji}>{personaObj?.icon}</Text>
-              <Text style={styles.specValueMain} numberOfLines={1}>
-                {personaObj?.label || 'The Scholar'}
-              </Text>
+            <View style={styles.specValPill}>
+              <Ionicons
+                name={personaObj?.icon || 'infinite-outline'}
+                size={13}
+                color={colors.accentPrimary}
+              />
+              <Text style={styles.specValText}>{personaObj?.label || 'The All-Rounder'}</Text>
             </View>
           </View>
 
-          <View style={styles.specDivider} />
+          <View style={styles.specDividerH} />
 
-          {/* Core Pillars Column */}
-          <View style={styles.specColumn}>
-            <Text style={styles.specLabel}>4 CORE PILLARS</Text>
+          {/* Row 2: 4 Core Pillars */}
+          <View style={styles.specRow}>
+            <Text style={styles.specLabel}>CORE DOCK</Text>
             <View style={styles.specPillarsRow}>
               {pinned.map((modId: string) => {
                 const modObj = MODULE_CATALOG.find(m => m.id === modId);
@@ -709,8 +717,16 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     backgroundColor: isDark ? (colors.surfaceRaised || '#161424') : '#F5F3FF',
     borderWidth: 1.5,
   },
-  personaEmoji: {
-    fontSize: 22,
+  personaIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  personaIconWrapActive: {
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.1)',
   },
   activeCheckCircle: {
     width: 18,
@@ -921,49 +937,46 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
   systemSpecBox: {
     width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: RADIUS.lg,
     backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.025)',
     borderWidth: 1,
     borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
   },
-  specColumn: {
-    flex: 1,
+  specRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
   },
-  specDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
-    marginHorizontal: 12,
+  specDividerH: {
+    width: '100%',
+    height: 1,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+    marginVertical: 6,
   },
   specLabel: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 9,
+    fontSize: 9.5,
     letterSpacing: 1.1,
     color: colors.textMuted,
     textTransform: 'uppercase',
-    marginBottom: 4,
   },
-  specValueRow: {
+  specValPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
-  specEmoji: {
-    fontSize: 14,
-  },
-  specValueMain: {
+  specValText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 12,
     color: colors.textPrimary,
   },
   specPillarsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
+    alignItems: 'center',
+    gap: 8,
   },
   miniPillarItem: {
     flexDirection: 'row',
