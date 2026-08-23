@@ -23,7 +23,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Dimensions, ScrollView, Platform
+  Dimensions, ScrollView, Image, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -293,7 +293,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
         </View>
         <Reanimated.Text
           key={step}
-          entering={FadeIn.duration(220)}
+          entering={FadeIn.duration(200)}
           exiting={FadeOut.duration(150)}
           style={styles.globalStep}
         >
@@ -301,23 +301,25 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
         </Reanimated.Text>
       </View>
 
-      {/* Main Animated View with Direction-Aware Silky Smooth Swift Slide */}
-      <Reanimated.View
-        key={`step-${step}`}
-        entering={
-          direction === 'forward'
-            ? SlideInRight.springify().damping(22).stiffness(160)
-            : SlideInLeft.springify().damping(22).stiffness(160)
-        }
-        exiting={
-          direction === 'forward'
-            ? SlideOutLeft.duration(180)
-            : SlideOutRight.duration(180)
-        }
-        style={styles.stepContainer}
-      >
-        {renderStep()}
-      </Reanimated.View>
+      {/* Main Animated View with Pure Horizontal Slide (Zero Vertical Bounce) */}
+      <View style={styles.sliderContainer}>
+        <Reanimated.View
+          key={`step-${step}`}
+          entering={
+            direction === 'forward'
+              ? SlideInRight.duration(280)
+              : SlideInLeft.duration(280)
+          }
+          exiting={
+            direction === 'forward'
+              ? SlideOutLeft.duration(200)
+              : SlideOutRight.duration(200)
+          }
+          style={styles.stepContainer}
+        >
+          {renderStep()}
+        </Reanimated.View>
+      </View>
 
       {/* Footer Nav Bar with Back & Dots */}
       <View style={styles.footerRow}>
@@ -486,12 +488,12 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
   );
 }
 
-// ─── Step 3: Genesis XP & Launch ──────────────────────────────────────────────
+// ─── Step 3: Genesis XP & Level Initiation ────────────────────────────────────
 function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview, onLaunch, styles, colors, isDark }: any) {
   const personaObj = PERSONAS.find(p => p.id === persona);
 
   return (
-    <View style={styles.centeredStep}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollStep} showsVerticalScrollIndicator={false}>
       {/* SARA Voice Test Pill */}
       <TouchableOpacity
         style={[styles.voicePill, isSpeaking && { borderColor: colors.accentPrimary }]}
@@ -502,25 +504,57 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
         <Text style={styles.voicePillText}>{isSpeaking ? "SARA is speaking..." : "Test SARA's Voice"}</Text>
       </TouchableOpacity>
 
-      {/* Golden Genesis Card */}
+      {/* Luxury Genesis Initiation Card */}
       <View style={styles.genesisCard}>
-        <View style={styles.genesisStarGlow}>
-          <Text style={{ fontSize: 32 }}>⭐</Text>
+        {/* Mascot Glowing Orb */}
+        <View style={styles.mascotOrbContainer}>
+          <View style={styles.mascotInnerGlow}>
+            <Image
+              source={require('../../assets/logo_white.png')}
+              style={styles.mascotLogo}
+              resizeMode="contain"
+            />
+          </View>
         </View>
 
+        {/* Level Rank Badge */}
+        <View style={styles.rankPill}>
+          <Text style={styles.rankPillText}>RANK: SEEKER • LEVEL 1</Text>
+        </View>
+
+        {/* Genesis Reward */}
         <Text style={styles.genesisRewardText}>+100 GENESIS XP</Text>
-        <Text style={styles.genesisTierText}>Rank: Cosmos Initiate • Level 1</Text>
+
+        {/* Level Progress Bar */}
+        <View style={styles.xpProgressWrapper}>
+          <View style={styles.xpProgressBg}>
+            <View style={[styles.xpProgressFill, { width: '10%' }]} />
+          </View>
+          <View style={styles.xpProgressLabels}>
+            <Text style={styles.xpProgressText}>100 / 1,000 XP</Text>
+            <Text style={styles.xpNextLevelText}>Next: Level 2 Warden</Text>
+          </View>
+        </View>
 
         <View style={styles.genesisDivider} />
 
+        {/* Archetype Row */}
         <View style={styles.genesisSummaryRow}>
           <Text style={styles.genesisSummaryLabel}>Archetype</Text>
-          <Text style={styles.genesisSummaryVal}>{personaObj?.label || 'Scholar'}</Text>
+          <Text style={styles.genesisSummaryVal}>{personaObj?.icon} {personaObj?.label || 'The Scholar'}</Text>
         </View>
 
-        <View style={styles.genesisSummaryRow}>
-          <Text style={styles.genesisSummaryLabel}>Dock Pillars</Text>
-          <Text style={styles.genesisSummaryVal}>{pinned.join(' • ')}</Text>
+        {/* Pinned Pillars Row with Real Icons */}
+        <View style={styles.pillarChipsRow}>
+          {pinned.map((modId: string) => {
+            const modObj = MODULE_CATALOG.find(m => m.id === modId);
+            return (
+              <View key={modId} style={styles.pillarChip}>
+                <Ionicons name={modObj?.activeIcon || 'star'} size={12} color={colors.accentPrimary} />
+                <Text style={styles.pillarChipText}>{modObj?.name || modId}</Text>
+              </View>
+            );
+          })}
         </View>
       </View>
 
@@ -540,7 +574,7 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
         </Text>
         <Ionicons name="rocket-outline" size={18} color={isDark ? '#000000' : '#FFFFFF'} />
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -576,14 +610,13 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     letterSpacing: 1.2,
     color: colors.textMuted,
   },
+  sliderContainer: {
+    flex: 1,
+    overflow: 'hidden',
+  },
   stepContainer: {
     flex: 1,
     paddingHorizontal: 12,
-  },
-  centeredStep: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingBottom: 16,
   },
   scrollStep: {
     paddingBottom: 28,
@@ -761,20 +794,20 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     marginTop: 2,
   },
 
-  // Step 3: Genesis Card
+  // Step 3: Genesis Card & Mascot
   voicePill: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: RADIUS.full,
     borderWidth: 1,
     borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
     backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.06)',
     alignSelf: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   voicePillText: {
     fontFamily: FONT_FAMILY.bold,
@@ -786,31 +819,84 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     borderRadius: RADIUS.xl,
     backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF',
     borderWidth: 1.5,
-    borderColor: isDark ? 'rgba(255,214,10,0.3)' : 'rgba(217,119,6,0.3)',
+    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.2)',
     alignItems: 'center',
     marginBottom: 20,
   },
-  genesisStarGlow: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: isDark ? 'rgba(255,214,10,0.12)' : 'rgba(255,214,10,0.18)',
+  mascotOrbContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.06)',
+    borderWidth: 1.5,
+    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
+  },
+  mascotInnerGlow: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mascotLogo: {
+    width: 24,
+    height: 24,
+  },
+  rankPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.1)',
+    borderWidth: 1,
+    borderColor: colors.accentPrimary,
+    marginBottom: 8,
+  },
+  rankPillText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: colors.accentPrimary,
   },
   genesisRewardText: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 18,
+    fontSize: 22,
     letterSpacing: 0.5,
     color: isDark ? '#FFD60A' : '#D97706',
-    marginBottom: 3,
-  },
-  genesisTierText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11.5,
-    color: colors.textSecondary,
     marginBottom: 12,
+  },
+  xpProgressWrapper: {
+    width: '100%',
+    marginBottom: 14,
+  },
+  xpProgressBg: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  xpProgressFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: colors.accentPrimary,
+  },
+  xpProgressLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  xpProgressText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 10.5,
+    color: colors.accentPrimary,
+  },
+  xpNextLevelText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 10.5,
+    color: colors.textMuted,
   },
   genesisDivider: {
     width: '100%',
@@ -822,17 +908,40 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     width: '100%',
-    marginBottom: 5,
+    marginBottom: 10,
   },
   genesisSummaryLabel: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
   },
   genesisSummaryVal: {
     fontFamily: FONT_FAMILY.bold,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textPrimary,
+  },
+  pillarChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    width: '100%',
+    justifyContent: 'center',
+  },
+  pillarChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.08)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)',
+  },
+  pillarChipText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 10.5,
+    color: colors.accentPrimary,
   },
   genesisHeadline: {
     fontFamily: 'PlayfairDisplay_600SemiBold',
