@@ -66,11 +66,6 @@ export default function LandingScreen() {
     navigation.navigate('Auth');
   };
 
-  const handleTryDemo = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate('GuestDashboard');
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <Animated.View style={[styles.mainContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -132,16 +127,6 @@ export default function LandingScreen() {
             >
               <Text style={styles.primaryCtaText}>Get Started</Text>
               <Ionicons name="arrow-forward" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
-            </TouchableOpacity>
-
-            {/* Secondary Action: Demo Mode */}
-            <TouchableOpacity
-              style={styles.secondaryCta}
-              onPress={handleTryDemo}
-              activeOpacity={0.75}
-            >
-              <Ionicons name="play-outline" size={15} color={colors.textSecondary} />
-              <Text style={styles.secondaryCtaText}>Try Demo Mode</Text>
             </TouchableOpacity>
           </View>
 
@@ -238,16 +223,16 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   heroTitleItalic: {
     color: colors.accentPrimary,
     fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
-    fontSize: 52,
-    lineHeight: 58,
+    fontSize: 44,
+    lineHeight: 50,
   },
   heroTitleBold: {
     color: colors.textPrimary,
     fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 42,
-    lineHeight: 48,
-    letterSpacing: -0.8,
-    marginBottom: 18,
+    fontSize: 34,
+    lineHeight: 40,
+    letterSpacing: -0.5,
+    marginBottom: 16,
   },
   heroSubtitle: {
     color: colors.textSecondary,
@@ -267,7 +252,6 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     marginBottom: 18,
   },
   ctaGroup: {
-    gap: 10,
     marginBottom: 16,
   },
   primaryCta: {
@@ -283,22 +267,6 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     color: isDark ? '#000000' : '#FFFFFF',
     fontFamily: FONT_FAMILY.bold,
     fontSize: 14.5,
-  },
-  secondaryCta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    height: 44,
-    borderRadius: RADIUS.full,
-    backgroundColor: isDark ? colors.surface : '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  secondaryCtaText: {
-    color: colors.textSecondary,
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 13,
   },
   footerMeta: {
     flexDirection: 'row',
