@@ -1,12 +1,19 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity, Animated,
+  Dimensions, Platform
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatDateWithDay } from '../utils/dateUtils';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useFonts, Inter_400Regular, Inter_600SemiBold } from '@expo-google-fonts/inter';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { PlayfairDisplay_600SemiBold, PlayfairDisplay_600SemiBold_Italic } from '@expo-google-fonts/playfair-display';
 import { useTheme } from '../contexts/ThemeContext';
-import { FONT_FAMILY } from '../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, RADIUS, SPACE } from '../theme/tokens';
+import { formatDateWithDay } from '../utils/dateUtils';
+
+const { width } = Dimensions.get('window');
 
 export default function LandingScreen() {
   const navigation = useNavigation<any>();
@@ -16,9 +23,36 @@ export default function LandingScreen() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_600SemiBold,
+    Inter_700Bold,
     PlayfairDisplay_600SemiBold,
     PlayfairDisplay_600SemiBold_Italic,
   });
+
+  // Entrance Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(24)).current;
+  const orbScale = useRef(new Animated.Value(0.9)).current;
+  const orbPulse = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (fontsLoaded) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        Animated.spring(slideAnim, { toValue: 0, tension: 50, friction: 10, useNativeDriver: true }),
+        Animated.spring(orbScale, { toValue: 1, tension: 40, friction: 8, useNativeDriver: true }),
+      ]).start();
+
+      // Continuous ambient orb pulse
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(orbPulse, { toValue: 1.08, duration: 2200, useNativeDriver: true }),
+          Animated.timing(orbPulse, { toValue: 1, duration: 2200, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }
+  }, [fontsLoaded]);
 
   if (!fontsLoaded) {
     return <View style={styles.container} />;
@@ -27,43 +61,115 @@ export default function LandingScreen() {
   const today = new Date();
   const dateStr = formatDateWithDay(today.toISOString().slice(0, 10));
 
+  const handleGetStarted = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    navigation.navigate('Auth');
+  };
+
+  const handleTryDemo = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate('GuestDashboard');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.mainContent}>
+      <Animated.View style={[styles.mainContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         
-        {/* Header */}
+        {/* Top Header */}
         <View style={styles.header}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={styles.headerBrandText}>ZENTRACK</Text>
             <View style={styles.brandDot} />
           </View>
-          <Text style={styles.stepText}>01 / LIFE OS</Text>
+          <View style={styles.versionBadge}>
+            <Text style={styles.versionBadgeText}>LIFE OS 2.0</Text>
+          </View>
         </View>
 
         {/* Hero Section */}
         <View style={styles.heroSection}>
+          {/* Ambient Glowing Orb Icon */}
+          <Animated.View
+            style={[
+              styles.orbContainer,
+              {
+                transform: [
+                  { scale: Animated.multiply(orbScale, orbPulse) }
+                ]
+              }
+            ]}
+          >
+            <View style={styles.orbInnerGlow}>
+              <Ionicons name="sparkles" size={28} color={colors.accentPrimary} />
+            </View>
+          </Animated.View>
+
+          {/* Sparkle Pill */}
+          <View style={styles.welcomePill}>
+            <Text style={styles.welcomePillText}>AUTONOMOUS MULTI-AGENT INTELLIGENCE</Text>
+          </View>
+
+          {/* Editorial Title */}
           <View style={styles.heroTextContainer}>
             <Text style={styles.heroTitleItalic}>Quietly</Text>
             <Text style={styles.heroTitleBold}>orchestrated.</Text>
 
             <Text style={styles.heroSubtitle}>
-              Tasks, time, academics, and habits, handled alongside you. No dashboard clutter. Zero cognitive friction.
+              Tasks, gym progression, college attendance, and habit streaks — handled alongside you with zero cognitive friction.
             </Text>
           </View>
-        </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <View style={styles.footerLine} />
-          <View style={styles.footerContent}>
-            <Text style={styles.dateText}>{dateStr}</Text>
-            <TouchableOpacity style={styles.ctaButton} onPress={() => navigation.navigate('Auth')} activeOpacity={0.7}>
-              <Text style={styles.ctaButtonText}>Enter workspace <Text style={styles.ctaArrow}>→</Text></Text>
-            </TouchableOpacity>
+          {/* Feature Highlight Pills */}
+          <View style={styles.pillRow}>
+            <View style={styles.featurePill}>
+              <Text style={styles.featurePillText}>🎙️ S.A.R.A Voice</Text>
+            </View>
+            <View style={styles.featurePill}>
+              <Text style={styles.featurePillText}>🏋️ PPL Strength</Text>
+            </View>
+            <View style={styles.featurePill}>
+              <Text style={styles.featurePillText}>🎓 Bunk Safety</Text>
+            </View>
+            <View style={styles.featurePill}>
+              <Text style={styles.featurePillText}>⭐ 0ms Boot</Text>
+            </View>
           </View>
         </View>
 
-      </View>
+        {/* Footer CTAs */}
+        <View style={styles.footer}>
+          <View style={styles.footerLine} />
+          
+          <View style={styles.ctaGroup}>
+            {/* Primary Action Button */}
+            <TouchableOpacity
+              style={styles.primaryCta}
+              onPress={handleGetStarted}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.primaryCtaText}>Get Started</Text>
+              <Ionicons name="arrow-forward" size={16} color={isDark ? '#000000' : '#FFFFFF'} />
+            </TouchableOpacity>
+
+            {/* Secondary Action: Demo Mode */}
+            <TouchableOpacity
+              style={styles.secondaryCta}
+              onPress={handleTryDemo}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="play-outline" size={15} color={colors.textSecondary} />
+              <Text style={styles.secondaryCtaText}>Try Demo Mode</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Date & Legal */}
+          <View style={styles.footerMeta}>
+            <Text style={styles.dateText}>{dateStr}</Text>
+            <Text style={styles.metaSubText}>Private • Local-First • Encrypted</Text>
+          </View>
+        </View>
+
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -75,22 +181,22 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   },
   mainContent: {
     flex: 1,
-    paddingTop: 12,
     paddingHorizontal: 24,
-    paddingBottom: 40,
+    paddingTop: 8,
+    paddingBottom: 24,
     justifyContent: 'space-between',
   },
   header: {
-    marginTop: 16,
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   headerBrandText: {
     color: colors.textPrimary,
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 12,
-    letterSpacing: 2,
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 13,
+    letterSpacing: 2.2,
   },
   brandDot: {
     width: 5,
@@ -98,69 +204,169 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     borderRadius: 2.5,
     backgroundColor: colors.accentPrimary,
   },
-  stepText: {
+  versionBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  versionBadgeText: {
     color: colors.textMuted,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 11,
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 9.5,
     letterSpacing: 1,
   },
+
+  // Hero Section
   heroSection: {
     flex: 1,
     justifyContent: 'center',
-    marginTop: -30,
+    alignItems: 'flex-start',
+    marginTop: -10,
+  },
+  orbContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+    borderWidth: 1.5,
+    borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  orbInnerGlow: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  welcomePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.06)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(165,153,255,0.22)' : 'rgba(108,92,231,0.18)',
+    marginBottom: 16,
+  },
+  welcomePillText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+    color: colors.accentPrimary,
   },
   heroTextContainer: {
-    justifyContent: 'center',
+    width: '100%',
+    marginBottom: 20,
   },
   heroTitleItalic: {
     color: colors.accentPrimary,
     fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
-    fontSize: 52,
-    lineHeight: 58,
+    fontSize: 48,
+    lineHeight: 54,
   },
   heroTitleBold: {
     color: colors.textPrimary,
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 42,
-    lineHeight: 50,
-    letterSpacing: -1,
-    marginBottom: 24,
+    fontFamily: 'PlayfairDisplay_600SemiBold',
+    fontSize: 38,
+    lineHeight: 44,
+    letterSpacing: -0.5,
+    marginBottom: 16,
   },
   heroSubtitle: {
     color: colors.textSecondary,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 15,
-    lineHeight: 24,
-    maxWidth: 320,
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 13.5,
+    lineHeight: 20,
+    maxWidth: width - 64,
   },
+
+  // Highlight Pills
+  pillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  featurePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  featurePillText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+
+  // Footer & CTAs
   footer: {
     width: '100%',
   },
   footerLine: {
     height: 1,
     backgroundColor: colors.border,
-    marginBottom: 20,
+    marginBottom: 18,
   },
-  footerContent: {
+  ctaGroup: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  primaryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 50,
+    borderRadius: RADIUS.full,
+    backgroundColor: colors.accentPrimary,
+  },
+  primaryCtaText: {
+    color: isDark ? '#000000' : '#FFFFFF',
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 14.5,
+  },
+  secondaryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    height: 44,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  secondaryCtaText: {
+    color: colors.textSecondary,
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 13,
+  },
+  footerMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 4,
   },
   dateText: {
     color: colors.textMuted,
-    fontFamily: 'Inter_400Regular',
-    fontSize: 12,
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11.5,
   },
-  ctaButton: {
-    paddingVertical: 8,
-    paddingLeft: 20,
+  metaSubText: {
+    color: colors.textMuted,
+    fontFamily: FONT_FAMILY.body,
+    fontSize: 10.5,
   },
-  ctaButtonText: {
-    color: colors.textPrimary,
-    fontFamily: 'Inter_600SemiBold',
-    fontSize: 15,
-  },
-  ctaArrow: {
-    color: colors.accentPrimary,
-  }
 });
