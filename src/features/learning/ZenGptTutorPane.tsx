@@ -15,6 +15,7 @@ import 'katex/dist/katex.min.css';
 import { formatSeconds } from '../../services/youtubeTranscriptService';
 import { toast } from 'sonner';
 import { awardXP } from '../../services/xpSystem';
+import { AVAILABLE_GEMINI_MODELS } from '../../config/constants';
 
 interface Message {
   role: 'user' | 'model';
@@ -628,6 +629,14 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
     return current ? current.messages : [];
   });
 
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('zen_preferred_learning_model') || 'gemini-3.7-flash';
+    } catch {
+      return 'gemini-3.7-flash';
+    }
+  });
+
   const [showHistory, setShowHistory] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'this_lecture' | 'all'>('this_lecture');
 
@@ -637,6 +646,13 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const handleModelChange = (newModel: string) => {
+    setSelectedModel(newModel);
+    try { localStorage.setItem('zen_preferred_learning_model', newModel); } catch {}
+    const modelObj = AVAILABLE_GEMINI_MODELS.find(m => m.id === newModel);
+    toast.success(`Active Model: ${modelObj?.label || newModel}`);
+  };
 
   // Auto-sync active conversation to sessions list
   useEffect(() => {
@@ -779,7 +795,8 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
       let responseText = '';
       try {
         responseText = await callWithFallback(async (genAI: any, modelName: string) => {
-          const model = genAI.getGenerativeModel({ model: modelName || 'gemini-2.5-flash' });
+          const modelToUse = selectedModel || modelName || 'gemini-3.7-flash';
+          const model = genAI.getGenerativeModel({ model: modelToUse });
           const res = await model.generateContent(fullPrompt);
           return res.response.text();
         });
@@ -798,6 +815,7 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
         });
 
         const res = await callGeminiProxy({
+          model: selectedModel || 'gemini-3.7-flash',
           systemInstruction: { parts: [{ text: basePrompt }] },
           contents: proxyContents
         });
@@ -871,6 +889,29 @@ export const ZenGptTutorPane: React.FC<ZenGptTutorPaneProps> = ({
         </div>
 
         <div className="lp-chatgpt-header-right-actions">
+          <select
+            value={selectedModel}
+            onChange={(e) => handleModelChange(e.target.value)}
+            title="Select Gemini Model"
+            style={{
+              padding: '0.2rem 0.4rem',
+              borderRadius: '8px',
+              border: '1px solid rgba(255,255,255,0.12)',
+              background: 'rgba(255,255,255,0.06)',
+              color: '#ececec',
+              fontSize: '0.62rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            {AVAILABLE_GEMINI_MODELS.map(m => (
+              <option key={m.id} value={m.id} style={{ background: '#212121', color: '#fff' }}>
+                {m.icon} {m.label.replace('Gemini ', '')}
+              </option>
+            ))}
+          </select>
+
           <button
             type="button"
             className={`lp-chatgpt-hdr-btn ${showHistory ? 'active' : ''}`}

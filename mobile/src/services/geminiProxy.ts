@@ -80,7 +80,7 @@ export interface ProxyCallOptions {
 
 export async function callProxy(options: ProxyCallOptions): Promise<any> {
   const {
-    model = 'gemini-2.5-flash',
+    model = 'gemini-3.7-flash',
     contents,
     systemInstruction,
     tools,
@@ -187,7 +187,7 @@ export async function streamProxy(
   onChunk: (text: string) => void
 ): Promise<string> {
   const {
-    model = 'gemini-2.5-flash',
+    model = 'gemini-3.7-flash',
     contents,
     systemInstruction,
     generationConfig,

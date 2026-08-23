@@ -140,7 +140,7 @@ NSCA-CSCS, CISSN, FMS Level 2, Precision Nutrition Level 1. Expert in: progressi
 - CRITICAL: DO NOT use markdown tables (e.g. | Column | Column |). They are unreadable and squished on mobile screens. ALWAYS use formatted lists instead.
 - Q&A responses: max 150 words. Plans: only as long as needed to be actionable.`;
 
-export const startGymAIChat = (gymContext: string, existingHistory: any[] = []) => {
+export const startGymAIChat = (gymContext: string, existingHistory: any[] = [], preferredModel?: string) => {
   if (allKeys.length === 0) throw new Error('Gemini API key is missing.');
 
   const systemWithContext = `${GYM_AI_SYSTEM_PROMPT}
@@ -165,7 +165,10 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
 
   // Try each model with round-robin key rotation
   let rawSession: any = null;
-  const priorityModels = getPriorityModels(false);
+  const basePriorityModels = getPriorityModels(false);
+  const priorityModels = preferredModel
+    ? [preferredModel, ...basePriorityModels.filter(m => m !== preferredModel)]
+    : basePriorityModels;
   let workingModel = priorityModels[0];
   let workingKeyIdx = startKeyIdx;
 
@@ -222,9 +225,13 @@ async function callGymOAuthREST(
   token: string,
   systemInstruction: string,
   contents: any[],
-  modelIndex = 0
+  modelIndex = 0,
+  preferredModel?: string
 ): Promise<string> {
-  const priorityModels = getPriorityModels(true);
+  const basePriority = getPriorityModels(true);
+  const priorityModels = preferredModel
+    ? [preferredModel, ...basePriority.filter(m => m !== preferredModel)]
+    : basePriority;
   const model = priorityModels[modelIndex];
   if (!model) throw new Error('All OAuth models exhausted.');
 
@@ -244,13 +251,13 @@ async function callGymOAuthREST(
 
   if (res.status === 401 || res.status === 403) throw new Error('OAUTH_EXPIRED');
   if (res.status === 404 || res.status === 429 || res.status === 503) {
-    return callGymOAuthREST(token, systemInstruction, contents, modelIndex + 1);
+    return callGymOAuthREST(token, systemInstruction, contents, modelIndex + 1, preferredModel);
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const msg = (err as any)?.error?.message || `HTTP ${res.status}`;
     if (msg.includes('not found') || msg.includes('404')) {
-      return callGymOAuthREST(token, systemInstruction, contents, modelIndex + 1);
+      return callGymOAuthREST(token, systemInstruction, contents, modelIndex + 1, preferredModel);
     }
     throw new Error(msg);
   }
@@ -266,9 +273,13 @@ async function callGymOAuthRESTStream(
   systemInstruction: string,
   contents: any[],
   modelIndex = 0,
-  onChunk: (title: string) => void
+  onChunk: (title: string) => void,
+  preferredModel?: string
 ): Promise<{ title: string; model: string }> {
-  const priorityModels = getPriorityModels(true);
+  const basePriority = getPriorityModels(true);
+  const priorityModels = preferredModel
+    ? [preferredModel, ...basePriority.filter(m => m !== preferredModel)]
+    : basePriority;
   const model = priorityModels[modelIndex];
   if (!model) throw new Error('All OAuth models exhausted.');
 
@@ -288,13 +299,13 @@ async function callGymOAuthRESTStream(
 
   if (res.status === 401 || res.status === 403) throw new Error('OAUTH_EXPIRED');
   if (res.status === 404 || res.status === 429 || res.status === 503) {
-    return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
+    return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk, preferredModel);
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     const msg = (err as any)?.error?.message || `HTTP ${res.status}`;
     if (msg.includes('not found') || msg.includes('404')) {
-      return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
+      return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk, preferredModel);
     }
     throw new Error(msg);
   }
@@ -324,9 +335,8 @@ async function callGymOAuthRESTStream(
           try {
             const errJson = JSON.parse(trimmedLine);
             if (errJson.error) {
-              const priorityModels = getPriorityModels(true);
               if (modelIndex < priorityModels.length - 1) {
-                return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
+                return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk, preferredModel);
               }
               throw new Error(errJson.error.message || 'Stream error payload');
             }
@@ -374,9 +384,8 @@ async function callGymOAuthRESTStream(
   }
 
   if (fullText.length > 0 && !sawFinishReason) {
-    const priorityModels = getPriorityModels(true);
     if (modelIndex < priorityModels.length - 1) {
-      return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk);
+      return callGymOAuthRESTStream(token, systemInstruction, contents, modelIndex + 1, onChunk, preferredModel);
     }
     throw new Error('STREAM_ABORTED_NO_FINISH_REASON');
   }
@@ -395,10 +404,12 @@ export class OAuthGymChatSession {
   private token: string;
   private systemInstruction: string;
   private contents: any[];
+  private preferredModel?: string;
 
-  constructor(token: string, systemInstruction: string, initialHistory: any[] = []) {
+  constructor(token: string, systemInstruction: string, initialHistory: any[] = [], preferredModel?: string) {
     this.token = token;
     this.systemInstruction = systemInstruction;
+    this.preferredModel = preferredModel;
     // Convert Gemini SDK history format to REST API contents format
     this.contents = initialHistory.map(h => ({
       role: h.role === 'model' ? 'model' : 'user',
@@ -408,14 +419,14 @@ export class OAuthGymChatSession {
 
   async sendMessage(msg: string): Promise<{ response: { title: () => string } }> {
     this.contents.push({ role: 'user', parts: [{ text: msg }] });
-    const aiText = await callGymOAuthREST(this.token, this.systemInstruction, this.contents);
+    const aiText = await callGymOAuthREST(this.token, this.systemInstruction, this.contents, 0, this.preferredModel);
     this.contents.push({ role: 'model', parts: [{ text: aiText }] });
     return { response: { title: () => aiText } };
   }
 
   async sendMessageStream(msg: string, onChunk: (title: string) => void): Promise<{ title: string, model: string }> {
     this.contents.push({ role: 'user', parts: [{ text: msg }] });
-    const result = await callGymOAuthRESTStream(this.token, this.systemInstruction, this.contents, 0, onChunk);
+    const result = await callGymOAuthRESTStream(this.token, this.systemInstruction, this.contents, 0, onChunk, this.preferredModel);
     this.contents.push({ role: 'model', parts: [{ text: result.title }] });
     return result;
   }
@@ -428,7 +439,8 @@ export class OAuthGymChatSession {
 export const startGymAIOAuthChat = (
   gymContext: string,
   oauthToken: string,
-  existingHistory: any[] = []
+  existingHistory: any[] = [],
+  preferredModel?: string
 ): OAuthGymChatSession => {
   const systemWithContext = `${GYM_AI_SYSTEM_PROMPT}
 
@@ -442,7 +454,7 @@ CRITICAL: You MUST reference the specific exercise names, weights, dates, and pr
     { role: 'model', parts: [{ text: "Coach here! I've loaded your full training logs — I can see your exact weights, progressions, stall points, and weekly volume. Let's work on what matters. What would you like to tackle?" }] },
   ];
 
-  return new OAuthGymChatSession(oauthToken, systemWithContext, initialHistory);
+  return new OAuthGymChatSession(oauthToken, systemWithContext, initialHistory, preferredModel);
 };
 
 const NOTES_AI_SYSTEM_PROMPT = `You are Zen Notes AI — ZenTrack's deeply expert, highly personalised knowledge partner embedded inside the user's private note vault and document library.

@@ -19,6 +19,7 @@ import 'katex/dist/katex.min.css';
 import type {
   GymDayLog, GymProfile, WeightTarget,
 } from '../../types/gym.types';
+import { AVAILABLE_GEMINI_MODELS } from '../../config/constants';
 import { GymChatUI } from './GymChatUI';
 import { GymWorkoutSummary } from './GymWorkoutSummary';
 
@@ -344,6 +345,13 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [stats, setStats] = useState<GymStats | null>(null);
   const [showQuickPrompts, setShowQuickPrompts] = useState(true);
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('zen_preferred_gym_model') || 'gemini-3.7-flash';
+    } catch {
+      return 'gemini-3.7-flash';
+    }
+  });
   const [usingOAuth, setUsingOAuth] = useState(false);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -443,20 +451,36 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
     return lines.join('\n');
   }, [todayLog, sessionMode]);
 
-  const initChatSession = useCallback(async (contextString: string, existingHistory?: any[]) => {
+  const initChatSession = useCallback(async (contextString: string, existingHistory?: any[], modelOverride?: string) => {
+    const activeModel = modelOverride || selectedModel;
     const formatRule = `\n\nCRITICAL FORMATTING RULE: You must always structure your responses clearly using markdown, bullet points, and double newlines for paragraph breaks. Avoid giant walls of text and never put everything on a single line. Make the text highly readable and structured.`;
     const fullContext = contextString + todayContextString + formatRule;
     const oauthToken = getLectureChatOAuthToken();
     if (oauthToken) {
       // Use personal Google account OAuth token — own quota pool
-      chatSessionRef.current = startGymAIOAuthChat(fullContext, oauthToken, existingHistory || []);
+      chatSessionRef.current = startGymAIOAuthChat(fullContext, oauthToken, existingHistory || [], activeModel);
       setUsingOAuth(true);
     } else {
       // Fall back to shared API key
-      chatSessionRef.current = startGymAIChat(fullContext, existingHistory || []);
+      chatSessionRef.current = startGymAIChat(fullContext, existingHistory || [], activeModel);
       setUsingOAuth(false);
     }
-  }, [todayContextString]);
+  }, [todayContextString, selectedModel]);
+
+  const handleModelChange = async (newModel: string) => {
+    setSelectedModel(newModel);
+    try { localStorage.setItem('zen_preferred_gym_model', newModel); } catch {}
+    const modelObj = AVAILABLE_GEMINI_MODELS.find(m => m.id === newModel);
+    toast.success(`Active Model: ${modelObj?.label || newModel}`);
+    
+    if (userId) {
+      const ctx = sessionStorage.getItem(CONTEXT_KEY(userId)) || '';
+      if (ctx && messages.length > 0) {
+        const geminiHistory = messages.map(m => ({ role: m.role, parts: [{ text: (m as any).text || (m as any).title || '' }] }));
+        await initChatSession(ctx, geminiHistory, newModel);
+      }
+    }
+  };
 
   // ── Open panel ─────────────────────────────────────────────────────────────
 
@@ -757,7 +781,29 @@ export const ZenGymAI = ({ userId, todayLog, profile, onStatsLoaded }: ZenGymAIP
                   )}
                 </div>
               </div>
-              <div style={{ display: 'flex', gap: '0.3rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <select
+                  value={selectedModel}
+                  onChange={(e) => handleModelChange(e.target.value)}
+                  title="Select Gemini Model"
+                  style={{
+                    padding: '0.25rem 0.45rem',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    background: 'rgba(255,255,255,0.06)',
+                    color: '#ececec',
+                    fontSize: '0.62rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    outline: 'none',
+                  }}
+                >
+                  {AVAILABLE_GEMINI_MODELS.map(m => (
+                    <option key={m.id} value={m.id} style={{ background: '#212121', color: '#fff' }}>
+                      {m.icon} {m.label.replace('Gemini ', '')}
+                    </option>
+                  ))}
+                </select>
                 <button onClick={forceRefresh} title="Refresh AI data" style={{ padding: '0.4rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.4)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                   <RefreshCw size={13} />
                 </button>

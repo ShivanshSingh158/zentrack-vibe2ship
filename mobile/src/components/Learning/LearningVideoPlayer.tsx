@@ -1,20 +1,18 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, TextInput,
-  ScrollView, Platform, KeyboardAvoidingView, Keyboard, Animated, AppState, ActivityIndicator, LayoutAnimation, Alert
+  View, Text, StyleSheet, TouchableOpacity,
+  ScrollView, Platform, Keyboard, Animated, AppState, ActivityIndicator, LayoutAnimation, Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Markdown from 'react-native-markdown-display';
 import YoutubeIframe from 'react-native-youtube-iframe';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWindowDimensions } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
-import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { uploadFileToCloudinary } from '../../services/cloudinary';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY } from '../../theme/tokens';
@@ -22,10 +20,10 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useMobileData, LearningSubTask } from '../../contexts/MobileDataContext';
 import { fetchVideoTranscript, TranscriptCue, TranscriptResult } from '../../services/youtubeTranscriptService';
 import { generateFlashcardsFromContext, saveFlashcardsToFirestore } from '../../services/flashcardService';
-import VsCodeSyntaxHighlighter from './VsCodeSyntaxHighlighter';
 import LectureChatHistoryModal from './LectureChatHistoryModal';
 import LectureMindMap from './LectureMindMap';
-import InlineCodeRunner, { isRunnable } from './InlineCodeRunner';
+import AiChatPanel from './AiChatPanel';
+import NotesPanel from './NotesPanel';
 
 interface LearningVideoPlayerProps {
   activeVideoSub: LearningSubTask;
@@ -59,6 +57,8 @@ interface LearningVideoPlayerProps {
   closeVideo: () => void;
   resetChatHistory?: () => void;
   onSelectLecture?: (topicId: string, sub: LearningSubTask) => void;
+  selectedModel?: string;
+  onToggleModel?: () => void;
 }
 
 export default function LearningVideoPlayer({
@@ -69,69 +69,63 @@ export default function LearningVideoPlayer({
   notesVisible, setNotesVisible, aiHistory, aiInput, setAiInput,
   aiLoading, sendAiMessage, generateQuiz, currentNotes, setCurrentNotes,
   saveNotes, closeVideo, resetChatHistory, onSelectLecture,
+  selectedModel = 'gemini-3.7-flash', onToggleModel,
 }: LearningVideoPlayerProps) {
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const mdStylesModel = useMemo(() => makeMdStylesModel(colors, isDark), [colors, isDark]);
-  const mdStylesUser = useMemo(() => makeMdStylesUser(colors, isDark), [colors, isDark]);
-
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const [appState, setAppState] = useState(AppState.currentState);
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
-
-  // ── Transcript State ──
+  const [isChatFullScreen, setIsChatFullScreen] = useState(false);
+  const [mindMapVisible, setMindMapVisible] = useState(false);
+  const [generatingCards, setGeneratingCards] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
+  const keyboardHeight = useRef(new Animated.Value(0)).current;
   const [transcriptVisible, setTranscriptVisible] = useState(false);
   const [transcriptCues, setTranscriptCues] = useState<TranscriptCue[]>([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [activeCueIndex, setActiveCueIndex] = useState<number>(-1);
-  const [transcriptSearch, setTranscriptSearch] = useState('');
   const [autoScrollTranscript, setAutoScrollTranscript] = useState(true);
   const transcriptScrollRef = useRef<ScrollView>(null);
+  const { user, learningTopics } = useMobileData();
+  const videoId = extractVideoId(activeVideoSub.url);
 
   useEffect(() => {
-    const sub = AppState.addEventListener('change', nextState => setAppState(nextState));
+    const sub = AppState.addEventListener('change', () => {});
     return () => {
       sub.remove();
-      // Hardware resource cleanup: restore portrait orientation if player unmounts while in landscape
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     };
   }, []);
 
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardVisible(true);
+      const h = e.endCoordinates ? e.endCoordinates.height : 280;
+      Animated.timing(keyboardHeight, { toValue: h + 10, duration: Platform.OS === 'ios' ? (e.duration || 250) : 200, useNativeDriver: false }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, (e) => {
+      setKeyboardVisible(false);
+      Animated.timing(keyboardHeight, { toValue: 0, duration: Platform.OS === 'ios' ? (e.duration || 250) : 200, useNativeDriver: false }).start();
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
-
-  const [isKeyboardVisible, setKeyboardVisible] = useState(false);
-  const [isChatFullScreen, setIsChatFullScreen] = useState(false);
-  const keyboardHeight = useRef(new Animated.Value(0)).current;
-  const chatScrollRef = useRef<ScrollView>(null);
-
-  const videoId = extractVideoId(activeVideoSub.url);
-
-  // Fetch transcript cues
   useEffect(() => {
     if (!videoId) return;
     let isMounted = true;
     setTranscriptLoading(true);
     fetchVideoTranscript(videoId, activeVideoSub.title).then((result: TranscriptResult) => {
-      if (isMounted) {
-        setTranscriptCues(result.cues);
-        setTranscriptLoading(false);
-        if (result.cues.length > 0) {
-          console.log(`[Transcript] ✅ ${result.cues.length} cues from ${result.source} in ${result.latencyMs}ms (layers tried: ${result.layersTried})`);
-        } else {
-          console.warn('[Transcript] No cues returned from any layer.');
-        }
-      }
-    }).catch(() => {
-      if (isMounted) setTranscriptLoading(false);
-    });
+      if (isMounted) { setTranscriptCues(result.cues); setTranscriptLoading(false); }
+    }).catch(() => { if (isMounted) setTranscriptLoading(false); });
     return () => { isMounted = false; };
   }, [videoId, activeVideoSub.title]);
 
-  // Real-time transcript playback tracker
   useEffect(() => {
     if (!playing || !transcriptVisible || transcriptCues.length === 0) return;
-
     const timer = setInterval(async () => {
       try {
         if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
@@ -140,7 +134,6 @@ export default function LearningVideoPlayer({
             const nextStart = transcriptCues[i + 1]?.start ?? (c.start + c.duration + 5);
             return currentSec >= c.start && currentSec < nextStart;
           });
-
           if (matchIdx !== -1 && matchIdx !== activeCueIndex) {
             setActiveCueIndex(matchIdx);
             if (autoScrollTranscript && transcriptScrollRef.current) {
@@ -150,113 +143,137 @@ export default function LearningVideoPlayer({
         }
       } catch (e) {}
     }, 500);
-
     return () => clearInterval(timer);
   }, [playing, transcriptVisible, transcriptCues, activeCueIndex, autoScrollTranscript]);
 
-  const { user, learningTopics } = useMobileData();
-  const [generatingCards, setGeneratingCards] = useState(false);
-  const [mindMapVisible, setMindMapVisible] = useState(false);
+  const transcriptPlainText = useMemo(
+    () => transcriptCues.map(c => `[${c.formattedTime}] ${c.text}`).join('\n'),
+    [transcriptCues]
+  );
+
+  const filteredCues = useMemo(() => transcriptCues, [transcriptCues]);
+
+  const detectedTimestamps = useMemo(() => {
+    if (!currentNotes) return [];
+    const matches = [...currentNotes.matchAll(/\[(\d{1,2}:\d{2})\]/g)];
+    return Array.from(new Set(matches.map(m => m[1])));
+  }, [currentNotes]);
+
+  const handleInsertTimestamp = async () => {
+    try {
+      let currentSec = 0;
+      if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
+        currentSec = Math.floor(await playerRef.current.getCurrentTime());
+      }
+      const mm = Math.floor(currentSec / 60);
+      const ss = String(currentSec % 60).padStart(2, '0');
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const sep = currentNotes.trim().length > 0 ? (currentNotes.endsWith('\n') ? '' : '\n') : '';
+      setCurrentNotes(`${currentNotes}${sep}- [${mm}:${ss}] `);
+    } catch (e) {}
+  };
+
+  const handleSeekToTimestamp = (tsStr: string) => {
+    const match = tsStr.match(/(\d{1,2}):(\d{2})/);
+    if (match && playerRef.current && typeof playerRef.current.seekTo === 'function') {
+      playerRef.current.seekTo(parseInt(match[1], 10) * 60 + parseInt(match[2], 10), true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const handleExportToNotes = async () => {
+    if (!currentNotes.trim()) { Alert.alert('Empty Notes', 'Please write some notes before exporting to ZenNotes.'); return; }
+    if (!user) { Alert.alert('Sign In Required', 'Please sign in to save notes.'); return; }
+    setExporting(true);
+    try {
+      const topic = learningTopics?.find(t => t.subTasks?.some(s => s.id === activeVideoSub.id));
+      const topicTitle = topic?.title || 'Learning';
+      const cleanTitle = activeVideoSub.title || 'Lecture Notes';
+      const pdfFileName = `${cleanTitle.replace(/[/\\?%*:|"<>]/g, '_').trim()}.pdf`;
+      const escHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const fmtContent = (text: string) => {
+        return text.split('\n').map(line => {
+          let p = escHtml(line).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/`([^`]+)`/g, '<code>$1</code>');
+          if (/^### /.test(line)) return `<h3>${p.replace(/^### /, '')}</h3>`;
+          if (/^## /.test(line)) return `<h2>${p.replace(/^## /, '')}</h2>`;
+          if (/^# /.test(line)) return `<h1>${p.replace(/^# /, '')}</h1>`;
+          if (/^- /.test(line)) return `<li>${p.replace(/^- /, '')}</li>`;
+          if (line.trim() === '') return '<br>';
+          return `<p>${p}</p>`;
+        }).join('\n');
+      };
+      const htmlContent = `<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1.0"/><style>body{font-family:sans-serif;padding:36px 44px;color:#1c1c1e;line-height:1.7;}h1{font-size:22px;font-weight:700;color:#000;margin:22px 0 10px;}h2{font-size:18px;font-weight:600;margin:18px 0 8px;}h3{font-size:15px;font-weight:600;margin:14px 0 6px;}p{margin-bottom:12px;font-size:14px;}li{margin-left:22px;margin-bottom:6px;font-size:14px;}code{font-family:monospace;font-size:13px;background:#f2f2f7;padding:2px 4px;border-radius:4px;}</style></head><body><h1>${escHtml(cleanTitle)}</h1><p><strong>Topic:</strong> ${escHtml(topicTitle)} &bull; <strong>Date:</strong> ${new Date().toLocaleDateString()}</p><hr/>${fmtContent(currentNotes)}</body></html>`;
+      const { uri } = await Print.printToFileAsync({ html: htmlContent, base64: false });
+      let pdfUrl = uri; let pdfSize = 50000;
+      try {
+        const uploadRes = await uploadFileToCloudinary(uri, 'application/pdf', pdfFileName);
+        if (uploadRes?.url) { pdfUrl = uploadRes.url; pdfSize = uploadRes.size || 50000; }
+      } catch (_) {}
+      await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
+        userId: user.uid, name: pdfFileName, type: 'file', fileType: 'pdf',
+        url: pdfUrl, size: pdfSize, parentId: null, tags: [],
+        createdAt: Date.now(), updatedAt: Date.now(),
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('🎉 PDF Exported!', `"${pdfFileName}" saved to ZenNotes.`, [
+        { text: 'Awesome!', style: 'cancel' },
+        { text: 'Share', onPress: async () => { try { await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' }); } catch (_) {} } }
+      ]);
+    } catch (e: any) {
+      Alert.alert('Export Failed', e?.message || 'Could not export PDF.');
+    } finally { setExporting(false); }
+  };
 
   const handleGenerateFlashcards = async (sourceText?: string) => {
-    if (!user) {
-      Alert.alert('Sign In Required', 'Please sign in to save flashcards.');
-      return;
-    }
+    if (!user) { Alert.alert('Sign In Required', 'Please sign in to save flashcards.'); return; }
     setGeneratingCards(true);
     try {
       const content = sourceText || currentNotes || (aiHistory.filter(h => h.role === 'model').slice(-1)[0]?.text) || activeVideoSub.title;
-      const cards = await generateFlashcardsFromContext(
-        activeVideoSub.title,
-        'Learning Workspace',
-        content
-      );
+      const cards = await generateFlashcardsFromContext(activeVideoSub.title, 'Learning Workspace', content);
       if (cards.length > 0) {
-        const count = await saveFlashcardsToFirestore(
-          user.uid,
-          activeVideoSub.title,
-          'Learning Workspace',
-          cards
-        );
+        const count = await saveFlashcardsToFirestore(user.uid, activeVideoSub.title, 'Learning Workspace', cards);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-          '🎉 Flashcards Created!',
-          `Created ${count} Active Recall Flashcards for this lecture. They are scheduled in your daily Spaced Repetition deck.`,
-          [{ text: 'Great!' }]
-        );
+        Alert.alert('🎉 Flashcards Created!', `${count} Active Recall Flashcards scheduled in your Spaced Repetition deck.`, [{ text: 'Great!' }]);
       } else {
         Alert.alert('No Cards Created', 'Could not generate flashcards from this section. Try again.');
       }
     } catch (e: any) {
       Alert.alert('Flashcard Error', e?.message || 'Failed to generate flashcards.');
-    } finally {
-      setGeneratingCards(false);
-    }
+    } finally { setGeneratingCards(false); }
   };
 
   const handleExportResponseToNotes = async (responseText: string) => {
     try {
       let timeTag = '';
       if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
-        const currentSec = Math.floor(await playerRef.current.getCurrentTime());
-        if (currentSec > 0) {
-          const mm = Math.floor(currentSec / 60);
-          const ss = String(currentSec % 60).padStart(2, '0');
-          timeTag = ` [${mm}:${ss}]`;
-        }
+        const s = Math.floor(await playerRef.current.getCurrentTime());
+        if (s > 0) { timeTag = ` [${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}]`; }
       }
-
       const noteBlock = `\n\n### 🤖 ZEN-GPT Breakdown${timeTag}\n${responseText.trim()}`;
-      const updatedNotes = currentNotes ? currentNotes.trim() + noteBlock : noteBlock.trim();
-      setCurrentNotes(updatedNotes);
+      setCurrentNotes(currentNotes ? currentNotes.trim() + noteBlock : noteBlock.trim());
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-      Alert.alert(
-        '📝 Exported to Lecture Notes!',
-        `This response was instantly appended to your lecture notes draft${timeTag ? ` with video timestamp ${timeTag.trim()}` : ''}.\n\nWhere would you like to go?`,
-        [
-          {
-            text: 'View Notes Draft',
-            onPress: () => {
-              setAiChatVisible(false);
-              setNotesVisible(true);
-            },
-          },
-          {
-            text: 'Save to Cloud Storage',
-            onPress: async () => {
-              if (!user) {
-                Alert.alert('Sign In Required', 'Please sign in to save notes to your ZenNotes workspace.');
-                return;
-              }
-              try {
-                const topic = learningTopics?.find(t => t.subTasks?.some(s => s.id === activeVideoSub.id));
-                const topicTitle = topic?.title || 'Learning';
-                await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
-                  userId: user.uid,
-                  name: `ZEN-GPT: ${activeVideoSub.title || 'Lecture Note'}${timeTag}`,
-                  content: `# 🤖 ZEN-GPT Lecture Note${timeTag}\n\n**Lecture:** ${activeVideoSub.title}\n**Topic:** ${topicTitle}\n**Video URL:** ${activeVideoSub.url || ''}\n\n---\n\n${responseText.trim()}`,
-                  type: 'note',
-                  parentId: null,
-                  tags: [],
-                  pinned: false,
-                  color: '#00c16e',
-                  createdAt: Date.now(),
-                  updatedAt: Date.now(),
-                });
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                Alert.alert('☁️ Saved to ZenNotes', 'A standalone note was also saved to your ZenNotes workspace!');
-              } catch (err: any) {
-                Alert.alert('Save Error', err?.message || 'Failed to save note to cloud.');
-              }
-            }
-          },
-          { text: 'Keep Chatting', style: 'cancel' }
-        ]
-      );
-    } catch (e: any) {
-      Alert.alert('Export Error', e?.message || 'Failed to export response to notes.');
-    }
+      Alert.alert('📝 Exported to Lecture Notes!', `Appended${timeTag ? ` with timestamp ${timeTag.trim()}` : ''}.`, [
+        { text: 'View Notes', onPress: () => { setAiChatVisible(false); setNotesVisible(true); } },
+        {
+          text: 'Save to Cloud',
+          onPress: async () => {
+            if (!user) { Alert.alert('Sign In Required'); return; }
+            try {
+              const topic = learningTopics?.find(t => t.subTasks?.some(s => s.id === activeVideoSub.id));
+              await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
+                userId: user.uid, name: `ZEN-GPT: ${activeVideoSub.title || 'Lecture Note'}${timeTag}`,
+                content: `# 🤖 ZEN-GPT${timeTag}\n\n**Lecture:** ${activeVideoSub.title}\n**Topic:** ${topic?.title || 'Learning'}\n\n---\n\n${responseText.trim()}`,
+                type: 'note', parentId: null, tags: [], pinned: false, color: '#00c16e',
+                createdAt: Date.now(), updatedAt: Date.now(),
+              });
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert('☁️ Saved to ZenNotes');
+            } catch (err: any) { Alert.alert('Save Error', err?.message); }
+          }
+        },
+        { text: 'Keep Chatting', style: 'cancel' }
+      ]);
+    } catch (e: any) { Alert.alert('Export Error', e?.message); }
   };
 
   const handleSeekToCue = (cue: TranscriptCue) => {
@@ -269,286 +286,9 @@ export default function LearningVideoPlayer({
   };
 
   const handleCopyCueToNotes = (cue: TranscriptCue) => {
-    const bookmarkText = `\n[${cue.formattedTime}] ${cue.text}`;
-    const updated = currentNotes ? currentNotes + bookmarkText : bookmarkText.trim();
-    setCurrentNotes(updated);
+    setCurrentNotes(currentNotes ? `${currentNotes}\n[${cue.formattedTime}] ${cue.text}` : `[${cue.formattedTime}] ${cue.text}`);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Bookmark Added to Notes', `Added [${cue.formattedTime}] to your lecture notes.`);
-  };
-
-  const filteredCues = useMemo(() => {
-    if (!transcriptSearch.trim()) return transcriptCues;
-    const q = transcriptSearch.toLowerCase();
-    return transcriptCues.filter(c => c.text.toLowerCase().includes(q) || c.formattedTime.includes(q));
-  }, [transcriptCues, transcriptSearch]);
-
-  // Plain-text transcript for mind map generation (from already-loaded cues)
-  const transcriptPlainText = useMemo(
-    () => transcriptCues.map(c => `[${c.formattedTime}] ${c.text}`).join('\n'),
-    [transcriptCues]
-  );
-
-  const markdownRules = {
-    fence: (node: any) => {
-      const language = (node.sourceInfo || 'code').trim();
-      const codeContent = (node.content || '').replace(/\n$/, '');
-
-      // ── InlineCodeRunner for executable languages ──────────────────────────
-      // JS / TS / Python get a ▶ Run button + sandboxed output panel.
-      // All other languages fall back to the static copy-only block.
-      if (isRunnable(language)) {
-        return (
-          <InlineCodeRunner
-            key={node.key}
-            code={codeContent}
-            language={language}
-            nodeKey={node.key}
-          />
-        );
-      }
-
-      // ── Static copy-only block for non-runnable languages ─────────────────
-      return (
-        <View key={node.key} style={s.codeBoxContainer}>
-          <View style={s.codeBoxHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#388bfd' }} />
-              <Text style={s.codeBoxLang}>{language}</Text>
-            </View>
-            <TouchableOpacity
-              style={s.codeCopyBtn}
-              onPress={() => {
-                Clipboard.setStringAsync(codeContent);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }}
-            >
-              <Ionicons name="copy-outline" size={12} color="#858585" />
-              <Text style={s.codeCopyText}>Copy</Text>
-            </TouchableOpacity>
-          </View>
-          <VsCodeSyntaxHighlighter code={codeContent} language={language} showLineNumbers={true} />
-        </View>
-      );
-    },
-    code_block: (node: any) => {
-      const codeContent = (node.content || '').replace(/\n$/, '');
-      return (
-        <View key={node.key} style={s.codeBoxContainer}>
-          <VsCodeSyntaxHighlighter code={codeContent} showLineNumbers={false} />
-        </View>
-      );
-    },
-  };
-
-  const sanitizeMarkdownText = (raw: string): string => {
-    if (!raw) return '';
-    return raw
-      // Fix CP437 / mojibake artifacts
-      .replace(/≡ƒÆí/g, '💡')
-      .replace(/┬╖|┬╥|┬─|┬/g, '·')
-      .replace(/ΓåÆ/g, '→')
-      // Fix copyright symbol © incorrectly rendered for option (C)
-      .replace(/(^|\n|\s)©\s*/g, '$1C) ')
-      // Standardize (A), (B), (C), (D) options to A), B), C), D) to prevent markdown parser bugs
-      .replace(/(^|\n|\s)\(([a-zA-Z])\)\s*/g, (m, p1, p2) => `${p1}${p2.toUpperCase()}) `);
-  };
-
-  useEffect(() => {
-    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-    const showSub = Keyboard.addListener(showEvent, (e) => {
-      setKeyboardVisible(true);
-      const h = e.endCoordinates ? e.endCoordinates.height : 280;
-      Animated.timing(keyboardHeight, {
-        toValue: h + 10,
-        duration: Platform.OS === 'ios' ? (e.duration || 250) : 200,
-        useNativeDriver: false,
-      }).start();
-    });
-
-    const hideSub = Keyboard.addListener(hideEvent, (e) => {
-      setKeyboardVisible(false);
-      Animated.timing(keyboardHeight, {
-        toValue: 0,
-        duration: Platform.OS === 'ios' ? (e.duration || 250) : 200,
-        useNativeDriver: false,
-      }).start();
-    });
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
-  // Notes State
-  const [notesMode, setNotesMode] = useState<'edit' | 'preview'>('edit');
-  const [exporting, setExporting] = useState(false);
-
-  // Extract all [MM:SS] or [M:SS] timestamps in the current notes for quick jumping
-  const detectedTimestamps = useMemo(() => {
-    if (!currentNotes) return [];
-    const matches = [...currentNotes.matchAll(/\[(\d{1,2}:\d{2})\]/g)];
-    const unique = Array.from(new Set(matches.map(m => m[1])));
-    return unique;
-  }, [currentNotes]);
-
-  // Insert [MM:SS] timestamp at current playback time
-  const handleInsertTimestamp = async () => {
-    try {
-      let currentSec = 0;
-      if (playerRef.current && typeof playerRef.current.getCurrentTime === 'function') {
-        currentSec = Math.floor(await playerRef.current.getCurrentTime());
-      }
-      const mm = Math.floor(currentSec / 60);
-      const ss = String(currentSec % 60).padStart(2, '0');
-      const timestampTag = `[${mm}:${ss}]`;
-      
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const separator = currentNotes.trim().length > 0 ? (currentNotes.endsWith('\n') ? '' : '\n') : '';
-      const updatedNotes = `${currentNotes}${separator}- ${timestampTag} `;
-      setCurrentNotes(updatedNotes);
-    } catch (e) {
-      console.log('Error inserting timestamp', e);
-    }
-  };
-
-  // Seek video player to given MM:SS timestamp
-  const handleSeekToTimestamp = (tsStr: string) => {
-    const match = tsStr.match(/(\d{1,2}):(\d{2})/);
-    if (match) {
-      const m = parseInt(match[1], 10);
-      const s = parseInt(match[2], 10);
-      const totalSec = m * 60 + s;
-      if (playerRef.current && typeof playerRef.current.seekTo === 'function') {
-        playerRef.current.seekTo(totalSec, true);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-    }
-  };
-
-  // Export lecture notes as PDF to Notes/Vault collection
-  const handleExportToNotes = async () => {
-    if (!currentNotes.trim()) {
-      Alert.alert('Empty Notes', 'Please write some notes before exporting to ZenNotes.');
-      return;
-    }
-    if (!user) {
-      Alert.alert('Sign In Required', 'Please sign in to save notes to your ZenNotes workspace.');
-      return;
-    }
-
-    setExporting(true);
-    try {
-      const topic = learningTopics?.find(t => t.subTasks?.some(s => s.id === activeVideoSub.id));
-      const topicTitle = topic?.title || 'Learning';
-      const cleanTitle = activeVideoSub.title || 'Lecture Notes';
-      const pdfFileName = `${cleanTitle.replace(/[/\\?%*:|"<>]/g, '_').trim()}.pdf`;
-
-      const escapeHtml = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const formatContent = (text: string) => {
-        const lines = text.split('\n');
-        let html = '';
-        for (const line of lines) {
-          let processed = escapeHtml(line)
-            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>')
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/\[(\d{1,2}:\d{2})\]/g, '<span style="background:#a599ff;color:#000;padding:2px 6px;border-radius:4px;font-weight:600;font-size:12px;">▶ $1</span>');
-          if (/^### /.test(line)) html += `<h3>${processed.replace(/^### /, '')}</h3>\n`;
-          else if (/^## /.test(line)) html += `<h2>${processed.replace(/^## /, '')}</h2>\n`;
-          else if (/^# /.test(line)) html += `<h1>${processed.replace(/^# /, '')}</h1>\n`;
-          else if (/^- /.test(line)) html += `<li>${processed.replace(/^- /, '')}</li>\n`;
-          else if (/^\d+\. /.test(line)) html += `<li>${processed.replace(/^\d+\.\s/, '')}</li>\n`;
-          else if (line.trim() === '') html += '<br>';
-          else html += `<p>${processed}</p>\n`;
-        }
-        return html;
-      };
-
-      const htmlContent = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <style>
-              @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-              * { box-sizing: border-box; margin: 0; padding: 0; }
-              body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 36px 44px; color: #1c1c1e; line-height: 1.7; background: #ffffff; }
-              .header { border-bottom: 2px solid #e5e5ea; padding-bottom: 14px; margin-bottom: 24px; }
-              .doc-title { font-size: 26px; font-weight: 700; color: #000000; margin-bottom: 6px; }
-              .meta { font-size: 13px; color: #636366; }
-              h1 { font-size: 22px; font-weight: 700; color: #000; margin: 22px 0 10px; }
-              h2 { font-size: 18px; font-weight: 600; color: #1c1c1e; margin: 18px 0 8px; }
-              h3 { font-size: 15px; font-weight: 600; color: #3a3a3c; margin: 14px 0 6px; }
-              p { margin-bottom: 12px; color: #1c1c1e; font-size: 14px; }
-              li { margin-left: 22px; margin-bottom: 6px; color: #1c1c1e; font-size: 14px; }
-              pre { background: #f2f2f7; border-left: 4px solid #a599ff; padding: 14px 18px; border-radius: 6px; margin: 16px 0; }
-              code { font-family: monospace; font-size: 13px; background: #f2f2f7; padding: 2px 4px; border-radius: 4px; color: #c0392b; }
-              .footer { margin-top: 40px; padding-top: 14px; border-top: 1px solid #e5e5ea; font-size: 11px; color: #8e8e93; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <div class="doc-title">${escapeHtml(cleanTitle)}</div>
-              <div class="meta"><strong>Topic:</strong> ${escapeHtml(topicTitle)} &bull; <strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
-            </div>
-            <div class="note-body">${formatContent(currentNotes)}</div>
-            <div class="footer">Exported from ZenTrack Study Workspace &bull; ${escapeHtml(cleanTitle)}</div>
-          </body>
-        </html>
-      `;
-
-      const { uri } = await Print.printToFileAsync({ html: htmlContent, base64: false });
-
-      let pdfUrl = uri;
-      let pdfSize = 50000;
-      try {
-        const uploadRes = await uploadFileToCloudinary(uri, 'application/pdf', pdfFileName);
-        if (uploadRes?.url) {
-          pdfUrl = uploadRes.url;
-          pdfSize = uploadRes.size || 50000;
-        }
-      } catch (uploadErr) {
-        console.warn('[LearningVideoPlayer] Cloudinary PDF upload fallback to local URI', uploadErr);
-      }
-
-      // Save PDF file node directly to Vault root without tags
-      await addDoc(collection(db, COLLECTION.STORAGE_NODES), {
-        userId: user.uid,
-        name: pdfFileName,
-        type: 'file',
-        fileType: 'pdf',
-        url: pdfUrl,
-        size: pdfSize,
-        parentId: null, // explicit null = root folder of Vault
-        tags: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        '🎉 PDF Exported to ZenNotes!',
-        `"${pdfFileName}" has been generated and saved directly to your Notes & Cloud Storage workspace.\n\nWould you like to share or open it now?`,
-        [
-          { text: 'Awesome!', style: 'cancel' },
-          {
-            text: 'Share / Print',
-            onPress: async () => {
-              try {
-                await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
-              } catch (e) {}
-            }
-          }
-        ]
-      );
-    } catch (e: any) {
-      Alert.alert('Export Failed', e?.message || 'Could not export PDF to Notes module.');
-    } finally {
-      setExporting(false);
-    }
+    Alert.alert('Bookmark Added', `Added [${cue.formattedTime}] to your lecture notes.`);
   };
 
   if (!videoId) return null;
@@ -559,19 +299,16 @@ export default function LearningVideoPlayer({
       isFocusMode && { backgroundColor: '#000', padding: 0 },
       isNativeFullScreen && { top: -insets.top, bottom: -insets.bottom, left: -(insets.left || 0), right: -(insets.right || 0), zIndex: 9999 }
     ]}>
+      {/* Video Player */}
       <View
-        style={[
-          s.playerWrapper,
-          isPip && { width: 150, height: 84 },
-          isFocusMode && { flex: 1, justifyContent: 'center' },
+        style={[s.playerWrapper, isPip && { width: 150, height: 84 }, isFocusMode && { flex: 1, justifyContent: 'center' },
           !isPip && !isFocusMode && !isNativeFullScreen && { marginTop: Math.max(insets.top, Platform.OS === 'android' ? 48 : 0) },
           isNativeFullScreen && { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
           { opacity: 0.99, overflow: 'hidden' }
         ]}
         onLayout={e => {
-          if (!isPip && !isFocusMode && !isNativeFullScreen) {
+          if (!isPip && !isFocusMode && !isNativeFullScreen)
             setVideoLayout({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.width * 9 / 16 });
-          }
         }}
       >
         <YoutubeIframe
@@ -583,19 +320,11 @@ export default function LearningVideoPlayer({
           playbackRate={playbackRate}
           onChangeState={(state: string) => setPlaying(state === 'playing')}
           initialPlayerParams={{ controls: true, modestbranding: true, rel: false }}
-          webViewProps={{
-            allowsInlineMediaPlayback: true,
-            mediaPlaybackRequiresUserAction: false,
-            androidLayerType: 'hardware',
-            customUserAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          }}
+          webViewProps={{ allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserAction: false, androidLayerType: 'hardware', customUserAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }}
           onFullScreenChange={(isFullScreen: boolean) => {
             setIsNativeFullScreen(isFullScreen);
-            if (isFullScreen) {
-              ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-            } else {
-              ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-            }
+            if (isFullScreen) ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+            else ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
           }}
         />
       </View>
@@ -604,96 +333,36 @@ export default function LearningVideoPlayer({
       {!isPip && !isFocusMode && !isNativeFullScreen && (
         <View style={s.playerControls}>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-
-            <TouchableOpacity
-              style={[s.controlBtn, aiChatVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
-              onPress={() => {
-                setAiChatVisible(!aiChatVisible);
-                setNotesVisible(false);
-                setTranscriptVisible(false);
-              }}
-            >
+            <TouchableOpacity style={[s.controlBtn, aiChatVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
+              onPress={() => { setAiChatVisible(!aiChatVisible); setNotesVisible(false); setTranscriptVisible(false); }}>
               <Ionicons name="chatbubbles" size={18} color={aiChatVisible ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary} />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.controlBtn, notesVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
-              onPress={() => {
-                setNotesVisible(!notesVisible);
-                setAiChatVisible(false);
-                setTranscriptVisible(false);
-              }}
-            >
+            {aiChatVisible && onToggleModel && (
+              <TouchableOpacity style={[s.controlBtn, { paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', gap: 3 }]} onPress={onToggleModel} accessibilityLabel="Toggle Gemini Model">
+                <Text style={{ fontSize: 10, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{selectedModel === 'gemini-3.7-flash' ? '👑 3.7' : '⚡ 2.5'}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={[s.controlBtn, notesVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
+              onPress={() => { setNotesVisible(!notesVisible); setAiChatVisible(false); setTranscriptVisible(false); }}>
               <Ionicons name="document-text" size={18} color={notesVisible ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary} />
             </TouchableOpacity>
-            {/* Transcript button */}
-            <TouchableOpacity
-              style={[s.controlBtn, transcriptVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
-              onPress={() => {
-                setTranscriptVisible(!transcriptVisible);
-                setAiChatVisible(false);
-                setNotesVisible(false);
-              }}
-            >
-              <Ionicons name="receipt-outline" size={18} color={transcriptVisible ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary} />
+            <TouchableOpacity style={[s.controlBtn, { paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 3 }]}
+              onPress={() => handleGenerateFlashcards()} disabled={generatingCards}>
+              {generatingCards ? <ActivityIndicator size="small" color={colors.accentPrimary} style={{ transform: [{ scale: 0.7 }] }} /> : <Text style={{ fontSize: 14 }}>🃏</Text>}
             </TouchableOpacity>
-
-            {/* ── Flashcard generate button ────────────────────────────────────
-                Triggers ZEN-GPT to produce 5 SM-2 flashcards from transcript/notes.
-                Shows a spinner while generating. Green accent when transcript ready. */}
-            <TouchableOpacity
-              style={[s.controlBtn, { paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 3 }]}
-              onPress={() => handleGenerateFlashcards()}
-              disabled={generatingCards}
-            >
-              {generatingCards
-                ? <ActivityIndicator size="small" color={colors.accentPrimary} style={{ transform: [{ scale: 0.7 }] }} />
-                : <Text style={{ fontSize: 14 }}>🃏</Text>
-              }
-            </TouchableOpacity>
-
-            {/* ── Mind Map button ──────────────────────────────────────────────
-                Opens LectureMindMap modal with AI-generated SVG diagram.
-                Enabled once transcript cues are loaded. */}
-            <TouchableOpacity
-              style={[s.controlBtn, { paddingHorizontal: 8 }, mindMapVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
-              onPress={() => setMindMapVisible(true)}
-            >
+            <TouchableOpacity style={[s.controlBtn, { paddingHorizontal: 8 }, mindMapVisible && { backgroundColor: isDark ? '#a599ff' : colors.accentPrimary }]}
+              onPress={() => setMindMapVisible(true)}>
               <Text style={{ fontSize: 14 }}>🗺️</Text>
             </TouchableOpacity>
             {aiChatVisible && (
-              <TouchableOpacity
-                style={[s.controlBtn, { paddingHorizontal: 8 }]}
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setIsChatFullScreen(true);
-                }}
-              >
+              <TouchableOpacity style={[s.controlBtn, { paddingHorizontal: 8 }]}
+                onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setIsChatFullScreen(true); }}>
                 <Ionicons name="expand" size={16} color={colors.accentPrimary} />
               </TouchableOpacity>
             )}
             {aiChatVisible && (
-              <TouchableOpacity
-                style={[s.controlBtn, { paddingHorizontal: 8 }]}
-                onPress={() => setHistoryModalVisible(true)}
-              >
+              <TouchableOpacity style={[s.controlBtn, { paddingHorizontal: 8 }]} onPress={() => setHistoryModalVisible(true)}>
                 <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
-              </TouchableOpacity>
-            )}
-            {aiChatVisible && resetChatHistory && (
-              <TouchableOpacity
-                style={[s.controlBtn, { paddingHorizontal: 8 }]}
-                onPress={() => {
-                  Alert.alert(
-                    'Clear Lecture Chat?',
-                    'This will clear your conversation history for this lecture and start fresh.',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      { text: 'Clear', style: 'destructive', onPress: resetChatHistory }
-                    ]
-                  );
-                }}
-              >
-                <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
               </TouchableOpacity>
             )}
           </View>
@@ -705,330 +374,80 @@ export default function LearningVideoPlayer({
         </View>
       )}
 
-      {/* Focus Mode Exit */}
       {isFocusMode && (
-        <TouchableOpacity
-          style={{ position: 'absolute', top: 50, right: 20, zIndex: 100, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 20 }}
-          onPress={() => setIsFocusMode(false)}>
+        <TouchableOpacity style={{ position: 'absolute', top: 50, right: 20, zIndex: 100, backgroundColor: 'rgba(0,0,0,0.6)', padding: 8, borderRadius: 20 }} onPress={() => setIsFocusMode(false)}>
           <Ionicons name="contract" size={24} color="#fff" />
         </TouchableOpacity>
       )}
-
-      {/* PiP Restore */}
       {isPip && (
         <TouchableOpacity style={s.pipRestoreBtn} onPress={() => setIsPip(false)}>
           <Ionicons name="expand" size={24} color="#f2f2f7" />
         </TouchableOpacity>
       )}
 
-      {/* AI Chat Panel */}
+      {/* AI Chat Panel — lazy mounted */}
       {!isPip && !isFocusMode && aiChatVisible && (
-        <View style={[s.aiPanel, isChatFullScreen && { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 100, backgroundColor: colors.background }]}>
-          {isChatFullScreen && (
-            <View style={{ paddingTop: Math.max(insets.top, 20), paddingBottom: 10, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', zIndex: 110, position: 'absolute', top: 0, left: 0, right: 0 }}>
-              <TouchableOpacity
-                style={{ position: 'absolute', left: 20, top: Math.max(insets.top, 20), backgroundColor: isDark ? '#18181b' : colors.surface, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-                onPress={() => setHistoryModalVisible(true)}
-              >
-                <Ionicons name="time-outline" size={16} color={colors.accentPrimary} />
-              </TouchableOpacity>
-              {resetChatHistory && (
-                <TouchableOpacity
-                  style={{ position: 'absolute', left: 62, top: Math.max(insets.top, 20), backgroundColor: isDark ? '#18181b' : colors.surface, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}
-                  onPress={() => {
-                    Alert.alert(
-                      'Clear Lecture Chat?',
-                      'This will clear your conversation history for this lecture and start fresh.',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Clear', style: 'destructive', onPress: resetChatHistory }
-                      ]
-                    );
-                  }}
-                >
-                  <Ionicons name="trash-outline" size={16} color={colors.textMuted} />
-                </TouchableOpacity>
-              )}
-              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#18181b' : colors.surface, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 14, paddingVertical: 6, borderRadius: 20, gap: 6 }}>
-                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: isDark ? '#22c55e' : '#059669' }} />
-                <Text style={{ color: colors.textPrimary, fontSize: 12.5, fontFamily: FONT_FAMILY.bold, letterSpacing: 0.2 }}>ZEN-GPT</Text>
-              </View>
-              <TouchableOpacity style={{ position: 'absolute', right: 20, top: Math.max(insets.top, 20), backgroundColor: isDark ? '#18181b' : colors.surface, width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }} onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setIsChatFullScreen(false); }}>
-                <Ionicons name="close" size={18} color={colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-          )}
-          <ScrollView 
-            ref={chatScrollRef}
-            onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: isChatFullScreen ? Math.max(insets.top, 20) + 60 : 12, paddingBottom: Math.max(140, insets.bottom + 120), gap: 20 }}
-          >
-            {aiHistory.map((item, i) => (
-              <View key={i} style={[s.chatBubble, item.role === 'model' ? s.chatBubbleModel : s.chatBubbleUser]}>
-                {item.role === 'model' ? (
-                  <View style={s.assistantContainer}>
-                    <View style={s.assistantHeader}>
-                      <View style={s.assistantAvatar}>
-                        <Ionicons name="sparkles" size={11} color={isDark ? '#00c16e' : '#059669'} />
-                      </View>
-                      <Text style={s.assistantName}>ZEN-GPT</Text>
-                      <TouchableOpacity style={{ marginLeft: 6, padding: 4 }} onPress={() => Clipboard.setStringAsync(item.text)}>
-                        <Ionicons name="copy-outline" size={13} color={colors.textMuted} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={{ marginLeft: 6, paddingVertical: 2, paddingHorizontal: 7, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.10)', borderRadius: 6, borderWidth: 1, borderColor: isDark ? 'rgba(0,193,110,0.25)' : 'rgba(5,150,105,0.25)' }}
-                        onPress={() => handleExportResponseToNotes(item.text)}
-                      >
-                        <Ionicons name="document-text-outline" size={11} color={isDark ? '#00c16e' : '#059669'} />
-                        <Text style={{ color: isDark ? '#00c16e' : '#059669', fontSize: 10.5, fontFamily: FONT_FAMILY.bold }}>+ Notes</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={{ marginLeft: 6, paddingVertical: 2, paddingHorizontal: 6, flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', borderRadius: 6, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.25)' }}
-                        onPress={() => handleGenerateFlashcards(item.text)}
-                      >
-                        <Ionicons name="flash-outline" size={11} color={colors.accentPrimary} />
-                        <Text style={{ color: colors.accentPrimary, fontSize: 10.5, fontFamily: FONT_FAMILY.bold }}>+ Flashcards</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={s.markdownWrapper}>
-                      <Markdown rules={markdownRules} style={mdStylesModel}>{sanitizeMarkdownText(item.text)}</Markdown>
-                    </View>
-                  </View>
-                ) : (
-                  <View style={s.userBubble}>
-                    <Text style={s.userBubbleText}>{item.text}</Text>
-                  </View>
-                )}
-              </View>
-            ))}
-            {aiLoading && (
-              <View style={[s.chatBubble, s.chatBubbleModel]}>
-                <View style={s.assistantHeader}>
-                  <View style={s.assistantAvatar}>
-                    <Ionicons name="sparkles" size={11} color={isDark ? '#00c16e' : '#059669'} />
-                  </View>
-                  <Text style={s.assistantName}>ZEN-GPT</Text>
-                </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, paddingLeft: 4 }}>
-                  <ActivityIndicator size="small" color={isDark ? '#00c16e' : '#059669'} />
-                  <Text style={{ color: colors.textMuted, fontSize: 13, fontFamily: FONT_FAMILY.body, fontStyle: 'italic' }}>Generating response...</Text>
-                </View>
-              </View>
-            )}
-          </ScrollView>
-          <Animated.View style={[s.aiInputRow, { bottom: keyboardHeight, paddingBottom: isKeyboardVisible ? 8 : Math.max(16, insets.bottom) }]}>
-            {!aiHistory.some(m => m.role === 'user') && (
-              <View style={s.aiSuggestionsRow}>
-                <TouchableOpacity
-                  style={s.chatgptPill}
-                  onPress={generateQuiz}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="sparkles" size={13} color={colors.accentPrimary} />
-                  <Text style={s.chatgptPillText}>Quiz Me</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.chatgptPill, generatingCards && { opacity: 0.6 }]}
-                  onPress={() => handleGenerateFlashcards()}
-                  disabled={generatingCards}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="flash" size={12} color={isDark ? '#00c16e' : '#059669'} />
-                  <Text style={[s.chatgptPillText, { color: isDark ? '#00c16e' : '#059669' }]}>
-                    {generatingCards ? 'Creating...' : '+ Flashcards'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            <View style={s.aiInputCapsule}>
-              <TextInput
-                style={s.aiInput}
-                placeholder="Ask ZEN-GPT anything..."
-                placeholderTextColor={colors.textMuted}
-                value={aiInput}
-                onChangeText={setAiInput}
-                onSubmitEditing={() => {
-                  Keyboard.dismiss();
-                  sendAiMessage();
-                }}
-                multiline
-                maxLength={500}
-              />
-              <TouchableOpacity
-                style={[s.aiSendBtn, (!aiInput.trim() || aiLoading) && s.aiSendBtnDisabled]}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  sendAiMessage();
-                }}
-                disabled={aiLoading || !aiInput.trim()}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="arrow-up" size={18} color={isDark ? '#000000' : '#FFFFFF'} />
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </View>
+        <AiChatPanel
+          aiHistory={aiHistory} aiInput={aiInput} setAiInput={setAiInput}
+          aiLoading={aiLoading} sendAiMessage={sendAiMessage} generateQuiz={generateQuiz}
+          generatingCards={generatingCards} isChatFullScreen={isChatFullScreen}
+          setIsChatFullScreen={setIsChatFullScreen} keyboardHeight={keyboardHeight}
+          isKeyboardVisible={isKeyboardVisible} selectedModel={selectedModel}
+          onToggleModel={onToggleModel} resetChatHistory={resetChatHistory}
+          onOpenHistory={() => setHistoryModalVisible(true)}
+          onExportResponseToNotes={handleExportResponseToNotes}
+          onGenerateFlashcardsFromText={handleGenerateFlashcards}
+          onGenerateFlashcards={() => handleGenerateFlashcards()}
+        />
       )}
 
-      {/* Notes Panel */}
+      {/* Notes Panel — lazy mounted */}
       {!isPip && !isFocusMode && notesVisible && (
-        <KeyboardAvoidingView style={s.notesPanel} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={s.panelHeader}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={s.panelTitle}>Notes</Text>
-              <View style={s.modeToggleContainer}>
-                <TouchableOpacity style={[s.modeToggleBtn, notesMode === 'edit' && s.modeToggleBtnActive]} onPress={() => setNotesMode('edit')}>
-                  <Text style={[s.modeToggleText, notesMode === 'edit' && s.modeToggleTextActive]}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.modeToggleBtn, notesMode === 'preview' && s.modeToggleBtnActive]} onPress={() => setNotesMode('preview')}>
-                  <Text style={[s.modeToggleText, notesMode === 'preview' && s.modeToggleTextActive]}>Preview</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TouchableOpacity style={s.toolActionBtn} onPress={handleInsertTimestamp}>
-                <Ionicons name="time-outline" size={13} color={colors.accentPrimary} />
-                <Text style={s.toolActionText}>+ Time</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.exportBtn, exporting && { opacity: 0.6 }]} onPress={handleExportToNotes} disabled={exporting}>
-                {exporting ? <ActivityIndicator size="small" color={isDark ? '#080510' : '#FFFFFF'} /> : (
-                  <>
-                    <Ionicons name="share-outline" size={12} color={isDark ? '#080510' : '#FFFFFF'} />
-                    <Text style={s.exportBtnText}>Export</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity style={s.saveNoteBtn} onPress={saveNotes}>
-                <Text style={{ color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 12.5 }}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          {detectedTimestamps.length > 0 && (
-            <View style={s.timestampChipsContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 12, gap: 6, alignItems: 'center' }}>
-                <Text style={s.timestampChipsLabel}>Jump:</Text>
-                {detectedTimestamps.map((ts, idx) => (
-                  <TouchableOpacity key={idx} style={s.timestampChip} onPress={() => handleSeekToTimestamp(ts)}>
-                    <Ionicons name="play" size={9} color={colors.accentPrimary} />
-                    <Text style={s.timestampChipText}>{ts}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-          {notesMode === 'edit' ? (
-            <TextInput
-              style={s.notesInput}
-              multiline textAlignVertical="top"
-              placeholder="Jot down notes here... Use # headers, **bold**, and tap '+ Time' to insert clickable video timestamps."
-              placeholderTextColor={colors.textMuted}
-              value={currentNotes}
-              onChangeText={setCurrentNotes}
-              onBlur={saveNotes}
-            />
-          ) : (
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-              {currentNotes.trim() ? (
-                <Markdown rules={markdownRules} style={mdStylesModel}>{currentNotes}</Markdown>
-              ) : (
-                <Text style={{ color: colors.textMuted, fontStyle: 'italic', fontFamily: FONT_FAMILY.body }}>No notes written yet. Switch to Edit mode or tap '+ Time' to start.</Text>
-              )}
-            </ScrollView>
-          )}
-        </KeyboardAvoidingView>
+        <NotesPanel
+          currentNotes={currentNotes} setCurrentNotes={setCurrentNotes} saveNotes={saveNotes}
+          detectedTimestamps={detectedTimestamps} handleInsertTimestamp={handleInsertTimestamp}
+          handleSeekToTimestamp={handleSeekToTimestamp} handleExportToNotes={handleExportToNotes}
+          exporting={exporting}
+        />
       )}
 
-      {/* Interactive Transcript Panel */}
+      {/* Transcript Panel — lazy mounted */}
       {!isPip && !isFocusMode && transcriptVisible && (
         <View style={s.transcriptPanel}>
-          {/* Transcript Header */}
           <View style={s.panelHeader}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Text style={s.panelTitle}>Transcript</Text>
-              <View style={s.transcriptCountBadge}>
-                <Text style={s.transcriptCountText}>{filteredCues.length} Cues</Text>
-              </View>
+              <View style={s.transcriptCountBadge}><Text style={s.transcriptCountText}>{filteredCues.length} Cues</Text></View>
             </View>
-
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TouchableOpacity
-                style={[s.toolActionBtn, autoScrollTranscript && { backgroundColor: isDark ? 'rgba(0,193,110,0.15)' : 'rgba(5,150,105,0.10)', borderColor: isDark ? 'rgba(0,193,110,0.3)' : 'rgba(5,150,105,0.25)' }]}
-                onPress={() => setAutoScrollTranscript(!autoScrollTranscript)}
-              >
-                <Ionicons name="locate" size={13} color={autoScrollTranscript ? (isDark ? '#00c16e' : '#059669') : colors.textMuted} />
-                <Text style={[s.toolActionText, autoScrollTranscript && { color: isDark ? '#00c16e' : '#059669' }]}>
-                  {autoScrollTranscript ? 'Tracking' : 'Manual'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={[s.toolActionBtn, autoScrollTranscript && { backgroundColor: isDark ? 'rgba(0,193,110,0.15)' : 'rgba(5,150,105,0.10)', borderColor: isDark ? 'rgba(0,193,110,0.3)' : 'rgba(5,150,105,0.25)' }]}
+              onPress={() => setAutoScrollTranscript(!autoScrollTranscript)}>
+              <Ionicons name="locate" size={13} color={autoScrollTranscript ? (isDark ? '#00c16e' : '#059669') : colors.textMuted} />
+              <Text style={[s.toolActionText, autoScrollTranscript && { color: isDark ? '#00c16e' : '#059669' }]}>{autoScrollTranscript ? 'Tracking' : 'Manual'}</Text>
+            </TouchableOpacity>
           </View>
-
-          {/* Quick Search */}
-          <View style={s.transcriptSearchBox}>
-            <Ionicons name="search" size={14} color={colors.textMuted} />
-            <TextInput
-              style={s.transcriptSearchInput}
-              placeholder="Search words in lecture audio..."
-              placeholderTextColor={colors.textMuted}
-              value={transcriptSearch}
-              onChangeText={setTranscriptSearch}
-              clearButtonMode="while-editing"
-            />
-            {transcriptSearch.length > 0 && (
-              <TouchableOpacity onPress={() => setTranscriptSearch('')}>
-                <Ionicons name="close-circle" size={14} color={colors.textMuted} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Cue List */}
           {transcriptLoading ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 10 }}>
               <ActivityIndicator size="large" color={colors.accentPrimary} />
-              <Text style={{ color: colors.textSecondary, fontSize: 13, fontFamily: FONT_FAMILY.body }}>
-                Synchronizing lecture transcript...
-              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 13, fontFamily: FONT_FAMILY.body }}>Synchronizing lecture transcript...</Text>
             </View>
           ) : filteredCues.length === 0 ? (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
               <Ionicons name="receipt-outline" size={36} color={colors.border} />
-              <Text style={{ color: colors.textSecondary, fontSize: 14, fontFamily: FONT_FAMILY.body, marginTop: 12, textAlign: 'center' }}>
-                {transcriptSearch ? 'No spoken words matched your search.' : 'No transcript cues found for this lecture.'}
-              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 14, fontFamily: FONT_FAMILY.body, marginTop: 12, textAlign: 'center' }}>No transcript cues found for this lecture.</Text>
             </View>
           ) : (
-            <ScrollView
-              ref={transcriptScrollRef}
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingVertical: 8, paddingBottom: 100 }}
-              showsVerticalScrollIndicator={true}
-            >
+            <ScrollView ref={transcriptScrollRef} style={{ flex: 1 }} contentContainerStyle={{ paddingVertical: 8, paddingBottom: 100 }}>
               {filteredCues.map((cue, idx) => {
                 const isActive = activeCueIndex === idx;
                 return (
-                  <TouchableOpacity
-                    key={idx}
-                    activeOpacity={0.7}
-                    style={[s.cueRow, isActive && s.cueRowActive]}
-                    onPress={() => handleSeekToCue(cue)}
-                  >
+                  <TouchableOpacity key={idx} activeOpacity={0.7} style={[s.cueRow, isActive && s.cueRowActive]} onPress={() => handleSeekToCue(cue)}>
                     <View style={[s.cueTimePill, isActive && s.cueTimePillActive]}>
-                      <Ionicons name={isActive ? "play" : "time-outline"} size={10} color={isActive ? (isDark ? "#080510" : "#FFFFFF") : colors.accentPrimary} />
-                      <Text style={[s.cueTimeText, isActive && s.cueTimeTextActive]}>
-                        {cue.formattedTime}
-                      </Text>
+                      <Ionicons name={isActive ? 'play' : 'time-outline'} size={10} color={isActive ? (isDark ? '#080510' : '#FFFFFF') : colors.accentPrimary} />
+                      <Text style={[s.cueTimeText, isActive && s.cueTimeTextActive]}>{cue.formattedTime}</Text>
                     </View>
-
-                    <Text style={[s.cueText, isActive && s.cueTextActive]}>
-                      {cue.text}
-                    </Text>
-
-                    <TouchableOpacity
-                      style={s.cueAddNoteBtn}
-                      onPress={() => handleCopyCueToNotes(cue)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
+                    <Text style={[s.cueText, isActive && s.cueTextActive]}>{cue.text}</Text>
+                    <TouchableOpacity style={s.cueAddNoteBtn} onPress={() => handleCopyCueToNotes(cue)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                       <Ionicons name="bookmark-outline" size={14} color={colors.textMuted} />
                     </TouchableOpacity>
                   </TouchableOpacity>
@@ -1039,155 +458,41 @@ export default function LearningVideoPlayer({
         </View>
       )}
 
-      {/* ── Default Lecture Study Hub (Shown when no specific panel is toggled) ── */}
+      {/* Study Hub — shown when no panel is open */}
       {!isPip && !isFocusMode && !aiChatVisible && !notesVisible && !transcriptVisible && (
-        <ScrollView
-          style={{ flex: 1, backgroundColor: colors.background }}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Lecture Info Card */}
+        <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: 16, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
           <View style={{ backgroundColor: colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: colors.border, marginBottom: 16 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isDark ? '#22c55e' : '#059669' }} />
-              <Text style={{ color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold, letterSpacing: 0.4 }}>
-                ACTIVE LECTURE
-              </Text>
+              <Text style={{ color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold, letterSpacing: 0.4 }}>ACTIVE LECTURE</Text>
             </View>
-            <Text style={{ color: colors.textPrimary, fontSize: 16, fontFamily: FONT_FAMILY.bold, lineHeight: 22, marginBottom: 6 }}>
-              {activeVideoSub.title}
-            </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: FONT_FAMILY.body }}>
-              Tap any study tool below or in the toolbar above to engage with AI.
-            </Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 16, fontFamily: FONT_FAMILY.bold, lineHeight: 22, marginBottom: 6 }}>{activeVideoSub.title}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: FONT_FAMILY.body }}>Tap any study tool below or in the toolbar above to engage with AI.</Text>
           </View>
-
-          {/* Quick Hub Grid */}
           <View style={{ gap: 10 }}>
-            {/* AI Tutor Card */}
-            <TouchableOpacity
-              activeOpacity={0.75}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.surface,
-                padding: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                gap: 12,
-              }}
-              onPress={() => {
-                setAiChatVisible(true);
-                setNotesVisible(false);
-                setTranscriptVisible(false);
-              }}
-            >
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.10)', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="sparkles" size={20} color={isDark ? '#00c16e' : '#059669'} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>
-                  ZEN-GPT AI Tutor
-                </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>
-                  Ask questions, get step-by-step breakdowns, and quiz yourself.
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            {/* Smart Notes Card */}
-            <TouchableOpacity
-              activeOpacity={0.75}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.surface,
-                padding: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                gap: 12,
-              }}
-              onPress={() => {
-                setNotesVisible(true);
-                setAiChatVisible(false);
-                setTranscriptVisible(false);
-              }}
-            >
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="document-text" size={20} color={colors.accentPrimary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>
-                  Timestamped Notes
-                </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>
-                  Jot insights, insert video timestamps, and export to Vault.
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            {/* Live Transcript Card */}
-            <TouchableOpacity
-              activeOpacity={0.75}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.surface,
-                padding: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                gap: 12,
-              }}
-              onPress={() => {
-                setTranscriptVisible(true);
-                setAiChatVisible(false);
-                setNotesVisible(false);
-              }}
-            >
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.10)', alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="receipt-outline" size={20} color={isDark ? '#38bdf8' : '#0284C7'} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>
-                  Synchronized Transcript
-                </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>
-                  Follow spoken dialogue in real-time and jump to any moment.
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
-
-            {/* Concept Mind Map Card */}
-            <TouchableOpacity
-              activeOpacity={0.75}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.surface,
-                padding: 14,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                gap: 12,
-              }}
-              onPress={() => setMindMapVisible(true)}
-            >
+            {([
+              { icon: 'sparkles', iconColor: isDark ? '#00c16e' : '#059669', bg: isDark ? 'rgba(0,193,110,0.12)' : 'rgba(5,150,105,0.10)', title: 'ZEN-GPT AI Tutor', desc: 'Ask questions, get step-by-step breakdowns, and quiz yourself.', onPress: () => { setAiChatVisible(true); setNotesVisible(false); setTranscriptVisible(false); } },
+              { icon: 'document-text', iconColor: colors.accentPrimary, bg: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', title: 'Timestamped Notes', desc: 'Jot insights, insert video timestamps, and export to Vault.', onPress: () => { setNotesVisible(true); setAiChatVisible(false); setTranscriptVisible(false); } },
+              { icon: 'receipt-outline', iconColor: isDark ? '#38bdf8' : '#0284C7', bg: isDark ? 'rgba(56,189,248,0.12)' : 'rgba(2,132,199,0.10)', title: 'Synchronized Transcript', desc: 'Follow spoken dialogue in real-time and jump to any moment.', onPress: () => { setTranscriptVisible(true); setAiChatVisible(false); setNotesVisible(false); } },
+            ] as any[]).map((item: any, idx: number) => (
+              <TouchableOpacity key={idx} activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, gap: 12 }} onPress={item.onPress}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: item.bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name={item.icon} size={20} color={item.iconColor} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>{item.title}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>{item.desc}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, gap: 12 }} onPress={() => setMindMapVisible(true)}>
               <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: isDark ? 'rgba(251,191,36,0.12)' : 'rgba(217,119,6,0.10)', alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 18 }}>🗺️</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>
-                  360° Concept Mind Map
-                </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>
-                  Explore interactive spatial graph with pinch & pan.
-                </Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 14, fontFamily: FONT_FAMILY.bold }}>360° Concept Mind Map</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontFamily: FONT_FAMILY.body, marginTop: 1 }}>Explore interactive spatial graph with pinch & pan.</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -1204,11 +509,6 @@ export default function LearningVideoPlayer({
         onClearCurrentChat={resetChatHistory}
       />
 
-      {/* ── Mind Map Modal ───────────────────────────────────────────────────────
-          Lazy-renders on first open. Transcript plain text derived from the
-          already-fetched transcriptCues — no extra network call.
-          Tapping a node auto-sends the concept to ZEN-GPT and closes the map.
-      ─────────────────────────────────────────────────────────────────────── */}
       <LectureMindMap
         visible={mindMapVisible}
         onClose={() => setMindMapVisible(false)}
@@ -1218,7 +518,6 @@ export default function LearningVideoPlayer({
           setMindMapVisible(false);
           setAiChatVisible(true);
           setNotesVisible(false);
-          // Small delay to let the AI panel open before auto-sending
           setTimeout(() => sendAiMessage(question), 200);
         }}
       />
@@ -1226,22 +525,20 @@ export default function LearningVideoPlayer({
   );
 }
 
-
-const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
+const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   fullPlayerContainer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.background, zIndex: 100 },
   pipContainer: { position: 'absolute', bottom: 100, right: 20, width: 150, height: 84, backgroundColor: isDark ? '#000000' : colors.surface, borderRadius: 10, overflow: 'hidden', zIndex: 100, borderWidth: 2, borderColor: colors.accentPrimary },
   playerWrapper: { width: '100%', backgroundColor: '#000000' },
   playerControls: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 6, alignItems: 'center', backgroundColor: colors.surface, borderBottomWidth: 1, borderBottomColor: colors.border },
   controlBtn: { padding: 6, backgroundColor: isDark ? '#1c1c1e' : '#F5F4FA', borderRadius: 6 },
-  controlBtnText: { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold, fontSize: 12 },
   pipRestoreBtn: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' },
   panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
   panelTitle: { fontFamily: FONT_FAMILY.bold, color: colors.textPrimary, fontSize: 16 },
   transcriptPanel: { flex: 1, backgroundColor: colors.background },
   transcriptCountBadge: { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)' },
   transcriptCountText: { color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  transcriptSearchBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, marginHorizontal: 12, marginVertical: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 10, borderWidth: 1, borderColor: colors.border },
-  transcriptSearchInput: { flex: 1, color: colors.textPrimary, fontSize: 13, fontFamily: FONT_FAMILY.body, marginLeft: 6, padding: 0 },
+  toolActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)' },
+  toolActionText: { color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
   cueRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: isDark ? 'rgba(255,255,255,0.03)' : '#ECEBF2', borderRadius: 10, marginHorizontal: 8, marginVertical: 2 },
   cueRowActive: { backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.35)' : colors.accentPrimary },
   cueTimePill: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, marginRight: 10, marginTop: 1 },
@@ -1251,87 +548,4 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   cueText: { flex: 1, color: isDark ? '#a1a1aa' : '#4B5563', fontSize: 13, lineHeight: 19, fontFamily: FONT_FAMILY.body },
   cueTextActive: { color: colors.textPrimary, fontFamily: FONT_FAMILY.medium },
   cueAddNoteBtn: { padding: 4, marginLeft: 6, marginTop: 1 },
-  modeToggleContainer: { flexDirection: 'row', backgroundColor: isDark ? '#1c1c1e' : '#EAE9F2', borderRadius: 12, padding: 2, marginLeft: 8 },
-  modeToggleBtn: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
-  modeToggleBtnActive: { backgroundColor: isDark ? 'rgba(165,153,255,0.2)' : '#FFFFFF' },
-  modeToggleText: { fontSize: 11, color: colors.textMuted, fontFamily: FONT_FAMILY.body },
-  modeToggleTextActive: { color: colors.accentPrimary, fontFamily: FONT_FAMILY.bold },
-  toolActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 5, borderRadius: 7, backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.10)', borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.25)' },
-  toolActionText: { color: colors.accentPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  exportBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 7, backgroundColor: colors.accentPrimary },
-  exportBtnText: { color: isDark ? '#080510' : '#FFFFFF', fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  saveNoteBtn: { paddingHorizontal: 4, paddingVertical: 4 },
-  timestampChipsContainer: { paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
-  timestampChipsLabel: { color: colors.textMuted, fontSize: 11, fontFamily: FONT_FAMILY.bold, marginRight: 2 },
-  timestampChip: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)', borderWidth: 1, borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10 },
-  timestampChipText: { color: colors.textPrimary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  quizBtn: { backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 },
-  quizBtnText: { color: colors.accentPrimary, fontSize: 10, fontFamily: FONT_FAMILY.bold },
-  aiPanel: { flex: 1, backgroundColor: colors.background },
-  chatBubble: { marginBottom: 18, width: '100%' },
-  chatBubbleModel: { alignSelf: 'stretch', width: '100%' },
-  chatBubbleUser: { alignItems: 'flex-end', width: '100%' },
-  assistantContainer: { width: '100%' },
-  assistantHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  assistantAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: isDark ? 'rgba(0,193,110,0.15)' : 'rgba(5,150,105,0.12)', alignItems: 'center', justifyContent: 'center' },
-  assistantName: { fontFamily: FONT_FAMILY.bold, fontSize: 12, color: isDark ? '#a1a1aa' : colors.accentPrimary, letterSpacing: 0.3 },
-  markdownWrapper: { width: '100%' },
-  userBubble: { backgroundColor: isDark ? '#27272a' : colors.accentPrimary, borderRadius: 20, borderBottomRightRadius: 6, paddingHorizontal: 16, paddingVertical: 10, maxWidth: '85%' },
-  userBubbleText: { fontFamily: FONT_FAMILY.body, fontSize: 15, color: '#ffffff', lineHeight: 22 },
-  aiInputRow: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 14, paddingTop: 6, paddingBottom: 8, backgroundColor: 'transparent' },
-  aiSuggestionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2, marginBottom: 8 },
-  chatgptPill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: isDark ? 'rgba(28, 28, 30, 0.75)' : '#FFFFFF', paddingHorizontal: 13, paddingVertical: 7, borderRadius: 20, borderWidth: 1, borderColor: colors.border },
-  chatgptPillText: { color: isDark ? '#e4e4e7' : colors.accentPrimary, fontSize: 12, fontFamily: FONT_FAMILY.medium, letterSpacing: 0.1 },
-  aiInputCapsule: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#18181b' : '#FFFFFF', borderRadius: 26, borderWidth: 1, borderColor: colors.border, paddingLeft: 16, paddingRight: 6, minHeight: 48 },
-  aiInput: { flex: 1, fontFamily: FONT_FAMILY.body, fontSize: 14.5, color: colors.textPrimary, maxHeight: 100, paddingVertical: 10 },
-  aiSendBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? '#ffffff' : colors.accentPrimary, alignItems: 'center', justifyContent: 'center' },
-  aiSendBtnDisabled: { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(108,92,231,0.2)', opacity: 0.5 },
-  quizInputBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.10)', justifyContent: 'center', alignItems: 'center' },
-  notesPanel: { flex: 1, backgroundColor: colors.surface },
-  notesInput: { flex: 1, padding: 16, color: colors.textPrimary, fontFamily: FONT_FAMILY.body, fontSize: 14 },
-  codeBoxContainer: { backgroundColor: isDark ? '#1e1e1e' : '#F8F7FC', borderRadius: 10, borderWidth: 1, borderColor: colors.border, marginVertical: 8, overflow: 'hidden' },
-  codeBoxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: isDark ? '#252526' : '#ECEBF2', paddingHorizontal: 12, paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.border },
-  codeBoxLang: { color: colors.textSecondary, fontSize: 11, fontFamily: FONT_FAMILY.bold, textTransform: 'uppercase' },
-  codeCopyBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 6, paddingVertical: 2 },
-  codeCopyText: { color: colors.textSecondary, fontSize: 11, fontFamily: FONT_FAMILY.bold },
-  codeText: { color: isDark ? '#d4d4d4' : '#1C1C1E', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', lineHeight: 19 },
 });
-
-const makeMdStylesModel = (colors: any, isDark: boolean = true) => StyleSheet.create({
-  body: { color: isDark ? '#ececec' : '#1C1C1E', fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 24, letterSpacing: 0.15 },
-  heading1: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 18, marginTop: 12, marginBottom: 6, lineHeight: 24 },
-  heading2: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 16, marginTop: 10, marginBottom: 4, lineHeight: 22 },
-  heading3: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 8, marginBottom: 4, lineHeight: 20 },
-  strong: { color: colors.textPrimary, fontFamily: 'Inter_600SemiBold' },
-  em: { color: isDark ? '#e5e5ea' : '#3A3A3C', fontStyle: 'italic' },
-  bullet_list_icon: { color: isDark ? '#00c16e' : '#059669', fontSize: 14, marginTop: 3, marginRight: 8 },
-  ordered_list_icon: { color: isDark ? '#00c16e' : '#059669', fontSize: 14, marginTop: 3, marginRight: 8 },
-  code_inline: { color: isDark ? '#00c16e' : '#059669', backgroundColor: 'transparent', fontFamily: 'Inter_600SemiBold', fontSize: 14.5 },
-  code_block: { color: isDark ? '#f2f2f7' : '#1C1C1E', backgroundColor: isDark ? '#141416' : '#F8F7FC', fontFamily: 'Inter_400Regular', padding: 12, borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: colors.border, fontSize: 13.5 },
-  fence: { color: isDark ? '#f2f2f7' : '#1C1C1E', backgroundColor: isDark ? '#141416' : '#F8F7FC', fontFamily: 'Inter_400Regular', padding: 12, borderRadius: 10, marginVertical: 6, borderWidth: 1, borderColor: colors.border, fontSize: 13.5 },
-  pre: { backgroundColor: isDark ? '#141416' : '#F8F7FC', borderRadius: 10, borderWidth: 1, borderColor: colors.border, marginVertical: 6 },
-  blockquote: { backgroundColor: isDark ? 'rgba(0,193,110,0.08)' : 'rgba(5,150,105,0.08)', borderColor: isDark ? '#00c16e' : '#059669', borderLeftWidth: 3, paddingHorizontal: 12, paddingVertical: 6, marginVertical: 6, borderRadius: 4 },
-  table: { borderColor: colors.border, borderWidth: 1, borderRadius: 8, backgroundColor: isDark ? '#141416' : '#F8F7FC', marginVertical: 8 },
-  tr: { borderColor: colors.border, borderBottomWidth: 1, flexDirection: 'row' },
-  th: { backgroundColor: isDark ? '#1c1c1e' : '#ECEBF2', color: isDark ? '#00c16e' : '#059669', padding: 8, fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  td: { padding: 8, color: colors.textPrimary, fontSize: 13 },
-  paragraph: { marginTop: 0, marginBottom: 8 },
-});
-
-const makeMdStylesUser = (colors: any, isDark: boolean = true) => StyleSheet.create({
-  body: { color: '#ffffff', fontFamily: 'Inter_400Regular', fontSize: 15, lineHeight: 22 },
-  heading1: { color: '#ffffff', fontFamily: 'Inter_700Bold', fontSize: 18, marginTop: 8, marginBottom: 4 },
-  heading2: { color: '#ffffff', fontFamily: 'Inter_700Bold', fontSize: 17, marginTop: 6, marginBottom: 2 },
-  heading3: { color: '#ffffff', fontFamily: 'Inter_700Bold', fontSize: 16, marginTop: 4, marginBottom: 2 },
-  strong: { color: '#ffffff', fontFamily: 'Inter_700Bold' },
-  em: { color: '#ffffff', fontStyle: 'italic' },
-  bullet_list_icon: { color: '#ffffff', fontSize: 16, marginTop: 1 },
-  ordered_list_icon: { color: '#ffffff', fontSize: 15, marginTop: 2 },
-  code_inline: { color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.1)', fontFamily: 'Inter_500Medium', paddingHorizontal: 4, borderRadius: 4 },
-  code_block: { color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.05)', fontFamily: 'Inter_400Regular', padding: 10, borderRadius: 8 },
-  fence: { color: '#ffffff', backgroundColor: 'rgba(255,255,255,0.05)', fontFamily: 'Inter_400Regular', padding: 10, borderRadius: 8 },
-  pre: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 8 },
-  paragraph: { marginTop: 0, marginBottom: 0 },
-});
-
-

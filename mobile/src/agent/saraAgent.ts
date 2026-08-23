@@ -417,7 +417,8 @@ export async function processGymChat(
       trainingDaysPerWeek?: number | null;  // e.g. 4, 5, 6
       otherNotes?: string | null;           // free-form user preference note
     } | null;
-  } = {}
+  } = {},
+  preferredModel?: string
 ): Promise<{
   type: 'text' | 'function_call';
   text: string;
@@ -765,7 +766,7 @@ When user asks to modify workout data, embed ONE action block at the END of your
 
   try {
     const data = await callProxy({
-      model: 'gemini-2.5-flash',
+      model: preferredModel || 'gemini-3.7-flash',
       contents,
       systemInstruction: systemPrompt,
       generationConfig: { temperature: 0.4, maxOutputTokens: 8192 },

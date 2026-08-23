@@ -63,15 +63,6 @@ export const ALL_APPS = [
     isLucide: true,
   },
   {
-    id: 'Assignments',
-    name: 'Assignments',
-    icon: <BookOpen size={20} color="#f472b6" strokeWidth={2.2} />,
-    popoverIcon: <BookOpen size={24} color="#f472b6" strokeWidth={2.2} />,
-    color: '#f472b6',
-    route: '/assignments',
-    isLucide: true,
-  },
-  {
     id: 'Jobs',
     name: 'Jobs',
     icon: <Briefcase size={20} color="#fbbf24" strokeWidth={2.2} />,

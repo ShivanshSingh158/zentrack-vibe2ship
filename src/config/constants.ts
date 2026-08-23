@@ -18,9 +18,15 @@ export const VOICE_PROXY_URL = `${APP_URL}/api/gemini-proxy?action=tts`;
 export const SEND_NOTIFICATION_URL = `${APP_URL}/api/send-notification`;
 
 // ── Gemini Models ─────────────────────────────────────────────────────────────
-export const GEMINI_MODEL_DEFAULT = 'gemini-2.5-flash';
-export const GEMINI_MODEL_VOICE = 'gemini-2.5-flash';
-export const GEMINI_MODEL_RESEARCH = 'gemini-2.5-flash';
+export const AVAILABLE_GEMINI_MODELS = [
+  { id: 'gemini-3.7-flash', label: 'Gemini 3.7 Flash', tag: 'Hybrid Thinking', icon: '👑' },
+  { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', tag: 'Fast & Balanced', icon: '⚡' },
+] as const;
+export type GeminiModelId = typeof AVAILABLE_GEMINI_MODELS[number]['id'];
+
+export const GEMINI_MODEL_DEFAULT = 'gemini-3.7-flash';
+export const GEMINI_MODEL_VOICE = 'gemini-3.7-flash';
+export const GEMINI_MODEL_RESEARCH = 'gemini-3.7-flash';
 
 // ── Agent System ──────────────────────────────────────────────────────────────
 /** Maximum concurrent Gemini API calls across all agents */

@@ -22,7 +22,6 @@ export const MOBILE_APPS = [
   { name: 'Habits', icon: <Zap size={26} color="#f59e0b" strokeWidth={2.2} />, route: '/habits', isLucide: true },
   { name: 'Learning', icon: <BookOpen size={26} color="#5eda9e" strokeWidth={2.2} />, route: '/learning', isLucide: true },
   { name: 'Attendance', icon: <GraduationCap size={26} color="#38bdf8" strokeWidth={2.2} />, route: '/attendance', isLucide: true },
-  { name: 'Assignments', icon: <FileText size={26} color="#f472b6" strokeWidth={2.2} />, route: '/assignments', isLucide: true },
   { name: 'Jobs', icon: <Briefcase size={26} color="#fbbf24" strokeWidth={2.2} />, route: '/jobs', isLucide: true },
   { name: 'Grades', icon: <Award size={26} color="#a599ff" strokeWidth={2.2} />, route: '/grades', isLucide: true },
   { name: 'Analytics', icon: <BarChart3 size={26} color="#38bdf8" strokeWidth={2.2} />, route: '/analytics', isLucide: true },

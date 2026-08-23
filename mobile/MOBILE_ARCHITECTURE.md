@@ -187,14 +187,10 @@ mobile/
     │   ├── GoalsScreen.tsx               # OKR Goal Tracker & Milestone Breakdown
     │   ├── GradesScreen.tsx              # SGPA/CGPA University Grade Calculator
     │   ├── LearningScreen.tsx            # Video Lecture Player, Flashcards, AI Tutor, MindMap
-    │   ├── PlacementHubScreen.tsx        # LeetCode Tracker, DSA Sheet, Mock Prep, Panic Mode
     │   ├── AnalyticsScreen.tsx           # Productivity Graphs, Discipline Score, XP Radar
-    │   ├── WellbeingDashboardScreen.tsx  # Sleep, Hydration, Recovery & Work-Life Balance
+    │   ├── WellbeingDashboardScreen.tsx  # Hydration, Recovery & Work-Life Balance
     │   ├── XPConstellationScreen.tsx     # Gamification Constellation Map & Tier Badges
     │   ├── StreakDetailScreen.tsx        # Deep Streak Analytics & Habit Continuity
-    │   ├── ContentLibraryScreen.tsx      # Books, Podcasts & Reading List Manager
-    │   ├── StudyRoomScreen.tsx           # Virtual Study Room & Live Pomodoro Sessions
-    │   ├── WeeklyReviewScreen.tsx        # Weekly Retrospective & Goal Alignment Engine
     │   ├── AgentHistoryScreen.tsx        # SARA Autonomous Action Audit Log
     │   ├── MoreScreen.tsx                # Extended Module Launcher Grid
     │   ├── SettingsScreen.tsx            # App Preferences, Theme, Data Export, Biometrics
@@ -917,3 +913,4 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
 4. **Resilient Writes**: Route data mutations through `safeWrite()`, `safeAdd()`, `safeUpdate()`, `safeDelete()` or domain optimistic functions.
 5. **No Navigation in Onboarding**: `OnboardingScreen` renders outside navigation containers — pass navigation callbacks via props only.
 6. **Timezone Correctness**: Use `dateUtils.ts` (`todayStr()`) instead of `.toISOString().slice(0,10)` to prevent UTC midnight date shift bugs in Indian Standard Time (IST).
+7. **Dual-Tier Gemini Engine Selection**: Mobile GYM-GPT (`ZenGymAiModal.tsx`) and Learning AI Tutor (`LearningScreen.tsx` & `LearningVideoPlayer.tsx`) support real-time toggling between `gemini-3.7-flash` (Hybrid Reasoning Flagship) and `gemini-2.5-flash` (Fast & Balanced), persisted across sessions in `AsyncStorage` (`@zen_preferred_gym_model` & `@zen_preferred_learning_model`).

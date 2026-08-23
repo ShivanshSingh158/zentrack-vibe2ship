@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useMobileData } from '../contexts/MobileDataContext';
 
 export function useTabBarBadges() {
-  const { tasks, assignments } = useMobileData();
+  const { tasks } = useMobileData();
 
   return useMemo(() => {
     // Create a local today string safely (YYYY-MM-DD)
@@ -26,28 +26,6 @@ export function useTabBarBadges() {
       badges.Tasks = pendingTasks;
     }
 
-    // --- Assignments Badge ---
-    // Count assignments that are not submitted and due within 72 hours
-    let urgentAssignments = 0;
-    const now = Date.now();
-    const msIn72h = 72 * 60 * 60 * 1000;
-    
-    (assignments || []).forEach(assignment => {
-      if (assignment.status === 'not_started' || assignment.status === 'in_progress') {
-        if (assignment.dueDate) {
-          const dueDate = new Date(assignment.dueDate).getTime();
-          // due in next 72 hours, or up to 24h overdue
-          if (dueDate >= now - (24 * 60 * 60 * 1000) && dueDate <= now + msIn72h) {
-             urgentAssignments++;
-          }
-        }
-      }
-    });
-    
-    if (urgentAssignments > 0) {
-      badges.Assignments = urgentAssignments;
-    }
-
     return badges;
-  }, [tasks, assignments]);
+  }, [tasks]);
 }

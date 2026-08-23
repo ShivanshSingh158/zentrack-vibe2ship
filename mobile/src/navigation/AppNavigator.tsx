@@ -57,16 +57,13 @@ const SaraScreen                  = cacheAwareLazy('SaraScreen',                
 
 const HabitsScreen                = cacheAwareLazy('HabitsScreen',                () => import('../screens/HabitsScreen'));
 const NotesScreen                 = cacheAwareLazy('NotesScreen',                 () => import('../screens/NotesScreen'));
-const WeeklyReviewScreen          = cacheAwareLazy('WeeklyReviewScreen',          () => import('../screens/WeeklyReviewScreen'));
-const StudyRoomScreen             = cacheAwareLazy('StudyRoomScreen',             () => import('../screens/StudyRoomScreen'));
+
 const AnalyticsScreen             = cacheAwareLazy('AnalyticsScreen',             () => import('../screens/AnalyticsScreen'));
-const AssignmentsScreen           = cacheAwareLazy('AssignmentsScreen',           () => import('../screens/AssignmentsScreen'));
 const GradesScreen                = cacheAwareLazy('GradesScreen',             () => import('../screens/GradesScreen'));
 const LearningScreen              = cacheAwareLazy('LearningScreen',           () => import('../screens/LearningScreen'));
 const StreakDetailScreen           = cacheAwareLazy('StreakDetailScreen',          () => import('../screens/StreakDetailScreen'));
 const AgentHistoryScreen           = cacheAwareLazy('AgentHistoryScreen',          () => import('../screens/AgentHistoryScreen'));
 const WellbeingDashboardScreen     = cacheAwareLazy('WellbeingDashboardScreen',    () => import('../screens/WellbeingDashboardScreen'));
-const ContentLibraryScreen         = cacheAwareLazy('ContentLibraryScreen',        () => import('../screens/ContentLibraryScreen'));
 
 // --- Navigators --------------------------------------------------------------
 const Stack = createNativeStackNavigator();
@@ -147,8 +144,7 @@ function isAuthFatalError(error: any): boolean {
 
 const ALLOWED_SAVE_ROUTES = new Set([
   'Home', 'Tasks', 'Gym', 'Calendar', 'Habits',
-  'Attendance', 'Analytics', 'WeeklyReview',
-  'StudyRoom', 'Notes', 'Assignments', 'Grades', 'Learning',
+  'Attendance', 'Analytics', 'Notes', 'Grades', 'Learning',
 ]);
 
 // --- SARA FAB visibility -----------------------------------------------------
@@ -162,13 +158,9 @@ const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   Calendar:       CalendarScreen,
   Habits:         HabitsScreen,
   Analytics:      AnalyticsScreen,
-  WeeklyReview:   WeeklyReviewScreen,
-  StudyRoom:      StudyRoomScreen,
   Notes:          NotesScreen,
-  Assignments:    AssignmentsScreen,
   Grades:         GradesScreen,
   Learning:       LearningScreen,
-  ContentLibrary: ContentLibraryScreen,
 };
 
 // --- Nested screen header ----------------------------------------------------
@@ -302,7 +294,6 @@ function NestedScreens() {
         <Stack.Screen name="AgentHistory"          component={withErrorBoundary(AgentHistoryScreen,          'AgentHistory')} />
         <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false }} />
         <Stack.Screen name="XPConstellation"       component={withErrorBoundary(XPConstellationScreen,       'XPConstellation')} options={{ headerShown: false }} />
-        <Stack.Screen name="ContentLibrary"        component={withErrorBoundary(ContentLibraryScreen,        'ContentLibrary')} options={{ headerShown: false }} />
       </Stack.Navigator>
     </ErrorBoundary>
   );

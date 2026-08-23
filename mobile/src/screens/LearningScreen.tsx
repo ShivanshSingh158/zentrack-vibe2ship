@@ -167,10 +167,24 @@ export default function LearningScreen() {
   const [videoLayout, setVideoLayout] = useState({ width: 300, height: 200 });
 
   // ── AI chat state ──
-  const [aiChatVisible, setAiChatVisible] = useState(true);
+  const [aiChatVisible, setAiChatVisible] = useState(false);
   const [aiHistory, setAiHistory] = useState<{ role: string; text: string }[]>([]);
   const [aiInput, setAiInput] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
+
+  useEffect(() => {
+    AsyncStorage.getItem('zen_preferred_learning_model').then(m => {
+      if (m) setSelectedModel(m);
+    });
+  }, []);
+
+  const toggleModel = () => {
+    Haptics.selectionAsync().catch(() => {});
+    const nextModel = selectedModel === 'gemini-3.7-flash' ? 'gemini-2.5-flash' : 'gemini-3.7-flash';
+    setSelectedModel(nextModel);
+    AsyncStorage.setItem('zen_preferred_learning_model', nextModel).catch(console.error);
+  };
 
   // ── ZEN-GPT Tutor context (persisted for full session) ──
   const tutorSystemPromptRef = useRef<string>('');
@@ -219,7 +233,7 @@ export default function LearningScreen() {
       navigation.setOptions({ tabBarStyle: baseTabBarStyle });
     }
     return () => navigation.setOptions({ tabBarStyle: baseTabBarStyle });
-  }, [activeVideoSub, isPip, navigation, colors]);
+  }, [activeVideoSub, isPip, navigation]);
 
   // ΓöÇΓöÇ Helpers ΓöÇΓöÇ
   const extractVideoId = (url?: string): string | null => {
@@ -498,7 +512,7 @@ export default function LearningScreen() {
 
     try {
       const data = await callProxy({
-        model: 'gemini-2.5-flash',
+        model: selectedModel || 'gemini-3.7-flash',
         // PERF FIX: Build conversation array in-place. userTurn is pushed onto
         // the ref array directly — no O(n) spread copy. The ref array IS the
         // contents array, so Gemini always sees the full history.
@@ -718,6 +732,8 @@ export default function LearningScreen() {
           closeVideo={closeVideo}
           resetChatHistory={resetChatHistory}
           onSelectLecture={openVideo}
+          selectedModel={selectedModel}
+          onToggleModel={toggleModel}
         />
       )}
 

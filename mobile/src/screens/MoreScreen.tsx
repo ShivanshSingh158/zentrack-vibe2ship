@@ -31,7 +31,6 @@ const ALL_MODULES_DEF: ModuleDef[] = [
   { id: 'Calendar',    name: 'Calendar',    icon: 'calendar',         colorDark: '#FF3B30', colorLight: '#DC2626' },
   { id: 'Notes',       name: 'Notes Vault', icon: 'document-text',    colorDark: '#FFD60A', colorLight: '#D97706' },
   { id: 'Attendance',  name: 'Attendance',  icon: 'id-card',          colorDark: '#5856D6', colorLight: '#6C5CE7' },
-  { id: 'Assignments', name: 'Assignments', icon: 'book',             colorDark: '#FF2D55', colorLight: '#0284C7' },
   { id: 'Grades',      name: 'Grades',      icon: 'calculator',       colorDark: '#8E8E93', colorLight: '#6C5CE7' },
   { id: 'Learning',    name: 'Learning',    icon: 'library',          colorDark: '#00C7BE', colorLight: '#0284C7' },
   { id: 'Gym',         name: 'Gym Log',     icon: 'barbell',          colorDark: '#32ADE6', colorLight: '#D97706' },

@@ -587,6 +587,12 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 
 ## 12. Changelog
 
+### 2026-08-23 — Gemini Model Dual-Tier Support: 3.7 Flash & 2.5 Flash
+- **UPDATED** `src/config/constants.ts` & `mobile/src/config/constants.ts` — Added `AVAILABLE_GEMINI_MODELS` registry containing `gemini-3.7-flash` (Hybrid Thinking) and `gemini-2.5-flash` (Fast & Balanced), setting `gemini-3.7-flash` as default.
+- **UPDATED** `src/services/gemini/core.ts` & `src/services/gemini/chats.ts` — Enhanced model priority pipelines and added `preferredModel` overrides to `startGymAIChat` and `startGymAIOAuthChat`.
+- **ADDED** Model Switcher in `src/features/gym/ZenGymAI.tsx` — Real-time model toggle dropdown in the ZEN-GPT Gym header with `localStorage` persistence.
+- **ADDED** Model Switcher in `src/features/learning/ZenGptTutorPane.tsx` & `src/features/learning/LectureChatPanel.tsx` — Dynamic model switcher dropdown in the Learning Module's ZEN-GPT AI Tutor pane and theater modal.
+
 ### 2026-08-15 — Exercise Swap: Cross-Day Template Matching & PPL Shorts Library
 - **UPDATED** `src/features/gym/components/AddExerciseModal.tsx` — Enhanced the routine template picker with a dynamic day selector (`Mon` through `Sat`), allowing users to browse and import exercises across all workout days in the routine (e.g. browsing Monday's Long Tricep exercises when editing a Thursday workout).
 - **OVERHAULED** Mobile `ExerciseSwapScreen.tsx` — Full integration of template exercises across all days with origin badges, biomechanical AI recommendations, and unified search.

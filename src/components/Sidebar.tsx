@@ -42,7 +42,6 @@ const ALL_MODULES: ModuleDef[] = [
   { id: 'jobs',        label: 'Job Tracker',   shortLabel: 'Jobs',    path: '/jobs',        icon: <Briefcase size={20} /> },
   { id: 'analytics',   label: 'Analytics',     shortLabel: 'Stats',   path: '/analytics',   icon: <BarChart3 size={20} /> },
   { id: 'attendance',  label: 'Attendance',    shortLabel: 'Attend.', path: '/attendance',  icon: <ClipboardCheck size={20} /> },
-  { id: 'assignments', label: 'Assignments',   shortLabel: 'Assign.', path: '/assignments', icon: <ClipboardList size={20} /> },
 ];
 
 // The index where secondary modules start (after primary group)

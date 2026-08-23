@@ -534,11 +534,21 @@ export function ZenGymAiModal({
   }, [workoutData?.doneSets, workoutData?.totalSets, workoutData?.activeMuscles, currentPlanDay?.name, currentPlanDay?.focus, gymLogs, gymProfile?.goal, gymProfile?.experience]);
 
 
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
+
   useEffect(() => {
+    AsyncStorage.getItem('zen_preferred_gym_model').then(m => { if (m) setSelectedModel(m); });
     AsyncStorage.getItem('gym_memory_summary').then(s => { if (s) setMemorySummary(s); });
     AsyncStorage.getItem(STORAGE_KEY_PREFS).then(s => { if (s) setGymPreferences(JSON.parse(s)); });
     loadStoredSessions();
   }, []);
+
+  const toggleModel = () => {
+    feedback.selectionChange();
+    const nextModel = selectedModel === 'gemini-3.7-flash' ? 'gemini-2.5-flash' : 'gemini-3.7-flash';
+    setSelectedModel(nextModel);
+    AsyncStorage.setItem('zen_preferred_gym_model', nextModel).catch(console.error);
+  };
 
   const loadStoredSessions = async () => {
     try {
@@ -703,7 +713,8 @@ export function ZenGymAiModal({
       const result = await processGymChat(
         question,
         historyRef.current,
-        appContext
+        appContext,
+        selectedModel
       );
 
       let responseText = '';
@@ -1073,6 +1084,17 @@ export function ZenGymAiModal({
                     size={14}
                     color={messages.length > 0 ? '#f87171' : '#d4d4d8'}
                   />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={toggleModel}
+                  style={styles.modelToggleBtn}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Toggle Gemini Model"
+                >
+                  <Text style={styles.modelToggleText}>
+                    {selectedModel === 'gemini-3.7-flash' ? '👑 3.7' : '⚡ 2.5'}
+                  </Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1468,6 +1490,21 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  modelToggleBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 10,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modelToggleText: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 10.5,
+    color: colors.textPrimary,
   },
   profileBtn: {
     width: 30,

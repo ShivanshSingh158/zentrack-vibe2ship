@@ -10,6 +10,7 @@ import { callGeminiProxyStream, callGeminiProxy, extractGeminiText } from '../..
 import { auth, db } from '../../services/firebase';
 import { addDoc, collection, doc, setDoc, getDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
+import { AVAILABLE_GEMINI_MODELS } from '../../config/constants';
 
 // Global Learning Context — cross-video memory stored in localStorage
 
@@ -217,9 +218,23 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [selectedModel, setSelectedModel] = useState<string>(() => {
+    try {
+      return localStorage.getItem('zen_preferred_learning_model') || 'gemini-3.7-flash';
+    } catch {
+      return 'gemini-3.7-flash';
+    }
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [chatError, setChatError] = useState('');
+
+  const handleModelChange = (newModel: string) => {
+    setSelectedModel(newModel);
+    try { localStorage.setItem('zen_preferred_learning_model', newModel); } catch {}
+    const modelObj = AVAILABLE_GEMINI_MODELS.find(m => m.id === newModel);
+    toast.success(`Active Model: ${modelObj?.label || newModel}`);
+  };
   const [transcriptStatus, setTranscriptStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -289,6 +304,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
       setMessages(prev => [...prev, placeholder]);
 
       const generator = callGeminiProxyStream({
+        model: selectedModel,
         contents: newContents,
         systemInstruction: { parts: [{ text: systemRef.current }] },
         generationConfig: { maxOutputTokens: 32768, temperature: 0.7 }
@@ -303,7 +319,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
 
       const followUps = parseFollowUps(aiText);
       const cleanText = stripFollowUpLine(aiText);
-      const finalMsg: ChatMessage = { id: msgId, role: 'model', text: cleanText, ts: Date.now(), model: 'gemini-2.5-flash', followUps };
+      const finalMsg: ChatMessage = { id: msgId, role: 'model', text: cleanText, ts: Date.now(), model: selectedModel, followUps };
       contentsRef.current = [...newContents, { role: 'model', parts: [{ text: cleanText }] }];
       setMessages(prev => { const n = prev.map(m => m.id === msgId ? finalMsg : m); persistMessages(n); return n; });
 
@@ -332,7 +348,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
       setIsLoading(false);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
-  }, [input, isLoading, videoId, videoTitle, topicName, persistMessages, onMarkDoubt]);
+  }, [input, isLoading, videoId, videoTitle, topicName, persistMessages, onMarkDoubt, selectedModel]);
 
   // ── Auto-trigger external message (e.g. Quiz) ──────────────────────────────
   useEffect(() => {
@@ -373,7 +389,7 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
     }}>
 
       {/* ── Header ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.75rem 1rem', borderBottom: '1px solid #303030', background: '#212121', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1rem', borderBottom: '1px solid #303030', background: '#212121', flexShrink: 0 }}>
         {/* ZEN-GPT Logo */}
         <div style={{ width: '28px', height: '28px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
           <img src="/logo_white.png" alt="ZEN-GPT" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -385,6 +401,29 @@ export const LectureChatPanel: React.FC<LectureChatPanelProps> = ({
             {transcriptStatus === 'ready' ? 'Knowledge base active' : transcriptStatus === 'loading' ? 'Analyzing lecture...' : 'Standard mode'}
           </div>
         </div>
+
+        <select
+          value={selectedModel}
+          onChange={(e) => handleModelChange(e.target.value)}
+          title="Select Gemini Model"
+          style={{
+            padding: '0.2rem 0.4rem',
+            borderRadius: '8px',
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(255,255,255,0.06)',
+            color: '#ececec',
+            fontSize: '0.62rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            outline: 'none',
+          }}
+        >
+          {AVAILABLE_GEMINI_MODELS.map(m => (
+            <option key={m.id} value={m.id} style={{ background: '#212121', color: '#fff' }}>
+              {m.icon} {m.label.replace('Gemini ', '')}
+            </option>
+          ))}
+        </select>
 
         <button onClick={clearChat} title="Clear chat" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'pointer', display: 'flex', padding: '0.25rem', borderRadius: '5px', transition: 'color 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.color = '#f87171'} onMouseLeave={e => e.currentTarget.style.color = 'rgba(255,255,255,0.2)'}>

@@ -40,7 +40,6 @@ const ALL_MODULES = [
   { id: 'Attendance',  icon: 'clipboard-outline',         label: 'Attendance'  },
   { id: 'Analytics',   icon: 'bar-chart-outline',         label: 'Analytics'   },
   { id: 'Notes',       icon: 'document-text-outline',     label: 'Notes'       },
-  { id: 'Assignments', icon: 'book-outline',              label: 'Assignments' },
   { id: 'Grades',      icon: 'calculator-outline',        label: 'Grades'      },
   { id: 'Learning',    icon: 'library-outline',           label: 'Learning'    },
 ];

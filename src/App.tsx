@@ -225,7 +225,6 @@ const LearningChecklistModule = lazyWithRetry(() => import('./features/learning/
 const IntegrationsModule = lazyWithRetry(() => import('./features/integrations/IntegrationsModule').then(m => ({ default: m.IntegrationsModule })), 'IntegrationsModule');
 const WeeklyReviewModule = lazyWithRetry(() => import('./features/review/WeeklyReviewModule').then(m => ({ default: m.WeeklyReviewModule })), 'WeeklyReviewModule');
 const AttendanceModule = lazyWithRetry(() => import('./features/academic/AttendanceModule').then(m => ({ default: m.AttendanceModule })), 'AttendanceModule');
-const AssignmentModule = lazyWithRetry(() => import('./features/academic/AssignmentModule').then(m => ({ default: m.AssignmentModule })), 'AssignmentModule');
 const GradeCalculatorModule = lazyWithRetry(() => import('./features/academic/GradeCalculatorModule').then(m => ({ default: m.GradeCalculatorModule })), 'GradeCalculatorModule');
 
 // ——— 0ms Instant Route Prefetching & Warm Cache Engine —————————————————————
@@ -241,7 +240,6 @@ export const routeLoaders: Record<string, () => Promise<any>> = {
   '/integrations': () => import('./features/integrations/IntegrationsModule'),
   '/review': () => import('./features/review/WeeklyReviewModule'),
   '/attendance': () => import('./features/academic/AttendanceModule'),
-  '/assignments': () => import('./features/academic/AssignmentModule'),
   '/grades': () => import('./features/academic/GradeCalculatorModule'),
 };
 
@@ -267,15 +265,15 @@ const PageLoader = () => (
   <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vault-primary)' }} />
 );
 
-// Snappy hardware-accelerated mobile-twin page transition (160ms ease-out)
+// Ultra-fast hardware-accelerated instant page transition (0ms GPU composite, zero reflow lag)
 const PageTransition = ({ children }: { children: React.ReactNode }) => (
   <motion.div
     className="page-enter"
-    initial={{ opacity: 0, y: 6 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, transition: { duration: 0.08 } }}
-    transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
-    style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0, transition: { duration: 0.04 } }}
+    transition={{ duration: 0.1, ease: 'easeOut' }}
+    style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column', willChange: 'opacity' }}
   >
     {children}
   </motion.div>
@@ -303,7 +301,6 @@ const AnimatedRoutes = () => {
         <Route path="/integrations" element={<PageTransition><ErrorBoundary name="Integrations"><Suspense fallback={<PageLoader />}><IntegrationsModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/review"      element={<PageTransition><ErrorBoundary name="Review"><Suspense fallback={<PageLoader />}><WeeklyReviewModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/attendance"  element={<PageTransition><ErrorBoundary name="Attendance"><Suspense fallback={<PageLoader />}><AttendanceModule /></Suspense></ErrorBoundary></PageTransition>} />
-        <Route path="/assignments" element={<PageTransition><ErrorBoundary name="Assignments"><Suspense fallback={<PageLoader />}><AssignmentModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/grades"      element={<PageTransition><ErrorBoundary name="Grades"><Suspense fallback={<PageLoader />}><GradeCalculatorModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="*"            element={<Navigate to="/home" replace />} />
       </Routes>

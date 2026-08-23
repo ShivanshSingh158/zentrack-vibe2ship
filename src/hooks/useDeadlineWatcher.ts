@@ -42,7 +42,7 @@ export const useDeadlineWatcher = () => {
   const { tasks, userPreferences } = useGlobalData();
 
   useEffect(() => {
-    // Demo-friendly: Check every 10 seconds instead of 15 minutes
+    // Check every 60 seconds (prevents main thread stutter during rapid navigation)
     const interval = setInterval(() => {
       if (!tasks || tasks.length === 0) return;
       

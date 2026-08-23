@@ -99,7 +99,7 @@ if (typeof window !== 'undefined') {
 
           const url = new URL(urlString);
           const modelMatch = url.pathname.match(/models\/([^:]+):/);
-          const model = modelMatch ? modelMatch[1] : 'gemini-2.5-flash';
+          const model = modelMatch ? modelMatch[1] : 'gemini-3.7-flash';
 
           headers.delete('x-goog-api-key');
           headers.set('Authorization', `Bearer ${token}`);
@@ -146,11 +146,13 @@ if (typeof window !== 'undefined') {
 
 // VOICE TIER
 export const VOICE_MODEL_PRIORITY = [
+  'gemini-3.7-flash',
   'gemini-2.5-flash',
 ];
 
 // RESEARCH TIER
 export const RESEARCH_MODEL_PRIORITY = [
+  'gemini-3.7-flash',
   'gemini-2.5-flash',
 ];
 
