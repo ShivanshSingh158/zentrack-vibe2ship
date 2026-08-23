@@ -215,9 +215,9 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     marginTop: -20,
   },
   logoContainer: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.06)',
     borderWidth: 1.5,
     borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.20)',
@@ -234,8 +234,8 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     justifyContent: 'center',
   },
   logoImage: {
-    width: 28,
-    height: 28,
+    width: 44,
+    height: 44,
   },
   welcomePill: {
     flexDirection: 'row',
