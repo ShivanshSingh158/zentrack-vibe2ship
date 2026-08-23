@@ -569,39 +569,6 @@ function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, 
             <Text style={styles.xpNextLevelText}>Next: Level 2 Warden (500 XP)</Text>
           </View>
         </View>
-
-        <View style={styles.systemSpecBox}>
-          {/* Row 1: Archetype */}
-          <View style={styles.specRow}>
-            <Text style={styles.specLabel}>ARCHETYPE</Text>
-            <View style={styles.specValPill}>
-              <Ionicons
-                name={personaObj?.icon || 'infinite-outline'}
-                size={13}
-                color={colors.accentPrimary}
-              />
-              <Text style={styles.specValText}>{personaObj?.label || 'The All-Rounder'}</Text>
-            </View>
-          </View>
-
-          <View style={styles.specDividerH} />
-
-          {/* Row 2: 4 Core Pillars */}
-          <View style={styles.specRow}>
-            <Text style={styles.specLabel}>CORE DOCK</Text>
-            <View style={styles.specPillarsRow}>
-              {pinned.map((modId: string) => {
-                const modObj = MODULE_CATALOG.find(m => m.id === modId);
-                return (
-                  <View key={modId} style={styles.miniPillarItem}>
-                    <Ionicons name={modObj?.activeIcon || 'star'} size={11} color={colors.accentPrimary} />
-                    <Text style={styles.miniPillarText}>{modObj?.name || modId}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        </View>
       </View>
 
       <Text style={styles.genesisHeadline}>Your Life OS is Ready.</Text>
@@ -934,59 +901,6 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     fontFamily: FONT_FAMILY.medium,
     fontSize: 10.5,
     color: colors.textMuted,
-  },
-  systemSpecBox: {
-    width: '100%',
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: RADIUS.lg,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.025)',
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-  },
-  specRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  specDividerH: {
-    width: '100%',
-    height: 1,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-    marginVertical: 6,
-  },
-  specLabel: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 9.5,
-    letterSpacing: 1.1,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-  },
-  specValPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  specValText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 12,
-    color: colors.textPrimary,
-  },
-  specPillarsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  miniPillarItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  miniPillarText: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 11,
-    color: colors.textSecondary,
   },
   genesisHeadline: {
     fontFamily: 'PlayfairDisplay_600SemiBold',
