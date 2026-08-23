@@ -531,11 +531,13 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
 
       {/* Luxury Genesis Initiation Card */}
       <View style={styles.genesisCard}>
-        {/* Floating Seeker Mascot with Emerald Nature Cosmic Aura */}
-        <View style={styles.mascotWrapper}>
-          <Animated.View
+        {/* Floating Seeker Mascot Illustration with Emerald Cosmic Aura */}
+        <View style={styles.mascotDisplayContainer}>
+          {/* Pulsing Aura */}
+          <Animated.Image
+            source={require('../../assets/mascots/level0.png')}
             style={[
-              styles.seekerMascotOrb,
+              styles.mascotAuraImage,
               {
                 transform: [
                   { translateY: floatAnim },
@@ -543,11 +545,22 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
                 ]
               }
             ]}
-          >
-            <Ionicons name="compass-outline" size={36} color="#34d399" />
-          </Animated.View>
-          {/* Subtle Ground Shadow */}
-          <View style={styles.mascotGroundShadow} />
+            resizeMode="contain"
+          />
+          {/* Main Character Mascot */}
+          <Animated.Image
+            source={require('../../assets/mascots/level0.png')}
+            style={[
+              styles.mascotHeroImage,
+              {
+                transform: [
+                  { translateY: floatAnim },
+                  { scale: pulseAnim }
+                ]
+              }
+            ]}
+            resizeMode="contain"
+          />
         </View>
 
         {/* Level Rank Badge from XP Constellation */}
@@ -857,32 +870,24 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  mascotWrapper: {
+  mascotDisplayContainer: {
+    width: 160,
+    height: 180,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
+    position: 'relative',
   },
-  seekerMascotOrb: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: isDark ? 'rgba(52,211,153,0.12)' : 'rgba(16,185,129,0.08)',
-    borderWidth: 1.5,
-    borderColor: isDark ? 'rgba(52,211,153,0.35)' : 'rgba(16,185,129,0.25)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#34d399',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 8,
+  mascotAuraImage: {
+    position: 'absolute',
+    width: 175,
+    height: 175,
+    tintColor: '#34d399',
+    opacity: 0.35,
   },
-  mascotGroundShadow: {
-    width: 32,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: isDark ? 'rgba(52,211,153,0.22)' : 'rgba(0,0,0,0.08)',
-    marginTop: 6,
+  mascotHeroImage: {
+    width: 160,
+    height: 160,
   },
   rankPill: {
     paddingHorizontal: 10,
