@@ -149,13 +149,14 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   },
   mainContent: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: 8,
     paddingTop: 8,
     paddingBottom: 24,
     justifyContent: 'space-between',
   },
   header: {
     marginTop: 8,
+    paddingHorizontal: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -192,6 +193,7 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'flex-start',
+    paddingHorizontal: 4,
     marginTop: -20,
   },
   logoContainer: {
@@ -223,23 +225,23 @@ const makeStyles = (colors: any, isDark: boolean) => StyleSheet.create({
   heroTitleItalic: {
     color: colors.accentPrimary,
     fontFamily: 'PlayfairDisplay_600SemiBold_Italic',
-    fontSize: 44,
-    lineHeight: 50,
+    fontSize: 48,
+    lineHeight: 54,
   },
   heroTitleBold: {
     color: colors.textPrimary,
     fontFamily: 'PlayfairDisplay_600SemiBold',
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 38,
+    lineHeight: 44,
     letterSpacing: -0.5,
     marginBottom: 16,
   },
   heroSubtitle: {
     color: colors.textSecondary,
     fontFamily: FONT_FAMILY.body,
-    fontSize: 14,
+    fontSize: 14.5,
     lineHeight: 22,
-    maxWidth: width - 64,
+    width: '100%',
   },
 
   // Footer & CTAs
