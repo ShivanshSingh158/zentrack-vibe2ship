@@ -20,10 +20,10 @@
  * ╚═════════════════════════════════════════════════════════════════════════╝
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  Dimensions, ScrollView, Image, Platform
+  View, Text, StyleSheet, TouchableOpacity, Animated,
+  Dimensions, ScrollView, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -488,9 +488,34 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
   );
 }
 
-// ─── Step 3: Genesis XP & Level Initiation ────────────────────────────────────
+// ─── Step 3: Genesis XP & Floating Seeker Mascot ──────────────────────────────
 function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview, onLaunch, styles, colors, isDark }: any) {
   const personaObj = PERSONAS.find(p => p.id === persona);
+
+  // Floating Seeker Mascot Physics
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const float = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, { toValue: -7, duration: 1800, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0, duration: 1800, useNativeDriver: true }),
+      ])
+    );
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.08, duration: 1800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1.0, duration: 1800, useNativeDriver: true }),
+      ])
+    );
+    float.start();
+    pulse.start();
+    return () => {
+      float.stop();
+      pulse.stop();
+    };
+  }, [floatAnim, pulseAnim]);
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollStep} showsVerticalScrollIndicator={false}>
@@ -506,15 +531,25 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
 
       {/* Luxury Genesis Initiation Card */}
       <View style={styles.genesisCard}>
-        {/* Mascot Glowing Orb */}
-        <View style={styles.mascotOrbContainer}>
-          <View style={styles.mascotInnerGlow}>
-            <Image
-              source={require('../../assets/logo_white.png')}
-              style={styles.mascotLogo}
-              resizeMode="contain"
-            />
-          </View>
+        {/* Floating Seeker Mascot with Cosmic Aura */}
+        <View style={styles.mascotWrapper}>
+          <Animated.View
+            style={[
+              styles.seekerMascotOrb,
+              {
+                transform: [
+                  { translateY: floatAnim },
+                  { scale: pulseAnim }
+                ]
+              }
+            ]}
+          >
+            <View style={styles.seekerMascotCore}>
+              <Text style={styles.seekerMascotEmoji}>🔮</Text>
+            </View>
+          </Animated.View>
+          {/* Subtle Ground Shadow */}
+          <View style={styles.mascotGroundShadow} />
         </View>
 
         {/* Level Rank Badge */}
@@ -794,7 +829,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     marginTop: 2,
   },
 
-  // Step 3: Genesis Card & Mascot
+  // Step 3: Genesis Card & Floating Seeker Mascot
   voicePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -823,28 +858,43 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  mascotOrbContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.10)' : 'rgba(108,92,231,0.06)',
-    borderWidth: 1.5,
-    borderColor: isDark ? 'rgba(165,153,255,0.25)' : 'rgba(108,92,231,0.2)',
+  mascotWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
-  mascotInnerGlow: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.14)',
+  seekerMascotOrb: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+    borderWidth: 1.5,
+    borderColor: isDark ? 'rgba(165,153,255,0.35)' : 'rgba(108,92,231,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.accentPrimary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  seekerMascotCore: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.20)' : 'rgba(108,92,231,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mascotLogo: {
-    width: 24,
-    height: 24,
+  seekerMascotEmoji: {
+    fontSize: 24,
+  },
+  mascotGroundShadow: {
+    width: 32,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(0,0,0,0.08)',
+    marginTop: 6,
   },
   rankPill: {
     paddingHorizontal: 10,
