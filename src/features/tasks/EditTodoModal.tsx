@@ -205,42 +205,42 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
             {/* Date & Time Grid */}
             <div className="schedule-inputs-grid">
               <div className="schedule-input-group">
-                <label className="input-sublabel">Date</label>
-                <div className="input-with-icon">
-                  <CalendarIcon size={14} className="input-icon" />
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={e => setDate(e.target.value)}
-                    className="studio-native-input"
-                  />
-                </div>
+                <label className="input-sublabel">
+                  <CalendarIcon size={13} />
+                  <span>Date</span>
+                </label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  className="studio-native-input"
+                />
               </div>
 
               <div className="schedule-input-group">
-                <label className="input-sublabel">Start Time</label>
-                <div className="input-with-icon">
-                  <Clock size={14} className="input-icon" />
-                  <input
-                    type="time"
-                    value={startTime}
-                    onChange={e => setStartTime(e.target.value)}
-                    className="studio-native-input"
-                  />
-                </div>
+                <label className="input-sublabel">
+                  <Clock size={13} />
+                  <span>Start Time</span>
+                </label>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={e => setStartTime(e.target.value)}
+                  className="studio-native-input"
+                />
               </div>
 
               <div className="schedule-input-group">
-                <label className="input-sublabel">End Time</label>
-                <div className="input-with-icon">
-                  <Clock size={14} className="input-icon" />
-                  <input
-                    type="time"
-                    value={endTime}
-                    onChange={e => setEndTime(e.target.value)}
-                    className="studio-native-input"
-                  />
-                </div>
+                <label className="input-sublabel">
+                  <Clock size={13} />
+                  <span>End Time</span>
+                </label>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={e => setEndTime(e.target.value)}
+                  className="studio-native-input"
+                />
               </div>
             </div>
 
