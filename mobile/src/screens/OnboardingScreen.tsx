@@ -531,7 +531,7 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
 
       {/* Luxury Genesis Initiation Card */}
       <View style={styles.genesisCard}>
-        {/* Floating Seeker Mascot with Cosmic Aura */}
+        {/* Floating Seeker Mascot with Emerald Nature Cosmic Aura */}
         <View style={styles.mascotWrapper}>
           <Animated.View
             style={[
@@ -544,20 +544,17 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
               }
             ]}
           >
-            <Image
-              source={require('../../assets/mascots/level0.png')}
-              style={styles.seekerMascotImage}
-              resizeMode="contain"
-            />
+            <Ionicons name="compass-outline" size={36} color="#34d399" />
           </Animated.View>
           {/* Subtle Ground Shadow */}
           <View style={styles.mascotGroundShadow} />
         </View>
 
-        {/* Level Rank Badge */}
+        {/* Level Rank Badge from XP Constellation */}
         <View style={styles.rankPill}>
           <Text style={styles.rankPillText}>RANK: SEEKER • LEVEL 1</Text>
         </View>
+        <Text style={styles.realmSubText}>Initiate Realm • Wind & Discovery</Text>
 
         {/* Genesis Reward */}
         <Text style={styles.genesisRewardText}>+100 GENESIS XP</Text>
@@ -880,31 +877,33 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
   },
-  seekerMascotImage: {
-    width: 54,
-    height: 54,
-  },
   mascotGroundShadow: {
     width: 32,
     height: 4,
     borderRadius: 2,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(0,0,0,0.08)',
+    backgroundColor: isDark ? 'rgba(52,211,153,0.22)' : 'rgba(0,0,0,0.08)',
     marginTop: 6,
   },
   rankPill: {
     paddingHorizontal: 10,
     paddingVertical: 3,
     borderRadius: RADIUS.full,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.1)',
+    backgroundColor: isDark ? 'rgba(52,211,153,0.15)' : 'rgba(16,185,129,0.1)',
     borderWidth: 1,
-    borderColor: colors.accentPrimary,
-    marginBottom: 8,
+    borderColor: '#34d399',
+    marginBottom: 4,
   },
   rankPillText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 10,
     letterSpacing: 0.8,
-    color: colors.accentPrimary,
+    color: '#34d399',
+  },
+  realmSubText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11,
+    color: colors.textMuted,
+    marginBottom: 8,
   },
   genesisRewardText: {
     fontFamily: FONT_FAMILY.bold,
