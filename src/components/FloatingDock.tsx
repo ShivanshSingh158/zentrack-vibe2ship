@@ -2,9 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, useMotionValue, useSpring, useTransform, AnimatePresence } from 'framer-motion';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Home, LayoutGrid, LogOut, Volume2, VolumeX, User as UserIcon, Mic, Edit2, Check,
-  BookOpen, CheckSquare, Calendar, StickyNote, Target, Dumbbell, Zap, GraduationCap,
-  FileText, Award, Briefcase, BarChart3
+  Home, LayoutGrid, LogOut, Volume2, VolumeX, User as UserIcon, Edit2, Check,
+  BookOpen, CheckCircle2, Calendar, FileText, Target, Dumbbell, Flame, GraduationCap,
+  Award, Briefcase, BarChart3, Library
 } from 'lucide-react';
 import { auth } from '../services/firebase';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
@@ -13,20 +13,100 @@ import { toast } from 'sonner';
 import { GeminiAuthBadge } from './ui/GeminiAuthBadge';
 import { getKeyStatus } from '../services/userGeminiAuth';
 import { useVoice } from '../contexts/VoiceContext';
+import { prefetchRoute } from '../App';
 import '../styles/dock.css';
 
-const ALL_APPS = [
-  { name: 'Tasks', icon: <CheckSquare size={22} color="#a599ff" strokeWidth={2.2} />, route: '/tasks', isLucide: true },
-  { name: 'Calendar', icon: <Calendar size={22} color="#38bdf8" strokeWidth={2.2} />, route: '/calendar', isLucide: true },
-  { name: 'Notes', icon: <StickyNote size={22} color="#fad7a1" strokeWidth={2.2} />, route: '/notes', isLucide: true },
-  { name: 'Goals', icon: <Target size={22} color="#818cf8" strokeWidth={2.2} />, route: '/goals', isLucide: true },
-  { name: 'Habits', icon: <Zap size={22} color="#f59e0b" strokeWidth={2.2} />, route: '/habits', isLucide: true },
-  { name: 'Learning', icon: <BookOpen size={22} color="#5eda9e" strokeWidth={2.2} />, route: '/learning', isLucide: true },
-  { name: 'Attendance', icon: <GraduationCap size={22} color="#38bdf8" strokeWidth={2.2} />, route: '/attendance', isLucide: true },
-  { name: 'Assignments', icon: <FileText size={22} color="#f472b6" strokeWidth={2.2} />, route: '/assignments', isLucide: true },
-  { name: 'Jobs', icon: <Briefcase size={22} color="#fbbf24" strokeWidth={2.2} />, route: '/jobs', isLucide: true },
-  { name: 'Grades', icon: <Award size={22} color="#a599ff" strokeWidth={2.2} />, route: '/grades', isLucide: true },
-  { name: 'Analytics', icon: <BarChart3 size={22} color="#38bdf8" strokeWidth={2.2} />, route: '/analytics', isLucide: true },
+export const ALL_APPS = [
+  {
+    id: 'Tasks',
+    name: 'Tasks',
+    icon: <CheckCircle2 size={20} color="#5eda9e" strokeWidth={2.2} />,
+    popoverIcon: <CheckCircle2 size={24} color="#5eda9e" strokeWidth={2.2} />,
+    color: '#5eda9e',
+    route: '/tasks',
+    isLucide: true,
+  },
+  {
+    id: 'Habits',
+    name: 'Habits',
+    icon: <Flame size={20} color="#f59e0b" strokeWidth={2.2} />,
+    popoverIcon: <Flame size={24} color="#f59e0b" strokeWidth={2.2} />,
+    color: '#f59e0b',
+    route: '/habits',
+    isLucide: true,
+  },
+  {
+    id: 'Calendar',
+    name: 'Calendar',
+    icon: <Calendar size={20} color="#38bdf8" strokeWidth={2.2} />,
+    popoverIcon: <Calendar size={24} color="#38bdf8" strokeWidth={2.2} />,
+    color: '#38bdf8',
+    route: '/calendar',
+    isLucide: true,
+  },
+  {
+    id: 'Notes',
+    name: 'Notes',
+    icon: <FileText size={20} color="#fad7a1" strokeWidth={2.2} />,
+    popoverIcon: <FileText size={24} color="#fad7a1" strokeWidth={2.2} />,
+    color: '#fad7a1',
+    route: '/notes',
+    isLucide: true,
+  },
+  {
+    id: 'Attendance',
+    name: 'Attendance',
+    icon: <GraduationCap size={20} color="#a599ff" strokeWidth={2.2} />,
+    popoverIcon: <GraduationCap size={24} color="#a599ff" strokeWidth={2.2} />,
+    color: '#a599ff',
+    route: '/attendance',
+    isLucide: true,
+  },
+  {
+    id: 'Assignments',
+    name: 'Assignments',
+    icon: <BookOpen size={20} color="#f472b6" strokeWidth={2.2} />,
+    popoverIcon: <BookOpen size={24} color="#f472b6" strokeWidth={2.2} />,
+    color: '#f472b6',
+    route: '/assignments',
+    isLucide: true,
+  },
+  {
+    id: 'Jobs',
+    name: 'Jobs',
+    icon: <Briefcase size={20} color="#fbbf24" strokeWidth={2.2} />,
+    popoverIcon: <Briefcase size={24} color="#fbbf24" strokeWidth={2.2} />,
+    color: '#fbbf24',
+    route: '/jobs',
+    isLucide: true,
+  },
+  {
+    id: 'Grades',
+    name: 'Grades',
+    icon: <Award size={20} color="#c084fc" strokeWidth={2.2} />,
+    popoverIcon: <Award size={24} color="#c084fc" strokeWidth={2.2} />,
+    color: '#c084fc',
+    route: '/grades',
+    isLucide: true,
+  },
+  {
+    id: 'Analytics',
+    name: 'Analytics',
+    icon: <BarChart3 size={20} color="#38bdf8" strokeWidth={2.2} />,
+    popoverIcon: <BarChart3 size={24} color="#38bdf8" strokeWidth={2.2} />,
+    color: '#38bdf8',
+    route: '/analytics',
+    isLucide: true,
+  },
+  {
+    id: 'Learning',
+    name: 'Learning',
+    icon: <Library size={20} color="#5eda9e" strokeWidth={2.2} />,
+    popoverIcon: <Library size={24} color="#5eda9e" strokeWidth={2.2} />,
+    color: '#5eda9e',
+    route: '/learning',
+    isLucide: true,
+  },
 ];
 
 interface FloatingDockProps {
@@ -41,24 +121,24 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
   const [isEditing, setIsEditing] = useState(false);
   const [hasProRing, setHasProRing] = useState(getKeyStatus().hasPersonalKey);
   const [isFocused, setIsFocused] = useState(false);
-  
+
   const [pinnedApps, setPinnedApps] = useState<string[]>(() => {
     const saved = localStorage.getItem('desktop_pinned_apps');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter((name: string) => name !== 'Gym');
+          return parsed.filter((name: string) => name !== 'Gym' && name !== 'Goals');
         }
       } catch (e) {}
     }
-    return ['Tasks', 'Calendar', 'Notes', 'Goals', 'Learning'];
+    return ['Tasks', 'Calendar', 'Notes', 'Attendance', 'Learning'];
   });
 
   useEffect(() => {
     localStorage.setItem('desktop_pinned_apps', JSON.stringify(pinnedApps));
   }, [pinnedApps]);
-  
+
   const location = useLocation();
   const navigate = useNavigate();
   const mouseX = useMotionValue(Infinity);
@@ -118,7 +198,7 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (isFocused) setIsFocused(false); // Wake up dock on direct hover
+    if (isFocused) setIsFocused(false);
     mouseX.set(e.pageX);
   };
 
@@ -131,32 +211,32 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
       <motion.div
         className={`floating-dock-container ${inHeader ? 'in-header' : ''}`}
         initial={{ y: 100, opacity: 0 }}
-        animate={{ 
-          y: hidden ? 100 : 0, 
+        animate={{
+          y: hidden ? 100 : 0,
           opacity: hidden ? 0 : (isFocused ? 0.2 : 1),
-          pointerEvents: hidden ? 'none' : 'auto'
+          pointerEvents: hidden ? 'none' : 'auto',
         }}
-        transition={{ type: "spring", stiffness: 260, damping: 20 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 20 }}
         style={inHeader ? { position: 'relative', bottom: 'auto', left: 'auto', transform: 'none' } : {}}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
-        whileHover={{ opacity: hidden ? 0 : 1 }} // Force opacity 1 on hover even in focus, unless hidden
+        whileHover={{ opacity: hidden ? 0 : 1 }}
       >
         <div className="dock-pill">
-          <DockItem 
-            key="Home" 
-            app={{ name: 'Home', icon: <Home size={22} />, route: '/home', isLucide: true }} 
-            mouseX={mouseX} 
-            isActive={location.pathname === '/home'}
+          <DockItem
+            key="Home"
+            app={{ name: 'Home', icon: <Home size={20} color="#a599ff" strokeWidth={2.2} />, route: '/home', isLucide: true }}
+            mouseX={mouseX}
+            isActive={location.pathname === '/home' || location.pathname === '/'}
           />
-          {pinnedApps.map(name => {
-            const app = ALL_APPS.find(a => a.name === name);
+          {pinnedApps.map((name) => {
+            const app = ALL_APPS.find((a) => a.name === name);
             if (!app) return null;
             return (
-              <DockItem 
-                key={app.name} 
-                app={app} 
-                mouseX={mouseX} 
+              <DockItem
+                key={app.name}
+                app={app}
+                mouseX={mouseX}
                 isActive={location.pathname === app.route}
               />
             );
@@ -167,11 +247,15 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
 
           {/* More Button */}
           <div className="dock-item-wrapper" ref={moreRef}>
-            <button 
+            <button
               className={`dock-more-btn ${isMoreOpen ? 'active' : ''}`}
               onClick={() => setIsMoreOpen(!isMoreOpen)}
+              title="All Modules"
             >
-              <LayoutGrid size={22} />
+              <div className="dock-item-icon-wrap">
+                <LayoutGrid size={20} color="#a599ff" strokeWidth={2.2} />
+              </div>
+              <span className="dock-item-label">More</span>
             </button>
 
             <AnimatePresence>
@@ -181,27 +265,53 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
                   initial={{ opacity: 0, scale: 0.9, y: 20 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                  transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
                 >
                   {/* Edit Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 0.5rem 1rem 0.5rem', borderBottom: '1px solid rgba(196,149,106,0.1)', marginBottom: '1rem' }}>
-                    <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.8rem', fontWeight: 600, letterSpacing: '0.05em' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '0 0.5rem 0.8rem 0.5rem',
+                      borderBottom: '1px solid rgba(165, 153, 255, 0.12)',
+                      marginBottom: '0.8rem',
+                    }}
+                  >
+                    <span style={{ color: 'rgba(255,255,255,0.75)', fontSize: '0.78rem', fontWeight: 600, letterSpacing: '0.04em' }}>
                       {isEditing ? 'EDIT PINNED MODULES' : 'ALL MODULES'}
                     </span>
-                    <button onClick={() => setIsEditing(!isEditing)} style={{ background: 'transparent', border: 'none', color: isEditing ? '#c4956a' : 'rgba(255,255,255,0.5)', cursor: 'pointer', transition: 'color 0.2s' }}>
+                    <button
+                      onClick={() => setIsEditing(!isEditing)}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: isEditing ? '#a599ff' : 'rgba(255,255,255,0.5)',
+                        cursor: 'pointer',
+                        transition: 'color 0.2s',
+                      }}
+                      title={isEditing ? 'Save Pins' : 'Edit Pins'}
+                    >
                       {isEditing ? <Check size={18} /> : <Edit2 size={18} />}
                     </button>
                   </div>
 
                   {/* Apps Grid */}
-                  <div 
-                    className="dock-popover-grid hide-scrollbar" 
-                    style={{ maxHeight: '480px', overflowY: 'auto', overscrollBehavior: 'contain', paddingRight: '0.5rem', paddingBottom: '0.5rem', overflowX: 'hidden' }}
+                  <div
+                    className="dock-popover-grid hide-scrollbar"
+                    style={{
+                      maxHeight: '420px',
+                      overflowY: 'auto',
+                      overscrollBehavior: 'contain',
+                      paddingRight: '0.25rem',
+                      paddingBottom: '0.5rem',
+                      overflowX: 'hidden',
+                    }}
                     onWheel={(e) => e.stopPropagation()}
                     onTouchMove={(e) => e.stopPropagation()}
                   >
                     <AnimatePresence mode="popLayout">
-                      {(isEditing ? ALL_APPS : ALL_APPS.filter(app => !pinnedApps.includes(app.name))).map(app => {
+                      {(isEditing ? ALL_APPS : ALL_APPS.filter((app) => !pinnedApps.includes(app.name))).map((app) => {
                         const isPinned = pinnedApps.includes(app.name);
                         return (
                           <motion.div
@@ -209,13 +319,18 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
-                            transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                            transition={{ type: 'spring', bounce: 0.2, duration: 0.5 }}
                             key={app.name}
+                            onMouseEnter={() => prefetchRoute(app.route)}
+                            onTouchStart={() => prefetchRoute(app.route)}
                             onClick={() => {
                               if (isEditing) {
-                                setPinnedApps(prev => {
-                                  if (prev.includes(app.name)) return prev.filter(n => n !== app.name);
-                                  if (prev.length >= 6) { toast.error("Maximum 6 pinned apps allowed."); return prev; }
+                                setPinnedApps((prev) => {
+                                  if (prev.includes(app.name)) return prev.filter((n) => n !== app.name);
+                                  if (prev.length >= 6) {
+                                    toast.error('Maximum 6 pinned apps allowed.');
+                                    return prev;
+                                  }
                                   return [...prev, app.name];
                                 });
                               } else {
@@ -227,28 +342,48 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
                             style={{
                               cursor: 'pointer',
                               position: 'relative',
-                              border: isEditing && isPinned ? '1px solid rgba(196,149,106,0.5)' : undefined,
-                              background: isEditing && isPinned ? 'rgba(196,149,106,0.1)' : undefined
+                              borderColor: isEditing && isPinned ? 'rgba(165,153,255,0.5)' : undefined,
+                              background: isEditing && isPinned ? 'rgba(165,153,255,0.08)' : undefined,
                             }}
                           >
                             {isEditing && isPinned && (
-                              <motion.div 
-                                initial={{ scale: 0 }} 
+                              <motion.div
+                                initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
-                                style={{ position: 'absolute', top: 6, right: 6, background: '#c4956a', borderRadius: '50%', padding: '2px', color: '#000', zIndex: 2 }}
+                                style={{
+                                  position: 'absolute',
+                                  top: 6,
+                                  right: 6,
+                                  background: '#a599ff',
+                                  borderRadius: '50%',
+                                  padding: '2px',
+                                  color: '#000',
+                                  zIndex: 2,
+                                }}
                               >
                                 <Check size={12} />
                               </motion.div>
                             )}
-                            {app.isLucide ? (
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', opacity: isEditing && !isPinned ? 0.3 : 1, transition: 'opacity 0.3s' }}>
-                                {app.icon}
-                              </div>
-                            ) : (
-                              <img src={(app as any).img} alt={app.name} style={{ opacity: isEditing && !isPinned ? 0.3 : 1, transition: 'opacity 0.3s' }} />
-                            )}
-                            <span style={{ color: isEditing && !isPinned ? 'rgba(255,255,255,0.3)' : undefined, transition: 'color 0.3s' }}>{app.name}</span>
+                            <div
+                              className="popover-icon-box"
+                              style={{
+                                backgroundColor: `${app.color}15`,
+                                borderColor: `${app.color}30`,
+                                opacity: isEditing && !isPinned ? 0.35 : 1,
+                              }}
+                            >
+                              {app.popoverIcon}
+                            </div>
+                            <span
+                              className="popover-app-label"
+                              style={{
+                                color: isEditing && !isPinned ? 'rgba(255,255,255,0.35)' : undefined,
+                              }}
+                            >
+                              {getDockLabel(app.name)}
+                            </span>
                           </motion.div>
+
                         );
                       })}
                     </AnimatePresence>
@@ -258,14 +393,14 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
                   <div className="dock-popover-footer">
                     <div className="system-toggles">
                       <GeminiAuthBadge />
-                      <button 
+                      <button
                         onClick={() => setIsMuted(!isMuted)}
                         className="voice-toggle-btn"
-                        title={isMuted ? "Unmute Voice" : "Mute Voice"}
+                        title={isMuted ? 'Unmute Voice' : 'Mute Voice'}
                       >
                         {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
                         {isSpeaking && !isMuted && (
-                          <motion.div 
+                          <motion.div
                             className="voice-pulse"
                             animate={{ scale: [1, 1.4, 1], opacity: [0.5, 1, 0.5] }}
                             transition={{ repeat: Infinity, duration: 1.5 }}
@@ -282,7 +417,7 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
                           <UserIcon size={16} />
                         )}
                       </div>
-                      <button className="logout-btn" onClick={handleLogout}>
+                      <button className="logout-btn" onClick={handleLogout} title="Sign Out">
                         <LogOut size={14} />
                       </button>
                     </div>
@@ -297,9 +432,15 @@ export function FloatingDock({ hidden = false, inHeader = false }: FloatingDockP
   );
 }
 
-function DockItem({ app, mouseX, isActive }: { app: any, mouseX: any, isActive: boolean }) {
+const getDockLabel = (name: string) => {
+  if (name === 'Learning') return 'Learn';
+  if (name === 'Attendance') return 'Attend';
+  return name;
+};
+
+function DockItem({ app, mouseX, isActive }: { app: any; mouseX: any; isActive: boolean }) {
   const ref = useRef<HTMLAnchorElement>(null);
-  
+
   // Calculate distance from mouse to center of this icon
   const distance = useTransform(mouseX, (val: number) => {
     const bounds = ref.current?.getBoundingClientRect() ?? { x: 0, width: 0 };
@@ -307,18 +448,32 @@ function DockItem({ app, mouseX, isActive }: { app: any, mouseX: any, isActive: 
   });
 
   // Scale based on distance (macOS dock effect)
-  const scaleSync = useTransform(distance, [-150, 0, 150], [1, 1.4, 1]);
+  const scaleSync = useTransform(distance, [-150, 0, 150], [1, 1.15, 1]);
   const scale = useSpring(scaleSync, { mass: 0.1, stiffness: 150, damping: 12 });
 
   return (
-    <NavLink to={app.route} ref={ref} style={{ textDecoration: 'none' }}>
-      <motion.div 
-        className={`dock-item ${isActive ? 'active' : ''}`}
-        style={{ scale }}
-      >
-        {app.isLucide ? app.icon : <img src={app.img} alt={app.name} />}
-        {isActive && <motion.div layoutId="dock-indicator" className="dock-indicator" />}
+    <NavLink
+      to={app.route}
+      ref={ref}
+      style={{ textDecoration: 'none' }}
+      onMouseEnter={() => prefetchRoute(app.route)}
+      onTouchStart={() => prefetchRoute(app.route)}
+    >
+      <motion.div className={`dock-item ${isActive ? 'active' : ''}`} style={{ scale }}>
+        <div className="dock-item-icon-wrap">
+          {app.isLucide ? app.icon : <img src={app.img} alt={app.name} />}
+          {isActive && (
+            <motion.div
+              layoutId="dock-indicator"
+              className="dock-indicator"
+              transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+            />
+          )}
+        </div>
+        <span className="dock-item-label">{getDockLabel(app.name)}</span>
       </motion.div>
     </NavLink>
   );
 }
+
+

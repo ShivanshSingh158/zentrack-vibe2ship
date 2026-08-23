@@ -401,7 +401,7 @@ export const HabitsModule = () => {
       {/* ── TOP HERO HEADER BAR ── */}
       <div className="hb-header-bar">
         <div className="hb-header-left">
-          <h1 className="hb-hero-title">Daily Habits & Streaks</h1>
+          <h1 className="hb-hero-title">Habits</h1>
           <span className="hb-stats-subtitle">
             {metrics.completedToday}/{metrics.positiveCount} done today ({metrics.completionRate}%) · ❄️ {freezesLeft} Freezes
           </span>

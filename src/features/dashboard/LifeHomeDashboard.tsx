@@ -24,8 +24,9 @@ import {
 } from 'lucide-react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
 import { auth, db } from '../../services/firebase';
-import { collection, addDoc, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { getLocalDateString, formatDisplayDate, formatTimeRangeDisplay, extractTaskDurationMinutes } from '../../utils/dateUtils';
+import { calculateAppStreak } from '../../utils/streakUtils';
 import { playPopSound } from '../../utils/sound';
 import { toast } from 'sonner';
 import { usePomodoroContext } from '../../contexts/PomodoroContext';
@@ -58,26 +59,26 @@ const MASCOT_FILES: Record<string, string> = {
 
 const getGradientForLevel = (level: string): [string, string] => {
   switch (level) {
-    case 'Seeker':    return ['#34d399', '#22d3ee'];
-    case 'Warden':    return ['#22d3ee', '#3b82f6'];
-    case 'Sentinel':  return ['#14b8a6', '#0ea5e9'];
-    case 'Guardian':  return ['#3b82f6', '#6366f1'];
-    case 'Vanguard':  return ['#a855f7', '#ec4899'];
-    case 'Luminary':  return ['#f59e0b', '#fbbf24'];
-    case 'Legend':    return ['#f97316', '#ef4444'];
-    case 'Mythic':    return ['#ec4899', '#8b5cf6'];
-    case 'Paragon':   return ['#8b5cf6', '#6366f1'];
-    case 'Titan':     return ['#6366f1', '#3b82f6'];
-    case 'Ascendant': return ['#3b82f6', '#06b6d4'];
-    case 'Exalted':   return ['#06b6d4', '#10b981'];
-    case 'Sovereign': return ['#10b981', '#84cc16'];
-    case 'Archon':    return ['#84cc16', '#eab308'];
-    case 'Celestial': return ['#eab308', '#f97316'];
-    case 'Ethereal':  return ['#f97316', '#ef4444'];
-    case 'Empyrean':  return ['#ef4444', '#ec4899'];
-    case 'Astral':    return ['#ec4899', '#d946ef'];
-    case 'Zenith':    return ['#d946ef', '#a855f7'];
-    case 'Apex':      return ['#a855f7', '#8b5cf6'];
+    case 'Seeker':    return ['#34d399', '#10b981']; // T1 Emerald Nature
+    case 'Warden':    return ['#06b6d4', '#0284c7']; // T2 Cyan Hydro Aegis
+    case 'Sentinel':  return ['#14b8a6', '#0d9488']; // T3 Deep Teal Vanguard
+    case 'Guardian':  return ['#3b82f6', '#1d4ed8']; // T4 Cobalt Steel Protector
+    case 'Vanguard':  return ['#a855f7', '#7c3aed']; // T5 Royal Violet Knight
+    case 'Luminary':  return ['#f59e0b', '#d97706']; // T6 Solar Gold Sage
+    case 'Legend':    return ['#ea580c', '#c2410c']; // T7 Blazing Magma Flame
+    case 'Mythic':    return ['#ec4899', '#db2777']; // T8 Mythic Rose Plasma
+    case 'Paragon':   return ['#64748b', '#94a3b8']; // T9 Silver Metallic Titan
+    case 'Titan':     return ['#dc2626', '#991b1b']; // T10 Blood Crimson Behemoth
+    case 'Ascendant': return ['#10b981', '#047857']; // T11 Jade Transcendent
+    case 'Exalted':   return ['#eab308', '#ca8a04']; // T12 Radiant Solar Dawn
+    case 'Sovereign': return ['#9333ea', '#6b21a8']; // T13 Imperial Purple Monarch
+    case 'Archon':    return ['#2563eb', '#06b6d4']; // T14 Electric Plasma Archon
+    case 'Celestial': return ['#1e40af', '#60a5fa']; // T15 Cosmic Starfield Deep Blue
+    case 'Ethereal':  return ['#818cf8', '#c084fc']; // T16 Ethereal Lavender Horizon
+    case 'Empyrean':  return ['#f43f5e', '#fb923c']; // T17 Supernova Coral Flare
+    case 'Astral':    return ['#0d9488', '#2dd4bf']; // T18 Astral Aurora Borealis
+    case 'Zenith':    return ['#475569', '#e2e8f0']; // T19 Dark Obsidian Platinum
+    case 'Apex':      return ['#ffd700', '#ff7bf0']; // T20 Supreme Singularity Rainbow Gold
     default:          return ['#a599ff', '#6366f1'];
   }
 };
@@ -111,14 +112,17 @@ function calculateLevel(xp: number) {
 
 export const LifeHomeDashboard: React.FC = () => {
   const globalData = useGlobalData();
-  const { tasks, habits, habitLogs, attendanceSubjects, calendarEvents, userXP, xpState, awardXP } = globalData;
+  const {
+    tasks, habits, habitLogs, attendanceSubjects, attendanceLogs,
+    calendarEvents, gymLogs, learningTopics, pomodoroSessions, assignments,
+    allHabits, userXP, xpState, awardXP
+  } = globalData;
   const user = auth.currentUser;
   const navigate = useNavigate();
   const todayStr = useMemo(() => getLocalDateString(new Date()), []);
   const { startTimer } = usePomodoroContext();
 
-  // Firestore Profile App Streak Sync
-  const [appStreak, setAppStreak] = useState<number>(5);
+  const [profileStreak, setProfileStreak] = useState<number | null>(null);
   const [isXPModalOpen, setIsXPModalOpen] = useState(false);
 
   useEffect(() => {
@@ -126,11 +130,25 @@ export const LifeHomeDashboard: React.FC = () => {
     const unsub = onSnapshot(doc(db, 'user_profiles', user.uid), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (typeof data?.appStreak === 'number') setAppStreak(data.appStreak);
+        if (typeof data?.appStreak === 'number') setProfileStreak(data.appStreak);
       }
     });
     return () => unsub();
   }, [user?.uid]);
+
+  const appStreak = useMemo(() => {
+    const calculated = calculateAppStreak(
+      tasks,
+      gymLogs,
+      habitLogs,
+      learningTopics,
+      attendanceLogs,
+      pomodoroSessions,
+      assignments,
+      allHabits || habits
+    );
+    return Math.max(calculated, profileStreak || 0);
+  }, [tasks, gymLogs, habitLogs, learningTopics, attendanceLogs, pomodoroSessions, assignments, allHabits, habits, profileStreak]);
 
   // Dark/Light Theme state
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -170,7 +188,10 @@ export const LifeHomeDashboard: React.FC = () => {
   }, []);
 
   const displayName = useMemo(() => {
-    if (user?.displayName) return user.displayName.split(' ')[0];
+    if (user?.displayName) {
+      const raw = user.displayName.split(' ')[0];
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    }
     return 'Explorer';
   }, [user]);
 
@@ -429,24 +450,8 @@ export const LifeHomeDashboard: React.FC = () => {
           {/* Flame Streak Pill */}
           <Link to="/habits" className="life-streak-pill" title="Daily Streak">
             <span>🔥</span>
-            <span>{appStreak} Days</span>
+            <span>{appStreak} {appStreak === 1 ? 'Day' : 'Days'}</span>
           </Link>
-
-          {/* SARA Purple Bot Button */}
-          <Link to="/sara" className="life-sara-bot-btn" title="Open SARA Voice Console">
-            <Bot size={16} strokeWidth={2.5} />
-            <span>SARA AI</span>
-          </Link>
-
-          {/* Dark / Light Mode Switcher */}
-          <button
-            type="button"
-            className="life-icon-circle-btn"
-            onClick={toggleTheme}
-            title={isDarkMode ? 'Light Mode' : 'Dark Mode'}
-          >
-            {isDarkMode ? <Sun size={15} color="#f59e0b" /> : <Moon size={15} color="#a599ff" />}
-          </button>
         </div>
       </div>
 
@@ -460,7 +465,7 @@ export const LifeHomeDashboard: React.FC = () => {
             <span className="hud-banner-badge">SARA</span>
             {pendingTasks.length > 0 ? (
               <span>
-                You have <strong>{pendingTasks.length} pending commitment{pendingTasks.length > 1 ? 's' : ''}</strong> today. {nextEvent ? `Next: "${nextEvent.title}" at ${nextEvent.time}.` : 'Stay in flow.'}
+                You have <strong>{pendingTasks.length} pending commitment{pendingTasks.length > 1 ? 's' : ''}</strong> today. {nextEvent ? `Next: "${nextEvent.title}" at ${formatTimeRangeDisplay(nextEvent.time)}.` : 'Stay in flow.'}
               </span>
             ) : (
               <span>
@@ -642,10 +647,10 @@ export const LifeHomeDashboard: React.FC = () => {
             {nextEvent && (
               <div className="agenda-schedule-block">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Clock size={15} color="#38bdf8" />
+                  <Clock size={15} color="#89dceb" />
                   <span className="agenda-schedule-title">{nextEvent.title}</span>
                 </div>
-                <span className="agenda-schedule-time">{nextEvent.time}</span>
+                <span className="agenda-schedule-time">{formatTimeRangeDisplay(nextEvent.time)}</span>
               </div>
             )}
 
@@ -661,24 +666,32 @@ export const LifeHomeDashboard: React.FC = () => {
                 todayTasks.map(task => {
                   const isDone = task.status === 'completed';
                   return (
-                    <div key={task.id} className="agenda-row">
+                    <div key={task.id} className="agenda-task-item">
                       <button
                         type="button"
-                        className={`todo-circular-checkbox ${isDone ? 'checked' : ''}`}
+                        className={`agenda-checkbox ${isDone ? 'checked' : ''}`}
                         onClick={() => toggleTask(task)}
                       >
-                        {isDone && <Check size={11} strokeWidth={3} />}
+                        {isDone && <Check size={12} strokeWidth={3} />}
                       </button>
                       <span className="agenda-task-text" style={{ textDecoration: isDone ? 'line-through' : 'none', opacity: isDone ? 0.4 : 1 }}>
                         {task.title || task.text}
                       </span>
                       {task.timeSlot && (
-                        <span className="agenda-time-tag">{task.timeSlot}</span>
+                        <span className="agenda-time-tag">{formatTimeRangeDisplay(task.timeSlot)}</span>
                       )}
                       <button
                         type="button"
                         className="todo-action-icon-btn timer-btn"
-                        onClick={() => startTimer(task.id, task.title || task.text)}
+                        onClick={() => {
+                          const taskTitle = task.title || task.text || 'Focus Task';
+                          const durationMins = extractTaskDurationMinutes(
+                            task.estimatedMinutes || task.durationMinutes || task.duration,
+                            task.timeSlot,
+                            taskTitle
+                          );
+                          startTimer(task.id, taskTitle, undefined, undefined, durationMins);
+                        }}
                         title="Focus Timer"
                       >
                         <Timer size={13} />
@@ -721,18 +734,25 @@ export const LifeHomeDashboard: React.FC = () => {
               ) : (
                 habits.slice(0, 4).map(h => {
                   const isDone = todayHabitLogMap.get(h.id);
+                  const habitStreak = h.streak || h.currentStreak || 0;
                   return (
                     <div key={h.id} className="habit-row-clean" onClick={() => toggleHabit(h.id)}>
                       <div className="habit-title-clean">
-                        <span>{h.emoji || '⚡'}</span>
-                        <span>{h.name || h.title}</span>
+                        <span className="habit-emoji-box">{h.emoji || '⚡'}</span>
+                        <span className="habit-name-text">{h.name || h.title}</span>
                       </div>
-                      <button
-                        type="button"
-                        className={`habit-check-pill ${isDone ? 'completed' : ''}`}
-                      >
-                        {isDone && <Check size={11} strokeWidth={3} />}
-                      </button>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                        {habitStreak > 0 && (
+                          <span className="habit-streak-badge">🔥 {habitStreak}d</span>
+                        )}
+                        <button
+                          type="button"
+                          className={`habit-check-pill ${isDone ? 'completed' : ''}`}
+                          aria-label={isDone ? 'Completed' : 'Mark Complete'}
+                        >
+                          {isDone && <Check size={11} strokeWidth={3} />}
+                        </button>
+                      </div>
                     </div>
                   );
                 })

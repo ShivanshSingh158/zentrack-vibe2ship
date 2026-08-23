@@ -1,11 +1,15 @@
 import { X, AlertTriangle } from 'lucide-react';
 
 interface ConfirmDialogProps {
-  open: boolean;
+  open?: boolean;
+  isOpen?: boolean;
   title: string;
-  message: string;
+  message?: string;
+  description?: string;
   confirmLabel?: string;
+  confirmText?: string;
   cancelLabel?: string;
+  cancelText?: string;
   danger?: boolean;
   variant?: 'danger' | 'warning' | 'info';
   onConfirm: () => void;
@@ -14,17 +18,25 @@ interface ConfirmDialogProps {
 
 export const ConfirmDialog = ({
   open,
+  isOpen,
   title,
   message,
-  confirmLabel = 'Confirm',
-  cancelLabel = 'Cancel',
+  description,
+  confirmLabel,
+  confirmText,
+  cancelLabel,
+  cancelText,
   danger = false,
   variant,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) => {
-  if (!open) return null;
+  const isVisible = open !== undefined ? open : (isOpen !== undefined ? isOpen : false);
+  if (!isVisible) return null;
 
+  const finalMessage = message || description || '';
+  const finalConfirmText = confirmText || confirmLabel || 'Confirm';
+  const finalCancelText = cancelText || cancelLabel || 'Cancel';
   const isDanger = danger || variant === 'danger';
   const isWarning = variant === 'warning';
 
@@ -88,13 +100,13 @@ export const ConfirmDialog = ({
               </button>
             </div>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', margin: '0 0 1.25rem 0', lineHeight: 1.5 }}>
-              {message}
+              {finalMessage}
             </p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
           <button className="btn-secondary" onClick={onCancel} style={{ padding: '0.5rem 1rem', fontSize: '0.85rem' }}>
-            {cancelLabel}
+            {finalCancelText}
           </button>
           <button
             className="btn-primary"
@@ -105,7 +117,7 @@ export const ConfirmDialog = ({
               background: btnBg || undefined,
             }}
           >
-            {confirmLabel}
+            {finalConfirmText}
           </button>
         </div>
       </div>

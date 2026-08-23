@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { getEventColors, format12Hour, getDensityTint } from './calendarUtils';
+import { getLocalDateString } from '../../utils/dateUtils';
 import type { MergedCalendarEvent } from './CalendarDayView';
 import { ChevronLeft, ChevronRight, Clock, MapPin, Plus, Calendar as CalendarIcon, CheckCircle2 } from 'lucide-react';
 
@@ -24,7 +25,8 @@ export const CalendarMonthView: React.FC<CalendarMonthViewProps> = ({
   onAddEventClick,
 }) => {
   const colorMap = useMemo(() => getEventColors(isDark), [isDark]);
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
+
 
   const [selY, selM, selD] = selectedDate.split('-').map(Number);
   const selectedDateObj = new Date(selY, (selM || 1) - 1, selD || 1);

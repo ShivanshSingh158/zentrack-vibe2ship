@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect, useState, useRef } from 'react';
 import { useGlobalData } from '../../contexts/GlobalDataContext';
+import { getLocalDateString } from '../../utils/dateUtils';
 import type { TodoItem } from '../../types';
 import { Clock, Book, FlaskConical, CheckCircle2, AlertCircle, Dumbbell, Sparkles, Navigation } from 'lucide-react';
 import { WEEKDAY_TO_PLAN } from '../../features/gym/data/gymPlan';
@@ -13,6 +14,7 @@ interface TimelineViewProps {
 const END_HOUR = 23;
 const HOUR_HEIGHT = 60; // Compact ergonomic height for PC desktop screens
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 
 function parseTime(timeStr?: string | null): number | null {
   if (!timeStr) return null;
@@ -51,9 +53,10 @@ export const TimelineView: React.FC<TimelineViewProps> = ({ tasks, selectedDate,
 
   // Smart START_HOUR: tightly frames the actual events and current time, eliminating empty morning space
   const START_HOUR = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalDateString();
     const isToday = selectedDate === todayStr;
     const floats: number[] = [];
+
 
     tasks.filter(t => t.timeSlot && t.date === selectedDate).forEach(t => {
       const startText = t.timeSlot!.split(/[-–]/)[0];

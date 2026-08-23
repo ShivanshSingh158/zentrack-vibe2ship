@@ -1,9 +1,8 @@
 import React from 'react';
-import { GripVertical, Check, ChevronDown, ChevronRight, Edit2, Timer, Trash2, Calendar as CalendarIcon, X, Plus } from 'lucide-react';
+import { GripVertical, Check, ChevronDown, ChevronRight, Edit2, Timer, Trash2, Calendar as CalendarIcon, Clock, X, Plus } from 'lucide-react';
 import { Draggable } from '@hello-pangea/dnd';
 import { motion, AnimatePresence } from 'framer-motion';
-import { toast } from 'sonner';
-import { formatHoursDisplay } from '../../utils/dateUtils';
+import { formatHoursDisplay, extractTaskDurationMinutes } from '../../utils/dateUtils';
 import type { TodoItem, TodoSubtask } from '../../types';
 
 interface TodoCardProps {
@@ -43,25 +42,12 @@ export const TodoCard = React.memo(({
   const isDone = todo.status === 'completed';
 
   const computedMinutes = React.useMemo(() => {
-    if (todo.timeSlot) {
-      const parts = todo.timeSlot.split(/[-–]/);
-      if (parts.length === 2) {
-        const parseTime = (t: string) => {
-          const match = t.match(/(\d+):(\d+)/);
-          if (!match) return null;
-          return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
-        };
-        const sMins = parseTime(parts[0].trim());
-        const eMins = parseTime(parts[1].trim());
-        if (sMins !== null && eMins !== null) {
-          let diff = eMins - sMins;
-          if (diff < 0) diff += 24 * 60;
-          return diff;
-        }
-      }
-    }
-    return todo.estimatedMinutes;
-  }, [todo.timeSlot, todo.estimatedMinutes]);
+    return extractTaskDurationMinutes(
+      todo.estimatedMinutes || (todo as any).durationMinutes || (todo as any).duration,
+      todo.timeSlot,
+      todo.title || todo.text
+    );
+  }, [todo.timeSlot, todo.estimatedMinutes, (todo as any).durationMinutes, (todo as any).duration, todo.title, todo.text]);
 
   const priorityColor = todo.priority === 'high' || todo.priority === 'P1'
     ? '#ff6961'
@@ -181,7 +167,7 @@ export const TodoCard = React.memo(({
                   {/* Time Slot */}
                   {todo.timeSlot && (
                     <span className="meta-time-badge">
-                      <CalendarIcon size={11} />
+                      <Clock size={11} />
                       <span>{todo.timeSlot}</span>
                     </span>
                   )}

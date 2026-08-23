@@ -300,9 +300,9 @@ export const GradeCalculatorModule = () => {
       {/* ── TOP HERO HEADER BAR ── */}
       <div className="gr-header-bar">
         <div className="gr-header-left">
-          <h1 className="gr-hero-title">Grade Calculator & CGPA Planner</h1>
+          <h1 className="gr-hero-title">Grades</h1>
           <span className="gr-stats-subtitle">
-            {currentCGPA ? `${currentCGPA} Cumulative GPA` : 'No grades yet'} · {totalCumulativeCredits} Total Credits
+            {currentCGPA ? `${currentCGPA.toFixed(2)} Cumulative GPA` : 'No grades yet'} · {totalCumulativeCredits} Total Credits
           </span>
         </div>
 

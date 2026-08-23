@@ -391,20 +391,29 @@ export const TodoListModule: React.FC = () => {
   };
 
   const confirmDelete = async () => {
-    if (deleteConfirm.id) {
-      await deleteDoc(doc(db, 'todos', deleteConfirm.id));
-      toast.success('Task deleted');
+    try {
+      if (deleteConfirm.type === 'completed') {
+        const batch = writeBatch(db);
+        completedTodos.forEach(t => {
+          if (t.id) batch.delete(doc(db, 'todos', t.id));
+        });
+        await batch.commit();
+        toast.success('Cleared completed tasks');
+      } else if (deleteConfirm.id) {
+        await deleteDoc(doc(db, 'todos', deleteConfirm.id));
+        toast.success('Task deleted');
+      }
+    } catch (err) {
+      console.error('Failed to delete:', err);
+      toast.error('Failed to delete task');
+    } finally {
+      setDeleteConfirm({ isOpen: false, type: 'task', id: '' });
     }
-    setDeleteConfirm({ isOpen: false, type: 'task', id: '' });
   };
 
-  const clearAllCompleted = async () => {
-    const batch = writeBatch(db);
-    completedTodos.forEach(t => {
-      if (t.id) batch.delete(doc(db, 'todos', t.id));
-    });
-    await batch.commit();
-    toast.success('Cleared completed tasks');
+  const clearAllCompleted = () => {
+    if (completedTodos.length === 0) return;
+    setDeleteConfirm({ isOpen: true, type: 'completed', id: 'all' });
   };
 
   return (
@@ -459,7 +468,7 @@ export const TodoListModule: React.FC = () => {
               {viewMode === 'timeline' && <Clock size={15} />}
               {viewMode === 'kanban' && <Columns size={15} />}
               {viewMode === 'matrix' && <LayoutGrid size={15} />}
-              <span className="view-mode-label">{viewMode.toUpperCase()}</span>
+              <span className="view-mode-label">{viewMode === 'list' ? 'List' : viewMode === 'timeline' ? 'Timeline' : viewMode === 'kanban' ? 'Kanban' : 'Matrix'}</span>
               <ChevronDown size={14} />
             </button>
 
@@ -771,6 +780,7 @@ export const TodoListModule: React.FC = () => {
           isOpen={!!editingTask}
           onClose={() => setEditingTask(null)}
           todo={editingTask}
+          onDelete={handleDeleteTask}
           onSave={async (updated) => {
             if (updated.id) {
               await updateDoc(doc(db, 'todos', updated.id), { ...updated });
@@ -839,11 +849,20 @@ export const TodoListModule: React.FC = () => {
 
       {/* 8. Confirm Delete Dialog */}
       <ConfirmDialog
+        open={deleteConfirm.isOpen}
         isOpen={deleteConfirm.isOpen}
-        title="Delete Task"
-        message="Are you sure you want to delete this task? This action cannot be undone."
+        title={deleteConfirm.type === 'completed' ? 'Clear Completed Tasks' : 'Delete Task'}
+        message={
+          deleteConfirm.type === 'completed'
+            ? 'Are you sure you want to permanently clear all completed tasks?'
+            : 'Are you sure you want to delete this task? This action cannot be undone.'
+        }
         confirmText="Delete"
+        confirmLabel="Delete"
+        cancelText="Cancel"
+        cancelLabel="Cancel"
         variant="danger"
+        danger={true}
         onConfirm={confirmDelete}
         onCancel={() => setDeleteConfirm({ isOpen: false, type: 'task', id: '' })}
       />

@@ -1,6 +1,5 @@
 /* ==========================================================================
-   ZenTrack Learning Module Stylesheet — Obsidian Cosmos & Frost Quartz Theme
-   PC Full-Screen Optimized Layout (Zero Dead Space & Lifted Vertical Rhythm)
+   ZenTrack Learning Module Stylesheet — Obsidian Cosmos (Mobile-Twin)
    ========================================================================== */
 
 :root {
@@ -8,18 +7,19 @@
   --lp-bg-surface: #141416;
   --lp-bg-surface-elevated: #1c1c1f;
   --lp-bg-surface-subtle: #18181b;
-  --lp-border-subtle: #242428;
-  --lp-border-hover: rgba(94, 218, 158, 0.4);
+  --lp-border-subtle: #1c1c20;
+  --lp-border-hover: #28282e;
   --lp-accent-emerald: #5eda9e;
   --lp-accent-emerald-light: #7ae8b3;
   --lp-accent-emerald-glow: rgba(94, 218, 158, 0.28);
   --lp-accent-purple: #a599ff;
   --lp-accent-purple-light: #b8afff;
   --lp-accent-purple-glow: rgba(165, 153, 255, 0.15);
-  --lp-accent-cyan: #38bdf8;
+  --lp-accent-cyan: #89dceb;
   --lp-text-primary: #ffffff;
   --lp-text-secondary: #f2f2f7;
   --lp-text-tertiary: #8e8e93;
+  --lp-text-muted: #636366;
   --lp-success-green: #5eda9e;
   --lp-danger-red: #ff6961;
 }
@@ -28,11 +28,11 @@
 .learning-module-root {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.95rem;
   width: 100%;
   max-width: 100%;
   margin: 0;
-  padding: 0 0 4rem 0;
+  padding: 0 0 5rem 0;
   color: var(--lp-text-primary);
   box-sizing: border-box;
 }
@@ -42,125 +42,107 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.75rem;
   width: 100%;
+  padding-bottom: 0.15rem;
 }
 
 .learning-header-left {
   display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex-shrink: 0;
 }
 
 .learning-hero-title {
-  font-family: var(--font-display, 'Playfair Display', Georgia, serif);
-  font-size: 1.75rem;
-  font-weight: 600;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 1.45rem;
+  font-weight: 700;
   color: var(--lp-text-primary);
   margin: 0;
   letter-spacing: -0.02em;
+  white-space: nowrap;
 }
 
 .learning-stats-subtitle {
   font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   color: var(--lp-text-tertiary);
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .learning-header-actions {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  gap: 0.45rem;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .learning-action-pill-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  background: var(--lp-bg-surface);
-  border: 1px solid var(--lp-border-subtle);
-  color: var(--lp-text-secondary);
-  padding: 0.44rem 0.85rem;
-  border-radius: 9999px;
+  gap: 0.35rem;
+  background: #141416;
+  border: 1px solid #1c1c20;
+  color: #d1d1d6;
+  padding: 0.42rem 0.85rem;
+  border-radius: 12px;
   font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .learning-action-pill-btn:hover {
-  background: var(--lp-bg-surface-elevated);
-  border-color: rgba(94, 218, 158, 0.35);
-  color: var(--lp-text-primary);
+  background: #1c1c1f;
+  border-color: #28282e;
+  color: #ffffff;
   transform: translateY(-1px);
 }
 
 .learning-action-pill-btn.ai-curriculum-pill {
-  background: rgba(94, 218, 158, 0.12);
-  border-color: rgba(94, 218, 158, 0.35);
   color: #5eda9e;
 }
 
-.learning-action-pill-btn.ai-curriculum-pill:hover {
-  background: rgba(94, 218, 158, 0.22);
-  box-shadow: 0 0 12px rgba(94, 218, 158, 0.2);
-}
-
 .learning-action-pill-btn.roadmaps-pill {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.35);
-  color: #38bdf8;
-}
-
-.learning-action-pill-btn.roadmaps-pill:hover {
-  background: rgba(56, 189, 248, 0.22);
-  box-shadow: 0 0 12px rgba(56, 189, 248, 0.2);
+  color: #89dceb;
 }
 
 .learning-action-pill-btn.playlist-pill {
-  background: rgba(165, 153, 255, 0.12);
-  border-color: rgba(165, 153, 255, 0.35);
   color: #a599ff;
 }
 
-.learning-action-pill-btn.playlist-pill:hover {
-  background: rgba(165, 153, 255, 0.22);
-  box-shadow: 0 0 12px rgba(165, 153, 255, 0.2);
-}
-
 .learning-action-pill-btn.active-filter {
-  background: rgba(94, 218, 158, 0.15);
-  border-color: rgba(94, 218, 158, 0.45);
-  color: var(--lp-accent-emerald);
+  background: rgba(165, 153, 255, 0.14);
+  border-color: rgba(165, 153, 255, 0.45);
+  color: #a599ff;
 }
 
 .learning-primary-add-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  background: #5eda9e;
+  gap: 0.35rem;
+  background: #a599ff;
   color: #000000;
   border: none;
-  padding: 0.46rem 1.15rem;
-  border-radius: 9999px;
+  padding: 0.44rem 1rem;
+  border-radius: 12px;
   font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(94, 218, 158, 0.35);
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 
 .learning-primary-add-btn:hover {
-  background: #7ae8b3;
+  background: #b8afff;
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(94, 218, 158, 0.5);
 }
 
 /* ── SEARCH & FILTER ROW ── */
@@ -175,18 +157,17 @@
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  background: var(--lp-bg-surface);
-  border: 1px solid var(--lp-border-subtle);
+  background: #141416;
+  border: 1px solid #1c1c20;
   border-radius: 12px;
-  padding: 0.48rem 0.85rem;
+  padding: 0.55rem 0.95rem;
   flex: 1;
   box-sizing: border-box;
-  transition: border-color 0.2s ease;
+  transition: border-color 0.15s ease;
 }
 
 .learning-search-bar:focus-within {
-  border-color: #5eda9e;
-  box-shadow: 0 0 0 3px rgba(94, 218, 158, 0.15);
+  border-color: #a599ff;
 }
 
 .learning-search-input {
@@ -200,25 +181,29 @@
 }
 
 .learning-search-input::placeholder {
-  color: var(--lp-text-tertiary);
+  color: #636366;
 }
 
 .search-clear-btn {
   background: transparent;
   border: none;
-  color: var(--lp-text-tertiary);
+  color: #8e8e93;
   cursor: pointer;
   display: flex;
   align-items: center;
   padding: 2px;
 }
 
-/* ── VIEW MODE TOGGLE ── */
+.search-clear-btn:hover {
+  color: #ffffff;
+}
+
+/* ── VIEW MODE TOGGLE (Mobile Parity) ── */
 .learning-view-mode-toggle {
   display: flex;
   align-items: center;
-  background: var(--lp-bg-surface);
-  border: 1px solid var(--lp-border-subtle);
+  background: #141416;
+  border: 1px solid #1c1c20;
   border-radius: 12px;
   padding: 3px;
   gap: 2px;
@@ -231,32 +216,31 @@
   gap: 0.35rem;
   background: transparent;
   border: none;
-  color: var(--lp-text-tertiary);
-  padding: 0.36rem 0.68rem;
+  color: #8e8e93;
+  padding: 0.38rem 0.85rem;
   border-radius: 9px;
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.15s ease;
 }
 
 .learning-view-btn:hover {
-  color: var(--lp-text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
 }
 
 .learning-view-btn.active {
-  background: var(--lp-bg-surface-elevated);
-  color: #5eda9e;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  background: #a599ff;
+  color: #000000;
+  font-weight: 800;
 }
 
 /* ── TOPICS CONTAINER ── */
 .learning-topics-container.grid-view {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 1.15rem;
+  gap: 1rem;
   width: 100%;
   align-items: start;
 }
@@ -264,32 +248,28 @@
 .learning-topics-container.list-view {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.75rem;
   width: 100%;
 }
 
-/* ── TOPIC CARD (GRID & LIST — MOBILE-INSPIRED CLEAN DESIGN) ── */
+/* ── TOPIC CARD (Mobile Parity) ── */
 .lp-topic-card {
   display: flex;
   flex-direction: column;
-  background: #000000;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 18px;
+  background: #141416;
+  border: 1px solid #1c1c20;
+  border-radius: 16px;
   overflow: hidden;
   position: relative;
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+  transition: border-color 0.15s ease;
 }
 
 .lp-topic-card:hover {
-  border-color: var(--lp-accent-border, rgba(165, 153, 255, 0.35));
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
-  transform: translateY(-2px);
+  border-color: #28282e;
 }
 
 .lp-topic-card.expanded {
-  border-color: var(--lp-accent-border, rgba(165, 153, 255, 0.4));
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.7);
+  border-color: #28282e;
 }
 
 /* Card Header */
@@ -675,28 +655,26 @@
   padding-right: 2px;
 }
 
-/* ── LECTURE CARD (TWO-TIER CLEAN ARCHITECTURE — NO OVERLAPS EVER) ── */
+/* ── LECTURE CARD (Mobile Parity) ── */
 .lp-lecture-card {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
   padding: 0.72rem 0.85rem 0.65rem;
   border-radius: 12px;
-  background: #09090c;
-  border: 1px solid #1a1a20;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  background: #18181c;
+  border: 1px solid #1c1c20;
+  transition: border-color 0.15s ease;
   width: 100%;
   box-sizing: border-box;
 }
 
 .lp-lecture-card:hover {
-  background: #111116;
-  border-color: #282834;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  border-color: #28282e;
 }
 
 .lp-lecture-card.pinned {
-  border-left: 3px solid var(--lp-accent-purple);
+  border-left: 3px solid #a599ff;
   background: rgba(165, 153, 255, 0.04);
 }
 
@@ -712,7 +690,7 @@
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.82rem;
   font-weight: 700;
-  color: var(--lp-text-tertiary);
+  color: #8e8e93;
   min-width: 22px;
   text-align: right;
   flex-shrink: 0;
@@ -724,7 +702,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.22);
+  border: 1.5px solid #3a3a3c;
   background: transparent;
   color: #000000;
   display: flex;
@@ -732,19 +710,18 @@
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.16s ease;
+  transition: all 0.15s ease;
   padding: 0;
   margin-top: 2px;
 }
 
 .lp-lecture-checkbox:hover {
-  border-color: var(--lp-accent-purple);
-  transform: scale(1.08);
+  border-color: #a599ff;
 }
 
 .lp-lecture-checkbox.checked {
-  background: var(--lp-accent-purple);
-  border-color: var(--lp-accent-purple);
+  background: #a599ff;
+  border-color: #a599ff;
 }
 
 .lp-lecture-title-container {

@@ -103,7 +103,7 @@ zentrack-vibe2ship/
 │   │   └── ui/
 │   │       ├── GeminiAuthModal.tsx Modal for personal Gemini API key/OAuth
 │   │       ├── GeminiAuthBadge.tsx Status badge for Gemini auth state
-│   │       ├── ConfirmDialog.tsx   Reusable confirm/cancel dialog
+│   │       ├── ConfirmDialog.tsx   Reusable confirm/cancel dialog (open/isOpen, confirmText/confirmLabel)
 │   │       ├── DatePicker.tsx      Custom date picker component
 │   │       └── OfflineIndicator.tsx Offline status banner
 │   ├── contexts/
@@ -116,6 +116,7 @@ zentrack-vibe2ship/
 │   │   │   └── VoiceQuickCaptureWidget.tsx Floating voice-to-text quick capture (~22KB)
 │   │   ├── dashboard/
 │   │   │   ├── HomeDashboard.tsx   Main app screen: agent orchestration entry point (~50KB)
+│   │   │   ├── LifeHomeDashboard.tsx Unified life dashboard (streak, daily agenda, active recall, habits, XP)
 │   │   │   ├── AgentShutter.tsx    Animated panel revealing agent fleet during missions
 │   │   │   ├── MissionReport.tsx   Structured mission report display
 │   │   │   ├── VaultOrb.tsx        Animated 3D orb visualization (~20KB)

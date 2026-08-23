@@ -427,3 +427,135 @@ export function isSilenceOrNoise(text: string | null | undefined): boolean {
   ];
   return silenceTokens.includes(clean);
 }
+
+export function formatTimeRangeDisplay(timeStr?: string | null): string {
+  if (!timeStr) return '';
+  const clean = timeStr.trim();
+  if (!clean) return '';
+
+  const parts = clean.split(/[-–—]|(?:\s+to\s+)/i).map(s => s.trim()).filter(Boolean);
+  if (parts.length === 0) return clean;
+
+  const formatSingle = (str: string) => {
+    const lower = str.toLowerCase().trim();
+    if (lower.includes('am') || lower.includes('pm')) {
+      return str.replace(/\s+/g, ' ').toUpperCase();
+    }
+    const timeParts = lower.split(':');
+    const h = parseInt(timeParts[0], 10);
+    const m = timeParts.length > 1 ? parseInt(timeParts[1], 10) : 0;
+    if (isNaN(h)) return str;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const hour12 = h % 12 || 12;
+    if (m === 0) {
+      return `${hour12} ${ampm}`;
+    }
+    return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
+  };
+
+  if (parts.length === 1) {
+    return formatSingle(parts[0]);
+  }
+  return `${formatSingle(parts[0])} – ${formatSingle(parts[1])}`;
+}
+
+/**
+ * Extracts the exact duration in minutes for a task based on:
+ * 1. Explicit minutes (if > 0)
+ * 2. Time slot range ("6 AM – 8 AM", "14:00 - 16:30", "10am-12pm")
+ * 3. Text description ("Dsa 1 hour", "Dsa revision 20 minutes", "Class work 30 minutes", "2 hr", "1.5 hours")
+ * Default fallback: 25 minutes
+ */
+export function extractTaskDurationMinutes(
+  explicitMinutes?: number | null,
+  timeSlot?: string | null,
+  text?: string | null
+): number {
+  if (typeof explicitMinutes === 'number' && explicitMinutes > 0) {
+    return Math.round(explicitMinutes);
+  }
+
+  // 1. Parse timeSlot ranges e.g. "6 AM – 8 AM" or "14:00 - 16:30"
+  if (timeSlot && typeof timeSlot === 'string') {
+    const cleanSlot = timeSlot.trim();
+    const parts = cleanSlot.split(/[-–—]|(?:\s+to\s+)/i).map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      const parseTimeToMinutes = (t: string): number | null => {
+        const raw = t.trim().toLowerCase();
+        // 12-hour format with AM/PM (e.g., "6 am", "8:30 pm", "6:00am", "12 pm")
+        const ampmMatch = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/);
+        if (ampmMatch) {
+          let hours = parseInt(ampmMatch[1], 10);
+          const mins = ampmMatch[2] ? parseInt(ampmMatch[2], 10) : 0;
+          const isPm = ampmMatch[3] === 'pm';
+          if (isPm && hours < 12) hours += 12;
+          if (!isPm && hours === 12) hours = 0;
+          return hours * 60 + mins;
+        }
+
+        // 24-hour HH:MM format
+        const colonMatch = raw.match(/^(\d{1,2}):(\d{2})$/);
+        if (colonMatch) {
+          const hours = parseInt(colonMatch[1], 10);
+          const mins = parseInt(colonMatch[2], 10);
+          return hours * 60 + mins;
+        }
+
+        // Bare number
+        const numMatch = raw.match(/^(\d{1,2})$/);
+        if (numMatch) {
+          const hours = parseInt(numMatch[1], 10);
+          return hours * 60;
+        }
+
+        return null;
+      };
+
+      const start = parseTimeToMinutes(parts[0]);
+      const end = parseTimeToMinutes(parts[1]);
+      if (start !== null && end !== null) {
+        let diff = end - start;
+        if (diff < 0) diff += 24 * 60; // crossed midnight
+        if (diff > 0 && diff <= 24 * 60) {
+          return diff;
+        }
+      }
+    }
+  }
+
+  // 2. Parse text for duration mentions (e.g., "1 hour", "20 minutes", "2 hrs", "30 mins", "1.5h", "1h 30m")
+  if (text && typeof text === 'string') {
+    const raw = text.trim();
+
+    // Check combined format: "1h 30m", "1 hour 30 mins", "2 hr 15 min"
+    const combinedMatch = raw.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\s*(?:and\s*)?(\d+)\s*(?:minutes?|mins?|m)\b/i);
+    if (combinedMatch) {
+      const hrs = parseFloat(combinedMatch[1]);
+      const mins = parseInt(combinedMatch[2], 10);
+      return Math.round(hrs * 60 + mins);
+    }
+
+    // Check hours format: "2 hours", "1.5 hour", "2 hr", "2 hrs", "2h", "1 hour"
+    const hoursMatch = raw.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/i);
+    if (hoursMatch) {
+      const hrs = parseFloat(hoursMatch[1]);
+      if (hrs > 0 && hrs <= 24) {
+        return Math.round(hrs * 60);
+      }
+    }
+
+    // Check minutes format: "20 minutes", "30 mins", "45 min", "15m"
+    const minsMatch = raw.match(/(\d+)\s*(?:minutes?|mins?|min)\b/i);
+    if (minsMatch) {
+      const mins = parseInt(minsMatch[1], 10);
+      if (mins > 0 && mins <= 720) {
+        return mins;
+      }
+    }
+  }
+
+  // Fallback default pomodoro duration
+  return 25;
+}
+
+

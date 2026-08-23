@@ -220,7 +220,7 @@ export const AssignmentModule = () => {
       {/* ── TOP HERO HEADER BAR ── */}
       <div className="as-header-bar">
         <div className="as-header-left">
-          <h1 className="as-hero-title">Assignments & Coursework</h1>
+          <h1 className="as-hero-title">Assignments</h1>
           <span className="as-stats-subtitle">
             {stats.active} pending · {stats.dueSoon} due soon · {stats.completed} completed
           </span>

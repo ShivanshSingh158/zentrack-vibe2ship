@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { getEventColors, format12Hour, HOUR_HEIGHT, parseTimeTo24h } from './calendarUtils';
+import { getLocalDateString } from '../../utils/dateUtils';
 import type { MergedCalendarEvent } from './CalendarDayView';
 import { Clock } from 'lucide-react';
 
@@ -25,10 +26,11 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const colorMap = useMemo(() => getEventColors(isDark), [isDark]);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   const currentTime = new Date();
   const currentHour = currentTime.getHours();
   const currentMin = currentTime.getMinutes();
+
 
   // Compute 7 days of the week for selectedDate (Sun to Sat)
   const weekDays = useMemo(() => {

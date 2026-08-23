@@ -7,7 +7,7 @@ import {
   doc, getDoc, setDoc, onSnapshot
 } from 'firebase/firestore';
 import { db, auth } from '../services/firebase';
-import { getLocalDateString } from '../utils/dateUtils';
+import { getLocalDateString, extractTaskDurationMinutes } from '../utils/dateUtils';
 import { sendSystemNotification } from '../utils/notifications';
 
 
@@ -271,12 +271,17 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
     durationMinutes?: number
   ) => {
     elapsedRef.current = 0;
+    const resolvedMinutes = (durationMinutes && durationMinutes > 0)
+      ? durationMinutes
+      : extractTaskDurationMinutes(undefined, undefined, taskText);
+    const targetSeconds = Math.max(60, resolvedMinutes * 60);
+
     setState(prev => {
       // If resuming the same paused task, keep remaining time
       const duration =
         prev.taskId === taskId && prev.timeLeft > 0
           ? prev.timeLeft
-          : (durationMinutes ? durationMinutes * 60 : DEFAULT_DURATION);
+          : targetSeconds;
       const newState = {
         taskId,
         taskText,
@@ -291,7 +296,10 @@ export const PomodoroProvider = ({ children }: { children: ReactNode }) => {
       return newState;
     });
     setFocusMode(true);
-    toast.success(`Focus timer started for "${taskText}"`);
+    const durationLabel = resolvedMinutes >= 60
+      ? `${(resolvedMinutes / 60).toFixed(resolvedMinutes % 60 === 0 ? 0 : 1)}h`
+      : `${resolvedMinutes}m`;
+    toast.success(`Focus timer started (${durationLabel}) for "${taskText}"`);
   }, [saveState]);
 
   const pauseTimer  = useCallback(() => {

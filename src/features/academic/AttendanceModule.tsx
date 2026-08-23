@@ -16,8 +16,11 @@ import { playPopSound } from '../../utils/sound';
 import { getLocalDateString, formatDisplayDate } from '../../utils/dateUtils';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { awardXP } from '../../services/xpSystem';
+import { TimetableModal } from './TimetableModal';
+import { AddSubjectModal } from './AddSubjectModal';
 
 // ── Constants & Helpers ──
+
 export interface AttendanceSubject {
   id?: string;
   userId: string;
@@ -178,8 +181,8 @@ export const AttendanceModule = () => {
   const [extraSubjectId, setExtraSubjectId] = useState('');
   const [overrideSubject, setOverrideSubject] = useState<AttendanceSubject | null>(null);
   const [overrideCounts, setOverrideCounts] = useState({ classesAttended: 0, classesTotal: 0, labsAttended: 0, labsTotal: 0 });
-  const [editSubjectModal, setEditSubjectModal] = useState<{ isOpen: boolean; subject: AttendanceSubject | null }>({ isOpen: false, subject: null });
-  const [subjectForm, setSubjectForm] = useState({ name: '', targetPercentage: 75 });
+  const [addEditModal, setAddEditModal] = useState<{ isOpen: boolean; subject: AttendanceSubject | null }>({ isOpen: false, subject: null });
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [dismissedWarnings, setDismissedWarnings] = useState<Set<string>>(new Set());
 
@@ -240,7 +243,32 @@ export const AttendanceModule = () => {
     setSelectedDate(getLocalDateString(current));
   };
 
+  // Lock background website scroll when any modal is open
+  const isAnyModalOpen =
+    isTimetableModalOpen ||
+    !!selectedHistorySubject ||
+    isExtraOpen ||
+    !!overrideSubject ||
+    addEditModal.isOpen ||
+    isResetConfirmOpen ||
+    !!deleteConfirmId;
+
+
+  useEffect(() => {
+    if (isAnyModalOpen) {
+      const origOverflow = document.body.style.overflow;
+      const origTouch = document.body.style.touchAction;
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+      return () => {
+        document.body.style.overflow = origOverflow;
+        document.body.style.touchAction = origTouch;
+      };
+    }
+  }, [isAnyModalOpen]);
+
   const getClassCountForDay = useCallback((dayIndex: number) => {
+
     let count = 0;
     for (const s of subjects) {
       const daySched = resolveSubjectDaySchedule(s, dayIndex);
@@ -461,35 +489,55 @@ export const AttendanceModule = () => {
     }
   };
 
-  const handleSaveSubject = async () => {
-    if (!user || !subjectForm.name.trim()) return;
+  const handleSaveSubjectData = async (subjectData: any) => {
+    if (!user) return;
     try {
-      if (editSubjectModal.subject?.id) {
-        await updateDoc(doc(db, 'attendance_subjects', editSubjectModal.subject.id), {
-          name: subjectForm.name.trim(),
-          targetPercentage: Number(subjectForm.targetPercentage) || 75,
-        });
-        toast.success('Subject updated');
+      if (addEditModal.subject?.id) {
+        await updateDoc(doc(db, 'attendance_subjects', addEditModal.subject.id), subjectData);
+        toast.success(`Updated ${subjectData.name || 'subject'}`);
       } else {
         await addDoc(collection(db, 'attendance_subjects'), {
+          ...subjectData,
           userId: user.uid,
-          name: subjectForm.name.trim(),
-          classesAttended: 0,
-          classesTotal: 0,
-          labsAttended: 0,
-          labsTotal: 0,
-          targetPercentage: Number(subjectForm.targetPercentage) || 75,
           order: subjects.length,
-          schedule: defaultSchedule,
+          schemaVersion: 1,
         });
-        toast.success('Subject created');
+        toast.success(`Added ${subjectData.name}`);
       }
-      setEditSubjectModal({ isOpen: false, subject: null });
     } catch (err) {
       console.error(err);
       toast.error('Failed to save subject');
+      throw err;
     }
   };
+
+  const handleResetSemesterConfirmed = async () => {
+    if (!user) return;
+    try {
+      const batch = writeBatch(db);
+      subjects.forEach(s => {
+        if (s.id) {
+          batch.update(doc(db, 'attendance_subjects', s.id), {
+            classesAttended: 0,
+            classesTotal: 0,
+            labsAttended: 0,
+            labsTotal: 0,
+          });
+        }
+      });
+      const logQ = query(collection(db, 'attendance_logs'), where('userId', '==', user.uid));
+      const logSnap = await getDocs(logQ);
+      logSnap.forEach(d => batch.delete(d.ref));
+
+      await batch.commit();
+      toast.success('Semester reset: all attendance counts set to zero');
+      setIsResetConfirmOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to reset semester');
+    }
+  };
+
 
   const handleApplyOverride = async () => {
     if (!overrideSubject?.id) return;
@@ -530,7 +578,7 @@ export const AttendanceModule = () => {
       {/* ── TOP HERO HEADER BAR ── */}
       <div className="att-header-bar">
         <div className="att-header-left">
-          <h1 className="att-hero-title">Class Attendance & Timetable</h1>
+          <h1 className="att-hero-title">Attendance</h1>
           <span className="att-stats-subtitle">
             {globalPct !== null ? `${globalPct}% overall` : 'No classes'} · {globalAttended}/{globalTotal} attended
           </span>
@@ -554,7 +602,7 @@ export const AttendanceModule = () => {
             onClick={handleToggleHoliday}
           >
             <span>🌴</span>
-            <span>{isSelectedHoliday ? 'Holiday (Off)' : 'Mark Holiday'}</span>
+            <span>{isSelectedHoliday ? 'Holiday' : 'Holiday'}</span>
           </button>
 
           {/* Timetable Setup */}
@@ -564,7 +612,7 @@ export const AttendanceModule = () => {
             onClick={() => setIsTimetableModalOpen(true)}
           >
             <Settings size={14} />
-            <span>Setup Timetable</span>
+            <span>Setup</span>
           </button>
 
           {/* Export CSV */}
@@ -601,13 +649,13 @@ export const AttendanceModule = () => {
         {/* Meter Card */}
         <div className="att-overview-card">
           <div className="att-overview-top">
-            <h3 className="att-overview-title">Semester Overview</h3>
-            <span className="att-overview-stat-text">{globalAttended}/{globalTotal} total classes</span>
+            <h3 className="att-overview-title">Semester overview</h3>
+            <span className="att-overview-stat-text">{globalAttended}/{globalTotal} classes</span>
           </div>
 
           <div className="att-overview-meter-box">
             <span className="att-overview-big-pct" style={{
-              color: globalPct !== null ? (globalPct >= 75 ? '#5eda9e' : (globalPct >= 70 ? '#fbbf24' : '#ff6961')) : '#8e8e93'
+              color: globalPct !== null ? (globalPct >= 75 ? '#5eda9e' : (globalPct >= 70 ? '#ff9f4d' : '#ff6961')) : '#8e8e93'
             }}>
               {globalPct !== null ? `${globalPct}%` : '--%'}
             </span>
@@ -628,13 +676,14 @@ export const AttendanceModule = () => {
           <div className="att-warning-card">
             <div className="att-warning-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <AlertTriangle size={16} />
-                <span>Low Attendance Warning ({warningSubjects.length})</span>
+                <AlertTriangle size={16} color="#ff9f4d" />
+                <span>Low Attendance</span>
               </div>
               <button
                 type="button"
                 className="att-card-action-btn"
                 onClick={() => setDismissedWarnings(new Set(warningSubjects.map(s => s.id!)))}
+                style={{ color: '#fca5a5' }}
               >
                 Dismiss
               </button>
@@ -659,7 +708,7 @@ export const AttendanceModule = () => {
           <div className="att-overview-card" style={{ justifyContent: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#5eda9e' }}>
               <CheckCircle2 size={20} />
-              <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>All subjects meet the target percentage!</span>
+              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>All subjects meet the target percentage!</span>
             </div>
           </div>
         )}
@@ -669,7 +718,7 @@ export const AttendanceModule = () => {
       <div>
         <div className="att-week-nav-bar">
           <div className="att-week-range-label">
-            <CalendarDays size={16} color="#a599ff" />
+            <CalendarDays size={15} color="#a599ff" />
             <span>{weekRangeLabel}</span>
           </div>
 
@@ -730,27 +779,27 @@ export const AttendanceModule = () => {
       </div>
 
       {/* ── TODAY'S SCHEDULED SESSIONS ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
         <div className="att-section-header">
           <h3 className="att-section-title">
-            {selectedDate === todayStr ? "Today's Schedule" : `Schedule for ${formatDisplayDate(selectedDate)}`}
+            {selectedDate === todayStr ? "Today's Classes" : `Classes for ${formatDisplayDate(selectedDate)}`}
           </h3>
         </div>
 
         {isSelectedHoliday ? (
-          <div className="notes-empty-state">
-            <span style={{ fontSize: '2.5rem' }}>🌴</span>
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>Holiday</h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--att-text-tertiary)', margin: 0 }}>
+          <div className="att-overview-card" style={{ textAlign: 'center', padding: '2rem 1rem', alignItems: 'center' }}>
+            <span style={{ fontSize: '2rem' }}>🌴</span>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', margin: '0.4rem 0 0.2rem 0' }}>Holiday</h3>
+            <p style={{ fontSize: '0.78rem', color: '#8e8e93', margin: 0 }}>
               Enjoy your day off! No classes scheduled for this date.
             </p>
           </div>
         ) : todaySessions.length === 0 ? (
-          <div className="notes-empty-state">
-            <CheckCircle2 size={32} color="var(--att-accent-purple)" />
-            <h3 style={{ fontSize: '1.05rem', fontWeight: 600, color: '#fff', margin: 0 }}>No classes scheduled</h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--att-text-tertiary)', margin: 0 }}>
-              No lectures or labs assigned to this day in your timetable.
+          <div className="att-overview-card" style={{ textAlign: 'center', padding: '2rem 1rem', alignItems: 'center' }}>
+            <CheckCircle2 size={26} color="#a599ff" />
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff', margin: '0.4rem 0 0.2rem 0' }}>All clear!</h3>
+            <p style={{ fontSize: '0.78rem', color: '#8e8e93', margin: 0 }}>
+              No classes scheduled for this day. Relax or catch up on work.
             </p>
           </div>
         ) : (
@@ -839,17 +888,14 @@ export const AttendanceModule = () => {
         )}
       </div>
 
-      {/* ── SUBJECT BREAKDOWN GRID ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+      {/* ── SUBJECT BREAKDOWN GRID (By Subject) ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', marginTop: '0.4rem' }}>
         <div className="att-section-header">
-          <h3 className="att-section-title">Subject Breakdown & Bunk Budget</h3>
+          <h3 className="att-section-title">By Subject</h3>
           <button
             type="button"
             className="att-card-action-btn"
-            onClick={() => {
-              setSubjectForm({ name: '', targetPercentage: 75 });
-              setEditSubjectModal({ isOpen: true, subject: null });
-            }}
+            onClick={() => setAddEditModal({ isOpen: true, subject: null })}
           >
             <Plus size={13} /> Add Subject
           </button>
@@ -865,10 +911,7 @@ export const AttendanceModule = () => {
             <button
               type="button"
               className="att-primary-add-btn"
-              onClick={() => {
-                setSubjectForm({ name: '', targetPercentage: 75 });
-                setEditSubjectModal({ isOpen: true, subject: null });
-              }}
+              onClick={() => setAddEditModal({ isOpen: true, subject: null })}
               style={{ marginTop: '0.5rem' }}
             >
               <Plus size={14} strokeWidth={2.5} />
@@ -876,6 +919,7 @@ export const AttendanceModule = () => {
             </button>
           </div>
         ) : (
+
           <div className="att-subjects-grid">
             {subjects.map(subject => {
               const att = (subject.classesAttended || 0) + (subject.labsAttended || 0);
@@ -966,10 +1010,7 @@ export const AttendanceModule = () => {
                     <button
                       type="button"
                       className="att-card-action-btn"
-                      onClick={() => {
-                        setSubjectForm({ name: subject.name, targetPercentage: subject.targetPercentage || 75 });
-                        setEditSubjectModal({ isOpen: true, subject });
-                      }}
+                      onClick={() => setAddEditModal({ isOpen: true, subject })}
                     >
                       <Edit2 size={12} />
                       <span>Edit</span>
@@ -982,143 +1023,64 @@ export const AttendanceModule = () => {
         )}
       </div>
 
-      {/* ── TIMETABLE SETUP STUDIO MODAL ── */}
-      {isTimetableModalOpen && (
-        <div className="notes-modal-overlay" onClick={() => setIsTimetableModalOpen(false)}>
-          <div
-            className="notes-modal-content"
-            style={{ maxWidth: '780px', maxHeight: '85vh', overflowY: 'auto' }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="notes-modal-header">
-              <h3 className="notes-modal-title">Weekly Timetable Setup</h3>
-              <button type="button" className="notes-modal-close-btn" onClick={() => setIsTimetableModalOpen(false)}>
-                <X size={18} />
-              </button>
-            </div>
+      {/* ── TIMETABLE STUDIO MODAL (MOBILE-TWIN PARITY) ── */}
+      <TimetableModal
+        isOpen={isTimetableModalOpen}
+        onClose={() => setIsTimetableModalOpen(false)}
+        subjects={subjects}
+        onAddSubject={() => setAddEditModal({ isOpen: true, subject: null })}
+        onEditSubject={(subject) => setAddEditModal({ isOpen: true, subject })}
+        onDeleteSubject={(id) => setDeleteConfirmId(id)}
+        onExportCSV={handleExportCSV}
+        onResetSemester={() => setIsResetConfirmOpen(true)}
+      />
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <p style={{ fontSize: '0.8rem', color: 'var(--att-text-tertiary)', margin: 0 }}>
-                Configure the number of classes and labs for each day of the week (Mon–Sat).
-              </p>
-
-              {subjects.map(sub => (
-                <div
-                  key={sub.id}
-                  style={{
-                    background: 'var(--att-bg-surface-elevated)',
-                    border: '1px solid var(--att-border-subtle)',
-                    borderRadius: 12,
-                    padding: '0.85rem'
-                  }}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.65rem' }}>
-                    <span style={{ fontWeight: 600, color: '#ffffff' }}>{sub.name}</span>
-                    <button
-                      type="button"
-                      className="att-card-action-btn"
-                      style={{ color: 'var(--att-accent-rose)' }}
-                      onClick={() => setDeleteConfirmId(sub.id!)}
-                    >
-                      <Trash2 size={13} />
-                      <span>Delete</span>
-                    </button>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '0.45rem' }}>
-                    {['1', '2', '3', '4', '5', '6'].map(dayKey => {
-                      const daySched = resolveSubjectDaySchedule(sub, Number(dayKey));
-                      return (
-                        <div
-                          key={dayKey}
-                          style={{
-                            background: 'var(--att-bg-surface)',
-                            border: '1px solid var(--att-border-subtle)',
-                            borderRadius: 8,
-                            padding: '0.45rem',
-                            textAlign: 'center'
-                          }}
-                        >
-                          <div style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--att-text-tertiary)', marginBottom: '0.3rem' }}>
-                            {DAY_SHORT[Number(dayKey)]}
-                          </div>
-
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                            <label style={{ fontSize: '0.65rem', color: '#a599ff' }}>
-                              Class:
-                              <input
-                                type="number"
-                                min="0"
-                                max="5"
-                                value={daySched.classCount || 0}
-                                onChange={async (e) => {
-                                  const val = parseInt(e.target.value, 10) || 0;
-                                  const updated = {
-                                    ...sub.schedule,
-                                    [dayKey]: { ...daySched, classCount: val }
-                                  };
-                                  await updateDoc(doc(db, 'attendance_subjects', sub.id!), { schedule: updated });
-                                }}
-                                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--att-border-subtle)', color: '#fff', borderRadius: 4, textAlign: 'center', padding: '2px 0' }}
-                              />
-                            </label>
-
-                            <label style={{ fontSize: '0.65rem', color: '#38bdf8' }}>
-                              Lab:
-                              <input
-                                type="number"
-                                min="0"
-                                max="3"
-                                value={daySched.labCount || 0}
-                                onChange={async (e) => {
-                                  const val = parseInt(e.target.value, 10) || 0;
-                                  const updated = {
-                                    ...sub.schedule,
-                                    [dayKey]: { ...daySched, labCount: val }
-                                  };
-                                  await updateDoc(doc(db, 'attendance_subjects', sub.id!), { schedule: updated });
-                                }}
-                                style={{ width: '100%', background: 'rgba(255,255,255,0.06)', border: '1px solid var(--att-border-subtle)', color: '#fff', borderRadius: 4, textAlign: 'center', padding: '2px 0' }}
-                              />
-                            </label>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="notes-modal-footer">
-              <button
-                type="button"
-                className="att-primary-add-btn"
-                onClick={() => setIsTimetableModalOpen(false)}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── ADD / EDIT SUBJECT MODAL (CALIBRATION & FULL SCHEDULE) ── */}
+      <AddSubjectModal
+        isOpen={addEditModal.isOpen}
+        onClose={() => setAddEditModal({ isOpen: false, subject: null })}
+        existingSubject={addEditModal.subject}
+        onSave={handleSaveSubjectData}
+      />
 
       {/* ── SUBJECT HISTORY MODAL ── */}
       {selectedHistorySubject && (
         <div className="notes-modal-overlay" onClick={() => setSelectedHistorySubject(null)}>
           <div
             className="notes-modal-content"
-            style={{ maxWidth: '580px', maxHeight: '80vh', overflowY: 'auto' }}
+            style={{
+              maxWidth: '580px',
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              overscrollBehavior: 'contain',
+              padding: '1.35rem 1.35rem 1.1rem 1.35rem',
+            }}
             onClick={e => e.stopPropagation()}
+            onWheel={e => e.stopPropagation()}
           >
-            <div className="notes-modal-header">
+            <div className="notes-modal-header" style={{ flexShrink: 0, paddingBottom: '0.75rem' }}>
               <h3 className="notes-modal-title">{selectedHistorySubject.name} Log History</h3>
               <button type="button" className="notes-modal-close-btn" onClick={() => setSelectedHistorySubject(null)}>
                 <X size={18} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <div
+              className="custom-scrollbar"
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+                flex: 1,
+                overflowY: 'auto',
+                paddingRight: '6px',
+                overscrollBehavior: 'contain',
+                minHeight: 0,
+                marginTop: '0.5rem',
+              }}
+            >
               {(() => {
                 const histLogs = (selectedHistorySubject.id ? logsBySubjectId[selectedHistorySubject.id] : null) || logsBySubjectId[selectedHistorySubject.name] || [];
                 if (histLogs.length === 0) {
@@ -1332,56 +1294,17 @@ export const AttendanceModule = () => {
         </div>
       )}
 
-      {/* ── ADD/EDIT SUBJECT MODAL ── */}
-      {editSubjectModal.isOpen && (
-        <div className="notes-modal-overlay" onClick={() => setEditSubjectModal({ isOpen: false, subject: null })}>
-          <div className="notes-modal-content" onClick={e => e.stopPropagation()}>
-            <div className="notes-modal-header">
-              <h3 className="notes-modal-title">{editSubjectModal.subject ? 'Edit Subject' : 'Add Subject'}</h3>
-              <button type="button" className="notes-modal-close-btn" onClick={() => setEditSubjectModal({ isOpen: false, subject: null })}>
-                <X size={18} />
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
-                Subject Name:
-                <input
-                  type="text"
-                  placeholder="e.g. Distributed Systems"
-                  className="notes-search-bar notes-search-input"
-                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
-                  value={subjectForm.name}
-                  onChange={e => setSubjectForm({ ...subjectForm, name: e.target.value })}
-                  autoFocus
-                />
-              </label>
-
-              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
-                Target Attendance Percentage: ({subjectForm.targetPercentage}%)
-                <input
-                  type="range"
-                  min="50"
-                  max="95"
-                  step="5"
-                  value={subjectForm.targetPercentage}
-                  onChange={e => setSubjectForm({ ...subjectForm, targetPercentage: parseInt(e.target.value, 10) })}
-                  style={{ width: '100%', accentColor: 'var(--att-accent-purple)', marginTop: '0.35rem' }}
-                />
-              </label>
-            </div>
-
-            <div className="notes-modal-footer">
-              <button type="button" className="att-action-pill-btn" onClick={() => setEditSubjectModal({ isOpen: false, subject: null })}>
-                Cancel
-              </button>
-              <button type="button" className="att-primary-add-btn" onClick={handleSaveSubject}>
-                Save Subject
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── RESET SEMESTER CONFIRM DIALOG ── */}
+      <ConfirmDialog
+        isOpen={isResetConfirmOpen}
+        title="Reset Entire Semester"
+        message="Are you sure you want to reset all attendance counts to 0 and wipe your attendance logs? This action is permanent and cannot be undone."
+        confirmText="Reset Everything"
+        cancelText="Cancel"
+        type="danger"
+        onConfirm={handleResetSemesterConfirmed}
+        onCancel={() => setIsResetConfirmOpen(false)}
+      />
 
       {/* ── DELETE CONFIRM DIALOG ── */}
       <ConfirmDialog
@@ -1403,3 +1326,4 @@ export const AttendanceModule = () => {
     </div>
   );
 };
+

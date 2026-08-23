@@ -39,8 +39,9 @@ export const CalendarModule: React.FC = () => {
   } = useGlobalData();
 
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split('T')[0];
+    return getLocalDateString();
   });
+
 
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
   const [customEvents, setCustomEvents] = useState<MergedCalendarEvent[]>([]);
@@ -126,13 +127,14 @@ export const CalendarModule: React.FC = () => {
     // (B) Academic Timetable (Classes & Labs) for all dates
     if (attendanceSubjects && attendanceSubjects.length > 0) {
       // Generate for a rolling 60-day window around selectedDate
-      const baseD = new Date(selectedDate + 'T00:00:00');
+      const [selY, selM, selD] = selectedDate.split('-').map(Number);
+      const baseD = new Date(selY, (selM || 1) - 1, selD || 1);
       for (let offset = -30; offset <= 30; offset++) {
         const curD = new Date(baseD);
         curD.setDate(baseD.getDate() + offset);
         const dayOfWeekNum = curD.getDay();
         const dayOfWeekStr = dayOfWeekNum.toString();
-        const dateStr = curD.toISOString().split('T')[0];
+        const dateStr = getLocalDateString(curD);
         const dayName = DAY_NAMES[dayOfWeekNum];
 
         attendanceSubjects.forEach(subject => {
@@ -177,12 +179,13 @@ export const CalendarModule: React.FC = () => {
 
     // (C) Gym Workouts
     if (gymSchedule || gymLogs) {
-      const baseD = new Date(selectedDate + 'T00:00:00');
+      const [selY, selM, selD] = selectedDate.split('-').map(Number);
+      const baseD = new Date(selY, (selM || 1) - 1, selD || 1);
       for (let offset = -30; offset <= 30; offset++) {
         const curD = new Date(baseD);
         curD.setDate(baseD.getDate() + offset);
         const dayOfWeekNum = curD.getDay();
-        const dateStr = curD.toISOString().split('T')[0];
+        const dateStr = getLocalDateString(curD);
 
         const gLog = (gymLogs || []).find((g: any) => g.date === dateStr);
         const planKey = (dayOfWeekNum === 0 ? 7 : dayOfWeekNum) as keyof typeof WEEKDAY_TO_PLAN;

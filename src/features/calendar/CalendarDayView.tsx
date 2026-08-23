@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 import { getEventColors, format12Hour, HOUR_HEIGHT, parseTimeTo24h } from './calendarUtils';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { Clock, MapPin, CheckCircle2, AlertCircle, Sparkles, Plus } from 'lucide-react';
+
 
 export interface MergedCalendarEvent {
   id: string;
@@ -44,8 +46,9 @@ export const CalendarDayView: React.FC<CalendarDayViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalDateString();
   const isToday = selectedDate === todayStr;
+
   const currentHour = currentTime.getHours();
   const currentMin = currentTime.getMinutes();
   const currentTimeMins = currentHour * 60 + currentMin;

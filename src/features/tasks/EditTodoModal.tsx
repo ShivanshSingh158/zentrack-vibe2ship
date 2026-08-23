@@ -20,6 +20,7 @@ interface EditTodoModalProps {
   onClose: () => void;
   todo: TodoItem | null;
   onSave: (updated: TodoItem) => Promise<void>;
+  onDelete?: (id: string) => void;
 }
 
 const DEFAULT_TAG_LIBRARY = ['study', 'work', 'gym', 'exam', 'project', 'health', 'reading', 'errand'];
@@ -36,6 +37,7 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
   onClose,
   todo,
   onSave,
+  onDelete,
 }) => {
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
@@ -329,13 +331,41 @@ export const EditTodoModal: React.FC<EditTodoModalProps> = ({
             </label>
 
             {/* Footer Actions */}
-            <div className="task-modal-studio-footer">
-              <button type="button" className="studio-btn-cancel" onClick={onClose}>
-                Cancel
-              </button>
-              <button type="submit" disabled={saving} className="studio-btn-primary">
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
+            <div className="task-modal-studio-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              {onDelete && todo.id ? (
+                <button
+                  type="button"
+                  className="studio-btn-danger"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    color: '#ef4444',
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.25)',
+                    padding: '0.5rem 0.85rem',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    fontWeight: 600
+                  }}
+                  onClick={() => {
+                    onDelete(todo.id!);
+                    onClose();
+                  }}
+                >
+                  <Trash2 size={14} />
+                  <span>Delete Task</span>
+                </button>
+              ) : <div />}
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button type="button" className="studio-btn-cancel" onClick={onClose}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={saving} className="studio-btn-primary">
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
             </div>
           </form>
         </motion.div>

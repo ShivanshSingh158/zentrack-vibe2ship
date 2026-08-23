@@ -382,7 +382,7 @@ const AnalyticsModuleInner = () => {
       {/* ── TOP HERO HEADER BAR ── */}
       <div className="analytics-header-bar">
         <div className="analytics-header-left">
-          <h1 className="analytics-hero-title">Productivity Analytics & ZenScore</h1>
+          <h1 className="analytics-hero-title">Analytics</h1>
           <div className="analytics-live-badge">
             <span className="analytics-live-dot" />
             <span>Live Sync</span>

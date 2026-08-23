@@ -54,26 +54,49 @@ type Level = {
 import { getXPState, LEVEL_TITLES, LEVEL_THRESHOLDS, subscribeXPChanges } from '../services/xpSystem';
 
 const LEVEL_COLORS: [string, string][] = [
-  ['#34d399', '#22d3ee'], // 0
-  ['#22d3ee', '#3b82f6'], // 1
-  ['#14b8a6', '#0ea5e9'], // 2 - Sentinel
-  ['#3b82f6', '#6366f1'], // 3 - Guardian
-  ['#a855f7', '#ec4899'], // 4
-  ['#f59e0b', '#fbbf24'], // 5
-  ['#f97316', '#ef4444'], // 6
-  ['#ec4899', '#8b5cf6'], // 7
-  ['#94a3b8', '#f8fafc'], // 8 - Paragon (Silver/Ice White)
-  ['#dc2626', '#7f1d1d'], // 9 - Titan (Crimson/Dark Red)
-  ['#6ee7b7', '#059669'], // 10 - Ascendant (Mint/Emerald)
-  ['#ca8a04', '#fef08a'], // 11 - Exalted (Rose Gold/Peach)
-  ['#7e22ce', '#d946ef'], // 12 - Sovereign (Purple/Magenta)
-  ['#2563eb', '#22d3ee'], // 13 - Archon (Neon Blue/Cyan)
-  ['#1e3a8a', '#e0f2fe'], // 14 - Celestial (Midnight Blue/White)
-  ['#a78bfa', '#fdf4ff'], // 15 - Ethereal (Lilac/Pearl)
-  ['#f43f5e', '#fdba74'], // 16 - Empyrean (Cherry Red/Orange)
-  ['#0f766e', '#5eead4'], // 17 - Astral (Deep Ocean/Aquamarine)
-  ['#334155', '#e2e8f0'], // 18 - Zenith (Obsidian/Platinum)
-  ['#eab308', '#ffffff'], // 19 - Apex (Pure Gold/White)
+  ['#34d399', '#10b981'], // 0 Seeker (Emerald Nature)
+  ['#06b6d4', '#0284c7'], // 1 Warden (Cyan Hydro Aegis)
+  ['#14b8a6', '#0d9488'], // 2 Sentinel (Deep Teal Vanguard)
+  ['#3b82f6', '#1d4ed8'], // 3 Guardian (Cobalt Steel Protector)
+  ['#a855f7', '#7c3aed'], // 4 Vanguard (Royal Violet Knight)
+  ['#f59e0b', '#d97706'], // 5 Luminary (Solar Gold Sage)
+  ['#ea580c', '#c2410c'], // 6 Legend (Blazing Magma Flame)
+  ['#ec4899', '#db2777'], // 7 Mythic (Mythic Rose Plasma)
+  ['#64748b', '#94a3b8'], // 8 Paragon (Silver Metallic Titan)
+  ['#dc2626', '#991b1b'], // 9 Titan (Blood Crimson Behemoth)
+  ['#10b981', '#047857'], // 10 Ascendant (Jade Transcendent)
+  ['#eab308', '#ca8a04'], // 11 Exalted (Radiant Solar Dawn)
+  ['#9333ea', '#6b21a8'], // 12 Sovereign (Imperial Purple Monarch)
+  ['#2563eb', '#06b6d4'], // 13 Archon (Electric Plasma Archon)
+  ['#1e40af', '#60a5fa'], // 14 Celestial (Cosmic Starfield Deep Blue)
+  ['#818cf8', '#c084fc'], // 15 Ethereal (Ethereal Lavender Horizon)
+  ['#f43f5e', '#fb923c'], // 16 Empyrean (Supernova Coral Flare)
+  ['#0d9488', '#2dd4bf'], // 17 Astral (Astral Aurora Borealis)
+  ['#475569', '#e2e8f0'], // 18 Zenith (Dark Obsidian Platinum)
+  ['#ffd700', '#ff7bf0'], // 19 Apex (Supreme Singularity Rainbow Gold)
+];
+
+const TIER_ARCHETYPES = [
+  { realm: 'Initiate Realm', element: 'Wind & Discovery', perk: '+5% XP on Daily Quests', title: 'The Seeker of Wisdom' },
+  { realm: 'Initiate Realm', element: 'Iron & Discipline', perk: 'Habit Habituation Buffer', title: 'The Iron Warden' },
+  { realm: 'Initiate Realm', element: 'Cyan Light', perk: 'Pomodoro Focus +10 XP', title: 'The Vigilant Sentinel' },
+  { realm: 'Initiate Realm', element: 'Aegis Shield', perk: 'Zero-Miss Streak Protection', title: 'The Resilient Guardian' },
+  { realm: 'Initiate Realm', element: 'Neon Lightning', perk: 'Multi-Task Velocity Bonus', title: 'The Spearhead Vanguard' },
+  { realm: 'Luminary Realm', element: 'Solar Flare', perk: '+15% Streak Multiplier & Aura', title: 'The Radiant Luminary' },
+  { realm: 'Luminary Realm', element: 'Blazing Fire', perk: '2x XP on Perfect Days', title: 'The Immortal Legend' },
+  { realm: 'Luminary Realm', element: 'Astral Violet', perk: 'Constellation HUD Glow Theme', title: 'The Cosmic Mythic' },
+  { realm: 'Luminary Realm', element: 'Glacial Platinum', perk: 'Mastery Aura Halo Unlocked', title: 'The Flawless Paragon' },
+  { realm: 'Luminary Realm', element: 'Volcanic Core', perk: 'High-Impact Focus Surge', title: 'The Earth-Shaker Titan' },
+  { realm: 'Sovereign Realm', element: 'Emerald Ether', perk: 'Instant Recall Accelerator', title: 'The High Ascendant' },
+  { realm: 'Sovereign Realm', element: 'Golden Dawn', perk: 'Prestige Streak Emblem', title: 'The Exalted Sovereign' },
+  { realm: 'Sovereign Realm', element: 'Imperial Velvet', perk: 'Domain Authority Multiplier', title: 'The True Sovereign' },
+  { realm: 'Sovereign Realm', element: 'Arcane Plasma', perk: 'Synapse Speed Overdrive', title: 'The Star Archon' },
+  { realm: 'Sovereign Realm', element: 'Deep Cosmos', perk: 'Galactic Horizon Badge', title: 'The Celestial Sentinel' },
+  { realm: 'Cosmic Apex', element: 'Pure Spirit', perk: 'Flow-State Transmutation', title: 'The Ethereal Soul' },
+  { realm: 'Cosmic Apex', element: 'Supernova', perk: 'Cosmic Flare HUD Glow', title: 'The Empyrean Flare' },
+  { realm: 'Cosmic Apex', element: 'Abyssal Void', perk: 'Omnipresent Habit Sync', title: 'The Astral Wanderer' },
+  { realm: 'Cosmic Apex', element: 'Obsidian Zenith', perk: 'Zenith Mastery Halo', title: 'The Absolute Zenith' },
+  { realm: 'Cosmic Apex', element: 'Supreme Singularity', perk: 'Eternal Zen Omniscience', title: 'The Apex Divinity' },
 ];
 
 const LEVEL_ICONS = [
@@ -335,6 +358,7 @@ export default function XPConstellationScreen() {
   const scrollRef = useRef<Animated.ScrollView>(null);
   const nodePositions = useRef<{[key: number]: number}>({});
   const [currentXP, setCurrentXP] = useState(0);
+  const [spotlightIndex, setSpotlightIndex] = useState<number | null>(null);
 
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
@@ -373,15 +397,9 @@ export default function XPConstellationScreen() {
   useEffect(() => {
     const t = setTimeout(() => {
       if (scrollRef.current) {
-        // reversed array index: 0 is highest level (Apex), 19 is lowest level (Seeker)
         const reverseIndex = LEVELS.length - 1 - currentLevelIndex;
-        
-        // Grab the exact Y position of the current level's node
         const targetY = nodePositions.current[reverseIndex];
-        
         if (targetY !== undefined) {
-          // Subtract a portion of the screen height so the current level is positioned 
-          // in the middle/lower-middle of the screen
           const scrollY = Math.max(targetY - (SCREEN_H / 2) + 120, 0); 
           scrollRef.current.scrollTo({ y: scrollY, animated: true });
         }
@@ -389,6 +407,159 @@ export default function XPConstellationScreen() {
     }, 250);
     return () => clearTimeout(t);
   }, [currentLevelIndex]);
+
+  // Transition Shared Values
+  const [navDirection, setNavDirection] = useState<'next' | 'prev'>('next');
+  const transX = useSharedValue(0);
+  const transScale = useSharedValue(1);
+  const transRotate = useSharedValue(0);
+  const transOpacity = useSharedValue(1);
+
+  const auraPulseScale = useSharedValue(1);
+  const auraPulseOpacity = useSharedValue(0.75);
+
+  const contentY = useSharedValue(0);
+  const contentOpacity = useSharedValue(1);
+
+  // Mascot Floating Shared Values
+  const floatY = useSharedValue(0);
+  const pulseScale = useSharedValue(1);
+  const rotateRays = useSharedValue(0);
+
+  const triggerTransition = useCallback((dir: 'next' | 'prev', newIndex: number) => {
+    setNavDirection(dir);
+    setSpotlightIndex(newIndex);
+
+    const isApexGod = newIndex >= 15;
+    const isSovereign = newIndex >= 10 && newIndex < 15;
+    const isLuminary = newIndex >= 5 && newIndex < 10;
+
+    // 1. Initial burst positioning according to Realm
+    transX.value = dir === 'next' ? 65 : -65;
+    transOpacity.value = 0.15;
+    
+    if (isApexGod) {
+      transScale.value = dir === 'next' ? 1.65 : 0.35;
+      transRotate.value = dir === 'next' ? -12 : 12;
+    } else if (isSovereign) {
+      transScale.value = 0.35;
+      transRotate.value = dir === 'next' ? -55 : 55;
+    } else if (isLuminary) {
+      transScale.value = 1.45;
+      transRotate.value = 0;
+    } else {
+      transScale.value = 0.55;
+      transRotate.value = dir === 'next' ? -18 : 18;
+    }
+
+    auraPulseScale.value = 1.4;
+    auraPulseOpacity.value = 0.9;
+
+    contentY.value = dir === 'next' ? 14 : -14;
+    contentOpacity.value = 0.15;
+
+    // 2. Smooth spring physics & crisp easing (100% instant, no delays)
+    transX.value = withSpring(0, { damping: 18, stiffness: 240, mass: 0.7 });
+    transScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.8 });
+    transRotate.value = withSpring(0, { damping: 20, stiffness: 260 });
+    transOpacity.value = withTiming(1, { duration: 160, easing: Easing.out(Easing.ease) });
+
+    auraPulseScale.value = withTiming(1, { duration: 350, easing: Easing.out(Easing.quad) });
+    auraPulseOpacity.value = withTiming(0.4, { duration: 350, easing: Easing.out(Easing.quad) });
+
+    contentY.value = withSpring(0, { damping: 20, stiffness: 260 });
+    contentOpacity.value = withTiming(1, { duration: 160, easing: Easing.out(Easing.ease) });
+  }, []);
+
+  const openSpotlight = useCallback((index: number) => {
+    setNavDirection('next');
+    setSpotlightIndex(index);
+
+    transX.value = 0;
+    transScale.value = 0.45;
+    transRotate.value = -12;
+    transOpacity.value = 0.1;
+
+    contentY.value = 18;
+    contentOpacity.value = 0.1;
+
+    transScale.value = withSpring(1, { damping: 18, stiffness: 220, mass: 0.8 });
+    transRotate.value = withSpring(0, { damping: 20, stiffness: 260 });
+    transOpacity.value = withTiming(1, { duration: 180 });
+
+    contentY.value = withSpring(0, { damping: 20, stiffness: 260 });
+    contentOpacity.value = withTiming(1, { duration: 180 });
+  }, []);
+
+  const handleNext = useCallback(() => {
+    if (spotlightIndex !== null && spotlightIndex < LEVELS.length - 1) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      triggerTransition('next', spotlightIndex + 1);
+    }
+  }, [spotlightIndex, triggerTransition]);
+
+  const handlePrev = useCallback(() => {
+    if (spotlightIndex !== null && spotlightIndex > 0) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      triggerTransition('prev', spotlightIndex - 1);
+    }
+  }, [spotlightIndex, triggerTransition]);
+
+  useEffect(() => {
+    if (spotlightIndex !== null) {
+      floatY.value = withRepeat(
+        withSequence(
+          withTiming(-12, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+          withTiming(0, { duration: 1800, easing: Easing.inOut(Easing.quad) })
+        ),
+        -1,
+        true
+      );
+      pulseScale.value = withRepeat(
+        withSequence(
+          withTiming(1.15, { duration: 1400, easing: Easing.inOut(Easing.quad) }),
+          withTiming(1, { duration: 1400, easing: Easing.inOut(Easing.quad) })
+        ),
+        -1,
+        true
+      );
+      rotateRays.value = withRepeat(
+        withTiming(360, { duration: 30000, easing: Easing.linear }),
+        -1,
+        false
+      );
+    }
+  }, [spotlightIndex]);
+
+  const mascotAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: transX.value },
+      { translateY: floatY.value },
+      { scale: transScale.value },
+      { rotate: `${transRotate.value}deg` }
+    ],
+    opacity: transOpacity.value,
+  }));
+
+  const auraAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: transX.value },
+      { translateY: floatY.value },
+      { scale: pulseScale.value * auraPulseScale.value },
+      { rotate: `${transRotate.value * 0.5}deg` }
+    ],
+    opacity: auraPulseOpacity.value,
+  }));
+
+  const contentAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: contentY.value }],
+    opacity: contentOpacity.value,
+  }));
+
+  const activeLevel = spotlightIndex !== null ? LEVELS[spotlightIndex] : null;
+  const activeArchetype = spotlightIndex !== null ? TIER_ARCHETYPES[spotlightIndex] : null;
+  const isApex = spotlightIndex === 19;
+  const activeGradient = activeLevel ? activeLevel.colors : ['#34d399', '#10b981'];
 
   return (
     <View style={styles.container}>
@@ -474,7 +645,8 @@ export default function XPConstellationScreen() {
                   status={actualStatus}
                   layout={layout}
                   onPress={() => {
-                    Haptics.selectionAsync();
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    openSpotlight(originalIndex);
                   }}
                 />
               </View>
@@ -483,6 +655,7 @@ export default function XPConstellationScreen() {
         )}
       </ScrollView>
 
+      {/* Floating Level Status Footer Pill */}
       <Animated.View 
         entering={FadeInDown.delay(200)} 
         style={[
@@ -493,9 +666,204 @@ export default function XPConstellationScreen() {
           }
         ]}
       >
-        <Text style={styles.footerLevel}>{LEVELS[currentLevelIndex].name}</Text>
-        <Text style={styles.footerXp}>{currentXP.toLocaleString()} XP total</Text>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            openSpotlight(currentLevelIndex);
+          }}
+          style={{ alignItems: 'center' }}
+        >
+          <Text style={styles.footerLevel}>{LEVELS[currentLevelIndex].name}</Text>
+          <Text style={styles.footerXp}>{currentXP.toLocaleString()} XP total · Tap to Inspect</Text>
+        </Pressable>
       </Animated.View>
+
+      {/* ── ASCENDED MASCOT SPOTLIGHT CINEMATIC OVERLAY ── */}
+      {spotlightIndex !== null && activeLevel && (
+        <Animated.View
+          entering={FadeIn.duration(260)}
+          style={[StyleSheet.absoluteFill, styles.spotlightOverlay]}
+        >
+          {/* Backdrop Tap to Close */}
+          <Pressable 
+            style={StyleSheet.absoluteFill} 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setSpotlightIndex(null);
+            }} 
+          />
+
+          {/* Deep Cosmic Void & Supernova Glow */}
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Svg width={SCREEN_W} height={SCREEN_H}>
+              <Defs>
+                <RadialGradient id="spotlightSupernova" cx="50%" cy="48%" r="60%">
+                  <Stop offset="0%" stopColor={isApex ? '#ffd700' : activeGradient[0]} stopOpacity={0.45} />
+                  <Stop offset="40%" stopColor={isApex ? '#ff7bf0' : activeGradient[1]} stopOpacity={0.22} />
+                  <Stop offset="80%" stopColor="#030307" stopOpacity={0.92} />
+                  <Stop offset="100%" stopColor="#000000" stopOpacity={0.98} />
+                </RadialGradient>
+              </Defs>
+              <Rect x={0} y={0} width={SCREEN_W} height={SCREEN_H} fill="url(#spotlightSupernova)" />
+              {/* Sacred Orbit Geometry */}
+              <Circle
+                cx={SCREEN_W / 2}
+                cy={SCREEN_H * 0.44}
+                r={isApex ? 160 : 130}
+                fill="none"
+                stroke={isApex ? '#ffd700' : activeGradient[0]}
+                strokeWidth={1.5}
+                strokeDasharray="6, 6"
+                opacity={0.5}
+              />
+              <Circle
+                cx={SCREEN_W / 2}
+                cy={SCREEN_H * 0.44}
+                r={isApex ? 125 : 100}
+                fill="none"
+                stroke={isApex ? '#ff7bf0' : activeGradient[1]}
+                strokeWidth={1}
+                opacity={0.4}
+              />
+            </Svg>
+          </View>
+
+          {/* Top Dismiss Pill */}
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setSpotlightIndex(null);
+            }}
+            style={styles.spotlightClosePill}
+          >
+            <Text style={styles.spotlightCloseText}>Tap anywhere to exit</Text>
+            <Ionicons name="close" size={15} color="#d1d1d6" />
+          </Pressable>
+
+          {/* Previous Mascot Navigator (Hidden on Tier 1) */}
+          {spotlightIndex > 0 && (
+            <Pressable
+              onPress={handlePrev}
+              style={[styles.spotlightNavBtn, { left: 16 }]}
+            >
+              <Ionicons name="chevron-back" size={24} color="#FFFFFF" />
+            </Pressable>
+          )}
+
+          {/* Next Mascot Navigator (Hidden on Tier 20) */}
+          {spotlightIndex < LEVELS.length - 1 && (
+            <Pressable
+              onPress={handleNext}
+              style={[styles.spotlightNavBtn, { right: 16 }]}
+            >
+              <Ionicons name="chevron-forward" size={24} color="#FFFFFF" />
+            </Pressable>
+          )}
+
+          {/* Main Cinematic Content Stack */}
+          <View 
+            style={styles.spotlightContentContainer} 
+            pointerEvents="box-none"
+          >
+            {/* Header: Realm Badge + Name with Smooth Motion */}
+            <Animated.View style={[styles.spotlightHeader, contentAnimatedStyle]}>
+              <View style={[
+                styles.spotlightRealmBadge,
+                {
+                  backgroundColor: isApex ? 'rgba(255, 215, 0, 0.2)' : `${activeGradient[0]}22`,
+                  borderColor: isApex ? '#ffd70080' : `${activeGradient[0]}60`
+                }
+              ]}>
+                <Text style={[
+                  styles.spotlightRealmBadgeText,
+                  { color: isApex ? '#ffd700' : activeGradient[0] }
+                ]}>
+                  ✦ {isApex ? 'SUPREME SINGULARITY · TIER 20' : `TIER ${spotlightIndex + 1} · ${activeArchetype?.realm || 'COSMIC REALM'}`} ✦
+                </Text>
+              </View>
+
+              <Text style={[
+                styles.spotlightHeroTitle,
+                { color: '#ffffff', textShadowColor: isApex ? 'rgba(255, 215, 0, 0.8)' : `${activeGradient[0]}80` }
+              ]}>
+                {activeLevel.name}
+              </Text>
+              <Text style={[styles.spotlightHeroSubtitle, { color: isApex ? '#ffd700' : activeGradient[0] }]}>
+                {activeArchetype?.title || `The Master of ${activeLevel.name}`}
+              </Text>
+            </Animated.View>
+
+            {/* Centered Large Hero Mascot with Kinetic Spring Engine */}
+            <View style={[styles.spotlightMascotContainer, isApex && { width: 310, height: 310 }]}>
+              {/* Outer Pulsing Supernova Aura */}
+              <Animated.Image
+                source={activeLevel.image}
+                style={[
+                  StyleSheet.absoluteFill,
+                  auraAnimatedStyle,
+                  {
+                    tintColor: isApex ? '#ffd700' : activeGradient[0],
+                  }
+                ]}
+                resizeMode="contain"
+              />
+              {/* Main Ascended Mascot Avatar */}
+              <Animated.Image
+                source={activeLevel.image}
+                style={[
+                  {
+                    width: isApex ? 300 : 230,
+                    height: isApex ? 300 : 230,
+                  },
+                  mascotAnimatedStyle
+                ]}
+                resizeMode="contain"
+              />
+            </View>
+
+            {/* Glassmorphism Lore & Powers Bento with Kinetic Spring Engine */}
+            <Animated.View style={[
+              styles.spotlightBentoCard,
+              contentAnimatedStyle,
+              {
+                borderColor: isApex ? 'rgba(255, 215, 0, 0.5)' : `${activeGradient[0]}40`,
+                shadowColor: isApex ? '#ffd700' : activeGradient[0]
+              }
+            ]}>
+              <Text style={styles.spotlightLoreText}>
+                "{activeLevel.description}"
+              </Text>
+
+              <View style={styles.spotlightBadgesRow}>
+                <View style={styles.spotlightBadgeItem}>
+                  <Text style={styles.spotlightBadgeLabel}>⚡ Element</Text>
+                  <Text style={[styles.spotlightBadgeVal, { color: isApex ? '#ffd700' : activeGradient[0] }]}>
+                    {activeArchetype?.element || 'Cosmic Aura'}
+                  </Text>
+                </View>
+
+                <View style={styles.spotlightBadgeDivider} />
+
+                <View style={styles.spotlightBadgeItem}>
+                  <Text style={styles.spotlightBadgeLabel}>🛡️ Perk</Text>
+                  <Text style={[styles.spotlightBadgeVal, { color: '#5eda9e' }]}>
+                    {activeArchetype?.perk || '+10% XP'}
+                  </Text>
+                </View>
+
+                <View style={styles.spotlightBadgeDivider} />
+
+                <View style={styles.spotlightBadgeItem}>
+                  <Text style={styles.spotlightBadgeLabel}>🎯 Required</Text>
+                  <Text style={[styles.spotlightBadgeVal, { color: '#ffffff' }]}>
+                    {activeLevel.xp.toLocaleString()} XP
+                  </Text>
+                </View>
+              </View>
+            </Animated.View>
+          </View>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -600,4 +968,140 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 2,
   },
+
+  /* ── Ascended Mascot Spotlight Styles ── */
+  spotlightOverlay: {
+    zIndex: 100,
+    backgroundColor: '#030307',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  spotlightClosePill: {
+    position: 'absolute',
+    top: 52,
+    right: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    zIndex: 20,
+  },
+  spotlightCloseText: {
+    color: '#d1d1d6',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  spotlightNavBtn: {
+    position: 'absolute',
+    top: '48%',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(20, 20, 26, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 25,
+  },
+  spotlightContentContainer: {
+    width: '100%',
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  spotlightHeader: {
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  spotlightRealmBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 6,
+  },
+  spotlightRealmBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  spotlightHeroTitle: {
+    fontSize: 34,
+    fontWeight: '900',
+    letterSpacing: -0.5,
+    textShadowRadius: 15,
+    textShadowOffset: { width: 0, height: 0 },
+  },
+  spotlightHeroSubtitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  spotlightMascotContainer: {
+    width: 250,
+    height: 250,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 12,
+  },
+  spotlightBentoCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: 'rgba(16, 16, 22, 0.88)',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  spotlightLoreText: {
+    color: '#f2f2f7',
+    fontSize: 13,
+    lineHeight: 19,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  spotlightBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  spotlightBadgeItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  spotlightBadgeLabel: {
+    color: '#8e8e93',
+    fontSize: 10,
+    fontWeight: '600',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  spotlightBadgeVal: {
+    fontSize: 11,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  spotlightBadgeDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
 });
+

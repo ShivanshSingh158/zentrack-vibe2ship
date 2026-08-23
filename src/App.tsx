@@ -228,28 +228,53 @@ const AttendanceModule = lazyWithRetry(() => import('./features/academic/Attenda
 const AssignmentModule = lazyWithRetry(() => import('./features/academic/AssignmentModule').then(m => ({ default: m.AssignmentModule })), 'AssignmentModule');
 const GradeCalculatorModule = lazyWithRetry(() => import('./features/academic/GradeCalculatorModule').then(m => ({ default: m.GradeCalculatorModule })), 'GradeCalculatorModule');
 
+// ——— 0ms Instant Route Prefetching & Warm Cache Engine —————————————————————
+export const routeLoaders: Record<string, () => Promise<any>> = {
+  '/tasks': () => import('./features/tasks/TodoListModule'),
+  '/calendar': () => import('./features/calendar'),
+  '/notes': () => import('./features/notes'),
+  '/goals': () => import('./features/goals'),
+  '/analytics': () => import('./features/analytics/AnalyticsModule'),
+  '/jobs': () => import('./features/jobs/JobTracker'),
+  '/habits': () => import('./features/habits/HabitsModule'),
+  '/learning': () => import('./features/learning/LearningChecklistModule'),
+  '/integrations': () => import('./features/integrations/IntegrationsModule'),
+  '/review': () => import('./features/review/WeeklyReviewModule'),
+  '/attendance': () => import('./features/academic/AttendanceModule'),
+  '/assignments': () => import('./features/academic/AssignmentModule'),
+  '/grades': () => import('./features/academic/GradeCalculatorModule'),
+};
+
+export const prefetchRoute = (route: string) => {
+  const loader = routeLoaders[route];
+  if (loader) loader().catch(() => {});
+};
+
+// Automatically prewarm all modules after initial page load for 0ms transitions
+if (typeof window !== 'undefined') {
+  const prewarm = () => {
+    Object.values(routeLoaders).forEach(l => l().catch(() => {}));
+  };
+  if ('requestIdleCallback' in window) {
+    (window as any).requestIdleCallback(prewarm, { timeout: 1800 });
+  } else {
+    setTimeout(prewarm, 1000);
+  }
+}
+
 // ——— Page loading skeleton (replaces spinner — feels like content is loading, not waiting) —
-// Minimized to prevent a jarring "flash" of 3 giant rectangles when navigating between modules
 const PageLoader = () => (
-  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vault-primary)' }}>
-    {/* Transparent during fast lazy-loads */}
-  </div>
+  <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--vault-primary)' }} />
 );
 
-// Performance: blur() filter removed — it triggers a full GPU repaint on every
-// route change. Pure translateY is GPU-composited (no main-thread paint cost).
-// isMobileDevice is memoized at module level — no per-render cost.
-const _isMobile = typeof window !== 'undefined'
-  ? ('ontouchstart' in window || navigator.maxTouchPoints > 0)
-  : false;
-
+// Snappy hardware-accelerated mobile-twin page transition (160ms ease-out)
 const PageTransition = ({ children }: { children: React.ReactNode }) => (
   <motion.div
     className="page-enter"
-    initial={{ opacity: 0, x: 20 }}
-    animate={{ opacity: 1, x: 0 }}
-    exit={{ opacity: 0, x: -15 }}
-    transition={{ duration: _isMobile ? 0.25 : 0.35, ease: [0.22, 1, 0.36, 1] }}
+    initial={{ opacity: 0, y: 6 }}
+    animate={{ opacity: 1, y: 0 }}
+    exit={{ opacity: 0, transition: { duration: 0.08 } }}
+    transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
     style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
   >
     {children}
@@ -260,13 +285,11 @@ const PageTransition = ({ children }: { children: React.ReactNode }) => (
 const AnimatedRoutes = () => {
   const location = useLocation();
   return (
-    // mode='wait' ensures the old page fully exits before the new page enters.
-    // This completely eliminates the DOM layout stutter/jank caused by both pages existing simultaneously.
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Navigate to="/home" replace />} />
-        <Route path="/home"        element={<ErrorBoundary name="LifeHome"><LifeHomeDashboard /></ErrorBoundary>} />
-        <Route path="/sara"        element={<ErrorBoundary name="SaraAgent"><HomeDashboard /></ErrorBoundary>} />
+        <Route path="/home"        element={<PageTransition><ErrorBoundary name="LifeHome"><LifeHomeDashboard /></ErrorBoundary></PageTransition>} />
+        <Route path="/sara"        element={<PageTransition><ErrorBoundary name="SaraAgent"><HomeDashboard /></ErrorBoundary></PageTransition>} />
         <Route path="/tasks"       element={<PageTransition><ErrorBoundary name="Tasks"><Suspense fallback={<PageLoader />}><TodoListModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/todo"        element={<Navigate to="/tasks" replace />} />
         <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><Suspense fallback={<PageLoader />}><CalendarModule /></Suspense></ErrorBoundary></PageTransition>} />
