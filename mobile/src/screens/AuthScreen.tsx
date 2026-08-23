@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { GoogleAuthProvider, signInWithCredential, signInAnonymously } from 'firebase/auth';
 import { auth } from '../services/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { RADIUS, FONT_FAMILY, FONT_SIZE, SHADOW, SPACE } from '../theme/tokens';
 import { useTheme } from "../contexts/ThemeContext";
 import TermsScreen from './TermsScreen';
@@ -44,6 +45,7 @@ export default function AuthScreen() {
   const handleSkip = async () => {
     setSkipLoading(true);
     try {
+      await AsyncStorage.multiRemove(['@zentrack_onboarding_completed', 'zentrack_onboarded_v2']);
       await signInAnonymously(auth);
     } catch (e) {
       setSkipLoading(false);

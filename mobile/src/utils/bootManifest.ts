@@ -71,7 +71,7 @@ export async function loadBootManifest(): Promise<BootManifest> {
       // 1. Navigation & Auth
       const lastRoute = map.get(BOOT_KEYS.NAV_ROUTE) || 'Home';
       const onboardedVal = map.get(BOOT_KEYS.ONBOARDING);
-      const onboarded = onboardedVal !== 'false';
+      const onboarded = onboardedVal === 'true';
 
       let optimisticUser: User | null = null;
       const userRaw = map.get(BOOT_KEYS.OPTIMISTIC_USER);
