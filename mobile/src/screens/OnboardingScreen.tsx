@@ -20,9 +20,9 @@
  * ╚═════════════════════════════════════════════════════════════════════════╝
  */
 
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated,
+  View, Text, StyleSheet, TouchableOpacity,
   Dimensions, ScrollView, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,7 +35,12 @@ import { db, auth } from '../services/firebase';
 import { awardXP } from '../services/xpSystem';
 import { requestNotificationPermissions } from '../services/notifications';
 import * as Notifications from 'expo-notifications';
-import Reanimated, { FadeIn, FadeOut, Layout } from 'react-native-reanimated';
+import Reanimated, {
+  FadeIn, FadeOut,
+  SlideInRight, SlideOutLeft,
+  SlideInLeft, SlideOutRight,
+  Layout
+} from 'react-native-reanimated';
 
 // Fonts & Theme
 import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
@@ -123,29 +128,11 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 
   // Flow State (3 rapid steps)
   const [step, setStep] = useState(0);
+  const [direction, setDirection] = useState<'forward' | 'backward'>('forward');
   const [selectedPersona, setPersona] = useState<string>('allrounder');
   const [pinnedModules, setPinned] = useState<string[]>(['Tasks', 'Gym', 'Calendar', 'Attendance']);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Transitions
-  const stepFade = useRef(new Animated.Value(0)).current;
-  const stepSlide = useRef(new Animated.Value(18)).current;
-
-  const animateIn = useCallback(() => {
-    stepFade.setValue(0);
-    stepSlide.setValue(18);
-    Animated.parallel([
-      Animated.timing(stepFade,  { toValue: 1, duration: 340, useNativeDriver: true }),
-      Animated.spring(stepSlide, { toValue: 0, tension: 65, friction: 11, useNativeDriver: true }),
-    ]).start();
-  }, [stepFade, stepSlide]);
-
-  useEffect(() => {
-    if (fontsLoaded) {
-      animateIn();
-    }
-  }, [step, fontsLoaded, animateIn]);
 
   useEffect(() => {
     return () => {
@@ -157,11 +144,13 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 
   const next = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDirection('forward');
     setStep(s => s + 1);
   };
 
   const prev = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setDirection('backward');
     setStep(s => Math.max(0, s - 1));
   };
 
@@ -302,31 +291,57 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
           <Text style={styles.globalBrand}>ZENTRACK</Text>
           <View style={styles.brandDot} />
         </View>
-        <Text style={styles.globalStep}>
+        <Reanimated.Text
+          key={step}
+          entering={FadeIn.duration(220)}
+          exiting={FadeOut.duration(150)}
+          style={styles.globalStep}
+        >
           0{step + 1} / 03
-        </Text>
+        </Reanimated.Text>
       </View>
 
-      {/* Main Animated View */}
-      <Animated.View style={[styles.stepContainer, { opacity: stepFade, transform: [{ translateY: stepSlide }] }]}>
+      {/* Main Animated View with Direction-Aware Silky Smooth Swift Slide */}
+      <Reanimated.View
+        key={`step-${step}`}
+        entering={
+          direction === 'forward'
+            ? SlideInRight.springify().damping(22).stiffness(160)
+            : SlideInLeft.springify().damping(22).stiffness(160)
+        }
+        exiting={
+          direction === 'forward'
+            ? SlideOutLeft.duration(180)
+            : SlideOutRight.duration(180)
+        }
+        style={styles.stepContainer}
+      >
         {renderStep()}
-      </Animated.View>
+      </Reanimated.View>
 
       {/* Footer Nav Bar with Back & Dots */}
-      {step > 0 && (
-        <View style={styles.footerRow}>
+      <View style={styles.footerRow}>
+        {step > 0 ? (
           <TouchableOpacity onPress={prev} style={styles.backBtn} activeOpacity={0.7}>
             <Ionicons name="arrow-back" size={16} color={colors.textSecondary} />
             <Text style={styles.backBtnText}>Back</Text>
           </TouchableOpacity>
+        ) : (
+          <View style={{ width: 60 }} />
+        )}
 
-          <View style={styles.dots}>
-            {[0, 1, 2].map(i => (
-              <View key={i} style={[styles.dot, i === step && styles.dotActive]} />
-            ))}
-          </View>
+        <View style={styles.dots}>
+          {[0, 1, 2].map(i => (
+            <Reanimated.View
+              key={i}
+              layout={Layout.springify()}
+              style={[styles.dot, i === step && styles.dotActive]}
+            />
+          ))}
         </View>
-      )}
+
+        <View style={{ width: 60 }} />
+      </View>
     </SafeAreaView>
   );
 }
