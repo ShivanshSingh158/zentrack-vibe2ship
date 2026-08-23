@@ -23,7 +23,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated,
-  Dimensions, ScrollView, Platform
+  Dimensions, ScrollView, Image, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -544,9 +544,11 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
               }
             ]}
           >
-            <View style={styles.seekerMascotCore}>
-              <Text style={styles.seekerMascotEmoji}>🔮</Text>
-            </View>
+            <Image
+              source={require('../../assets/mascots/level0.png')}
+              style={styles.seekerMascotImage}
+              resizeMode="contain"
+            />
           </Animated.View>
           {/* Subtle Ground Shadow */}
           <View style={styles.mascotGroundShadow} />
@@ -864,30 +866,23 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     marginBottom: 12,
   },
   seekerMascotOrb: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.08)',
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: isDark ? 'rgba(52,211,153,0.12)' : 'rgba(16,185,129,0.08)',
     borderWidth: 1.5,
-    borderColor: isDark ? 'rgba(165,153,255,0.35)' : 'rgba(108,92,231,0.25)',
+    borderColor: isDark ? 'rgba(52,211,153,0.35)' : 'rgba(16,185,129,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.accentPrimary,
+    shadowColor: '#34d399',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.45,
-    shadowRadius: 12,
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
     elevation: 8,
   },
-  seekerMascotCore: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.20)' : 'rgba(108,92,231,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  seekerMascotEmoji: {
-    fontSize: 24,
+  seekerMascotImage: {
+    width: 54,
+    height: 54,
   },
   mascotGroundShadow: {
     width: 32,
