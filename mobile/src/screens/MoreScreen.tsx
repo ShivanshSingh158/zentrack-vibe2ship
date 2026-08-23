@@ -1,16 +1,19 @@
-import React, { useRef, useCallback, useEffect, useState, useMemo } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  Animated, ScrollView,
+  ScrollView
 } from 'react-native';
-import Reanimated, { FadeIn } from 'react-native-reanimated';
+import Reanimated, { 
+  FadeIn, 
+  FadeOut
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
-import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
+import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import { triggerLayoutAnimation } from '../theme/animations';
-import { performSignOut } from '../contexts/domains/CoreDataContext';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { BlurView } from 'expo-blur';
 import { useTheme } from "../contexts/ThemeContext";
@@ -28,7 +31,7 @@ type ModuleDef = {
 const ALL_MODULES_DEF: ModuleDef[] = [
   { id: 'Tasks',       name: 'Tasks',       icon: 'checkmark-circle', colorDark: '#34C759', colorLight: '#059669' },
   { id: 'Habits',      name: 'Habits',      icon: 'flame',            colorDark: '#FF9500', colorLight: '#D97706' },
-  { id: 'Calendar',    name: 'Calendar',    icon: 'calendar',         colorDark: '#FF3B30', colorLight: '#DC2626' },
+  { id: 'Calendar',    name: 'Calendar',    icon: 'calendar-clear',   colorDark: '#FF3B30', colorLight: '#DC2626' },
   { id: 'Notes',       name: 'Notes Vault', icon: 'document-text',    colorDark: '#FFD60A', colorLight: '#D97706' },
   { id: 'Attendance',  name: 'Attendance',  icon: 'id-card',          colorDark: '#5856D6', colorLight: '#6C5CE7' },
   { id: 'Grades',      name: 'Grades',      icon: 'calculator',       colorDark: '#8E8E93', colorLight: '#6C5CE7' },
@@ -43,21 +46,17 @@ const DEFAULT_PINNED_MODULES = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 
 export default function MoreScreen() {
   const { colors, isDark } = useTheme();
-  const styles = makeStyles(colors, isDark);
+  const insets = useSafeAreaInsets();
+  const styles = makeStyles(colors, isDark, insets);
   const navigation = useNavigation<any>();
   const { pinnedModules, setPinnedModules } = useMobileData();
+
   const effectivePinned = useMemo(() => {
     return (pinnedModules && pinnedModules.length > 0) ? pinnedModules : DEFAULT_PINNED_MODULES;
   }, [pinnedModules]);
 
   const [isEditing, setIsEditing] = useState(false);
-  const [selected, setSelected] = useState<string[]>(effectivePinned);
-
-  useEffect(() => {
-    if (!isEditing) {
-      setSelected(effectivePinned);
-    }
-  }, [effectivePinned, isEditing]);
+  const [selected, setSelected] = useState<string[]>(() => effectivePinned);
 
   const handleClose = useCallback(() => {
     if (navigation.canGoBack()) {
@@ -74,7 +73,7 @@ export default function MoreScreen() {
     } else {
       setSelected(effectivePinned);
     }
-    setIsEditing(!isEditing);
+    setIsEditing(prev => !prev);
   }, [isEditing, effectivePinned, selected, setPinnedModules]);
 
   const navigateWithClose = useCallback((screenName: string) => {
@@ -89,11 +88,11 @@ export default function MoreScreen() {
     if (isEditing) {
       triggerLayoutAnimation();
       if (selected.includes(modId)) {
-        setSelected(selected.filter(m => m !== modId));
+        setSelected(prev => prev.filter(m => m !== modId));
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       } else {
         if (selected.length < 4) {
-          setSelected([...selected, modId]);
+          setSelected(prev => [...prev, modId]);
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         } else {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -115,128 +114,157 @@ export default function MoreScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Invisible backdrop to dismiss */}
-      <View style={styles.backdrop}>
+      {/* Fast, non-bouncy backdrop */}
+      <Reanimated.View 
+        entering={FadeIn.duration(120)} 
+        exiting={FadeOut.duration(80)} 
+        style={styles.backdrop}
+      >
         <TouchableOpacity style={styles.backdropTouch} activeOpacity={1} onPress={handleClose} />
-      </View>
+      </Reanimated.View>
 
-      {/* Bottom Sheet */}
-      <BlurView intensity={isDark ? 70 : 95} tint={isDark ? "dark" : "light"} style={styles.sheet}>
+      {/* Floating Island Card — Fast, instant module fade matching tab navigation */}
+      <Reanimated.View 
+        entering={FadeIn.duration(120)}
+        exiting={FadeOut.duration(80)}
+        style={styles.cardWrapper}
+      >
+        <BlurView intensity={isDark ? 85 : 95} tint={isDark ? "dark" : "light"} style={styles.sheet}>
 
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
-            <View style={styles.headerIconBox}>
-              <Ionicons name="grid" size={16} color={colors.accentPrimary} />
-            </View>
-            <Text style={styles.headerTitle}>All Modules</Text>
-          </View>
-
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
-            <AnimatedPressable
-              style={[
-                styles.editPillBtn,
-                isEditing && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
-              ]}
-              onPress={toggleEdit}
-              haptic="light"
-            >
-              <Ionicons
-                name={isEditing ? 'checkmark' : 'pencil'}
-                size={14}
-                color={isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary}
-              />
-              <Text
-                style={[
-                  styles.editPillText,
-                  { color: isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary },
-                ]}
-              >
-                {isEditing ? 'Done' : 'Edit Nav'}
-              </Text>
-            </AnimatedPressable>
-            <AnimatedPressable
-              style={styles.actionBtn}
-              onPress={handleClose}
-              haptic="light"
-            >
-              <Ionicons name="close" size={20} color={colors.textMuted} />
-            </AnimatedPressable>
-          </View>
-        </View>
-
-        {isEditing && (
-          <Text style={styles.editHint}>Tap up to 4 modules to pin to your home tabs</Text>
-        )}
-
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-          {/* Unified Grid */}
-          <View style={styles.grid}>
-            {allModules.filter(m => isEditing || !effectivePinned.includes(m.id)).map((mod, index) => {
-              const isSelected = selected.includes(mod.id);
-              const isDimmed = isEditing && !isSelected && selected.length >= 4;
-              return (
-                <AnimatedPressable
-                  key={mod.id}
-                  style={[styles.gridItem, { opacity: isDimmed ? 0.3 : 1 }]}
-                  activeOpacity={0.7}
-                  haptic="none"
-                  onPress={() => handleModulePress(mod.id)}
-                >
-                  <View style={[
-                    styles.gridIconBox,
-                    isEditing && isSelected && { borderColor: colors.accentPrimary, borderWidth: 2 },
-                  ]}>
-                    <View style={[StyleSheet.absoluteFillObject, { backgroundColor: mod.color, opacity: isDark ? 0.14 : 0.10 }]} />
-                    <Ionicons name={mod.icon as any} size={26} color={mod.color} />
-                    {isEditing && isSelected && (
-                      <View style={styles.selectedBadge}>
-                        <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
-                      </View>
-                    )}
-                  </View>
-                  <Text 
-                    style={[styles.gridItemText, isEditing && isSelected && { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold }]}
-                    numberOfLines={2}
-                  >
-                    {mod.name}
-                  </Text>
-                </AnimatedPressable>
-              );
-            })}
-
-            {/* Utility Row: Settings */}
-            <AnimatedPressable style={styles.gridItem} activeOpacity={0.7} haptic="none" onPress={() => navigateWithClose('Settings')}>
-              <View style={styles.gridIconBox}>
-                <View style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? colors.textMuted : '#636366', opacity: isDark ? 0.12 : 0.08 }]} />
-                <Ionicons name="settings" size={26} color={isDark ? colors.textMuted : '#636366'} />
+          {/* Header */}
+          <View style={styles.headerRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+              <View style={styles.headerIconBox}>
+                <Ionicons name="grid" size={16} color={colors.accentPrimary} />
               </View>
-              <Text style={styles.gridItemText} numberOfLines={1}>Settings</Text>
-            </AnimatedPressable>
+              <Text style={styles.headerTitle}>All Modules</Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACE.sm }}>
+              <AnimatedPressable
+                style={[
+                  styles.editPillBtn,
+                  isEditing && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+                ]}
+                onPress={toggleEdit}
+                haptic="light"
+              >
+                <Ionicons
+                  name={isEditing ? 'checkmark' : 'pencil'}
+                  size={13}
+                  color={isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary}
+                />
+                <Text
+                  style={[
+                    styles.editPillText,
+                    { color: isEditing ? (isDark ? '#000000' : '#FFFFFF') : colors.textPrimary },
+                  ]}
+                >
+                  {isEditing ? 'Done' : 'Edit Nav'}
+                </Text>
+              </AnimatedPressable>
+
+              <AnimatedPressable
+                style={styles.actionBtn}
+                onPress={handleClose}
+                haptic="light"
+              >
+                <Ionicons name="close" size={18} color={colors.textMuted} />
+              </AnimatedPressable>
+            </View>
           </View>
-        </ScrollView>
-      </BlurView>
+
+          {isEditing && (
+            <Text style={styles.editHint}>Tap up to 4 modules to pin to your home tabs</Text>
+          )}
+
+          <ScrollView 
+            showsVerticalScrollIndicator={false} 
+            contentContainerStyle={{ paddingBottom: SPACE.sm }}
+            bounces={false}
+          >
+            {/* Unified Grid */}
+            <View style={styles.grid}>
+              {allModules.filter(m => isEditing || !effectivePinned.includes(m.id)).map((mod) => {
+                const isSelected = selected.includes(mod.id);
+                const isDimmed = isEditing && !isSelected && selected.length >= 4;
+                return (
+                  <AnimatedPressable
+                    key={mod.id}
+                    style={[styles.gridItem, { opacity: isDimmed ? 0.3 : 1 }]}
+                    activeOpacity={0.7}
+                    haptic="none"
+                    onPress={() => handleModulePress(mod.id)}
+                  >
+                    <View style={[
+                      styles.gridIconBox,
+                      isEditing && isSelected && { borderColor: colors.accentPrimary, borderWidth: 2 },
+                    ]}>
+                      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: mod.color, opacity: isDark ? 0.16 : 0.12 }]} />
+                      <Ionicons name={mod.icon as any} size={26} color={mod.color} />
+                      {isEditing && isSelected && (
+                        <View style={styles.selectedBadge}>
+                          <Ionicons name="checkmark" size={12} color={isDark ? '#000000' : '#FFFFFF'} />
+                        </View>
+                      )}
+                    </View>
+                    <Text 
+                      style={[styles.gridItemText, isEditing && isSelected && { color: colors.textPrimary, fontFamily: FONT_FAMILY.bold }]}
+                      numberOfLines={2}
+                    >
+                      {mod.name}
+                    </Text>
+                  </AnimatedPressable>
+                );
+              })}
+
+              {/* Utility Row: Settings */}
+              <AnimatedPressable style={styles.gridItem} activeOpacity={0.7} haptic="none" onPress={() => navigateWithClose('Settings')}>
+                <View style={styles.gridIconBox}>
+                  <View style={[StyleSheet.absoluteFillObject, { backgroundColor: isDark ? colors.textMuted : '#636366', opacity: isDark ? 0.14 : 0.10 }]} />
+                  <Ionicons name="settings" size={26} color={isDark ? colors.textMuted : '#636366'} />
+                </View>
+                <Text style={styles.gridItemText} numberOfLines={1}>Settings</Text>
+              </AnimatedPressable>
+            </View>
+          </ScrollView>
+        </BlurView>
+      </Reanimated.View>
     </View>
   );
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
-const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
-  root: { flex: 1, justifyContent: 'flex-end' },
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: isDark ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.25)' },
+const makeStyles = (colors: any, isDark: boolean = true, insets: any = { bottom: 0 }) => StyleSheet.create({
+  root: { 
+    flex: 1, 
+    justifyContent: 'flex-end',
+  },
+  backdrop: { 
+    ...StyleSheet.absoluteFillObject, 
+    backgroundColor: isDark ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.3)' 
+  },
   backdropTouch: { flex: 1 },
+  cardWrapper: {
+    marginHorizontal: 2,
+    marginBottom: Math.max(insets.bottom, 8) + 54,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: isDark ? 0.7 : 0.2,
+    shadowRadius: 24,
+    elevation: 20,
+  },
   sheet: {
-    borderTopLeftRadius: RADIUS.xxl,
-    borderTopRightRadius: RADIUS.xxl,
-    paddingHorizontal: SPACE.xl,
-    paddingTop: SPACE.xl,
+    borderRadius: 24,
+    paddingHorizontal: SPACE.md,
+    paddingTop: SPACE.lg,
+    paddingBottom: SPACE.xs,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E1EA',
-    borderBottomWidth: 0,
-    maxHeight: '90%',
+    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+    maxHeight: 440,
     overflow: 'hidden',
-    backgroundColor: isDark ? 'rgba(28, 28, 30, 0.4)' : '#FFFFFF',
+    backgroundColor: isDark ? 'rgba(16, 16, 20, 0.94)' : 'rgba(255, 255, 255, 0.96)',
   },
 
   headerRow: {
@@ -244,80 +272,93 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: SPACE.md,
+    paddingHorizontal: SPACE.xs,
   },
   headerIconBox: {
-    width: 24, height: 24, borderRadius: 6,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.08)',
+    width: 26, height: 26, borderRadius: 7,
+    backgroundColor: isDark ? 'rgba(165,153,255,0.18)' : 'rgba(108,92,231,0.1)',
     alignItems: 'center', justifyContent: 'center',
   },
   headerTitle: {
     fontFamily: FONT_FAMILY.title,
-    fontSize: FONT_SIZE.lg,
+    fontSize: FONT_SIZE.md,
     color: colors.textPrimary,
   },
   actionBtn: {
-    width: 36, height: 36, borderRadius: 18,
+    width: 32, height: 32, borderRadius: 16,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E1EA',
-    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F0EFF7',
+    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F0EFF7',
     alignItems: 'center', justifyContent: 'center',
   },
   editPillBtn: {
-    height: 36,
+    height: 32,
     paddingHorizontal: 12,
-    borderRadius: 18,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.08)' : '#E2E1EA',
-    backgroundColor: isDark ? (colors.surface2 || colors.surface) : '#F0EFF7',
+    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
+    backgroundColor: isDark ? (colors.surface2 || 'rgba(30,30,35,0.8)') : '#F0EFF7',
   },
   editPillText: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 12,
-    letterSpacing: 0.2,
+    fontSize: 11.5,
+    letterSpacing: 0.1,
   },
 
   editHint: {
     fontFamily: FONT_FAMILY.body,
-    fontSize: FONT_SIZE.sm,
+    fontSize: FONT_SIZE.xs,
     color: colors.textTertiary,
-    marginBottom: SPACE.lg,
+    marginBottom: SPACE.md,
     textAlign: 'center',
   },
 
   // ── Grid
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start' },
-  gridItem: { width: '25%', alignItems: 'center', marginBottom: SPACE.lg },
+  grid: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    justifyContent: 'flex-start',
+    paddingTop: SPACE.xs,
+  },
+  gridItem: { 
+    width: '25%', 
+    alignItems: 'center', 
+    marginBottom: SPACE.md 
+  },
   gridIconBox: {
-    width: 58, height: 58, borderRadius: 18,
-    backgroundColor: isDark ? colors.surface : '#FFFFFF',
+    width: 58, 
+    height: 58, 
+    borderRadius: 18,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
     borderWidth: 1,
-    borderColor: isDark ? colors.border : '#E2E1EA',
-    alignItems: 'center', justifyContent: 'center',
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    alignItems: 'center', 
+    justifyContent: 'center',
     overflow: 'hidden',
-    elevation: isDark ? 0 : 1,
-    shadowColor: isDark ? '#000000' : 'rgba(0,0,0,0.04)',
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 2,
-    shadowOpacity: isDark ? 0 : 0.5,
   },
   gridItemText: {
     fontFamily: FONT_FAMILY.medium,
-    fontSize: 11.5,
+    fontSize: 11,
     color: colors.textSecondary,
     textAlign: 'center',
     marginTop: SPACE.xs,
-    lineHeight: 14,
+    lineHeight: 13,
     paddingHorizontal: 2,
   },
   selectedBadge: {
-    position: 'absolute', top: -6, right: -6,
-    width: 22, height: 22, borderRadius: 11,
+    position: 'absolute', 
+    top: -4, 
+    right: -4,
+    width: 20, 
+    height: 20, 
+    borderRadius: 10,
     backgroundColor: colors.accentPrimary,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', 
+    justifyContent: 'center',
     borderWidth: 2,
-    borderColor: isDark ? colors.background : '#FFFFFF',
+    borderColor: isDark ? '#000000' : '#FFFFFF',
   },
 });

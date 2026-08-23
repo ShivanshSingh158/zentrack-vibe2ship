@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable, StyleSheet, TouchableOpacity, BackHandler, InteractionManager } from 'react-native';
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Image, Pressable, StyleSheet, TouchableOpacity, BackHandler, InteractionManager, Modal } from 'react-native';
 import Animated, {
   FadeInDown,
   useSharedValue,
@@ -14,7 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
-import { FONT_FAMILY } from '../theme/tokens';
+import { FONT_FAMILY, SPACE } from '../theme/tokens';
 import { makeStyles } from './dashboard/dashboardStyles';
 import { useDashboardData } from './dashboard/useDashboardData';
 import { getLevel } from './dashboard/useXPLevel';
@@ -223,14 +223,6 @@ export default function DashboardScreen() {
 
   return (
     <SafeAreaView style={s.root} edges={['top']}>
-      {/* Tap-outside transparent backdrop to dismiss dropdown */}
-      {menuOpen && (
-        <Pressable
-          style={[StyleSheet.absoluteFillObject, { zIndex: 9998 }]}
-          onPress={closeMenu}
-        />
-      )}
-
       <SaraHUDBanner
         message={data.surfaceMessage || ''}
         visible={!!data.surfaceMessage}
@@ -240,15 +232,22 @@ export default function DashboardScreen() {
       
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView scrollEnabled={!menuOpen} contentContainerStyle={[s.scroll, { paddingBottom }]} showsVerticalScrollIndicator={false}>
+          {/* Tap-outside transparent backdrop to dismiss dropdown */}
+          {menuOpen && (
+            <Pressable
+              style={[StyleSheet.absoluteFillObject, { zIndex: 1 }]}
+              onPress={closeMenu}
+            />
+          )}
           
-          <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[s.greetingContainer, { zIndex: 9999 }]}>
+          <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[s.greetingContainer, { zIndex: 99999, elevation: 9999 }]}>
             <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={s.greetingGood}>Good</Text>
               <Text style={s.greetingTime}>{data.timeGreeting}</Text>
             </View>
 
             {/* Header Action Bar */}
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', zIndex: 9999 }}>
+            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', zIndex: 99999, elevation: 9999 }}>
               {/* Flame streak pill */}
               <AnimatedPressable
                 style={s.headerStreakPill}
@@ -283,9 +282,9 @@ export default function DashboardScreen() {
                 />
               </AnimatedPressable>
 
-              {/* Anchored Vertical Speed Dial Container */}
-              <View collapsable={false} ref={avatarRef} style={{ position: 'relative', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 99999, elevation: 9999 }}>
-                {/* Rotating Trigger Avatar / Close Button */}
+              {/* Anchored Vertical Speed Dial Container directly on Avatar 'A' */}
+              <View collapsable={false} style={{ position: 'relative', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 99999, elevation: 9999 }}>
+                {/* Rotating Trigger Avatar / Close Button in-place */}
                 <Animated.View style={avatarAnimatedStyle}>
                   <AnimatedPressable
                     style={[
@@ -297,6 +296,8 @@ export default function DashboardScreen() {
                       },
                     ]}
                     onPress={toggleMenu}
+                    accessibilityLabel={menuOpen ? "Close menu" : "Open settings and customize menu"}
+                    accessibilityRole="button"
                   >
                     {menuOpen ? (
                       <Ionicons name="close" size={20} color={colors.textPrimary} />
@@ -345,9 +346,7 @@ export default function DashboardScreen() {
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                           closeMenu();
-                          setTimeout(() => {
-                            data.setLayoutSheetVisible(true);
-                          }, 120);
+                          data.setLayoutSheetVisible(true);
                         }}
                       >
                         <Ionicons name="color-palette-outline" size={18} color={isDark ? '#a599ff' : colors.accentPrimary} />
@@ -376,9 +375,7 @@ export default function DashboardScreen() {
                         onPress={() => {
                           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                           closeMenu();
-                          setTimeout(() => {
-                            navigation.navigate('MoreStack', { screen: 'Settings' });
-                          }, 120);
+                          navigation.navigate('MoreStack', { screen: 'Settings' });
                         }}
                       >
                         <Ionicons name="settings-outline" size={18} color={isDark ? '#38bdf8' : '#0284C7'} />

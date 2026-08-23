@@ -48,6 +48,7 @@ LogBox.ignoreLogs([
   '[OfflineSync]',
   'Missing or insufficient permissions',
   '[Reanimated] Property "opacity"',
+  'Tried to register two views with the same name',
 ]);
 
 // Intercept console to completely silence Metro terminal spam for known safe warnings/errors

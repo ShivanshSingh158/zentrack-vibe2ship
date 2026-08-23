@@ -433,14 +433,14 @@ export default function AppNavigator() {
 
       if (!hasResolved.current) {
         // We only hit this block if we did NOT have an optimistic user (i.e. fresh install or logged out).
-        // OFFLINE-FIRST FIX: Race authStateReady() against a 2-second timeout.
-        // Without this, no-internet cold boot hangs forever on a blank screen because
-        // Firebase's authStateReady() never resolves when offline with no cached token.
-        // If the timeout wins, auth.currentUser will be null → show Landing (correct).
-        // If Firebase wins first (online or token cached) → show the app normally.
+        // OFFLINE-FIRST FIX: Race authStateReady() against a SHORT 300ms timeout.
+        // The old 2-second timeout caused the nav bar to be frozen for 2s on every
+        // cold boot (no optimistic user). 300ms is enough for Firebase to check its
+        // token cache; if it needs more time it will fire onAuthStateChanged again
+        // and the background validation block below will handle it gracefully.
         await Promise.race([
           auth.authStateReady(),
-          new Promise<void>(resolve => setTimeout(resolve, 2000)),
+          new Promise<void>(resolve => setTimeout(resolve, 300)),
         ]);
         const realUser = auth.currentUser;
 
