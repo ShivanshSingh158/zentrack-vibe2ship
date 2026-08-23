@@ -41,6 +41,7 @@ import Reanimated, {
   SlideInLeft, SlideOutRight,
   Layout
 } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Fonts & Theme
 import { useFonts, Inter_400Regular, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
@@ -203,7 +204,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
           Notifications.scheduleNotificationAsync({
             content: {
               title: "ZenTrack Genesis Complete ⭐",
-              body: "+100 XP awarded. Your custom Life OS is online.",
+              body: "+500 XP awarded. Your custom Life OS is online.",
               sound: true,
             },
             trigger: null,
@@ -570,16 +571,21 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
         <Text style={styles.realmSubText}>Initiate Realm • Wind & Discovery</Text>
 
         {/* Genesis Reward */}
-        <Text style={styles.genesisRewardText}>+100 GENESIS XP</Text>
+        <Text style={styles.genesisRewardText}>+500 GENESIS XP</Text>
 
-        {/* Level Progress Bar */}
+        {/* Level Progress Bar with Seeker Emerald Nature Gradient */}
         <View style={styles.xpProgressWrapper}>
           <View style={styles.xpProgressBg}>
-            <View style={[styles.xpProgressFill, { width: '10%' }]} />
+            <LinearGradient
+              colors={['#34d399', '#10b981']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={[styles.xpProgressFill, { width: '50%' }]}
+            />
           </View>
           <View style={styles.xpProgressLabels}>
-            <Text style={styles.xpProgressText}>100 / 1,000 XP</Text>
-            <Text style={styles.xpNextLevelText}>Next: Level 2 Warden</Text>
+            <Text style={styles.xpProgressText}>500 / 1,000 XP (50%)</Text>
+            <Text style={styles.xpNextLevelText}>Next: Level 2 Warden (500 XP)</Text>
           </View>
         </View>
 
@@ -940,7 +946,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   xpProgressText: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 10.5,
-    color: colors.accentPrimary,
+    color: '#34d399',
   },
   xpNextLevelText: {
     fontFamily: FONT_FAMILY.medium,
