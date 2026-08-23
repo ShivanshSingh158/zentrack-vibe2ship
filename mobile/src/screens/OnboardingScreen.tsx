@@ -564,25 +564,35 @@ function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, 
           </View>
         </View>
 
-        <View style={styles.genesisDivider} />
+        <View style={styles.systemSpecBox}>
+          {/* Archetype Column */}
+          <View style={styles.specColumn}>
+            <Text style={styles.specLabel}>ARCHETYPE</Text>
+            <View style={styles.specValueRow}>
+              <Text style={styles.specEmoji}>{personaObj?.icon}</Text>
+              <Text style={styles.specValueMain} numberOfLines={1}>
+                {personaObj?.label || 'The Scholar'}
+              </Text>
+            </View>
+          </View>
 
-        {/* Archetype Row */}
-        <View style={styles.genesisSummaryRow}>
-          <Text style={styles.genesisSummaryLabel}>Archetype</Text>
-          <Text style={styles.genesisSummaryVal}>{personaObj?.icon} {personaObj?.label || 'The Scholar'}</Text>
-        </View>
+          <View style={styles.specDivider} />
 
-        {/* Pinned Pillars Row with Real Icons */}
-        <View style={styles.pillarChipsRow}>
-          {pinned.map((modId: string) => {
-            const modObj = MODULE_CATALOG.find(m => m.id === modId);
-            return (
-              <View key={modId} style={styles.pillarChip}>
-                <Ionicons name={modObj?.activeIcon || 'star'} size={12} color={colors.accentPrimary} />
-                <Text style={styles.pillarChipText}>{modObj?.name || modId}</Text>
-              </View>
-            );
-          })}
+          {/* Core Pillars Column */}
+          <View style={styles.specColumn}>
+            <Text style={styles.specLabel}>4 CORE PILLARS</Text>
+            <View style={styles.specPillarsRow}>
+              {pinned.map((modId: string) => {
+                const modObj = MODULE_CATALOG.find(m => m.id === modId);
+                return (
+                  <View key={modId} style={styles.miniPillarItem}>
+                    <Ionicons name={modObj?.activeIcon || 'star'} size={11} color={colors.accentPrimary} />
+                    <Text style={styles.miniPillarText}>{modObj?.name || modId}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
         </View>
       </View>
 
@@ -909,50 +919,61 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
     fontSize: 10.5,
     color: colors.textMuted,
   },
-  genesisDivider: {
+  systemSpecBox: {
     width: '100%',
-    height: 1,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-    marginBottom: 12,
-  },
-  genesisSummaryRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginBottom: 10,
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: RADIUS.lg,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.025)' : 'rgba(0,0,0,0.025)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
   },
-  genesisSummaryLabel: {
-    fontFamily: FONT_FAMILY.medium,
-    fontSize: 12,
+  specColumn: {
+    flex: 1,
+  },
+  specDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
+    marginHorizontal: 12,
+  },
+  specLabel: {
+    fontFamily: FONT_FAMILY.bold,
+    fontSize: 9,
+    letterSpacing: 1.1,
     color: colors.textMuted,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  genesisSummaryVal: {
+  specValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  specEmoji: {
+    fontSize: 14,
+  },
+  specValueMain: {
     fontFamily: FONT_FAMILY.bold,
     fontSize: 12,
     color: colors.textPrimary,
   },
-  pillarChipsRow: {
+  specPillarsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    width: '100%',
-    justifyContent: 'center',
   },
-  pillarChip: {
+  miniPillarItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.08)',
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.2)' : 'rgba(108,92,231,0.15)',
+    gap: 3,
   },
-  pillarChipText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 10.5,
-    color: colors.accentPrimary,
+  miniPillarText: {
+    fontFamily: FONT_FAMILY.medium,
+    fontSize: 11,
+    color: colors.textSecondary,
   },
   genesisHeadline: {
     fontFamily: 'PlayfairDisplay_600SemiBold',
