@@ -178,19 +178,6 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
     });
   };
 
-  // SARA Voice Preview
-  const handleVoicePreview = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setIsSpeaking(true);
-    Speech.speak("I am Sara. Your life operating system is armed and ready. Let's make today count.", {
-      language: 'en-US',
-      pitch: 1.05,
-      rate: 0.95,
-      onDone: () => setIsSpeaking(false),
-      onError: () => setIsSpeaking(false),
-    });
-  };
-
   // Final Genesis Launch
   const handleGenesisLaunch = async () => {
     setSaving(true);
@@ -271,8 +258,6 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
             persona={selectedPersona}
             pinned={pinnedModules}
             saving={saving}
-            isSpeaking={isSpeaking}
-            onVoicePreview={handleVoicePreview}
             onLaunch={handleGenesisLaunch}
             styles={styles}
             colors={colors}
@@ -490,7 +475,7 @@ function StepFocusMatrix({ pinned, onToggle, onNext, styles, colors, isDark }: a
 }
 
 // ─── Step 3: Genesis XP & Floating Seeker Mascot ──────────────────────────────
-function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview, onLaunch, styles, colors, isDark }: any) {
+function StepGenesisLaunch({ persona, pinned, saving, onLaunch, styles, colors, isDark }: any) {
   const personaObj = PERSONAS.find(p => p.id === persona);
 
   // Floating Seeker Mascot Physics
@@ -520,16 +505,6 @@ function StepGenesisLaunch({ persona, pinned, saving, isSpeaking, onVoicePreview
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollStep} showsVerticalScrollIndicator={false}>
-      {/* SARA Voice Test Pill */}
-      <TouchableOpacity
-        style={[styles.voicePill, isSpeaking && { borderColor: colors.accentPrimary }]}
-        onPress={onVoicePreview}
-        activeOpacity={0.8}
-      >
-        <Ionicons name={isSpeaking ? "volume-high" : "mic-outline"} size={16} color={colors.accentPrimary} />
-        <Text style={styles.voicePillText}>{isSpeaking ? "SARA is speaking..." : "Test SARA's Voice"}</Text>
-      </TouchableOpacity>
-
       {/* Luxury Genesis Initiation Card */}
       <View style={styles.genesisCard}>
         {/* Floating Seeker Mascot Illustration with Emerald Cosmic Aura */}
@@ -848,25 +823,6 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
 
   // Step 3: Genesis Card & Floating Seeker Mascot
-  voicePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(165,153,255,0.3)' : 'rgba(108,92,231,0.25)',
-    backgroundColor: isDark ? 'rgba(165,153,255,0.1)' : 'rgba(108,92,231,0.06)',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  voicePillText: {
-    fontFamily: FONT_FAMILY.bold,
-    fontSize: 12,
-    color: colors.accentPrimary,
-  },
   genesisCard: {
     padding: 18,
     borderRadius: RADIUS.xl,
