@@ -1556,7 +1556,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionBtn: { padding: 8, marginHorizontal: -4 },
 
-  fabAi: { position: 'absolute', bottom: 110, right: 24, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8 },
+  fabAi: { position: 'absolute', bottom: 84, right: 16, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8 },
   fabGradient: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? '#a599ff' : colors.accentPrimary },
 
   restTimerOverlay: {

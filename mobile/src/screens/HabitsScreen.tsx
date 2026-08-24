@@ -1163,7 +1163,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   },
 
   fab: {
-    position: 'absolute', bottom: 100, right: 20,
+    position: 'absolute', bottom: 84, right: 16,
     width: 52, height: 52, borderRadius: 26,
     backgroundColor: colors.accentPrimary,
     alignItems: 'center', justifyContent: 'center',

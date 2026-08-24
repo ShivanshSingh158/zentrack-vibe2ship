@@ -1071,7 +1071,7 @@ const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.create({
   actionSheetText: { fontFamily: FONT_FAMILY.bold, fontSize: 16, color: colors.textPrimary },
 
   fab: {
-    position: 'absolute', bottom: 100, right: SPACE.xl,
+    position: 'absolute', bottom: 84, right: 16,
     width: 48, height: 48, borderRadius: 24, backgroundColor: colors.accentPrimary,
     alignItems: 'center', justifyContent: 'center', zIndex: 20,
     ...SHADOW.md

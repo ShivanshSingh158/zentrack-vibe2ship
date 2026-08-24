@@ -654,8 +654,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: FONT_FAMILY.bold, fontSize: FONT_SIZE.lg },
   globalSaraBtn: {
     position:        'absolute',
-    bottom:           110,
-    right:            24,
+    bottom:           84,
+    right:            16,
     width:            48,
     height:           48,
     borderRadius:     24,

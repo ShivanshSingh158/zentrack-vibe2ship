@@ -665,8 +665,8 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
 
     fab: {
       position: 'absolute',
-      bottom: 100,
-      right: SPACE.xl,
+      bottom: 84,
+      right: 16,
       width: 56,
       height: 56,
       borderRadius: 28,

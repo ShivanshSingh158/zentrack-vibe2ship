@@ -125,7 +125,7 @@ export const gymHomeStyles = StyleSheet.create({
   rowActions: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionBtn: { padding: 8, marginHorizontal: -4 },
 
-  fabAi: { position: 'absolute', bottom: 110, right: 24, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
+  fabAi: { position: 'absolute', bottom: 84, right: 16, borderRadius: 24, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
   fabGradient: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.accentPrimary },
 
   restTimerOverlay: { position: 'absolute', bottom: 110, alignSelf: 'center', backgroundColor: COLORS.surfaceRaised || COLORS.surface, borderWidth: 1, borderColor: COLORS.border, borderRadius: 30, paddingVertical: 12, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, elevation: 10, zIndex: 9999 },

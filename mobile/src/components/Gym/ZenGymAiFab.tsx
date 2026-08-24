@@ -81,8 +81,8 @@ export const ZenGymAiFab: React.FC<ZenGymAiFabProps> = ({
 const styles = StyleSheet.create({
   fabContainer: {
     position: 'absolute',
-    bottom: 110,
-    right: 20,
+    bottom: 84,
+    right: 16,
     zIndex: 9999,
     shadowColor: '#a599ff',
     shadowOffset: { width: 0, height: 4 },

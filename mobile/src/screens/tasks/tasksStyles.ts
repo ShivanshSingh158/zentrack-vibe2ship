@@ -217,7 +217,7 @@ export const makeTasksStyles = (colors: any, isDark: boolean = true) => StyleShe
     paddingVertical: 12,
   },
   overdueText: { color: colors.error, fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  floatingAddContainer: { position: 'absolute', bottom: 110, left: 0, right: 0, alignItems: 'center' },
+  floatingAddContainer: { position: 'absolute', bottom: 84, left: 0, right: 0, alignItems: 'center' },
   menuOverlay: { flex: 1, backgroundColor: isDark ? 'rgba(0,0,0,0.50)' : 'rgba(0,0,0,0.25)', justifyContent: 'flex-start', alignItems: 'flex-end', paddingTop: 65, paddingRight: 20 },
   menuContainer: { backgroundColor: colors.surface, borderRadius: 12, width: 200, paddingVertical: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0.2 : 0.08, shadowRadius: 12, elevation: 8, borderWidth: 1, borderColor: colors.border },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 16 },

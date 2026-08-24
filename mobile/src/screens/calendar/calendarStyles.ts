@@ -273,8 +273,8 @@ export const makeStyles = (colors: any, isDark: boolean = true) => StyleSheet.cr
   /* 4. FAB */
   fab: {
     position: 'absolute',
-    bottom: 110,
-    right: 20,
+    bottom: 84,
+    right: 16,
     width: 48,
     height: 48,
     borderRadius: 24,
