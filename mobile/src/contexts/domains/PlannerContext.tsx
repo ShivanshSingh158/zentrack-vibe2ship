@@ -15,6 +15,7 @@ import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { CustomEvent, Goal, WeeklyReview } from "../MobileDataContext";
 import { readPlannerCache, writePlannerCache } from "../../utils/domainCache";
+import { loadBootManifest } from "../../utils/bootManifest";
 import { parseCustomEvent, parseGoal } from "../../utils/schemaGuards";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -101,19 +102,23 @@ export function PlannerProvider({
     return () => sub.remove();
   }, [user]);
 
-  // ── Offline-first boot: seed from AsyncStorage when user uid is available ──
-  const userUid = user?.uid ?? null;
+  // ── Offline-first boot: seed from AsyncStorage and Manifest immediately ──
   useEffect(() => {
-    if (!userUid) return;
     let cancelled = false;
+    loadBootManifest().then(manifest => {
+      if (cancelled) return;
+      if (Array.isArray(manifest.customEvents) && manifest.customEvents.length > 0) setCustomEvents(manifest.customEvents);
+      if (Array.isArray(manifest.goals) && manifest.goals.length > 0) setGoals(manifest.goals);
+    }).catch(() => {});
+
     readPlannerCache().then(cached => {
       if (cancelled) return;
-      if (Array.isArray(cached.customEvents))  setCustomEvents(cached.customEvents);
-      if (Array.isArray(cached.goals))         setGoals(cached.goals);
-      if (Array.isArray(cached.weeklyReviews)) setWeeklyReviews(cached.weeklyReviews);
+      if (Array.isArray(cached.customEvents) && cached.customEvents.length > 0)  setCustomEvents(cached.customEvents);
+      if (Array.isArray(cached.goals) && cached.goals.length > 0)         setGoals(cached.goals);
+      if (Array.isArray(cached.weeklyReviews) && cached.weeklyReviews.length > 0) setWeeklyReviews(cached.weeklyReviews);
     });
     return () => { cancelled = true; };
-  }, [userUid]);
+  }, [user?.uid]);
 
   const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return;

@@ -18,6 +18,7 @@ import { UserGymPlanDoc, GymPlanDay } from "../../types/gym.types";
 import type { GymLog, WaterLog, SleepLog, WeightLog } from "../MobileDataContext";
 import { GYM_PLAN_ARNOLD, GYM_PLAN_PPL } from "../../data/gymPlan";
 import { readWellnessCache, writeWellnessCache } from "../../utils/domainCache";
+import { loadBootManifest } from "../../utils/bootManifest";
 import { parseGymLog } from "../../utils/schemaGuards";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -123,23 +124,25 @@ export function WellnessProvider({
     return () => sub.remove();
   }, [user]);
 
-  // ── Offline-first boot: seed from AsyncStorage when user uid is available ──
-  // Re-runs on uid change (login, optimistic-user restore, logout) so screens
-  // immediately show cached data even if Firestore hasn't responded yet.
-  const userUid = user?.uid ?? null;
+  // ── Offline-first boot: seed from AsyncStorage and Manifest immediately ──
   useEffect(() => {
-    if (!userUid) return; // never seed with another user's data
     let cancelled = false;
+    loadBootManifest().then(manifest => {
+      if (cancelled) return;
+      if (Array.isArray(manifest.gymLogs) && manifest.gymLogs.length > 0) setGymLogs(manifest.gymLogs);
+      if (manifest.userGymPlan) setUserGymPlan(manifest.userGymPlan);
+    }).catch(() => {});
+
     readWellnessCache().then(cached => {
       if (cancelled) return;
-      if (Array.isArray(cached.gymLogs))    setGymLogs(cached.gymLogs);
+      if (Array.isArray(cached.gymLogs) && cached.gymLogs.length > 0)    setGymLogs(cached.gymLogs);
       if (cached.userGymPlan)               setUserGymPlan(cached.userGymPlan);
-      if (Array.isArray(cached.waterLogs))  setWaterLogs(cached.waterLogs);
-      if (Array.isArray(cached.sleepLogs))  setSleepLogs(cached.sleepLogs);
-      if (Array.isArray(cached.weightLogs)) setWeightLogs(cached.weightLogs);
+      if (Array.isArray(cached.waterLogs) && cached.waterLogs.length > 0)  setWaterLogs(cached.waterLogs);
+      if (Array.isArray(cached.sleepLogs) && cached.sleepLogs.length > 0)  setSleepLogs(cached.sleepLogs);
+      if (Array.isArray(cached.weightLogs) && cached.weightLogs.length > 0) setWeightLogs(cached.weightLogs);
     });
     return () => { cancelled = true; };
-  }, [userUid]);
+  }, [user?.uid]);
 
   const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return; // idempotent

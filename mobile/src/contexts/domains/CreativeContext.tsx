@@ -98,20 +98,18 @@ export function CreativeProvider({
     return () => sub.remove();
   }, [user]);
 
-  // ── Offline-first boot: seed from AsyncStorage when user uid is available ──
-  const userUid = user?.uid ?? null;
+  // ── Offline-first boot: seed from AsyncStorage immediately ──
   useEffect(() => {
-    if (!userUid) return;
     let cancelled = false;
     readCreativeCache().then(cached => {
       if (cancelled) return;
-      if (Array.isArray(cached.storageNodes))   setStorageNodes(cached.storageNodes);
-      if (Array.isArray(cached.learningTopics)) setLearningTopics(cached.learningTopics);
-      if (Array.isArray(cached.jobs))           setJobs(cached.jobs);
-      if (Array.isArray(cached.contentLogs))    setContentLogs(cached.contentLogs);
+      if (Array.isArray(cached.storageNodes) && cached.storageNodes.length > 0)   setStorageNodes(cached.storageNodes);
+      if (Array.isArray(cached.learningTopics) && cached.learningTopics.length > 0) setLearningTopics(cached.learningTopics);
+      if (Array.isArray(cached.jobs) && cached.jobs.length > 0)           setJobs(cached.jobs);
+      if (Array.isArray(cached.contentLogs) && cached.contentLogs.length > 0)    setContentLogs(cached.contentLogs);
     });
     return () => { cancelled = true; };
-  }, [userUid]);
+  }, [user?.uid]);
 
   const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return;

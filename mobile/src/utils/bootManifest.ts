@@ -30,6 +30,12 @@ export const BOOT_KEYS = {
   GOOGLE_TOKEN:       'google_workspace_token',
   THEME_MODE:         '@zentrack_theme_mode',
   XP_V1:              'zentrack_xp_v1',
+  ATTENDANCE:         '@zentrack_cache_attendance',
+  ATTENDANCE_LOGS:    '@zentrack_cache_attendance_logs',
+  GYM_LOGS:           '@zentrack_cache_gym_logs',
+  USER_GYM_PLAN:      '@zentrack_cache_user_gym_plan',
+  CUSTOM_EVENTS:      '@zentrack_cache_custom_events',
+  GOALS:              '@zentrack_cache_goals',
 } as const;
 
 export interface BootManifest {
@@ -45,6 +51,12 @@ export interface BootManifest {
   googleAccessToken: string | null;
   themeMode: 'dark' | 'light' | 'system' | null;
   xp: number;
+  attendance: any[];
+  attendanceLogs: any[];
+  gymLogs: any[];
+  userGymPlan: any | null;
+  customEvents: any[];
+  goals: any[];
 }
 
 const DEFAULT_PINNED = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
@@ -154,6 +166,43 @@ export async function loadBootManifest(): Promise<BootManifest> {
       const xpRaw = map.get(BOOT_KEYS.XP_V1);
       const xp = xpRaw ? (parseInt(xpRaw, 10) || 0) : 0;
 
+      // 7. Academic, Wellness & Planner domain caches
+      let attendance: any[] = [];
+      const attRaw = map.get(BOOT_KEYS.ATTENDANCE);
+      if (attRaw) {
+        try { const p = JSON.parse(attRaw); if (Array.isArray(p)) attendance = p; } catch {}
+      }
+
+      let attendanceLogs: any[] = [];
+      const attLogsRaw = map.get(BOOT_KEYS.ATTENDANCE_LOGS);
+      if (attLogsRaw) {
+        try { const p = JSON.parse(attLogsRaw); if (Array.isArray(p)) attendanceLogs = p; } catch {}
+      }
+
+      let gymLogs: any[] = [];
+      const gymRaw = map.get(BOOT_KEYS.GYM_LOGS);
+      if (gymRaw) {
+        try { const p = JSON.parse(gymRaw); if (Array.isArray(p)) gymLogs = p; } catch {}
+      }
+
+      let userGymPlan: any = null;
+      const gymPlanRaw = map.get(BOOT_KEYS.USER_GYM_PLAN);
+      if (gymPlanRaw) {
+        try { userGymPlan = JSON.parse(gymPlanRaw); } catch {}
+      }
+
+      let customEvents: any[] = [];
+      const eventsRaw = map.get(BOOT_KEYS.CUSTOM_EVENTS);
+      if (eventsRaw) {
+        try { const p = JSON.parse(eventsRaw); if (Array.isArray(p)) customEvents = p; } catch {}
+      }
+
+      let goals: any[] = [];
+      const goalsRaw = map.get(BOOT_KEYS.GOALS);
+      if (goalsRaw) {
+        try { const p = JSON.parse(goalsRaw); if (Array.isArray(p)) goals = p; } catch {}
+      }
+
       const manifest: BootManifest = {
         lastRoute,
         onboarded,
@@ -167,6 +216,12 @@ export async function loadBootManifest(): Promise<BootManifest> {
         googleAccessToken,
         themeMode,
         xp,
+        attendance,
+        attendanceLogs,
+        gymLogs,
+        userGymPlan,
+        customEvents,
+        goals,
       };
 
       _memoryBootCache = manifest;
@@ -186,6 +241,12 @@ export async function loadBootManifest(): Promise<BootManifest> {
         googleAccessToken: null,
         themeMode: null,
         xp: 0,
+        attendance: [],
+        attendanceLogs: [],
+        gymLogs: [],
+        userGymPlan: null,
+        customEvents: [],
+        goals: [],
       };
       _memoryBootCache = fallback;
       return fallback;

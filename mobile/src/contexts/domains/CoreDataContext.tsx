@@ -115,24 +115,28 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const DEFAULT_PINNED_MODULES = ["Tasks", "Gym", "Calendar", "Attendance"];
   const [pinnedModules, setPinnedModulesState]    = useState<string[]>(initialManifest?.pinnedModules ?? DEFAULT_PINNED_MODULES);
 
-  // Consolidated Manifest Boot: seeds pinned modules, token, and core cache in 1 single bridge load
+  // Consolidated Manifest Boot: seeds optimistic user, pinned modules, token, and core cache in 1 single bridge load
   useEffect(() => {
     let cancelled = false;
     loadBootManifest().then(manifest => {
       if (cancelled) return;
+      if (manifest.optimisticUser) {
+        setUser(manifest.optimisticUser);
+        firstAuthAtRef.current = Date.now();
+      }
       if (manifest.pinnedModules && manifest.pinnedModules.length > 0) {
         setPinnedModulesState(manifest.pinnedModules);
       }
       if (manifest.googleAccessToken) {
         setGoogleAccessToken(manifest.googleAccessToken);
       }
-      if (manifest.tasks.length > 0 && tasks.length === 0) {
+      if (Array.isArray(manifest.tasks) && manifest.tasks.length > 0) {
         setTasks(manifest.tasks);
       }
-      if (manifest.habits.length > 0 && habits.length === 0) {
+      if (Array.isArray(manifest.habits) && manifest.habits.length > 0) {
         setHabits(manifest.habits);
       }
-      if (manifest.habitLogs.length > 0 && habitLogs.length === 0) {
+      if (Array.isArray(manifest.habitLogs) && manifest.habitLogs.length > 0) {
         setHabitLogs(manifest.habitLogs);
       }
     }).catch(handleSyncError);
@@ -148,18 +152,16 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 
   // ── Cache-first boot for user changes ────────────────────────────────
   // Re-seed cache when user changes (login / restore / logout)
-  const userUid = user?.uid ?? null;
   useEffect(() => {
-    if (!userUid) return;
     let cancelled = false;
     readCoreCacheMulti().then(cached => {
       if (cancelled) return;
-      if (Array.isArray(cached.tasks))     setTasks(cached.tasks);
-      if (Array.isArray(cached.habits))    setHabits(cached.habits);
-      if (Array.isArray(cached.habitLogs)) setHabitLogs(cached.habitLogs);
+      if (Array.isArray(cached.tasks) && cached.tasks.length > 0)     setTasks(cached.tasks);
+      if (Array.isArray(cached.habits) && cached.habits.length > 0)    setHabits(cached.habits);
+      if (Array.isArray(cached.habitLogs) && cached.habitLogs.length > 0) setHabitLogs(cached.habitLogs);
     });
     return () => { cancelled = true; };
-  }, [userUid]);
+  }, [user?.uid]);
 
   // Auth state — updates user reference.
   // OFFLINE-FIRST GUARD: Firebase fires onAuthStateChanged(null) during routine

@@ -15,6 +15,7 @@ import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { AttendanceSubject, AttendanceLog, Assignment, Semester, SemesterSubject } from "../MobileDataContext";
 import { readAcademicCache, writeAcademicCache } from "../../utils/domainCache";
+import { loadBootManifest } from "../../utils/bootManifest";
 import { parseAttendanceSubject, parseAttendanceLog, parseAssignment } from "../../utils/schemaGuards";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -117,22 +118,25 @@ export function AcademicProvider({
     return () => sub.remove();
   }, [user]);
 
-  // ── Offline-first boot: seed from AsyncStorage when user uid is available ──
-  // Re-runs on uid change so screens show cached data immediately on user restore.
-  const userUid = user?.uid ?? null;
+  // ── Offline-first boot: seed from AsyncStorage and Manifest immediately ──
   useEffect(() => {
-    if (!userUid) return;
     let cancelled = false;
+    loadBootManifest().then(manifest => {
+      if (cancelled) return;
+      if (Array.isArray(manifest.attendance) && manifest.attendance.length > 0) setAttendance(manifest.attendance);
+      if (Array.isArray(manifest.attendanceLogs) && manifest.attendanceLogs.length > 0) setAttendanceLogs(manifest.attendanceLogs);
+    }).catch(() => {});
+
     readAcademicCache().then(cached => {
       if (cancelled) return;
-      if (Array.isArray(cached.attendance))       setAttendance(cached.attendance);
-      if (Array.isArray(cached.attendanceLogs))   setAttendanceLogs(cached.attendanceLogs);
-      if (Array.isArray(cached.assignments))      setAssignments(cached.assignments);
-      if (Array.isArray(cached.semesters))        setSemesters(cached.semesters);
-      if (Array.isArray(cached.semesterSubjects)) setSemesterSubjects(cached.semesterSubjects);
+      if (Array.isArray(cached.attendance) && cached.attendance.length > 0)       setAttendance(cached.attendance);
+      if (Array.isArray(cached.attendanceLogs) && cached.attendanceLogs.length > 0)   setAttendanceLogs(cached.attendanceLogs);
+      if (Array.isArray(cached.assignments) && cached.assignments.length > 0)      setAssignments(cached.assignments);
+      if (Array.isArray(cached.semesters) && cached.semesters.length > 0)        setSemesters(cached.semesters);
+      if (Array.isArray(cached.semesterSubjects) && cached.semesterSubjects.length > 0) setSemesterSubjects(cached.semesterSubjects);
     });
     return () => { cancelled = true; };
-  }, [userUid]);
+  }, [user?.uid]);
 
   const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return;
