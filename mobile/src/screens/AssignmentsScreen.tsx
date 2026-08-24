@@ -18,7 +18,7 @@ import { useAcademicData } from '../contexts/domains/AcademicContext';
 import { useCoreData } from '../contexts/domains/CoreDataContext';
 import type { Assignment } from '../contexts/MobileDataContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, SHADOW } from '../theme/tokens';
-import { collection, addDoc, updateDoc, deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { COLLECTION } from '../config/constants';
@@ -114,15 +114,12 @@ export default function AssignmentsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Form Fields
+  // Form Fields (Clean & focused)
   const [title, setTitle] = useState('');
   const [subjectName, setSubjectName] = useState('');
   const [dueDate, setDueDate] = useState(new Date());
   const [showPicker, setShowPicker] = useState(false);
   const [status, setStatus] = useState<Assignment['status']>('not_started');
-  const [weightage, setWeightage] = useState('');
-  const [maxMarks, setMaxMarks] = useState('');
-  const [obtainedMarks, setObtainedMarks] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -131,16 +128,14 @@ export default function AssignmentsScreen() {
     setSubjectName(attendance[0]?.name || '');
     setDueDate(new Date());
     setStatus('not_started');
-    setWeightage('');
-    setMaxMarks('');
-    setObtainedMarks('');
     setNotes('');
     setEditingId(null);
   };
 
   const handleSave = async () => {
-    if (!title.trim() || !subjectName.trim() || !user) {
-      Alert.alert('Required', 'Please enter a title and select a subject.');
+    const finalTitle = title.trim();
+    if (!finalTitle || !user) {
+      Alert.alert('Required', 'Please enter an assignment title.');
       return;
     }
 
@@ -151,16 +146,14 @@ export default function AssignmentsScreen() {
     setSaving(true);
     const dueDateStr = toISODate(dueDate);
     const now = Date.now();
+    const finalSubject = subjectName.trim() || 'General';
 
     const assignmentData: Partial<Assignment> = {
       userId: user.uid,
-      title: title.trim(),
-      subjectName: subjectName.trim(),
+      title: finalTitle,
+      subjectName: finalSubject,
       dueDate: dueDateStr,
       status,
-      weightage: weightage ? parseFloat(weightage) : undefined,
-      maxMarks: maxMarks ? parseFloat(maxMarks) : undefined,
-      obtainedMarks: obtainedMarks ? parseFloat(obtainedMarks) : undefined,
       notes: notes.trim(),
       description: notes.trim(),
       updatedAt: now,
@@ -210,12 +203,9 @@ export default function AssignmentsScreen() {
   const openEdit = (a: Assignment) => {
     setEditingId(a.id!);
     setTitle(a.title);
-    setSubjectName(a.subjectName);
+    setSubjectName(a.subjectName || '');
     setStatus(a.status);
     setDueDate(new Date(a.dueDate + 'T00:00:00'));
-    setWeightage(a.weightage !== undefined ? String(a.weightage) : '');
-    setMaxMarks(a.maxMarks !== undefined ? String(a.maxMarks) : '');
-    setObtainedMarks(a.obtainedMarks !== undefined ? String(a.obtainedMarks) : '');
     setNotes(a.notes || a.description || '');
     setModalVisible(true);
   };
@@ -330,17 +320,9 @@ export default function AssignmentsScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle}>{item.title}</Text>
-                    <View style={styles.cardSubRow}>
+                    {item.subjectName && item.subjectName !== item.title ? (
                       <Text style={styles.cardSub}>{item.subjectName}</Text>
-                      {item.weightage !== undefined && (
-                        <Text style={styles.cardSubMeta}>· {item.weightage}% wt</Text>
-                      )}
-                      {item.maxMarks !== undefined && (
-                        <Text style={styles.cardSubMeta}>
-                          · {item.obtainedMarks !== undefined ? `${item.obtainedMarks}/${item.maxMarks}` : `${item.maxMarks}`} pts
-                        </Text>
-                      )}
-                    </View>
+                    ) : null}
                   </View>
                 </View>
                 <View style={{ alignItems: 'flex-end', minWidth: 85 }}>
@@ -354,7 +336,7 @@ export default function AssignmentsScreen() {
               </View>
 
               {item.notes ? (
-                <Text style={styles.cardNotesSnippet} numberOfLines={1}>
+                <Text style={styles.cardNotesSnippet} numberOfLines={2}>
                   {item.notes}
                 </Text>
               ) : null}
@@ -402,60 +384,55 @@ export default function AssignmentsScreen() {
               </AnimatedPressable>
             </View>
 
-            {/* Title */}
-            <Text style={styles.inputLabel}>Title</Text>
+            {/* Subject Selector from Registered Timetable */}
+            {attendance && attendance.length > 0 && (
+              <>
+                <Text style={styles.inputLabel}>Subject / Course</Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.subjectChipsScroll}
+                >
+                  {attendance.map((sub) => {
+                    const isSelected = subjectName === sub.name;
+                    return (
+                      <AnimatedPressable
+                        key={sub.id}
+                        style={[
+                          styles.subjectChip,
+                          isSelected && styles.subjectChipActive,
+                        ]}
+                        onPress={() => setSubjectName(sub.name)}
+                      >
+                        <View
+                          style={[
+                            styles.subjectChipDot,
+                            isSelected && { backgroundColor: isDark ? '#000000' : '#FFFFFF' },
+                          ]}
+                        />
+                        <Text
+                          style={[
+                            styles.subjectChipText,
+                            isSelected && styles.subjectChipTextActive,
+                          ]}
+                        >
+                          {sub.name}
+                        </Text>
+                      </AnimatedPressable>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+
+            {/* Assignment Title */}
+            <Text style={styles.inputLabel}>Assignment Title</Text>
             <TextInput
               style={styles.input}
               placeholder="E.g., Operating Systems Lab 4"
               placeholderTextColor={colors.textMuted}
               value={title}
               onChangeText={setTitle}
-            />
-
-            {/* Subject Selector from Timetable & Text Input */}
-            <Text style={styles.inputLabel}>Subject</Text>
-            {attendance && attendance.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.subjectChipsScroll}
-              >
-                {attendance.map((sub) => {
-                  const isSelected = subjectName === sub.name;
-                  return (
-                    <AnimatedPressable
-                      key={sub.id}
-                      style={[
-                        styles.subjectChip,
-                        isSelected && styles.subjectChipActive,
-                      ]}
-                      onPress={() => setSubjectName(sub.name)}
-                    >
-                      <View
-                        style={[
-                          styles.subjectChipDot,
-                          isSelected && { backgroundColor: isDark ? '#000000' : '#FFFFFF' },
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.subjectChipText,
-                          isSelected && styles.subjectChipTextActive,
-                        ]}
-                      >
-                        {sub.name}
-                      </Text>
-                    </AnimatedPressable>
-                  );
-                })}
-              </ScrollView>
-            )}
-            <TextInput
-              style={styles.input}
-              placeholder="Or type custom subject..."
-              placeholderTextColor={colors.textMuted}
-              value={subjectName}
-              onChangeText={setSubjectName}
             />
 
             {/* Due Date Presets & Picker */}
@@ -501,43 +478,6 @@ export default function AssignmentsScreen() {
               />
             )}
 
-            {/* Weightage % & Marks Grid */}
-            <View style={styles.twoColRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Weightage (%)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="E.g., 20"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
-                  value={weightage}
-                  onChangeText={setWeightage}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Max Marks</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="E.g., 100"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
-                  value={maxMarks}
-                  onChangeText={setMaxMarks}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inputLabel}>Obtained</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="E.g., 92"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
-                  value={obtainedMarks}
-                  onChangeText={setObtainedMarks}
-                />
-              </View>
-            </View>
-
             {/* Status */}
             <Text style={styles.inputLabel}>Status</Text>
             <View style={styles.statusRow}>
@@ -572,10 +512,10 @@ export default function AssignmentsScreen() {
             </View>
 
             {/* Markdown Notes / Rubric */}
-            <Text style={styles.inputLabel}>Markdown Notes / Rubric</Text>
+            <Text style={styles.inputLabel}>Notes / Rubric</Text>
             <TextInput
               style={[styles.input, styles.notesInput]}
-              placeholder="Add submission links, grading rubric, or notes..."
+              placeholder="Add instructions, rubric, submission links, or notes..."
               placeholderTextColor={colors.textMuted}
               multiline
               value={notes}
@@ -685,22 +625,11 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       fontSize: FONT_SIZE.md,
       color: colors.textPrimary,
     },
-    cardSubRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 4,
-      marginTop: 2,
-    },
     cardSub: {
       fontFamily: FONT_FAMILY.body,
       fontSize: FONT_SIZE.sm,
       color: colors.textMuted,
-    },
-    cardSubMeta: {
-      fontFamily: FONT_FAMILY.medium,
-      fontSize: FONT_SIZE.xs,
-      color: colors.accentPrimary,
+      marginTop: 2,
     },
     cardNotesSnippet: {
       fontFamily: FONT_FAMILY.body,
@@ -845,11 +774,6 @@ const makeStyles = (colors: any, isDark: boolean = true) =>
       fontFamily: FONT_FAMILY.bold,
       fontSize: 11,
       color: colors.accentPrimary,
-    },
-
-    twoColRow: {
-      flexDirection: 'row',
-      gap: 8,
     },
 
     dateBtn: {
