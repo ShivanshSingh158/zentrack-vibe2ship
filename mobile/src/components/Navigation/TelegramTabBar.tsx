@@ -254,22 +254,27 @@ export function TelegramTabBar({
         'rgba(244,243,248,0.99)',
       ] as const;
 
+  const currentRouteName = state.routes[state.index]?.name;
+  const isMoreActive = currentRouteName === 'More';
+
   return (
     <Animated.View
       pointerEvents="box-none"
       style={[
         styles.outerWrapper,
-        { height: gradientHeight },
+        { height: isMoreActive ? tabBarHeight : gradientHeight },
         containerAnimatedStyle,
       ]}
     >
-      {/* ── Spotify-style gradient fade ── */}
-      <LinearGradient
-        colors={gradientColors}
-        locations={[0, 0.38, 0.65, 0.84, 1]}
-        style={StyleSheet.absoluteFillObject}
-        pointerEvents="none"
-      />
+      {/* ── Spotify-style gradient fade (hidden on More screen) ── */}
+      {!isMoreActive && (
+        <LinearGradient
+          colors={gradientColors}
+          locations={[0, 0.38, 0.65, 0.84, 1]}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        />
+      )}
 
       {/* ── Tab bar sits at the bottom of the gradient block ── */}
       <View
