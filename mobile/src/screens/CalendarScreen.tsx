@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Dimensions, LayoutAnimation, UIManager, Platform, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,9 +26,12 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+const ALL_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
 export default function CalendarScreen() {
   const { colors, isDark } = useTheme();
-  const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
   const [findingSlots, setFindingSlots] = useState(false);
   const [aiSlotResult, setAiSlotResult] = useState<string | null>(null);
@@ -53,37 +56,43 @@ export default function CalendarScreen() {
     tasks, attendance, customEvents, gymLogs, userGymPlan
   } = data;
 
-  const [selY, selM, selD] = selectedDate.split('-').map(Number);
-  const selectedLocalDate = new Date(selY, (selM || 1) - 1, selD || 1);
+  const [selY, selM, selD] = useMemo(() => selectedDate.split('-').map(Number), [selectedDate]);
+  const selectedLocalDate = useMemo(() => new Date(selY, (selM || 1) - 1, selD || 1), [selY, selM, selD]);
   const currentMonthIdx = selectedLocalDate.getMonth();
-  const ALL_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
-  const monthName = selectedLocalDate.toLocaleString('default', { month: 'long' });
-  const dayNameShort = selectedLocalDate.toLocaleString('default', { weekday: 'short' });
-  const dateNum = selectedLocalDate.getDate();
+  const monthName = useMemo(() => selectedLocalDate.toLocaleString('default', { month: 'long' }), [selectedLocalDate]);
 
-  const toggleMonthDropdown = () => {
+  const toggleMonthDropdown = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setIsMonthDropdownOpen(!isMonthDropdownOpen);
-  };
+    setIsMonthDropdownOpen((prev) => !prev);
+  }, [setIsMonthDropdownOpen]);
 
   const currentHour = currentTime.getHours();
   const currentMinutes = currentTime.getMinutes();
   const indicatorTop = (currentHour * HOUR_HEIGHT) + ((currentMinutes / 60) * HOUR_HEIGHT);
-  const todayStr = formatLocalDateStr(currentTime);
+  const todayStr = useMemo(() => formatLocalDateStr(currentTime), [currentTime]);
   const isToday = selectedDate === todayStr;
-  // Minutes since midnight — used to fade past events
   const currentTimeMins = currentHour * 60 + currentMinutes;
 
   // Pre-indexed timetable cache: computes which day indices (0-6) have classes/labs
   const daysWithClasses = useMemo(() => {
-    const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const hasClasses = new Array(7).fill(false);
     if (!attendance || attendance.length === 0) return hasClasses;
 
     for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
-      for (const subj of attendance) {
-        const sch = subj.schedule?.[dayIdx.toString()] || subj.schedule?.[dayIdx] || subj.schedule?.[DAY_NAMES[dayIdx]] || subj.schedule?.[DAY_NAMES[dayIdx].toLowerCase()];
-        if (sch && ((sch.classes && sch.classes.length > 0) || (sch.labs && sch.labs.length > 0) || (sch.classCount || 0) > 0 || (sch.labCount || 0) > 0)) {
+      for (let s = 0; s < attendance.length; s++) {
+        const subj = attendance[s];
+        const sch =
+          subj.schedule?.[dayIdx.toString()] ||
+          subj.schedule?.[dayIdx] ||
+          subj.schedule?.[DAY_NAMES[dayIdx]] ||
+          subj.schedule?.[DAY_NAMES[dayIdx].toLowerCase()];
+        if (
+          sch &&
+          ((sch.classes && sch.classes.length > 0) ||
+            (sch.labs && sch.labs.length > 0) ||
+            (sch.classCount || 0) > 0 ||
+            (sch.labCount || 0) > 0)
+        ) {
           hasClasses[dayIdx] = true;
           break;
         }
@@ -114,54 +123,84 @@ export default function CalendarScreen() {
     return dates;
   }, [currentYearMonth, daysWithClasses]);
 
-  const markedDates = useMemo(() => {
-    const marks: any = {};
+  // Static base event dots map — stable across date selections to eliminate re-renders
+  const baseMarkedDots = useMemo(() => {
+    const marks: Record<string, { dots: Array<{ key: string; color: string }> }> = {};
     const MAX_DOTS = 3;
     const colorMap = getEventColors(colors, isDark);
 
     const addDot = (dateStr: string, color: string, key: string) => {
       if (!marks[dateStr]) marks[dateStr] = { dots: [] };
-      if (!marks[dateStr].dots.find((d: any) => d.color === color) && marks[dateStr].dots.length < MAX_DOTS) {
+      if (!marks[dateStr].dots.find((d) => d.color === color) && marks[dateStr].dots.length < MAX_DOTS) {
         marks[dateStr].dots.push({ key, color });
       }
     };
 
-    customEvents.forEach(e => e.date && addDot(e.date, colorMap[e.type]?.border || colors.accentPrimary, e.id));
-    tasks.forEach(t => t.date && addDot(t.date, isDark ? '#f59e0b' : '#D97706', t.id));
-    if (gymLogs) {
-      gymLogs.forEach((g: any) => g.date && addDot(g.date, isDark ? '#10b981' : '#059669', g.id));
+    for (let i = 0; i < customEvents.length; i++) {
+      const e = customEvents[i];
+      if (e.date) addDot(e.date, colorMap[e.type]?.border || colors.accentPrimary, e.id);
     }
-
-    // Classes & Labs from pre-indexed cache
-    monthClassDates.forEach((dStr) => {
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (t.date) addDot(t.date, isDark ? '#f59e0b' : '#D97706', t.id);
+    }
+    if (gymLogs) {
+      for (let i = 0; i < gymLogs.length; i++) {
+        const g = gymLogs[i];
+        if (g.date) addDot(g.date, isDark ? '#10b981' : '#059669', g.id);
+      }
+    }
+    for (let i = 0; i < monthClassDates.length; i++) {
+      const dStr = monthClassDates[i];
       addDot(dStr, isDark ? '#3390ec' : '#2563EB', 'class-' + dStr);
-    });
-
-    if (marks[selectedDate]) {
-      marks[selectedDate] = { ...marks[selectedDate], selected: true, selectedColor: colors.accentPrimary, selectedTextColor: isDark ? '#000000' : '#FFFFFF' };
-    } else {
-      marks[selectedDate] = { selected: true, selectedColor: colors.accentPrimary, selectedTextColor: isDark ? '#000000' : '#FFFFFF' };
     }
     return marks;
-  }, [customEvents, tasks, selectedDate, monthClassDates, gymLogs, colors, isDark]);
+  }, [customEvents, tasks, monthClassDates, gymLogs, colors, isDark]);
 
-  // ── Month Density Heat Map: count events per date ──────────────────────────
-  // Used in CalendarAgendaView to color-tint day cells (0=none, 1-2=light, 3-5=medium, 6+=dark)
+  // Dynamic markedDates with selected day highlight
+  const markedDates = useMemo(() => {
+    const marks: Record<string, any> = { ...baseMarkedDots };
+    const existing = marks[selectedDate];
+    marks[selectedDate] = {
+      ...(existing || {}),
+      dots: existing?.dots || [],
+      selected: true,
+      selectedColor: colors.accentPrimary,
+      selectedTextColor: isDark ? '#000000' : '#FFFFFF',
+    };
+    return marks;
+  }, [baseMarkedDots, selectedDate, colors.accentPrimary, isDark]);
+
+  // Month Density Heat Map: count events per date
   const eventCountByDate = useMemo(() => {
     const counts: Record<string, number> = {};
-    const bump = (date: string) => { counts[date] = (counts[date] || 0) + 1; };
-    customEvents.forEach((e: any) => e.date && bump(e.date));
-    tasks.forEach((t: any) => t.date && bump(t.date));
-    if (gymLogs) gymLogs.forEach((g: any) => g.date && bump(g.date));
-    monthClassDates.forEach((d) => bump(d));
+    const bump = (date: string) => {
+      counts[date] = (counts[date] || 0) + 1;
+    };
+    for (let i = 0; i < customEvents.length; i++) {
+      const d = customEvents[i].date;
+      if (d) bump(d);
+    }
+    for (let i = 0; i < tasks.length; i++) {
+      const d = tasks[i].date;
+      if (d) bump(d);
+    }
+    if (gymLogs) {
+      for (let i = 0; i < gymLogs.length; i++) {
+        const d = gymLogs[i]?.date;
+        if (d) bump(d);
+      }
+    }
+    for (let i = 0; i < monthClassDates.length; i++) {
+      bump(monthClassDates[i]);
+    }
     return counts;
   }, [customEvents, tasks, gymLogs, monthClassDates]);
 
-  // FIX 5.2: In-memory cache for AI Free Slot results keyed by date + events fingerprint
+  // In-memory cache for AI Free Slot results keyed by date + events fingerprint
   const slotCacheRef = useRef<Record<string, string>>({});
 
-  const handleFindFreeSlots = async () => {
-    // Build fingerprint of today's schedule
+  const handleFindFreeSlots = useCallback(async () => {
     const scheduleFingerprint = `${selectedDate}_${dayEvents.map(e => `${e.id}_${e.startTime}_${e.endTime}`).join(';')}`;
     if (slotCacheRef.current[scheduleFingerprint]) {
       setAiSlotResult(slotCacheRef.current[scheduleFingerprint]);
@@ -182,7 +221,35 @@ export default function CalendarScreen() {
       setAiSlotResult('Unable to find free slots. Please try again.');
     }
     setFindingSlots(false);
-  };
+  }, [selectedDate, dayEvents]);
+
+  const handlePrevMonth = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const [curY, curM, curD] = selectedDate.split('-').map(Number);
+    const prev = new Date(curY, (curM || 1) - 2, 1);
+    const maxDay = new Date(prev.getFullYear(), prev.getMonth() + 1, 0).getDate();
+    const targetDay = Math.min(curD || 1, maxDay);
+    const newDateStr = [
+      prev.getFullYear(),
+      String(prev.getMonth() + 1).padStart(2, '0'),
+      String(targetDay).padStart(2, '0')
+    ].join('-');
+    setSelectedDate(newDateStr);
+  }, [selectedDate, setSelectedDate]);
+
+  const handleNextMonth = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const [curY, curM, curD] = selectedDate.split('-').map(Number);
+    const next = new Date(curY, curM || 1, 1);
+    const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    const targetDay = Math.min(curD || 1, maxDay);
+    const newDateStr = [
+      next.getFullYear(),
+      String(next.getMonth() + 1).padStart(2, '0'),
+      String(targetDay).padStart(2, '0')
+    ].join('-');
+    setSelectedDate(newDateStr);
+  }, [selectedDate, setSelectedDate]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -209,7 +276,6 @@ export default function CalendarScreen() {
               borderTopWidth: 1,
               borderTopColor: colors.border,
             }}>
-              {/* Handle bar */}
               <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)', alignSelf: 'center', marginBottom: 20 }} />
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, gap: 10 }}>
                 <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? 'rgba(165,153,255,0.15)' : 'rgba(108,92,231,0.12)', alignItems: 'center', justifyContent: 'center' }}>
@@ -236,19 +302,7 @@ export default function CalendarScreen() {
         {currentView === 'Month' ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 1 }}>
             <TouchableOpacity 
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                const [curY, curM, curD] = selectedDate.split('-').map(Number);
-                const prev = new Date(curY, (curM || 1) - 2, 1);
-                const maxDay = new Date(prev.getFullYear(), prev.getMonth() + 1, 0).getDate();
-                const targetDay = Math.min(curD || 1, maxDay);
-                const newDateStr = [
-                  prev.getFullYear(),
-                  String(prev.getMonth() + 1).padStart(2, '0'),
-                  String(targetDay).padStart(2, '0')
-                ].join('-');
-                setSelectedDate(newDateStr);
-              }} 
+              onPress={handlePrevMonth} 
               style={{ paddingVertical: 4, paddingHorizontal: 6 }}
               activeOpacity={0.6}
             >
@@ -258,19 +312,7 @@ export default function CalendarScreen() {
               {monthName.slice(0, 3)} {selectedLocalDate.getFullYear()}
             </Text>
             <TouchableOpacity 
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                const [curY, curM, curD] = selectedDate.split('-').map(Number);
-                const next = new Date(curY, curM || 1, 1);
-                const maxDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
-                const targetDay = Math.min(curD || 1, maxDay);
-                const newDateStr = [
-                  next.getFullYear(),
-                  String(next.getMonth() + 1).padStart(2, '0'),
-                  String(targetDay).padStart(2, '0')
-                ].join('-');
-                setSelectedDate(newDateStr);
-              }} 
+              onPress={handleNextMonth} 
               style={{ paddingVertical: 4, paddingHorizontal: 6 }}
               activeOpacity={0.6}
             >
@@ -339,7 +381,7 @@ export default function CalendarScreen() {
             markingType={'multi-dot'}
             markedDates={markedDates}
             hideExtraDays={true}
-            renderHeader={() => null} // Google Calendar hides the month header in the dropdown
+            renderHeader={() => null}
             theme={{
               backgroundColor: 'transparent',
               calendarBackground: 'transparent',
@@ -382,18 +424,16 @@ export default function CalendarScreen() {
         </View>
       )}
 
-
       {/* 2. DATE SELECTOR (Horizontal Paging Week Strip — only in Day view) */}
       {!isMonthDropdownOpen && currentView === 'Day' && (
         <CalendarWeekStripPager
           selectedDate={selectedDate}
           onSelectDate={setSelectedDate}
-          markedDates={markedDates}
+          markedDates={baseMarkedDots}
         />
       )}
-
       
-      {/* 3. TIMELINE GRID (DAY VIEW) — conditional mount (not display:none) */}
+      {/* 3. TIMELINE GRID (DAY VIEW) — conditional mount */}
       {currentView === 'Day' && (
         <View style={{ flex: 1 }}>
           <CalendarDayView
@@ -418,7 +458,7 @@ export default function CalendarScreen() {
             DYNAMIC_HOURS={DYNAMIC_HOURS} minHour={minHour} maxHour={maxHour}
             indicatorTop={indicatorTop} selectedDate={selectedDate} nowDateStr={todayStr}
             setSelectedDate={setSelectedDate} setCurrentView={setCurrentView}
-            markedDates={markedDates}
+            markedDates={baseMarkedDots}
           />
         </View>
       )}

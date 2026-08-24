@@ -2,12 +2,13 @@
  * CalendarAgendaView.tsx
  * Renders the Foldable / Expandable Month View.
  *
- * Improvements:
- * - Month Density Heat Map: day cells are color-tinted by event count
- *   (0 = none, 1-2 = faint, 3-5 = medium, 6+ = bright/hot)
+ * Performance improvements:
+ * - Memoized AgendaDayCell component to avoid re-rendering all 35-42 calendar tiles on state changes
+ * - Month Density Heat Map: day cells are color-tinted by event count (0 = none, 1-2 = faint, 3-5 = medium, 6+ = bright/hot)
  * - Today circle outline + selected day fill
+ * - Virtualized FlatList with initialNumToRender=10 and windowSize=5
  */
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, TouchableOpacity, FlatList } from 'react-native';
 import { CalendarProvider, ExpandableCalendar } from 'react-native-calendars';
 import { getEventColors, format12Hour } from './calendarUtils';
@@ -52,6 +53,75 @@ function getDensityTint(count: number, isDark: boolean = true): string | undefin
   return 'rgba(108,92,231,0.30)';                   // rich royal lilac
 }
 
+interface AgendaDayCellProps {
+  dateStr?: string;
+  dayNum?: number;
+  count: number;
+  isSelected: boolean;
+  isToday: boolean;
+  dots: any[];
+  onPress: (dateStr: string) => void;
+  colors: any;
+  isDark: boolean;
+}
+
+const AgendaDayCell = React.memo(function AgendaDayCell({
+  dateStr,
+  dayNum,
+  count,
+  isSelected,
+  isToday,
+  dots,
+  onPress,
+  colors,
+  isDark,
+}: AgendaDayCellProps) {
+  if (!dateStr) return <View style={{ width: 32, height: 32 }} />;
+
+  const tint = getDensityTint(count, isDark);
+
+  return (
+    <TouchableOpacity
+      onPress={() => onPress(dateStr)}
+      activeOpacity={0.7}
+      style={{
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: isSelected
+          ? (colors.accentPrimary || '#a599ff')
+          : (tint || 'transparent'),
+        borderWidth: isToday && !isSelected ? 1.5 : 0,
+        borderColor: colors.accentPrimary || '#a599ff',
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 13,
+          fontFamily: FONT_FAMILY.bold,
+          color: isSelected
+            ? (isDark ? '#000000' : '#FFFFFF')
+            : (isToday ? (colors.accentPrimary || '#a599ff') : (colors.textPrimary || '#fff')),
+        }}
+      >
+        {dayNum}
+      </Text>
+      {dots.length > 0 && !isSelected && (
+        <View style={{ flexDirection: 'row', gap: 2, marginTop: 1 }}>
+          {dots.slice(0, 3).map((dot: any, i: number) => (
+            <View
+              key={dot.key || i}
+              style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: dot.color || colors.accentPrimary }}
+            />
+          ))}
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+});
+
 const CalendarAgendaView = React.memo(function CalendarAgendaView({
   styles, colors, isDark = true, selectedDate, currentView,
   setSelectedDate, markedDates, dayEvents, setSelectedGymLog,
@@ -60,65 +130,40 @@ const CalendarAgendaView = React.memo(function CalendarAgendaView({
   eventCountByDate = {},
 }: CalendarAgendaViewProps) {
 
-  const todayStr = formatLocalDateStr(new Date());
-  const eventColorMap = getEventColors(colors, isDark);
+  const todayStr = useMemo(() => formatLocalDateStr(new Date()), []);
+  const eventColorMap = useMemo(() => getEventColors(colors, isDark), [colors, isDark]);
 
-  // ── Custom Day Cell with heat map tint ────────────────────────────────────
-  const renderDay = (dayProps: any) => {
+  const handleDayPress = useCallback((dateStr: string) => {
+    setSelectedDate(dateStr);
+  }, [setSelectedDate]);
+
+  // ── Custom Day Cell with heat map tint (memoized) ─────────────────────────
+  const renderDay = useCallback((dayProps: any) => {
     const dateStr = dayProps.date?.dateString as string | undefined;
     if (!dateStr) return <View style={{ width: 32, height: 32 }} />;
 
     const count = eventCountByDate[dateStr] || 0;
-    const tint = getDensityTint(count, isDark);
     const isSelected = dateStr === selectedDate;
     const isToday = dateStr === todayStr;
     const marked = markedDates[dateStr];
     const dots: any[] = marked?.dots || [];
 
     return (
-      <TouchableOpacity
-        onPress={() => setSelectedDate(dateStr)}
-        activeOpacity={0.7}
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 16,
-          alignItems: 'center',
-          justifyContent: 'center',
-          // Selected: solid accent fill
-          backgroundColor: isSelected
-            ? (colors.accentPrimary || '#a599ff')
-            : (tint || 'transparent'),
-          // Today: accent border outline (only when not selected)
-          borderWidth: isToday && !isSelected ? 1.5 : 0,
-          borderColor: colors.accentPrimary || '#a599ff',
-        }}
-      >
-        <Text style={{
-          fontSize: 13,
-          fontFamily: FONT_FAMILY.bold,
-          color: isSelected
-            ? (isDark ? '#000000' : '#FFFFFF')
-            : (isToday ? (colors.accentPrimary || '#a599ff') : (colors.textPrimary || '#fff')),
-        }}>
-          {dayProps.date?.day}
-        </Text>
-        {/* Dot row for events */}
-        {dots.length > 0 && !isSelected && (
-          <View style={{ flexDirection: 'row', gap: 2, marginTop: 1 }}>
-            {dots.slice(0, 3).map((dot: any, i: number) => (
-              <View
-                key={i}
-                style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: dot.color || colors.accentPrimary }}
-              />
-            ))}
-          </View>
-        )}
-      </TouchableOpacity>
+      <AgendaDayCell
+        dateStr={dateStr}
+        dayNum={dayProps.date?.day}
+        count={count}
+        isSelected={isSelected}
+        isToday={isToday}
+        dots={dots}
+        onPress={handleDayPress}
+        colors={colors}
+        isDark={isDark}
+      />
     );
-  };
+  }, [eventCountByDate, selectedDate, todayStr, markedDates, handleDayPress, colors, isDark]);
 
-  const renderMonthEventItem = ({ item }: { item: any }) => {
+  const renderMonthEventItem = useCallback(({ item }: { item: any }) => {
     const eventColor = eventColorMap[item.type] || { bg: colors.surface, text: colors.textPrimary, border: colors.accentPrimary };
     return (
       <TouchableOpacity
@@ -134,21 +179,30 @@ const CalendarAgendaView = React.memo(function CalendarAgendaView({
               setShowGymModal(true);
             }
           } else {
-            setSelectedEvent(item); setShowEventModal(true);
+            setSelectedEvent(item);
+            setShowEventModal(true);
           }
         }}
       >
-        <Text style={[styles.monthEventTitle, { color: isDark ? eventColor.border : colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
-        <Text style={styles.monthEventTime}>{format12Hour(item.startTime)} - {format12Hour(item.endTime)}</Text>
+        <Text style={[styles.monthEventTitle, { color: isDark ? eventColor.border : colors.textPrimary }]} numberOfLines={1}>
+          {item.title}
+        </Text>
+        <Text style={styles.monthEventTime}>
+          {format12Hour(item.startTime)} - {format12Hour(item.endTime)}
+        </Text>
       </TouchableOpacity>
     );
-  };
+  }, [eventColorMap, colors.surface, colors.textPrimary, colors.accentPrimary, styles.monthEventRow, styles.monthEventTitle, styles.monthEventTime, isDark, gymLogs, setSelectedGymLog, setGymStartTimeInput, setGymEndTimeInput, setShowGymModal, setSelectedEvent, setShowEventModal]);
+
+  const keyExtractor = useCallback((item: any) => item.id, []);
+
+  const headerTitle = useMemo(() => formatDateFull(selectedDate).toUpperCase(), [selectedDate]);
 
   return (
     <View style={{ flex: 1 }}>
       <CalendarProvider
         date={selectedDate}
-        onDateChanged={(date: string) => setSelectedDate(date)}
+        onDateChanged={setSelectedDate}
         showTodayButton={false}
         theme={{ todayButtonTextColor: colors.accentPrimary }}
       >
@@ -165,7 +219,6 @@ const CalendarAgendaView = React.memo(function CalendarAgendaView({
           markedDates={markedDates}
           hideKnob={false}
           renderHeader={() => null}
-          // Custom day component — renders density heat map tint + dots
           dayComponent={renderDay}
           theme={{
             backgroundColor: colors.background,
@@ -207,12 +260,15 @@ const CalendarAgendaView = React.memo(function CalendarAgendaView({
           } as any}
         />
         <View style={styles.monthEventListContainer}>
-          <Text style={styles.monthEventListHeader}>{formatDateFull(selectedDate).toUpperCase()}</Text>
+          <Text style={styles.monthEventListHeader}>{headerTitle}</Text>
           <FlatList
             data={dayEvents}
-            keyExtractor={item => item.id}
+            keyExtractor={keyExtractor}
             renderItem={renderMonthEventItem}
             showsVerticalScrollIndicator={false}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={5}
             contentContainerStyle={{ paddingBottom: 100 }}
             ListEmptyComponent={<Text style={styles.emptyText}>No events on this day.</Text>}
           />

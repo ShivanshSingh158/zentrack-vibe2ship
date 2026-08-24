@@ -104,6 +104,11 @@ export function useGymLog(dateStr: string) {
   // Tracks the most recent local write timestamp so we can skip stale Firestore snapshots
   const localWriteAtRef = useRef<number>(0);
 
+  const historyIndex = useMemo(
+    () => buildExerciseHistoryIndex(gymLogs, dateStr),
+    [gymLogs, dateStr]
+  );
+
   useEffect(() => {
     logRef.current = log;
   }, [log]);
@@ -134,7 +139,6 @@ export function useGymLog(dateStr: string) {
 
     const planIdx = planDayIndexForDate(dateStr);
     const planDay = resolvePlanDay(userGymPlan, planIdx);
-    const historyIndex = buildExerciseHistoryIndex(gymLogs, dateStr);
 
     const existing = (gymLogs || []).find(l => l.date === dateStr);
 

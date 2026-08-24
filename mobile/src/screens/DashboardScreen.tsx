@@ -240,7 +240,7 @@ export default function DashboardScreen() {
             />
           )}
           
-          <Animated.View entering={FadeInDown.delay(100).duration(400)} style={[s.greetingContainer, { zIndex: 99999, elevation: 9999 }]}>
+          <Animated.View entering={FadeInDown.duration(200)} style={[s.greetingContainer, { zIndex: 99999, elevation: 9999 }]}>
             <View style={{ flex: 1, paddingRight: 8 }}>
               <Text style={s.greetingGood}>Good</Text>
               <Text style={s.greetingTime}>{data.timeGreeting}</Text>
@@ -389,7 +389,7 @@ export default function DashboardScreen() {
 
           {/* ⚡ 3-Minute Active Recall Due Widget */}
           {dueFlashcards.length > 0 && !isBannerDismissed && (
-            <Animated.View entering={FadeInDown.delay(180).duration(400)} style={{ marginTop: 12, marginBottom: 6 }}>
+            <Animated.View entering={FadeInDown.duration(200)} style={{ marginTop: 12, marginBottom: 6 }}>
               <View
                 style={{
                   backgroundColor: colors.surface,
@@ -493,7 +493,7 @@ export default function DashboardScreen() {
 
             if (layoutItem.id === 'quote') {
               return (
-                <Animated.View key={"quote" as any} entering={FadeInDown.delay(200).duration(400)} style={{ marginTop: 18, marginBottom: 14 }}>
+                <Animated.View key={"quote" as any} entering={FadeInDown.duration(200)} style={{ marginTop: 18, marginBottom: 14 }}>
                   <Pressable
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -510,7 +510,7 @@ export default function DashboardScreen() {
 
             if (layoutItem.id === 'stats') {
               return (
-                <Animated.View key={"stats" as any} entering={FadeInDown.delay(300).duration(400)}>
+                <Animated.View key={"stats" as any} entering={FadeInDown.duration(200)}>
                   <UnifiedLifeWidget
                     currentStreak={data.appStreak}
                     streakAtRisk={false}
@@ -546,7 +546,7 @@ export default function DashboardScreen() {
 
             if (layoutItem.id === 'agenda') {
               return (
-                <Animated.View key={"agenda" as any} entering={FadeInDown.delay(400).duration(400)}>
+                <Animated.View key={"agenda" as any} entering={FadeInDown.duration(200)}>
                   <AgendaWidget
                     tasks={data.tasks}
                     gymLogs={data.gymLogs}

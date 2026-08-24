@@ -2,7 +2,8 @@
  * CalendarWeekView.tsx
  * Renders the 7-day timeline grid for the selected week with column headers.
  *
- * Improvements:
+ * Performance improvements:
+ * - Memoized weekDays calculation and event color map
  * - Past day columns fade to 40% opacity (days before today)
  * - Week event blocks show 1 line title + time sub-text (proper truncation)
  * - Today column has a soft purple tint highlight
@@ -28,6 +29,8 @@ interface CalendarWeekViewProps {
   markedDates?: Record<string, { dots?: Array<{ key: string; color: string }> }>;
 }
 
+const DAY_LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+
 export const CalendarWeekView = React.memo(function CalendarWeekView({
   styles, colors, isDark = true, weekEvents, minHour, maxHour, DYNAMIC_HOURS,
   indicatorTop, selectedDate, nowDateStr, setSelectedDate, setCurrentView,
@@ -35,7 +38,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
 }: CalendarWeekViewProps) {
   const weekDays = useMemo(() => {
     const [y, m, d] = selectedDate.split('-').map(Number);
-    const sel = new Date(y, m - 1, d);
+    const sel = new Date(y, (m || 1) - 1, d || 1);
     const sunday = new Date(sel);
     sunday.setDate(sel.getDate() - sel.getDay());
 
@@ -56,8 +59,8 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
     });
   }, [selectedDate, nowDateStr]);
 
-  const DAY_LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
-  const eventColorMap = getEventColors(colors, isDark);
+  const eventColorMap = useMemo(() => getEventColors(colors, isDark), [colors, isDark]);
+  const timelineHeight = useMemo(() => (maxHour - minHour + 1) * HOUR_HEIGHT + 100, [maxHour, minHour]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -69,7 +72,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
             const dots = markedDates[wd.dateStr]?.dots || [];
             return (
               <TouchableOpacity
-                key={i}
+                key={wd.dateStr}
                 style={{ flex: 1, alignItems: 'center', gap: 3, opacity: wd.isPast ? 0.45 : 1 }}
                 onPress={() => {
                   setSelectedDate(wd.dateStr);
@@ -104,25 +107,27 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
                     {wd.dateNum}
                   </Text>
                   {/* Event Dots */}
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 2,
-                    position: 'absolute',
-                    bottom: 3,
-                  }}>
-                    {dots.slice(0, 3).map((dot, dotIdx) => (
-                      <View
-                        key={dotIdx}
-                        style={{
-                          width: 3.5,
-                          height: 3.5,
-                          borderRadius: 2,
-                          backgroundColor: wd.isSelected ? (isDark ? '#000000' : '#FFFFFF') : (dot.color || colors.accentPrimary),
-                        }}
-                      />
-                    ))}
-                  </View>
+                  {dots.length > 0 && (
+                    <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 2,
+                      position: 'absolute',
+                      bottom: 3,
+                    }}>
+                      {dots.slice(0, 3).map((dot, dotIdx) => (
+                        <View
+                          key={dot.key || dotIdx}
+                          style={{
+                            width: 3.5,
+                            height: 3.5,
+                            borderRadius: 2,
+                            backgroundColor: wd.isSelected ? (isDark ? '#000000' : '#FFFFFF') : (dot.color || colors.accentPrimary),
+                          }}
+                        />
+                      ))}
+                    </View>
+                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -131,7 +136,7 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
       </View>
 
       <ScrollView style={styles.timelineScroll} showsVerticalScrollIndicator={false}>
-        <View style={[styles.timelineInner, { flexDirection: 'row', height: (maxHour - minHour + 1) * HOUR_HEIGHT + 100, marginTop: 10 }]}>
+        <View style={[styles.timelineInner, { flexDirection: 'row', height: timelineHeight, marginTop: 10 }]}>
           {/* Hour Axis */}
           <View style={styles.weekHourAxis}>
             {DYNAMIC_HOURS.map(hour => (
@@ -153,7 +158,6 @@ export const CalendarWeekView = React.memo(function CalendarWeekView({
                   style={[
                     styles.weekCol,
                     isTodayCol && styles.weekColToday,
-                    // Past columns get subtle opacity reduction
                     isPastCol && { opacity: 0.4 },
                   ]}
                 >

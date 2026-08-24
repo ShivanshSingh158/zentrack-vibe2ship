@@ -1659,67 +1659,69 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
         />
       </Reanimated.View>
 
-      {/* ΓöÇΓöÇ Voice Mode Overlay ΓöÇΓöÇ */}
-      <Modal visible={isVoiceMode} animationType="fade" transparent={false} statusBarTranslucent>
-        <View style={s.voiceOverlay}>
-          {/* Close X */}
-          <TouchableOpacity style={s.voiceClose} onPress={closeVoiceMode} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <Ionicons name="close" size={20} color={colors.textPrimary} />
-          </TouchableOpacity>
+      {/* ── Voice Mode Overlay ── */}
+      {isVoiceMode && (
+        <Modal visible={isVoiceMode} animationType="fade" transparent={false} statusBarTranslucent>
+          <View style={s.voiceOverlay}>
+            {/* Close X */}
+            <TouchableOpacity style={s.voiceClose} onPress={closeVoiceMode} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Ionicons name="close" size={20} color={colors.textPrimary} />
+            </TouchableOpacity>
 
-          {/* Orb */}
-          <View style={s.voiceOrbArea}>
-            <VoiceOrb
-              size="large"
-              status={voiceStatus === 'listening' ? (isVoiceRecording ? 'listening' : 'idle') : voiceStatus}
-            />
+            {/* Orb */}
+            <View style={s.voiceOrbArea}>
+              <VoiceOrb
+                size="large"
+                status={voiceStatus === 'listening' ? (isVoiceRecording ? 'listening' : 'idle') : voiceStatus}
+              />
+            </View>
+
+            {/* Status */}
+            <Text style={s.voiceStatus}>
+              {voiceStatus === 'listening' ? 'Listening...' : 
+               voiceStatus === 'processing' ? 'Processing...' : 
+               voiceStatus === 'success' ? 'Done' : 
+               voiceStatus === 'idle' ? 'Tap to speak' :
+               'Speaking...'}
+            </Text>
+
+            {/* Live caption */}
+            {voiceCaption ? (
+              <Text style={s.voiceCaption}>{voiceCaption}</Text>
+            ) : null}
+
+            {/* 3 Controls */}
+            <View style={s.voiceControls}>
+              {/* Mute */}
+              <TouchableOpacity
+                style={[s.voiceControlBtn, isMuted && s.voiceControlBtnActive]}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setIsMuted(v => !v);
+                }}
+              >
+                <Ionicons name={isMuted ? 'mic-off' : 'mic-off-outline'} size={22} color={isMuted ? colors.accentPrimary : colors.textMuted} />
+              </TouchableOpacity>
+
+              {/* End call — large red button */}
+              <TouchableOpacity style={s.voiceEndBtn} onPress={endVoiceCall}>
+                <View style={s.voiceEndBtnInner} />
+              </TouchableOpacity>
+
+              {/* Switch to keyboard */}
+              <TouchableOpacity
+                style={s.voiceControlBtn}
+                onPress={() => {
+                  closeVoiceMode();
+                  safeSetTimeout(() => inputRef.current?.focus(), 300);
+                }}
+              >
+                <Ionicons name="keypad-outline" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
           </View>
-
-          {/* Status */}
-          <Text style={s.voiceStatus}>
-            {voiceStatus === 'listening' ? 'Listening...' : 
-             voiceStatus === 'processing' ? 'Processing...' : 
-             voiceStatus === 'success' ? 'Done' : 
-             voiceStatus === 'idle' ? 'Tap to speak' :
-             'Speaking...'}
-          </Text>
-
-          {/* Live caption */}
-          {voiceCaption ? (
-            <Text style={s.voiceCaption}>{voiceCaption}</Text>
-          ) : null}
-
-          {/* 3 Controls */}
-          <View style={s.voiceControls}>
-            {/* Mute */}
-            <TouchableOpacity
-              style={[s.voiceControlBtn, isMuted && s.voiceControlBtnActive]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setIsMuted(v => !v);
-              }}
-            >
-              <Ionicons name={isMuted ? 'mic-off' : 'mic-off-outline'} size={22} color={isMuted ? colors.accentPrimary : colors.textMuted} />
-            </TouchableOpacity>
-
-            {/* End call ΓÇö large red button */}
-            <TouchableOpacity style={s.voiceEndBtn} onPress={endVoiceCall}>
-              <View style={s.voiceEndBtnInner} />
-            </TouchableOpacity>
-
-            {/* Switch to keyboard */}
-            <TouchableOpacity
-              style={s.voiceControlBtn}
-              onPress={() => {
-                closeVoiceMode();
-                safeSetTimeout(() => inputRef.current?.focus(), 300);
-              }}
-            >
-              <Ionicons name="keypad-outline" size={22} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       {/* ΓöÇΓöÇ Overflow Menu Overlay ΓöÇΓöÇ */}
       {menuOpen && (
@@ -1741,45 +1743,46 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
         </Pressable>
       )}
 
-      {/* ΓöÇΓöÇ About Sara Modal ΓöÇΓöÇ */}
-      <Modal visible={aboutModalOpen} transparent animationType="fade">
-        <View style={s.aboutOverlay}>
-          <View style={s.aboutCard}>
-            {/* Header */}
-            <View style={s.aboutHeader}>
-              <View style={s.aboutOrbBadge}>
-                <Ionicons name="planet" size={26} color={colors.accentPrimary} />
-              </View>
-              <Text style={s.aboutTitle}>S.A.R.A.</Text>
-              <Text style={s.aboutSubtitle}>Systematic AI Resource Agent ┬╖ Engine v2</Text>
-            </View>
-
-            <ScrollView style={s.aboutScroll} showsVerticalScrollIndicator={false}>
-
-              {/* ΓöÇΓöÇ Live Capabilities ΓöÇΓöÇ */}
-              <Text style={s.aboutSectionTitle}>What I can do right now</Text>
-              {[
-                { icon: 'calendar-outline', color: '#89dceb', label: 'Bulk scheduling', desc: 'Create 5+ tasks or events in one command via parallel DAG execution' },
-                { icon: 'flash-outline', color: colors.accentPrimary, label: 'Instant actions', desc: 'Log habits, mark attendance, complete tasks ΓÇö confirmed with a single tap' },
-                { icon: 'analytics-outline', color: '#5eda9e', label: 'Cross-module insights', desc: 'Connects your tasks, attendance, gym & goals into one daily picture' },
-                { icon: 'navigate-outline', color: '#ff9f4d', label: 'Deep navigation', desc: 'Navigate and pre-fill any screen in the app with [NAVIGATE:X] tokens' },
-                { icon: 'search-outline', color: '#64D2FF', label: 'Live web search', desc: 'Searches the internet and uses results to answer or create context' },
-                { icon: 'mic-outline', color: '#a599ff', label: 'Voice capture', desc: 'Tap mic in chat ΓÇö speak, transcribe, send. No manual typing needed' },
-                { icon: 'notifications-outline', color: '#ff9f4d', label: 'Notification control', desc: 'Ask Sara to adjust any reminder or schedule setting by name' },
-              ].map((cap, i) => (
-                <View key={i} style={s.aboutCapRow}>
-                  <View style={[s.aboutCapIcon, { backgroundColor: cap.color + '1A' }]}>
-                    <Ionicons name={cap.icon as any} size={16} color={cap.color} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.aboutCapLabel}>{cap.label}</Text>
-                    <Text style={s.aboutCapDesc}>{cap.desc}</Text>
-                  </View>
+      {/* ── About Sara Modal ── */}
+      {aboutModalOpen && (
+        <Modal visible={aboutModalOpen} transparent animationType="fade">
+          <View style={s.aboutOverlay}>
+            <View style={s.aboutCard}>
+              {/* Header */}
+              <View style={s.aboutHeader}>
+                <View style={s.aboutOrbBadge}>
+                  <Ionicons name="planet" size={26} color={colors.accentPrimary} />
                 </View>
-              ))}
+                <Text style={s.aboutTitle}>S.A.R.A.</Text>
+                <Text style={s.aboutSubtitle}>Systematic AI Resource Agent · Engine v2</Text>
+              </View>
 
-              {/* ΓöÇΓöÇ Engine v2 Intelligence ΓöÇΓöÇ */}
-              <Text style={s.aboutSectionTitle}>Intelligence Architecture</Text>
+              <ScrollView style={s.aboutScroll} showsVerticalScrollIndicator={false}>
+
+                {/* ── Live Capabilities ── */}
+                <Text style={s.aboutSectionTitle}>What I can do right now</Text>
+                {[
+                  { icon: 'calendar-outline', color: '#89dceb', label: 'Bulk scheduling', desc: 'Create 5+ tasks or events in one command via parallel DAG execution' },
+                  { icon: 'flash-outline', color: colors.accentPrimary, label: 'Instant actions', desc: 'Log habits, mark attendance, complete tasks — confirmed with a single tap' },
+                  { icon: 'analytics-outline', color: '#5eda9e', label: 'Cross-module insights', desc: 'Connects your tasks, attendance, gym & goals into one daily picture' },
+                  { icon: 'navigate-outline', color: '#ff9f4d', label: 'Deep navigation', desc: 'Navigate and pre-fill any screen in the app with [NAVIGATE:X] tokens' },
+                  { icon: 'search-outline', color: '#64D2FF', label: 'Live web search', desc: 'Searches the internet and uses results to answer or create context' },
+                  { icon: 'mic-outline', color: '#a599ff', label: 'Voice capture', desc: 'Tap mic in chat — speak, transcribe, send. No manual typing needed' },
+                  { icon: 'notifications-outline', color: '#ff9f4d', label: 'Notification control', desc: 'Ask Sara to adjust any reminder or schedule setting by name' },
+                ].map((cap, i) => (
+                  <View key={i} style={s.aboutCapRow}>
+                    <View style={[s.aboutCapIcon, { backgroundColor: cap.color + '1A' }]}>
+                      <Ionicons name={cap.icon as any} size={16} color={cap.color} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.aboutCapLabel}>{cap.label}</Text>
+                      <Text style={s.aboutCapDesc}>{cap.desc}</Text>
+                    </View>
+                  </View>
+                ))}
+
+                {/* ── Engine v2 Intelligence ── */}
+                <Text style={s.aboutSectionTitle}>Intelligence Architecture</Text>
               {[
                 { icon: 'git-branch-outline', color: '#a599ff', label: 'Cap 1 ┬╖ Contextual Memory Graph', desc: 'Remembers patterns, stress markers, and preferences across sessions via on-device graph' },
                 { icon: 'filter-outline', color: '#5eda9e', label: 'Cap 2 ┬╖ Intent-Ranked Context', desc: 'Detects your intent in <5ms and injects only the relevant data ΓÇö zero wasted tokens' },
@@ -1873,6 +1876,7 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
           </View>
         </View>
       </Modal>
+    )}
     </>
   );
 

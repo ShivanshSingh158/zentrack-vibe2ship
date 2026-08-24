@@ -2,12 +2,13 @@
  * CalendarDayView.tsx
  * Renders the 24h timeline grid for the selected day.
  *
- * Improvements:
+ * Performance improvements:
+ * - Memoized event color map and helper calculations
  * - Auto-scrolls to current time on mount and whenever view becomes active
  * - Past events render at 40% opacity so "where you are now" is visually obvious
  * - Empty hour slot tap pre-fills the event modal with that exact time
  */
-import React, { useEffect } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { getEventColors, format12Hour, HOUR_HEIGHT, parseTimeTo24h } from './calendarUtils';
 
@@ -44,15 +45,20 @@ export const CalendarDayView = React.memo(function CalendarDayView({
   currentTimeMins,
 }: CalendarDayViewProps) {
 
+  const eventColorMap = useMemo(() => getEventColors(colors, isDark), [colors, isDark]);
+
   // ── Helper: decide if an event is "in the past" for opacity fading ─────────
-  const isPastEvent = (event: any): boolean => {
+  const isPastEvent = useCallback((event: any): boolean => {
     if (!isToday || currentTimeMins === undefined) return false;
     if (!event.endTime) return false;
     const { hour, min } = parseTimeTo24h(event.endTime);
     return (hour * 60 + min) < currentTimeMins;
-  };
+  }, [isToday, currentTimeMins]);
 
-  const eventColorMap = getEventColors(colors, isDark);
+  const timelineHeight = useMemo(
+    () => (maxHour - minHour + 1) * HOUR_HEIGHT + 100,
+    [maxHour, minHour]
+  );
 
   return (
     <View style={{ flex: 1 }}>
@@ -93,36 +99,34 @@ export const CalendarDayView = React.memo(function CalendarDayView({
       )}
 
       <ScrollView ref={scrollViewRef} style={styles.timelineScroll} showsVerticalScrollIndicator={false}>
-        <View style={[styles.timelineInner, { height: (maxHour - minHour + 1) * HOUR_HEIGHT + 100, marginTop: 20 }]}>
+        <View style={[styles.timelineInner, { height: timelineHeight, marginTop: 20 }]}>
           {/* Hour Grid Lines — tap to quick-create event at that time */}
-          {DYNAMIC_HOURS.map(hour => (
-            <TouchableOpacity
-              key={hour}
-              style={[styles.hourRow, { top: (hour - minHour) * HOUR_HEIGHT }]}
-              onPress={() => {
-                const timeStr = `${hour.toString().padStart(2, '0')}:00`;
-                setInitialTime(timeStr);
-                setSelectedEvent(null);
-                setShowAddModal(true);
-              }}
-            >
-              <Text style={[
-                styles.hourText,
-                // Mute past hours slightly
-                isToday && currentTimeMins !== undefined && hour * 60 < currentTimeMins
-                  ? { opacity: 0.35 }
-                  : undefined,
-              ]}>
-                {format12Hour(`${hour.toString().padStart(2, '0')}:00`)}
-              </Text>
-              <View style={[
-                styles.hourLine,
-                isToday && currentTimeMins !== undefined && hour * 60 < currentTimeMins
-                  ? { opacity: 0.3 }
-                  : undefined,
-              ]} />
-            </TouchableOpacity>
-          ))}
+          {DYNAMIC_HOURS.map(hour => {
+            const isPastHour = isToday && currentTimeMins !== undefined && hour * 60 < currentTimeMins;
+            return (
+              <TouchableOpacity
+                key={hour}
+                style={[styles.hourRow, { top: (hour - minHour) * HOUR_HEIGHT }]}
+                onPress={() => {
+                  const timeStr = `${hour.toString().padStart(2, '0')}:00`;
+                  setInitialTime(timeStr);
+                  setSelectedEvent(null);
+                  setShowAddModal(true);
+                }}
+              >
+                <Text style={[
+                  styles.hourText,
+                  isPastHour ? { opacity: 0.35 } : undefined,
+                ]}>
+                  {format12Hour(`${hour.toString().padStart(2, '0')}:00`)}
+                </Text>
+                <View style={[
+                  styles.hourLine,
+                  isPastHour ? { opacity: 0.3 } : undefined,
+                ]} />
+              </TouchableOpacity>
+            );
+          })}
 
           {/* Render Absolute Events */}
           <View style={styles.eventsContainer}>
@@ -141,7 +145,6 @@ export const CalendarDayView = React.memo(function CalendarDayView({
                       width: event.width as any,
                       backgroundColor: isDark ? `${eventColor.border}35` : eventColor.bg,
                       borderLeftColor: eventColor.border,
-                      // Past events fade to 40% opacity
                       opacity: past ? 0.4 : 1,
                     }
                   ]}

@@ -914,108 +914,116 @@ export default function NotesScreen() {
       </TouchableOpacity>
 
       {/* New Folder Modal */}
-      <Modal visible={showNewFolder} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>New Folder</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Folder Name"
-              placeholderTextColor={colors.textMuted}
-              value={newFolderName}
-              onChangeText={setNewFolderName}
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
-              <TouchableOpacity style={[styles.btn, styles.btnCancel]} onPress={() => setShowNewFolder(false)}>
-                <Text style={styles.btnTextCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={handleCreateFolder}>
-                <Text style={styles.btnTextPrimary}>Create</Text>
-              </TouchableOpacity>
+      {showNewFolder && (
+        <Modal visible={showNewFolder} transparent animationType="fade">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
+            <View style={styles.modalSheet}>
+              <Text style={styles.modalTitle}>New Folder</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Folder Name"
+                placeholderTextColor={colors.textMuted}
+                value={newFolderName}
+                onChangeText={setNewFolderName}
+                autoFocus
+              />
+              <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
+                <TouchableOpacity style={[styles.btn, styles.btnCancel]} onPress={() => setShowNewFolder(false)}>
+                  <Text style={styles.btnTextCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={handleCreateFolder}>
+                  <Text style={styles.btnTextPrimary}>Create</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
 
       {/* Item Action Menu */}
-      <Modal visible={!!menuItem} transparent animationType="slide">
-        <View style={styles.actionSheetOverlay}>
-          <Pressable style={{ flex: 1 }} onPress={() => setMenuItem(null)} />
-          <View style={styles.actionSheet}>
-            <View style={styles.actionSheetHandle} />
+      {!!menuItem && (
+        <Modal visible={!!menuItem} transparent animationType="slide">
+          <View style={styles.actionSheetOverlay}>
+            <Pressable style={{ flex: 1 }} onPress={() => setMenuItem(null)} />
+            <View style={styles.actionSheet}>
+              <View style={styles.actionSheetHandle} />
 
-            <TouchableOpacity style={styles.actionSheetItem} onPress={() => { handlePin(menuItem!.id!, !!menuItem!.pinned); setMenuItem(null); }}>
-              <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name={menuItem?.pinned ? "pin-outline" : "pin"} size={20} color={colors.accentPrimary} /></View>
-              <Text style={styles.actionSheetText}>{menuItem?.pinned ? "Unpin" : "Pin"}</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setRenameValue(menuItem!.name); setRenameNode(menuItem); setMenuItem(null); }}>
-              <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name="pencil" size={20} color={colors.accentPrimary} /></View>
-              <Text style={styles.actionSheetText}>Rename</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setMoveNode(menuItem); setMenuItem(null); }}>
-              <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(2, 132, 199, 0.10)' }]}><Ionicons name="move" size={20} color={isDark ? '#0A84FF' : '#0284C7'} /></View>
-              <Text style={styles.actionSheetText}>Move To...</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionSheetItem} onPress={() => { handleDelete(menuItem!.id!, menuItem!.name); setMenuItem(null); }}>
-              <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(220, 38, 38, 0.10)' }]}><Ionicons name="trash" size={20} color={isDark ? '#ef4444' : '#DC2626'} /></View>
-              <Text style={[styles.actionSheetText, { color: isDark ? '#ef4444' : '#DC2626' }]}>Delete</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Rename Modal */}
-      <Modal visible={!!renameNode} transparent animationType="fade">
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Rename Item</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Name"
-              placeholderTextColor={colors.textMuted}
-              value={renameValue}
-              onChangeText={setRenameValue}
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
-              <TouchableOpacity style={[styles.btn, styles.btnCancel]} onPress={() => setRenameNode(null)}>
-                <Text style={styles.btnTextCancel}>Cancel</Text>
+              <TouchableOpacity style={styles.actionSheetItem} onPress={() => { handlePin(menuItem!.id!, !!menuItem!.pinned); setMenuItem(null); }}>
+                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name={menuItem?.pinned ? "pin-outline" : "pin"} size={20} color={colors.accentPrimary} /></View>
+                <Text style={styles.actionSheetText}>{menuItem?.pinned ? "Unpin" : "Pin"}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={executeRename}>
-                <Text style={styles.btnTextPrimary}>Save</Text>
+
+              <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setRenameValue(menuItem!.name); setRenameNode(menuItem); setMenuItem(null); }}>
+                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(165, 153, 255, 0.15)' : 'rgba(108, 92, 231, 0.10)' }]}><Ionicons name="pencil" size={20} color={colors.accentPrimary} /></View>
+                <Text style={styles.actionSheetText}>Rename</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionSheetItem} onPress={() => { setMoveNode(menuItem); setMenuItem(null); }}>
+                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(2, 132, 199, 0.10)' }]}><Ionicons name="move" size={20} color={isDark ? '#0A84FF' : '#0284C7'} /></View>
+                <Text style={styles.actionSheetText}>Move To...</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.actionSheetItem} onPress={() => { handleDelete(menuItem!.id!, menuItem!.name); setMenuItem(null); }}>
+                <View style={[styles.actionSheetIcon, { backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : 'rgba(220, 38, 38, 0.10)' }]}><Ionicons name="trash" size={20} color={isDark ? '#ef4444' : '#DC2626'} /></View>
+                <Text style={[styles.actionSheetText, { color: isDark ? '#ef4444' : '#DC2626' }]}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        </Modal>
+      )}
+
+      {/* Rename Modal */}
+      {!!renameNode && (
+        <Modal visible={!!renameNode} transparent animationType="fade">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalBg}>
+            <View style={styles.modalSheet}>
+              <Text style={styles.modalTitle}>Rename Item</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Name"
+                placeholderTextColor={colors.textMuted}
+                value={renameValue}
+                onChangeText={setRenameValue}
+                autoFocus
+              />
+              <View style={{ flexDirection: 'row', gap: SPACE.sm, marginTop: SPACE.sm }}>
+                <TouchableOpacity style={[styles.btn, styles.btnCancel]} onPress={() => setRenameNode(null)}>
+                  <Text style={styles.btnTextCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={executeRename}>
+                  <Text style={styles.btnTextPrimary}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
+      )}
 
       {/* Move To Modal */}
-      <Modal visible={!!moveNode} transparent animationType="fade">
-        <View style={styles.modalBg}>
-          <View style={[styles.modalSheet, { maxHeight: '80%' }]}>
-            <Text style={styles.modalTitle}>Move "{moveNode?.name}"</Text>
-            <ScrollView style={{ maxHeight: 300, marginVertical: SPACE.md }}>
-              <TouchableOpacity style={styles.moveRow} onPress={() => executeMove(null)}>
-                <Ionicons name="home" size={20} color={colors.textPrimary} />
-                <Text style={styles.moveRowText}>Home (Root)</Text>
-              </TouchableOpacity>
-              {storageNodes.filter(n => n.type === 'folder' && n.id !== moveNode?.id).map(f => (
-                <TouchableOpacity key={f.id} style={styles.moveRow} onPress={() => executeMove(f.id!)}>
-                  <Ionicons name="folder" size={20} color={isDark ? '#0A84FF' : '#0284C7'} />
-                  <Text style={styles.moveRowText}>{f.name}</Text>
+      {!!moveNode && (
+        <Modal visible={!!moveNode} transparent animationType="fade">
+          <View style={styles.modalBg}>
+            <View style={[styles.modalSheet, { maxHeight: '80%' }]}>
+              <Text style={styles.modalTitle}>Move "{moveNode?.name}"</Text>
+              <ScrollView style={{ maxHeight: 300, marginVertical: SPACE.md }}>
+                <TouchableOpacity style={styles.moveRow} onPress={() => executeMove(null)}>
+                  <Ionicons name="home" size={20} color={colors.textPrimary} />
+                  <Text style={styles.moveRowText}>Home (Root)</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={[styles.btn, styles.btnCancel]} onPress={() => setMoveNode(null)}>
-              <Text style={styles.btnTextCancel}>Cancel</Text>
-            </TouchableOpacity>
+                {storageNodes.filter(n => n.type === 'folder' && n.id !== moveNode?.id).map(f => (
+                  <TouchableOpacity key={f.id} style={styles.moveRow} onPress={() => executeMove(f.id!)}>
+                    <Ionicons name="folder" size={20} color={isDark ? '#0A84FF' : '#0284C7'} />
+                    <Text style={styles.moveRowText}>{f.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity style={[styles.btn, styles.btnCancel]} onPress={() => setMoveNode(null)}>
+                <Text style={styles.btnTextCancel}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
 
       {/* Editor & Viewer Modals */}
       {editorNote && user && (
@@ -1026,7 +1034,9 @@ export default function NotesScreen() {
           onClose={() => setEditorNote(null)}
         />
       )}
-      <VaultDocumentViewer node={viewerNode} onClose={() => setViewerNode(null)} />
+      {viewerNode && (
+        <VaultDocumentViewer node={viewerNode} onClose={() => setViewerNode(null)} />
+      )}
     </SafeAreaView>
   );
 }

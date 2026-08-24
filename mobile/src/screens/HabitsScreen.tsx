@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet,
-  TextInput, Modal, KeyboardAvoidingView, Platform, Alert, Animated, TouchableOpacity, DeviceEventEmitter
+  TextInput, Modal, KeyboardAvoidingView, Platform, Alert, Animated, TouchableOpacity, DeviceEventEmitter, InteractionManager
 } from 'react-native';
 import Reanimated, { useSharedValue, useAnimatedStyle, withSpring, FadeInDown, withSequence, withTiming } from 'react-native-reanimated';
 import AnimatedPressable from '../components/AnimatedPressable';
@@ -566,66 +566,75 @@ export default function HabitsScreen() {
     if (!user || loading || evaluatorRan.current) return;
     evaluatorRan.current = true;
 
-    (async () => {
-      try {
-        const storedFreezes = await AsyncStorage.getItem('zentrack_habit_freezes');
-        const lastGrant = await AsyncStorage.getItem('zentrack_last_freeze_grant');
-        let currentFreezes = storedFreezes ? parseInt(storedFreezes, 10) : 1;
+    InteractionManager.runAfterInteractions(() => {
+      (async () => {
+        try {
+          const storedFreezes = await AsyncStorage.getItem('zentrack_habit_freezes');
+          const lastGrant = await AsyncStorage.getItem('zentrack_last_freeze_grant');
+          let currentFreezes = storedFreezes ? parseInt(storedFreezes, 10) : 1;
 
-        const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-        const nowMs = new Date().getTime();
-        const grantMs = lastGrant ? new Date(lastGrant).getTime() : 0;
-        let didGrant = false;
-        
-        if (nowMs - grantMs > msPerWeek) {
-          currentFreezes += 1;
-          didGrant = true;
-          await AsyncStorage.setItem('zentrack_last_freeze_grant', new Date().toISOString());
-        }
-
-        let updatedFreezes = currentFreezes;
-        const yesterdayDate = new Date(nowMs - 24 * 60 * 60 * 1000);
-        const yesterday = yesterdayDate.toISOString().split('T')[0];
-        const isYesterdaySunday = yesterdayDate.getDay() === 0;
-        const saturdayDate = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-        // Evaluate misses for active daily positive habits
-        for (const habit of allHabits) {
-          if (habit.type === 'negative' || habit.archived || habit.frequency !== 'daily') continue;
+          const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+          const nowMs = new Date().getTime();
+          const grantMs = lastGrant ? new Date(lastGrant).getTime() : 0;
+          let didGrant = false;
           
-          const logs = habitLogs.filter(l => l.habitId === habit.id).sort((a, b) => b.date.localeCompare(a.date));
-          if (logs.length === 0) continue;
+          if (nowMs - grantMs > msPerWeek) {
+            currentFreezes += 1;
+            didGrant = true;
+            await AsyncStorage.setItem('zentrack_last_freeze_grant', new Date().toISOString());
+          }
 
-          const latestLog = logs[0];
-          
-          // 🏖️ SUNDAY RELAXATION: If yesterday was Sunday, Sunday is an approved rest day.
-          // We only evaluate a streak break if Saturday was ALSO missed.
-          const targetMissDate = isYesterdaySunday ? saturdayDate : yesterday;
+          let updatedFreezes = currentFreezes;
+          const yesterdayDate = new Date(nowMs - 24 * 60 * 60 * 1000);
+          const yesterday = yesterdayDate.toISOString().split('T')[0];
+          const isYesterdaySunday = yesterdayDate.getDay() === 0;
+          const saturdayDate = new Date(nowMs - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-          if (latestLog.date < targetMissDate) {
-            if (updatedFreezes > 0) {
-              updatedFreezes -= 1;
-              const freezeDocId = `${habit.id}_${targetMissDate}`;
-              await setDoc(doc(db, COLLECTION.HABIT_LOGS, freezeDocId), {
-                habitId: habit.id, userId: user.uid,
-                date: targetMissDate, isFreeze: true, count: 1,
-                timestamp: serverTimestamp(),
-              });
-              // Streak is protected!
-            } else if ((habit.streak || 0) > 0) {
-              await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: 0 });
+          // O(N) pre-indexing of latest log per habit for O(1) evaluation
+          const latestLogByHabit = new Map<string, HabitLog>();
+          for (const log of habitLogs) {
+            const current = latestLogByHabit.get(log.habitId);
+            if (!current || log.date > current.date) {
+              latestLogByHabit.set(log.habitId, log);
             }
           }
-        }
 
-        if (updatedFreezes !== currentFreezes || didGrant) {
-          await AsyncStorage.setItem('zentrack_habit_freezes', updatedFreezes.toString());
+          // Evaluate misses for active daily positive habits
+          for (const habit of allHabits) {
+            if (habit.type === 'negative' || habit.archived || habit.frequency !== 'daily') continue;
+            
+            const latestLog = latestLogByHabit.get(habit.id);
+            if (!latestLog) continue;
+            
+            // 🏖️ SUNDAY RELAXATION: If yesterday was Sunday, Sunday is an approved rest day.
+            // We only evaluate a streak break if Saturday was ALSO missed.
+            const targetMissDate = isYesterdaySunday ? saturdayDate : yesterday;
+
+            if (latestLog.date < targetMissDate) {
+              if (updatedFreezes > 0) {
+                updatedFreezes -= 1;
+                const freezeDocId = `${habit.id}_${targetMissDate}`;
+                await setDoc(doc(db, COLLECTION.HABIT_LOGS, freezeDocId), {
+                  habitId: habit.id, userId: user.uid,
+                  date: targetMissDate, isFreeze: true, count: 1,
+                  timestamp: serverTimestamp(),
+                });
+                // Streak is protected!
+              } else if ((habit.streak || 0) > 0) {
+                await updateDoc(doc(db, COLLECTION.HABITS, habit.id), { streak: 0 });
+              }
+            }
+          }
+
+          if (updatedFreezes !== currentFreezes || didGrant) {
+            await AsyncStorage.setItem('zentrack_habit_freezes', updatedFreezes.toString());
+          }
+          setFreezes(updatedFreezes);
+        } catch (e) {
+          console.error("[HabitsScreen] Evaluator error", e);
         }
-        setFreezes(updatedFreezes);
-      } catch (e) {
-        console.error("[HabitsScreen] Evaluator error", e);
-      }
-    })();
+      })();
+    });
   }, [user, loading, allHabits, habitLogs]);
 
   useEffect(() => {

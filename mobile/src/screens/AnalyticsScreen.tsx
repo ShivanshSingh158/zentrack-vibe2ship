@@ -57,7 +57,7 @@ const PERIOD_LABEL: Record<Period, string> = { week: 'This Week', month: 'This M
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 // ─── GlassCard ─────────────────────────────────────────────────────────────
-function GlassCard({ children, style }: { children: React.ReactNode; style?: any }) {
+const GlassCard = React.memo(function GlassCard({ children, style }: { children: React.ReactNode; style?: any }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   if (isDark) {
@@ -72,10 +72,10 @@ function GlassCard({ children, style }: { children: React.ReactNode; style?: any
       {children}
     </View>
   );
-}
+});
 
 // ─── Period Pill Selector (iOS Segmented Control) ──────────────────────────
-function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+const PeriodSelector = React.memo(function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const PERIODS: Period[] = ['week', 'month', 'semester'];
@@ -99,10 +99,10 @@ function PeriodSelector({ value, onChange }: { value: Period; onChange: (p: Peri
       })}
     </View>
   );
-}
+});
 
 // ─── Delta badge (Dynamic, Real calculations) ──────────────────────────────
-function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: string }) {
+const Delta = React.memo(function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: string }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   
@@ -117,14 +117,11 @@ function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: str
 
   let text = '';
   if (unit === 'pts') {
-    // Points diff for Zen Score
     text = diff > 0 ? `+${diff} pts` : diff < 0 ? `${diff} pts` : `0 pts`;
   } else if (prev > 0) {
-    // Percentage diff when previous period had data
     const pct = Math.round((diff / prev) * 100);
     text = pct >= 0 ? `+${pct}%` : `${pct}%`;
   } else {
-    // When previous period was 0, display the actual gain count instead of fake +100%
     text = `+${cur}`;
   }
 
@@ -136,7 +133,7 @@ function Delta({ cur, prev, unit = '' }: { cur: number; prev: number; unit?: str
       </Text>
     </View>
   );
-}
+});
 
 // ─── Bar Chart ─────────────────────────────────────────────────────────────
 interface BarChartProps {
@@ -148,7 +145,7 @@ interface BarChartProps {
   animated?: boolean;
 }
 
-function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated = false }: BarChartProps) {
+const BarChart = React.memo(function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated = false }: BarChartProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const anim = useRef(new Animated.Value(0)).current;
@@ -215,7 +212,7 @@ function BarChart({ data, color, prevColor, maxVal, height = CHART_H, animated =
       })}
     </View>
   );
-}
+});
 
 // ─── Stacked Bar Chart ─────────────────────────────────────────────────────
 interface StackedBarChartProps {
@@ -227,7 +224,7 @@ interface StackedBarChartProps {
   animated?: boolean;
 }
 
-function StackedBarChart({ data, color1, color2, maxVal, height = CHART_H, animated = true }: StackedBarChartProps) {
+const StackedBarChart = React.memo(function StackedBarChart({ data, color1, color2, maxVal, height = CHART_H, animated = true }: StackedBarChartProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const anim = useRef(new Animated.Value(0)).current;
@@ -280,7 +277,7 @@ function StackedBarChart({ data, color1, color2, maxVal, height = CHART_H, anima
       })}
     </View>
   );
-}
+});
 
 // ─── Line Chart (SVG) ──────────────────────────────────────────────────────
 interface LineChartProps {
@@ -290,7 +287,7 @@ interface LineChartProps {
   height?: number;
 }
 
-function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2, height = CHART_H }: LineChartProps) {
+const LineChart = React.memo(function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD * 2, height = CHART_H }: LineChartProps) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const anim = useRef(new Animated.Value(0)).current;
@@ -357,10 +354,10 @@ function LineChart({ data, color, width = SCREEN_WIDTH - SPACE.xl * 2 - CARD_PAD
       </View>
     </View>
   );
-}
+});
 
 // ─── Heatmap (Apple Health / GitHub Grid) ───────────────────────────────────
-function ActivityHeatmap({ tasks, gymLogs, habitLogs }: {
+const ActivityHeatmap = React.memo(function ActivityHeatmap({ tasks, gymLogs, habitLogs }: {
   dates?: string[];
   tasks: any[];
   gymLogs: any[];
@@ -369,19 +366,37 @@ function ActivityHeatmap({ tasks, gymLogs, habitLogs }: {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
 
+  // Fast pre-indexed lookups for O(1) cell queries
+  const tasksByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of tasks || []) {
+      if (t.status === 'completed') {
+        const d = (t.completedAt || t.date || '').slice(0, 10);
+        if (d) map.set(d, (map.get(d) || 0) + 1);
+      }
+    }
+    return map;
+  }, [tasks]);
+
+  const gymDates = useMemo(() => new Set((gymLogs || []).map((g: any) => g.date)), [gymLogs]);
+
+  const habitsByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const l of habitLogs || []) {
+      if (l.date) map.set(l.date, (map.get(l.date) || 0) + 1);
+    }
+    return map;
+  }, [habitLogs]);
+
   // Compute 5 aligned calendar weeks (Monday to Sunday)
   const { weeks, activeDaysCount, totalDays } = useMemo(() => {
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
     
-    // Day of week: 0 = Mon, 1 = Tue, ..., 6 = Sun
     const dayOfWeek = (today.getDay() + 6) % 7; 
-    
-    // Monday of current week
     const currentMonday = new Date(today);
     currentMonday.setDate(today.getDate() - dayOfWeek);
 
-    // Monday 4 weeks prior (5 weeks total: week -4, -3, -2, -1, 0)
     const startMonday = new Date(currentMonday);
     startMonday.setDate(currentMonday.getDate() - 28);
 
@@ -415,9 +430,9 @@ function ActivityHeatmap({ tasks, gymLogs, habitLogs }: {
 
         if (!isFuture) {
           daysPastOrToday++;
-          tasksDone = tasks.filter(t => t.status === 'completed' && (t.completedAt || t.date || '').startsWith(dateStr)).length;
-          gymDone = gymLogs.some(g => g.date === dateStr) ? 1 : 0;
-          habitDone = habitLogs.filter(l => l.date === dateStr).length;
+          tasksDone = tasksByDate.get(dateStr) || 0;
+          gymDone = gymDates.has(dateStr) ? 1 : 0;
+          habitDone = habitsByDate.get(dateStr) || 0;
           total = tasksDone + gymDone + (habitDone > 0 ? 1 : 0);
           if (total > 0) activeCount++;
         }
@@ -437,7 +452,7 @@ function ActivityHeatmap({ tasks, gymLogs, habitLogs }: {
     }
 
     return { weeks: weeksArr, activeDaysCount: activeCount, totalDays: daysPastOrToday };
-  }, [tasks, gymLogs, habitLogs]);
+  }, [tasksByDate, gymDates, habitsByDate]);
 
   // 7 columns (M T W T F S S)
   const daysHeader = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -563,7 +578,7 @@ function ActivityHeatmap({ tasks, gymLogs, habitLogs }: {
       </View>
     </View>
   );
-}
+});
 
 export default function AnalyticsScreen() {
   const { colors, isDark } = useTheme();
