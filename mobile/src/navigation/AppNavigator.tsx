@@ -241,13 +241,13 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
       screenListeners={({ route }) => ({
         focus: () => onTabFocus(route.name),
       })}
-      detachInactiveScreens={true}
+      detachInactiveScreens={false}
       screenOptions={{
         headerShown: false,
         sceneStyle:  { backgroundColor: colors.background },
         lazy:        true,
-        freezeOnBlur: true,
-        animation:   'fade',
+        freezeOnBlur: false,
+        animation:   'none',
       }}
       backBehavior="history"
     >
