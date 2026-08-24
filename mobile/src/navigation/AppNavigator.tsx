@@ -24,8 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import * as SplashScreen from 'expo-splash-screen';
 import { Image } from 'react-native';
-import { auth, db } from '../services/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { auth } from '../services/firebase';
 import { performSignOut } from '../contexts/domains/CoreDataContext';
 import { useMobileData } from '../contexts/MobileDataContext';
 import { cacheAwareLazy, startPrefetching, preloadNow } from '../utils/ModulePrefetcher';
@@ -61,6 +60,7 @@ const NotesScreen                 = cacheAwareLazy('NotesScreen',               
 
 const AnalyticsScreen             = cacheAwareLazy('AnalyticsScreen',             () => import('../screens/AnalyticsScreen'));
 const GradesScreen                = cacheAwareLazy('GradesScreen',             () => import('../screens/GradesScreen'));
+const AssignmentsScreen           = cacheAwareLazy('AssignmentsScreen',        () => import('../screens/AssignmentsScreen'));
 const LearningScreen              = cacheAwareLazy('LearningScreen',           () => import('../screens/LearningScreen'));
 const StreakDetailScreen           = cacheAwareLazy('StreakDetailScreen',          () => import('../screens/StreakDetailScreen'));
 const AgentHistoryScreen           = cacheAwareLazy('AgentHistoryScreen',          () => import('../screens/AgentHistoryScreen'));
@@ -145,7 +145,7 @@ function isAuthFatalError(error: any): boolean {
 
 const ALLOWED_SAVE_ROUTES = new Set([
   'Home', 'Tasks', 'Gym', 'Calendar', 'Habits',
-  'Attendance', 'Analytics', 'Notes', 'Grades', 'Learning',
+  'Attendance', 'Analytics', 'Notes', 'Grades', 'Assignments', 'Learning',
 ]);
 
 // --- SARA FAB visibility -----------------------------------------------------
@@ -161,6 +161,7 @@ const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
   Analytics:      AnalyticsScreen,
   Notes:          NotesScreen,
   Grades:         GradesScreen,
+  Assignments:    AssignmentsScreen,
   Learning:       LearningScreen,
 };
 
@@ -293,6 +294,7 @@ function NestedScreens() {
         <Stack.Screen name="StreakDetail"           component={withErrorBoundary(StreakDetailScreen,          'StreakDetail')}   options={{ headerShown: false }} />
         <Stack.Screen name="SaraModal"             component={withErrorBoundary(SaraScreen,                  'SaraModal')}     options={{ headerShown: false, presentation: 'transparentModal', animation: 'slide_from_bottom' }} />
         <Stack.Screen name="AgentHistory"          component={withErrorBoundary(AgentHistoryScreen,          'AgentHistory')} />
+        <Stack.Screen name="Assignments"           component={withErrorBoundary(AssignmentsScreen,           'Assignments')}   options={{ headerShown: false }} />
         <Stack.Screen name="WellbeingDashboard"    component={withErrorBoundary(WellbeingDashboardScreen,    'Wellbeing')}     options={{ headerShown: false }} />
         <Stack.Screen name="XPConstellation"       component={withErrorBoundary(XPConstellationScreen,       'XPConstellation')} options={{ headerShown: false }} />
       </Stack.Navigator>
@@ -432,47 +434,18 @@ export default function AppNavigator() {
         }
       };
 
-      const checkOnboardingStatus = async (uid: string): Promise<boolean> => {
-        try {
-          const localVal = await AsyncStorage.getItem(ONBOARDING_KEY);
-          const legacyVal = await AsyncStorage.getItem('@zentrack_onboarding_completed');
-          if (localVal === 'true' || legacyVal === 'true') {
-            setOnboarded(true);
-            return true;
-          }
-          // Check remote Firestore profile/identity for existing accounts
-          const identitySnap = await getDoc(doc(db, 'users', uid, 'profile', 'identity'));
-          if (identitySnap.exists() && identitySnap.data()?.onboardedAt) {
-            await AsyncStorage.multiSet([
-              ['@zentrack_onboarding_completed', 'true'],
-              [ONBOARDING_KEY, 'true'],
-            ]);
-            setOnboarded(true);
-            return true;
-          }
-          // First-time user! Needs full onboarding
-          setOnboarded(false);
-          return false;
-        } catch {
-          const localVal = await AsyncStorage.getItem(ONBOARDING_KEY);
-          const isDone = localVal === 'true';
-          setOnboarded(isDone);
-          return isDone;
-        }
-      };
-
       if (!hasResolved.current) {
         // We only hit this block if we did NOT have an optimistic user (i.e. fresh install or logged out).
         // OFFLINE-FIRST FIX: Race authStateReady() against a SHORT 300ms timeout.
+        // The old 2-second timeout caused the nav bar to be frozen for 2s on every
+        // cold boot (no optimistic user). 300ms is enough for Firebase to check its
+        // token cache; if it needs more time it will fire onAuthStateChanged again
+        // and the background validation block below will handle it gracefully.
         await Promise.race([
           auth.authStateReady(),
           new Promise<void>(resolve => setTimeout(resolve, 300)),
         ]);
         const realUser = auth.currentUser;
-
-        if (realUser) {
-          await checkOnboardingStatus(realUser.uid);
-        }
 
         hasResolved.current = true;
         firstAuthAt.current = Date.now();
@@ -484,13 +457,12 @@ export default function AppNavigator() {
 
       // Background Validation: We booted optimistically, now Firebase is checking the real token
       if (usr) {
-        // Session confirmed alive — update state, check onboarding and persist
+        // Session confirmed alive — update state and persist
         wasLoggedInRef.current = true;
         if (deadSessionTimerRef.current) {
           clearTimeout(deadSessionTimerRef.current);
           deadSessionTimerRef.current = null;
         }
-        await checkOnboardingStatus(usr.uid);
         setUser(usr);
         saveOptimisticUser(usr);
       } else {

@@ -123,6 +123,7 @@ export const SCREENS = {
   ATTENDANCE: 'Attendance',
   SETTINGS: 'Settings',
   GRADES: 'Grades',
+  ASSIGNMENTS: 'Assignments',
   LEARNING: 'Learning',
   JOBS: 'Jobs',
   WELLBEING_DASHBOARD: 'WellbeingDashboard',

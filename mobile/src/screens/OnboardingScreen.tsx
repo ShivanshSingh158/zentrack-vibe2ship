@@ -107,6 +107,7 @@ export const MODULE_CATALOG: ModuleItem[] = [
   { id: 'Tasks',       name: 'Tasks',      activeIcon: 'checkmark-circle', inactiveIcon: 'checkmark-circle-outline', desc: 'Matrix & 24h Timeline' },
   { id: 'Gym',         name: 'Gym',        activeIcon: 'barbell',          inactiveIcon: 'barbell-outline',          desc: 'PPL Overload Tracker' },
   { id: 'Attendance',  name: 'Attend',     activeIcon: 'id-card',          inactiveIcon: 'id-card-outline',          desc: 'Timetable & Bunk Safety' },
+  { id: 'Assignments', name: 'Assign',     activeIcon: 'clipboard',        inactiveIcon: 'clipboard-outline',        desc: 'Coursework & Deadlines' },
   { id: 'Habits',      name: 'Habits',     activeIcon: 'flame',            inactiveIcon: 'flame-outline',            desc: 'Dopamine Streaks' },
   { id: 'Calendar',    name: 'Calendar',   activeIcon: 'calendar-clear',   inactiveIcon: 'calendar-clear-outline',   desc: 'Unified Agenda' },
   { id: 'Notes',       name: 'Notes',      activeIcon: 'document-text',    inactiveIcon: 'document-text-outline',    desc: 'Markdown & AI Notes' },
