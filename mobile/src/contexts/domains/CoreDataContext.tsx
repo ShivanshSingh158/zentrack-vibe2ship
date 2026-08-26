@@ -315,66 +315,60 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [user?.uid]);
 
-  // 1-Read Delta Sync & Critical-path Firestore subscriptions
-  // On boot: Reads single user_sync_meta/{uid} doc (1 read).
-  // If lastModifiedAt <= localSyncTimestamp: skips full collection queries (0 extra reads).
-  // If lastModifiedAt > localSyncTimestamp or first run: opens live listeners and syncs.
+  // Critical-path Firestore subscriptions — open immediately on login.
+  // Each snapshot WRITE-THROUGHS to AsyncStorage so subsequent cold-boots are instant.
+  // areItemsEqual() ensures ZERO re-renders if incoming Firestore data matches local cache.
   useEffect(() => {
     if (!user) return;
     const uid = user.uid;
-    let isCancelled = false;
     const unsubs: (() => void)[] = [];
 
-    const openListeners = () => {
-      if (unsubs.length > 0) return;
+    unsubs.push(onSnapshot(
+      query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
+      (snap: QuerySnapshot<DocumentData>) => {
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseTask(d.data(), d.id));
+          setTasks(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          setFirestoreReady(true);
+          hasCachedDataRef.current = false;
+          InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ tasks: fresh }, false));
+        });
+      },
+      scheduleListenerRestart("tasks")
+    ));
 
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
-        (snap: QuerySnapshot<DocumentData>) => {
-          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
-          unstable_batchedUpdates(() => {
-            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseTask(d.data(), d.id));
-            setTasks(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-            setFirestoreReady(true);
-            hasCachedDataRef.current = false;
-            InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ tasks: fresh }, false));
-          });
-        },
-        scheduleListenerRestart("tasks")
-      ));
+    unsubs.push(onSnapshot(
+      query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
+      (snap: QuerySnapshot<DocumentData>) => {
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseHabit(d.data(), d.id));
+          if (!isHabitLocked.current) {
+            setHabits(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+            InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habits: fresh }, false));
+          }
+        });
+      },
+      scheduleListenerRestart("habits")
+    ));
 
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
-        (snap: QuerySnapshot<DocumentData>) => {
-          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
-          unstable_batchedUpdates(() => {
-            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseHabit(d.data(), d.id));
-            if (!isHabitLocked.current) {
-              setHabits(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-              InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habits: fresh }, false));
-            }
-          });
-        },
-        scheduleListenerRestart("habits")
-      ));
+    unsubs.push(onSnapshot(
+      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
+      (snap: QuerySnapshot<DocumentData>) => {
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseHabitLog(d.data(), d.id));
+          if (!isHabitLogLocked.current) {
+            setHabitLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+            InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habitLogs: fresh }, false));
+          }
+        });
+      },
+      scheduleListenerRestart("habitLogs")
+    ));
 
-      unsubs.push(onSnapshot(
-        query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
-        (snap: QuerySnapshot<DocumentData>) => {
-          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
-          unstable_batchedUpdates(() => {
-            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseHabitLog(d.data(), d.id));
-            if (!isHabitLogLocked.current) {
-              setHabitLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-              InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habitLogs: fresh }, false));
-            }
-          });
-        },
-        scheduleListenerRestart("habitLogs")
-      ));
-    };
-
-    // XP Sync
+    // Cloud Database XP Sync
     unsubs.push(onSnapshot(
       doc(db, COLLECTION.USER_PROFILES, uid),
       snap => {
@@ -388,41 +382,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       scheduleListenerRestart("user_profiles")
     ));
 
-    // 1-READ DELTA CHECK:
-    (async () => {
-      try {
-        const [serverMeta, localTs] = await Promise.all([
-          fetchServerSyncMeta(uid),
-          getLocalSyncTimestamp(),
-        ]);
-        if (isCancelled) return;
-
-        const manifest = getBootManifestSync();
-        const hasLocalCache = tasks.length > 0 || habits.length > 0 || ((manifest?.tasks?.length ?? 0) > 0);
-        if (serverMeta && serverMeta.lastModifiedAt <= localTs && hasLocalCache) {
-          // Cache is 100% up to date! 0 extra collection reads spent.
-          if (tasks.length === 0 && (manifest?.tasks?.length ?? 0) > 0) {
-            unstable_batchedUpdates(() => {
-              setTasks(manifest!.tasks);
-              setHabits(manifest!.habits);
-              setHabitLogs(manifest!.habitLogs);
-            });
-          }
-          setFirestoreReady(true);
-        } else {
-          // Data changed on server or first boot — sync fresh data
-          openListeners();
-          if (serverMeta?.lastModifiedAt) {
-            await setLocalSyncTimestamp(serverMeta.lastModifiedAt);
-          }
-        }
-      } catch (err) {
-        if (!isCancelled) openListeners();
-      }
-    })();
-
     return () => {
-      isCancelled = true;
       unsubs.forEach(u => u());
     };
   }, [user?.uid, subscriptionVersion]);
