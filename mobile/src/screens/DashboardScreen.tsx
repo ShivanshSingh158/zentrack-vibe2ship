@@ -28,12 +28,14 @@ import WaterLogSheet from '../components/Dashboard/WaterLogSheet';
 import FlashcardReviewModal from '../components/Learning/FlashcardReviewModal';
 import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useOfflineStatus } from '../hooks/useOfflineStatus';
 
 export default function DashboardScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
   const s = makeStyles(colors);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
+  const { isOffline, queueCount, recentlySynced } = useOfflineStatus();
 
   const data = useDashboardData();
   const paddingBottom = insets.bottom + 80;
@@ -260,6 +262,23 @@ export default function DashboardScreen() {
                   {data.appStreak}
                 </Text>
               </AnimatedPressable>
+
+              {/* Small Subtle Offline Indicator */}
+              {isOffline && (
+                <View style={[s.headerPillSection, { paddingHorizontal: 6, gap: 3 }]}>
+                  <Ionicons name="cloud-offline-outline" size={13} color={isDark ? '#FBBF24' : '#B45309'} />
+                  {queueCount > 0 && (
+                    <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 10, color: isDark ? '#FBBF24' : '#B45309' }}>
+                      {queueCount}
+                    </Text>
+                  )}
+                </View>
+              )}
+              {recentlySynced && (
+                <View style={[s.headerPillSection, { paddingHorizontal: 6 }]}>
+                  <Ionicons name="checkmark-circle" size={13} color="#22C55E" />
+                </View>
+              )}
 
               {/* Theme Switcher */}
               <AnimatedPressable
