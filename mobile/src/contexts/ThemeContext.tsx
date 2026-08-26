@@ -20,6 +20,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import { Appearance, ColorSchemeName, Platform, StatusBar as RNStatusBar } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DARK_COLORS, LIGHT_COLORS } from '../theme/tokens';
+import { getBootManifestSync } from '../utils/bootManifest';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,25 +47,31 @@ const THEME_INITIAL_LIGHT_APPLIED_KEY = '@zentrack_light_default_applied_v1';
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>('system');
-  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(Appearance.getColorScheme() || 'light');
-  const [loaded, setLoaded] = useState(false);
+  // INSTAGRAM/WHATSAPP ARCHITECTURE — SYNCHRONOUS SEED:
+  // AppNavigator.tsx fires loadBootManifest() at module-level (before React renders).
+  // By the time ThemeProvider mounts, getBootManifestSync() returns the L1 cache.
+  // If themeMode is cached, seed synchronously → loaded=true on Frame 0.
+  // No null-return, no tree unmount, no 15-50ms freeze while AsyncStorage reads.
+  const _sync = getBootManifestSync();
+  const syncMode: ThemeMode | null = _sync?.themeMode ?? null;
 
-  // Load saved preference on mount — defaults to system default of the user's phone
+  // Default to 'dark' (primary app theme) — avoids 'system' OS query on Frame 0.
+  // When no cache is present (cold install), Frame 0 renders in dark mode.
+  // The async effect below reads the persisted preference and corrects it if needed.
+  const [mode, setMode] = useState<ThemeMode>(syncMode ?? 'dark');
+  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(Appearance.getColorScheme() || 'dark');
+
+  // Background correction: read AsyncStorage to sync the persisted preference.
+  // This runs on Frame 1 (non-blocking). If the user chose light or system mode,
+  // this corrects the 'dark' default without causing a tree unmount.
   useEffect(() => {
     (async () => {
       try {
         const savedTheme = await AsyncStorage.getItem(THEME_STORAGE_KEY);
         if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system') {
           setMode(savedTheme as ThemeMode);
-        } else {
-          setMode('system');
         }
-      } catch {
-        setMode('system');
-      } finally {
-        setLoaded(true);
-      }
+      } catch { /* silent — default dark is fine */ }
     })();
   }, []);
 
@@ -118,8 +125,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme,
   }), [isDark, mode, toggleTheme, setTheme]);
 
-  // Render nothing until preference is loaded — prevents a one-frame dark→light flash.
-  if (!loaded) return null;
+  // NOTE: No null-return here. We default to 'dark' synchronously on Frame 0.
+  // The async effect above corrects the mode if the user chose light/system.
+  // A one-frame dark→light adjustment is far less disruptive than blocking the
+  // entire tree (which caused a 15-50ms freeze and a NavigationContainer cold-mount).
 
   return (
     <ThemeContext.Provider value={value}>

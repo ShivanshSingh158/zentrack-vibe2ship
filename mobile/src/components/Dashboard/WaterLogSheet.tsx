@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, ScrollView, InteractionManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
@@ -12,7 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { scheduleAllNotifications } from '../../services/notifications';
 import { queueWrite } from '../../services/offlineSync';
 import { useGymProfile } from '../../hooks/useGymProfile';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 
 const WATER_GOAL_KEY = 'zentrack_water_goal_ml';
 
@@ -30,7 +30,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const s = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
   const { gymProfile, saveGymProfile } = useGymProfile();
-  const { weightLogs } = useMobileData();
+  const { weightLogs } = useWellnessData();
 
   const [editingTarget, setEditingTarget] = useState(false);
   const [tempTarget, setTempTarget] = useState(String(target));
@@ -70,7 +70,10 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const handleFreqChange = async (freq: string) => {
     setReminderFreq(freq);
     await AsyncStorage.setItem('@zentrack_water_reminder_freq', freq);
-    scheduleAllNotifications({ tasks: [], customEvents: [], gymLogs: [], attendance: [] });
+    // Defer notification reschedule — avoids blocking the UI thread during slider interaction.
+    InteractionManager.runAfterInteractions(() => {
+      scheduleAllNotifications({ tasks: [], customEvents: [], gymLogs: [], attendance: [] });
+    });
   };
 
   const handleSaveTarget = () => {

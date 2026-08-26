@@ -467,8 +467,13 @@ Remember: Your output will be inserted directly into a note. Zero markdown symbo
 export default function NotesScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const { storageNodes } = useCreativeData();
+  const { storageNodes, ensureSubscribed } = useCreativeData();
   const { user } = useCoreData();
+
+  useEffect(() => {
+    ensureSubscribed?.();
+  }, [ensureSubscribed]);
+
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 
   const [showFabMenu, setShowFabMenu] = useState(false);

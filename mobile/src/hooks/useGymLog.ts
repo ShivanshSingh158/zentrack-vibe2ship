@@ -20,6 +20,7 @@ import { COLLECTION } from '../config/constants';
 import { deepSanitize } from '../utils/firebaseUtils';
 import { awardXP } from '../services/xpSystem';
 import { getPreviousExerciseSession, buildExerciseHistoryIndex, normalizeExerciseKey } from '../utils/gymUtils';
+import { safeWrite } from '../utils/safeWrite';
 
 
 let currentRestTimerNotifId: string | null = null;
@@ -315,7 +316,7 @@ export function useGymLog(dateStr: string) {
       }
     });
 
-    // Persist to Firestore
+    // Persist to Firestore with WhatsApp-style offline queue fallback
     (async () => {
       try {
         const docRef = doc(db, COLLECTION.GYM_LOGS, logId);
@@ -335,7 +336,13 @@ export function useGymLog(dateStr: string) {
           sanitizedLog.restTimerDurationSecs = deleteField();
           sanitizedLog.restTimerExerciseName = deleteField();
         }
-        await setDoc(docRef, sanitizedLog, { merge: true });
+        await safeWrite(
+          () => setDoc(docRef, sanitizedLog, { merge: true }),
+          COLLECTION.GYM_LOGS,
+          'set',
+          sanitizedLog,
+          logId
+        );
       } catch (e) {
         console.error('[Gym] Save error', e);
       }
@@ -611,7 +618,13 @@ export function useGymLog(dateStr: string) {
     if (changed) {
       newPlan.customDays = currentCustomDays;
       const docRef = doc(db, COLLECTION.USER_GYM_PLANS, user.uid);
-      await setDoc(docRef, newPlan, { merge: true });
+      await safeWrite(
+        () => setDoc(docRef, newPlan, { merge: true }),
+        COLLECTION.USER_GYM_PLANS,
+        'set',
+        newPlan,
+        user.uid
+      );
     }
   }, [user, userGymPlan]);
 

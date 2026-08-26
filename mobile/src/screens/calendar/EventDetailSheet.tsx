@@ -18,6 +18,7 @@ import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
+import { safeAdd, safeUpdate } from '../../utils/safeWrite';
 
 interface EventDetailSheetProps {
   visible: boolean;
@@ -107,21 +108,27 @@ export function EventDetailSheet({
     optimisticAddAttendanceLog(logPayload);
     onClose();
 
-    // 2. Persist to Firestore in background
-    try {
-      await addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), {
-        userId: user.uid,
-        subjectId: subject.id!,
-        subjectName: subject.name,
-        date: selectedDate,
-        action,
-        type: isLab ? 'lab' : 'class',
-        createdAt: Date.now(),
-      });
-      await updateDoc(doc(db, COLLECTION.ATTENDANCE, subject.id!), partialUpdate);
-    } catch (e: any) {
-      console.warn('[EventDetailSheet] Failed to log attendance:', e);
-    }
+    // 2. Persist to Firestore in background (queued offline via safeWrite)
+    const logData = {
+      userId: user.uid,
+      subjectId: subject.id!,
+      subjectName: subject.name,
+      date: selectedDate,
+      action,
+      type: isLab ? 'lab' : 'class',
+      createdAt: Date.now(),
+    };
+    await safeAdd(
+      COLLECTION.ATTENDANCE_LOGS,
+      logData,
+      () => addDoc(collection(db, COLLECTION.ATTENDANCE_LOGS), logData)
+    );
+    await safeUpdate(
+      subject.id!,
+      COLLECTION.ATTENDANCE,
+      partialUpdate,
+      () => updateDoc(doc(db, COLLECTION.ATTENDANCE, subject.id!), partialUpdate)
+    );
   };
 
   return (

@@ -7,7 +7,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Switch, Platform, Modal, Alert
+  Switch, Platform, Modal, Alert, InteractionManager
 } from 'react-native';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,7 +26,10 @@ import * as Updates from 'expo-updates';
 import { useNavigation } from '@react-navigation/native';
 
 import { auth } from '../services/firebase';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { scheduleAllNotifications } from '../services/notifications';
 
 // ── Design Tokens ────────────────────────────────────────────────────────────
@@ -47,8 +50,10 @@ const MAX_PINNED = 4;
 
 export default function SettingsScreen() {
   const navigation = useNavigation<any>();
-  const contextData = useMobileData();
-  const { user, googleAccessToken, tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, pinnedModules, setPinnedModules } = contextData;
+  const { user, googleAccessToken, tasks, habitLogs, allHabits, pinnedModules, setPinnedModules } = useCoreData();
+  const { gymLogs } = useWellnessData();
+  const { attendance, assignments } = useAcademicData();
+  const { customEvents } = usePlannerData();
   const [hasWorkspace, setHasWorkspace] = useState(!!googleAccessToken);
 
   // ── Theme ──────────────────────────────────────────────────────────────────
@@ -108,7 +113,10 @@ export default function SettingsScreen() {
       setNotifTimeStr(timeStr);
       await AsyncStorage.setItem('zentrack_default_notif_time', timeStr24);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      await scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments });
+      // Defer notification reschedule — avoids blocking time picker dismissal animation.
+      InteractionManager.runAfterInteractions(() => {
+        scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.warn);
+      });
     }
   };
 

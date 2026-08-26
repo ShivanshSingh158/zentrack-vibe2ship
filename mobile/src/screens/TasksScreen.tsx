@@ -1,15 +1,13 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform } from 'react-native';
-import Animated, { FadeInUp, useSharedValue, useAnimatedStyle, withTiming, withDelay } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TouchableOpacity, ScrollView, Modal, Alert, SectionList, Pressable, Platform, StatusBar } from 'react-native';
+import Animated, { FadeInUp } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import Svg, { Circle } from 'react-native-svg';
 
 import { useCoreData } from '../contexts/domains/CoreDataContext';
-import { useAcademicData } from '../contexts/domains/AcademicContext';
-import { useWellnessData } from '../contexts/domains/WellnessContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDateWithDay } from '../utils/dateUtils';
 import { triggerLayoutAnimation } from '../theme/animations';
@@ -27,8 +25,7 @@ import { parseTimeFloat } from './tasks/taskConstants';
 import AnimatedPressable from '../components/AnimatedPressable';
 import UniversalCalendarModal from '../components/UniversalCalendarModal';
 import BottomSheet from '../components/ui/BottomSheet';
-const AnimatedSectionList = Animated.createAnimatedComponent(SectionList);
-const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const AnimatedCircle = Circle;
 
 // Extracted Task Components
 import { TaskDateStrip } from '../components/Tasks/TaskDateStrip';
@@ -54,7 +51,6 @@ function formatTimeStr(raw: string): string {
   const m = parts.length >= 2 ? (parseInt(parts[1], 10) || 0) : 0;
   if (isNaN(h)) return raw.trim().toLowerCase();
   if (isPM || isAM) {
-    const ampm = isPM ? 'am' : 'pm'; // wait, logic fixed below
     return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${isPM ? 'pm' : 'am'}`;
   }
   return `${h % 12 || 12}:${m.toString().padStart(2, '0')} ${h >= 12 ? 'pm' : 'am'}`;
@@ -68,13 +64,14 @@ const PROGRESS_CIRCUM = PROGRESS_RADIUS * 2 * Math.PI;
 export default function TasksScreen() {
   const { colors, isDark } = useTheme();
   const styles = makeTasksStyles(colors, isDark);
+  const insets = useSafeAreaInsets();
+  // Guaranteed synchronous status bar clearance on Frame 0 — prevents upward jump under Android status bar
+  const topInset = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0);
   
   const { tasks, user, habits, habitLogs, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
-  const { attendance, attendanceLogs } = useAcademicData();
-  const { gymLogs, userGymPlan } = useWellnessData();
   const todayDateStr = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
-  
-  // 1. Recurring Spawn Logic
+
+  // 1. Recurring Spawn Logic (Deferred background run)
   useRecurringSpawn(tasks, user?.uid, optimisticAddTask);
 
   // 2. Data/State Hook
@@ -116,20 +113,6 @@ export default function TasksScreen() {
     todayDateStr,
   });
 
-  // Animations
-  const animHeader = useSharedValue(0);
-  const animDateStrip = useSharedValue(0);
-  const animList = useSharedValue(0);
-
-  useEffect(() => {
-    animHeader.value = withTiming(1, { duration: 300 });
-    animDateStrip.value = withDelay(100, withTiming(1, { duration: 300 }));
-    animList.value = withDelay(200, withTiming(1, { duration: 300 }));
-  }, []);
-
-  const headerStyle = useAnimatedStyle(() => ({ opacity: animHeader.value, transform: [{ translateY: -20 * (1 - animHeader.value) }] }));
-  const dateStripStyle = useAnimatedStyle(() => ({ opacity: animDateStrip.value, transform: [{ translateY: 20 * (1 - animDateStrip.value) }] }));
-  const isFocused = useNavigation().isFocused();
   const lastScrollY = React.useRef(0);
   const handleScroll = React.useCallback((e: any) => {
     const offsetY = e?.nativeEvent?.contentOffset?.y ?? 0;
@@ -146,7 +129,6 @@ export default function TasksScreen() {
     }
     lastScrollY.current = offsetY;
   }, []);
-  const listStyle = useAnimatedStyle(() => ({ opacity: animList.value, transform: [{ translateY: 40 * (1 - animList.value) }], flex: 1 }));
 
   const handleDateSelect = (date: string) => {
     triggerLayoutAnimation();
@@ -212,11 +194,11 @@ export default function TasksScreen() {
   }, [conflicts]);
 
   return (
-    <SafeAreaView style={styles.root}>
+    <View style={[styles.root, { paddingTop: topInset }]}>
       
       {/* PROACTIVE WIDGET */}
       {taskConflicts.length > 0 && (
-        <Animated.View style={[{ paddingHorizontal: 24, marginBottom: 16, marginTop: 8 }, headerStyle]}>
+        <View style={{ paddingHorizontal: 24, marginBottom: 16, marginTop: 8 }}>
           {taskConflicts.map(c => (
             <View key={c.id} style={{ backgroundColor: isDark ? 'rgba(255, 105, 97, 0.12)' : '#fee2e2', padding: 16, borderRadius: 12, marginBottom: 8, borderWidth: 1, borderColor: isDark ? 'rgba(255, 105, 97, 0.25)' : '#fca5a5' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
@@ -226,7 +208,7 @@ export default function TasksScreen() {
               <Text style={{ fontFamily: 'Inter_400Regular', color: colors.error, fontSize: 12 }}>{c.message} {c.suggestion}</Text>
             </View>
           ))}
-        </Animated.View>
+        </View>
       )}
 
       {/* HEADER */}
@@ -282,12 +264,12 @@ export default function TasksScreen() {
       </View>
 
       {/* Date Selector */}
-      <Animated.View style={[styles.dateSelectorContainer, dateStripStyle]}>
+      <View style={styles.dateSelectorContainer}>
         <TaskDateStrip selectedDate={selectedDate} onSelectDate={handleDateSelect} taskDates={taskDates} />
-      </Animated.View>
+      </View>
 
       {/* PROGRESS RING */}
-      <Animated.View style={[{ paddingHorizontal: 6, marginBottom: 0 }, dateStripStyle]}>
+      <View style={{ paddingHorizontal: 6, marginBottom: 0 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border }}>
           <View style={{ width: PROGRESS_SIZE, height: PROGRESS_SIZE, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
             <Svg width={PROGRESS_SIZE} height={PROGRESS_SIZE} style={{ position: 'absolute' }}>
@@ -323,7 +305,7 @@ export default function TasksScreen() {
             </Text>
           </View>
         </View>
-      </Animated.View>
+      </View>
 
       {/* Standard Calendar Modal */}
       {isCalendarOpen && (
@@ -352,30 +334,26 @@ export default function TasksScreen() {
 
       {/* VIEWS */}
       {viewMode === 'timeline' ? (
-        <Animated.View style={[{ flex: 1 }, listStyle]}>
+        <View style={{ flex: 1 }}>
           <TimelineView 
             tasks={selectedDateTasks} 
             onTaskPress={(t) => setEditingTask(t)} 
             colors={colors}
             isDark={isDark}
-            attendance={attendance}
-            attendanceLogs={attendanceLogs}
-            gymLogs={gymLogs}
-            userGymPlan={userGymPlan}
             selectedDate={selectedDate}
           />
-        </Animated.View>
+        </View>
       ) : viewMode === 'kanban' ? (
-        <Animated.View style={[{ flex: 1 }, listStyle]}>
+        <View style={{ flex: 1 }}>
           <KanbanView
             tasks={tasks.filter(t => !filterTag || (t.tags ?? []).includes(filterTag))}
             onTaskPress={(t) => setEditingTask(t)}
             colors={colors}
           />
-        </Animated.View>
+        </View>
       ) : (
-        <AnimatedSectionList
-          style={listStyle}
+        <SectionList
+          style={{ flex: 1 }}
           contentContainerStyle={[
             styles.listContent,
             selectedDateTasks.length === 0 
@@ -570,6 +548,6 @@ export default function TasksScreen() {
       {!!timeLogTask && <TaskTimeLogSheet task={timeLogTask} visible={!!timeLogTask} onSkip={() => skipTimeLog(timeLogTask?.id!, optimisticUpdateTask)} onSave={(taskId, actualMinutes, actualStartTime) => saveTimeLog(taskId, actualMinutes, actualStartTime, optimisticUpdateTask)} />}
       {isTimeSpentOpen && <PomodoroSheet visible={isTimeSpentOpen} onClose={() => setIsTimeSpentOpen(false)} tasks={tasks} selectedDate={selectedDate} />}
 
-    </SafeAreaView>
+    </View>
   );
 }

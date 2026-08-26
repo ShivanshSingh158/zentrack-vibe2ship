@@ -133,11 +133,15 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 export default function LearningScreen() {
-  const { learningTopics, optimisticToggleSubtask } = useCreativeData();
+  const { learningTopics, optimisticToggleSubtask, ensureSubscribed } = useCreativeData();
   const { user } = useCoreData();
   const navigation = useNavigation();
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+
+  useEffect(() => {
+    ensureSubscribed?.();
+  }, [ensureSubscribed]);
 
   // ΓöÇΓöÇ Modal state ΓöÇΓöÇ
   const [topicModalVisible, setTopicModalVisible] = useState(false);

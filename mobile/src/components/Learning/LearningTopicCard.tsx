@@ -10,6 +10,7 @@ import { LearningTopic, LearningSubTask } from '../../contexts/MobileDataContext
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
+import { safeAdd } from '../../utils/safeWrite';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import * as Haptics from 'expo-haptics';
 
@@ -79,7 +80,7 @@ export default function LearningTopicCard({
       if (slot === 'today' || slot === 'tomorrow') {
         const targetDate = slot === 'today' ? todayStr : tmrwStr;
         const dayLabel = slot === 'today' ? 'Today' : 'Tomorrow';
-        await addDoc(collection(db, COLLECTION.CALENDAR_EVENTS), {
+        const calData = {
           userId: user.uid,
           title: `Study: ${scheduleSubtask.title}`,
           date: targetDate,
@@ -88,11 +89,16 @@ export default function LearningTopicCard({
           type: 'assignment',
           notes: `Topic: ${topic.title}\nURL: ${scheduleSubtask.url || ''}`,
           createdAt: serverTimestamp(),
-        });
+        };
+        await safeAdd(
+          COLLECTION.CALENDAR_EVENTS,
+          calData,
+          () => addDoc(collection(db, COLLECTION.CALENDAR_EVENTS), calData)
+        );
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert('🎉 Scheduled!', `Added "${scheduleSubtask.title}" to ${dayLabel}'s Calendar (7:00 PM - 8:00 PM).`);
       } else {
-        await addDoc(collection(db, COLLECTION.TASKS), {
+        const taskData = {
           userId: user.uid,
           title: `Study: ${scheduleSubtask.title}`,
           date: todayStr,
@@ -104,7 +110,12 @@ export default function LearningTopicCard({
           status: 'pending',
           notes: `Topic: ${topic.title}\nURL: ${scheduleSubtask.url || ''}`,
           createdAt: serverTimestamp(),
-        });
+        };
+        await safeAdd(
+          COLLECTION.TASKS,
+          taskData,
+          () => addDoc(collection(db, COLLECTION.TASKS), taskData)
+        );
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         Alert.alert('🎉 Task Created!', `Added "${scheduleSubtask.title}" to your Task timeline.`);
       }

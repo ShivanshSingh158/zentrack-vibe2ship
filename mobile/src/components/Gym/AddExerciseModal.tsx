@@ -39,11 +39,7 @@ import { FONT_FAMILY, SPACE, RADIUS, FONT_SIZE } from '../../theme/tokens';
 
 
 import { GymExerciseLog, GymPlanDay, GymPlanExercise } from '../../types/gym.types';
-
-
-import { useMobileData } from '../../contexts/MobileDataContext';
-
-
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { MUSCLE_COLORS, resolveMuscleColor, hexToRgba } from '../../utils/gymUtils';
 
 
@@ -541,7 +537,7 @@ export function AddExerciseModal({ visible, onClose, onAdd, planDay, existingExe
 
 
 
-  const { userGymPlan, updateMasterPlan, gymLogs } = useMobileData();
+  const { userGymPlan, updateMasterPlan, gymLogs } = useWellnessData();
 
 
 

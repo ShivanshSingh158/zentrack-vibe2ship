@@ -10,16 +10,16 @@
  */
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { collection, query, where, onSnapshot, doc, setDoc } from "firebase/firestore";
-import { InteractionManager, DeviceEventEmitter } from 'react-native';
+import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import { UserGymPlanDoc, GymPlanDay } from "../../types/gym.types";
 import type { GymLog, WaterLog, SleepLog, WeightLog } from "../MobileDataContext";
 import { GYM_PLAN_ARNOLD, GYM_PLAN_PPL } from "../../data/gymPlan";
-import { readWellnessCache, writeWellnessCache } from "../../utils/domainCache";
-import { loadBootManifest } from "../../utils/bootManifest";
-import { parseGymLog } from "../../utils/schemaGuards";
+import { writeWellnessCache } from "../../utils/domainCache";
+import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
+import { parseGymLog, areItemsEqual } from "../../utils/schemaGuards";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface WellnessContextType {
@@ -73,22 +73,26 @@ export function WellnessProvider({
   children: React.ReactNode;
   user: { uid: string } | null;
 }) {
-  const [gymLogs, setGymLogs]         = useState<GymLog[]>([]);
+  const initialManifest = getBootManifestSync();
+  const [gymLogs, setGymLogs]           = useState<GymLog[]>(initialManifest?.gymLogs ?? []);
   // gymLogsSnapshotFired: true once the FIRST Firestore gymLogs snapshot fires (even if empty).
   // This is the correct "ready" signal — not `gymLogs.length > 0` which is always false
   // for new users and breaks the loading skeleton logic.
   const [gymLogsSnapshotFired, setGymLogsSnapshotFired] = useState(false);
-  const [userGymPlan, setUserGymPlan] = useState<UserGymPlanDoc | null>(null);
-  const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
-  const [sleepLogs, setSleepLogs] = useState<SleepLog[]>([]);
-  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
+  const [userGymPlan, setUserGymPlan]   = useState<UserGymPlanDoc | null>(initialManifest?.userGymPlan ?? null);
+  const [waterLogs, setWaterLogs]       = useState<WaterLog[]>(initialManifest?.waterLogs ?? []);
+  const [sleepLogs, setSleepLogs]       = useState<SleepLog[]>(initialManifest?.sleepLogs ?? []);
+  const [weightLogs, setWeightLogs]     = useState<WeightLog[]>(initialManifest?.weightLogs ?? []);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
+  // OFFLINE-FIRST GUARD: tracks whether any cached data has been seeded.
+  const hasCachedDataRef = useRef(
+    (initialManifest?.gymLogs?.length ?? 0) > 0 ||
+    !!initialManifest?.userGymPlan ||
+    (initialManifest?.waterLogs?.length ?? 0) > 0
+  );
 
   // ── Listener auto-restart on error ───────────────────────────────────────
-  // Firebase ID tokens expire every 60 min. If a network blip coincides with
-  // token expiry, onSnapshot fires its error callback and the listener dies.
-  // Incrementing subscriptionVersion causes openSubscriptions to re-run fresh.
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -105,16 +109,10 @@ export function WellnessProvider({
   }, []);
 
   // ── Foreground reconnect: restart listeners after long background ─────────
-  // AppNavigator emits 'firestore_force_reconnect' on every AppState: active.
-  // This resets subscribedRef so openSubscriptions can re-enter, then bumps
-  // subscriptionVersion which triggers the subscription useEffect to clean up
-  // dead listeners and open fresh ones. This is the real fix for the
-  // "gym/wellness data not showing after 6+ hours" bug.
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
       if (user) {
         console.log('[Wellness] foreground reconnect — restarting Firestore listeners');
-        // Tear down existing (dead) listeners before reopening
         unsubsRef.current.forEach(u => u());
         unsubsRef.current = [];
         subscribedRef.current = false;
@@ -122,39 +120,45 @@ export function WellnessProvider({
       }
     });
     return () => sub.remove();
-  }, [user]);
+  }, [user?.uid]);
 
-  // ── Offline-first boot: seed from AsyncStorage and Manifest immediately ──
+  // ── Offline-first boot: seed from boot manifest L1 cache immediately ───────
+  // If getBootManifestSync() already populated state on Frame 0, this does 0 re-renders.
   useEffect(() => {
     let cancelled = false;
     loadBootManifest().then(manifest => {
       if (cancelled) return;
-      if (Array.isArray(manifest.gymLogs) && manifest.gymLogs.length > 0) setGymLogs(manifest.gymLogs);
-      if (manifest.userGymPlan) setUserGymPlan(manifest.userGymPlan);
+      unstable_batchedUpdates(() => {
+        let seeded = false;
+        if (gymLogs.length === 0 && Array.isArray(manifest.gymLogs) && manifest.gymLogs.length > 0)       { setGymLogs(manifest.gymLogs); seeded = true; }
+        if (!userGymPlan && manifest.userGymPlan)                                                         { setUserGymPlan(manifest.userGymPlan); seeded = true; }
+        if (waterLogs.length === 0 && Array.isArray(manifest.waterLogs) && manifest.waterLogs.length > 0)    { setWaterLogs(manifest.waterLogs); seeded = true; }
+        if (sleepLogs.length === 0 && Array.isArray(manifest.sleepLogs) && manifest.sleepLogs.length > 0)    { setSleepLogs(manifest.sleepLogs); seeded = true; }
+        if (weightLogs.length === 0 && Array.isArray(manifest.weightLogs) && manifest.weightLogs.length > 0)  { setWeightLogs(manifest.weightLogs); seeded = true; }
+        if (seeded) hasCachedDataRef.current = true;
+      });
     }).catch(() => {});
-
-    readWellnessCache().then(cached => {
-      if (cancelled) return;
-      if (Array.isArray(cached.gymLogs) && cached.gymLogs.length > 0)    setGymLogs(cached.gymLogs);
-      if (cached.userGymPlan)               setUserGymPlan(cached.userGymPlan);
-      if (Array.isArray(cached.waterLogs) && cached.waterLogs.length > 0)  setWaterLogs(cached.waterLogs);
-      if (Array.isArray(cached.sleepLogs) && cached.sleepLogs.length > 0)  setSleepLogs(cached.sleepLogs);
-      if (Array.isArray(cached.weightLogs) && cached.weightLogs.length > 0) setWeightLogs(cached.weightLogs);
-    });
     return () => { cancelled = true; };
   }, [user?.uid]);
+
 
   const openSubscriptions = useCallback((uid: string) => {
     if (subscribedRef.current) return; // idempotent
     subscribedRef.current = true;
 
+    // ── Critical-path subscriptions: open IMMEDIATELY ────────────────────────
+    // gymLogs and userGymPlan are shown on Dashboard via WellnessContext.
+    // These MUST open immediately so the Gym screen shows real data on first paint.
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.GYM_LOGS), where("userId", "==", uid)),
       snap => {
-        const fresh = snap.docs.map(d => parseGymLog(d.data(), d.id));
-        setGymLogs(fresh);
-        setGymLogsSnapshotFired(true); // mark first snapshot fired — even if empty
-        writeWellnessCache({ gymLogs: fresh });
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map(d => parseGymLog(d.data(), d.id));
+          setGymLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          setGymLogsSnapshotFired(true);
+          InteractionManager.runAfterInteractions(() => writeWellnessCache({ gymLogs: fresh }));
+        });
       },
       scheduleListenerRestart("gymLogs")
     ));
@@ -162,9 +166,12 @@ export function WellnessProvider({
     unsubsRef.current.push(onSnapshot(
       doc(db, COLLECTION.USER_GYM_PLANS, uid),
       docSnap => {
-        const plan = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as unknown as UserGymPlanDoc : null;
-        setUserGymPlan(plan);
-        writeWellnessCache({ userGymPlan: plan });
+        unstable_batchedUpdates(() => {
+          const plan = docSnap.exists() ? { id: docSnap.id, ...docSnap.data() } as unknown as UserGymPlanDoc : null;
+          if (!plan && hasCachedDataRef.current) return;
+          setUserGymPlan(prev => JSON.stringify(prev) === JSON.stringify(plan) ? prev : plan);
+          InteractionManager.runAfterInteractions(() => writeWellnessCache({ userGymPlan: plan }));
+        });
       },
       scheduleListenerRestart("userGymPlan")
     ));
@@ -172,33 +179,47 @@ export function WellnessProvider({
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.WATER_LOGS), where("userId", "==", uid)),
       snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WaterLog));
-        setWaterLogs(fresh);
-        writeWellnessCache({ waterLogs: fresh });
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WaterLog));
+          setWaterLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          InteractionManager.runAfterInteractions(() => writeWellnessCache({ waterLogs: fresh }));
+        });
       },
       scheduleListenerRestart("waterLogs")
     ));
 
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, COLLECTION.SLEEP_LOGS), where("userId", "==", uid)),
-      snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog));
-        setSleepLogs(fresh);
-        writeWellnessCache({ sleepLogs: fresh });
-      },
-      scheduleListenerRestart("sleepLogs")
-    ));
+    InteractionManager.runAfterInteractions(() => {
+      if (!subscribedRef.current) return;
 
-    unsubsRef.current.push(onSnapshot(
-      query(collection(db, 'weight_logs'), where("userId", "==", uid)),
-      snap => {
-        const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeightLog));
-        setWeightLogs(fresh);
-        writeWellnessCache({ weightLogs: fresh });
-      },
-      scheduleListenerRestart("weightLogs")
-    ));
+      unsubsRef.current.push(onSnapshot(
+        query(collection(db, COLLECTION.SLEEP_LOGS), where("userId", "==", uid)),
+        snap => {
+          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+          unstable_batchedUpdates(() => {
+            const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SleepLog));
+            setSleepLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+            InteractionManager.runAfterInteractions(() => writeWellnessCache({ sleepLogs: fresh }));
+          });
+        },
+        scheduleListenerRestart("sleepLogs")
+      ));
+
+      unsubsRef.current.push(onSnapshot(
+        query(collection(db, 'weight_logs'), where("userId", "==", uid)),
+        snap => {
+          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+          unstable_batchedUpdates(() => {
+            const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as WeightLog));
+            setWeightLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+            InteractionManager.runAfterInteractions(() => writeWellnessCache({ weightLogs: fresh }));
+          });
+        },
+        scheduleListenerRestart("weightLogs")
+      ));
+    });
   }, [scheduleListenerRestart]);
+
 
   // Reset or open on user change.
   // subscriptionVersion is included so a listener error retry (scheduleListenerRestart)
@@ -217,7 +238,7 @@ export function WellnessProvider({
       unsubsRef.current = [];
       subscribedRef.current = false;
     };
-  }, [user, subscriptionVersion, openSubscriptions]);
+  }, [user?.uid, subscriptionVersion, openSubscriptions]);
 
   // Cleanup on unmount
   useEffect(() => () => {
@@ -243,7 +264,7 @@ export function WellnessProvider({
       updatedAt: now,
     };
     setUserGymPlan(updatedPlan);
-    writeWellnessCache({ userGymPlan: updatedPlan });
+    writeWellnessCache({ userGymPlan: updatedPlan }, true); // immediate: user save action
     await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: now }, { merge: true });
   };
 
@@ -260,7 +281,7 @@ export function WellnessProvider({
       updatedAt: now,
     };
     setUserGymPlan(updatedPlan);
-    writeWellnessCache({ userGymPlan: updatedPlan });
+    writeWellnessCache({ userGymPlan: updatedPlan }, true); // immediate: user save action
     await setDoc(docRef, { userId: user.uid, customDays: newCustomDays, updatedAt: now }, { merge: true });
   };
 
@@ -326,7 +347,7 @@ export function WellnessProvider({
     };
 
     setUserGymPlan(updatedPlan);
-    writeWellnessCache({ userGymPlan: updatedPlan });
+    writeWellnessCache({ userGymPlan: updatedPlan }, true); // immediate: user save action
 
     await setDoc(docRef, { userId: user.uid, templateId, schedulePattern, customDays: newCustomDays, updatedAt: now }, { merge: true });
 
@@ -363,7 +384,7 @@ export function WellnessProvider({
           // Keep completed or active workouts
           return l.completed || l.workoutStartTime || hasLoggedSets;
         });
-        writeWellnessCache({ gymLogs: next });
+        writeWellnessCache({ gymLogs: next }, true); // immediate: template apply
         return next;
       });
     } catch (e) {
@@ -377,7 +398,7 @@ export function WellnessProvider({
     setGymLogs(prev => {
       const exists = prev.some(l => l.id === log.id || l.date === log.date);
       const next = exists ? prev.map(l => (l.id === log.id || l.date === log.date) ? log : l) : [log, ...prev];
-      writeWellnessCache({ gymLogs: next });
+      writeWellnessCache({ gymLogs: next }, true); // immediate: optimistic add
       return next;
     });
   };
@@ -394,7 +415,7 @@ export function WellnessProvider({
         }
         return l;
       });
-      writeWellnessCache({ gymLogs: next });
+      writeWellnessCache({ gymLogs: next }, true); // immediate: optimistic update
       return next;
     });
   };

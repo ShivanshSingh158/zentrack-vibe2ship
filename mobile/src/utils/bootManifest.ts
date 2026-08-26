@@ -28,14 +28,26 @@ export const BOOT_KEYS = {
   WATER_GOAL_CANON:   'zentrack_water_goal_ml',
   WATER_GOAL_LEGACY:  '@zentrack_water_target',
   GOOGLE_TOKEN:       'google_workspace_token',
-  THEME_MODE:         '@zentrack_theme_mode',
+  THEME_MODE:         '@zentrack_theme',
   XP_V1:              'zentrack_xp_v1',
+  // Domain caches — loaded in single multiGet for offline-first boot
   ATTENDANCE:         '@zentrack_cache_attendance',
   ATTENDANCE_LOGS:    '@zentrack_cache_attendance_logs',
+  ASSIGNMENTS:        '@zentrack_cache_assignments',
+  SEMESTERS:          '@zentrack_cache_semesters',
+  SEM_SUBJECTS:       '@zentrack_cache_sem_subjects',
   GYM_LOGS:           '@zentrack_cache_gym_logs',
   USER_GYM_PLAN:      '@zentrack_cache_user_gym_plan',
+  WATER_LOGS:         '@zentrack_cache_water_logs',
+  SLEEP_LOGS:         '@zentrack_cache_sleep_logs',
+  WEIGHT_LOGS:        '@zentrack_cache_weight_logs',
   CUSTOM_EVENTS:      '@zentrack_cache_custom_events',
   GOALS:              '@zentrack_cache_goals',
+  WEEKLY_REVIEWS:     '@zentrack_cache_weekly_reviews',
+  STORAGE_NODES:      '@zentrack_cache_storage_nodes',
+  LEARNING_TOPICS:    '@zentrack_cache_learning_topics',
+  JOBS:               '@zentrack_cache_jobs',
+  CONTENT_LOGS:       '@zentrack_cache_content_logs',
 } as const;
 
 export interface BootManifest {
@@ -51,12 +63,24 @@ export interface BootManifest {
   googleAccessToken: string | null;
   themeMode: 'dark' | 'light' | 'system' | null;
   xp: number;
+  // Domain caches — all 17 collections available offline from Frame 0
   attendance: any[];
   attendanceLogs: any[];
+  assignments: any[];
+  semesters: any[];
+  semesterSubjects: any[];
   gymLogs: any[];
   userGymPlan: any | null;
+  waterLogs: any[];
+  sleepLogs: any[];
+  weightLogs: any[];
   customEvents: any[];
   goals: any[];
+  weeklyReviews: any[];
+  storageNodes: any[];
+  learningTopics: any[];
+  jobs: any[];
+  contentLogs: any[];
 }
 
 const DEFAULT_PINNED = ['Tasks', 'Gym', 'Calendar', 'Attendance'];
@@ -82,8 +106,6 @@ export async function loadBootManifest(): Promise<BootManifest> {
 
       // 1. Navigation & Auth
       const lastRoute = map.get(BOOT_KEYS.NAV_ROUTE) || 'Home';
-      const onboardedVal = map.get(BOOT_KEYS.ONBOARDING);
-      const onboarded = onboardedVal === 'true';
 
       let optimisticUser: User | null = null;
       const userRaw = map.get(BOOT_KEYS.OPTIMISTIC_USER);
@@ -95,6 +117,14 @@ export async function loadBootManifest(): Promise<BootManifest> {
           }
         } catch { /* ignore parse error */ }
       }
+
+      // Onboarded: explicit 'true'/'false' string in storage.
+      // DEFAULT: if key is absent AND user has an optimistic token (returning user),
+      // assume onboarded=true. Old app versions didn't write this key but users
+      // clearly completed onboarding before their auth token was stored.
+      // New users without optimistic token: default false so they see onboarding.
+      const onboardedVal = map.get(BOOT_KEYS.ONBOARDING);
+      const onboarded = onboardedVal === 'true' || (onboardedVal === null && optimisticUser !== null);
 
       // 2. Pinned Modules
       let pinnedModules = DEFAULT_PINNED;
@@ -203,6 +233,69 @@ export async function loadBootManifest(): Promise<BootManifest> {
         try { const p = JSON.parse(goalsRaw); if (Array.isArray(p)) goals = p; } catch {}
       }
 
+      // Wellness: waterLogs, sleepLogs, weightLogs
+      let waterLogs: any[] = [];
+      const waterLogsRaw = map.get(BOOT_KEYS.WATER_LOGS);
+      if (waterLogsRaw) {
+        try { const p = JSON.parse(waterLogsRaw); if (Array.isArray(p)) waterLogs = p; } catch {}
+      }
+      let sleepLogs: any[] = [];
+      const sleepLogsRaw = map.get(BOOT_KEYS.SLEEP_LOGS);
+      if (sleepLogsRaw) {
+        try { const p = JSON.parse(sleepLogsRaw); if (Array.isArray(p)) sleepLogs = p; } catch {}
+      }
+      let weightLogs: any[] = [];
+      const weightLogsRaw = map.get(BOOT_KEYS.WEIGHT_LOGS);
+      if (weightLogsRaw) {
+        try { const p = JSON.parse(weightLogsRaw); if (Array.isArray(p)) weightLogs = p; } catch {}
+      }
+
+      // Academic: assignments, semesters, semesterSubjects
+      let assignments: any[] = [];
+      const assignmentsRaw = map.get(BOOT_KEYS.ASSIGNMENTS);
+      if (assignmentsRaw) {
+        try { const p = JSON.parse(assignmentsRaw); if (Array.isArray(p)) assignments = p; } catch {}
+      }
+      let semesters: any[] = [];
+      const semestersRaw = map.get(BOOT_KEYS.SEMESTERS);
+      if (semestersRaw) {
+        try { const p = JSON.parse(semestersRaw); if (Array.isArray(p)) semesters = p; } catch {}
+      }
+      let semesterSubjects: any[] = [];
+      const semSubRaw = map.get(BOOT_KEYS.SEM_SUBJECTS);
+      if (semSubRaw) {
+        try { const p = JSON.parse(semSubRaw); if (Array.isArray(p)) semesterSubjects = p; } catch {}
+      }
+
+      // Planner: weeklyReviews
+      let weeklyReviews: any[] = [];
+      const weeklyRaw = map.get(BOOT_KEYS.WEEKLY_REVIEWS);
+      if (weeklyRaw) {
+        try { const p = JSON.parse(weeklyRaw); if (Array.isArray(p)) weeklyReviews = p; } catch {}
+      }
+
+      // Creative: storageNodes, learningTopics, jobs, contentLogs
+      let storageNodes: any[] = [];
+      const storageRaw = map.get(BOOT_KEYS.STORAGE_NODES);
+      if (storageRaw) {
+        try { const p = JSON.parse(storageRaw); if (Array.isArray(p)) storageNodes = p; } catch {}
+      }
+      let learningTopics: any[] = [];
+      const learningRaw = map.get(BOOT_KEYS.LEARNING_TOPICS);
+      if (learningRaw) {
+        try { const p = JSON.parse(learningRaw); if (Array.isArray(p)) learningTopics = p; } catch {}
+      }
+      let jobs: any[] = [];
+      const jobsRaw = map.get(BOOT_KEYS.JOBS);
+      if (jobsRaw) {
+        try { const p = JSON.parse(jobsRaw); if (Array.isArray(p)) jobs = p; } catch {}
+      }
+      let contentLogs: any[] = [];
+      const contentLogsRaw = map.get(BOOT_KEYS.CONTENT_LOGS);
+      if (contentLogsRaw) {
+        try { const p = JSON.parse(contentLogsRaw); if (Array.isArray(p)) contentLogs = p; } catch {}
+      }
+
       const manifest: BootManifest = {
         lastRoute,
         onboarded,
@@ -218,10 +311,21 @@ export async function loadBootManifest(): Promise<BootManifest> {
         xp,
         attendance,
         attendanceLogs,
+        assignments,
+        semesters,
+        semesterSubjects,
         gymLogs,
         userGymPlan,
+        waterLogs,
+        sleepLogs,
+        weightLogs,
         customEvents,
         goals,
+        weeklyReviews,
+        storageNodes,
+        learningTopics,
+        jobs,
+        contentLogs,
       };
 
       _memoryBootCache = manifest;
@@ -243,10 +347,21 @@ export async function loadBootManifest(): Promise<BootManifest> {
         xp: 0,
         attendance: [],
         attendanceLogs: [],
+        assignments: [],
+        semesters: [],
+        semesterSubjects: [],
         gymLogs: [],
         userGymPlan: null,
+        waterLogs: [],
+        sleepLogs: [],
+        weightLogs: [],
         customEvents: [],
         goals: [],
+        weeklyReviews: [],
+        storageNodes: [],
+        learningTopics: [],
+        jobs: [],
+        contentLogs: [],
       };
       _memoryBootCache = fallback;
       return fallback;

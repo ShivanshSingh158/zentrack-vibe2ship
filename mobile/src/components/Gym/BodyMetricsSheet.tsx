@@ -11,7 +11,8 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { serverTimestamp, collection, addDoc } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useMobileData } from "../../contexts/MobileDataContext";
+import { useCoreData } from "../../contexts/domains/CoreDataContext";
+import { useWellnessData } from "../../contexts/domains/WellnessContext";
 import { useGymProfile } from "../../hooks/useGymProfile";
 import { COLLECTION } from "../../config/constants";
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from "../../theme/tokens";
@@ -47,7 +48,8 @@ interface Props {
 export default function BodyMetricsSheet({ visible, onClose }: Props) {
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const { user, weightLogs: contextWeightLogs } = useMobileData();
+  const { user } = useCoreData();
+  const { weightLogs: contextWeightLogs } = useWellnessData();
   const { gymProfile, saveGymProfile } = useGymProfile();
   
   const [showLogWeight, setShowLogWeight] = useState(false);

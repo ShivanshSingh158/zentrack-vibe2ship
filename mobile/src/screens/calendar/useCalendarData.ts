@@ -19,6 +19,7 @@ import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
+import { safeUpdate } from '../../utils/safeWrite';
 import { GYM_PLAN } from '../../data/gymPlan';
 import { getCustomPlanDay, planDayIndexForDate } from '../../hooks/useGymLog';
 import { parseTimeTo24h, parseTaskTimeSlot, HOUR_HEIGHT } from './calendarUtils';
@@ -29,10 +30,14 @@ const EMPTY_ARRAY: any[] = [];
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 export function useCalendarData() {
-  const { customEvents } = usePlannerData();
+  const { customEvents, ensureSubscribed } = usePlannerData();
   const { tasks, user, googleAccessToken } = useCoreData();
   const { attendance, holidays } = useAcademicData();
   const { gymLogs, userGymPlan } = useWellnessData();
+
+  useEffect(() => {
+    ensureSubscribed?.();
+  }, [ensureSubscribed]);
 
   // Stable reference to mount time & single consolidated 60s minute tick
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -63,16 +68,14 @@ export function useCalendarData() {
 
   const handleSaveGymTime = useCallback(async () => {
     if (!selectedGymLog || !user) return;
-    try {
-      const docRef = doc(db, COLLECTION.GYM_LOGS, selectedGymLog.id);
-      await updateDoc(docRef, {
-        startTime: gymStartTimeInput,
-        endTime: gymEndTimeInput,
-      });
-      setShowGymModal(false);
-    } catch (e) {
-      console.warn('Error saving gym time', e);
-    }
+    const updates = { startTime: gymStartTimeInput, endTime: gymEndTimeInput };
+    await safeUpdate(
+      selectedGymLog.id,
+      COLLECTION.GYM_LOGS,
+      updates,
+      () => updateDoc(doc(db, COLLECTION.GYM_LOGS, selectedGymLog.id), updates)
+    );
+    setShowGymModal(false);
   }, [selectedGymLog, user, gymStartTimeInput, gymEndTimeInput]);
 
   // Google Calendar Integration (only fetches if access token present)

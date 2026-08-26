@@ -101,11 +101,11 @@ function getCanonicalDomain(keyMap: Record<string, CacheKey>): string {
   return vals.sort().join('|');
 }
 
-// ─── Generic write helper — writes immediately to disk for offline persistence ───
+// ─── Generic write helper — immediate=true for user writes, false for snapshot writes ───
 export async function writeDomainCache(
   data: Partial<Record<string, any>>,
   keyMap: Record<string, CacheKey>,
-  immediate = true
+  immediate = false // Default FALSE — snapshot writes are always background
 ): Promise<void> {
   const domainKey = getCanonicalDomain(keyMap);
 
@@ -115,7 +115,19 @@ export async function writeDomainCache(
     keyMap: { ...(existing?.keyMap || {}), ...keyMap },
   });
 
-  return flushDomainCache(domainKey);
+  if (immediate) {
+    // User-triggered write — flush now for guaranteed persistence
+    return flushDomainCache(domainKey);
+  }
+
+  // Background/snapshot write — debounce 1s so burst snapshots coalesce into one write.
+  // JSON.stringify for large arrays (gym logs, attendance) runs once, not on every snapshot.
+  const existing_timer = _writeTimers.get(domainKey);
+  if (existing_timer) clearTimeout(existing_timer);
+  _writeTimers.set(domainKey, setTimeout(() => {
+    _writeTimers.delete(domainKey);
+    flushDomainCache(domainKey).catch(() => {});
+  }, 1000));
 }
 
 // ─── Domain-specific helpers — typed wrappers around the generic functions ────
@@ -138,7 +150,7 @@ export interface WellnessCache {
 }
 
 export const readWellnessCache  = () => readDomainCache<WellnessCache>(WELLNESS_KEY_MAP);
-export const writeWellnessCache = (data: Partial<WellnessCache>) => writeDomainCache(data, WELLNESS_KEY_MAP);
+export const writeWellnessCache = (data: Partial<WellnessCache>, immediate = false) => writeDomainCache(data, WELLNESS_KEY_MAP, immediate);
 
 // ── Academic ─────────────────────────────────────────────────────────────────
 const ACADEMIC_KEY_MAP = {
@@ -158,7 +170,7 @@ export interface AcademicCache {
 }
 
 export const readAcademicCache  = () => readDomainCache<AcademicCache>(ACADEMIC_KEY_MAP);
-export const writeAcademicCache = (data: Partial<AcademicCache>) => writeDomainCache(data, ACADEMIC_KEY_MAP);
+export const writeAcademicCache = (data: Partial<AcademicCache>, immediate = false) => writeDomainCache(data, ACADEMIC_KEY_MAP, immediate);
 
 // ── Planner ───────────────────────────────────────────────────────────────────
 const PLANNER_KEY_MAP = {
@@ -174,7 +186,7 @@ export interface PlannerCache {
 }
 
 export const readPlannerCache  = () => readDomainCache<PlannerCache>(PLANNER_KEY_MAP);
-export const writePlannerCache = (data: Partial<PlannerCache>) => writeDomainCache(data, PLANNER_KEY_MAP);
+export const writePlannerCache = (data: Partial<PlannerCache>, immediate = false) => writeDomainCache(data, PLANNER_KEY_MAP, immediate);
 
 // ── Creative ──────────────────────────────────────────────────────────────────
 const CREATIVE_KEY_MAP = {
@@ -192,7 +204,7 @@ export interface CreativeCache {
 }
 
 export const readCreativeCache  = () => readDomainCache<CreativeCache>(CREATIVE_KEY_MAP);
-export const writeCreativeCache = (data: Partial<CreativeCache>) => writeDomainCache(data, CREATIVE_KEY_MAP);
+export const writeCreativeCache = (data: Partial<CreativeCache>, immediate = false) => writeDomainCache(data, CREATIVE_KEY_MAP, immediate);
 
 // ─── Clear ALL domain caches on logout ────────────────────────────────────────
 export async function clearAllDomainCaches(): Promise<void> {

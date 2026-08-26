@@ -66,10 +66,20 @@ export async function flushCoreCache(): Promise<void> {
   } catch { /* silent */ }
 }
 
-// ── Write — writes immediately to AsyncStorage for guaranteed offline persistence ───
+// ── Write — immediate=true for user-triggered writes, false for background snapshot writes ──
 export async function writeCoreCacheMulti(data: Partial<CoreCache>, immediate = true): Promise<void> {
   _pendingCoreData = { ..._pendingCoreData, ...data };
-  return flushCoreCache();
+  if (immediate) {
+    // User-triggered write (optimistic update, logout): flush now.
+    return flushCoreCache();
+  }
+  // Background write (Firestore snapshot): debounce 1s so rapid bursts coalesce into one write.
+  // JSON.stringify + AsyncStorage.multiSet runs once after the burst settles, not on every snapshot.
+  if (_coreWriteTimer) clearTimeout(_coreWriteTimer);
+  _coreWriteTimer = setTimeout(() => {
+    _coreWriteTimer = null;
+    flushCoreCache().catch(() => {});
+  }, 1000);
 }
 
 // ── Invalidate — call on logout to clear stale data ──────────────────────────

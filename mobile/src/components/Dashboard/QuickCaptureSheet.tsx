@@ -30,7 +30,7 @@ import * as Haptics from 'expo-haptics';
 import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { queueWrite } from '../../services/offlineSync';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { parseNLTask } from '../../utils/dateUtils';
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
@@ -62,7 +62,7 @@ const TABS: { key: CaptureType; label: string; icon: string }[] = [
 export default function QuickCaptureSheet({ visible, onClose }: Props) {
     const { colors, isDark } = useTheme();
     const s = makeStyles(colors, isDark);
-  const { user } = useMobileData();
+  const { user } = useCoreData();
   const insets = useSafeAreaInsets();
   const [type, setType] = useState<CaptureType>('task');
   const [text, setText] = useState('');

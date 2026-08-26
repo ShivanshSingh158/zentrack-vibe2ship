@@ -12,6 +12,7 @@ import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { Task } from '../../contexts/MobileDataContext';
 import { handleSyncError } from '../../utils/errorUtils';
+import { queueWrite } from '../../services/offlineSync';
 import { getToday } from './taskConstants'; // use getToday() — never the stale `today` constant
 
 // Module-level dedup set: tracks userId+date combinations that have already been
@@ -89,9 +90,26 @@ export function useRecurringSpawn(
       if (spawns > 0) {
         try {
           await batch.commit();
-          // Only mark session-spawned AFTER successful commit so we retry on failure
+          // Only mark session-spawned AFTER successful commit
           _spawnedThisSession.add(sessionKey);
         } catch (e) {
+          // If offline/network failed, queue each new task to offline queue
+          for (const src of recurringTasks) {
+            const sourceId = src.recurringSourceId || src.id!;
+            if (!todayTaskSourceIds.has(sourceId) && src.date !== today) {
+              const fallbackId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+              const payload = {
+                ...src,
+                date: today,
+                recurringSourceId: sourceId,
+                status: 'pending',
+                completedAt: null,
+                createdAt: Date.now(),
+              };
+              queueWrite(COLLECTION.TASKS, 'add', payload).catch(() => {});
+            }
+          }
+          _spawnedThisSession.add(sessionKey);
           handleSyncError(e);
         }
       } else {

@@ -10,13 +10,13 @@
  */
 import React, { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
-import { InteractionManager, DeviceEventEmitter } from 'react-native';
+import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import { db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { AttendanceSubject, AttendanceLog, Assignment, Semester, SemesterSubject } from "../MobileDataContext";
 import { readAcademicCache, writeAcademicCache } from "../../utils/domainCache";
-import { loadBootManifest } from "../../utils/bootManifest";
-import { parseAttendanceSubject, parseAttendanceLog, parseAssignment } from "../../utils/schemaGuards";
+import { loadBootManifest, getBootManifestSync } from "../../utils/bootManifest";
+import { parseAttendanceSubject, parseAttendanceLog, parseAssignment, areItemsEqual } from "../../utils/schemaGuards";
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
 export interface AcademicContextType {
@@ -35,6 +35,7 @@ export interface AcademicContextType {
   optimisticUpdateAssignment: (assignmentId: string, partial: Partial<Assignment>) => void;
   optimisticDeleteAssignment: (assignmentId: string) => void;
   optimisticAddAttendanceLog: (log: AttendanceLog) => void;
+  optimisticUpdateAttendanceLog: (logId: string, partial: Partial<AttendanceLog>) => void;
   optimisticRemoveAttendanceLog: (logId: string) => void;
 }
 
@@ -53,6 +54,7 @@ const DEFAULT_ACADEMIC_DATA: AcademicContextType = {
   optimisticUpdateAssignment: () => {},
   optimisticDeleteAssignment: () => {},
   optimisticAddAttendanceLog: () => {},
+  optimisticUpdateAttendanceLog: () => {},
   optimisticRemoveAttendanceLog: () => {},
 };
 
@@ -74,18 +76,23 @@ export function AcademicProvider({
   children: React.ReactNode;
   user: { uid: string } | null;
 }) {
-  const [attendance, setAttendance]           = useState<AttendanceSubject[]>([]);
-  const [attendanceLogs, setAttendanceLogs]   = useState<AttendanceLog[]>([]);
-  const [assignments, setAssignments]         = useState<Assignment[]>([]);
-  const [semesters, setSemesters]             = useState<Semester[]>([]);
-  const [semesterSubjects, setSemesterSubjects] = useState<SemesterSubject[]>([]);
+  const initialManifest = getBootManifestSync();
+  const [attendance, setAttendance]           = useState<AttendanceSubject[]>(initialManifest?.attendance ?? []);
+  const [attendanceLogs, setAttendanceLogs]   = useState<AttendanceLog[]>(initialManifest?.attendanceLogs ?? []);
+  const [assignments, setAssignments]         = useState<Assignment[]>(initialManifest?.assignments ?? []);
+  const [semesters, setSemesters]             = useState<Semester[]>(initialManifest?.semesters ?? []);
+  const [semesterSubjects, setSemesterSubjects] = useState<SemesterSubject[]>(initialManifest?.semesterSubjects ?? []);
   const [holidays, setHolidays]               = useState<string[]>([]);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
+  // OFFLINE-FIRST GUARD: if we seeded from cache, ignore empty memoryLocalCache snapshots.
+  const hasCachedDataRef = useRef(
+    (initialManifest?.attendance?.length ?? 0) > 0 ||
+    (initialManifest?.assignments?.length ?? 0) > 0 ||
+    (initialManifest?.semesters?.length ?? 0) > 0
+  );
 
   // ── Listener auto-restart on error ───────────────────────────────────────
-  // Firebase ID tokens expire every 60 min. A network blip at expiry silently
-  // kills onSnapshot listeners. This counter triggers a clean restart.
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -102,9 +109,6 @@ export function AcademicProvider({
   }, []);
 
   // ── Foreground reconnect: restart listeners after long background ─────────
-  // AppNavigator emits 'firestore_force_reconnect' on every AppState: active.
-  // Resets subscribedRef and bumps subscriptionVersion to force a clean
-  // listener teardown and reopen after the app returns from 6+ hours background.
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('firestore_force_reconnect', () => {
       if (user) {
@@ -116,25 +120,24 @@ export function AcademicProvider({
       }
     });
     return () => sub.remove();
-  }, [user]);
+  }, [user?.uid]);
 
-  // ── Offline-first boot: seed from AsyncStorage and Manifest immediately ──
+  // ── Offline-first boot: seed ALL academic collections from boot manifest ───
+  // If getBootManifestSync() already populated state on Frame 0, this does 0 re-renders.
   useEffect(() => {
     let cancelled = false;
     loadBootManifest().then(manifest => {
       if (cancelled) return;
-      if (Array.isArray(manifest.attendance) && manifest.attendance.length > 0) setAttendance(manifest.attendance);
-      if (Array.isArray(manifest.attendanceLogs) && manifest.attendanceLogs.length > 0) setAttendanceLogs(manifest.attendanceLogs);
+      unstable_batchedUpdates(() => {
+        let seeded = false;
+        if (attendance.length === 0 && Array.isArray(manifest.attendance) && manifest.attendance.length > 0)             { setAttendance(manifest.attendance); seeded = true; }
+        if (attendanceLogs.length === 0 && Array.isArray(manifest.attendanceLogs) && manifest.attendanceLogs.length > 0)     { setAttendanceLogs(manifest.attendanceLogs); seeded = true; }
+        if (assignments.length === 0 && Array.isArray(manifest.assignments) && manifest.assignments.length > 0)           { setAssignments(manifest.assignments); seeded = true; }
+        if (semesters.length === 0 && Array.isArray(manifest.semesters) && manifest.semesters.length > 0)               { setSemesters(manifest.semesters); seeded = true; }
+        if (semesterSubjects.length === 0 && Array.isArray(manifest.semesterSubjects) && manifest.semesterSubjects.length > 0) { setSemesterSubjects(manifest.semesterSubjects); seeded = true; }
+        if (seeded) hasCachedDataRef.current = true;
+      });
     }).catch(() => {});
-
-    readAcademicCache().then(cached => {
-      if (cancelled) return;
-      if (Array.isArray(cached.attendance) && cached.attendance.length > 0)       setAttendance(cached.attendance);
-      if (Array.isArray(cached.attendanceLogs) && cached.attendanceLogs.length > 0)   setAttendanceLogs(cached.attendanceLogs);
-      if (Array.isArray(cached.assignments) && cached.assignments.length > 0)      setAssignments(cached.assignments);
-      if (Array.isArray(cached.semesters) && cached.semesters.length > 0)        setSemesters(cached.semesters);
-      if (Array.isArray(cached.semesterSubjects) && cached.semesterSubjects.length > 0) setSemesterSubjects(cached.semesterSubjects);
-    });
     return () => { cancelled = true; };
   }, [user?.uid]);
 
@@ -144,54 +147,89 @@ export function AcademicProvider({
 
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ATTENDANCE), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => parseAttendanceSubject(d.data(), d.id)); setAttendance(fresh); writeAcademicCache({ attendance: fresh }); },
+      snap => {
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map(d => parseAttendanceSubject(d.data(), d.id));
+          setAttendance(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendance: fresh }));
+        });
+      },
       scheduleListenerRestart("attendance")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ATTENDANCE_LOGS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => parseAttendanceLog(d.data(), d.id)); setAttendanceLogs(fresh); writeAcademicCache({ attendanceLogs: fresh }); },
+      snap => {
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map(d => parseAttendanceLog(d.data(), d.id));
+          setAttendanceLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ attendanceLogs: fresh }));
+        });
+      },
       scheduleListenerRestart("attendanceLogs")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ASSIGNMENTS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => parseAssignment(d.data(), d.id)); setAssignments(fresh); writeAcademicCache({ assignments: fresh }); },
+      snap => {
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map(d => parseAssignment(d.data(), d.id));
+          setAssignments(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ assignments: fresh }));
+        });
+      },
       scheduleListenerRestart("assignments")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.SEMESTERS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Semester)); setSemesters(fresh); writeAcademicCache({ semesters: fresh }); },
+      snap => {
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as Semester));
+          setSemesters(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ semesters: fresh }));
+        });
+      },
       scheduleListenerRestart("semesters")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.SEMESTER_SUBJECTS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SemesterSubject)); setSemesterSubjects(fresh); writeAcademicCache({ semesterSubjects: fresh }); },
+      snap => {
+        if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+        unstable_batchedUpdates(() => {
+          const fresh = snap.docs.map(d => ({ id: d.id, ...d.data() } as SemesterSubject));
+          setSemesterSubjects(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+          InteractionManager.runAfterInteractions(() => writeAcademicCache({ semesterSubjects: fresh }));
+        });
+      },
       scheduleListenerRestart("semesterSubjects")
     ));
     unsubsRef.current.push(onSnapshot(
       query(collection(db, COLLECTION.ATTENDANCE_HOLIDAYS), where("userId", "==", uid)),
-      snap => { const fresh = snap.docs.map(d => (d.data() as any).date).filter(Boolean); setHolidays(fresh); },
+      snap => {
+        const fresh = snap.docs.map(d => (d.data() as any).date).filter(Boolean);
+        setHolidays(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+      },
       scheduleListenerRestart("holidays")
     ));
   }, [scheduleListenerRestart]);
 
   useEffect(() => {
-    if (user) {
+    if (user && subscribedRef.current) {
       openSubscriptions(user.uid);
-    } else {
+    } else if (!user) {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
       if (retryTimerRef.current) { clearTimeout(retryTimerRef.current); retryTimerRef.current = null; }
     }
-    // BUG FIX: missing cleanup return — without this, subscriptionVersion bumps
-    // cause new listeners to open WITHOUT tearing down the old (dead) ones first,
-    // resulting in duplicate listener registrations.
     return () => {
       unsubsRef.current.forEach(u => u());
       unsubsRef.current = [];
       subscribedRef.current = false;
     };
-  }, [user, subscriptionVersion, openSubscriptions]);
+  }, [user?.uid, subscriptionVersion, openSubscriptions]);
 
   useEffect(() => () => {
     unsubsRef.current.forEach(u => u());
@@ -200,13 +238,13 @@ export function AcademicProvider({
 
   const ensureSubscribed = useCallback(() => {
     if (user && !subscribedRef.current) openSubscriptions(user.uid);
-  }, [user, openSubscriptions]);
+  }, [user?.uid, openSubscriptions]);
 
   // Optimistic write helpers
   const optimisticAddSubject = (subject: AttendanceSubject) => {
     setAttendance(prev => {
       const next = [subject, ...prev];
-      writeAcademicCache({ attendance: next });
+      writeAcademicCache({ attendance: next }, true); // immediate: optimistic add
       return next;
     });
   };
@@ -214,7 +252,7 @@ export function AcademicProvider({
   const optimisticDeleteSubject = (subjectId: string) => {
     setAttendance(prev => {
       const next = prev.filter(s => s.id !== subjectId);
-      writeAcademicCache({ attendance: next });
+      writeAcademicCache({ attendance: next }, true); // immediate: optimistic delete
       return next;
     });
   };
@@ -222,7 +260,7 @@ export function AcademicProvider({
   const optimisticUpdateAttendance = (subjectId: string, partial: Partial<AttendanceSubject>) => {
     setAttendance(prev => {
       const next = prev.map(s => s.id === subjectId ? { ...s, ...partial } : s);
-      writeAcademicCache({ attendance: next });
+      writeAcademicCache({ attendance: next }, true); // immediate: optimistic update
       return next;
     });
   };
@@ -230,7 +268,7 @@ export function AcademicProvider({
   const optimisticAddAssignment = (assignment: Assignment) => {
     setAssignments(prev => {
       const next = [assignment, ...prev];
-      writeAcademicCache({ assignments: next });
+      writeAcademicCache({ assignments: next }, true); // immediate: optimistic add
       return next;
     });
   };
@@ -238,7 +276,7 @@ export function AcademicProvider({
   const optimisticUpdateAssignment = (assignmentId: string, partial: Partial<Assignment>) => {
     setAssignments(prev => {
       const next = prev.map(a => a.id === assignmentId ? { ...a, ...partial } : a);
-      writeAcademicCache({ assignments: next });
+      writeAcademicCache({ assignments: next }, true); // immediate: optimistic update
       return next;
     });
   };
@@ -246,7 +284,7 @@ export function AcademicProvider({
   const optimisticDeleteAssignment = (assignmentId: string) => {
     setAssignments(prev => {
       const next = prev.filter(a => a.id !== assignmentId);
-      writeAcademicCache({ assignments: next });
+      writeAcademicCache({ assignments: next }, true); // immediate: optimistic delete
       return next;
     });
   };
@@ -254,7 +292,15 @@ export function AcademicProvider({
   const optimisticAddAttendanceLog = (log: AttendanceLog) => {
     setAttendanceLogs(prev => {
       const next = [log, ...prev];
-      writeAcademicCache({ attendanceLogs: next });
+      writeAcademicCache({ attendanceLogs: next }, true); // immediate: optimistic add
+      return next;
+    });
+  };
+
+  const optimisticUpdateAttendanceLog = (logId: string, partial: Partial<AttendanceLog>) => {
+    setAttendanceLogs(prev => {
+      const next = prev.map(l => l.id === logId ? { ...l, ...partial } : l);
+      writeAcademicCache({ attendanceLogs: next }, true); // immediate: optimistic update
       return next;
     });
   };
@@ -262,7 +308,7 @@ export function AcademicProvider({
   const optimisticRemoveAttendanceLog = (logId: string) => {
     setAttendanceLogs(prev => {
       const next = prev.filter(l => l.id !== logId);
-      writeAcademicCache({ attendanceLogs: next });
+      writeAcademicCache({ attendanceLogs: next }, true); // immediate: optimistic remove
       return next;
     });
   };
@@ -271,7 +317,8 @@ export function AcademicProvider({
     attendance, attendanceLogs, assignments, semesters, semesterSubjects, holidays,
     ensureSubscribed, optimisticAddSubject, optimisticDeleteSubject,
     optimisticUpdateAttendance, optimisticAddAssignment,
-    optimisticUpdateAssignment, optimisticDeleteAssignment, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog
+    optimisticUpdateAssignment, optimisticDeleteAssignment, optimisticAddAttendanceLog,
+    optimisticUpdateAttendanceLog, optimisticRemoveAttendanceLog
   }), [
     attendance, attendanceLogs, assignments, semesters, semesterSubjects, holidays, ensureSubscribed
   ]);

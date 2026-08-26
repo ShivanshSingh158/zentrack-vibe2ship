@@ -17,7 +17,10 @@ import { BlurView } from 'expo-blur';
 import { useNavigation } from '@react-navigation/native';
 import { SCREENS } from '../config/constants';
 import * as Haptics from 'expo-haptics';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -584,16 +587,13 @@ export default function AnalyticsScreen() {
   const { colors, isDark } = useTheme();
   const navigation = useNavigation<any>();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const {
-    tasks,
-    gymLogs,
-    habitLogs,
-    goals,
-    semesters,
-    attendance,
-    attendanceLogs,
-    allHabits
-  } = useMobileData();
+  // ── Granular domain hooks (replaces useMobileData() monolith) ─────────────
+  // PERF: Each hook only re-renders this screen when ITS domain's Firestore
+  // snapshot fires — not every domain update like the composite facade did.
+  const { tasks, habitLogs, allHabits } = useCoreData();
+  const { gymLogs } = useWellnessData();
+  const { attendance, attendanceLogs, semesters } = useAcademicData();
+  const { goals } = usePlannerData();
   const [period, setPeriod] = useState<Period>('week');
 
   // Staggered entry animations

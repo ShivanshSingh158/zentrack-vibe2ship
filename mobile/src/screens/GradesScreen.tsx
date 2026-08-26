@@ -35,8 +35,12 @@ const GRADE_COLORS: Record<string, { bg: string; text: string }> = {
 export default function GradesScreen() {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const { semesters, semesterSubjects } = useAcademicData();
+  const { semesters, semesterSubjects, ensureSubscribed } = useAcademicData();
   const { user } = useCoreData();
+
+  React.useEffect(() => {
+    ensureSubscribed?.();
+  }, [ensureSubscribed]);
 
   const [semModalVisible, setSemModalVisible] = useState(false);
   const [subModalVisible, setSubModalVisible] = useState(false);

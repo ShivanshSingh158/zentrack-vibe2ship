@@ -42,6 +42,7 @@ interface FirestoreActionsParams {
   setConfirmConfig: (config: any) => void;
   optimisticUpdateAttendance: (subjectId: string, partial: Partial<AttendanceSubject>) => void;
   optimisticAddAttendanceLog: (log: any) => void;
+  optimisticUpdateAttendanceLog?: (logId: string, partial: any) => void;
   optimisticRemoveAttendanceLog: (logId: string) => void;
   optimisticDeleteSubject?: (subjectId: string) => void;
 }
@@ -50,7 +51,7 @@ export function useAttendanceFirestore({
   user, subjects, logs, selectedDate,
   logsBySubjectId, overrideCounts,
   setOverrideOpen, setConfirmConfig,
-  optimisticUpdateAttendance, optimisticAddAttendanceLog, optimisticRemoveAttendanceLog,
+  optimisticUpdateAttendance, optimisticAddAttendanceLog, optimisticUpdateAttendanceLog, optimisticRemoveAttendanceLog,
   optimisticDeleteSubject,
 }: FirestoreActionsParams) {
 
@@ -59,48 +60,103 @@ export function useAttendanceFirestore({
     subject: AttendanceSubject,
     type: 'class' | 'lab',
     action: 'attended' | 'missed' | 'cancelled',
+    existingLogId?: string,
     logDate = selectedDate,
     isExtra = false,
   ) => {
     if (!user || !subject.id) return;
     const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
     const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
-    const newAttended = (subject[attendedKey as keyof AttendanceSubject] as number || 0) + (action === 'attended' ? 1 : 0);
-    const newTotal    = (subject[totalKey    as keyof AttendanceSubject] as number || 0) + (action === 'cancelled' ? 0 : 1);
+
+    // Check if we are updating an existing log
+    const existingLog = existingLogId ? logs.find(l => l.id === existingLogId) : null;
+
+    let newAttended: number;
+    let newTotal: number;
+
+    if (existingLog) {
+      if (existingLog.action === action) return;
+
+      const oldAction = existingLog.action;
+      const oldAttContribution = oldAction === 'attended' ? 1 : 0;
+      const newAttContribution = action === 'attended' ? 1 : 0;
+      const attDelta = newAttContribution - oldAttContribution;
+
+      const oldTotContribution = oldAction === 'cancelled' ? 0 : 1;
+      const newTotContribution = action === 'cancelled' ? 0 : 1;
+      const totDelta = newTotContribution - oldTotContribution;
+
+      newAttended = Math.max(0, (subject[attendedKey as keyof AttendanceSubject] as number || 0) + attDelta);
+      newTotal    = Math.max(0, (subject[totalKey    as keyof AttendanceSubject] as number || 0) + totDelta);
+    } else {
+      newAttended = (subject[attendedKey as keyof AttendanceSubject] as number || 0) + (action === 'attended' ? 1 : 0);
+      newTotal    = (subject[totalKey    as keyof AttendanceSubject] as number || 0) + (action === 'cancelled' ? 0 : 1);
+    }
+
     const subjectUpdates = { [attendedKey]: newAttended, [totalKey]: newTotal };
 
     try {
-      const logRef = doc(collection(db, COLLECTION.ATTENDANCE_LOGS));
-      const newLog = {
-        id: logRef.id,
-        userId: user.uid, subjectId: subject.id, subjectName: subject.name,
-        type, action, date: logDate, isExtra, timestamp: Date.now(),
-      };
-      
-      // Optimistically update UI
-      optimisticUpdateAttendance(subject.id, subjectUpdates);
-      optimisticAddAttendanceLog(newLog);
-      if (action === 'attended') {
-        awardXP('ATTENDANCE_LOG').catch(() => {});
-      }
-
-      // WhatsApp Pattern: direct online write + offline queue fallback
-      safeWrite(
-        async () => {
-          const batch = writeBatch(db);
-          batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
-          batch.set(logRef, newLog);
-          await batch.commit();
-        },
-        COLLECTION.ATTENDANCE,
-        'update',
-        subjectUpdates,
-        subject.id
-      ).then(async (online) => {
-        if (!online) {
-          await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'set', newLog, newLog.id);
+      if (existingLog) {
+        // Optimistically update UI
+        optimisticUpdateAttendance(subject.id, subjectUpdates);
+        if (optimisticUpdateAttendanceLog) {
+          optimisticUpdateAttendanceLog(existingLog.id, { action, timestamp: Date.now() });
         }
-      }).catch(handleSyncError);
+
+        if (action === 'attended' && existingLog.action !== 'attended') {
+          awardXP('ATTENDANCE_LOG').catch(() => {});
+        }
+
+        // WhatsApp Pattern: direct online write + offline queue fallback
+        safeWrite(
+          async () => {
+            const batch = writeBatch(db);
+            batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
+            batch.update(doc(db, COLLECTION.ATTENDANCE_LOGS, existingLog.id), { action, timestamp: Date.now() });
+            await batch.commit();
+          },
+          COLLECTION.ATTENDANCE,
+          'update',
+          subjectUpdates,
+          subject.id
+        ).then(async (online) => {
+          if (!online) {
+            await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'update', { action, timestamp: Date.now() }, existingLog.id);
+          }
+        }).catch(handleSyncError);
+      } else {
+        const logRef = doc(collection(db, COLLECTION.ATTENDANCE_LOGS));
+        const newLog = {
+          id: logRef.id,
+          userId: user.uid, subjectId: subject.id, subjectName: subject.name,
+          type, action, date: logDate, isExtra, timestamp: Date.now(),
+        };
+        
+        // Optimistically update UI
+        optimisticUpdateAttendance(subject.id, subjectUpdates);
+        optimisticAddAttendanceLog(newLog);
+        if (action === 'attended') {
+          awardXP('ATTENDANCE_LOG').catch(() => {});
+        }
+
+        // WhatsApp Pattern: direct online write + offline queue fallback
+        safeWrite(
+          async () => {
+            const batch = writeBatch(db);
+            batch.update(doc(db, COLLECTION.ATTENDANCE, subject.id!), subjectUpdates);
+            batch.set(logRef, newLog);
+            await batch.commit();
+          },
+          COLLECTION.ATTENDANCE,
+          'update',
+          subjectUpdates,
+          subject.id
+        ).then(async (online) => {
+          if (!online) {
+            await queueWrite(COLLECTION.ATTENDANCE_LOGS, 'set', newLog, newLog.id);
+          }
+        }).catch(handleSyncError);
+      }
 
       const oldPct         = (subject.classesTotal || 0) + (subject.labsTotal || 0) === 0
         ? 100
@@ -249,13 +305,18 @@ export function useAttendanceFirestore({
     });
   };
 
-  // ── Manual override ────────────────────────────────────────────────────────
   const handleApplyOverride = async (subId: string) => {
-    try {
-      await updateDoc(doc(db, COLLECTION.ATTENDANCE, subId), overrideCounts);
-      setOverrideOpen(null);
-    } catch (err) { console.error(err); }
+    await safeWrite(
+      () => updateDoc(doc(db, COLLECTION.ATTENDANCE, subId), overrideCounts),
+      COLLECTION.ATTENDANCE,
+      'update',
+      overrideCounts,
+      subId
+    );
+    setOverrideOpen(null);
   };
+
+
 
   // ── Reset semester ─────────────────────────────────────────────────────────
   const handleResetSemester = () => {

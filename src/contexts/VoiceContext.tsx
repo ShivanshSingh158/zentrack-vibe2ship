@@ -48,26 +48,33 @@ import { userLearningStore } from '../services/userLearningStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface VoiceContextType {
-  /** Whether agent TTS output is muted */
-  isMuted: boolean;
-  setIsMuted: (muted: boolean) => void;
-  /** True while Sarvam TTS audio is playing */
-  isSpeaking: boolean;
-  /** True when the voice conversation session is active */
-  isConversationActive: boolean;
-  /** True while the mic is open and listening for user speech */
-  isConversationListening: boolean;
-  /** True when using Gemini Live (real-time) mode vs Chrome STT (turn-based) */
-  isLiveMode: boolean;
-  /** Start the real-time voice conversation loop */
+// ── Stable actions context — NEVER causes re-renders when voice state changes ──
+// Components that only need startConversation/stopConversation/setIsMuted should
+// use useVoiceActions() instead of useVoice() to avoid re-renders during mic/TTS cycles.
+interface VoiceActionsContextType {
   startConversation: () => void;
-  /** End the real-time voice conversation loop */
   stopConversation: () => void;
-  /** Live partial transcript from Chrome STT while user is speaking */
+  setIsMuted: (muted: boolean) => void;
+  isMuted: boolean;           // included here because it changes rarely (user toggle only)
+  isConversationActive: boolean; // rarely changes (session start/stop only)
+  isLiveMode: boolean;        // rarely changes (mode switch only)
+}
+
+// ── Volatile state context — only subscribe if you render voice-reactive UI ───
+// Re-renders on EVERY mic tick, TTS state change, and transcript update.
+// Only SaraInterface and FloatingDock should consume this directly.
+interface VoiceStateContextType {
+  isSpeaking: boolean;
+  isConversationListening: boolean;
   conversationTranscript: string;
 }
 
+// ── Combined type (backwards compat for useVoice()) ──────────────────────────
+interface VoiceContextType extends VoiceActionsContextType, VoiceStateContextType {}
+
+const VoiceActionsContext = createContext<VoiceActionsContextType | undefined>(undefined);
+const VoiceStateContext = createContext<VoiceStateContextType | undefined>(undefined);
+// Keep legacy context for backward compat
 const VoiceContext = createContext<VoiceContextType | undefined>(undefined);
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -931,27 +938,78 @@ Raw transcript: "${raw}"`);
     };
   }, [startMicListening, stopConversation, speakText]);
 
+  // Stable actions value — only changes when muted/active/liveMode toggles
+  const actionsValue = React.useMemo<VoiceActionsContextType>(() => ({
+    startConversation,
+    stopConversation,
+    setIsMuted,
+    isMuted,
+    isConversationActive,
+    isLiveMode,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [startConversation, stopConversation, setIsMuted, isMuted, isConversationActive, isLiveMode]);
+
+  // Volatile state value — changes on every mic tick/TTS change
+  const stateValue = React.useMemo<VoiceStateContextType>(() => ({
+    isSpeaking,
+    isConversationListening,
+    conversationTranscript,
+  }), [isSpeaking, isConversationListening, conversationTranscript]);
+
+  // Combined value for backwards-compat useVoice() — still re-renders on volatile changes
+  const combinedValue = React.useMemo<VoiceContextType>(() => ({
+    ...actionsValue,
+    ...stateValue,
+  }), [actionsValue, stateValue]);
+
   return (
-    <VoiceContext.Provider value={{
-      isMuted,
-      setIsMuted,
-      isSpeaking,
-      isConversationActive,
-      isConversationListening,
-      isLiveMode,
-      startConversation,
-      stopConversation,
-      conversationTranscript,
-    }}>
-      {children}
-    </VoiceContext.Provider>
+    <VoiceActionsContext.Provider value={actionsValue}>
+      <VoiceStateContext.Provider value={stateValue}>
+        <VoiceContext.Provider value={combinedValue}>
+          {children}
+        </VoiceContext.Provider>
+      </VoiceStateContext.Provider>
+    </VoiceActionsContext.Provider>
   );
 }
 
+/**
+ * useVoice() — backwards-compatible combined hook.
+ * Re-renders on BOTH action and state changes.
+ * Prefer useVoiceActions() or useVoiceState() where possible.
+ */
 export function useVoice() {
   const context = useContext(VoiceContext);
   if (context === undefined) {
     throw new Error('useVoice must be used within a VoiceProvider');
+  }
+  return context;
+}
+
+/**
+ * useVoiceActions() — stable actions hook.
+ * Only re-renders when isMuted, isConversationActive, or isLiveMode changes.
+ * Use for components that only call startConversation/stopConversation/setIsMuted.
+ * Components: BottomHeader, CommandPalette, keyboard shortcuts.
+ */
+export function useVoiceActions() {
+  const context = useContext(VoiceActionsContext);
+  if (context === undefined) {
+    throw new Error('useVoiceActions must be used within a VoiceProvider');
+  }
+  return context;
+}
+
+/**
+ * useVoiceState() — volatile state hook.
+ * Re-renders on every mic tick, TTS change, and transcript update.
+ * Only use in components that RENDER voice-reactive UI (orb glow, transcript text, etc).
+ * Components: SaraInterface, FloatingDock (for the speaking indicator).
+ */
+export function useVoiceState() {
+  const context = useContext(VoiceStateContext);
+  if (context === undefined) {
+    throw new Error('useVoiceState must be used within a VoiceProvider');
   }
   return context;
 }

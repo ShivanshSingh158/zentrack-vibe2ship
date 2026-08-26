@@ -28,7 +28,10 @@ import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../contexts/ThemeContext';
 import { scheduleAllNotifications, clearScheduleCache, sendTestNotification } from '../services/notifications';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { handleSyncError } from '../utils/errorUtils';
 
 
@@ -78,9 +81,10 @@ export default function NotificationsSettingsScreen() {
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const navigation = useNavigation<any>();
-  // BUG-2 FIX: Destructure waterLogs and sleepLogs so they can be passed to
-  // scheduleAllNotifications() in all call sites below.
-  const { tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments, waterLogs, user } = useMobileData();
+  const { tasks, habitLogs, allHabits, user } = useCoreData();
+  const { gymLogs, waterLogs } = useWellnessData();
+  const { attendance, assignments } = useAcademicData();
+  const { customEvents } = usePlannerData();
 
   // Module toggles
   const [modTasks,      setModTasks]      = useState(true);

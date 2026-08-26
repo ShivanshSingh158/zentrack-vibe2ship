@@ -71,6 +71,13 @@ console.error = (...args) => {
 
 import { StatusBar } from 'expo-status-bar';
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEBUG BOOT TIMING — REMOVE AFTER DIAGNOSIS
+// ═══════════════════════════════════════════════════════════════════════════════
+const _BOOT_T0 = (global as any).__BOOT_T0 || Date.now();
+console.log(`[BOOT-DIAG] App.tsx module evaluated at dt=${Date.now() - _BOOT_T0}ms`);
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function ThemedAppContainer() {
   const { colors, isDark } = useTheme();
 
@@ -95,6 +102,9 @@ function ThemedAppContainer() {
 }
 
 export default function App() {
+  // DEBUG — REMOVE AFTER DIAGNOSIS
+  console.log(`[BOOT-DIAG] App() render at dt=${Date.now() - _BOOT_T0}ms`);
+
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -103,16 +113,21 @@ export default function App() {
     PlayfairDisplay_600SemiBold,
   });
 
-  // PERF: All 4 service registrations deferred behind InteractionManager.
+  // DEBUG — REMOVE AFTER DIAGNOSIS
+  if (fontsLoaded) console.log(`[BOOT-DIAG] Fonts loaded at dt=${Date.now() - _BOOT_T0}ms`);
+
+  // PERF: All 4 service registrations deferred behind InteractionManager + 3.5s timeout.
   // These have zero effect on Frame 0/1 — they only set up background OS tasks.
-  // Previously they fired immediately on mount, competing with auth, font loading,
-  // and Firestore subscription setup. Deferring frees ~50–150ms on the cold-boot path.
+  // Deferring frees ~150–250ms of native bridge blocking right when the app opens.
   React.useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
-      requestNotificationPermissions();
-      registerBackgroundNotificationFetch();
-      registerBackgroundProactiveAgent();
-      registerWeeklyReviewTask();
+      const timer = setTimeout(() => {
+        requestNotificationPermissions();
+        registerBackgroundNotificationFetch();
+        registerBackgroundProactiveAgent();
+        registerWeeklyReviewTask();
+      }, 3500);
+      return () => clearTimeout(timer);
     });
     return () => handle.cancel();
   }, []);

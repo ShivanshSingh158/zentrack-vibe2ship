@@ -18,7 +18,7 @@ import { useAcademicData } from '../contexts/domains/AcademicContext';
 // --- NEW ATTENDANCE MODULE IMPORTS ---
 import { 
   SCHEMA_VERSION, defaultSchedule, DAY_NAMES, DAY_SHORT, 
-  getLocalDateString, formatDisplayDate, getWeekDates, 
+  getLocalDateString, formatDisplayDate, formatAttendanceHistoryDate, getWeekDates, 
   calculateStatus, getProgressColor, parseTimeToMinutes 
 } from './attendance/attendanceConstants';
 import { calculateBunkMath } from '../utils/academicMath';
@@ -42,7 +42,7 @@ interface SessionRowProps {
   isDark: boolean;
   styles: any;
   onUndo: (logId: string) => void;
-  onLog: (subject: any, type: 'class' | 'lab', action: 'attended' | 'missed' | 'cancelled') => void;
+  onLog: (subject: any, type: 'class' | 'lab', action: 'attended' | 'missed' | 'cancelled', existingLogId?: string) => void;
 }
 
 const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
@@ -57,88 +57,139 @@ const AttendanceSessionRow = React.memo(function AttendanceSessionRow({
   const { subject, type } = session;
   const isLab = type === 'lab';
 
+  // 0ms instant optimistic local state
+  const [localAction, setLocalAction] = React.useState<'attended' | 'missed' | 'cancelled' | null>(
+    log?.action ?? null
+  );
+
+  React.useEffect(() => {
+    setLocalAction(log?.action ?? null);
+  }, [log?.action, log?.id]);
+
+  const isPresent = localAction === 'attended';
+  const isAbsent = localAction === 'missed';
+  const isCancelled = localAction === 'cancelled';
+
+  const handlePressPresent = useCallback(() => {
+    if (isPresent) {
+      setLocalAction(null);
+      setTimeout(() => {
+        if (log?.id) onUndo(log.id);
+      }, 0);
+    } else {
+      setLocalAction('attended');
+      setTimeout(() => {
+        onLog(subject, type, 'attended', log?.id);
+      }, 0);
+    }
+  }, [isPresent, log?.id, onUndo, onLog, subject, type]);
+
+  const handlePressAbsent = useCallback(() => {
+    if (isAbsent) {
+      setLocalAction(null);
+      setTimeout(() => {
+        if (log?.id) onUndo(log.id);
+      }, 0);
+    } else {
+      setLocalAction('missed');
+      setTimeout(() => {
+        onLog(subject, type, 'missed', log?.id);
+      }, 0);
+    }
+  }, [isAbsent, log?.id, onUndo, onLog, subject, type]);
+
+  const handlePressCancelled = useCallback(() => {
+    if (isCancelled) {
+      setLocalAction(null);
+      setTimeout(() => {
+        if (log?.id) onUndo(log.id);
+      }, 0);
+    } else {
+      setLocalAction('cancelled');
+      setTimeout(() => {
+        onLog(subject, type, 'cancelled', log?.id);
+      }, 0);
+    }
+  }, [isCancelled, log?.id, onUndo, onLog, subject, type]);
+
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderColor: colors.border }}>
-      {/* Left: subject name + time + type badge */}
-      <View style={{ flex: 1, marginRight: 8 }}>
-        <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '500' }}>{subject.name}</Text>
+    <View style={styles.sessionCard}>
+      {/* Left: subject name + time + inline class/lab tag */}
+      <View style={{ flex: 1, marginRight: 10 }}>
+        <Text style={styles.sessionSubjectName} numberOfLines={1}>
+          {subject.name}
+        </Text>
         {/* Time + inline badge */}
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 12 }}>{session.timeStr}</Text>
-          <View style={{
-            paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4,
-            backgroundColor: isLab 
-              ? (isDark ? 'rgba(250,215,161,0.15)' : 'rgba(2,132,199,0.12)')
-              : (isDark ? 'rgba(137,220,235,0.12)' : 'rgba(108,92,231,0.12)'),
-          }}>
-            <Text style={{
-              fontSize: 8, fontWeight: '700', letterSpacing: 0.4,
-              color: isLab 
-                ? (isDark ? '#FAD7A1' : '#0284C7')
-                : (isDark ? '#89dceb' : '#6C5CE7'),
-            }}>{isLab ? 'LAB' : 'CLASS'}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+          <Text style={styles.sessionTimeText}>{session.timeStr}</Text>
+          <View style={[styles.inlineTypeBadge, isLab ? styles.inlineTypeBadgeLab : styles.inlineTypeBadgeClass]}>
+            <Text style={[styles.inlineTypeBadgeText, isLab ? styles.inlineTypeBadgeTextLab : styles.inlineTypeBadgeTextClass]}>
+              {isLab ? 'LAB' : 'CLASS'}
+            </Text>
           </View>
         </View>
       </View>
 
-      {/* Right: action buttons */}
-      <View style={{ flexDirection: 'row', gap: 8 }}>
-        {log ? (
-          <TouchableOpacity
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              onUndo(log.id);
-            }}
-            style={styles.undoBtn}
-          >
-            <Text style={{
-              color: log.action === 'attended' ? colors.priorityLow : (log.action === 'cancelled' ? colors.textMuted : colors.error),
-              fontSize: 12, fontWeight: '600'
-            }}>
-              {log.action === 'attended' ? 'Present' : log.action === 'cancelled' ? 'Cancelled' : 'Absent'} ↩
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <>
-            <TouchableOpacity
-              style={styles.btnPresent}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                onLog(subject, type, 'attended');
-              }}
-            >
-              <Text style={{ color: colors.priorityLow, fontSize: 12, fontWeight: '600' }}>Present</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.btnAbsent}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                onLog(subject, type, 'missed');
-              }}
-            >
-              <Text style={{ color: colors.error, fontSize: 12, fontWeight: '600' }}>Absent</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.btnCancelled}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                onLog(subject, type, 'cancelled');
-              }}
-            >
-              <Ionicons name="close" size={18} color={isDark ? colors.textMuted : colors.textSecondary} />
-            </TouchableOpacity>
-          </>
-        )}
+      {/* Right: Segmented Present / Absent / Cancelled Toggle */}
+      <View style={styles.segmentedToggleContainer}>
+        {/* Present segment */}
+        <TouchableOpacity
+          onPress={handlePressPresent}
+          delayPressIn={0}
+          style={[
+            styles.segmentBtn,
+            isPresent && styles.segmentBtnPresentActive,
+          ]}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.segmentBtnText, isPresent && styles.segmentBtnPresentTextActive]}>
+            Present
+          </Text>
+        </TouchableOpacity>
+
+        {/* Absent segment */}
+        <TouchableOpacity
+          onPress={handlePressAbsent}
+          delayPressIn={0}
+          style={[
+            styles.segmentBtn,
+            isAbsent && styles.segmentBtnAbsentActive,
+          ]}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.segmentBtnText, isAbsent && styles.segmentBtnAbsentTextActive]}>
+            Absent
+          </Text>
+        </TouchableOpacity>
+
+        {/* Cancelled (Cross) segment */}
+        <TouchableOpacity
+          onPress={handlePressCancelled}
+          delayPressIn={0}
+          style={[
+            styles.segmentIconBtn,
+            isCancelled && styles.segmentBtnCancelledActive,
+          ]}
+          activeOpacity={0.7}
+          accessibilityLabel="Mark Class Cancelled"
+        >
+          <Ionicons
+            name="close"
+            size={15}
+            color={isCancelled ? (isDark ? '#F2F2F7' : '#1C1C1E') : (isDark ? '#8E8E93' : '#6B7280')}
+          />
+        </TouchableOpacity>
       </View>
     </View>
   );
 });
 
-// ── Pure Memoized Subject Summary Row (By Subject with Bunk Budget) ──────────
+// ── Pure Memoized Subject Summary Row (By Subject with Decoupled Plain Labels) ──
 interface SubjectSummaryRowProps {
   subject: AttendanceSubject;
   colors: any;
   isDark: boolean;
+  styles: any;
   onPress: () => void;
 }
 
@@ -146,6 +197,7 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   subject,
   colors,
   isDark,
+  styles,
   onPress,
 }: SubjectSummaryRowProps) {
   const getThemeProgressColor = (urgency: string) =>
@@ -169,87 +221,212 @@ const SubjectSummaryRow = React.memo(function SubjectSummaryRow({
   const combinedStatus = calculateStatus(totalAtt, totalCls, subject.targetPercentage);
   const pColor = getThemeProgressColor(combinedStatus.urgency);
 
-  return (
-    <View>
-      <TouchableOpacity onPress={onPress} style={{ paddingVertical: 14, borderBottomWidth: 1, borderColor: colors.border }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '500' }}>{subject.name}</Text>
-          <Text style={{ color: pColor, fontSize: 16, fontWeight: '600' }}>
-            {combinedStatus.pct !== null ? `${Math.round(combinedStatus.pct)}%` : '--%'}
-          </Text>
-        </View>
-        
-        <View style={{ gap: 6 }}>
-          {hasClasses && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={{ backgroundColor: isDark ? 'rgba(165,153,255,0.12)' : 'rgba(108,92,231,0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, minWidth: 62, alignItems: 'center' }}>
-                <Text style={{ color: colors.accentPrimary, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>CLASS</Text>
-              </View>
-              <View style={{ flex: 1, height: 6, backgroundColor: colors.border, borderRadius: 3 }}>
-                <View style={{ 
-                  height: '100%', borderRadius: 3, width: `${Math.min(100, classStatus.pct || 0)}%`, backgroundColor: getThemeProgressColor(classStatus.urgency),
-                }} />
-              </View>
-              <Text style={{ color: colors.textTertiary, fontSize: 11, minWidth: 44, textAlign: 'right' }} numberOfLines={1}>
-                {subject.classesAttended || 0}/{subject.classesTotal || 0}
-              </Text>
-            </View>
-          )}
-          {hasLabs && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <View style={{ backgroundColor: isDark ? 'rgba(250,215,161,0.15)' : 'rgba(2,132,199,0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, minWidth: 62, alignItems: 'center' }}>
-                <Text style={{ color: isDark ? '#FAD7A1' : colors.accentBlue, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>LAB</Text>
-              </View>
-              <View style={{ flex: 1, height: 6, backgroundColor: colors.border, borderRadius: 3 }}>
-                <View style={{ 
-                  height: '100%', borderRadius: 3, width: `${Math.min(100, labStatus.pct || 0)}%`, backgroundColor: getThemeProgressColor(labStatus.urgency),
-                }} />
-              </View>
-              <Text style={{ color: colors.textTertiary, fontSize: 11, minWidth: 44, textAlign: 'right' }} numberOfLines={1}>
-                {subject.labsAttended || 0}/{subject.labsTotal || 0}
-              </Text>
-            </View>
-          )}
-          
-          {(() => {
-            const bunk = calculateBunkMath(
-              totalAtt,
-              totalCls,
-              subject.targetPercentage || 75
-            );
-            if ((bunk.status === 'safe' && bunk.count > 0) || bunk.status === 'warning') {
-              const budgetColor = bunk.status === 'safe' ? colors.priorityLow : colors.priorityMed;
-              const budgetBg = bunk.status === 'safe' 
-                ? (isDark ? 'rgba(94,218,158,0.12)' : 'rgba(16,185,129,0.12)') 
-                : (isDark ? 'rgba(245,158,11,0.12)' : 'rgba(217,119,6,0.12)');
-              const budgetLabel = bunk.status === 'safe' ? `✓ Can miss ${bunk.count} more` : `⚠️ 0 misses left`;
-              return (
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                  <View style={{ backgroundColor: budgetBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10 }}>
-                    <Text style={{ color: budgetColor, fontSize: 11, fontWeight: '600', letterSpacing: 0.2 }}>{budgetLabel}</Text>
-                  </View>
-                </View>
-              );
-            }
-            return null;
-          })()}
-        </View>
-      </TouchableOpacity>
+  const bunk = calculateBunkMath(
+    totalAtt,
+    totalCls,
+    subject.targetPercentage || 75
+  );
 
-      {/* Inline recovery hint */}
-      {(() => {
-        const pct = totalCls > 0 ? (totalAtt / totalCls) * 100 : 100;
-        const target = subject.targetPercentage || 75;
-        if (pct < target) {
-          const needed = Math.ceil(((target / 100) * totalCls - totalAtt) / (1 - (target / 100)));
-          return (
-            <Text style={{ color: colors.error, fontSize: 11, marginTop: 6, marginBottom: 4, fontFamily: FONT_FAMILY.medium }}>
-              Attend {needed} more {needed === 1 ? 'class' : 'classes'} to reach {target}%
+  return (
+    <TouchableOpacity onPress={onPress} style={styles.bySubjectCard} activeOpacity={0.8}>
+      {/* Top row: Subject name and overall percentage */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <Text style={styles.bySubjectName} numberOfLines={1}>{subject.name}</Text>
+        <Text style={[styles.bySubjectPct, { color: pColor }]}>
+          {combinedStatus.pct !== null ? `${Math.round(combinedStatus.pct)}%` : '--%'}
+        </Text>
+      </View>
+
+      {/* Decoupled Progress Bars */}
+      <View style={{ gap: 8 }}>
+        {hasClasses && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={styles.plainTrackLabel}>Class</Text>
+            <View style={styles.plainProgressBarBg}>
+              <View
+                style={[
+                  styles.plainProgressBarFill,
+                  {
+                    width: `${Math.min(100, classStatus.pct || 0)}%`,
+                    backgroundColor: getThemeProgressColor(classStatus.urgency),
+                  },
+                ]}
+              />
+            </View>
+            <Text style={styles.plainTrackCount}>
+              {subject.classesAttended || 0}/{subject.classesTotal || 0}
             </Text>
-          );
-        }
-        return null;
-      })()}
+          </View>
+        )}
+
+        {hasLabs && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Text style={styles.plainTrackLabel}>Lab</Text>
+            <View style={styles.plainProgressBarBg}>
+              <View
+                style={[
+                  styles.plainProgressBarFill,
+                  {
+                    width: `${Math.min(100, labStatus.pct || 0)}%`,
+                    backgroundColor: getThemeProgressColor(labStatus.urgency),
+                  },
+                ]}
+              />
+            </View>
+            <Text style={styles.plainTrackCount}>
+              {subject.labsAttended || 0}/{subject.labsTotal || 0}
+            </Text>
+          </View>
+        )}
+
+        {/* Bottom Status / Bunk Message */}
+        {(() => {
+          if (bunk.status === 'safe' && bunk.count > 0) {
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <Text style={{ color: colors.priorityLow || '#10B981', fontSize: 12, fontWeight: '600' }}>
+                  ✓ Can miss {bunk.count} more
+                </Text>
+              </View>
+            );
+          }
+          if (bunk.status === 'warning') {
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <Text style={{ color: colors.priorityMed || '#F59E0B', fontSize: 12, fontWeight: '600' }}>
+                  ⚠️ 0 misses left — attend all next classes
+                </Text>
+              </View>
+            );
+          }
+          if (bunk.status === 'critical') {
+            const needed = bunk.count;
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <Text style={{ color: colors.error || '#EF4444', fontSize: 12, fontWeight: '600' }}>
+                  ⚠️ Attend {needed} more {needed === 1 ? 'class' : 'classes'} to reach {subject.targetPercentage || 75}%
+                </Text>
+              </View>
+            );
+          }
+          return null;
+        })()}
+      </View>
+    </TouchableOpacity>
+  );
+});
+
+// ── Pure Memoized History Log Row ─────────────────────────────────────────────
+interface HistoryRowProps {
+  log: any;
+  colors: any;
+  isDark: boolean;
+  styles: any;
+  onUndo: (logId: string) => void;
+}
+
+const AttendanceHistoryRow = React.memo(function AttendanceHistoryRow({
+  log,
+  colors,
+  isDark,
+  styles,
+  onUndo,
+}: HistoryRowProps) {
+  const isAttended = log.action === 'attended';
+  const isMissed = log.action === 'missed';
+  const isLab = log.type === 'lab';
+  const isExtra = !!log.isExtra;
+
+  const dateInfo = formatAttendanceHistoryDate(log.date, log.timestamp);
+
+  const statusColor = isAttended
+    ? (isDark ? '#34D399' : '#059669')
+    : isMissed
+    ? (isDark ? '#F87171' : '#DC2626')
+    : (isDark ? '#FBBF24' : '#D97706');
+
+  const statusBg = isAttended
+    ? (isDark ? 'rgba(52, 211, 153, 0.12)' : 'rgba(5, 150, 105, 0.10)')
+    : isMissed
+    ? (isDark ? 'rgba(248, 113, 113, 0.12)' : 'rgba(220, 38, 38, 0.10)')
+    : (isDark ? 'rgba(251, 191, 36, 0.12)' : 'rgba(217, 119, 6, 0.10)');
+
+  const statusBorder = isAttended
+    ? (isDark ? 'rgba(52, 211, 153, 0.25)' : 'rgba(5, 150, 105, 0.20)')
+    : isMissed
+    ? (isDark ? 'rgba(248, 113, 113, 0.25)' : 'rgba(220, 38, 38, 0.20)')
+    : (isDark ? 'rgba(251, 191, 36, 0.25)' : 'rgba(217, 119, 6, 0.20)');
+
+  const iconName = isAttended
+    ? 'checkmark-circle'
+    : isMissed
+    ? 'close-circle'
+    : 'ban';
+
+  const actionText = isAttended
+    ? 'Attended'
+    : isMissed
+    ? 'Missed'
+    : 'Cancelled';
+
+  return (
+    <View style={styles.historyCard}>
+      <View style={{ flex: 1, marginRight: 12 }}>
+        {/* Top: Status Badge + Type Badges */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 7 }}>
+          <View style={[styles.historyStatusPill, { backgroundColor: statusBg, borderColor: statusBorder }]}>
+            <Ionicons name={iconName} size={13} color={statusColor} style={{ marginRight: 4 }} />
+            <Text style={[styles.historyStatusText, { color: statusColor }]}>{actionText}</Text>
+          </View>
+
+          {/* Class / Lab Badge */}
+          <View style={[styles.historyTypePill, isLab ? styles.historyTypePillLab : styles.historyTypePillClass]}>
+            <Text style={[styles.historyTypeText, isLab ? styles.historyTypeTextLab : styles.historyTypeTextClass]}>
+              {isLab ? 'LAB' : 'CLASS'}
+            </Text>
+          </View>
+
+          {/* Extra Badge if extra */}
+          {isExtra && (
+            <View style={styles.historyExtraPill}>
+              <Text style={styles.historyExtraText}>EXTRA</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Bottom: Date with Today/Yesterday badge and Time */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+          {dateInfo.dayLabel ? (
+            <View style={[styles.historyDayBadge, dateInfo.isToday && styles.historyDayBadgeToday]}>
+              <Text style={[styles.historyDayBadgeText, dateInfo.isToday && styles.historyDayBadgeTextToday]}>
+                {dateInfo.dayLabel}
+              </Text>
+            </View>
+          ) : null}
+
+          <Text style={styles.historyDateText}>
+            {dateInfo.fullDateStr}
+          </Text>
+
+          {dateInfo.timeStr ? (
+            <Text style={styles.historyTimeText}>
+              • {dateInfo.timeStr}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+
+      {/* Undo Button */}
+      <TouchableOpacity
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          if (log.id) onUndo(log.id);
+        }}
+        style={styles.historyUndoBtn}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="refresh" size={16} color={colors.textSecondary} />
+      </TouchableOpacity>
     </View>
   );
 });
@@ -327,6 +504,7 @@ export default function AttendanceScreen() {
     overrideCounts, setOverrideOpen, setConfirmConfig,
     optimisticUpdateAttendance: academic.optimisticUpdateAttendance,
     optimisticAddAttendanceLog: academic.optimisticAddAttendanceLog,
+    optimisticUpdateAttendanceLog: academic.optimisticUpdateAttendanceLog,
     optimisticRemoveAttendanceLog: academic.optimisticRemoveAttendanceLog,
     optimisticDeleteSubject: academic.optimisticDeleteSubject,
   });
@@ -338,6 +516,25 @@ export default function AttendanceScreen() {
   // 3. Export Hook
   const exportActions = useAttendanceExport(logs, holidays, subjects);
   const { handleExportCSV } = exportActions;
+
+  // Memoized & strictly sorted history logs (Today -> Oldest, timestamp secondary)
+  const sortedHistoryLogs = React.useMemo(() => {
+    if (!selectedHistorySubject) return [];
+    const filtered = logs.filter(l => l.subjectId === selectedHistorySubject.id);
+
+    return [...filtered].sort((a, b) => {
+      // 1. Primary: Sort by ISO date string descending (newest date first, e.g. "2026-08-28" > "2026-08-26" > "2026-07-31")
+      const dateA = a.date || '';
+      const dateB = b.date || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+      // 2. Secondary: Sort by timestamp descending (newest time first on same date)
+      const timeA = typeof a.timestamp === 'number' ? a.timestamp : 0;
+      const timeB = typeof b.timestamp === 'number' ? b.timestamp : 0;
+      return timeB - timeA;
+    });
+  }, [selectedHistorySubject, logs]);
 
   const handleAddSubject = () => {
     setEditSubject(null);
@@ -442,7 +639,7 @@ export default function AttendanceScreen() {
           data={isSelectedHoliday ? [] : todayFlatSessions}
           keyExtractor={item => item.id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 120, paddingTop: insets.top + 54 }}
+          contentContainerStyle={{ paddingHorizontal: 5, paddingBottom: 120, paddingTop: insets.top + 54 }}
           onScroll={(e: any) => {
             const y = e?.nativeEvent?.contentOffset?.y ?? 0;
             updatePillVisibility(y);
@@ -471,18 +668,18 @@ export default function AttendanceScreen() {
           ListHeaderComponent={
           <>
             {/* ── Semester Overview ── */}
-            <View style={{ paddingHorizontal: 8, marginBottom: 4 }}>
+            <View style={{ marginBottom: 0 }}>
               <View style={styles.overviewCard}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                   <Text style={styles.overviewTitle}>Semester overview</Text>
                   <Text style={styles.overviewStats}>{globalAttended}/{globalTotal} classes</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                  <Text style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.priorityHigh)) : colors.textMuted }]}>
+                  <Text style={[styles.overviewPct, { color: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.textMuted }]}>
                     {globalPct !== null ? `${Math.round(globalPct)}%` : '--%'}
                   </Text>
                   <View style={styles.progressBarBg}>
-                    <View style={[styles.progressBarFill, { width: `${Math.min(100, globalPct || 0)}%`, backgroundColor: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.priorityHigh)) : colors.border }]} />
+                    <View style={[styles.progressBarFill, { width: `${Math.min(100, globalPct || 0)}%`, backgroundColor: globalPct !== null ? (globalPct >= 75 ? colors.priorityLow : (globalPct >= 70 ? colors.priorityMed : colors.error)) : colors.border }]} />
                   </View>
                 </View>
               </View>
@@ -493,14 +690,14 @@ export default function AttendanceScreen() {
               <View style={styles.warningBanner}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <Ionicons name="warning" size={16} color={isDark ? "#f59e0b" : "#D97706"} />
-                    <Text style={styles.warningTitle}>Low Attendance</Text>
+                    <Ionicons name="warning-outline" size={16} color={isDark ? "#f59e0b" : "#D97706"} />
+                    <Text style={styles.warningTitle}>Low attendance</Text>
                   </View>
                   <TouchableOpacity onPress={() => setDismissedWarnings(new Set(warningSubjects.map(s => s.id!)))}>
                     <Ionicons name="close" size={16} color={colors.textMuted} />
                   </TouchableOpacity>
                 </View>
-                <View style={{ marginTop: 4, gap: 4 }}>
+                <View style={{ marginTop: 6, gap: 4 }}>
                   {warningSubjects.map(s => {
                     const att = (s.classesAttended || 0) + (s.labsAttended || 0);
                     const tot = (s.classesTotal || 0) + (s.labsTotal || 0);
@@ -509,7 +706,7 @@ export default function AttendanceScreen() {
                     const need = Math.max(0, Math.ceil((targetPct * tot - 100 * att) / (100 - targetPct)));
                     return (
                       <Text key={s.id} style={styles.warningText}>
-                        • <Text style={{ fontWeight: 'bold' }}>{s.name}</Text>: {pct}% — attend {need} more to recover
+                        {s.name} at {pct}% — attend {need} more to recover
                       </Text>
                     );
                   })}
@@ -527,11 +724,10 @@ export default function AttendanceScreen() {
             />
 
             {/* ── Daily Schedule ── */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, marginBottom: 8 }}>
-              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>Today's Classes</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 2, marginTop: 4, marginBottom: 10 }}>
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>TODAY'S CLASSES</Text>
               <TouchableOpacity onPress={() => setIsExtraOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: '500' }}>Extra Class</Text>
-                <Ionicons name="add" size={20} color={colors.textPrimary} />
+                <Text style={{ fontSize: 12, color: colors.accentPrimary || '#38BDF8', fontWeight: '600' }}>Extra class +</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -551,14 +747,15 @@ export default function AttendanceScreen() {
         renderItem={renderItem}
         ListFooterComponent={
           todayScheduledSubjects.length > 0 && !isSelectedHoliday ? (
-            <View style={{ marginTop: 24, marginBottom: 56 }}>
-              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>By Subject</Text>
+            <View style={{ marginTop: 20, marginBottom: 56 }}>
+              <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 11, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, paddingHorizontal: 2 }}>BY SUBJECT</Text>
               {todayScheduledSubjects.map(subject => (
                 <SubjectSummaryRow
                   key={subject.id}
                   subject={subject}
                   colors={colors}
                   isDark={isDark}
+                  styles={styles}
                   onPress={() => setSelectedHistorySubject(subject)}
                 />
               ))}
@@ -586,33 +783,91 @@ export default function AttendanceScreen() {
 
       {/* History Modal */}
       {!!selectedHistorySubject && (
-        <Modal visible={!!selectedHistorySubject} animationType="slide">
+        <Modal visible={!!selectedHistorySubject} animationType="slide" onRequestClose={() => setSelectedHistorySubject(null)}>
           <SafeAreaView style={styles.modalRoot}>
+            {/* Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{selectedHistorySubject?.name} History</Text>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={styles.modalTitle} numberOfLines={1}>
+                  {selectedHistorySubject?.name} History
+                </Text>
+                <Text style={{ fontSize: 11.5, color: colors.textMuted, marginTop: 2 }}>
+                  {sortedHistoryLogs.length} {sortedHistoryLogs.length === 1 ? 'log' : 'logs'} recorded • Newest first
+                </Text>
+              </View>
               <TouchableOpacity style={styles.modalHeaderBtn} onPress={() => setSelectedHistorySubject(null)}>
-                <Ionicons name="close" size={20} color={colors.textPrimary} />
+                <Ionicons name="close" size={22} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
-            <FlatList
-              data={selectedHistorySubject ? logs.filter(l => l.subjectId === selectedHistorySubject.id) : []}
-              keyExtractor={l => l.id || ''}
-              contentContainerStyle={{ padding: SPACE.md }}
-              renderItem={({ item: l }) => (
-                <View style={styles.historyCard}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={{ fontFamily: FONT_FAMILY.bold, fontSize: 14, color: l.action === 'attended' ? colors.priorityLow : colors.error }}>
-                      {l.action === 'attended' ? '✓ Attended' : '✗ Missed'} <Text style={{ color: colors.textPrimary }}>{l.isExtra ? '(Extra) ' : ''}{l.type||'class'}</Text>
+
+            {/* Subject Attendance Stats Overview Strip */}
+            {(() => {
+              const sub = selectedHistorySubject;
+              const att = (sub.classesAttended || 0) + (sub.labsAttended || 0);
+              const tot = (sub.classesTotal || 0) + (sub.labsTotal || 0);
+              const pct = tot > 0 ? (att / tot) * 100 : 100;
+              const target = sub.targetPercentage || 75;
+              const isSafe = pct >= target;
+
+              return (
+                <View style={styles.historyStatsBar}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ fontSize: 13, fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>
+                        Overall: {att}/{tot} attended
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                        (Target: {target}%)
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 15, fontFamily: FONT_FAMILY.bold, color: isSafe ? (isDark ? '#34D399' : '#059669') : (isDark ? '#F87171' : '#DC2626') }}>
+                      {tot > 0 ? `${Math.round(pct)}%` : '--%'}
                     </Text>
-                    <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>{formatDisplayDate(l.date)} • {new Date(l.timestamp).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => l.id && handleUndo(l.id)} style={styles.undoBtn}>
-                    <Ionicons name="refresh" size={14} color={colors.textPrimary} />
-                  </TouchableOpacity>
+
+                  {/* Class vs Lab split if applicable */}
+                  {((sub.labsTotal || 0) > 0 || (sub.classesTotal || 0) > 0) && (
+                    <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
+                      {(sub.classesTotal || 0) > 0 && (
+                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                          Class: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{sub.classesAttended || 0}/{sub.classesTotal || 0}</Text>
+                        </Text>
+                      )}
+                      {(sub.labsTotal || 0) > 0 && (
+                        <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+                          Lab: <Text style={{ fontFamily: FONT_FAMILY.bold, color: colors.textPrimary }}>{sub.labsAttended || 0}/{sub.labsTotal || 0}</Text>
+                        </Text>
+                      )}
+                    </View>
+                  )}
                 </View>
+              );
+            })()}
+
+            {/* List */}
+            <FlatList
+              data={sortedHistoryLogs}
+              keyExtractor={l => l.id || `${l.date}_${l.timestamp}_${l.action}`}
+              contentContainerStyle={{ padding: SPACE.md, paddingBottom: 60 }}
+              renderItem={({ item: l }) => (
+                <AttendanceHistoryRow
+                  log={l}
+                  colors={colors}
+                  isDark={isDark}
+                  styles={styles}
+                  onUndo={handleUndo}
+                />
               )}
               ListEmptyComponent={
-                <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: SPACE.xl }}>No logs found for this subject.</Text>
+                <View style={{ paddingVertical: 48, alignItems: 'center' }}>
+                  <Ionicons name="calendar-outline" size={40} color={colors.textMuted} style={{ marginBottom: 12, opacity: 0.6 }} />
+                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontFamily: FONT_FAMILY.bold, textAlign: 'center' }}>
+                    No Logs Found
+                  </Text>
+                  <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4, textAlign: 'center' }}>
+                    Classes and labs you mark will appear here sorted from newest to oldest.
+                  </Text>
+                </View>
               }
             />
           </SafeAreaView>
@@ -651,7 +906,7 @@ export default function AttendanceScreen() {
                   <TouchableOpacity
                     style={[styles.extraActionBtn, styles.extraActionAttended, !extraSubjectId && { opacity: 0.3 }]}
                     disabled={!extraSubjectId}
-                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'attended', selectedDate, true); setIsExtraOpen(false); }}
+                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'attended', undefined, selectedDate, true); setIsExtraOpen(false); }}
                   >
                     <Ionicons name="checkmark" size={15} color={isDark ? "#5eda9e" : "#059669"} />
                     <Text style={styles.extraActionAttendedText}>Attended</Text>
@@ -659,7 +914,7 @@ export default function AttendanceScreen() {
                   <TouchableOpacity
                     style={[styles.extraActionBtn, styles.extraActionMissed, !extraSubjectId && { opacity: 0.3 }]}
                     disabled={!extraSubjectId}
-                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'missed', selectedDate, true); setIsExtraOpen(false); }}
+                    onPress={() => { handleLog(subjects.find(s => s.id === extraSubjectId)!, type, 'missed', undefined, selectedDate, true); setIsExtraOpen(false); }}
                   >
                     <Ionicons name="close" size={15} color={isDark ? "#ff6961" : "#DC2626"} />
                     <Text style={styles.extraActionMissedText}>Missed</Text>

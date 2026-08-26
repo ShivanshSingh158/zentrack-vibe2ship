@@ -30,7 +30,7 @@ import { GymNavigationParamList } from '../../types/gym.types';
 import { calculateExerciseMaxWeight, formatIndianDatePretty } from '../../utils/gymUtils';
 import { springs } from '../../theme/motion';
 import { feedback } from '../../utils/haptics';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { awardXP } from '../../services/xpSystem';
 
@@ -43,7 +43,7 @@ export default function WorkoutSummaryScreen() {
 
   const readOnly = route.params?.readOnly || false;
   const targetDate = route.params?.date;
-  const { gymLogs } = useMobileData();
+  const { gymLogs } = useWellnessData();
 
   const [newPR, setNewPR] = useState<{ name: string; weight: number } | null | undefined>(undefined);
   const [showConfetti, setShowConfetti] = useState(true);

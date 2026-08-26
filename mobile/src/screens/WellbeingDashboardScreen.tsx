@@ -79,7 +79,11 @@ export default function WellbeingDashboardScreen() {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
-  const { waterLogs } = useWellnessData();
+  const { waterLogs, ensureSubscribed } = useWellnessData();
+
+  useEffect(() => {
+    ensureSubscribed?.();
+  }, [ensureSubscribed]);
 
   // Animation values
   const mountAnim = useRef(new Animated.Value(0)).current;

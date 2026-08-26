@@ -21,6 +21,7 @@
 
 import NetInfo from '@react-native-community/netinfo';
 import { queueWrite } from '../services/offlineSync';
+import { touchServerSyncMeta } from './syncMeta';
 
 type FirestoreOperation = 'add' | 'update' | 'delete' | 'set';
 
@@ -52,6 +53,7 @@ export async function safeWrite(
     if (isOnline) {
       try {
         await firestoreFn();
+        touchServerSyncMeta();
         return true;
       } catch (onlineErr: any) {
         // Transient network blip even though NetInfo said online — queue as safety net
@@ -61,9 +63,10 @@ export async function safeWrite(
 
     // Offline path (or online write failed): enqueue to AsyncStorage
     await queueWrite(collectionName, operation, payload, docId);
+    touchServerSyncMeta();
     return false;
   } catch (err) {
-    try { await queueWrite(collectionName, operation, data, docId); } catch { /* silent */ }
+    try { await queueWrite(collectionName, operation, data, docId); touchServerSyncMeta(); } catch { /* silent */ }
     return false;
   }
 }

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ScrollView, Platform, Keyboard, Animated, AppState, ActivityIndicator, LayoutAnimation, Alert
@@ -17,7 +17,9 @@ import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useMobileData, LearningSubTask } from '../../contexts/MobileDataContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import { useCreativeData } from '../../contexts/domains/CreativeContext';
+import { LearningSubTask } from '../../contexts/MobileDataContext';
 import { fetchVideoTranscript, TranscriptCue, TranscriptResult } from '../../services/youtubeTranscriptService';
 import { generateFlashcardsFromContext, saveFlashcardsToFirestore } from '../../services/flashcardService';
 import LectureChatHistoryModal from './LectureChatHistoryModal';
@@ -88,7 +90,8 @@ export default function LearningVideoPlayer({
   const [activeCueIndex, setActiveCueIndex] = useState<number>(-1);
   const [autoScrollTranscript, setAutoScrollTranscript] = useState(true);
   const transcriptScrollRef = useRef<ScrollView>(null);
-  const { user, learningTopics } = useMobileData();
+  const { user } = useCoreData();
+  const { learningTopics } = useCreativeData();
   const videoId = extractVideoId(activeVideoSub.url);
 
   useEffect(() => {

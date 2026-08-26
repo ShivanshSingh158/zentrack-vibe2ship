@@ -1,29 +1,53 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { detectConflicts, DetectedConflict } from '../services/conflictDetector';
 
+let _cachedProactiveEnabled: boolean | null = null;
+
 export const useProactiveAgent = () => {
-  const context = useMobileData();
+  const { user, loading, tasks } = useCoreData();
+  const { gymLogs } = useWellnessData();
+  const { attendance, assignments } = useAcademicData();
+  const { customEvents } = usePlannerData();
   const [conflicts, setConflicts] = useState<DetectedConflict[]>([]);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!context.user || context.loading) return;
+    if (!user || loading) return;
 
-    const runDetection = async () => {
-      const isProactiveEnabled = await AsyncStorage.getItem('zentrack_sara_proactive');
-      if (isProactiveEnabled === 'false') {
-        setConflicts([]);
-        return;
-      }
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      InteractionManager.runAfterInteractions(async () => {
+        if (_cachedProactiveEnabled === null) {
+          const isProactiveEnabled = await AsyncStorage.getItem('zentrack_sara_proactive');
+          _cachedProactiveEnabled = isProactiveEnabled !== 'false';
+        }
+        if (!_cachedProactiveEnabled) {
+          setConflicts([]);
+          return;
+        }
 
-      // Detect conflicts immediately locally
-      const detected = detectConflicts(context);
-      setConflicts(detected);
+        // Detect conflicts off the critical animation path
+        const detected = detectConflicts({
+          tasks,
+          gymLogs,
+          attendance,
+          assignments,
+          customEvents,
+        });
+        setConflicts(detected);
+      });
+    }, 1500);
+
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-
-    runDetection();
-  }, [context.user, context.loading, context.tasks, context.customEvents]); 
+  }, [user?.uid, loading, tasks, customEvents, gymLogs, attendance, assignments]); 
 
   return { conflicts };
 };

@@ -10,6 +10,7 @@ import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestor
 import { db } from '../../services/firebase';
 import { LearningTopic, LearningSubTask } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
+import { safeAdd, safeUpdate, safeDelete } from '../../utils/safeWrite';
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import * as Haptics from 'expo-haptics';
 
@@ -67,13 +68,18 @@ export default function LearningModals({
     if (!topicTitle.trim() || !user) return;
     setSaving(true);
     try {
-      await addDoc(collection(db, COLLECTION.LEARNING_TOPICS), {
+      const data = {
         userId: user.uid,
         title: topicTitle.trim(),
         subTasks: [],
         order: learningTopics.length,
-        createdAt: Date.now()
-      });
+        createdAt: Date.now(),
+      };
+      await safeAdd(
+        COLLECTION.LEARNING_TOPICS,
+        data,
+        () => addDoc(collection(db, COLLECTION.LEARNING_TOPICS), data)
+      );
       setTopicModalVisible(false);
       setTopicTitle('');
     } catch (e) { console.error(e); }
@@ -92,9 +98,13 @@ export default function LearningModals({
         url: subUrl.trim(),
         isCompleted: false,
       };
-      await updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeTopicId), {
-        subTasks: [...(topic.subTasks || []), newSubtask]
-      });
+      const updated = { subTasks: [...(topic.subTasks || []), newSubtask] };
+      await safeUpdate(
+        activeTopicId,
+        COLLECTION.LEARNING_TOPICS,
+        updated,
+        () => updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeTopicId), updated)
+      );
       setSubtaskModalVisible(false);
       setSubTitle('');
       setSubUrl('');
@@ -213,7 +223,7 @@ Format strictly as JSON with this exact schema:
         }
       }
 
-      await addDoc(collection(db, COLLECTION.LEARNING_TOPICS), {
+      const aiTopicData = {
         userId: user.uid,
         title: generatedSyllabus.curriculumTitle || 'AI Learning Roadmap',
         description: generatedSyllabus.description || '',
@@ -221,7 +231,12 @@ Format strictly as JSON with this exact schema:
         subTasks: allSubTasks,
         order: learningTopics.length,
         createdAt: Date.now(),
-      });
+      };
+      await safeAdd(
+        COLLECTION.LEARNING_TOPICS,
+        aiTopicData,
+        () => addDoc(collection(db, COLLECTION.LEARNING_TOPICS), aiTopicData)
+      );
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert(
@@ -256,10 +271,15 @@ Format strictly as JSON with this exact schema:
         url: `https://www.youtube.com/watch?v=${v.videoId}`,
         isCompleted: false
       }));
-      await addDoc(collection(db, COLLECTION.LEARNING_TOPICS), {
+      const playlistData = {
         userId: user.uid, title: data.title || 'YouTube Playlist',
-        subTasks, order: learningTopics.length, createdAt: Date.now()
-      });
+        subTasks, order: learningTopics.length, createdAt: Date.now(),
+      };
+      await safeAdd(
+        COLLECTION.LEARNING_TOPICS,
+        playlistData,
+        () => addDoc(collection(db, COLLECTION.LEARNING_TOPICS), playlistData)
+      );
       Alert.alert('Success', `Imported ${data.videos.length} videos!`);
       setRoadmapModalVisible(false);
       setPlaylistUrl('');
@@ -272,12 +292,21 @@ Format strictly as JSON with this exact schema:
     if (!activeOptionsData) return;
     try {
       if (activeOptionsData.type === 'topic') {
-        await deleteDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeOptionsData.topicId));
+        await safeDelete(
+          activeOptionsData.topicId,
+          COLLECTION.LEARNING_TOPICS,
+          () => deleteDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeOptionsData.topicId))
+        );
       } else if (activeOptionsData.subtaskId) {
         const topic = learningTopics.find(t => t.id === activeOptionsData.topicId);
         if (topic) {
           const updated = (topic.subTasks || []).filter(s => s.id !== activeOptionsData.subtaskId);
-          await updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeOptionsData.topicId), { subTasks: updated });
+          await safeUpdate(
+            activeOptionsData.topicId,
+            COLLECTION.LEARNING_TOPICS,
+            { subTasks: updated },
+            () => updateDoc(doc(db, COLLECTION.LEARNING_TOPICS, activeOptionsData.topicId), { subTasks: updated })
+          );
         }
       }
     } catch (e) { console.error(e); }

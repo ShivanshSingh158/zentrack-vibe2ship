@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, { 
   useSharedValue, 
@@ -12,7 +12,6 @@ import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../contexts/ThemeContext';
-import { feedback } from '../../utils/haptics';
 import { FONT_FAMILY } from '../../theme/tokens';
 import { subscribeTabBarScroll, setTabBarVisible } from '../../utils/tabBarScroll';
 
@@ -47,41 +46,54 @@ const DEFAULT_TAB_CONFIG = {
 interface TabItemProps {
   route: any;
   isFocused: boolean;
-  onPress: () => void;
+  navigation: any;
   badge?: number;
   isDark: boolean;
   colors: any;
+  isActuallyFocused: boolean;
 }
 
-function TabItem({
+const TabItem = React.memo(function TabItem({
   route,
   isFocused,
-  onPress,
+  navigation,
   badge,
   isDark,
   colors,
+  isActuallyFocused,
 }: TabItemProps) {
   const config = SPOTIFY_TAB_CONFIG[route.name] || {
     ...DEFAULT_TAB_CONFIG,
     name: route.name,
   };
 
-  const scale = useSharedValue(isFocused ? 1.04 : 1);
+  const scale = useSharedValue(isFocused ? 1.05 : 1);
   const pressScale = useSharedValue(1);
 
   useEffect(() => {
     if (isFocused) {
-      scale.value = withSpring(0.92, { damping: 14, stiffness: 350 }, () => {
-        scale.value = withSpring(1.04, { damping: 12, stiffness: 280 });
+      scale.value = withSpring(0.92, { damping: 16, stiffness: 350, mass: 0.7 }, () => {
+        scale.value = withSpring(1.05, { damping: 14, stiffness: 280, mass: 0.7 });
       });
     } else {
-      scale.value = withSpring(1, { damping: 14, stiffness: 280 });
+      scale.value = withSpring(1, { damping: 15, stiffness: 280, mass: 0.7 });
     }
   }, [isFocused]);
 
   const animatedIconStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value * pressScale.value }],
   }));
+
+  const handlePress = useCallback(() => {
+    const event = navigation.emit({
+      type: 'tabPress',
+      target: route.key,
+      canPreventDefault: true,
+    });
+    if (!isActuallyFocused && !event.defaultPrevented) {
+      navigation.navigate(route.name, { merge: true } as any);
+    }
+  }, [route.key, route.name, isActuallyFocused, navigation]);
 
   // Signature purple active / crisp white inactive (boosted for readability)
   const activeColor = colors.accentPrimary || '#a599ff';
@@ -91,9 +103,9 @@ function TabItem({
     <Pressable
       accessibilityRole="button"
       accessibilityState={isFocused ? { selected: true } : {}}
-      onPress={onPress}
+      onPress={handlePress}
       onPressIn={() => {
-        pressScale.value = withTiming(0.92, { duration: 60 });
+        pressScale.value = withTiming(0.92, { duration: 50 });
       }}
       onPressOut={() => {
         pressScale.value = withSpring(1, { damping: 14, stiffness: 320 });
@@ -144,12 +156,12 @@ function TabItem({
       </View>
     </Pressable>
   );
-}
+});
 
 // ─── Main Navigation Bar ──────────────────────────────────────────────────────
 type TelegramTabBarProps = BottomTabBarProps & { badges?: Record<string, number> };
 
-export function TelegramTabBar({
+export const TelegramTabBar = React.memo(function TelegramTabBar({
   state,
   descriptors,
   navigation,
@@ -288,25 +300,13 @@ export function TelegramTabBar({
             const isVisuallyFocused = activeIndex === index;
             const isActuallyFocused = state.routes[state.index].key === route.key;
 
-            const handlePress = () => {
-              feedback.tap();
-              const event = navigation.emit({
-                type: 'tabPress',
-                target: route.key,
-                canPreventDefault: true,
-              });
-
-              if (!isActuallyFocused && !event.defaultPrevented) {
-                navigation.navigate(route.name, { merge: true } as any);
-              }
-            };
-
             return (
               <TabItem
                 key={route.key}
                 route={route}
                 isFocused={isVisuallyFocused}
-                onPress={handlePress}
+                isActuallyFocused={isActuallyFocused}
+                navigation={navigation}
                 badge={badges[route.name]}
                 isDark={isDark}
                 colors={colors}
@@ -317,7 +317,7 @@ export function TelegramTabBar({
       </View>
     </Animated.View>
   );
-}
+});
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({

@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS, COLORS } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
 import { GYM_PLAN } from '../../data/gymPlan';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
 import { getCustomPlanDay } from '../../hooks/useGymLog';
 import { hapticSuccess } from '../../utils/haptics';
 import { formatIndianDate } from '../../utils/gymUtils';
@@ -25,7 +25,7 @@ interface Props {
 export function SwapRoutineModal({ visible, selectedDate, currentPlanDayIndex, onClose, onSelectDay }: Props) {
   const { colors, isDark } = useTheme();
   const styles = React.useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const { userGymPlan } = useMobileData();
+  const { userGymPlan } = useWellnessData();
 
   const days = Array.from({ length: 7 }, (_, i) => i + 1).map(idx => {
     const custom = getCustomPlanDay(userGymPlan?.customDays, idx);

@@ -51,7 +51,11 @@ import {
 } from 'firebase/firestore';
 import { formatLocalDateStr } from '../utils/dateUtils';
 import { safeWrite, safeAdd, safeUpdate, safeDelete } from '../utils/safeWrite';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { useCreativeData } from '../contexts/domains/CreativeContext';
+import { usePlannerData } from '../contexts/domains/PlannerContext';
 import {
   startVoiceRecording,
   startVADRecording,
@@ -211,12 +215,11 @@ function SaraScreenInner({ visible, onClose, isGlobalModal, isModal, initialRout
   const safeSetTimeout = useSafeTimeout();
   const { colors, isDark } = useTheme();
   const s = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const {
-    tasks, habits, habitLogs, notes, goals, gymLogs,
-    attendance, assignments, customEvents, learningTopics,
-    jobs, weeklyReviews,
-    googleAccessToken, user,
-  } = useMobileData();
+  const { tasks, habits, habitLogs, googleAccessToken, user } = useCoreData();
+  const { gymLogs } = useWellnessData();
+  const { attendance, assignments } = useAcademicData();
+  const { notes, learningTopics, jobs } = useCreativeData();
+  const { goals, customEvents, weeklyReviews } = usePlannerData();
   const { processAnswerForNavigation } = useSaraNavigation();
   const navigation = useNavigation<any>();
 

@@ -4,7 +4,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'rea
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useMobileData } from '../../contexts/MobileDataContext';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
 import { callProxy, parseProxyResponse } from '../../services/geminiProxy';
 import { FONT_FAMILY, SPACE, RADIUS } from '../../theme/tokens';
 import GlassCard from '../ui/GlassCard';
@@ -14,7 +14,7 @@ const PREDICTOR_CACHE_KEY = '@zentrack_academic_predictor';
 export default function AcademicPredictorCard() {
   const { colors } = useTheme();
   const s = makeStyles(colors);
-  const { attendance, assignments } = useMobileData();
+  const { attendance, assignments } = useAcademicData();
 
   const [prediction, setPrediction] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

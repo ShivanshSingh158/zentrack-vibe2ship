@@ -68,6 +68,15 @@ export function useDashboardData() {
   const [waterTotal, setWaterTotalState] = useState(initialManifest?.waterGoalMl ?? 2500);
   const [nowDate, setNowDate] = useState(new Date());
 
+  // PERF: Quote cache — only re-fetch once per day, not on every tab switch.
+  // Stores {date: YYYY-MM-DD, quote: QuoteItem} so returning to Dashboard is instant.
+  const quoteCacheRef = React.useRef<{ date: string; quote: typeof BRUTAL_QUOTES[0] } | null>(null);
+
+  // PERF FIX (Issue A): Fingerprint cache — getFingerprint(uid) does AsyncStorage.getItem
+  // on every Dashboard focus. Streak personality changes at most once per day.
+  // Cache it per-UID for the entire app session (cleared when user changes).
+  const fingerprintCacheRef = React.useRef<{ uid: string; fp: any } | null>(null);
+
   const setLayout = (newLayout: LayoutItem[]) => {
     setLayoutState(newLayout);
     updateL1Cache('dashboardLayout', newLayout);
@@ -95,9 +104,17 @@ export function useDashboardData() {
   }, []);
 
   // ── AsyncStorage loads (deferred, single multiGet) ────────────────────────
-  // PERF: Was 2 sequential nested .then() reads. Now one atomic multiGet call
-  // — saves ~6–12ms per cold boot and eliminates the waterfall read pattern.
+  // PERF: Skip entirely if the boot manifest already seeded layout + water goal.
+  // Only run on cold boot (no L1 cache) or first install. On a warm boot with cache,
+  // initialManifest already has the correct values — reading AsyncStorage again
+  // just causes spurious setState() calls with identical values → extra re-render.
   useEffect(() => {
+    const manifestHasLayout = initialManifest?.dashboardLayout != null && initialManifest.dashboardLayout.length > 0;
+    const manifestHasWater = initialManifest?.waterGoalMl != null;
+    if (manifestHasLayout && manifestHasWater) {
+      // Boot manifest already seeded both values — nothing to do
+      return;
+    }
     const handle = InteractionManager.runAfterInteractions(async () => {
       try {
         const pairs = await AsyncStorage.multiGet([...DASH_STORAGE_KEYS]);
@@ -110,65 +127,90 @@ export function useDashboardData() {
         const legacyWater = kv['@zentrack_water_target'];
 
         // ── Dashboard layout ─────────────────────────────────────────────────
-        if (!layoutStr) {
-          setLayout(DEFAULT_LAYOUT);
-        } else {
-          try {
-            const parsed = JSON.parse(layoutStr);
-            if (Array.isArray(parsed)) {
-              let loaded = parsed;
-              if (typeof parsed[0] === 'string') {
-                loaded = parsed.map((id: string) => ({ id, hidden: id === 'capture' }));
-              }
-              const merged = DEFAULT_LAYOUT.map(def => {
-                const found = loaded.find((l: any) => l.id === def.id);
-                if (!migrated && def.id === 'capture') {
-                  return { ...def, hidden: true };
+        if (!manifestHasLayout) {
+          if (!layoutStr) {
+            setLayout(DEFAULT_LAYOUT);
+          } else {
+            try {
+              const parsed = JSON.parse(layoutStr);
+              if (Array.isArray(parsed)) {
+                let loaded = parsed;
+                if (typeof parsed[0] === 'string') {
+                  loaded = parsed.map((id: string) => ({ id, hidden: id === 'capture' }));
                 }
-                return found ? found : def;
-              });
-              setLayout(merged);
-              if (!migrated) {
-                // One-time migration — fire-and-forget, non-blocking
-                AsyncStorage.setItem('@zentrack_dashboard_layout_v2_migrated', 'true');
-                AsyncStorage.setItem('@zentrack_dashboard_layout', JSON.stringify(merged));
+                const merged = DEFAULT_LAYOUT.map(def => {
+                  const found = loaded.find((l: any) => l.id === def.id);
+                  if (!migrated && def.id === 'capture') {
+                    return { ...def, hidden: true };
+                  }
+                  return found ? found : def;
+                });
+                setLayout(merged);
+                if (!migrated) {
+                  // One-time migration — fire-and-forget, non-blocking
+                  AsyncStorage.setItem('@zentrack_dashboard_layout_v2_migrated', 'true');
+                  AsyncStorage.setItem('@zentrack_dashboard_layout', JSON.stringify(merged));
+                }
+              } else {
+                setLayout(DEFAULT_LAYOUT);
               }
-            } else {
+            } catch {
               setLayout(DEFAULT_LAYOUT);
             }
-          } catch {
-            setLayout(DEFAULT_LAYOUT);
           }
         }
 
         // ── Water goal (canonical key, with one-time legacy migration) ────────
-        if (waterStr) {
-          setWaterTotal(parseInt(waterStr, 10));
-        } else if (legacyWater) {
-          const parsed = parseInt(legacyWater, 10);
-          setWaterTotal(parsed);
-          // Migrate to canonical key — fire-and-forget
-          AsyncStorage.setItem('zentrack_water_goal_ml', legacyWater);
-          AsyncStorage.removeItem('@zentrack_water_target');
+        if (!manifestHasWater) {
+          if (waterStr) {
+            setWaterTotal(parseInt(waterStr, 10));
+          } else if (legacyWater) {
+            const parsed = parseInt(legacyWater, 10);
+            setWaterTotal(parsed);
+            // Migrate to canonical key — fire-and-forget
+            AsyncStorage.setItem('zentrack_water_goal_ml', legacyWater);
+            AsyncStorage.removeItem('@zentrack_water_target');
+          }
         }
       } catch {
         // Silently fall back to defaults — non-critical
-        setLayout(DEFAULT_LAYOUT);
+        if (!manifestHasLayout) setLayout(DEFAULT_LAYOUT);
       }
     });
     return () => handle.cancel();
   }, []);
 
   const shuffleQuote = React.useCallback(async () => {
+    // PERF FIX (P3): Cache quote by date. Quote only changes once per day.
+    // Previously called on every tab focus → getFingerprint + getDailyQuote async
+    // on every Dashboard visit. Now skipped if already fetched today.
+    const todayKey = new Date().toISOString().slice(0, 10);
+    if (quoteCacheRef.current?.date === todayKey) {
+      setQuote(quoteCacheRef.current.quote);
+      return;
+    }
     try {
+      let newQuote;
       if (user?.uid) {
-        const fp = await getFingerprint(user.uid);
-        setQuote(await getDailyQuote(fp.streakPersonality as QuotePersonality));
+        // PERF FIX (Issue A): Cache the fingerprint per-session.
+        // getFingerprint() does AsyncStorage.getItem on every call — now cached.
+        let fp: any;
+        if (fingerprintCacheRef.current?.uid === user.uid) {
+          fp = fingerprintCacheRef.current.fp;
+        } else {
+          fp = await getFingerprint(user.uid);
+          fingerprintCacheRef.current = { uid: user.uid, fp };
+        }
+        newQuote = await getDailyQuote(fp.streakPersonality as QuotePersonality);
       } else {
-        setQuote(await getDailyQuote());
+        newQuote = await getDailyQuote();
       }
+      quoteCacheRef.current = { date: todayKey, quote: newQuote };
+      setQuote(newQuote);
     } catch {
-      setQuote(await getDailyQuote());
+      const fallback = await getDailyQuote();
+      quoteCacheRef.current = { date: todayKey, quote: fallback };
+      setQuote(fallback);
     }
   }, [user?.uid]);
 
@@ -183,17 +225,14 @@ export function useDashboardData() {
     return unsub;
   }, []);
 
-  // ── Quote + XP load on focus ───────────────────────────────────────────────
+  // ── Quote load on focus ────────────────────────────────────────────────────
+  // PERF FIX (P4): Removed redundant AsyncStorage.getItem('zentrack_xp_v1') on every
+  // focus. XP is already seeded from L1 cache via `useState(initialManifest?.xp ?? 0)`
+  // and kept live by `subscribeXPChanges` below. Reading AsyncStorage again on every
+  // tab switch was a duplicate bridge call (2–5ms) that never changed the displayed value.
   useFocusEffect(
     React.useCallback(() => {
       shuffleQuote();
-      AsyncStorage.getItem('zentrack_xp_v1').then(v => {
-        const newXp = parseInt(v || '0', 10);
-        setXp(cur => {
-          if (cur > 0 && newXp > cur) setXpGain(newXp - cur);
-          return newXp;
-        });
-      });
     }, [shuffleQuote])
   );
 

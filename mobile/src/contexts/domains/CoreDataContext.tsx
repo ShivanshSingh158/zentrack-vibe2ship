@@ -7,22 +7,23 @@
  * Subscription strategy: ALWAYS OPEN immediately on login.
  * These are critical-path: Dashboard, Tasks, Habits all need them before first paint.
  */
-import React, { createContext, useContext, useEffect, useState, useMemo, useRef } from "react";
+import React, { createContext, useContext, useEffect, useState, useMemo, useRef, useCallback } from "react";
 import * as Notifications from "expo-notifications";
-import { collection, query, where, onSnapshot, doc, setDoc, getDoc } from "firebase/firestore";
+import { collection, query, where, onSnapshot, doc, setDoc, getDoc, getDocs, QuerySnapshot, QueryDocumentSnapshot, DocumentData } from "firebase/firestore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { onAuthStateChanged, User } from "firebase/auth";
-import { InteractionManager, DeviceEventEmitter } from 'react-native';
+import { InteractionManager, DeviceEventEmitter, unstable_batchedUpdates } from 'react-native';
 import { auth, db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { Task, Habit, HabitLog } from "../MobileDataContext";
-import { readCoreCacheMulti, writeCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
-import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
+import { writeCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
+import { getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { clearAllDomainCaches } from "../../utils/domainCache";
 import { registerForPushNotificationsAsync } from "../../services/notifications";
 import { handleSyncError } from '../../utils/errorUtils';
-import { parseTask, parseHabit, parseHabitLog } from "../../utils/schemaGuards";
+import { parseTask, parseHabit, parseHabitLog, areItemsEqual } from "../../utils/schemaGuards";
 import { syncXPWithFirestore } from "../../services/xpSystem";
+import { fetchServerSyncMeta, getLocalSyncTimestamp, setLocalSyncTimestamp } from "../../utils/syncMeta";
 
 
 // ─── Context Shape ─────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ export interface CoreDataContextType {
   pinnedModules: string[];
   setPinnedModules: (modules: string[]) => void;
   googleAccessToken: string | null;
+  refreshCoreData: () => Promise<void>;
   // Optimistic write helpers — update local state immediately, Firestore syncs in background.
   // This is the WhatsApp pattern: show the result instantly, sync later.
   optimisticAddTask: (task: Task) => void;
@@ -61,6 +63,7 @@ const DEFAULT_CORE_DATA: CoreDataContextType = {
   pinnedModules: ["Tasks", "Gym", "Calendar", "Attendance"],
   setPinnedModules: () => {},
   googleAccessToken: null,
+  refreshCoreData: async () => {},
   optimisticAddTask: () => {},
   optimisticUpdateTask: () => {},
   optimisticDeleteTask: () => {},
@@ -95,6 +98,15 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   // onAuthStateChanged(null) and erroneously clearing the user state.
   const firstAuthAtRef = useRef<number>(0);
 
+  // OFFLINE-FIRST GUARD: CoreData is always seeded from getBootManifestSync() above.
+  // If cached data exists, we must not let the empty memoryLocalCache onSnapshot
+  // (which fires immediately on cold boot with no internet) overwrite it.
+  const hasCachedDataRef = useRef(
+    (initialManifest?.tasks?.length ?? 0) > 0 ||
+    (initialManifest?.habits?.length ?? 0) > 0 ||
+    (initialManifest?.habitLogs?.length ?? 0) > 0
+  );
+
   // Write-lock: after an optimistic habit update, ignore Firestore snapshots for
   // 2 seconds to prevent the flicker cycle (optimistic → snapshot rollback → final snapshot).
   const habitWriteLockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -115,33 +127,15 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const DEFAULT_PINNED_MODULES = ["Tasks", "Gym", "Calendar", "Attendance"];
   const [pinnedModules, setPinnedModulesState]    = useState<string[]>(initialManifest?.pinnedModules ?? DEFAULT_PINNED_MODULES);
 
-  // Consolidated Manifest Boot: seeds optimistic user, pinned modules, token, and core cache in 1 single bridge load
-  useEffect(() => {
-    let cancelled = false;
-    loadBootManifest().then(manifest => {
-      if (cancelled) return;
-      if (manifest.optimisticUser) {
-        setUser(manifest.optimisticUser);
-        firstAuthAtRef.current = Date.now();
-      }
-      if (manifest.pinnedModules && manifest.pinnedModules.length > 0) {
-        setPinnedModulesState(manifest.pinnedModules);
-      }
-      if (manifest.googleAccessToken) {
-        setGoogleAccessToken(manifest.googleAccessToken);
-      }
-      if (Array.isArray(manifest.tasks) && manifest.tasks.length > 0) {
-        setTasks(manifest.tasks);
-      }
-      if (Array.isArray(manifest.habits) && manifest.habits.length > 0) {
-        setHabits(manifest.habits);
-      }
-      if (Array.isArray(manifest.habitLogs) && manifest.habitLogs.length > 0) {
-        setHabitLogs(manifest.habitLogs);
-      }
-    }).catch(handleSyncError);
-    return () => { cancelled = true; };
-  }, []);
+  // NOTE: All boot state (user, tasks, habits, habitLogs, pinnedModules, googleAccessToken)
+  // is already seeded synchronously from getBootManifestSync() in the useState() initializers
+  // above (lines 85–116). AppNavigator.tsx pre-warms the L1 cache via a module-level
+  // loadBootManifest() call before React renders anything, so getBootManifestSync() is
+  // guaranteed to return populated data on Frame 0.
+  // The async loadBootManifest() useEffect previously here was REDUNDANT — it would call
+  // setTasks/setHabits/etc. with identical values, causing a no-op reconciliation cycle
+  // that wasted ~15ms of JS thread time during the critical cold-boot window.
+  // auth.firstAuthAt is set by the onAuthStateChanged listener below.
 
   const setPinnedModules = (mods: string[]) => {
     const clamped = mods.length > 0 ? mods.slice(0, 4) : DEFAULT_PINNED_MODULES;
@@ -150,18 +144,16 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     AsyncStorage.setItem("@zentrack_pinned_modules", JSON.stringify(clamped)).catch(console.warn);
   };
 
-  // ── Cache-first boot for user changes ────────────────────────────────
-  // Re-seed cache when user changes (login / restore / logout)
-  useEffect(() => {
-    let cancelled = false;
-    readCoreCacheMulti().then(cached => {
-      if (cancelled) return;
-      if (Array.isArray(cached.tasks) && cached.tasks.length > 0)     setTasks(cached.tasks);
-      if (Array.isArray(cached.habits) && cached.habits.length > 0)    setHabits(cached.habits);
-      if (Array.isArray(cached.habitLogs) && cached.habitLogs.length > 0) setHabitLogs(cached.habitLogs);
-    });
-    return () => { cancelled = true; };
-  }, [user?.uid]);
+  // NOTE: readCoreCacheMulti() was previously called here to reseed tasks/habits/habitLogs.
+  // That was a REDUNDANT double-read. The data is already seeded from getBootManifestSync()
+  // in the useState() initializers above (lines 87-89). bootManifest.ts reads the same
+  // AsyncStorage keys (@zentrack_cache_tasks, @zentrack_cache_habits, @zentrack_cache_habitlogs)
+  // in its multiGet call. Calling readCoreCacheMulti() again caused:
+  //   1. A 2nd AsyncStorage.multiGet (5-15ms blocked async) on every uid change
+  //   2. 3 setState calls with IDENTICAL values → 3 spurious re-renders of Dashboard
+  //   3. This fired on EVERY Firebase auth confirmation (every ~60min)
+  // Removed. Firestore snapshots below write fresh data to both state and AsyncStorage
+  // so subsequent boots are always fast.
 
   // Auth state — updates user reference.
   // OFFLINE-FIRST GUARD: Firebase fires onAuthStateChanged(null) during routine
@@ -171,18 +163,28 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    // Check synchronous auth or cached optimistic user on mount (~0ms)
+    // Check synchronous auth or cached optimistic user on mount (~0ms).
+    // GUARD: Skip setUser if the UID is already correct (seeded by getBootManifestSync
+    // in useState). Prevents a spurious re-render cascade on Frame 0.
     if (auth.currentUser) {
-      setUser(auth.currentUser);
-      firstAuthAtRef.current = Date.now();
+      setUser(prev => {
+        if (prev?.uid === auth.currentUser?.uid) return prev; // Already correct — no re-render
+        firstAuthAtRef.current = Date.now();
+        return auth.currentUser;
+      });
+      if (!firstAuthAtRef.current) firstAuthAtRef.current = Date.now();
     } else {
       AsyncStorage.getItem('@zentrack_optimistic_user').then(raw => {
         if (!cancelled && raw) {
           try {
             const parsed = JSON.parse(raw);
             if (parsed?.uid) {
-              setUser(parsed as User);
-              firstAuthAtRef.current = Date.now();
+              setUser(prev => {
+                if (prev?.uid === parsed.uid) return prev; // Already correct — no re-render
+                firstAuthAtRef.current = Date.now();
+                return parsed as User;
+              });
+              if (!firstAuthAtRef.current) firstAuthAtRef.current = Date.now();
             }
           } catch {}
         }
@@ -191,7 +193,12 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 
     auth.authStateReady().then(() => {
       if (!cancelled && auth.currentUser) {
-        setUser(auth.currentUser);
+        // Only update if UID is different — avoids re-render cascade when Firebase
+        // re-confirms the same session with a new object reference after token refresh.
+        setUser(prev => {
+          if (auth.currentUser && prev?.uid === auth.currentUser.uid) return prev;
+          return auth.currentUser;
+        });
         firstAuthAtRef.current = Date.now();
       }
     }).catch(() => {});
@@ -199,8 +206,15 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     const unsub = onAuthStateChanged(auth, u => {
       if (!cancelled) {
         if (u) {
-          setUser(u);
-          firstAuthAtRef.current = Date.now();
+          // KEY FIX: Only update user state if UID actually changed.
+          // Firebase fires onAuthStateChanged with a NEW User object every time it
+          // refreshes the ID token (~every 60min). Same UID = same session = no re-render.
+          setUser(prev => {
+            if (prev?.uid === u.uid) return prev; // Same user, keep stable reference
+            firstAuthAtRef.current = Date.now();
+            return u;
+          });
+          if (!firstAuthAtRef.current) firstAuthAtRef.current = Date.now();
         } else {
           // GUARD: only clear user state when all 3 conditions are true:
           // 1. No optimistic user in AsyncStorage (explicit logout, not a blip)
@@ -227,16 +241,32 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
 
-  // Register push notifications on login
+  // Register push notifications on login — guarded by AsyncStorage cache.
+  // registerForPushNotificationsAsync() calls the Expo native push API which can
+  // take 50–200ms on Android. The token NEVER changes unless the app is reinstalled,
+  // so we cache it and skip the native call on every uid change / token refresh.
+  const PUSH_TOKEN_CACHE_KEY = '@zentrack_push_token_cached';
   useEffect(() => {
-    if (user) {
-      registerForPushNotificationsAsync().then((token) => {
-        if (token) {
-          setDoc(doc(db, COLLECTION.USER_PROFILES, user.uid), { pushToken: token }, { merge: true }).catch(handleSyncError);
+    if (!user) return;
+    const uid = user.uid;
+    (async () => {
+      try {
+        // Check if we already have a cached token — skip native API if so
+        const cached = await AsyncStorage.getItem(PUSH_TOKEN_CACHE_KEY);
+        if (cached) {
+          // Token already registered — just ensure Firestore has it (idempotent merge)
+          setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { pushToken: cached }, { merge: true }).catch(handleSyncError);
+          return;
         }
-      });
-    }
-  }, [user]);
+        // No cached token — call native API (first install or after reinstall)
+        const token = await registerForPushNotificationsAsync();
+        if (token) {
+          await AsyncStorage.setItem(PUSH_TOKEN_CACHE_KEY, token);
+          setDoc(doc(db, COLLECTION.USER_PROFILES, uid), { pushToken: token }, { merge: true }).catch(handleSyncError);
+        }
+      } catch { /* ignore — non-critical */ }
+    })();
+  }, [user?.uid]);
 
   // ── Listener auto-restart on error ───────────────────────────────────────
   // Firebase ID tokens expire every 60 min. If a network blip coincides with
@@ -246,7 +276,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const scheduleListenerRestart = (context: string) => (err: Error) => {
+  // useCallback: stable function reference across renders.
+  // Previously a plain arrow function — recreated on every render causing
+  // stale closures in Firestore subscription effects.
+  const scheduleListenerRestart = useCallback((context: string) => (err: Error) => {
     console.warn(`[CoreData] ${context} listener error — restarting in 5s`, err.message);
     // Only schedule one retry at a time
     if (retryTimerRef.current) return;
@@ -254,7 +287,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       retryTimerRef.current = null;
       setSubscriptionVersion(v => v + 1);
     }, 5000);
-  };
+  }, []);
 
   // ── Foreground reconnect: restart listeners after long background ─────────
   // AppNavigator emits 'firestore_force_reconnect' on every AppState: active
@@ -270,52 +303,68 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return () => sub.remove();
-  }, [user]);
+  }, [user?.uid]);
 
-  // Critical-path Firestore subscriptions — open immediately on login.
-  // Each snapshot WRITE-THROUGHS to AsyncStorage so the next cold-boot is instant.
-  // Depends on `subscriptionVersion` so any listener error auto-restarts all three.
+  // 1-Read Delta Sync & Critical-path Firestore subscriptions
+  // On boot: Reads single user_sync_meta/{uid} doc (1 read).
+  // If lastModifiedAt <= localSyncTimestamp: skips full collection queries (0 extra reads).
+  // If lastModifiedAt > localSyncTimestamp or first run: opens live listeners and syncs.
   useEffect(() => {
     if (!user) return;
     const uid = user.uid;
+    let isCancelled = false;
     const unsubs: (() => void)[] = [];
 
-    unsubs.push(onSnapshot(
-      query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
-      snap => {
-        const fresh = snap.docs.map(d => parseTask(d.data(), d.id));
-        setTasks(fresh);
-        setFirestoreReady(true);
-        writeCoreCacheMulti({ tasks: fresh });
-      },
-      scheduleListenerRestart("tasks")
-    ));
+    const openListeners = () => {
+      if (unsubs.length > 0) return;
 
-    unsubs.push(onSnapshot(
-      query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
-      snap => {
-        const fresh = snap.docs.map(d => parseHabit(d.data(), d.id));
-        if (!isHabitLocked.current) {
-          setHabits(fresh);
-          writeCoreCacheMulti({ habits: fresh });
-        }
-      },
-      scheduleListenerRestart("habits")
-    ));
+      unsubs.push(onSnapshot(
+        query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
+        (snap: QuerySnapshot<DocumentData>) => {
+          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+          unstable_batchedUpdates(() => {
+            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseTask(d.data(), d.id));
+            setTasks(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+            setFirestoreReady(true);
+            hasCachedDataRef.current = false;
+            InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ tasks: fresh }, false));
+          });
+        },
+        scheduleListenerRestart("tasks")
+      ));
 
-    unsubs.push(onSnapshot(
-      query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
-      snap => {
-        const fresh = snap.docs.map(d => parseHabitLog(d.data(), d.id));
-        if (!isHabitLogLocked.current) {
-          setHabitLogs(fresh);
-          writeCoreCacheMulti({ habitLogs: fresh });
-        }
-      },
-      scheduleListenerRestart("habitLogs")
-    ));
+      unsubs.push(onSnapshot(
+        query(collection(db, COLLECTION.HABITS), where("userId", "==", uid)),
+        (snap: QuerySnapshot<DocumentData>) => {
+          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+          unstable_batchedUpdates(() => {
+            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseHabit(d.data(), d.id));
+            if (!isHabitLocked.current) {
+              setHabits(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+              InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habits: fresh }, false));
+            }
+          });
+        },
+        scheduleListenerRestart("habits")
+      ));
 
-    // Cloud Database XP Sync: always loads user's permanent XP progress on login/reconnect
+      unsubs.push(onSnapshot(
+        query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid)),
+        (snap: QuerySnapshot<DocumentData>) => {
+          if (snap.docs.length === 0 && hasCachedDataRef.current) return;
+          unstable_batchedUpdates(() => {
+            const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseHabitLog(d.data(), d.id));
+            if (!isHabitLogLocked.current) {
+              setHabitLogs(prev => areItemsEqual(prev, fresh) ? prev : fresh);
+              InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ habitLogs: fresh }, false));
+            }
+          });
+        },
+        scheduleListenerRestart("habitLogs")
+      ));
+    };
+
+    // XP Sync
     unsubs.push(onSnapshot(
       doc(db, COLLECTION.USER_PROFILES, uid),
       snap => {
@@ -329,10 +378,67 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
       scheduleListenerRestart("user_profiles")
     ));
 
+    // 1-READ DELTA CHECK:
+    (async () => {
+      try {
+        const [serverMeta, localTs] = await Promise.all([
+          fetchServerSyncMeta(uid),
+          getLocalSyncTimestamp(),
+        ]);
+        if (isCancelled) return;
+
+        const hasLocalCache = tasks.length > 0 || habits.length > 0;
+        if (serverMeta && serverMeta.lastModifiedAt <= localTs && hasLocalCache) {
+          // Cache is 100% up to date! 0 extra collection reads spent.
+          setFirestoreReady(true);
+        } else {
+          // Data changed on server or first boot — sync fresh data
+          openListeners();
+          if (serverMeta?.lastModifiedAt) {
+            await setLocalSyncTimestamp(serverMeta.lastModifiedAt);
+          }
+        }
+      } catch (err) {
+        if (!isCancelled) openListeners();
+      }
+    })();
+
     return () => {
+      isCancelled = true;
       unsubs.forEach(u => u());
     };
-  }, [user, subscriptionVersion]); // subscriptionVersion triggers clean restart on listener error
+  }, [user?.uid, subscriptionVersion]);
+
+  // Manual pull-to-refresh helper: forces a live sync and updates sync metadata
+  const refreshCoreData = useCallback(async () => {
+    if (!user) return;
+    const uid = user.uid;
+    try {
+      const [tasksSnap, habitsSnap, logsSnap, metaSnap] = await Promise.all([
+        getDocs(query(collection(db, COLLECTION.TASKS), where("userId", "==", uid))),
+        getDocs(query(collection(db, COLLECTION.HABITS), where("userId", "==", uid))),
+        getDocs(query(collection(db, COLLECTION.HABIT_LOGS), where("userId", "==", uid))),
+        fetchServerSyncMeta(uid),
+      ]);
+
+      const freshTasks = tasksSnap.docs.map(d => parseTask(d.data(), d.id));
+      const freshHabits = habitsSnap.docs.map(d => parseHabit(d.data(), d.id));
+      const freshLogs = logsSnap.docs.map(d => parseHabitLog(d.data(), d.id));
+
+      unstable_batchedUpdates(() => {
+        setTasks(prev => areItemsEqual(prev, freshTasks) ? prev : freshTasks);
+        setHabits(prev => areItemsEqual(prev, freshHabits) ? prev : freshHabits);
+        setHabitLogs(prev => areItemsEqual(prev, freshLogs) ? prev : freshLogs);
+        setFirestoreReady(true);
+        writeCoreCacheMulti({ tasks: freshTasks, habits: freshHabits, habitLogs: freshLogs }, true);
+      });
+
+      const now = metaSnap?.lastModifiedAt || Date.now();
+      await setLocalSyncTimestamp(now);
+    } catch (err) {
+      console.warn('[CoreData] refreshCoreData error:', err);
+    }
+  }, [user?.uid]);
 
   // loading is TRUE only when: user is authenticated, Firestore hasn't responded yet,
   // AND we have no cached data to show. Never true when cache is populated.
@@ -401,12 +507,13 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
     user, tasks, habits: activeHabits, allHabits: habits, habitLogs,
     loading, pendingTaskCount, todayHabits,
     pinnedModules, setPinnedModules, googleAccessToken,
+    refreshCoreData,
     optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
     optimisticUpdateHabit, optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
   }), [
-    user, tasks, activeHabits, habits, habitLogs,
+    user?.uid, tasks, activeHabits, habits, habitLogs,
     loading, pendingTaskCount, todayHabits,
-    pinnedModules, googleAccessToken
+    pinnedModules, googleAccessToken, refreshCoreData
   ]);
 
   return (

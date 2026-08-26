@@ -16,7 +16,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity,
-  Alert, Platform, Modal
+  Alert, Platform, Modal, InteractionManager
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,7 +26,10 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { Audio } from 'expo-av';
 import { scheduleAllNotifications } from '../services/notifications';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
+import { useWellnessData } from '../contexts/domains/WellnessContext';
+import { useAcademicData } from '../contexts/domains/AcademicContext';
+import { usePlannerData } from '../contexts/domains/PlannerContext';
 import { useTheme } from "../contexts/ThemeContext";
 import { handleSyncError } from '../utils/errorUtils';
 
@@ -74,7 +77,10 @@ export default function NotificationPreferencesComponent() {
     const { colors, isDark } = useTheme();
     const s = makeStyles(colors);
   const navigation = useNavigation<any>();
-  const { tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments } = useMobileData();
+  const { tasks, habitLogs, allHabits } = useCoreData();
+  const { gymLogs } = useWellnessData();
+  const { attendance, assignments } = useAcademicData();
+  const { customEvents } = usePlannerData();
 
   // Module toggles
   const [modTasks,      setModTasks]      = useState(true);
@@ -158,14 +164,16 @@ export default function NotificationPreferencesComponent() {
     })();
   }, []);
 
-  // Toggle helper • saves + reschedules
+  // Toggle helper • saves + reschedules (deferred to avoid blocking toggle animation)
   const toggle = useCallback(async (key: string, val: boolean, setter: (v: boolean) => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setter(val);
     await saveBool(key, val);
-    scheduleAllNotifications({
-      tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
-    }).catch(console.warn);
+    InteractionManager.runAfterInteractions(() => {
+      scheduleAllNotifications({
+        tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments,
+      }).catch(console.warn);
+    });
   }, [tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments]);
 
   // Time picker helpers
@@ -185,7 +193,9 @@ export default function NotificationPreferencesComponent() {
       case 'quietEnd':           setQuietEnd(hm);           await saveString('quiet_end', hm);            break;
       case 'overdueNudgeTime':   setOverdueNudgeTime(hm);  await saveString('overdue_nudge_time', hm);   break;
     }
-    scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.warn);
+    InteractionManager.runAfterInteractions(() => {
+      scheduleAllNotifications({ tasks, customEvents, gymLogs, attendance, habitLogs, allHabits, assignments }).catch(console.warn);
+    });
   };
 
   const closePicker = () => setPickerVisible(false);

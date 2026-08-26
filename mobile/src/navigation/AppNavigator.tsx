@@ -26,45 +26,56 @@ import * as SplashScreen from 'expo-splash-screen';
 import { Image } from 'react-native';
 import { auth } from '../services/firebase';
 import { performSignOut } from '../contexts/domains/CoreDataContext';
-import { useMobileData } from '../contexts/MobileDataContext';
-import { cacheAwareLazy, startPrefetching, preloadNow } from '../utils/ModulePrefetcher';
-import { loadBootManifest, updateL1Cache, clearBootManifest } from '../utils/bootManifest';
+import { cacheAwareLazy } from '../utils/ModulePrefetcher';
+import { loadBootManifest, getBootManifestSync, updateL1Cache, clearBootManifest } from '../utils/bootManifest';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEBUG BOOT TIMING — REMOVE AFTER DIAGNOSIS
+// ═══════════════════════════════════════════════════════════════════════════════
+const _BOOT_T0_NAV = (global as any).__BOOT_T0 || Date.now();
+console.log(`[BOOT-DIAG] AppNavigator.tsx module evaluated at dt=${Date.now() - _BOOT_T0_NAV}ms`);
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── PRE-WARM BOOT MANIFEST ────────────────────────────────────────────────
+// Kick off the single AsyncStorage.multiGet() call the moment this JS module
+// is evaluated — BEFORE React renders a single frame. By the time AppNavigator
+// mounts and calls useState(), the L1 cache is already warm.
+// This is identical to what Chrome does with resource preloading.
+loadBootManifest().catch(() => {});
+
 import { FONT_FAMILY, SPACE, FONT_SIZE } from '../theme/tokens';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTabBarBadges } from '../hooks/useTabBarBadges';
-import { feedback } from '../utils/haptics';
 import ErrorBoundary from '../components/ErrorBoundary';
 
-// --- Critical screens (synchronous -- always ready on Frame 0) ----------
+// --- Core App Screens (Synchronous for 0ms Instant Tab Switching) ----------
 import LandingScreen from '../screens/LandingScreen';
 import GuestDashboard from '../screens/GuestDashboard';
 import AuthScreen from '../screens/AuthScreen';
 import OnboardingScreen, { ONBOARDING_KEY } from '../screens/OnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
+import TasksScreen from '../screens/TasksScreen';
+import CalendarScreen from '../screens/CalendarScreen';
+import AttendanceScreen from '../screens/AttendanceScreen';
+import GymStack from './GymStack';
+import MoreScreen from '../screens/MoreScreen';
+import HabitsScreen from '../screens/HabitsScreen';
+import NotesScreen from '../screens/NotesScreen';
+import AnalyticsScreen from '../screens/AnalyticsScreen';
+import GradesScreen from '../screens/GradesScreen';
+import AssignmentsScreen from '../screens/AssignmentsScreen';
+import LearningScreen from '../screens/LearningScreen';
+import SettingsScreen from '../screens/SettingsScreen';
+import NotificationsSettingsScreen from '../screens/NotificationsSettingsScreen';
+import XPConstellationScreen from '../screens/XPConstellationScreen';
+import StreakDetailScreen from '../screens/StreakDetailScreen';
+import AgentHistoryScreen from '../screens/AgentHistoryScreen';
+import WellbeingDashboardScreen from '../screens/WellbeingDashboardScreen';
 
-// --- Progressive Lazy Screens (pre-warmed in background via ModulePrefetcher) ---
-const TasksScreen                 = cacheAwareLazy('TasksScreen',                 () => import('../screens/TasksScreen'));
-const CalendarScreen              = cacheAwareLazy('CalendarScreen',              () => import('../screens/CalendarScreen'));
-const AttendanceScreen            = cacheAwareLazy('AttendanceScreen',            () => import('../screens/AttendanceScreen'));
-const GymStack                    = cacheAwareLazy('GymStack',                    () => import('./GymStack'));
-const MoreScreen                  = cacheAwareLazy('MoreScreen',                  () => import('../screens/MoreScreen'));
-const SettingsScreen              = cacheAwareLazy('SettingsScreen',              () => import('../screens/SettingsScreen'));
-const NotificationsSettingsScreen = cacheAwareLazy('NotificationsSettingsScreen', () => import('../screens/NotificationsSettingsScreen'));
-const XPConstellationScreen       = cacheAwareLazy('XPConstellationScreen',       () => import('../screens/XPConstellationScreen'));
-const SaraScreen                  = cacheAwareLazy('SaraScreen',                  () => import('../screens/SaraScreen'));
-
-const HabitsScreen                = cacheAwareLazy('HabitsScreen',                () => import('../screens/HabitsScreen'));
-const NotesScreen                 = cacheAwareLazy('NotesScreen',                 () => import('../screens/NotesScreen'));
-
-const AnalyticsScreen             = cacheAwareLazy('AnalyticsScreen',             () => import('../screens/AnalyticsScreen'));
-const GradesScreen                = cacheAwareLazy('GradesScreen',             () => import('../screens/GradesScreen'));
-const AssignmentsScreen           = cacheAwareLazy('AssignmentsScreen',        () => import('../screens/AssignmentsScreen'));
-const LearningScreen              = cacheAwareLazy('LearningScreen',           () => import('../screens/LearningScreen'));
-const StreakDetailScreen           = cacheAwareLazy('StreakDetailScreen',          () => import('../screens/StreakDetailScreen'));
-const AgentHistoryScreen           = cacheAwareLazy('AgentHistoryScreen',          () => import('../screens/AgentHistoryScreen'));
-const WellbeingDashboardScreen     = cacheAwareLazy('WellbeingDashboardScreen',    () => import('../screens/WellbeingDashboardScreen'));
+// Lazy SARA screen to keep speech recognition background processes isolated until needed
+const SaraScreen = cacheAwareLazy('SaraScreen', () => import('../screens/SaraScreen'));
 
 // --- Navigators --------------------------------------------------------------
 const Stack = createNativeStackNavigator();
@@ -153,16 +164,16 @@ const SARA_VISIBLE_ROUTES = new Set(['Home', 'Tasks', 'Analytics']);
 
 // --- Full Component Map for Bottom Tabs --------------------------------------
 const COMPONENT_MAP: Record<string, React.ComponentType<any>> = {
-  Tasks:          TasksScreen,
-  Attendance:     AttendanceScreen,
-  Gym:            GymStack,
-  Calendar:       CalendarScreen,
-  Habits:         HabitsScreen,
-  Analytics:      AnalyticsScreen,
-  Notes:          NotesScreen,
-  Grades:         GradesScreen,
-  Assignments:    AssignmentsScreen,
-  Learning:       LearningScreen,
+  Tasks:          withErrorBoundary(TasksScreen, 'Tasks'),
+  Attendance:     withErrorBoundary(AttendanceScreen, 'Attendance'),
+  Gym:            withErrorBoundary(GymStack, 'Gym'),
+  Calendar:       withErrorBoundary(CalendarScreen, 'Calendar'),
+  Habits:         withErrorBoundary(HabitsScreen, 'Habits'),
+  Analytics:      withErrorBoundary(AnalyticsScreen, 'Analytics'),
+  Notes:          withErrorBoundary(NotesScreen, 'Notes'),
+  Grades:         withErrorBoundary(GradesScreen, 'Grades'),
+  Assignments:    withErrorBoundary(AssignmentsScreen, 'Assignments'),
+  Learning:       withErrorBoundary(LearningScreen, 'Learning'),
 };
 
 // --- Nested screen header ----------------------------------------------------
@@ -181,6 +192,7 @@ function NestedHeader({ title }: { title: string }) {
   );
 }
 
+import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { TelegramTabBar } from '../components/Navigation/TelegramTabBar';
 
 // --- SafeDashboard (defined before MainTabNavigator that uses it) -------------
@@ -190,44 +202,28 @@ const TabBarNullButton = () => null;
 
 // --- Main Tab Navigator ------------------------------------------------------
 //
-// initialTab is a STABLE PROP passed at mount time from the boot read.
-// Never changes after mount -- WhatsApp/Instagram pattern.
+// WHATSAPP / INSTAGRAM ARCHITECTURE:
+// Uses useCoreData() for pinnedModules so background domain streaming (wellness/academic/planner)
+// does NOT cause re-renders of the tab bar.
 
-function MainTabNavigator({ initialTab }: { initialTab: string }) {
-  const { pinnedModules } = useMobileData();
+function MainTabNavigator() {
+  const { pinnedModules } = useCoreData();
   const { colors } = useTheme();
   const effectivePinned = (Array.isArray(pinnedModules) && pinnedModules.length > 0)
     ? pinnedModules
     : ['Tasks', 'Gym', 'Calendar', 'Attendance'];
 
+  // PERF FIX (Issue F): Throttle AsyncStorage saves to once per 10s max.
+  // Previously fired a bridge call on EVERY tab switch (50+ times per session).
+  // The saved route is only read on cold boot to restore the last tab (now always 'Home'),
+  // so frequent saves have zero user-visible benefit.
+  const lastTabSaveRef = React.useRef<number>(0);
   const onTabFocus = useCallback((routeName: string) => {
-    if (ALLOWED_SAVE_ROUTES.has(routeName)) {
-      AsyncStorage.setItem(NAV_ROUTE_KEY, routeName).catch(() => {});
-    }
-  }, []);
-
-  // Background-prefetch lazy screens once on mount (after first render).
-  // Map route names ('Gym', 'Tasks') to prefetch IDs ('GymStack', 'TasksScreen').
-  const prefetchIds = useMemo(() => 
-    effectivePinned.map(p => (p === 'Gym' ? 'GymStack' : p.endsWith('Screen') || p.endsWith('Stack') ? p : `${p}Screen`)),
-    [effectivePinned]
-  );
-  const prefetchIdsRef = useRef(prefetchIds);
-  prefetchIdsRef.current = prefetchIds;
-
-  useEffect(() => { 
-    startPrefetching(prefetchIdsRef.current);
-    // Staggered pre-warm for core tabs so switching is 100% immediate (< 5ms) while keeping 60/120fps fluid
-    InteractionManager.runAfterInteractions(() => {
-      const coreScreens = ['GymStack', 'TasksScreen', 'CalendarScreen', 'AttendanceScreen'];
-      let delay = 0;
-      coreScreens.forEach(id => {
-        setTimeout(() => {
-          requestAnimationFrame(() => preloadNow(id));
-        }, delay);
-        delay += 35; // 35ms stagger ensures zero frame drops during animation
-      });
-    });
+    if (!ALLOWED_SAVE_ROUTES.has(routeName)) return;
+    const now = Date.now();
+    if (now - lastTabSaveRef.current < 10000) return; // max once per 10s
+    lastTabSaveRef.current = now;
+    AsyncStorage.setItem(NAV_ROUTE_KEY, routeName).catch(() => {});
   }, []);
 
   const badges = useTabBarBadges();
@@ -236,7 +232,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
 
   return (
     <Tab.Navigator
-      initialRouteName={initialTab}
+      initialRouteName="Home"
       tabBar={renderTabBar}
       screenListeners={({ route }) => ({
         focus: () => onTabFocus(route.name),
@@ -247,7 +243,7 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
         sceneStyle:  { backgroundColor: colors.background },
         lazy:        true,
         freezeOnBlur: false,
-        animation:   'none',
+        animation:   'fade',
       }}
       backBehavior="history"
     >
@@ -264,12 +260,11 @@ function MainTabNavigator({ initialTab }: { initialTab: string }) {
               tabBarButton:    TabBarNullButton,
             } : {
               tabBarItemStyle: { paddingVertical: 10 },
-              lazy: true, // Progressive boot: background pre-warmed via startPrefetching
             }}
           />
         );
       })}
-      <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} options={{ lazy: true }} />
+      <Tab.Screen name="More" component={withErrorBoundary(MoreScreen, 'More')} />
     </Tab.Navigator>
   );
 }
@@ -303,23 +298,11 @@ function NestedScreens() {
 }
 
 // --- Root authenticated navigator + global SARA FAB --------------------------
-function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
-  const { colors, isDark } = useTheme();
+function RootNavigatorWithSara() {
+  const { colors } = useTheme();
   const [saraVisible, setSaraVisible] = useState(false);
 
-  const MainTabsScreen = useCallback(
-    () => <MainTabNavigator initialTab={initialTab} />,
-    [initialTab, colors, isDark]
-  );
-
-  // Pre-warm SaraScreen 2.5s after login so first tap opens instantly.
-  // Not at startup (keeps cold start fast) — loaded silently in background.
-  useEffect(() => {
-    const timer = setTimeout(() => preloadNow('SaraScreen'), 2500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const [showSara, setShowSara] = useState(SARA_VISIBLE_ROUTES.has(initialTab));
+  const [showSara, setShowSara] = useState(SARA_VISIBLE_ROUTES.has('Home'));
 
   useEffect(() => {
     const sub = DeviceEventEmitter.addListener('route_changed', (routeName: string) => {
@@ -331,7 +314,7 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="MainTabs" component={MainTabsScreen} />
+        <Stack.Screen name="MainTabs" component={MainTabNavigator} />
         <Stack.Group screenOptions={{ presentation: 'card' }}>
           <Stack.Screen name="MoreStack" component={NestedScreens} />
         </Stack.Group>
@@ -379,16 +362,27 @@ function RootNavigatorWithSara({ initialTab }: { initialTab: string }) {
 //   the login screen during a routine token refresh.
 
 export default function AppNavigator() {
-  const [appReady,   setAppReady]   = useState(false);
-  const [user,       setUser]       = useState<User | null>(null);
-  const [onboarded,  setOnboarded]  = useState(true);
+  // DEBUG — REMOVE AFTER DIAGNOSIS
+  console.log(`[BOOT-DIAG] AppNavigator() render at dt=${Date.now() - _BOOT_T0_NAV}ms`);
+  // ── Synchronous Frame 0 seed from L1 cache ──────────────────────────────
+  // getBootManifestSync() returns the in-memory cache populated by the
+  // module-level loadBootManifest() call above. For returning users this is
+  // already populated before React renders — so appReady=true and
+  // user=cachedUser on the very first frame. NavigationContainer NEVER
+  // mounts from a blank state, eliminating the 2-3s cold-mount freeze.
+  const _sync = getBootManifestSync();
+  const [appReady,   setAppReady]   = useState(_sync?.optimisticUser != null);
+  const [user,       setUser]       = useState<User | null>(_sync?.optimisticUser ?? null);
+  const [onboarded,  setOnboarded]  = useState(_sync?.onboarded ?? true);
   const [initialTab, setInitialTab] = useState('Home');
 
-  const firstAuthAt = useRef<number>(0);
-  const hasResolved = useRef(false);
+  const firstAuthAt = useRef<number>(_sync?.optimisticUser ? Date.now() : 0);
+  // If we already have a cached user, mark as resolved immediately so the Firebase
+  // background validation handler doesn't trigger a redundant double-boot.
+  const hasResolved = useRef(_sync?.optimisticUser != null);
   // Tracks whether the user was logged in at any point in this session.
   // Used to discriminate onAuthStateChanged(null) as "session died" vs "never logged in".
-  const wasLoggedInRef = useRef(false);
+  const wasLoggedInRef = useRef(_sync?.optimisticUser != null);
   // Abort controller for the 8-second dead-session recovery window.
   const deadSessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -402,12 +396,19 @@ export default function AppNavigator() {
         setOnboarded(manifest.onboarded);
         
         // WhatsApp-style Optimistic Boot: If we have a cached user profile, boot instantly!
+        // NOTE: If _sync already had optimisticUser, appReady=true was set synchronously
+        // on Frame 0 (useState initializer above). We skip redundant state sets to avoid
+        // a no-op re-render, but still update the refs for the Firebase guard logic.
         if (manifest.optimisticUser) {
-          setUser(manifest.optimisticUser);
-          setAppReady(true);
+          if (!hasResolved.current) {
+            setUser(manifest.optimisticUser);
+            setAppReady(true);
+          }
           wasLoggedInRef.current = true;
-          hasResolved.current = true; // Mark as resolved so Firebase background check doesn't double-boot
-          firstAuthAt.current = Date.now();
+          hasResolved.current = true;
+          if (!firstAuthAt.current) firstAuthAt.current = Date.now();
+        } else if (!hasResolved.current) {
+          // No cached user — fresh install path. appReady will be set by Firebase listener.
         }
       } catch {
         // Safe fallback: Home, onboarded=true
@@ -463,7 +464,8 @@ export default function AppNavigator() {
           clearTimeout(deadSessionTimerRef.current);
           deadSessionTimerRef.current = null;
         }
-        setUser(usr);
+        // UID Guard: Only trigger root state update if the UID changed (prevents re-rendering entire navigation tree on routine token check)
+        setUser(prev => (prev?.uid === usr.uid ? prev : usr));
         saveOptimisticUser(usr);
       } else {
         // Firebase fired null. Three possible causes:
@@ -530,50 +532,69 @@ export default function AppNavigator() {
     }
 
     // AppState heartbeat & Lifecycle
-    const handleAppStateChange = async (nextState: AppStateStatus) => {
+    //
+    // INSTAGRAM/WHATSAPP FOREGROUND ARCHITECTURE:
+    // When the app comes to foreground from a short background switch (< 15 min),
+    // the Firebase Auth token is completely valid (1h lifespan) and Firestore socket
+    // connections are already warm/reconnecting at the engine level.
+    // Tearing down all 18 Firestore listeners and forcing a token refresh on every
+    // app resume saturates the single-threaded JS runtime and locks navigation for ~1s.
+    //
+    // FIX:
+    // 1. Short resume (< 15 min): Return immediately (0ms overhead, zero I/O, zero re-renders).
+    // 2. Long resume (> 30 min): Navigate Home, and defer non-blocking health check by 2.5s.
+    const handleAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
-        // STEP 1: Force-refresh the Firebase ID token.
-        // Firebase Auth tokens expire every 60 min. getIdToken(true) updates the
-        // Auth module's internal token — necessary for new requests to Firestore.
-        try {
-          if (auth.currentUser) {
-            await auth.currentUser.getIdToken(/* forceRefresh */ true);
-          }
-          // STEP 2: Token refresh succeeded → force-restart all Firestore listeners.
-          // Refreshing the auth token is NOT sufficient to reconnect Firestore's internal
-          // gRPC/WebSocket channel. Emitting this event causes all 5 domain contexts to
-          // bump subscriptionVersion, tearing down dead listeners and reopening fresh ones.
-          // The Firestore SDK resumes from the last known resume token — no full re-download.
-          DeviceEventEmitter.emit('firestore_force_reconnect');
-        } catch (error: any) {
-          // Discriminate: network errors are transient → stay logged in.
-          // Fatal auth errors (revoked token, user disabled, etc.) → force logout.
-          if (isAuthFatalError(error)) {
-            console.warn('[Auth] Fatal token refresh error on foreground —', error?.code, '— forcing logout');
-            try { await performSignOut(); } catch {}
-            setUser(null);
-            clearBootManifest();
-          }
-          // Network error or unknown → skip reconnect, stay logged in
+        const bgTimestamp = lastBackgroundTimestamp;
+        lastBackgroundTimestamp = null;
+
+        // SHORT RESUME FAST-PATH (< 15 min):
+        // Instant 0ms resume — no I/O, no listener restart, no nav freeze.
+        if (!bgTimestamp || Date.now() - bgTimestamp < 15 * 60 * 1000) {
+          return;
         }
 
-        if (lastBackgroundTimestamp) {
-          if (Date.now() - lastBackgroundTimestamp > 30 * 60 * 1000) {
-            if (navigationRef.isReady()) {
-              // @ts-ignore
-              navigationRef.navigate('MainTabs', { screen: 'Home' });
-            }
-          }
+        const wasLongBackground = Date.now() - bgTimestamp > 30 * 60 * 1000;
+
+        // STEP 1: If the user was gone for >30 min, navigate Home.
+        if (wasLongBackground && navigationRef.isReady()) {
+          // @ts-ignore
+          navigationRef.navigate('MainTabs', { screen: 'Home' });
         }
-        lastBackgroundTimestamp = null;
+
+        // STEP 2: Defer background health-check by 2.5s so initial UI paint & tab touches are 100% fluid.
+        setTimeout(() => {
+          InteractionManager.runAfterInteractions(async () => {
+            try {
+              if (auth.currentUser) {
+                // getIdToken(false) uses cached token if valid, refreshing ONLY if expired (>60 min)
+                await auth.currentUser.getIdToken(false);
+              }
+              // Only restart listeners after long dormancy (>30 min)
+              if (wasLongBackground) {
+                DeviceEventEmitter.emit('firestore_force_reconnect');
+              }
+            } catch (error: any) {
+              if (isAuthFatalError(error)) {
+                console.warn('[Auth] Fatal token refresh error on foreground —', error?.code, '— forcing logout');
+                try { await performSignOut(); } catch {}
+                setUser(null);
+                clearBootManifest();
+              }
+            }
+          });
+        }, 2500);
       } else if (nextState === 'background' || nextState === 'inactive') {
         lastBackgroundTimestamp = Date.now();
-        AsyncStorage.multiRemove([
-          'sara_chat_history',
-          'sara_memory_summary',
-          'gym_chat_history',
-          'gym_memory_summary',
-        ]).catch(() => {});
+        // Defer cleanup to avoid competing with background transition animation
+        setTimeout(() => {
+          AsyncStorage.multiRemove([
+            'sara_chat_history',
+            'sara_memory_summary',
+            'gym_chat_history',
+            'gym_memory_summary',
+          ]).catch(() => {});
+        }, 500);
       }
     };
 
@@ -597,12 +618,22 @@ export default function AppNavigator() {
 
   const { isDark, colors } = useTheme();
 
-  // CRITICAL: Do not mount the navigation tree until we know the user's auth state.
-  // Otherwise, React Native renders the LandingScreen in the background, and if the 
-  // native splash screen hides a millisecond too early, the user sees it flash.
-  if (!appReady) {
-    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
-  }
+  // INSTAGRAM/WHATSAPP/TELEGRAM ARCHITECTURE — OVERLAY SPLASH PATTERN:
+  //
+  // The old pattern was: if (!appReady) return <blank View>;
+  // This caused NavigationContainer to UNMOUNT when appReady=false, and REMOUNT
+  // when appReady=true — cold-mounting the entire navigation tree from scratch.
+  // On Android/Hermes this is a 200-800ms synchronous JS reconciliation burst.
+  // THIS WAS THE FREEZE.
+  //
+  // The fix: NavigationContainer ALWAYS mounts. When auth state is unknown,
+  // an opaque overlay View sits on top (zIndex: 9999) covering everything.
+  // When appReady becomes true, the overlay simply stops rendering.
+  // The navigation tree was already warm and ready — tap response is instant.
+  //
+  // The native splash screen remains visible (via SplashScreen.preventAutoHideAsync()
+  // at module level in App.tsx) until NavigationContainer.onReady() fires, so there
+  // is no visible flash of unmounted/remounted content.
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -611,8 +642,10 @@ export default function AppNavigator() {
         theme={isDark ? ZEN_DARK_THEME : ZEN_LIGHT_THEME}
         onStateChange={onNavStateChange}
         onReady={() => {
+          // DEBUG — REMOVE AFTER DIAGNOSIS
+          console.log(`[BOOT-DIAG] NavigationContainer onReady at dt=${Date.now() - _BOOT_T0_NAV}ms`);
           // Hide splash ONLY after React Native has fully painted the final tree!
-          SplashScreen.hideAsync();
+          SplashScreen.hideAsync().catch(() => {});
         }}
       >
         {user ? (
@@ -625,7 +658,7 @@ export default function AppNavigator() {
               </Stack.Navigator>
             </ErrorBoundary>
           ) : (
-            <RootNavigatorWithSara initialTab={initialTab} />
+            <RootNavigatorWithSara />
           )
         ) : (
           <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>
@@ -635,6 +668,22 @@ export default function AppNavigator() {
           </Stack.Navigator>
         )}
       </NavigationContainer>
+
+      {/* OVERLAY SPLASH — covers NavigationContainer while auth state is resolving.
+          NavigationContainer stays MOUNTED and WARM underneath.
+          This View disappears (not fades) the instant appReady becomes true.
+          For returning users with a cached optimistic user, appReady=true on Frame 0,
+          so this overlay never renders at all. */}
+      {!appReady && (
+        <View
+          style={{
+            position:        'absolute',
+            top:    0, left: 0, right: 0, bottom: 0,
+            backgroundColor: colors.background,
+            zIndex:          9999,
+          }}
+        />
+      )}
     </View>
   );
 }

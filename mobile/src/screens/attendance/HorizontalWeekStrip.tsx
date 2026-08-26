@@ -4,7 +4,7 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Dimensions,
+  useWindowDimensions,
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
@@ -32,7 +32,10 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
 }: HorizontalWeekStripProps) {
   const { colors, isDark } = useTheme();
   const flatListRef = useRef<FlatList>(null);
-  const [pageWidth, setPageWidth] = useState(Dimensions.get('window').width - 16);
+  const { width: windowWidth } = useWindowDimensions();
+  // AttendanceScreen has paddingHorizontal: 5 on both sides (total 10px)
+  const initialWidth = windowWidth - 10;
+  const [pageWidth, setPageWidth] = useState(initialWidth);
   const [currentPage, setCurrentPage] = useState(INITIAL_PAGE);
   const isInternalScroll = useRef(false);
 
@@ -74,6 +77,17 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
     } catch (_) {}
   }, [selectedDate, anchorSunday, currentPage]);
 
+  // Frame 0 alignment guarantee
+  useEffect(() => {
+    const t = requestAnimationFrame(() => {
+      flatListRef.current?.scrollToOffset({
+        offset: currentPage * pageWidth,
+        animated: false,
+      });
+    });
+    return () => cancelAnimationFrame(t);
+  }, [pageWidth, currentPage]);
+
   const handleMomentumScrollEnd = useCallback(
     (e: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offsetX = e.nativeEvent.contentOffset.x;
@@ -98,8 +112,6 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
     },
     [currentPage, pageWidth, anchorSunday, selectedDate, onSelectDate]
   );
-
-  const PURPLE_ACCENT = colors.accentPrimary || '#a599ff';
 
   const pages = useMemo(() => Array.from({ length: TOTAL_WEEKS }, (_, i) => i - INITIAL_PAGE), []);
 
@@ -128,31 +140,24 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
                 }}
                 style={[
                   styles.dayCol,
-                  isSel && { backgroundColor: PURPLE_ACCENT },
-                  isToday && !isSel && {
-                    backgroundColor: isDark ? 'rgba(165, 153, 255, 0.16)' : 'rgba(108, 92, 231, 0.12)',
-                    borderWidth: 1,
-                    borderColor: isDark ? 'rgba(165, 153, 255, 0.45)' : 'rgba(108, 92, 231, 0.35)',
-                  },
+                  isSel && [styles.dayColSelected, { backgroundColor: colors.accentPrimary || '#5046E5' }],
                 ]}
                 activeOpacity={0.7}
               >
                 <Text
-                  style={{
-                    fontSize: 11,
-                    color: isSel ? (isDark ? '#000000' : '#FFFFFF') : (isToday ? PURPLE_ACCENT : colors.textMuted),
-                    marginBottom: 2,
-                    fontWeight: isSel ? '700' : (isToday ? '600' : '400'),
-                  }}
+                  style={[
+                    styles.dayNameText,
+                    isSel && styles.dayNameTextSelected,
+                  ]}
                 >
                   {DAY_SHORT[i]}
                 </Text>
                 <Text
-                  style={{
-                    fontSize: 13,
-                    color: isSel ? (isDark ? '#000000' : '#FFFFFF') : (isToday ? PURPLE_ACCENT : colors.textPrimary),
-                    fontWeight: isSel ? '700' : (isToday ? '600' : '400'),
-                  }}
+                  style={[
+                    styles.dayNumText,
+                    isSel && styles.dayNumTextSelected,
+                    isToday && !isSel && { color: colors.accentPrimary },
+                  ]}
                 >
                   {isHol ? '🌴' : dayNum}
                 </Text>
@@ -162,7 +167,7 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
         </View>
       );
     },
-    [anchorSunday, pageWidth, holidays, selectedDate, today, PURPLE_ACCENT, colors.textMuted, colors.textPrimary, isDark, onSelectDate]
+    [anchorSunday, pageWidth, holidays, selectedDate, today, colors.accentPrimary, onSelectDate]
   );
 
   return (
@@ -170,8 +175,12 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
       style={styles.container}
       onLayout={(e) => {
         const w = e.nativeEvent.layout.width;
-        if (w > 0 && Math.abs(w - pageWidth) > 1) {
+        if (w > 0 && Math.abs(w - pageWidth) > 0.5) {
           setPageWidth(w);
+          flatListRef.current?.scrollToOffset({
+            offset: currentPage * w,
+            animated: false,
+          });
         }
       }}
     >
@@ -201,19 +210,49 @@ export const HorizontalWeekStrip = React.memo(function HorizontalWeekStrip({
 const styles = StyleSheet.create({
   container: {
     width: '100%',
-    marginTop: 2,
+    marginTop: 0,
     marginBottom: 8,
   },
   weekRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingHorizontal: 4,
+    paddingHorizontal: 2,
   },
   dayCol: {
+    flex: 1,
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 6,
-    borderRadius: 10,
-    minWidth: 38,
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 2,
+    borderRadius: 12,
+    marginHorizontal: 1.5,
+    backgroundColor: 'transparent',
+  },
+  dayColSelected: {
+    backgroundColor: '#5046E5',
+    shadowColor: '#5046E5',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  dayNameText: {
+    fontSize: 11,
+    color: '#8E8E93',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  dayNameTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  dayNumText: {
+    fontSize: 15,
+    color: '#D1D5DB',
+    fontWeight: '600',
+  },
+  dayNumTextSelected: {
+    color: '#FFFFFF',
+    fontWeight: '700',
   },
 });

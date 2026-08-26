@@ -23,6 +23,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { COLLECTION } from '../../config/constants';
+import { safeUpdate, safeDelete } from '../../utils/safeWrite';
 import { SPACE } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
 import BottomSheet from '../../components/ui/BottomSheet';
@@ -278,7 +279,11 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
           { text: 'Cancel', style: 'cancel' },
           { text: 'Today only', style: 'destructive', onPress: () => {
             optimisticDeleteTask(currentTask.id);
-            deleteDoc(doc(db, COLLECTION.TASKS, currentTask.id)).catch(handleSyncError);
+            safeDelete(
+              currentTask.id,
+              COLLECTION.TASKS,
+              () => deleteDoc(doc(db, COLLECTION.TASKS, currentTask.id))
+            );
           }},
           { text: 'All tasks', style: 'destructive', onPress: async () => {
             try {
@@ -396,7 +401,12 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
       ]);
     } else {
       onClose();
-      updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload).catch(handleSyncError);
+      safeUpdate(
+        currentTask.id,
+        COLLECTION.TASKS,
+        firestorePayload,
+        () => updateDoc(doc(db, COLLECTION.TASKS, currentTask.id), firestorePayload)
+      );
     }
   };
 

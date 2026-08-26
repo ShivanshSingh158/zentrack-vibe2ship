@@ -11,7 +11,7 @@ import Animated, {
 import * as Haptics from 'expo-haptics';
 import { LEVEL_THRESHOLDS } from '../services/xpSystem';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { FONT_FAMILY, SPACE } from '../theme/tokens';
@@ -76,13 +76,14 @@ export default function DashboardScreen() {
     } catch (_) {}
   }, [dueFlashcards]);
 
-  // PERF: Deferred behind InteractionManager — removes a live Firestore getDocs()
-  // call from Frame 1 where it competed with auth, domain subscriptions, and
-  // notification scheduling. User sees the banner 200–400ms later, but Frame 1
-  // paints ~200ms faster as a result.
+  // PERF: Deferred behind InteractionManager + 3s timer — removes a live Firestore getDocs()
+  // call from Frame 1 where it competed with auth and initial tab switching.
   useEffect(() => {
     const handle = InteractionManager.runAfterInteractions(() => {
-      refreshFlashcards();
+      const timer = setTimeout(() => {
+        refreshFlashcards();
+      }, 3000);
+      return () => clearTimeout(timer);
     });
     return () => handle.cancel();
   }, [refreshFlashcards]);
@@ -246,53 +247,47 @@ export default function DashboardScreen() {
               <Text style={s.greetingTime}>{data.timeGreeting}</Text>
             </View>
 
-            {/* Header Action Bar */}
-            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', zIndex: 99999, elevation: 9999 }}>
+            {/* Unified Header Action Pill Capsule */}
+            <View style={[s.headerActionPill, { zIndex: 99999, elevation: 9999 }]}>
               {/* Flame streak pill */}
               <AnimatedPressable
-                style={s.headerStreakPill}
+                style={s.headerPillSection}
                 onPress={() => navigation.navigate('MoreStack', { screen: 'StreakDetail' })}
+                haptic="light"
               >
-                <Text style={{ fontSize: 14 }}>🔥</Text>
+                <Text style={{ fontSize: 16 }}>🔥</Text>
                 <Text style={s.headerStreakText}>
                   {data.appStreak}
                 </Text>
               </AnimatedPressable>
 
-              {/* Circular Dark Mode / Light Mode Switcher */}
+              {/* Theme Switcher */}
               <AnimatedPressable
-                style={[
-                  s.themeToggleCircle,
-                  {
-                    backgroundColor: isDark ? colors.surface : '#FFFFFF',
-                    borderColor: colors.border,
-                  },
-                ]}
+                style={s.headerPillIconSection}
                 onPress={() => {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                   toggleTheme();
                 }}
+                haptic="medium"
                 accessibilityLabel={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
                 accessibilityRole="button"
               >
-                <Ionicons
-                  name={isDark ? "sunny" : "moon"}
-                  size={18}
-                  color={isDark ? "#FFB300" : colors.accentPrimary}
+                <Feather
+                  name={isDark ? "sun" : "moon"}
+                  size={16}
+                  color={isDark ? "#f2f2f7" : colors.textPrimary}
                 />
               </AnimatedPressable>
 
-              {/* Anchored Vertical Speed Dial Container directly on Avatar 'A' */}
-              <View collapsable={false} style={{ position: 'relative', width: 36, height: 36, alignItems: 'center', justifyContent: 'center', zIndex: 99999, elevation: 9999 }}>
+              {/* Anchored Vertical Speed Dial Container directly on Avatar */}
+              <View collapsable={false} style={{ position: 'relative', width: 30, height: 34, alignItems: 'center', justifyContent: 'center', zIndex: 99999, elevation: 9999 }}>
                 {/* Rotating Trigger Avatar / Close Button in-place */}
                 <Animated.View style={avatarAnimatedStyle}>
                   <AnimatedPressable
                     style={[
-                      s.avatarCircle,
+                      s.headerPillAvatar,
                       menuOpen && {
-                        backgroundColor: isDark ? '#2c2c2e' : '#e5e5ea',
-                        borderWidth: 1,
-                        borderColor: colors.border,
+                        backgroundColor: isDark ? '#3a3a3c' : '#d1d1d6',
                       },
                     ]}
                     onPress={toggleMenu}
@@ -300,11 +295,11 @@ export default function DashboardScreen() {
                     accessibilityRole="button"
                   >
                     {menuOpen ? (
-                      <Ionicons name="close" size={20} color={colors.textPrimary} />
+                      <Ionicons name="close" size={16} color={colors.textPrimary} />
                     ) : data.user?.photoURL ? (
-                      <Image source={{ uri: data.user.photoURL }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                      <Image source={{ uri: data.user.photoURL }} style={{ width: 28, height: 28, borderRadius: 14 }} />
                     ) : (
-                      <Text style={s.avatarText}>{data.avatarLetter}</Text>
+                      <Text style={s.headerPillAvatarText}>{data.avatarLetter}</Text>
                     )}
                   </AnimatedPressable>
                 </Animated.View>
@@ -316,7 +311,7 @@ export default function DashboardScreen() {
                     style={{
                       position: 'absolute',
                       top: 44,
-                      right: 0,
+                      right: -1,
                       width: 36,
                       alignItems: 'center',
                       gap: 8,
@@ -337,7 +332,7 @@ export default function DashboardScreen() {
                           justifyContent: 'center',
                           borderWidth: 1,
                           borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
-                          shadowColor: colors.accentPrimary,
+                          shadowColor: '#000000',
                           shadowOffset: { width: 0, height: 4 },
                           shadowOpacity: isDark ? 0.35 : 0.15,
                           shadowRadius: 8,
@@ -349,7 +344,7 @@ export default function DashboardScreen() {
                           data.setLayoutSheetVisible(true);
                         }}
                       >
-                        <Ionicons name="color-palette-outline" size={18} color={isDark ? '#a599ff' : colors.accentPrimary} />
+                        <Ionicons name="color-palette-outline" size={18} color={isDark ? '#f2f2f7' : colors.textPrimary} />
                       </TouchableOpacity>
                     </Animated.View>
 
@@ -366,7 +361,7 @@ export default function DashboardScreen() {
                           justifyContent: 'center',
                           borderWidth: 1,
                           borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : '#E2E1EA',
-                          shadowColor: colors.accentBlue,
+                          shadowColor: '#000000',
                           shadowOffset: { width: 0, height: 4 },
                           shadowOpacity: isDark ? 0.35 : 0.15,
                           shadowRadius: 8,
@@ -493,7 +488,7 @@ export default function DashboardScreen() {
 
             if (layoutItem.id === 'quote') {
               return (
-                <Animated.View key={"quote" as any} entering={FadeInDown.duration(200)} style={{ marginTop: 18, marginBottom: 14 }}>
+                <Animated.View key={"quote" as any} entering={FadeInDown.duration(200)} style={{ marginTop: 6, marginBottom: 12 }}>
                   <Pressable
                     onPress={() => {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

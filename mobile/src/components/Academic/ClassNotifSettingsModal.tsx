@@ -32,7 +32,11 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FONT_FAMILY, SPACE, RADIUS } from '../../theme/tokens';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useMobileData, AttendanceSubject } from '../../contexts/MobileDataContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
+import { useWellnessData } from '../../contexts/domains/WellnessContext';
+import { useAcademicData } from '../../contexts/domains/AcademicContext';
+import { usePlannerData } from '../../contexts/domains/PlannerContext';
+import type { AttendanceSubject } from '../../contexts/MobileDataContext';
 import {
   scheduleAllNotifications,
   clearScheduleCache,
@@ -86,9 +90,11 @@ interface Props {
 export default function ClassNotifSettingsModal({ visible, onClose }: Props) {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors, isDark);
-  const mobileData = useMobileData() as any;
-  const subjects: AttendanceSubject[] = mobileData.attendance ?? [];
-  const { tasks, customEvents, gymLogs, habitLogs, allHabits, assignments, waterLogs, sleepLogs } = mobileData;
+  const { tasks, habitLogs, allHabits } = useCoreData();
+  const { gymLogs, waterLogs, sleepLogs } = useWellnessData();
+  const { attendance, assignments } = useAcademicData();
+  const { customEvents } = usePlannerData();
+  const subjects: AttendanceSubject[] = attendance ?? [];
 
   const [prefs, setPrefs]     = useState<Record<string, SubjectPref>>({});
   const [loading, setLoading] = useState(true);

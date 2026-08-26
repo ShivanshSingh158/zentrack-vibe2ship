@@ -384,3 +384,21 @@ export function parseLearningTopic(docData: any, docId: string): LearningTopic {
     timeSpentMs: sanitizeNumber(d.timeSpentMs, 0, 0),
   };
 }
+
+/**
+ * Fast equality check between previous state array and incoming snapshot array.
+ * If every item is identical (same IDs and properties), returns true so React
+ * can reuse the existing array reference and bail out of re-rendering.
+ */
+export function areItemsEqual<T>(prev: T[] | null | undefined, next: T[] | null | undefined): boolean {
+  if (prev === next) return true;
+  if (!prev || !next) return false;
+  if (prev.length !== next.length) return false;
+  if (prev.length === 0 && next.length === 0) return true;
+  try {
+    return JSON.stringify(prev) === JSON.stringify(next);
+  } catch {
+    return false;
+  }
+}
+

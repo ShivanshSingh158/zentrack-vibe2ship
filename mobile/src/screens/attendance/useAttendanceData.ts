@@ -27,11 +27,16 @@ export interface ConfirmConfig {
 
 export function useAttendanceData() {
   const { user } = useCoreData();
-  const { attendance: subjects, attendanceLogs: logs } = useAcademicData();
+  const { attendance: subjects, attendanceLogs: logs, ensureSubscribed } = useAcademicData();
+
+  useEffect(() => {
+    ensureSubscribed?.();
+  }, [ensureSubscribed]);
 
   // ── Core data from Firestore ────────────────────────────────────────────────
 
   const [holidays, setHolidays] = useState<string[]>([]);
+
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [selectedDate,        setSelectedDate]        = useState<string>(getLocalDateString(new Date()));
@@ -62,7 +67,7 @@ export function useAttendanceData() {
       }
     });
     if (needsCommit) batch.commit().catch(handleSyncError);
-  }, [user, subjects]);
+  }, [user?.uid, subjects]);
 
   // ── Load Logs & Holidays ───────────────────────────────────────────────────
   useEffect(() => {
@@ -78,40 +83,17 @@ export function useAttendanceData() {
     });
 
     return () => { unsubHol(); };
-  }, [user]);
+  }, [user?.uid]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  // ── logsBySubjectId — stable indexed map ──────────────────────────────────
-  // PERF FIX: A plain useMemo([logs]) rebuilds the whole O(n) map every time
-  // the `logs` array reference changes — which happens on EVERY optimistic
-  // update (every Present/Absent tap). With 200+ logs this causes noticeable
-  // button lag.
-  //
-  // Fix: We keep a ref to the previous map and a memoization key built from
-  // just the log count + last log's id+action. The map is only rebuilt when
-  // content genuinely changes, not on every identity change of the array.
-  const logsBySubjectIdRef = useRef<Record<string, any[]>>({});
-  const logsKeyRef = useRef<string>('');
-
+  // ── logsBySubjectId — indexed map ─────────────────────────────────────────
   const logsBySubjectId = useMemo(() => {
-    // Build a cheap key: length + last entry id + last entry action.
-    // This stays stable when Firestore sends back the same data in a new array.
-    const last = logs[logs.length - 1];
-    const key = `${logs.length}:${last?.id ?? ''}:${last?.action ?? ''}`;
-
-    if (key === logsKeyRef.current) {
-      // Nothing actually changed — return the cached map, skip O(n) rebuild
-      return logsBySubjectIdRef.current;
-    }
-
-    // Content changed — rebuild
-    logsKeyRef.current = key;
     const map: Record<string, any[]> = {};
-    for (const log of logs) {
+    for (let i = 0; i < logs.length; i++) {
+      const log = logs[i];
       if (!map[log.subjectId]) map[log.subjectId] = [];
       map[log.subjectId].push(log);
     }
-    logsBySubjectIdRef.current = map;
     return map;
   }, [logs]);
 

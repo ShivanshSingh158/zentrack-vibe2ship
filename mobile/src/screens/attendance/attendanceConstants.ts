@@ -96,3 +96,62 @@ export function parseTimeToMinutes(timeStr: string | undefined): number {
   }
   return h * 60 + m;
 }
+
+// ─── History Date & Day Formatter ─────────────────────────────────────────────
+/**
+ * Formats a log's date and timestamp for attendance history modal:
+ * Returns:
+ *  - dayLabel: "Today", "Yesterday", or ""
+ *  - fullDateStr: e.g. "Wed, 26 Aug" (with year if different from current year)
+ *  - timeStr: e.g. "11:20 AM"
+ *  - isToday, isYesterday booleans
+ */
+export function formatAttendanceHistoryDate(dateStr?: string, timestamp?: number): {
+  dayLabel: string;
+  fullDateStr: string;
+  timeStr: string;
+  isToday: boolean;
+  isYesterday: boolean;
+} {
+  const today = getLocalDateString(new Date());
+  const yDate = new Date();
+  yDate.setDate(yDate.getDate() - 1);
+  const yesterday = getLocalDateString(yDate);
+
+  const cleanDate = dateStr || '';
+  const isToday = cleanDate === today;
+  const isYesterday = cleanDate === yesterday;
+
+  let dayLabel = '';
+  if (isToday) dayLabel = 'Today';
+  else if (isYesterday) dayLabel = 'Yesterday';
+
+  let fullDateStr = '';
+  if (cleanDate) {
+    fullDateStr = formatDateWithDay(cleanDate);
+    const [y] = cleanDate.split('-').map(Number);
+    const currYear = new Date().getFullYear();
+    if (y && y !== currYear) {
+      fullDateStr += ` ${y}`;
+    }
+  }
+
+  let timeStr = '';
+  if (timestamp && typeof timestamp === 'number' && !isNaN(timestamp)) {
+    const d = new Date(timestamp);
+    const hours = d.getHours();
+    const minutes = d.getMinutes().toString().padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const hr12 = hours % 12 || 12;
+    timeStr = `${hr12}:${minutes} ${ampm}`;
+  }
+
+  return {
+    dayLabel,
+    fullDateStr,
+    timeStr,
+    isToday,
+    isYesterday,
+  };
+}
+

@@ -65,8 +65,8 @@ interface UnifiedLifeWidgetProps {
   onPressAssignments?: () => void;
 }
 
-const RING_SIZE = 110;
-const RING_STROKE = 9;
+const RING_SIZE = 124;
+const RING_STROKE = 9.5;
 const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
@@ -262,17 +262,14 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
           </View>
         </AnimatedPressable>
 
-        {/* VERTICAL DIVIDER */}
-        <View style={styles.verticalDivider} />
-
         <View style={styles.rightMetricsColumn}>
           {/* HABITS */}
           <AnimatedPressable
             style={[
               styles.compactMetricRow, 
               { 
-                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(5, 150, 105, 0.08)', 
-                borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, 
+                backgroundColor: isDark ? '#1C1C20' : 'rgba(5, 150, 105, 0.08)', 
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border, 
                 borderWidth: 1 
               }
             ]}
@@ -291,8 +288,8 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
             style={[
               styles.compactMetricRow, 
               { 
-                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(2, 132, 199, 0.08)', 
-                borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, 
+                backgroundColor: isDark ? '#1C1C20' : 'rgba(2, 132, 199, 0.08)', 
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border, 
                 borderWidth: 1, 
                 overflow: 'hidden' 
               }
@@ -300,7 +297,7 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
             activeOpacity={0.75}
             onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPressWater(); }}
           >
-            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.min(100, (waterCompleted / (waterTotal || 1)) * 100)}%`, backgroundColor: isDark ? 'rgba(137, 220, 235, 0.15)' : 'rgba(2, 132, 199, 0.12)' }} />
+            <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.min(100, (waterCompleted / (waterTotal || 1)) * 100)}%`, backgroundColor: isDark ? 'rgba(137, 220, 235, 0.18)' : 'rgba(2, 132, 199, 0.12)' }} />
             <View style={styles.compactLeftGroup}>
               <Text style={styles.compactEmoji}>💧</Text>
               <Text style={[styles.compactLabel, { color: colors.accentBlue }]}>Hydration</Text>
@@ -313,8 +310,8 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
             style={[
               styles.compactMetricRow, 
               { 
-                backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(217, 119, 6, 0.08)', 
-                borderColor: isDark ? 'rgba(255,255,255,0.05)' : colors.border, 
+                backgroundColor: isDark ? '#1C1C20' : 'rgba(217, 119, 6, 0.08)', 
+                borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border, 
                 borderWidth: 1 
               }
             ]}

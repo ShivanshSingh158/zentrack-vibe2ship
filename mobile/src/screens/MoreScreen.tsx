@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../theme/tokens';
 import { triggerLayoutAnimation } from '../theme/animations';
-import { useMobileData } from '../contexts/MobileDataContext';
+import { useCoreData } from '../contexts/domains/CoreDataContext';
 import { BlurView } from 'expo-blur';
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -50,7 +50,7 @@ export default function MoreScreen() {
   const insets = useSafeAreaInsets();
   const styles = makeStyles(colors, isDark, insets);
   const navigation = useNavigation<any>();
-  const { pinnedModules, setPinnedModules } = useMobileData();
+  const { pinnedModules, setPinnedModules } = useCoreData();
 
   const effectivePinned = useMemo(() => {
     return (pinnedModules && pinnedModules.length > 0) ? pinnedModules : DEFAULT_PINNED_MODULES;

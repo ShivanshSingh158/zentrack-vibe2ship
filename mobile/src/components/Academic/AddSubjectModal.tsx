@@ -6,8 +6,9 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { FONT_FAMILY, FONT_SIZE, SPACE, RADIUS } from '../../theme/tokens';
 import { db } from '../../services/firebase';
 import { collection, addDoc, updateDoc, doc, setDoc } from 'firebase/firestore';
-import { useMobileData, AttendanceSubject } from '../../contexts/MobileDataContext';
+import { useCoreData } from '../../contexts/domains/CoreDataContext';
 import { useAcademicData } from '../../contexts/domains/AcademicContext';
+import type { AttendanceSubject } from '../../contexts/MobileDataContext';
 import { COLLECTION } from '../../config/constants';
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -32,7 +33,7 @@ export function AddSubjectModal({ visible, onClose, existingSubject }: {
 }) {
   const { colors, isDark } = useTheme();
   const styles = makeStyles(colors, isDark);
-  const { user } = useMobileData();
+  const { user } = useCoreData();
   const { attendance, optimisticAddSubject, optimisticUpdateAttendance } = useAcademicData();
   const [name, setName] = useState('');
   const [targetPercentage, setTargetPercentage] = useState('75');

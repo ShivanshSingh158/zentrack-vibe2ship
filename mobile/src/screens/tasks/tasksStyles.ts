@@ -200,7 +200,7 @@ export const makeTasksStyles = (colors: any, isDark: boolean = true) => StyleShe
   autoStyle116: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 
   // Top header
-  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, paddingTop: 4, paddingBottom: 0, backgroundColor: colors.background },
+  topHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, backgroundColor: colors.background },
   topHeaderTitle: { fontFamily: 'Inter_700Bold', fontSize: 28, color: colors.textPrimary },
   topHeaderIcons: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 4 },
   iconBtn: { alignItems: 'center', width: 38 },
