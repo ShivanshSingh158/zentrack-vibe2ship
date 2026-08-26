@@ -66,7 +66,6 @@ export function PlannerProvider({
   const [customEvents, setCustomEvents]       = useState<CustomEvent[]>(initialManifest?.customEvents ?? []);
   const [goals, setGoals]                     = useState<Goal[]>(initialManifest?.goals ?? []);
   const [weeklyReviews, setWeeklyReviews]     = useState<WeeklyReview[]>(initialManifest?.weeklyReviews ?? []);
-
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
   // OFFLINE-FIRST GUARD: ignore empty memoryLocalCache snapshots when cache is seeded.
@@ -75,6 +74,23 @@ export function PlannerProvider({
     (initialManifest?.goals?.length ?? 0) > 0 ||
     (initialManifest?.weeklyReviews?.length ?? 0) > 0
   );
+
+  // Fallback hydration: handles cold-start race conditions seamlessly
+  useEffect(() => {
+    let isCancelled = false;
+    loadBootManifest().then(manifest => {
+      if (isCancelled || !manifest) return;
+      unstable_batchedUpdates(() => {
+        setCustomEvents(prev => prev.length === 0 && (manifest.customEvents?.length ?? 0) > 0 ? manifest.customEvents : prev);
+        setGoals(prev => prev.length === 0 && (manifest.goals?.length ?? 0) > 0 ? manifest.goals : prev);
+        setWeeklyReviews(prev => prev.length === 0 && (manifest.weeklyReviews?.length ?? 0) > 0 ? manifest.weeklyReviews : prev);
+        if ((manifest.customEvents?.length ?? 0) > 0 || (manifest.goals?.length ?? 0) > 0) {
+          hasCachedDataRef.current = true;
+        }
+      });
+    }).catch(() => {});
+    return () => { isCancelled = true; };
+  }, []);
 
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);

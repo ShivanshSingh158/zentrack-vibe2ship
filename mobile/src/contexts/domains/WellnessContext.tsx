@@ -92,6 +92,25 @@ export function WellnessProvider({
     (initialManifest?.waterLogs?.length ?? 0) > 0
   );
 
+  // Fallback hydration: handles cold-start race conditions seamlessly
+  useEffect(() => {
+    let isCancelled = false;
+    loadBootManifest().then(manifest => {
+      if (isCancelled || !manifest) return;
+      unstable_batchedUpdates(() => {
+        setGymLogs(prev => prev.length === 0 && (manifest.gymLogs?.length ?? 0) > 0 ? manifest.gymLogs : prev);
+        setUserGymPlan(prev => !prev && manifest.userGymPlan ? manifest.userGymPlan : prev);
+        setWaterLogs(prev => prev.length === 0 && (manifest.waterLogs?.length ?? 0) > 0 ? manifest.waterLogs : prev);
+        setSleepLogs(prev => prev.length === 0 && (manifest.sleepLogs?.length ?? 0) > 0 ? manifest.sleepLogs : prev);
+        setWeightLogs(prev => prev.length === 0 && (manifest.weightLogs?.length ?? 0) > 0 ? manifest.weightLogs : prev);
+        if ((manifest.gymLogs?.length ?? 0) > 0 || !!manifest.userGymPlan || (manifest.waterLogs?.length ?? 0) > 0) {
+          hasCachedDataRef.current = true;
+        }
+      });
+    }).catch(() => {});
+    return () => { isCancelled = true; };
+  }, []);
+
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);

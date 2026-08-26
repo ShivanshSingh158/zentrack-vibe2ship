@@ -85,6 +85,21 @@ export function AcademicProvider({
   const [holidays, setHolidays]               = useState<string[]>([]);
   const subscribedRef = useRef(false);
   const unsubsRef     = useRef<(() => void)[]>([]);
+  // Fallback hydration: handles cold-start race conditions seamlessly
+  useEffect(() => {
+    let isCancelled = false;
+    loadBootManifest().then(manifest => {
+      if (isCancelled || !manifest) return;
+      unstable_batchedUpdates(() => {
+        setAttendance(prev => prev.length === 0 && (manifest.attendance?.length ?? 0) > 0 ? manifest.attendance : prev);
+        setAttendanceLogs(prev => prev.length === 0 && (manifest.attendanceLogs?.length ?? 0) > 0 ? manifest.attendanceLogs : prev);
+        setAssignments(prev => prev.length === 0 && (manifest.assignments?.length ?? 0) > 0 ? manifest.assignments : prev);
+        setSemesters(prev => prev.length === 0 && (manifest.semesters?.length ?? 0) > 0 ? manifest.semesters : prev);
+        setSemesterSubjects(prev => prev.length === 0 && (manifest.semesterSubjects?.length ?? 0) > 0 ? manifest.semesterSubjects : prev);
+      });
+    }).catch(() => {});
+    return () => { isCancelled = true; };
+  }, []);
   // OFFLINE-FIRST GUARD: if we seeded from cache, ignore empty memoryLocalCache snapshots.
   const hasCachedDataRef = useRef(
     (initialManifest?.attendance?.length ?? 0) > 0 ||

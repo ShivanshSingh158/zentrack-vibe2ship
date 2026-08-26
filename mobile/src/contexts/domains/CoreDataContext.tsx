@@ -17,7 +17,7 @@ import { auth, db } from "../../services/firebase";
 import { COLLECTION } from "../../config/constants";
 import type { Task, Habit, HabitLog } from "../MobileDataContext";
 import { writeCoreCacheMulti, clearCoreCache } from "../../utils/coreCache";
-import { getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
+import { loadBootManifest, getBootManifestSync, updateL1Cache } from "../../utils/bootManifest";
 import { clearAllDomainCaches } from "../../utils/domainCache";
 import { registerForPushNotificationsAsync } from "../../services/notifications";
 import { handleSyncError } from '../../utils/errorUtils';
@@ -127,15 +127,25 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const DEFAULT_PINNED_MODULES = ["Tasks", "Gym", "Calendar", "Attendance"];
   const [pinnedModules, setPinnedModulesState]    = useState<string[]>(initialManifest?.pinnedModules ?? DEFAULT_PINNED_MODULES);
 
-  // NOTE: All boot state (user, tasks, habits, habitLogs, pinnedModules, googleAccessToken)
-  // is already seeded synchronously from getBootManifestSync() in the useState() initializers
-  // above (lines 85–116). AppNavigator.tsx pre-warms the L1 cache via a module-level
-  // loadBootManifest() call before React renders anything, so getBootManifestSync() is
-  // guaranteed to return populated data on Frame 0.
-  // The async loadBootManifest() useEffect previously here was REDUNDANT — it would call
-  // setTasks/setHabits/etc. with identical values, causing a no-op reconciliation cycle
-  // that wasted ~15ms of JS thread time during the critical cold-boot window.
-  // auth.firstAuthAt is set by the onAuthStateChanged listener below.
+  // Fallback hydration: In 19/20 cold boots, getBootManifestSync() already populated state on Frame 0.
+  // In the 1/20 race condition where AsyncStorage.multiGet took >5ms, this promise resolves and
+  // immediately hydrates state so the user NEVER sees an empty task list or blank screen.
+  useEffect(() => {
+    let isCancelled = false;
+    loadBootManifest().then(manifest => {
+      if (isCancelled || !manifest) return;
+      unstable_batchedUpdates(() => {
+        setTasks(prev => (prev.length === 0 && (manifest.tasks?.length ?? 0) > 0) ? manifest.tasks : prev);
+        setHabits(prev => (prev.length === 0 && (manifest.habits?.length ?? 0) > 0) ? manifest.habits : prev);
+        setHabitLogs(prev => (prev.length === 0 && (manifest.habitLogs?.length ?? 0) > 0) ? manifest.habitLogs : prev);
+        if ((manifest.tasks?.length ?? 0) > 0 || (manifest.habits?.length ?? 0) > 0) {
+          hasCachedDataRef.current = true;
+        }
+      });
+    }).catch(() => {});
+
+    return () => { isCancelled = true; };
+  }, []);
 
   const setPinnedModules = (mods: string[]) => {
     const clamped = mods.length > 0 ? mods.slice(0, 4) : DEFAULT_PINNED_MODULES;
@@ -387,9 +397,17 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
         ]);
         if (isCancelled) return;
 
-        const hasLocalCache = tasks.length > 0 || habits.length > 0;
+        const manifest = getBootManifestSync();
+        const hasLocalCache = tasks.length > 0 || habits.length > 0 || ((manifest?.tasks?.length ?? 0) > 0);
         if (serverMeta && serverMeta.lastModifiedAt <= localTs && hasLocalCache) {
           // Cache is 100% up to date! 0 extra collection reads spent.
+          if (tasks.length === 0 && (manifest?.tasks?.length ?? 0) > 0) {
+            unstable_batchedUpdates(() => {
+              setTasks(manifest!.tasks);
+              setHabits(manifest!.habits);
+              setHabitLogs(manifest!.habitLogs);
+            });
+          }
           setFirestoreReady(true);
         } else {
           // Data changed on server or first boot — sync fresh data

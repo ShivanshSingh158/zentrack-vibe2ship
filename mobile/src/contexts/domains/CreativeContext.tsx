@@ -74,6 +74,24 @@ export function CreativeProvider({
     (initialManifest?.jobs?.length ?? 0) > 0
   );
 
+  // Fallback hydration: handles cold-start race conditions seamlessly
+  useEffect(() => {
+    let isCancelled = false;
+    loadBootManifest().then(manifest => {
+      if (isCancelled || !manifest) return;
+      unstable_batchedUpdates(() => {
+        setStorageNodes(prev => prev.length === 0 && (manifest.storageNodes?.length ?? 0) > 0 ? manifest.storageNodes : prev);
+        setLearningTopics(prev => prev.length === 0 && (manifest.learningTopics?.length ?? 0) > 0 ? manifest.learningTopics : prev);
+        setJobs(prev => prev.length === 0 && (manifest.jobs?.length ?? 0) > 0 ? manifest.jobs : prev);
+        setContentLogs(prev => prev.length === 0 && (manifest.contentLogs?.length ?? 0) > 0 ? manifest.contentLogs : prev);
+        if ((manifest.storageNodes?.length ?? 0) > 0 || (manifest.learningTopics?.length ?? 0) > 0) {
+          hasCachedDataRef.current = true;
+        }
+      });
+    }).catch(() => {});
+    return () => { isCancelled = true; };
+  }, []);
+
   // ── Listener auto-restart on error ───────────────────────────────────────
   const [subscriptionVersion, setSubscriptionVersion] = useState(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
