@@ -16,7 +16,7 @@ export const makeStyles = (colors: any) => StyleSheet.create({
     alignItems: 'center',
   },
   greetingGood: { fontFamily: FONT_FAMILY.bold, fontSize: 34, color: colors.textPrimary, lineHeight: 30, includeFontPadding: false },
-  greetingTime: { fontFamily: FONT_FAMILY.title, fontSize: 34, color: colors.accentPrimary, lineHeight: 40, marginTop: -10, paddingBottom: 2, includeFontPadding: false },
+  greetingTime: { fontFamily: FONT_FAMILY.title, fontSize: 34, color: colors.accentPrimary, lineHeight: 40, marginTop: -8, paddingBottom: 2, includeFontPadding: false },
 
   headerActionPill: {
     flexDirection: 'row',
