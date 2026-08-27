@@ -240,16 +240,20 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
 
   if (!currentTask) return null;
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     Keyboard.dismiss();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     if (currentTask.isRecurring) {
       Alert.alert('Delete Recurring Task', 'Do you want to delete only this instance, or this and all future instances?', [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'This instance only', style: 'destructive', onPress: async () => {
+        { text: 'This instance only', style: 'destructive', onPress: () => {
           onClose();
           optimisticDeleteTask(currentTask.id);
-          try { await deleteDoc(doc(db, COLLECTION.TASKS, currentTask.id)); } catch (e) { console.error(e); }
+          safeDelete(
+            currentTask.id,
+            COLLECTION.TASKS,
+            () => deleteDoc(doc(db, COLLECTION.TASKS, currentTask.id))
+          );
         }},
         { text: 'All future instances', style: 'destructive', onPress: async () => {
           onClose();
@@ -273,34 +277,14 @@ function EditTaskModalComponent({ visible, onClose, task }: Props) {
         }},
       ]);
     } else {
+      // Instant dismissal & clean deletion
       onClose();
-      setTimeout(() => {
-        Alert.alert('Delete Task', `"${currentTask.title}"`, [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Today only', style: 'destructive', onPress: () => {
-            optimisticDeleteTask(currentTask.id);
-            safeDelete(
-              currentTask.id,
-              COLLECTION.TASKS,
-              () => deleteDoc(doc(db, COLLECTION.TASKS, currentTask.id))
-            );
-          }},
-          { text: 'All tasks', style: 'destructive', onPress: async () => {
-            try {
-              const q = query(collection(db, COLLECTION.TASKS), where('userId', '==', currentTask.userId));
-              const snap = await getDocs(q);
-              const batch = writeBatch(db);
-              snap.docs.forEach(d => { 
-                if (d.data().title === currentTask.title) {
-                  optimisticDeleteTask(d.id);
-                  batch.delete(d.ref); 
-                }
-              });
-              await batch.commit();
-            } catch (e) { console.error(e); }
-          }},
-        ]);
-      }, 300);
+      optimisticDeleteTask(currentTask.id);
+      safeDelete(
+        currentTask.id,
+        COLLECTION.TASKS,
+        () => deleteDoc(doc(db, COLLECTION.TASKS, currentTask.id))
+      );
     }
   };
 
