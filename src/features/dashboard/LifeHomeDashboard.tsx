@@ -355,35 +355,62 @@ export const LifeHomeDashboard: React.FC = () => {
     if (!user || !subject?.id) return;
     try {
       playPopSound();
+      const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
+      const totalKey = type === 'class' ? 'classesTotal' : 'labsTotal';
+      const subRef = doc(db, 'attendance_subjects', subject.id);
 
-      // 1. Add Log
-      await addDoc(collection(db, 'attendance_logs'), {
-        userId: user.uid,
-        subjectId: subject.id,
-        subjectName: subject.name,
-        type,
-        idx,
-        action,
-        date: todayStr,
-        timestamp: Date.now(),
-      });
+      const existingLog = (attendanceLogs || []).find(
+        (l: any) => l.subjectId === subject.id && l.type === type && l.date === todayStr && (l.idx === idx || l.idx === undefined)
+      );
 
-      // 2. Update Subject Totals (if not cancelled)
-      if (action !== 'cancelled') {
-        const isAttended = action === 'attended';
-        const subRef = doc(db, 'attendance_subjects', subject.id);
+      if (existingLog) {
+        if (existingLog.action === action) return;
 
-        if (type === 'class') {
+        const oldAction = existingLog.action;
+        const oldAtt = oldAction === 'attended' ? 1 : 0;
+        const newAtt = action === 'attended' ? 1 : 0;
+        const attDelta = newAtt - oldAtt;
+
+        const oldTot = oldAction === 'cancelled' ? 0 : 1;
+        const newTot = action === 'cancelled' ? 0 : 1;
+        const totDelta = newTot - oldTot;
+
+        const currentAtt = (subject[attendedKey] as number) || 0;
+        const currentTot = (subject[totalKey] as number) || 0;
+
+        await updateDoc(subRef, {
+          [attendedKey]: Math.max(0, currentAtt + attDelta),
+          [totalKey]: Math.max(0, currentTot + totDelta),
+        });
+
+        await updateDoc(doc(db, 'attendance_logs', existingLog.id), {
+          action,
+          timestamp: Date.now(),
+        });
+      } else {
+        const newAtt = action === 'attended' ? 1 : 0;
+        const newTot = action === 'cancelled' ? 0 : 1;
+
+        const currentAtt = (subject[attendedKey] as number) || 0;
+        const currentTot = (subject[totalKey] as number) || 0;
+
+        if (newTot > 0 || newAtt > 0) {
           await updateDoc(subRef, {
-            classesTotal: (subject.classesTotal || 0) + 1,
-            classesAttended: (subject.classesAttended || 0) + (isAttended ? 1 : 0),
-          });
-        } else {
-          await updateDoc(subRef, {
-            labsTotal: (subject.labsTotal || 0) + 1,
-            labsAttended: (subject.labsAttended || 0) + (isAttended ? 1 : 0),
+            [attendedKey]: currentAtt + newAtt,
+            [totalKey]: currentTot + newTot,
           });
         }
+
+        await addDoc(collection(db, 'attendance_logs'), {
+          userId: user.uid,
+          subjectId: subject.id,
+          subjectName: subject.name,
+          type,
+          idx,
+          action,
+          date: todayStr,
+          timestamp: Date.now(),
+        });
       }
 
       if (action === 'attended') {
