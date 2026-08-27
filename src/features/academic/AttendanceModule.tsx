@@ -392,8 +392,12 @@ export const AttendanceModule = () => {
       const subRef = doc(db, 'attendance_subjects', subject.id);
 
       // Check if a log already exists for this subject, type, and date
+      const cleanDate = (date || selectedDate || '').slice(0, 10);
       const existingLog = logs.find(
-        l => l.subjectId === subject.id && l.type === type && l.date === date && (!isExtra ? !l.isExtra : l.isExtra)
+        l => (l.subjectId === subject.id || l.subjectId === subject.name || l.subjectName === subject.name) &&
+             (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
+             (l.date || '').slice(0, 10) === cleanDate &&
+             (!isExtra ? !l.isExtra : l.isExtra)
       );
 
       if (existingLog) {

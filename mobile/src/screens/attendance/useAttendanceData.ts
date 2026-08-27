@@ -86,14 +86,26 @@ export function useAttendanceData() {
   }, [user?.uid]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  // ── logsBySubjectId — indexed map ─────────────────────────────────────────
+  // ── logsBySubjectId — indexed map (indexed by both subjectId & subjectName, sorted newest first) ──
   const logsBySubjectId = useMemo(() => {
     const map: Record<string, any[]> = {};
     for (let i = 0; i < logs.length; i++) {
       const log = logs[i];
-      if (!map[log.subjectId]) map[log.subjectId] = [];
-      map[log.subjectId].push(log);
+      const key1 = log.subjectId;
+      const key2 = log.subjectName;
+      if (key1) {
+        if (!map[key1]) map[key1] = [];
+        map[key1].push(log);
+      }
+      if (key2 && key2 !== key1) {
+        if (!map[key2]) map[key2] = [];
+        map[key2].push(log);
+      }
     }
+    // Ensure logs within each bucket are sorted with newest timestamp first
+    Object.keys(map).forEach(k => {
+      map[k].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    });
     return map;
   }, [logs]);
 

@@ -359,8 +359,12 @@ export const LifeHomeDashboard: React.FC = () => {
       const totalKey = type === 'class' ? 'classesTotal' : 'labsTotal';
       const subRef = doc(db, 'attendance_subjects', subject.id);
 
+      const cleanToday = (todayStr || '').slice(0, 10);
       const existingLog = (attendanceLogs || []).find(
-        (l: any) => l.subjectId === subject.id && l.type === type && l.date === todayStr && (l.idx === idx || l.idx === undefined)
+        (l: any) => (l.subjectId === subject.id || l.subjectId === subject.name || l.subjectName === subject.name) &&
+                    (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
+                    (l.date || '').slice(0, 10) === cleanToday &&
+                    (l.idx === idx || l.idx === undefined)
       );
 
       if (existingLog) {

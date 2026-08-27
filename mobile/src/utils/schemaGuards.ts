@@ -246,13 +246,13 @@ export function parseAttendanceLog(docData: any, docId: string): AttendanceLog {
   return {
     id: sanitizeString(docId || d.id, 'alog_' + Date.now()),
     userId: sanitizeString(d.userId, ''),
-    subjectId: sanitizeString(d.subjectId, ''),
-    subjectName: sanitizeString(d.subjectName, 'Subject', 200),
+    subjectId: sanitizeString(d.subjectId || d.subject_id || d.subId || '', ''),
+    subjectName: sanitizeString(d.subjectName || d.name || 'Subject', 'Subject', 200),
     type: sanitizeEnum<'class' | 'lab'>(d.type, ['class', 'lab'], 'class'),
     action: sanitizeEnum<'attended' | 'missed' | 'cancelled'>(d.action, ['attended', 'missed', 'cancelled'], 'attended'),
-    date: sanitizeString(d.date, new Date().toISOString().split('T')[0], 10),
+    date: sanitizeString(String(d.date || '').slice(0, 10), new Date().toISOString().split('T')[0], 10),
     isExtra: Boolean(d.isExtra),
-    timestamp: sanitizeNumber(d.timestamp, Date.now(), 0),
+    timestamp: sanitizeNumber(d.timestamp || d.createdAt, Date.now(), 0),
   };
 }
 

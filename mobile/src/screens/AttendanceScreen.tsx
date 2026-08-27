@@ -543,13 +543,18 @@ export default function AttendanceScreen() {
 
   const renderItem = useCallback(({ item: session }: { item: any }) => {
     const { subject, type, idx } = session;
-    const subLogs = logsBySubjectId[subject.id!] || [];
+    const subLogs = (subject.id ? logsBySubjectId[subject.id] : null) || (subject.name ? logsBySubjectId[subject.name] : null) || [];
     let log = null;
     let matchIdx = 0;
+    const cleanSelDate = (selectedDate || '').slice(0, 10);
+
     for (let i = 0; i < subLogs.length; i++) {
       const l = subLogs[i];
-      if (l.date === selectedDate && !l.isExtra && (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type))) {
-        if (matchIdx === idx) {
+      const cleanLogDate = (l.date || '').slice(0, 10);
+      const isMatchingType = type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type);
+
+      if (cleanLogDate === cleanSelDate && !l.isExtra && isMatchingType) {
+        if (l.idx !== undefined ? l.idx === idx : matchIdx === idx) {
           log = l;
           break;
         }

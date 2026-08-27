@@ -57,21 +57,29 @@ export function useAttendanceFirestore({
 
   // ── Core log action ────────────────────────────────────────────────────────
   const handleLog = async (
-    subject: AttendanceSubject,
+    subjectInput: AttendanceSubject,
     type: 'class' | 'lab',
     action: 'attended' | 'missed' | 'cancelled',
     existingLogId?: string,
     logDate = selectedDate,
     isExtra = false,
   ) => {
-    if (!user || !subject.id) return;
+    if (!user || (!subjectInput.id && !subjectInput.name)) return;
+    // Always get the freshest subject state from the domain context
+    const subject = subjects.find(s => (subjectInput.id && s.id === subjectInput.id) || s.name === subjectInput.name) || subjectInput;
     const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
     const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
+    const cleanLogDate = (logDate || selectedDate || '').slice(0, 10);
 
-    // Check if we are updating an existing log (passed by ID or matching subjectId + type + date)
+    // Check if we are updating an existing log (passed by ID or matching subjectId/name + type + date)
     const existingLog = existingLogId
       ? logs.find(l => l.id === existingLogId)
-      : logs.find(l => l.subjectId === subject.id && l.type === type && l.date === logDate && (!isExtra ? !l.isExtra : l.isExtra));
+      : logs.find(l => 
+          (l.subjectId === subject.id || l.subjectId === subject.name || l.subjectName === subject.name) &&
+          (type === 'lab' ? l.type === 'lab' : (l.type === 'class' || !l.type)) &&
+          (l.date || '').slice(0, 10) === cleanLogDate &&
+          (!isExtra ? !l.isExtra : l.isExtra)
+        );
 
     let newAttended: number;
     let newTotal: number;
@@ -186,7 +194,7 @@ export function useAttendanceFirestore({
     if (!user) return;
     const logToUndo = logs.find(l => l.id === logId);
     if (!logToUndo) return;
-    const subject = subjects.find(s => s.id === logToUndo.subjectId);
+    const subject = subjects.find(s => s.id === logToUndo.subjectId || s.name === logToUndo.subjectName || s.name === logToUndo.subjectId);
     if (!subject) { Alert.alert('Error', 'Subject deleted.'); return; }
 
     const type        = logToUndo.type || 'class';
