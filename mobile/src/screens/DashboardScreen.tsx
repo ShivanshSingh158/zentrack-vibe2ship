@@ -29,6 +29,7 @@ import FlashcardReviewModal from '../components/Learning/FlashcardReviewModal';
 import { getDueFlashcards, Flashcard } from '../services/flashcardService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useOfflineStatus } from '../hooks/useOfflineStatus';
+import { areItemsEqual } from '../utils/schemaGuards';
 
 export default function DashboardScreen() {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -49,7 +50,7 @@ export default function DashboardScreen() {
   const refreshFlashcards = useCallback(async () => {
     if (data.user?.uid) {
       const cards = await getDueFlashcards(data.user.uid);
-      setDueFlashcards(cards);
+      setDueFlashcards(prev => areItemsEqual(prev, cards) ? prev : cards);
       
       // Check if current cards have been dismissed
       try {
@@ -59,12 +60,12 @@ export default function DashboardScreen() {
           const currentIds = cards.map(c => c.id || c.question);
           // If all current cards are already in dismissedIds, hide the banner
           const allDismissed = currentIds.every(id => dismissedIds.includes(id));
-          setIsBannerDismissed(allDismissed);
+          setIsBannerDismissed(prev => prev === allDismissed ? prev : allDismissed);
         } else {
-          setIsBannerDismissed(false);
+          setIsBannerDismissed(prev => prev === false ? prev : false);
         }
       } catch {
-        setIsBannerDismissed(false);
+        setIsBannerDismissed(prev => prev === false ? prev : false);
       }
     }
   }, [data.user?.uid]);

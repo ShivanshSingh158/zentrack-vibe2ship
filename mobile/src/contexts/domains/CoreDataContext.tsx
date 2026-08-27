@@ -92,7 +92,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   const [tasks, setTasks]         = useState<Task[]>(initialManifest?.tasks ?? []);
   const [habits, setHabits]       = useState<Habit[]>(initialManifest?.habits ?? []);
   const [habitLogs, setHabitLogs] = useState<HabitLog[]>(initialManifest?.habitLogs ?? []);
-  const [firestoreReady, setFirestoreReady] = useState(false);
+  const hasCachedData = (initialManifest?.tasks?.length ?? 0) > 0 ||
+    (initialManifest?.habits?.length ?? 0) > 0 ||
+    (initialManifest?.habitLogs?.length ?? 0) > 0;
+  const [firestoreReady, setFirestoreReady] = useState(hasCachedData);
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(initialManifest?.googleAccessToken ?? null);
 
   // Tracks when we first resolved a valid authenticated user.
@@ -103,11 +106,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
   // OFFLINE-FIRST GUARD: CoreData is always seeded from getBootManifestSync() above.
   // If cached data exists, we must not let the empty memoryLocalCache onSnapshot
   // (which fires immediately on cold boot with no internet) overwrite it.
-  const hasCachedDataRef = useRef(
-    (initialManifest?.tasks?.length ?? 0) > 0 ||
-    (initialManifest?.habits?.length ?? 0) > 0 ||
-    (initialManifest?.habitLogs?.length ?? 0) > 0
-  );
+  const hasCachedDataRef = useRef(hasCachedData);
 
   // Write-lock: after an optimistic habit update, ignore Firestore snapshots for
   // 2 seconds to prevent the flicker cycle (optimistic → snapshot rollback → final snapshot).
@@ -142,6 +141,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
         setHabitLogs(prev => (prev.length === 0 && (manifest.habitLogs?.length ?? 0) > 0) ? manifest.habitLogs : prev);
         if ((manifest.tasks?.length ?? 0) > 0 || (manifest.habits?.length ?? 0) > 0) {
           hasCachedDataRef.current = true;
+          setFirestoreReady(true);
         }
       });
     }).catch(() => {});
@@ -341,8 +341,7 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
           unstable_batchedUpdates(() => {
             const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseTask(d.data(), d.id));
             setTasks(prev => areItemsEqual(prev, fresh) ? prev : fresh);
-            setFirestoreReady(true);
-            hasCachedDataRef.current = false;
+            setFirestoreReady(prev => prev ? prev : true);
             InteractionManager.runAfterInteractions(() => writeCoreCacheMulti({ tasks: fresh }, false));
           });
         },

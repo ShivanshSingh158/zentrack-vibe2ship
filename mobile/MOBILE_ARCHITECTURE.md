@@ -923,6 +923,13 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
 
 ## 15. Changelog
 
+### 2026-08-27 — 3–4 Second Screen Flicker Elimination (Order-Independent areItemsEqual & Ring Stabilization)
+- **FIXED** `src/utils/schemaGuards.ts`: Made `areItemsEqual` order-independent by sorting items by ID before stringifying. Eliminates false-positive re-render bursts when Firestore server snapshots arrive with arbitrary Document ID ordering.
+- **FIXED** `src/contexts/domains/CoreDataContext.tsx`: Initialized `firestoreReady` to `hasCachedData` so it starts `true` when cached data exists, preventing a disruptive `false -> true` context re-render cascade.
+- **FIXED** `src/components/Dashboard/UnifiedLifeWidget.tsx`: Removed `entering={FadeIn.duration(400)}` and `exiting={FadeOut.duration(300)}` from the donut ring center (`ringCenterInner`), eliminating visual ring text flickering on state updates.
+- **FIXED** `src/screens/DashboardScreen.tsx`: Guarded `refreshFlashcards()` with `areItemsEqual` to avoid re-rendering `DashboardScreen` when flashcard counts are identical.
+- **VERIFIED**: `npx tsc --noEmit` compiles with 0 errors.
+
 ### 2026-08-27 — Cold-Boot Navigation Freeze Elimination (Deferred Listeners & Demand-Based Wellness)
 - **FIXED** `src/contexts/domains/CoreDataContext.tsx`: Deferred initial Firestore listener registration (`tasks`, `habits`, `habitLogs`, `user_profiles`) behind `InteractionManager.runAfterInteractions`. On cold boot after process kill, Hermes renders `NavigationContainer`, `TelegramTabBar`, and `DashboardScreen` from warm L1 cache in 0ms with full 60 FPS touch responsiveness before listeners open.
 - **FIXED** `src/contexts/domains/WellnessContext.tsx`: Converted subscriptions to demand-based gating (`ensureSubscribed`), matching `AcademicContext`, `CreativeContext`, and `PlannerContext`. Unconditionally opening 5 wellness queries (`gymLogs`, `userGymPlan`, `waterLogs`, `sleepLogs`, `weightLogs`) on cold boot is eliminated. Listeners now activate on-demand when entering Gym or Wellbeing screens.

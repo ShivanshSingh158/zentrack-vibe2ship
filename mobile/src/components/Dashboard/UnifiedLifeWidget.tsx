@@ -238,7 +238,7 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
           </Svg>
           <View style={styles.ringCenter}>
             {nextClass ? (
-              <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={styles.ringCenterInner}>
+              <View style={styles.ringCenterInner}>
                 <Text style={styles.ringTimeText}>{nextClass.time}</Text>
                 <Text style={styles.ringClassTitle} numberOfLines={1}>
                   {nextClass.title}
@@ -248,16 +248,16 @@ export const UnifiedLifeWidget = React.memo(function UnifiedLifeWidget({
                     ONGOING
                   </Text>
                 )}
-              </Animated.View>
+              </View>
             ) : (
-              <Animated.View entering={FadeIn.duration(400)} exiting={FadeOut.duration(300)} style={styles.ringCenterInner}>
+              <View style={styles.ringCenterInner}>
                 <Text style={[styles.ringCount, { color: isDark ? primaryLevelColor : colors.textPrimary }]}>
                   {agendaCompleted}/{agendaTotal}
                 </Text>
                 <Text style={styles.ringLabel}>
                   {agendaTotal === 0 ? 'REST DAY' : 'QUESTS TODAY'}
                 </Text>
-              </Animated.View>
+              </View>
             )}
           </View>
         </AnimatedPressable>

@@ -390,6 +390,9 @@ export function parseLearningTopic(docData: any, docId: string): LearningTopic {
  * Fast equality check between previous state array and incoming snapshot array.
  * If every item is identical (same IDs and properties), returns true so React
  * can reuse the existing array reference and bail out of re-rendering.
+ *
+ * NOTE: Sorts by ID before comparing to handle non-deterministic document ordering
+ * from Firestore SDK snapshots vs cached local state.
  */
 export function areItemsEqual<T>(prev: T[] | null | undefined, next: T[] | null | undefined): boolean {
   if (prev === next) return true;
@@ -397,6 +400,13 @@ export function areItemsEqual<T>(prev: T[] | null | undefined, next: T[] | null 
   if (prev.length !== next.length) return false;
   if (prev.length === 0 && next.length === 0) return true;
   try {
+    const hasIds = (prev[0] as any)?.id !== undefined || (next[0] as any)?.id !== undefined;
+    if (hasIds) {
+      const sortById = (a: any, b: any) => String(a?.id ?? '').localeCompare(String(b?.id ?? ''));
+      const sortedPrev = [...prev].sort(sortById);
+      const sortedNext = [...next].sort(sortById);
+      return JSON.stringify(sortedPrev) === JSON.stringify(sortedNext);
+    }
     return JSON.stringify(prev) === JSON.stringify(next);
   } catch {
     return false;
