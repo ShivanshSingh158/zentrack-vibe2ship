@@ -34,6 +34,7 @@ export interface CoreDataContextType {
   allHabits: Habit[];
   habitLogs: HabitLog[];
   loading: boolean;
+  tasksReady: boolean;   // true once Firestore has confirmed tasks (or confirmed empty)
   pendingTaskCount: number;
   todayHabits: Habit[];
   pinnedModules: string[];
@@ -58,6 +59,7 @@ const DEFAULT_CORE_DATA: CoreDataContextType = {
   allHabits: [],
   habitLogs: [],
   loading: false,
+  tasksReady: false,
   pendingTaskCount: 0,
   todayHabits: [],
   pinnedModules: ["Tasks", "Gym", "Calendar", "Attendance"],
@@ -486,14 +488,14 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo(() => ({
     user, tasks, habits: activeHabits, allHabits: habits, habitLogs,
-    loading, pendingTaskCount, todayHabits,
+    loading, tasksReady: firestoreReady, pendingTaskCount, todayHabits,
     pinnedModules, setPinnedModules, googleAccessToken,
     refreshCoreData,
     optimisticAddTask, optimisticUpdateTask, optimisticDeleteTask,
     optimisticUpdateHabit, optimisticAddHabitLog, optimisticUpdateHabitLog, optimisticRemoveHabitLog
   }), [
     user?.uid, tasks, activeHabits, habits, habitLogs,
-    loading, pendingTaskCount, todayHabits,
+    loading, firestoreReady, pendingTaskCount, todayHabits,
     pinnedModules, googleAccessToken, refreshCoreData
   ]);
 

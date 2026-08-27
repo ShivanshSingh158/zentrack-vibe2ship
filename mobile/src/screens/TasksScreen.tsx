@@ -68,7 +68,7 @@ export default function TasksScreen() {
   // Guaranteed synchronous status bar clearance on Frame 0 — prevents upward jump under Android status bar
   const topInset = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0);
   
-  const { tasks, user, habits, habitLogs, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
+  const { tasks, user, habits, habitLogs, tasksReady, optimisticUpdateTask, optimisticDeleteTask, optimisticAddTask } = useCoreData();
   const todayDateStr = React.useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   // 1. Recurring Spawn Logic (Deferred background run)
@@ -380,13 +380,15 @@ export default function TasksScreen() {
           ] as any}
           keyExtractor={(item: any) => item.id}
           ListEmptyComponent={
-            <EmptyState
-              mascot="running"
-              title="All clear!"
-              subtitle="No tasks for today. Add one to stay on track."
-              mascotSize={110}
-              style={{ marginTop: 0, paddingVertical: 10 }}
-            />
+            tasksReady ? (
+              <EmptyState
+                mascot="running"
+                title="All clear!"
+                subtitle="No tasks for today. Add one to stay on track."
+                mascotSize={110}
+                style={{ marginTop: 0, paddingVertical: 10 }}
+              />
+            ) : null
           }
           renderSectionHeader={({ section: { title } }: any) => (
             <View style={styles.listSectionHeader}>
