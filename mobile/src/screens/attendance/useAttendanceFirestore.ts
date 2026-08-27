@@ -68,8 +68,10 @@ export function useAttendanceFirestore({
     const attendedKey = type === 'class' ? 'classesAttended' : 'labsAttended';
     const totalKey    = type === 'class' ? 'classesTotal'    : 'labsTotal';
 
-    // Check if we are updating an existing log
-    const existingLog = existingLogId ? logs.find(l => l.id === existingLogId) : null;
+    // Check if we are updating an existing log (passed by ID or matching subjectId + type + date)
+    const existingLog = existingLogId
+      ? logs.find(l => l.id === existingLogId)
+      : logs.find(l => l.subjectId === subject.id && l.type === type && l.date === logDate && (!isExtra ? !l.isExtra : l.isExtra));
 
     let newAttended: number;
     let newTotal: number;
