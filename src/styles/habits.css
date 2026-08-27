@@ -5,16 +5,18 @@
 :root {
   --hb-bg-base: #000000;
   --hb-bg-surface: #141416;
-  --hb-bg-surface-elevated: #1c1c1f;
-  --hb-bg-surface-subtle: #18181b;
+  --hb-bg-surface-elevated: #18181c;
+  --hb-bg-surface-subtle: #141416;
   --hb-border-subtle: #1c1c20;
   --hb-border-hover: #28282e;
   --hb-accent-purple: #a599ff;
   --hb-accent-purple-light: #b8afff;
-  --hb-accent-cyan: #89dceb;
+  --hb-accent-cyan: #38bdf8;
   --hb-accent-emerald: #5eda9e;
-  --hb-accent-amber: #fbbf24;
+  --hb-accent-amber: #ff9f4d;
+  --hb-accent-gold: #fbbf24;
   --hb-accent-rose: #ff6961;
+  --hb-accent-ice: #89dceb;
   --hb-text-primary: #ffffff;
   --hb-text-secondary: #f2f2f7;
   --hb-text-tertiary: #8e8e93;
@@ -47,7 +49,7 @@
 .hb-header-left {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
   flex-shrink: 0;
 }
 
@@ -72,10 +74,62 @@
 .hb-header-actions {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.55rem;
   flex-wrap: nowrap;
   flex-shrink: 0;
   justify-content: flex-end;
+}
+
+.hb-freeze-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(137, 220, 235, 0.1);
+  border: 1px solid rgba(137, 220, 235, 0.25);
+  color: #89dceb;
+  padding: 0.35rem 0.65rem;
+  border-radius: 9999px;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.hb-primary-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: #a599ff;
+  color: #000000;
+  border: none;
+  padding: 0.44rem 0.95rem;
+  border-radius: 12px;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.hb-primary-add-btn:hover {
+  background: #b8afff;
+  transform: translateY(-1px);
+}
+
+/* ── ROUTINE & FILTER STRIP ── */
+.hb-filter-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  scrollbar-width: none;
+}
+
+.hb-filter-strip::-webkit-scrollbar {
+  display: none;
 }
 
 .hb-filter-pill-btn {
@@ -110,62 +164,42 @@
   font-weight: 700;
 }
 
-.hb-primary-add-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  background: #a599ff;
-  color: #000000;
-  border: none;
-  padding: 0.44rem 0.95rem;
-  border-radius: 12px;
-  font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.hb-primary-add-btn:hover {
-  background: #b8afff;
-  transform: translateY(-1px);
-}
-
-/* ── SUMMARY METRICS QUAD-CARDS ROW ── */
-.hb-metrics-grid {
+/* ── MOMENTUM WATCHTOWER (3-CARD GRID) ── */
+.hb-momentum-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 0.85rem;
   width: 100%;
 }
 
-@media (max-width: 900px) {
-  .hb-metrics-grid {
-    grid-template-columns: repeat(2, 1fr);
+@media (max-width: 800px) {
+  .hb-momentum-grid {
+    grid-template-columns: 1fr;
   }
 }
 
-.hb-metric-card {
+.hb-momentum-card {
   background: #141416;
   border: 1px solid #1c1c20;
   border-radius: 16px;
-  padding: 0.95rem 1.15rem;
+  padding: 1rem 1.15rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.35rem;
   transition: border-color 0.15s ease;
 }
 
-.hb-metric-card:hover {
+.hb-momentum-card:hover {
   border-color: #28282e;
 }
 
-.hb-metric-top {
+.hb-momentum-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.hb-momentum-label {
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.72rem;
   font-weight: 700;
@@ -174,22 +208,37 @@
   letter-spacing: 0.05em;
 }
 
-.hb-metric-value {
-  font-family: var(--font-sans, 'Inter', sans-serif);
-  font-size: 1.55rem;
-  font-weight: 700;
-  color: #ffffff;
-  line-height: 1.2;
+.hb-momentum-val-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 0.15rem;
 }
 
-.hb-metric-subtext {
+.hb-momentum-value {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.hb-momentum-count {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #d1d1d6;
+}
+
+.hb-momentum-subtext {
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.74rem;
   color: #8e8e93;
   font-weight: 500;
+  margin-top: 0.15rem;
 }
 
-/* ── HABITS INTERACTIVE LIST / GRID (Mobile Parity) ── */
+/* ── HABITS INTERACTIVE LIST ── */
 .hb-habits-list {
   display: flex;
   flex-direction: column;
@@ -204,7 +253,7 @@
   background: #141416;
   border: 1px solid #1c1c20;
   border-radius: 16px;
-  padding: 0.95rem 1.25rem;
+  padding: 0.9rem 1.15rem;
   gap: 1rem;
   transition: border-color 0.15s ease;
 }
@@ -226,12 +275,12 @@
 .hb-card-left {
   display: flex;
   align-items: center;
-  gap: 0.95rem;
+  gap: 0.85rem;
   min-width: 0;
   flex: 1;
 }
 
-/* Check / Progress Trigger */
+/* Check Trigger */
 .hb-check-trigger {
   width: 36px;
   height: 36px;
@@ -245,17 +294,17 @@
   transition: all 0.15s ease;
   flex-shrink: 0;
   padding: 0;
+  color: #000000;
 }
 
 .hb-check-trigger:hover {
-  border-color: #a599ff;
+  border-color: #5eda9e;
   transform: scale(1.05);
 }
 
 .hb-check-trigger.completed {
   background: #5eda9e;
   border-color: #5eda9e;
-  color: #000000;
 }
 
 .hb-check-trigger.quantitative {
@@ -280,8 +329,6 @@
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  background: rgba(165, 153, 255, 0.12);
-  border: 1px solid rgba(165, 153, 255, 0.22);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -311,6 +358,16 @@
   color: #8e8e93;
 }
 
+.hb-timeslot-badge {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #a599ff;
+  background: rgba(165, 153, 255, 0.1);
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+}
+
 .hb-habit-meta {
   display: flex;
   align-items: center;
@@ -323,8 +380,8 @@
 
 .hb-streak-badge {
   font-weight: 600;
-  color: #fbbf24;
-  background: rgba(245, 158, 11, 0.12);
+  color: #ff9f4d;
+  background: rgba(255, 159, 77, 0.12);
   padding: 0.1rem 0.45rem;
   border-radius: 6px;
 }
@@ -339,13 +396,12 @@
 
 .hb-clean-badge {
   font-weight: 600;
-  color: #ff6961;
-  background: rgba(255, 105, 97, 0.12);
   padding: 0.1rem 0.45rem;
   border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
 }
 
-/* Right Group: 15-Day Heatmap & Menu */
+/* ── 7-DAY PRECISION WEEK STRIP ── */
 .hb-card-right {
   display: flex;
   align-items: center;
@@ -353,37 +409,89 @@
   flex-shrink: 0;
 }
 
-.hb-micro-heatmap {
+.hb-week-strip {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 
-.hb-heat-square {
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
+.hb-day-node {
+  width: 26px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.hb-heat-square.completed {
-  background: #a599ff;
+.hb-day-node:hover {
+  border-color: #a599ff;
+  transform: scale(1.08);
 }
 
-.hb-heat-square.freeze {
-  background: #06B6D4;
+.hb-day-node.today {
+  border-color: rgba(165, 153, 255, 0.4);
 }
 
-.hb-heat-square.missed {
-  background: rgba(255, 255, 255, 0.08);
+.hb-day-node.done {
+  color: #000000;
 }
 
-.hb-heat-square.future {
+.hb-day-node.frozen {
+  background: rgba(137, 220, 235, 0.15);
+  border-color: #89dceb;
+}
+
+.hb-day-node-letter {
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #8e8e93;
+}
+
+.hb-day-node.done .hb-day-node-letter {
+  color: #000000;
+}
+
+/* Actions Group */
+.hb-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.hb-card-action-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid transparent;
+  color: #8e8e93;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-/* Negative Habit Relapse Action Button */
+.hb-card-action-icon-btn:hover {
+  background: #18181c;
+  border-color: #28282e;
+  color: #ffffff;
+}
+
+.hb-card-action-icon-btn.delete:hover {
+  color: #ff6961;
+  background: rgba(255, 105, 97, 0.15);
+  border-color: rgba(255, 105, 97, 0.3);
+}
+
 .hb-relapse-btn {
   display: inline-flex;
   align-items: center;
@@ -410,32 +518,12 @@
   color: #8e8e93;
 }
 
-.hb-card-delete-btn {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  color: #8e8e93;
-  cursor: pointer;
-  width: 28px;
-  height: 28px;
-  border-radius: 14px;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.hb-card-delete-btn:hover {
-  color: #ff6961;
-  background: rgba(255, 105, 97, 0.15);
-  border-color: rgba(255, 105, 97, 0.3);
-}
-
 /* ── MODAL STUDIO STYLES ── */
 .hb-type-switcher {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
 }
 
 .hb-type-choice {
@@ -477,7 +565,7 @@
   width: 34px;
   height: 34px;
   border-radius: 8px;
-  background: #1c1c1f;
+  background: #18181c;
   border: 1px solid #1c1c20;
   display: flex;
   align-items: center;
@@ -491,5 +579,30 @@
   border-color: #a599ff;
   background: rgba(165, 153, 255, 0.15);
   transform: scale(1.08);
+}
+
+.hb-timeslot-btn {
+  background: #18181c;
+  border: 1px solid #1c1c20;
+  color: #8e8e93;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.45rem 0.2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.hb-timeslot-btn:hover {
+  color: #ffffff;
+  border-color: #28282e;
+}
+
+.hb-timeslot-btn.active {
+  background: rgba(165, 153, 255, 0.15);
+  border-color: #a599ff;
+  color: #a599ff;
 }
 

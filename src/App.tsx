@@ -287,7 +287,7 @@ const AnimatedRoutes = () => {
       <Routes location={location} key={location.pathname}>
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/home"        element={<PageTransition><ErrorBoundary name="LifeHome"><LifeHomeDashboard /></ErrorBoundary></PageTransition>} />
-        <Route path="/sara"        element={<PageTransition><ErrorBoundary name="SaraAgent"><HomeDashboard /></ErrorBoundary></PageTransition>} />
+        <Route path="/sara"        element={<Navigate to="/home" replace />} />
         <Route path="/tasks"       element={<PageTransition><ErrorBoundary name="Tasks"><Suspense fallback={<PageLoader />}><TodoListModule /></Suspense></ErrorBoundary></PageTransition>} />
         <Route path="/todo"        element={<Navigate to="/tasks" replace />} />
         <Route path="/calendar"    element={<PageTransition><ErrorBoundary name="Calendar"><Suspense fallback={<PageLoader />}><CalendarModule /></Suspense></ErrorBoundary></PageTransition>} />
@@ -396,13 +396,17 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const handleToggleSara = () => {
-      setShowSara(prev => !prev);
-    };
+    const handleToggleSara = () => setShowSara(prev => !prev);
+    const handleOpenSara = () => setShowSara(true);
+    const handleCloseSara = () => setShowSara(false);
 
     window.addEventListener('toggle-sara', handleToggleSara);
+    window.addEventListener('open-sara-modal', handleOpenSara);
+    window.addEventListener('close-sara-modal', handleCloseSara);
     return () => {
       window.removeEventListener('toggle-sara', handleToggleSara);
+      window.removeEventListener('open-sara-modal', handleOpenSara);
+      window.removeEventListener('close-sara-modal', handleCloseSara);
     };
   }, []);
 

@@ -91,6 +91,70 @@ export function useSaraOrchestration(
   const abortRef = useRef<AbortController | null>(null);
   const logIdRef = useRef(0);
 
+  const submitCommand = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+
+    if (!tryAcquireLock('user')) {
+      setTerminalLines(prev => [...prev.slice(-3), `[${now()}] ❌ Lock busy — retry`]);
+      return;
+    }
+
+    setTerminalLines(prev => [...prev.slice(-3), `[${now()}] > ${text.slice(0, 55)}`]);
+    setIsOrchestrating(true);
+    agentMemoryStore.appendMessage({ role: 'user', title: text });
+    abortRef.current = new AbortController();
+
+    try {
+      const stepsAccumulated: any[] = [];
+      const historyContext = messages.map(h => ({ role: h.role as 'user' | 'model', text: h.title }));
+
+      // ── Inject behavioral learning profile into globalData context ──────
+      // This makes every agent aware of the user's patterns before calling tools.
+      const enrichedAppContext = {
+        ...globalData,
+        _behaviorProfile: userLearningStore.getProfile(),
+        _behaviorContext: userLearningStore.getFullProfileContext(),
+      };
+
+      // ── Predictive intent cache: skip re-classification for known patterns ─
+      const cachedIntent = getCachedIntent(text);
+      if (cachedIntent) {
+        console.log(`[IntentCache] Hit: ${cachedIntent} for "${text.slice(0, 40)}"`);
+      }
+
+      const answer = await orchestrateAgent(
+        text,
+        enrichedAppContext,
+        '',
+        (step) => {
+          stepsAccumulated.push(step);
+          window.dispatchEvent(new CustomEvent('agent-log', { detail: { ...step, source: 'user' } }));
+        },
+        historyContext,
+        abortRef.current!.signal
+      );
+
+      // Cache the intent for future speed-up
+      // Simple heuristic: if the answer came back with tool calls, it was TASK; else CHAT
+      const wasTask = stepsAccumulated.some(s => s.type === 'tool_call');
+      setCachedIntent(text, wasTask ? 'TASK' : 'CHAT');
+
+      agentMemoryStore.appendMessage({
+        role: 'agent',
+        title: answer,
+        steps: stepsAccumulated.filter(s => s.type === 'tool_call' || s.type === 'tool_result'),
+      });
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        agentMemoryStore.appendMessage({ role: 'agent', title: `Sorry, something went wrong: ${err.message}` });
+        setTerminalLines(prev => [...prev.slice(-3), `[${now()}] ❌ ${err.message?.slice(0, 55)}`]);
+      }
+    } finally {
+      setIsOrchestrating(false);
+      releaseLock('user');
+    }
+  }, [messages, globalData]);
+
   // ── Agent-log event listener ───────────────────────────────────────────────
   useEffect(() => {
     const onLog = (e: CustomEvent) => {
@@ -150,15 +214,24 @@ export function useSaraOrchestration(
   useEffect(() => {
     const onExecuting = () => setIsOrchestrating(true);
     const onComplete = () => setIsOrchestrating(false);
+    const onShortcut = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const prompt = detail?.prompt || detail?.instruction;
+      if (prompt && typeof prompt === 'string') {
+        submitCommand(prompt);
+      }
+    };
     
     window.addEventListener('agent-executing', onExecuting);
     window.addEventListener('agent-complete', onComplete);
+    window.addEventListener('agent-shortcut', onShortcut as EventListener);
     
     return () => {
       window.removeEventListener('agent-executing', onExecuting);
       window.removeEventListener('agent-complete', onComplete);
+      window.removeEventListener('agent-shortcut', onShortcut as EventListener);
     };
-  }, []);
+  }, [submitCommand]);
 
   // ── Periodic ambient system line (High frequency for hacker feel) ─────────
   useEffect(() => {
@@ -234,70 +307,6 @@ export function useSaraOrchestration(
       if (isOrchestrating) releaseLock('user');
     };
   }, [isOrchestrating]);
-
-  const submitCommand = useCallback(async (text: string) => {
-    if (!text.trim()) return;
-
-    if (!tryAcquireLock('user')) {
-      setTerminalLines(prev => [...prev.slice(-3), `[${now()}] ❌ Lock busy — retry`]);
-      return;
-    }
-
-    setTerminalLines(prev => [...prev.slice(-3), `[${now()}] > ${text.slice(0, 55)}`]);
-    setIsOrchestrating(true);
-    agentMemoryStore.appendMessage({ role: 'user', title: text });
-    abortRef.current = new AbortController();
-
-    try {
-      const stepsAccumulated: any[] = [];
-      const historyContext = messages.map(h => ({ role: h.role as 'user' | 'model', text: h.title }));
-
-      // ── Inject behavioral learning profile into globalData context ──────
-      // This makes every agent aware of the user's patterns before calling tools.
-      const enrichedAppContext = {
-        ...globalData,
-        _behaviorProfile: userLearningStore.getProfile(),
-        _behaviorContext: userLearningStore.getFullProfileContext(),
-      };
-
-      // ── Predictive intent cache: skip re-classification for known patterns ─
-      const cachedIntent = getCachedIntent(text);
-      if (cachedIntent) {
-        console.log(`[IntentCache] Hit: ${cachedIntent} for "${text.slice(0, 40)}"`);
-      }
-
-      const answer = await orchestrateAgent(
-        text,
-        enrichedAppContext,
-        '',
-        (step) => {
-          stepsAccumulated.push(step);
-          window.dispatchEvent(new CustomEvent('agent-log', { detail: { ...step, source: 'user' } }));
-        },
-        historyContext,
-        abortRef.current!.signal
-      );
-
-      // Cache the intent for future speed-up
-      // Simple heuristic: if the answer came back with tool calls, it was TASK; else CHAT
-      const wasTask = stepsAccumulated.some(s => s.type === 'tool_call');
-      setCachedIntent(text, wasTask ? 'TASK' : 'CHAT');
-
-      agentMemoryStore.appendMessage({
-        role: 'agent',
-        title: answer,
-        steps: stepsAccumulated.filter(s => s.type === 'tool_call' || s.type === 'tool_result'),
-      });
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        agentMemoryStore.appendMessage({ role: 'agent', title: `Sorry, something went wrong: ${err.message}` });
-        setTerminalLines(prev => [...prev.slice(-3), `[${now()}] ❌ ${err.message?.slice(0, 55)}`]);
-      }
-    } finally {
-      setIsOrchestrating(false);
-      releaseLock('user');
-    }
-  }, [messages, globalData]);
 
   return {
     isOrchestrating,

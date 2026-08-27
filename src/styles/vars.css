@@ -191,6 +191,99 @@
 }
 
 /* ════════════════════════════════════════════════════════════
+   LIGHT THEME: "Frost Quartz" — Apple Warm Off-White
+   Matches mobile LIGHT_COLORS in mobile/src/theme/tokens.ts
+   ════════════════════════════════════════════════════════════ */
+body.theme-light,
+:root.theme-light,
+[data-theme="light"] {
+  --color-bg:              #F4F3F8;
+  --color-surface:         #FFFFFF;
+  --color-surface-2:       #F0EFF7;
+  --color-surface-3:       #EAE9F2;
+  --color-surface-raised:  #FFFFFF;
+
+  --color-border:          #E2E1EA;
+  --color-border-hover:    #D1D0DA;
+  --border-glow:           rgba(108, 92, 231, 0.30);
+
+  --bg-base:               var(--color-bg);
+  --bg-surface:            var(--color-surface);
+  --bg-surface-hover:      var(--color-surface-2);
+  --bg-surface-active:     var(--color-surface-3);
+  --bg-surface-2:          var(--color-surface-2);
+  --bg-elevated:           var(--color-surface-raised);
+  --border-subtle:         var(--color-border);
+  --border-hover:          var(--color-border-hover);
+
+  --color-text-1:          #1C1C1E;
+  --color-text-2:          #4B5563;
+  --color-text-3:          #636366;
+  --color-text-4:          #8E8E93;
+  --text-primary:          var(--color-text-1);
+  --text-secondary:        var(--color-text-2);
+  --text-muted:            var(--color-text-3);
+  --text-tertiary:         var(--color-text-4);
+
+  --zen-purple:            #6C5CE7;
+  --zen-purple-light:      #8274E8;
+  --zen-purple-dim:        rgba(108, 92, 231, 0.10);
+  --zen-purple-glow:       rgba(108, 92, 231, 0.20);
+  --zen-purple-border:     rgba(108, 92, 231, 0.25);
+
+  --zen-copper:            #6C5CE7;
+  --zen-copper-light:      #8274E8;
+  --zen-copper-dim:        rgba(108, 92, 231, 0.10);
+  --zen-copper-glow:       rgba(108, 92, 231, 0.20);
+  --zen-copper-border:     rgba(108, 92, 231, 0.25);
+
+  --zen-sage:              #059669;
+  --zen-sage-dim:          rgba(5, 150, 105, 0.10);
+  --zen-sage-glow:         rgba(5, 150, 105, 0.20);
+
+  --zen-amber:             #D97706;
+  --zen-amber-dim:         rgba(217, 119, 6, 0.10);
+
+  --zen-rose:              #DC2626;
+  --zen-rose-dim:          rgba(220, 38, 38, 0.10);
+
+  --accent-blue:           #0284C7;
+  --accent-blue-dim:       rgba(2, 132, 199, 0.10);
+
+  --accent-green:          #059669;
+  --accent-green-dim:      rgba(5, 150, 105, 0.10);
+  --accent-green-glow:     rgba(5, 150, 105, 0.20);
+  --accent-amber:          #D97706;
+  --accent-amber-dim:      rgba(217, 119, 6, 0.10);
+  --accent-red:            #DC2626;
+  --accent-red-dim:        rgba(220, 38, 38, 0.10);
+
+  --accent-primary:        var(--zen-purple);
+  --accent-primary-hover:  var(--zen-purple-light);
+  --accent-secondary:      var(--zen-sage);
+  --accent-tertiary:       var(--zen-rose);
+
+  --glass-1-bg:            rgba(255, 255, 255, 0.94);
+  --glass-1-border:        rgba(108, 92, 231, 0.14);
+  --glass-1-shadow:        0 4px 16px rgba(0, 0, 0, 0.06);
+
+  --glass-2-bg:            rgba(255, 255, 255, 0.98);
+  --glass-2-border:        rgba(108, 92, 231, 0.18);
+  --glass-2-shadow:        0 8px 32px rgba(0, 0, 0, 0.10);
+
+  --glass-3-bg:            rgba(240, 239, 247, 0.70);
+  --glass-3-border:        rgba(108, 92, 231, 0.10);
+
+  --sidebar-bg:            #FFFFFF;
+  --sidebar-border:        rgba(108, 92, 231, 0.08);
+  --sidebar-icon-default:  #636366;
+  --sidebar-icon-hover:    #1C1C1E;
+
+  --shadow-card:           0 0 0 1px rgba(0,0,0,0.05), 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-card-hover:     0 0 0 1px rgba(108,92,231,0.20), 0 8px 24px rgba(0,0,0,0.08);
+}
+
+/* ════════════════════════════════════════════════════════════
    URGENCY COLOR SYSTEM — Obsidian Cosmos palette
    Applied to :root by useUrgencyState hook in App.tsx
    ════════════════════════════════════════════════════════════ */

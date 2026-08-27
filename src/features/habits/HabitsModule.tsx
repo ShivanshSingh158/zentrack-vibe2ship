@@ -3,7 +3,8 @@ import { useGlobalData } from '../../contexts/GlobalDataContext';
 import {
   Plus, Check, Flame, Trophy, X, Trash2, Sparkles,
   ShieldAlert, RotateCcw, AlertTriangle, Snowflake, DollarSign,
-  TrendingUp, Calendar, Filter, Archive, CheckCircle2, ChevronRight
+  TrendingUp, Calendar, Filter, Archive, CheckCircle2, ChevronRight,
+  Sun, Moon, Zap, ShieldCheck, Edit2, Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ export interface Habit {
   type?: 'positive' | 'negative';
   color?: string;
   frequency?: string;
+  timeSlot?: 'anytime' | 'morning' | 'daytime' | 'evening';
   streak?: number;
   longestStreak?: number;
   targetCount?: number | null;
@@ -37,6 +39,7 @@ export interface HabitLog {
   date: string;
   count?: number;
   isFreeze?: boolean;
+  isRelapse?: boolean;
   timestamp?: any;
 }
 
@@ -117,37 +120,45 @@ export const HabitsModule = () => {
     if (res.leveledUp) toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
   };
 
-  // Filter & UI States
-  const [filterType, setFilterType] = useState<'all' | 'positive' | 'negative' | 'archived'>('all');
+  // Filter & Routine States
+  const [filterType, setFilterType] = useState<'all' | 'morning' | 'daytime' | 'evening' | 'negative' | 'archived'>('all');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [relapseConfirmHabit, setRelapseConfirmHabit] = useState<Habit | null>(null);
   const [burstEvent, setBurstEvent] = useState<{ x: number; y: number; color: string } | null>(null);
 
-  // Form State for Creating Habit
+  // Form State for Creating / Editing Habit
   const [formType, setFormType] = useState<'positive' | 'negative'>('positive');
   const [formName, setFormName] = useState('');
   const [formEmoji, setFormEmoji] = useState('⭐');
   const [formColor, setFormColor] = useState('#a599ff');
   const [formFrequency, setFormFrequency] = useState('daily');
+  const [formTimeSlot, setFormTimeSlot] = useState<'anytime' | 'morning' | 'daytime' | 'evening'>('anytime');
   const [formTargetCount, setFormTargetCount] = useState('');
   const [formCostPerDay, setFormCostPerDay] = useState('');
 
-  // Streak Freezes
+  // Streak Freezes Inventory
   const [freezesLeft, setFreezesLeft] = useState(2);
 
-  const POSITIVE_EMOJIS = ['⭐', '💧', '📚', '🏃', '🧘', '🍎', '💤', '🎯', '✍️', '💪', '🧠', '🌅'];
-  const NEGATIVE_EMOJIS = ['🚫', '🚭', '🍫', '📱', '🎮', '☕', '🍔', '💸', '🛋️', '🍺'];
+  const POSITIVE_EMOJIS = ['⭐', '💧', '📚', '🏃', '🧘', '🍎', '💤', '🎯', '✍️', '💪', '🧠', '🌅', '🚶', '💊', '🥗'];
+  const NEGATIVE_EMOJIS = ['🚫', '🚭', '🍫', '📱', '🎮', '☕', '🍔', '💸', '🛋️', '🍺', '🍿', '⏰'];
   const COLOR_PALETTE = ['#a599ff', '#5eda9e', '#38bdf8', '#fbbf24', '#ff6961', '#c084fc', '#f472b6'];
 
-  // 15 Past Dates for Micro Heatmap
-  const past15Days = useMemo(() => {
-    const dates: string[] = [];
+  // Past 7 Days Array (M T W T F S S) for Interactive Strip
+  const past7Days = useMemo(() => {
+    const dates: { dateStr: string; dayLabel: string; isToday: boolean }[] = [];
     const now = new Date();
-    for (let i = 14; i >= 0; i--) {
+    for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      dates.push(getLocalDateString(d));
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'narrow' }); // "M", "T", "W", etc.
+      const dateStr = getLocalDateString(d);
+      dates.push({
+        dateStr,
+        dayLabel: dayName,
+        isToday: i === 0,
+      });
     }
     return dates;
   }, []);
@@ -157,8 +168,11 @@ export const HabitsModule = () => {
     return allHabits.filter((h) => {
       if (filterType === 'archived') return h.archived === true;
       if (h.archived) return false;
-      if (filterType === 'positive') return h.type !== 'negative';
       if (filterType === 'negative') return h.type === 'negative';
+      if (h.type === 'negative') return false; // In positive views, exclude quit trackers
+      if (filterType === 'morning') return h.timeSlot === 'morning' || !h.timeSlot || h.timeSlot === 'anytime';
+      if (filterType === 'daytime') return h.timeSlot === 'daytime' || !h.timeSlot || h.timeSlot === 'anytime';
+      if (filterType === 'evening') return h.timeSlot === 'evening' || !h.timeSlot || h.timeSlot === 'anytime';
       return true;
     });
   }, [allHabits, filterType]);
@@ -206,14 +220,41 @@ export const HabitsModule = () => {
     };
   }, [allHabits, habitLogs, todayStr]);
 
+  // ── Open Modal for Create / Edit ──
+  const handleOpenCreateModal = () => {
+    setEditingHabit(null);
+    setFormType('positive');
+    setFormName('');
+    setFormEmoji('⭐');
+    setFormColor('#a599ff');
+    setFormFrequency('daily');
+    setFormTimeSlot('anytime');
+    setFormTargetCount('');
+    setFormCostPerDay('');
+    setIsCreateModalOpen(true);
+  };
+
+  const handleOpenEditModal = (habit: Habit) => {
+    setEditingHabit(habit);
+    setFormType(habit.type || 'positive');
+    setFormName(habit.name || '');
+    setFormEmoji(habit.emoji || '⭐');
+    setFormColor(habit.color || '#a599ff');
+    setFormFrequency(habit.frequency || 'daily');
+    setFormTimeSlot(habit.timeSlot || 'anytime');
+    setFormTargetCount(habit.targetCount ? String(habit.targetCount) : '');
+    setFormCostPerDay(habit.costPerDay ? String(habit.costPerDay) : '');
+    setIsCreateModalOpen(true);
+  };
+
   // ── Habit Actions Handlers ──
 
-  // 1. Toggle Positive Habit
-  const handleTogglePositive = async (habit: Habit, e: React.MouseEvent) => {
+  // 1. Toggle Positive Habit (Today or Historical Date)
+  const handleTogglePositiveDate = async (habit: Habit, dateStr: string, e?: React.MouseEvent) => {
     if (!user) return;
     const isQuantitative = typeof habit.targetCount === 'number' && habit.targetCount > 0;
-    const existingLog = habitLogs.find((l) => l.habitId === habit.id && l.date === todayStr);
-    const logDocId = `${habit.id}_${todayStr}`;
+    const existingLog = habitLogs.find((l) => l.habitId === habit.id && l.date === dateStr);
+    const logDocId = `${habit.id}_${dateStr}`;
 
     playPopSound();
 
@@ -221,50 +262,41 @@ export const HabitsModule = () => {
       const currentCount = existingLog ? (existingLog.count || 1) : 0;
 
       if (currentCount >= habit.targetCount!) {
-        // Decrement / undo completed quantitative count
-        const newCount = currentCount - 1;
-        if (newCount <= 0) {
-          await deleteDoc(doc(db, 'habit_logs', logDocId));
+        // Undo / reset
+        await deleteDoc(doc(db, 'habit_logs', logDocId));
+        if (dateStr === todayStr) {
           await updateDoc(doc(db, 'habits', habit.id), {
             streak: Math.max(0, (habit.streak || 1) - 1),
           });
-        } else {
-          await setDoc(doc(db, 'habit_logs', logDocId), {
-            habitId: habit.id,
-            userId: user.uid,
-            date: todayStr,
-            count: newCount,
-            timestamp: Date.now(),
-          });
         }
-        toast.info(`Updated ${habit.name}: ${Math.max(0, newCount)}/${habit.targetCount}`);
+        toast.info(`Unchecked ${habit.name}`);
         return;
       }
 
-      // Increment quantitative
+      // Increment quantitative count
       const newCount = currentCount + 1;
       const isNowComplete = newCount >= habit.targetCount!;
 
-      if (isNowComplete) {
-        setBurstEvent({ x: e.clientX, y: e.clientY, color: habit.color || '#a599ff' });
+      if (isNowComplete && e) {
+        setBurstEvent({ x: e.clientX, y: e.clientY, color: habit.color || '#5eda9e' });
       }
 
       await setDoc(doc(db, 'habit_logs', logDocId), {
         habitId: habit.id,
         userId: user.uid,
-        date: todayStr,
+        date: dateStr,
         count: newCount,
         timestamp: Date.now(),
       });
 
-      if (isNowComplete) {
+      if (isNowComplete && dateStr === todayStr) {
         const newStreak = (habit.streak || 0) + 1;
         await updateDoc(doc(db, 'habits', habit.id), {
           streak: newStreak,
           longestStreak: Math.max(newStreak, habit.longestStreak || 0),
         });
         awardXP('HABIT_LOG').then(async (res) => {
-          toast.success(`Completed ${habit.name}! +${res.added} XP 🔥 ${newStreak} day streak`);
+          toast.success(`Completed ${habit.name}! +${res.added} XP 🔥 ${newStreak}d streak`);
           if (newStreak === 7) {
             const streakRes = await awardXP('HABIT_STREAK_7');
             toast.success(`🔥 7-DAY STREAK MILESTONE! +${streakRes.added} XP Bonus!`);
@@ -275,7 +307,6 @@ export const HabitsModule = () => {
           if (res.leveledUp) {
             toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
           }
-          // PERFECT_DAY check
           const todayLogs = habitLogs.filter(l => l.date === todayStr);
           await checkPerfectDay(habit.id, newCount, todayLogs);
         });
@@ -289,45 +320,71 @@ export const HabitsModule = () => {
     if (existingLog) {
       // Undo
       await deleteDoc(doc(db, 'habit_logs', logDocId));
-      await updateDoc(doc(db, 'habits', habit.id), {
-        streak: Math.max(0, (habit.streak || 1) - 1),
-      });
-      toast.info(`Unmarked ${habit.name}`);
+      if (dateStr === todayStr) {
+        await updateDoc(doc(db, 'habits', habit.id), {
+          streak: Math.max(0, (habit.streak || 1) - 1),
+        });
+      }
+      toast.info(`Unchecked ${habit.name}`);
     } else {
       // Complete
-      setBurstEvent({ x: e.clientX, y: e.clientY, color: habit.color || '#a599ff' });
+      if (e) {
+        setBurstEvent({ x: e.clientX, y: e.clientY, color: habit.color || '#5eda9e' });
+      }
       await setDoc(doc(db, 'habit_logs', logDocId), {
         habitId: habit.id,
         userId: user.uid,
-        date: todayStr,
+        date: dateStr,
         count: 1,
         timestamp: Date.now(),
       });
-      const newStreak = (habit.streak || 0) + 1;
-      await updateDoc(doc(db, 'habits', habit.id), {
-        streak: newStreak,
-        longestStreak: Math.max(newStreak, habit.longestStreak || 0),
-      });
-      awardXP('HABIT_LOG').then(async (res) => {
-        toast.success(`Completed ${habit.name}! +${res.added} XP 🔥 ${newStreak} day streak`);
-        if (newStreak === 7) {
-          const streakRes = await awardXP('HABIT_STREAK_7');
-          toast.success(`🔥 7-DAY STREAK MILESTONE! +${streakRes.added} XP Bonus!`);
-        } else if (newStreak === 30) {
-          const streakRes = await awardXP('HABIT_STREAK_30');
-          toast.success(`🏆 30-DAY STREAK LEGEND! +${streakRes.added} XP Bonus!`);
-        }
-        if (res.leveledUp) {
-          toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
-        }
-        // PERFECT_DAY check
-        const todayLogs = habitLogs.filter(l => l.date === todayStr);
-        await checkPerfectDay(habit.id, 1, todayLogs);
-      });
+      if (dateStr === todayStr) {
+        const newStreak = (habit.streak || 0) + 1;
+        await updateDoc(doc(db, 'habits', habit.id), {
+          streak: newStreak,
+          longestStreak: Math.max(newStreak, habit.longestStreak || 0),
+        });
+        awardXP('HABIT_LOG').then(async (res) => {
+          toast.success(`Completed ${habit.name}! +${res.added} XP 🔥 ${newStreak}d streak`);
+          if (newStreak === 7) {
+            const streakRes = await awardXP('HABIT_STREAK_7');
+            toast.success(`🔥 7-DAY STREAK MILESTONE! +${streakRes.added} XP Bonus!`);
+          } else if (newStreak === 30) {
+            const streakRes = await awardXP('HABIT_STREAK_30');
+            toast.success(`🏆 30-DAY STREAK LEGEND! +${streakRes.added} XP Bonus!`);
+          }
+          if (res.leveledUp) {
+            toast.success(`🏆 LEVEL UP! You reached ${res.newTitle} (Level ${res.newLevel})!`);
+          }
+          const todayLogs = habitLogs.filter(l => l.date === todayStr);
+          await checkPerfectDay(habit.id, 1, todayLogs);
+        });
+      } else {
+        toast.success(`Logged ${habit.name} for ${formatDisplayDate(dateStr)}`);
+      }
     }
   };
 
-  // 2. Toggle Negative Habit (Relapse)
+  // 2. Freeze Streak for Today
+  const handleFreezeHabit = async (habit: Habit) => {
+    if (!user) return;
+    if (freezesLeft <= 0) {
+      toast.error('No streak freeze shields remaining for this month!');
+      return;
+    }
+    const logDocId = `${habit.id}_${todayStr}`;
+    await setDoc(doc(db, 'habit_logs', logDocId), {
+      habitId: habit.id,
+      userId: user.uid,
+      date: todayStr,
+      isFreeze: true,
+      timestamp: Date.now(),
+    });
+    setFreezesLeft(prev => Math.max(0, prev - 1));
+    toast.success(`❄️ Streak frozen for ${habit.name}! Streak protected.`);
+  };
+
+  // 3. Toggle Negative Habit (Relapse)
   const handleToggleNegative = async (habit: Habit) => {
     if (!user) return;
     const existingLog = habitLogs.find((l) => l.habitId === habit.id && l.date === todayStr);
@@ -357,34 +414,55 @@ export const HabitsModule = () => {
     setRelapseConfirmHabit(null);
   };
 
-  // 3. Create Habit
-  const handleCreateHabit = async () => {
+  // 4. Create / Save Habit
+  const handleSaveHabit = async () => {
     if (!user || !formName.trim()) return;
     try {
-      await addDoc(collection(db, 'habits'), {
-        userId: user.uid,
-        name: formName.trim(),
-        emoji: formEmoji || (formType === 'positive' ? '⭐' : '🚫'),
-        type: formType,
-        color: formColor,
-        frequency: formFrequency,
-        streak: 0,
-        longestStreak: 0,
-        startDate: todayStr,
-        targetCount: formType === 'positive' && formTargetCount ? parseInt(formTargetCount, 10) : null,
-        costPerDay: formType === 'negative' && formCostPerDay ? parseFloat(formCostPerDay) : 0,
-        archived: false,
-        createdAt: serverTimestamp(),
-      });
-      toast.success(`Created habit "${formName}"`);
+      if (editingHabit) {
+        await updateDoc(doc(db, 'habits', editingHabit.id), {
+          name: formName.trim(),
+          emoji: formEmoji || (formType === 'positive' ? '⭐' : '🚫'),
+          type: formType,
+          color: formColor,
+          frequency: formFrequency,
+          timeSlot: formTimeSlot,
+          targetCount: formType === 'positive' && formTargetCount ? parseInt(formTargetCount, 10) : null,
+          costPerDay: formType === 'negative' && formCostPerDay ? parseFloat(formCostPerDay) : 0,
+        });
+        toast.success(`Updated habit "${formName}"`);
+      } else {
+        await addDoc(collection(db, 'habits'), {
+          userId: user.uid,
+          name: formName.trim(),
+          emoji: formEmoji || (formType === 'positive' ? '⭐' : '🚫'),
+          type: formType,
+          color: formColor,
+          frequency: formFrequency,
+          timeSlot: formTimeSlot,
+          streak: 0,
+          longestStreak: 0,
+          startDate: todayStr,
+          targetCount: formType === 'positive' && formTargetCount ? parseInt(formTargetCount, 10) : null,
+          costPerDay: formType === 'negative' && formCostPerDay ? parseFloat(formCostPerDay) : 0,
+          archived: false,
+          createdAt: serverTimestamp(),
+        });
+        toast.success(`Created habit "${formName}"`);
+      }
       setIsCreateModalOpen(false);
-      setFormName('');
-      setFormTargetCount('');
-      setFormCostPerDay('');
+      setEditingHabit(null);
     } catch (err) {
       console.error(err);
-      toast.error('Failed to create habit');
+      toast.error('Failed to save habit');
     }
+  };
+
+  // 5. Archive / Unarchive Habit
+  const handleArchiveHabit = async (habit: Habit) => {
+    await updateDoc(doc(db, 'habits', habit.id), {
+      archived: !habit.archived,
+    });
+    toast.info(habit.archived ? `Unarchived ${habit.name}` : `Archived ${habit.name}`);
   };
 
   return (
@@ -401,43 +479,30 @@ export const HabitsModule = () => {
       {/* ── TOP HERO HEADER BAR ── */}
       <div className="hb-header-bar">
         <div className="hb-header-left">
-          <h1 className="hb-hero-title">Habits</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+            <h1 className="hb-hero-title">Habits & Daily Routines</h1>
+            <div className="analytics-live-badge">
+              <span className="analytics-live-dot" />
+              <span>Live Sync</span>
+            </div>
+          </div>
           <span className="hb-stats-subtitle">
-            {metrics.completedToday}/{metrics.positiveCount} done today ({metrics.completionRate}%) · ❄️ {freezesLeft} Freezes
+            {metrics.completedToday} of {metrics.positiveCount} completed today ({metrics.completionRate}%) · 🔥 {metrics.bestStreak}d peak streak
           </span>
         </div>
 
         <div className="hb-header-actions">
-          {/* Filter Pills */}
-          <button
-            type="button"
-            className={`hb-filter-pill-btn ${filterType === 'all' ? 'active' : ''}`}
-            onClick={() => setFilterType('all')}
-          >
-            <span>All ({allHabits.filter(h => !h.archived).length})</span>
-          </button>
-
-          <button
-            type="button"
-            className={`hb-filter-pill-btn ${filterType === 'positive' ? 'active' : ''}`}
-            onClick={() => setFilterType('positive')}
-          >
-            <span>✨ Building ({metrics.positiveCount})</span>
-          </button>
-
-          <button
-            type="button"
-            className={`hb-filter-pill-btn ${filterType === 'negative' ? 'active' : ''}`}
-            onClick={() => setFilterType('negative')}
-          >
-            <span>🚫 Quitting ({allHabits.filter(h => !h.archived && h.type === 'negative').length})</span>
-          </button>
+          {/* Streak Freeze Indicator */}
+          <div className="hb-freeze-pill" title="Streak Freeze Shields available this month">
+            <Snowflake size={14} color="#89dceb" />
+            <span>{freezesLeft} Freeze{freezesLeft === 1 ? '' : 's'}</span>
+          </div>
 
           {/* New Habit Solid CTA */}
           <button
             type="button"
             className="hb-primary-add-btn"
-            onClick={() => setIsCreateModalOpen(true)}
+            onClick={handleOpenCreateModal}
           >
             <Plus size={15} strokeWidth={2.5} />
             <span>New Habit</span>
@@ -445,48 +510,123 @@ export const HabitsModule = () => {
         </div>
       </div>
 
-      {/* ── SUMMARY METRICS QUAD-CARDS ── */}
-      <div className="hb-metrics-grid">
-        <div className="hb-metric-card">
-          <div className="hb-metric-top">
-            <span>Active Habits</span>
-            <Sparkles size={14} color="var(--hb-accent-purple)" />
+      {/* ── ROUTINE & CATEGORY FILTER STRIP ── */}
+      <div className="hb-filter-strip">
+        <button
+          type="button"
+          className={`hb-filter-pill-btn ${filterType === 'all' ? 'active' : ''}`}
+          onClick={() => setFilterType('all')}
+        >
+          <Zap size={13} />
+          <span>All Active ({allHabits.filter(h => !h.archived && h.type !== 'negative').length})</span>
+        </button>
+
+        <button
+          type="button"
+          className={`hb-filter-pill-btn ${filterType === 'morning' ? 'active' : ''}`}
+          onClick={() => setFilterType('morning')}
+        >
+          <Sun size={13} color="#fbbf24" />
+          <span>Morning Ritual</span>
+        </button>
+
+        <button
+          type="button"
+          className={`hb-filter-pill-btn ${filterType === 'daytime' ? 'active' : ''}`}
+          onClick={() => setFilterType('daytime')}
+        >
+          <Zap size={13} color="#38bdf8" />
+          <span>Daytime Focus</span>
+        </button>
+
+        <button
+          type="button"
+          className={`hb-filter-pill-btn ${filterType === 'evening' ? 'active' : ''}`}
+          onClick={() => setFilterType('evening')}
+        >
+          <Moon size={13} color="#a599ff" />
+          <span>Evening Wind-down</span>
+        </button>
+
+        <button
+          type="button"
+          className={`hb-filter-pill-btn ${filterType === 'negative' ? 'active' : ''}`}
+          onClick={() => setFilterType('negative')}
+        >
+          <ShieldAlert size={13} color="#ff6961" />
+          <span>Break Bad ({allHabits.filter(h => !h.archived && h.type === 'negative').length})</span>
+        </button>
+
+        <button
+          type="button"
+          className={`hb-filter-pill-btn ${filterType === 'archived' ? 'active' : ''}`}
+          onClick={() => setFilterType('archived')}
+          style={{ marginLeft: 'auto' }}
+        >
+          <Archive size={13} />
+          <span>Archived ({allHabits.filter(h => h.archived).length})</span>
+        </button>
+      </div>
+
+      {/* ── DAILY MOMENTUM WATCHTOWER (3-CARD GRID) ── */}
+      <div className="hb-momentum-grid">
+        {/* Card 1: Today's Perfect Day Progress */}
+        <div className="hb-momentum-card">
+          <div className="hb-momentum-card-top">
+            <span className="hb-momentum-label">Today's Progress</span>
+            <CheckCircle2 size={16} color="#5eda9e" />
           </div>
-          <span className="hb-metric-value">{metrics.activeCount}</span>
-          <span className="hb-metric-subtext">{metrics.positiveCount} building · {metrics.activeCount - metrics.positiveCount} avoiding</span>
+          <div className="hb-momentum-val-row">
+            <span className="hb-momentum-value" style={{ color: '#5eda9e' }}>
+              {metrics.completionRate}%
+            </span>
+            <span className="hb-momentum-count">
+              {metrics.completedToday}/{metrics.positiveCount} Done
+            </span>
+          </div>
+          <div className="att-progress-track" style={{ marginTop: '0.2rem' }}>
+            <div className="att-progress-fill safe" style={{ width: `${metrics.completionRate}%` }} />
+          </div>
         </div>
 
-        <div className="hb-metric-card">
-          <div className="hb-metric-top">
-            <span>Today's Progress</span>
-            <CheckCircle2 size={14} color="var(--hb-accent-emerald)" />
+        {/* Card 2: Consistency Multiplier */}
+        <div className="hb-momentum-card">
+          <div className="hb-momentum-card-top">
+            <span className="hb-momentum-label">Streak Multiplier</span>
+            <Flame size={16} color="#ff9f4d" />
           </div>
-          <span className="hb-metric-value" style={{ color: 'var(--hb-accent-emerald)' }}>
-            {metrics.completionRate}%
+          <div className="hb-momentum-val-row">
+            <span className="hb-momentum-value" style={{ color: '#ff9f4d' }}>
+              🔥 {metrics.bestStreak}d
+            </span>
+            <span className="hb-momentum-count">
+              Top Streak
+            </span>
+          </div>
+          <span className="hb-momentum-subtext">
+            {metrics.completedToday === metrics.positiveCount && metrics.positiveCount > 0
+              ? '★ Perfect Day achieved! +100 XP awarded!'
+              : `${Math.max(0, metrics.positiveCount - metrics.completedToday)} more to unlock Perfect Day bonus`}
           </span>
-          <span className="hb-metric-subtext">{metrics.completedToday} of {metrics.positiveCount} completed</span>
         </div>
 
-        <div className="hb-metric-card">
-          <div className="hb-metric-top">
-            <span>Best Active Streak</span>
-            <Flame size={14} color="var(--hb-accent-amber)" />
+        {/* Card 3: Money Saved (Break Bad Habits) or Freeze Inventory */}
+        <div className="hb-momentum-card">
+          <div className="hb-momentum-card-top">
+            <span className="hb-momentum-label">Money & Health Saved</span>
+            <DollarSign size={16} color="#38bdf8" />
           </div>
-          <span className="hb-metric-value" style={{ color: 'var(--hb-accent-amber)' }}>
-            🔥 {metrics.bestStreak}d
-          </span>
-          <span className="hb-metric-subtext">Longest continuous streak</span>
-        </div>
-
-        <div className="hb-metric-card">
-          <div className="hb-metric-top">
-            <span>Money Saved</span>
-            <DollarSign size={14} color="var(--hb-accent-emerald)" />
+          <div className="hb-momentum-val-row">
+            <span className="hb-momentum-value" style={{ color: '#38bdf8' }}>
+              +${metrics.totalSaved}
+            </span>
+            <span className="hb-momentum-count">
+              Saved
+            </span>
           </div>
-          <span className="hb-metric-value" style={{ color: 'var(--hb-accent-emerald)' }}>
-            +${metrics.totalSaved}
+          <span className="hb-momentum-subtext">
+            Across {allHabits.filter(h => h.type === 'negative' && !h.archived).length} avoided bad habits
           </span>
-          <span className="hb-metric-subtext">From avoiding bad habits</span>
         </div>
       </div>
 
@@ -504,7 +644,7 @@ export const HabitsModule = () => {
             <button
               type="button"
               className="hb-primary-add-btn"
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={handleOpenCreateModal}
               style={{ marginTop: '0.5rem' }}
             >
               <Plus size={14} strokeWidth={2.5} />
@@ -543,26 +683,6 @@ export const HabitsModule = () => {
               if (habit.costPerDay) moneySaved = daysClean * habit.costPerDay;
             }
 
-            // 15-day Micro Heatmap array
-            const heatmapSquares = past15Days.map((dateStr) => {
-              const log = habitLogs.find((l) => l.habitId === habit.id && l.date === dateStr);
-              let status: 'completed' | 'freeze' | 'missed' | 'future' = 'missed';
-
-              if (log) {
-                if (log.isFreeze) status = 'freeze';
-                else if (habit.targetCount && habit.targetCount > 0) {
-                  status = (log.count || 0) >= habit.targetCount ? 'completed' : 'missed';
-                } else {
-                  status = 'completed';
-                }
-              } else if (dateStr >= todayStr) {
-                status = 'future';
-              } else if (habit.startDate && dateStr < habit.startDate) {
-                status = 'future';
-              }
-              return { date: dateStr, status };
-            });
-
             return (
               <div
                 key={habit.id}
@@ -575,7 +695,8 @@ export const HabitsModule = () => {
                       <button
                         type="button"
                         className={`hb-check-trigger quantitative ${isCompleted ? 'completed' : ''}`}
-                        onClick={(e) => handleTogglePositive(habit, e)}
+                        onClick={(e) => handleTogglePositiveDate(habit, todayStr, e)}
+                        title={`Click to increment (${currentCount}/${habit.targetCount})`}
                       >
                         {currentCount}/{habit.targetCount}
                       </button>
@@ -583,7 +704,8 @@ export const HabitsModule = () => {
                       <button
                         type="button"
                         className={`hb-check-trigger ${isCompleted ? 'completed' : ''}`}
-                        onClick={(e) => handleTogglePositive(habit, e)}
+                        onClick={(e) => handleTogglePositiveDate(habit, todayStr, e)}
+                        title="Mark habit completed today"
                       >
                         {isCompleted && <Check size={18} strokeWidth={3} />}
                       </button>
@@ -594,7 +716,8 @@ export const HabitsModule = () => {
                   <div
                     className="hb-avatar-box"
                     style={{
-                      background: isNegative ? 'rgba(255,105,97,0.12)' : (habit.color ? `${habit.color}15` : 'rgba(165,153,255,0.12)')
+                      background: isNegative ? 'rgba(255,105,97,0.12)' : (habit.color ? `${habit.color}15` : 'rgba(165,153,255,0.12)'),
+                      border: isNegative ? '1px solid rgba(255,105,97,0.3)' : `1px solid ${habit.color || '#a599ff'}35`
                     }}
                   >
                     <span>{habit.emoji}</span>
@@ -602,9 +725,16 @@ export const HabitsModule = () => {
 
                   {/* Habit Details */}
                   <div className="hb-habit-details">
-                    <h3 className={`hb-habit-name ${isCompleted && !isNegative ? 'completed' : ''}`}>
-                      {habit.name}
-                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem' }}>
+                      <h3 className={`hb-habit-name ${isCompleted && !isNegative ? 'completed' : ''}`}>
+                        {habit.name}
+                      </h3>
+                      {habit.timeSlot && habit.timeSlot !== 'anytime' && (
+                        <span className="hb-timeslot-badge">
+                          {habit.timeSlot === 'morning' ? '☀️ Morning' : habit.timeSlot === 'daytime' ? '⚡ Daytime' : '🌙 Evening'}
+                        </span>
+                      )}
+                    </div>
 
                     <div className="hb-habit-meta">
                       {isNegative ? (
@@ -627,10 +757,13 @@ export const HabitsModule = () => {
                       ) : (
                         <>
                           <span className="hb-streak-badge">
-                            🔥 {habit.streak || 0} day streak
+                            🔥 {habit.streak || 0}d streak
                           </span>
                           {habit.longestStreak ? (
                             <span>• Best: {habit.longestStreak}d</span>
+                          ) : null}
+                          {habit.frequency && habit.frequency !== 'daily' ? (
+                            <span>• {habit.frequency}</span>
                           ) : null}
                           {habit.targetCount && habit.targetCount > 0 ? (
                             <span>• Target: {habit.targetCount}/day</span>
@@ -641,20 +774,32 @@ export const HabitsModule = () => {
                   </div>
                 </div>
 
-                {/* Right Side: Micro Heatmap & Actions */}
+                {/* Right Side: 7-Day Precision Interactive Strip & Actions */}
                 <div className="hb-card-right">
                   {!isNegative ? (
-                    <div className="hb-micro-heatmap" title="15-Day Consistency Heatmap">
-                      {heatmapSquares.map((sq, i) => (
-                        <div
-                          key={i}
-                          className={`hb-heat-square ${sq.status}`}
-                          style={{
-                            backgroundColor: sq.status === 'completed' ? (habit.color || 'var(--hb-accent-purple)') : undefined
-                          }}
-                          title={`${formatDisplayDate(sq.date)}: ${sq.status}`}
-                        />
-                      ))}
+                    <div className="hb-week-strip" title="7-Day History (Click node to toggle past days)">
+                      {past7Days.map((d) => {
+                        const dayLog = habitLogs.find((l) => l.habitId === habit.id && l.date === d.dateStr);
+                        const isDone = dayLog && !dayLog.isFreeze && (habit.targetCount ? (dayLog.count || 0) >= habit.targetCount : true);
+                        const isFrozen = dayLog?.isFreeze;
+
+                        return (
+                          <div
+                            key={d.dateStr}
+                            className={`hb-day-node ${isDone ? 'done' : ''} ${isFrozen ? 'frozen' : ''} ${d.isToday ? 'today' : ''}`}
+                            onClick={() => handleTogglePositiveDate(habit, d.dateStr)}
+                            title={`${formatDisplayDate(d.dateStr)}: ${isDone ? 'Completed' : isFrozen ? 'Streak Frozen' : 'Missed'} (Click to toggle)`}
+                            style={{
+                              backgroundColor: isDone ? (habit.color || '#5eda9e') : undefined,
+                              borderColor: isDone ? (habit.color || '#5eda9e') : undefined,
+                            }}
+                          >
+                            <span className="hb-day-node-letter">{d.dayLabel}</span>
+                            {isDone && <Check size={10} strokeWidth={3} color="#000" />}
+                            {isFrozen && <Snowflake size={10} color="#89dceb" />}
+                          </div>
+                        );
+                      })}
                     </div>
                   ) : (
                     <button
@@ -666,15 +811,46 @@ export const HabitsModule = () => {
                     </button>
                   )}
 
-                  {/* Delete Button */}
-                  <button
-                    type="button"
-                    className="hb-card-delete-btn"
-                    onClick={() => setDeleteConfirmId(habit.id)}
-                    title="Delete Habit"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {/* Actions: Freeze, Edit, Archive, Delete */}
+                  <div className="hb-card-actions">
+                    {!isNegative && !isCompleted && (
+                      <button
+                        type="button"
+                        className="hb-card-action-icon-btn"
+                        onClick={() => handleFreezeHabit(habit)}
+                        title="Freeze Today's Streak"
+                      >
+                        <Snowflake size={13} color="#89dceb" />
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="hb-card-action-icon-btn"
+                      onClick={() => handleOpenEditModal(habit)}
+                      title="Edit Habit"
+                    >
+                      <Edit2 size={13} />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="hb-card-action-icon-btn"
+                      onClick={() => handleArchiveHabit(habit)}
+                      title={habit.archived ? 'Unarchive' : 'Archive'}
+                    >
+                      <Archive size={13} />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="hb-card-action-icon-btn delete"
+                      onClick={() => setDeleteConfirmId(habit.id)}
+                      title="Delete Habit"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -682,18 +858,18 @@ export const HabitsModule = () => {
         )}
       </div>
 
-      {/* ── CREATE HABIT MODAL STUDIO ── */}
+      {/* ── CREATE / EDIT HABIT MODAL STUDIO (OBSIDIAN COSMOS GLASS) ── */}
       {isCreateModalOpen && (
-        <div className="notes-modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
-          <div className="notes-modal-content" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
-            <div className="notes-modal-header">
-              <h3 className="notes-modal-title">New Habit</h3>
-              <button type="button" className="notes-modal-close-btn" onClick={() => setIsCreateModalOpen(false)}>
-                <X size={18} />
+        <div className="att-modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
+          <div className="att-modal-dialog" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="att-modal-header">
+              <h3 className="att-modal-title">{editingHabit ? 'Edit Habit' : 'New Habit'}</h3>
+              <button type="button" className="att-modal-close-btn" onClick={() => setIsCreateModalOpen(false)}>
+                <X size={16} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.9rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               {/* Type Switcher: Building vs Quitting */}
               <div className="hb-type-switcher">
                 <button
@@ -701,10 +877,10 @@ export const HabitsModule = () => {
                   className={`hb-type-choice ${formType === 'positive' ? 'active-pos' : ''}`}
                   onClick={() => {
                     setFormType('positive');
-                    setFormEmoji('⭐');
+                    if (formEmoji === '🚫') setFormEmoji('⭐');
                   }}
                 >
-                  <Sparkles size={15} />
+                  <Sparkles size={14} />
                   <span>Building (Do)</span>
                 </button>
 
@@ -713,22 +889,21 @@ export const HabitsModule = () => {
                   className={`hb-type-choice ${formType === 'negative' ? 'active-neg' : ''}`}
                   onClick={() => {
                     setFormType('negative');
-                    setFormEmoji('🚫');
+                    if (formEmoji === '⭐') setFormEmoji('🚫');
                   }}
                 >
-                  <ShieldAlert size={15} />
+                  <ShieldAlert size={14} />
                   <span>Avoiding (Quit)</span>
                 </button>
               </div>
 
               {/* Name Input */}
-              <label style={{ fontSize: '0.76rem', color: 'var(--hb-text-tertiary)', fontWeight: 600 }}>
-                HABIT NAME
+              <label className="att-input-label">
+                <span>HABIT NAME</span>
                 <input
                   type="text"
                   placeholder={formType === 'positive' ? 'e.g. Read 20 Pages, Meditate, Hydrate' : 'e.g. Junk Food, Smoking, Doomscrolling'}
-                  className="notes-search-bar notes-search-input"
-                  style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                  className="att-modal-input"
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   autoFocus
@@ -737,7 +912,7 @@ export const HabitsModule = () => {
 
               {/* Emoji Preset Chips */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <span style={{ fontSize: '0.74rem', color: 'var(--hb-text-tertiary)', fontWeight: 600 }}>CHOOSE ICON</span>
+                <span className="att-input-label"><span>CHOOSE ICON</span></span>
                 <div className="hb-preset-chips">
                   {(formType === 'positive' ? POSITIVE_EMOJIS : NEGATIVE_EMOJIS).map((em) => (
                     <button
@@ -752,16 +927,39 @@ export const HabitsModule = () => {
                 </div>
               </div>
 
+              {/* Routine Time Slot Selector (Positive Only) */}
+              {formType === 'positive' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                  <span className="att-input-label"><span>TIME OF DAY ROUTINE</span></span>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.4rem' }}>
+                    {[
+                      { id: 'anytime', label: '⚡ Anytime' },
+                      { id: 'morning', label: '☀️ Morning' },
+                      { id: 'daytime', label: '⚡ Daytime' },
+                      { id: 'evening', label: '🌙 Evening' },
+                    ].map((slot) => (
+                      <button
+                        key={slot.id}
+                        type="button"
+                        className={`hb-timeslot-btn ${formTimeSlot === slot.id ? 'active' : ''}`}
+                        onClick={() => setFormTimeSlot(slot.id as any)}
+                      >
+                        {slot.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Quantitative Target Count (Positive Only) */}
               {formType === 'positive' && (
-                <label style={{ fontSize: '0.76rem', color: 'var(--hb-text-tertiary)', fontWeight: 600 }}>
-                  DAILY TARGET COUNT (OPTIONAL)
+                <label className="att-input-label">
+                  <span>DAILY TARGET COUNT (OPTIONAL)</span>
                   <input
                     type="number"
                     min="1"
                     placeholder="e.g. 8 (for 8 glasses of water or 20 pushups)"
-                    className="notes-search-bar notes-search-input"
-                    style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                    className="att-modal-input"
                     value={formTargetCount}
                     onChange={(e) => setFormTargetCount(e.target.value)}
                   />
@@ -770,15 +968,14 @@ export const HabitsModule = () => {
 
               {/* Daily Cost for Money Saved (Negative Only) */}
               {formType === 'negative' && (
-                <label style={{ fontSize: '0.76rem', color: 'var(--hb-text-tertiary)', fontWeight: 600 }}>
-                  ESTIMATED DAILY COST ($ / DAY)
+                <label className="att-input-label">
+                  <span>ESTIMATED DAILY COST ($ / DAY)</span>
                   <input
                     type="number"
                     min="0"
                     step="1"
                     placeholder="e.g. 10 (to track $ saved while clean)"
-                    className="notes-search-bar notes-search-input"
-                    style={{ width: '100%', borderRadius: 8, marginTop: '0.3rem' }}
+                    className="att-modal-input"
                     value={formCostPerDay}
                     onChange={(e) => setFormCostPerDay(e.target.value)}
                   />
@@ -787,21 +984,21 @@ export const HabitsModule = () => {
 
               {/* Color Accent Picker */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-                <span style={{ fontSize: '0.74rem', color: 'var(--hb-text-tertiary)', fontWeight: 600 }}>COLOR ACCENT</span>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span className="att-input-label"><span>COLOR ACCENT</span></span>
+                <div style={{ display: 'flex', gap: '0.55rem', alignItems: 'center' }}>
                   {COLOR_PALETTE.map((c) => (
                     <button
                       key={c}
                       type="button"
                       onClick={() => setFormColor(c)}
                       style={{
-                        width: '24px',
-                        height: '24px',
+                        width: '26px',
+                        height: '26px',
                         borderRadius: '50%',
                         backgroundColor: c,
-                        border: formColor === c ? '2px solid #ffffff' : 'none',
+                        border: formColor === c ? '2.5px solid #ffffff' : 'none',
                         cursor: 'pointer',
-                        transform: formColor === c ? 'scale(1.2)' : 'none',
+                        transform: formColor === c ? 'scale(1.15)' : 'none',
                         transition: 'all 0.15s ease',
                       }}
                     />
@@ -810,12 +1007,12 @@ export const HabitsModule = () => {
               </div>
             </div>
 
-            <div className="notes-modal-footer">
-              <button type="button" className="hb-filter-pill-btn" onClick={() => setIsCreateModalOpen(false)}>
+            <div className="att-modal-footer">
+              <button type="button" className="att-modal-cancel-btn" onClick={() => setIsCreateModalOpen(false)}>
                 Cancel
               </button>
-              <button type="button" className="hb-primary-add-btn" onClick={handleCreateHabit}>
-                Create Habit
+              <button type="button" className="att-modal-save-btn" onClick={handleSaveHabit}>
+                {editingHabit ? 'Save Changes' : 'Create Habit'}
               </button>
             </div>
           </div>

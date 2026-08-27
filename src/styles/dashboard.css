@@ -147,123 +147,138 @@
   border-color: rgba(255, 255, 255, 0.15);
 }
 
-/* ── PROACTIVE SARA HUD BANNER ── */
+/* ── PROACTIVE SARA HUD BANNER (LUMINESCENT DYNAMIC ISLAND) ── */
 .life-hud-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
-  padding: 0.65rem 1.15rem;
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: linear-gradient(90deg, rgba(165, 153, 255, 0.08) 0%, rgba(20, 20, 24, 0.9) 45%, rgba(56, 189, 248, 0.06) 100%);
+  border: 1px solid rgba(165, 153, 255, 0.22);
+  border-radius: 16px;
+  padding: 0.75rem 1.25rem;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.life-hud-banner:hover {
+  border-color: rgba(165, 153, 255, 0.4);
+  box-shadow: 0 6px 28px rgba(165, 153, 255, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .hud-banner-left {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.85rem;
   flex: 1;
 }
 
 .hud-bot-icon-circle {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: rgba(165, 153, 255, 0.12);
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: rgba(165, 153, 255, 0.18);
+  border: 1px solid rgba(165, 153, 255, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #a599ff;
+  box-shadow: 0 0 12px rgba(165, 153, 255, 0.25);
   flex-shrink: 0;
 }
 
 .hud-banner-text {
-  font-size: 0.82rem;
-  color: #d1d1d6;
-  line-height: 1.4;
+  font-size: 0.84rem;
+  color: #e2e1ea;
+  line-height: 1.45;
+  font-family: var(--font-sans, 'Inter', sans-serif);
 }
 
 .hud-banner-badge {
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: #a599ff;
-  margin-right: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: #000000;
+  background: #a599ff;
+  padding: 0.15rem 0.45rem;
+  border-radius: 6px;
+  margin-right: 0.5rem;
+  display: inline-block;
 }
 
 .hud-banner-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
   color: #a599ff;
   font-size: 0.78rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: opacity 150ms ease;
+  transition: all 150ms ease;
   white-space: nowrap;
   text-decoration: none;
-  background: transparent;
-  border: none;
+  background: rgba(165, 153, 255, 0.1);
+  border: 1px solid rgba(165, 153, 255, 0.25);
+  padding: 0.35rem 0.75rem;
+  border-radius: 10px;
 }
 
 .hud-banner-action-btn:hover {
-  opacity: 0.8;
+  background: rgba(165, 153, 255, 0.2);
+  border-color: rgba(165, 153, 255, 0.45);
+  transform: translateX(2px);
 }
 
-/* ── FULL-SCREEN 3-COLUMN BENTO GRID (Fills Remaining Height) ── */
+/* ── FULL-SCREEN 3-COLUMN BENTO GRID ── */
 .life-fullscreen-grid {
   display: grid;
   grid-template-columns: 1.05fr 1.35fr 1.05fr;
   gap: 1.15rem;
   width: 100%;
-  flex: 1;
-  align-items: stretch;
+  box-sizing: border-box;
 }
 
-@media (max-width: 1180px) {
-  .life-fullscreen-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .life-fullscreen-grid {
     grid-template-columns: 1fr;
   }
 }
 
-/* Column Container */
 .bento-column {
   display: flex;
   flex-direction: column;
   gap: 1.15rem;
-  height: 100%;
+  height: auto;
 }
 
 /* ── OBSIDIAN COSMOS MODULAR WIDGET CARDS ── */
 .life-widget-card {
-  background: #141416;
-  border: 1px solid #1c1c20;
-  border-radius: 18px;
-  padding: 1.15rem;
+  background: linear-gradient(170deg, #16161a 0%, #111114 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  gap: 0.95rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   box-sizing: border-box;
-  transition: border-color 200ms ease;
+  transition: all 200ms ease;
+  height: auto;
+  flex: none;
 }
 
 .life-widget-card:hover {
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: rgba(165, 153, 255, 0.22);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
 }
 
 .life-widget-card.expand-card {
-  flex: 1;
+  flex: none;
+  height: auto;
   display: flex;
   flex-direction: column;
 }
@@ -722,11 +737,38 @@
   font-family: var(--font-sans, 'Inter', sans-serif);
   font-size: 0.68rem;
   font-weight: 700;
-  color: #f59e0b;
-  background: rgba(245, 158, 11, 0.12);
-  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #ff9f4d;
+  background: rgba(255, 159, 77, 0.12);
+  border: 1px solid rgba(255, 159, 77, 0.25);
   padding: 0.15rem 0.45rem;
   border-radius: 6px;
+}
+
+.habit-check-pill {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid #3a3a3c;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  padding: 0;
+  color: #000000;
+}
+
+.habit-check-pill:hover {
+  border-color: #5eda9e;
+  transform: scale(1.1);
+}
+
+.habit-check-pill.completed {
+  background: #5eda9e;
+  border-color: #5eda9e;
+  color: #000000;
 }
 
 .water-tracker-compact {
@@ -1920,4 +1962,195 @@
   flex-shrink: 0;
   margin-left: 8px;
 }
+
+/* ==========================================================================
+   FROST QUARTZ LIGHT THEME OVERRIDES FOR HOME DASHBOARD
+   ========================================================================== */
+
+body.theme-light .life-dashboard-root {
+  color: #1C1C1E;
+}
+
+body.theme-light .life-greeting-title {
+  color: #1C1C1E;
+}
+
+body.theme-light .life-greeting-name {
+  color: #6C5CE7;
+}
+
+body.theme-light .life-date-subtitle {
+  color: #636366;
+}
+
+body.theme-light .life-date-dot {
+  background: #C7C6D3;
+}
+
+body.theme-light .life-streak-pill {
+  background: #FFFFFF;
+  border-color: #E2E1EA;
+  color: #D97706;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+body.theme-light .life-streak-pill:hover {
+  background: #F0EFF7;
+  border-color: rgba(217, 119, 6, 0.4);
+}
+
+body.theme-light .life-sara-bot-btn {
+  background: #6C5CE7;
+  color: #FFFFFF;
+  box-shadow: 0 4px 16px rgba(108, 92, 231, 0.25);
+}
+
+body.theme-light .life-sara-bot-btn:hover {
+  background: #5B4BC4;
+  box-shadow: 0 6px 20px rgba(108, 92, 231, 0.35);
+}
+
+body.theme-light .life-icon-circle-btn {
+  background: #FFFFFF;
+  border-color: #E2E1EA;
+  color: #1C1C1E;
+}
+
+body.theme-light .life-icon-circle-btn:hover {
+  background: #F0EFF7;
+  border-color: #D1D0DA;
+}
+
+body.theme-light .life-hud-banner {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: #E2E1EA;
+}
+
+body.theme-light .hud-banner-text {
+  color: #4B5563;
+}
+
+body.theme-light .life-widget-card,
+body.theme-light .academic-card {
+  background: #FFFFFF;
+  border-color: #E2E1EA;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+body.theme-light .life-widget-card:hover,
+body.theme-light .academic-card:hover {
+  border-color: #D1D0DA;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+}
+
+body.theme-light .widget-title,
+body.theme-light .academic-section-label {
+  color: #1C1C1E;
+}
+
+body.theme-light .matrix-metric-item {
+  background: #F0EFF7;
+  border-color: #E2E1EA;
+}
+
+body.theme-light .matrix-metric-item:hover {
+  background: #EAE9F2;
+}
+
+body.theme-light .mascot-xp-card {
+  background: #F0EFF7;
+  border-color: #E2E1EA;
+}
+
+body.theme-light .mascot-xp-card:hover {
+  background: #EAE9F2;
+  border-color: rgba(108, 92, 231, 0.3);
+}
+
+body.theme-light .wellness-recall-row {
+  background: rgba(108, 92, 231, 0.06);
+  border-color: rgba(108, 92, 231, 0.18);
+}
+
+body.theme-light .wellness-recall-title {
+  color: #1C1C1E;
+}
+
+body.theme-light .wellness-recall-sub {
+  color: #636366;
+}
+
+body.theme-light .wellness-review-btn {
+  background: #6C5CE7;
+  color: #FFFFFF;
+}
+
+body.theme-light .wellness-review-btn:hover {
+  background: #5B4BC4;
+}
+
+body.theme-light .academic-row {
+  background: #F0EFF7;
+}
+
+body.theme-light .academic-subj-name {
+  color: #1C1C1E;
+}
+
+/* Active Recall Banner & Review Button */
+.recall-banner-clean {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(165, 153, 255, 0.08);
+  border: 1px solid rgba(165, 153, 255, 0.22);
+  border-radius: 12px;
+  padding: 0.6rem 0.85rem;
+  transition: all 180ms ease;
+  user-select: none;
+  cursor: pointer;
+}
+
+.recall-banner-clean:hover {
+  background: rgba(165, 153, 255, 0.14);
+  border-color: rgba(165, 153, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.recall-btn-clean {
+  background: #5eda9e;
+  color: #000000;
+  border: none;
+  font-family: var(--font-sans, 'Inter', sans-serif);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.28rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 150ms ease;
+}
+
+.recall-btn-clean:hover {
+  background: #4ecb8f;
+  transform: scale(1.04);
+}
+
+body.theme-light .recall-banner-clean {
+  background: rgba(108, 92, 231, 0.08);
+  border-color: rgba(108, 92, 231, 0.22);
+}
+
+body.theme-light .recall-banner-clean:hover {
+  background: rgba(108, 92, 231, 0.12);
+  border-color: rgba(108, 92, 231, 0.35);
+}
+
+body.theme-light .recall-btn-clean {
+  background: #10b981;
+  color: #ffffff;
+}
+
 

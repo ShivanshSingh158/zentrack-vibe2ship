@@ -7,6 +7,7 @@ import { collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc
 import { db, auth } from '../../services/firebase';
 import type { LearningTopic, LearningSubTask } from '../../types';
 import { TopicCard } from './TopicCard';
+import { ResumeLearningHero } from './ResumeLearningHero';
 import { LectureTheaterModal } from './LectureTheaterModal';
 import { ScheduleStudyModal } from './ScheduleStudyModal';
 import { PlaylistImportModal } from './PlaylistImportModal';
@@ -467,8 +468,26 @@ export function LearningChecklistModule() {
   };
 
   // Filtering topics and subtasks
+  const [filterTab, setFilterTab] = useState<'all' | 'in-progress' | 'completed' | 'pinned'>('all');
+
   const filteredTopics = useMemo(() => {
     return topics
+      .filter(topic => {
+        const subs = topic.subTasks || [];
+        const subCompleted = subs.filter(s => s.isCompleted).length;
+        const subTotal = subs.length;
+
+        if (filterTab === 'in-progress') {
+          return subTotal === 0 || subCompleted < subTotal;
+        }
+        if (filterTab === 'completed') {
+          return subTotal > 0 && subCompleted === subTotal;
+        }
+        if (filterTab === 'pinned') {
+          return subs.some(s => s.pinned);
+        }
+        return true;
+      })
       .map(topic => {
         let matchingSubs = topic.subTasks || [];
 
@@ -491,30 +510,58 @@ export function LearningChecklistModule() {
         };
       })
       .filter(Boolean) as LearningTopic[];
-  }, [topics, searchQuery, hideCompleted]);
+  }, [topics, searchQuery, hideCompleted, filterTab]);
 
   // Compute total stats
   const totalStats = useMemo(() => {
     let completed = 0;
     let total = 0;
+    let totalHours = 0;
+    let inProgressTopics = 0;
+    let completedTopics = 0;
+    let pinnedTopics = 0;
+
     topics.forEach(t => {
-      (t.subTasks || []).forEach(s => {
-        total++;
-        if (s.isCompleted) completed++;
+      const subs = t.subTasks || [];
+      const subCompleted = subs.filter(s => s.isCompleted).length;
+      const subTotal = subs.length;
+      total += subTotal;
+      completed += subCompleted;
+      subs.forEach(s => {
+        if (s.estimatedHours) totalHours += s.estimatedHours;
       });
+
+      if (subTotal > 0 && subCompleted === subTotal) {
+        completedTopics++;
+      } else {
+        inProgressTopics++;
+      }
+
+      if (subs.some(s => s.pinned)) {
+        pinnedTopics++;
+      }
     });
+
     const pct = total > 0 ? (completed / total) * 100 : 0;
-    return { completed, total, pct };
+    return {
+      completed,
+      total,
+      pct,
+      totalHours: Math.round(totalHours * 10) / 10,
+      inProgressTopics,
+      completedTopics,
+      pinnedTopics,
+    };
   }, [topics]);
 
   return (
     <div className="learning-module-root">
-      {/* ── TOP HERO HEADER BAR ── */}
+      {/* ── 1. TOP HERO HEADER BAR ── */}
       <div className="learning-header-bar">
         <div className="learning-header-left">
-          <h1 className="learning-hero-title">Learning Checklist</h1>
+          <h1 className="learning-hero-title">Learning & Skill Studio</h1>
           <span className="learning-stats-subtitle">
-            {topics.length} Topics · {totalStats.completed}/{totalStats.total} Lectures ({totalStats.pct.toFixed(0)}%)
+            {topics.length} Courses · {totalStats.completed}/{totalStats.total} Lectures ({totalStats.pct.toFixed(0)}% Mastered) {totalStats.totalHours > 0 && `· ⏱ ${totalStats.totalHours}h Total`}
           </span>
         </div>
 
@@ -552,33 +599,68 @@ export function LearningChecklistModule() {
 
           <button
             type="button"
-            className={`learning-action-pill-btn ${hideCompleted ? 'active-filter' : ''}`}
-            onClick={() => setHideCompleted(prev => !prev)}
-            title={hideCompleted ? 'Show completed lectures' : 'Hide completed lectures'}
-          >
-            {hideCompleted ? <EyeOff size={14} color="#5eda9e" /> : <Eye size={14} />}
-            <span>{hideCompleted ? 'Hidden' : 'Hide Completed'}</span>
-          </button>
-
-          <button
-            type="button"
             className="learning-primary-add-btn"
             onClick={() => setShowAddTopicModal(true)}
           >
             <Plus size={15} strokeWidth={2.5} />
-            <span>New Topic</span>
+            <span>New Course</span>
           </button>
         </div>
       </div>
 
-      {/* ── SEARCH & FILTER ROW ── */}
+      {/* ── 2. RESUME LEARNING HERO SPOTLIGHT ── */}
+      <ResumeLearningHero
+        topics={topics}
+        onPlayVideo={handlePlayVideo}
+        onOpenSchedule={(top, sub) => setSchedulingData({ topic: top, subtask: sub })}
+        onToggleExpand={handleToggleExpand}
+      />
+
+      {/* ── 3. STRUCTURED SEARCH & FILTER COMMAND BAR ── */}
       <div className="learning-filter-row">
+        {/* Left Filter Tabs */}
+        <div className="learning-filter-pills-group">
+          <button
+            type="button"
+            className={`learning-filter-tab ${filterTab === 'all' ? 'active' : ''}`}
+            onClick={() => setFilterTab('all')}
+          >
+            <span>All Courses</span>
+            <span className="tab-count">{topics.length}</span>
+          </button>
+          <button
+            type="button"
+            className={`learning-filter-tab ${filterTab === 'in-progress' ? 'active' : ''}`}
+            onClick={() => setFilterTab('in-progress')}
+          >
+            <span>In Progress</span>
+            <span className="tab-count">{totalStats.inProgressTopics}</span>
+          </button>
+          <button
+            type="button"
+            className={`learning-filter-tab ${filterTab === 'completed' ? 'active' : ''}`}
+            onClick={() => setFilterTab('completed')}
+          >
+            <span>Completed</span>
+            <span className="tab-count">{totalStats.completedTopics}</span>
+          </button>
+          <button
+            type="button"
+            className={`learning-filter-tab ${filterTab === 'pinned' ? 'active' : ''}`}
+            onClick={() => setFilterTab('pinned')}
+          >
+            <span>⭐ Pinned</span>
+            <span className="tab-count">{totalStats.pinnedTopics}</span>
+          </button>
+        </div>
+
+        {/* Center Search Input */}
         <div className="learning-search-bar">
-          <Search size={15} className="search-icon" />
+          <Search size={14} className="search-icon" />
           <input
             type="text"
             className="learning-search-input"
-            placeholder="Search learning topics, courses, or specific lecture titles..."
+            placeholder="Search topics, courses, or specific lecture titles..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
           />
@@ -589,25 +671,38 @@ export function LearningChecklistModule() {
           )}
         </div>
 
-        <div className="learning-view-mode-toggle">
+        {/* Right Tools & View Switcher */}
+        <div className="learning-filter-right-tools">
           <button
             type="button"
-            className={`learning-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
-            onClick={() => handleSetViewMode('grid')}
-            title="Grid View (Cards)"
+            className={`learning-action-pill-btn ${hideCompleted ? 'active-filter' : ''}`}
+            onClick={() => setHideCompleted(prev => !prev)}
+            title={hideCompleted ? 'Show completed lectures' : 'Hide completed lectures'}
           >
-            <LayoutGrid size={14} />
-            <span>Cards</span>
+            {hideCompleted ? <EyeOff size={13} color="#5eda9e" /> : <Eye size={13} />}
+            <span>{hideCompleted ? 'Hidden' : 'Hide Done'}</span>
           </button>
-          <button
-            type="button"
-            className={`learning-view-btn ${viewMode === 'list' ? 'active' : ''}`}
-            onClick={() => handleSetViewMode('list')}
-            title="List View (Compact)"
-          >
-            <List size={14} />
-            <span>List</span>
-          </button>
+
+          <div className="learning-view-mode-toggle">
+            <button
+              type="button"
+              className={`learning-view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => handleSetViewMode('grid')}
+              title="Grid View (Cards)"
+            >
+              <LayoutGrid size={13} />
+              <span>Cards</span>
+            </button>
+            <button
+              type="button"
+              className={`learning-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => handleSetViewMode('list')}
+              title="List View (Compact)"
+            >
+              <List size={13} />
+              <span>List</span>
+            </button>
+          </div>
         </div>
       </div>
 

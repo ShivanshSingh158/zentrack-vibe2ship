@@ -9,7 +9,8 @@ import {
   GraduationCap, Check, X, RotateCcw, Plus, Calendar,
   Settings, Download, Trash2, Edit2, AlertTriangle, Sparkles,
   ChevronRight, RefreshCw, Layers, School, Clock, CheckCircle2,
-  CalendarDays, Flame, AlertCircle, FileText, Palmtree, MoreVertical
+  CalendarDays, Flame, AlertCircle, FileText, Palmtree, MoreVertical,
+  ShieldCheck, BookOpen, FlaskConical
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { playPopSound } from '../../utils/sound';
@@ -646,14 +647,14 @@ export const AttendanceModule = () => {
 
       {/* ── SEMESTER OVERVIEW & AT-RISK WARNING ROW ── */}
       <div className="att-overview-row">
-        {/* Meter Card */}
+        {/* Semester Overview Meter Card */}
         <div className="att-overview-card">
           <div className="att-overview-top">
             <h3 className="att-overview-title">Semester overview</h3>
             <span className="att-overview-stat-text">{globalAttended}/{globalTotal} classes</span>
           </div>
 
-          <div className="att-overview-meter-box">
+          <div className="att-overview-meter-row">
             <span className="att-overview-big-pct" style={{
               color: globalPct !== null ? (globalPct >= 75 ? '#5eda9e' : (globalPct >= 70 ? '#ff9f4d' : '#ff6961')) : '#8e8e93'
             }}>
@@ -671,12 +672,12 @@ export const AttendanceModule = () => {
           </div>
         </div>
 
-        {/* At-Risk Warning Card */}
+        {/* At-Risk Warning / All Safe Card */}
         {warningSubjects.length > 0 ? (
           <div className="att-warning-card">
             <div className="att-warning-header">
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <AlertTriangle size={16} color="#ff9f4d" />
+                <AlertTriangle size={15} color="#ff9f4d" />
                 <span>Low Attendance</span>
               </div>
               <button
@@ -705,10 +706,10 @@ export const AttendanceModule = () => {
             </div>
           </div>
         ) : (
-          <div className="att-overview-card" style={{ justifyContent: 'center' }}>
+          <div className="att-overview-card safe-centered">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', color: '#5eda9e' }}>
-              <CheckCircle2 size={20} />
-              <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>All subjects meet the target percentage!</span>
+              <CheckCircle2 size={18} />
+              <span style={{ fontSize: '0.86rem', fontWeight: 600 }}>All subjects meet the target percentage!</span>
             </div>
           </div>
         )}
@@ -824,7 +825,7 @@ export const AttendanceModule = () => {
                 <div key={session.id} className="att-session-row">
                   <div className="att-session-left">
                     <div className={`att-session-icon-box ${type}`}>
-                      {type === 'lab' ? <Layers size={18} /> : <School size={18} />}
+                      {type === 'lab' ? <FlaskConical size={17} strokeWidth={2.2} /> : <BookOpen size={17} strokeWidth={2.2} />}
                     </div>
 
                     <div className="att-session-info">
@@ -842,11 +843,12 @@ export const AttendanceModule = () => {
                     {matchingLog ? (
                       <button
                         type="button"
-                        className={`att-log-btn undo ${matchingLog.action}`}
+                        className={`att-undo-pill ${matchingLog.action}`}
                         onClick={() => handleUndoLog(matchingLog.id)}
+                        title="Click to Undo Attendance"
                       >
                         <span>
-                          {matchingLog.action === 'attended' ? '✓ Present' : matchingLog.action === 'missed' ? '✗ Absent' : 'Cancelled'}
+                          {matchingLog.action === 'attended' ? '✓ Present' : matchingLog.action === 'missed' ? '✕ Absent' : '⊘ Cancelled'}
                         </span>
                         <RotateCcw size={12} />
                       </button>
@@ -854,7 +856,7 @@ export const AttendanceModule = () => {
                       <>
                         <button
                           type="button"
-                          className="att-log-btn present"
+                          className="att-log-pill present"
                           onClick={() => handleLogSession(subject, type, 'attended')}
                         >
                           <Check size={13} strokeWidth={2.5} />
@@ -863,7 +865,7 @@ export const AttendanceModule = () => {
 
                         <button
                           type="button"
-                          className="att-log-btn absent"
+                          className="att-log-pill absent"
                           onClick={() => handleLogSession(subject, type, 'missed')}
                         >
                           <X size={13} strokeWidth={2.5} />
@@ -872,9 +874,9 @@ export const AttendanceModule = () => {
 
                         <button
                           type="button"
-                          className="att-log-btn cancelled"
+                          className="att-cancel-circle-btn"
                           onClick={() => handleLogSession(subject, type, 'cancelled')}
-                          title="Class Cancelled"
+                          title="Mark Class Cancelled"
                         >
                           <X size={14} />
                         </button>
@@ -955,7 +957,7 @@ export const AttendanceModule = () => {
                   <div className="att-subject-bars">
                     {/* Class Progress */}
                     <div className="att-sub-bar-row">
-                      <span className="att-sub-bar-tag" style={{ background: `${clsColor}18`, color: clsColor, border: `1px solid ${clsColor}35` }}>CLASS</span>
+                      <span className="att-sub-bar-tag class">CLASS</span>
                       <div className="att-progress-track">
                         <div className={`att-progress-fill ${clsStatus}`} style={{ width: `${Math.min(100, clsPct)}%` }} />
                       </div>
@@ -965,7 +967,7 @@ export const AttendanceModule = () => {
                     {/* Lab Progress */}
                     {(subject.labsTotal || 0) > 0 && (
                       <div className="att-sub-bar-row">
-                        <span className="att-sub-bar-tag" style={{ background: `${labColor}18`, color: labColor, border: `1px solid ${labColor}35` }}>LAB</span>
+                        <span className="att-sub-bar-tag lab">LAB</span>
                         <div className="att-progress-track">
                           <div className={`att-progress-fill ${labStatus}`} style={{ width: `${Math.min(100, labPct)}%` }} />
                         </div>
@@ -976,7 +978,14 @@ export const AttendanceModule = () => {
 
                   {/* Bunk Budget Pill */}
                   <div className={`att-bunk-badge ${bunk.status}`}>
-                    {bunk.text}
+                    {bunk.status === 'danger' ? (
+                      <AlertCircle size={13} className="att-bunk-icon" />
+                    ) : bunk.status === 'warning' ? (
+                      <AlertTriangle size={13} className="att-bunk-icon" />
+                    ) : (
+                      <CheckCircle2 size={13} className="att-bunk-icon" />
+                    )}
+                    <span>{bunk.text}</span>
                   </div>
 
                   {/* Card Footer */}
@@ -986,7 +995,7 @@ export const AttendanceModule = () => {
                       className="att-card-action-btn"
                       onClick={() => setSelectedHistorySubject(subject)}
                     >
-                      <FileText size={12} />
+                      <FileText size={13} />
                       <span>History</span>
                     </button>
 
@@ -1003,7 +1012,7 @@ export const AttendanceModule = () => {
                         setOverrideSubject(subject);
                       }}
                     >
-                      <Settings size={12} />
+                      <Settings size={13} />
                       <span>Override</span>
                     </button>
 
@@ -1011,8 +1020,9 @@ export const AttendanceModule = () => {
                       type="button"
                       className="att-card-action-btn"
                       onClick={() => setAddEditModal({ isOpen: true, subject })}
+                      style={{ marginLeft: 'auto' }}
                     >
-                      <Edit2 size={12} />
+                      <Edit2 size={13} />
                       <span>Edit</span>
                     </button>
                   </div>
@@ -1045,25 +1055,24 @@ export const AttendanceModule = () => {
 
       {/* ── SUBJECT HISTORY MODAL ── */}
       {selectedHistorySubject && (
-        <div className="notes-modal-overlay" onClick={() => setSelectedHistorySubject(null)}>
+        <div className="att-modal-overlay" onClick={() => setSelectedHistorySubject(null)}>
           <div
-            className="notes-modal-content"
+            className="att-modal-dialog"
             style={{
-              maxWidth: '580px',
-              maxHeight: '80vh',
+              maxWidth: '560px',
+              maxHeight: '82vh',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              overscrollBehavior: 'contain',
-              padding: '1.35rem 1.35rem 1.1rem 1.35rem',
+              padding: '1.35rem 1.35rem 1.15rem',
             }}
             onClick={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}
           >
-            <div className="notes-modal-header" style={{ flexShrink: 0, paddingBottom: '0.75rem' }}>
-              <h3 className="notes-modal-title">{selectedHistorySubject.name} Log History</h3>
-              <button type="button" className="notes-modal-close-btn" onClick={() => setSelectedHistorySubject(null)}>
-                <X size={18} />
+            <div className="att-modal-header" style={{ flexShrink: 0, paddingBottom: '0.5rem' }}>
+              <h3 className="att-modal-title">{selectedHistorySubject.name} Log History</h3>
+              <button type="button" className="att-modal-close-btn" onClick={() => setSelectedHistorySubject(null)}>
+                <X size={16} />
               </button>
             </div>
 
@@ -1072,56 +1081,58 @@ export const AttendanceModule = () => {
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.5rem',
+                gap: '0.45rem',
                 flex: 1,
                 overflowY: 'auto',
-                paddingRight: '6px',
+                paddingRight: '4px',
                 overscrollBehavior: 'contain',
                 minHeight: 0,
-                marginTop: '0.5rem',
+                marginTop: '0.35rem',
               }}
             >
               {(() => {
-                const histLogs = (selectedHistorySubject.id ? logsBySubjectId[selectedHistorySubject.id] : null) || logsBySubjectId[selectedHistorySubject.name] || [];
+                const rawLogs = (selectedHistorySubject.id ? logsBySubjectId[selectedHistorySubject.id] : null) || logsBySubjectId[selectedHistorySubject.name] || [];
+                // Sort Newest to Oldest (by date descending, then timestamp descending)
+                const histLogs = [...rawLogs].sort((a, b) => {
+                  if (b.date !== a.date) {
+                    return (b.date || '').localeCompare(a.date || '');
+                  }
+                  return (b.timestamp || 0) - (a.timestamp || 0);
+                });
+
                 if (histLogs.length === 0) {
                   return (
-                    <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--att-text-tertiary)', fontSize: '0.85rem' }}>
+                    <div style={{ textAlign: 'center', padding: '2.5rem 0', color: 'var(--att-text-tertiary)', fontSize: '0.85rem' }}>
                       No attendance logs recorded for this subject yet.
                     </div>
                   );
                 }
+
                 return histLogs.map(l => (
                   <div
                     key={l.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      background: 'var(--att-bg-surface-elevated)',
-                      border: '1px solid var(--att-border-subtle)',
-                      borderRadius: 10,
-                      padding: '0.65rem 0.85rem'
-                    }}
+                    className="att-history-row"
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
                       <span style={{
                         fontSize: '0.85rem',
-                        fontWeight: 600,
+                        fontWeight: 700,
                         color: l.action === 'attended' ? '#5eda9e' : l.action === 'missed' ? '#ff6961' : '#8e8e93'
                       }}>
-                        {l.action === 'attended' ? '✓ Attended' : l.action === 'missed' ? '✗ Missed' : 'Cancelled'} {l.isExtra ? '(Extra)' : ''} {l.type || 'class'}
+                        {l.action === 'attended' ? '✓ Attended' : l.action === 'missed' ? '✕ Missed' : '⊘ Cancelled'} {l.isExtra ? '(Extra)' : ''} {l.type || 'class'}
                       </span>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--att-text-tertiary)' }}>
+                      <span style={{ fontSize: '0.72rem', color: '#8e8e93', fontWeight: 500 }}>
                         {formatDisplayDate(l.date)} • {new Date(l.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
 
                     <button
                       type="button"
-                      className="att-log-btn undo"
+                      className="att-history-undo-btn"
                       onClick={() => handleUndoLog(l.id)}
+                      title="Undo this log"
                     >
-                      <RotateCcw size={12} />
+                      <RotateCcw size={12} strokeWidth={2.5} />
                       <span>Undo</span>
                     </button>
                   </div>
@@ -1134,23 +1145,22 @@ export const AttendanceModule = () => {
 
       {/* ── EXTRA CLASS MODAL ── */}
       {isExtraOpen && (
-        <div className="notes-modal-overlay" onClick={() => setIsExtraOpen(false)}>
-          <div className="notes-modal-content" onClick={e => e.stopPropagation()}>
-            <div className="notes-modal-header">
-              <h3 className="notes-modal-title">Log Extra Session</h3>
-              <button type="button" className="notes-modal-close-btn" onClick={() => setIsExtraOpen(false)}>
-                <X size={18} />
+        <div className="att-modal-overlay" onClick={() => setIsExtraOpen(false)}>
+          <div className="att-modal-dialog" onClick={e => e.stopPropagation()}>
+            <div className="att-modal-header">
+              <h3 className="att-modal-title">Log Extra Session</h3>
+              <button type="button" className="att-modal-close-btn" onClick={() => setIsExtraOpen(false)}>
+                <X size={16} />
               </button>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              <label style={{ fontSize: '0.78rem', color: 'var(--att-text-tertiary)', fontWeight: 600 }}>
-                SELECT SUBJECT
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.95rem' }}>
+              <label className="att-input-label">
+                <span>SELECT SUBJECT</span>
                 <select
                   value={extraSubjectId}
                   onChange={e => setExtraSubjectId(e.target.value)}
-                  className="notes-search-bar"
-                  style={{ width: '100%', marginTop: '0.35rem', color: '#fff', borderRadius: 8 }}
+                  className="att-modal-input"
                 >
                   {subjects.map(s => (
                     <option key={s.id} value={s.id} style={{ background: '#141416' }}>{s.name}</option>
@@ -1159,13 +1169,13 @@ export const AttendanceModule = () => {
               </label>
 
               {/* Class & Lab Buttons */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.35rem' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', marginTop: '0.2rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#a599ff' }}>Extra Lecture</span>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 600, color: '#a599ff' }}>Extra Lecture</span>
                   <div style={{ display: 'flex', gap: '0.45rem' }}>
                     <button
                       type="button"
-                      className="att-log-btn present"
+                      className="att-log-pill present"
                       onClick={() => {
                         const targetSub = subjects.find(s => s.id === extraSubjectId);
                         if (targetSub) handleLogSession(targetSub, 'class', 'attended', selectedDate, true);
@@ -1176,7 +1186,7 @@ export const AttendanceModule = () => {
                     </button>
                     <button
                       type="button"
-                      className="att-log-btn absent"
+                      className="att-log-pill absent"
                       onClick={() => {
                         const targetSub = subjects.find(s => s.id === extraSubjectId);
                         if (targetSub) handleLogSession(targetSub, 'class', 'missed', selectedDate, true);
@@ -1189,11 +1199,11 @@ export const AttendanceModule = () => {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#38bdf8' }}>Extra Practical / Lab</span>
+                  <span style={{ fontSize: '0.86rem', fontWeight: 600, color: '#38bdf8' }}>Extra Practical / Lab</span>
                   <div style={{ display: 'flex', gap: '0.45rem' }}>
                     <button
                       type="button"
-                      className="att-log-btn present"
+                      className="att-log-pill present"
                       onClick={() => {
                         const targetSub = subjects.find(s => s.id === extraSubjectId);
                         if (targetSub) handleLogSession(targetSub, 'lab', 'attended', selectedDate, true);
@@ -1204,7 +1214,7 @@ export const AttendanceModule = () => {
                     </button>
                     <button
                       type="button"
-                      className="att-log-btn absent"
+                      className="att-log-pill absent"
                       onClick={() => {
                         const targetSub = subjects.find(s => s.id === extraSubjectId);
                         if (targetSub) handleLogSession(targetSub, 'lab', 'missed', selectedDate, true);
@@ -1223,70 +1233,66 @@ export const AttendanceModule = () => {
 
       {/* ── MANUAL OVERRIDE MODAL ── */}
       {overrideSubject && (
-        <div className="notes-modal-overlay" onClick={() => setOverrideSubject(null)}>
-          <div className="notes-modal-content" onClick={e => e.stopPropagation()}>
-            <div className="notes-modal-header">
-              <h3 className="notes-modal-title">Manual Count Override ({overrideSubject.name})</h3>
-              <button type="button" className="notes-modal-close-btn" onClick={() => setOverrideSubject(null)}>
-                <X size={18} />
+        <div className="att-modal-overlay" onClick={() => setOverrideSubject(null)}>
+          <div className="att-modal-dialog" onClick={e => e.stopPropagation()}>
+            <div className="att-modal-header">
+              <h3 className="att-modal-title">Manual Count Override ({overrideSubject.name})</h3>
+              <button type="button" className="att-modal-close-btn" onClick={() => setOverrideSubject(null)}>
+                <X size={16} />
               </button>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
-                Classes Attended:
+            <div className="att-modal-grid-2">
+              <label className="att-input-label">
+                <span>Classes Attended:</span>
                 <input
                   type="number"
                   min="0"
-                  className="notes-search-bar notes-search-input"
-                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  className="att-modal-input"
                   value={overrideCounts.classesAttended}
                   onChange={e => setOverrideCounts({ ...overrideCounts, classesAttended: parseInt(e.target.value, 10) || 0 })}
                 />
               </label>
 
-              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
-                Classes Total:
+              <label className="att-input-label">
+                <span>Classes Total:</span>
                 <input
                   type="number"
                   min="0"
-                  className="notes-search-bar notes-search-input"
-                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  className="att-modal-input"
                   value={overrideCounts.classesTotal}
                   onChange={e => setOverrideCounts({ ...overrideCounts, classesTotal: parseInt(e.target.value, 10) || 0 })}
                 />
               </label>
 
-              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
-                Labs Attended:
+              <label className="att-input-label">
+                <span>Labs Attended:</span>
                 <input
                   type="number"
                   min="0"
-                  className="notes-search-bar notes-search-input"
-                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  className="att-modal-input"
                   value={overrideCounts.labsAttended}
                   onChange={e => setOverrideCounts({ ...overrideCounts, labsAttended: parseInt(e.target.value, 10) || 0 })}
                 />
               </label>
 
-              <label style={{ fontSize: '0.75rem', color: 'var(--att-text-tertiary)' }}>
-                Labs Total:
+              <label className="att-input-label">
+                <span>Labs Total:</span>
                 <input
                   type="number"
                   min="0"
-                  className="notes-search-bar notes-search-input"
-                  style={{ width: '100%', borderRadius: 8, marginTop: '0.25rem' }}
+                  className="att-modal-input"
                   value={overrideCounts.labsTotal}
                   onChange={e => setOverrideCounts({ ...overrideCounts, labsTotal: parseInt(e.target.value, 10) || 0 })}
                 />
               </label>
             </div>
 
-            <div className="notes-modal-footer">
-              <button type="button" className="att-action-pill-btn" onClick={() => setOverrideSubject(null)}>
+            <div className="att-modal-footer">
+              <button type="button" className="att-modal-cancel-btn" onClick={() => setOverrideSubject(null)}>
                 Cancel
               </button>
-              <button type="button" className="att-primary-add-btn" onClick={handleApplyOverride}>
+              <button type="button" className="att-modal-save-btn" onClick={handleApplyOverride}>
                 Save Counts
               </button>
             </div>

@@ -132,13 +132,109 @@ export const TodoListModule: React.FC = () => {
 
   const { startTimer } = usePomodoroContext();
 
+  // Filter states
+  const [priorityFilter, setPriorityFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string>('all');
+  const [quickInput, setQuickInput] = useState('');
+
+  // Extract all unique tags across tasks
+  const allAvailableTags = useMemo(() => {
+    const set = new Set<string>();
+    globalTodos.forEach(t => {
+      (t.tags || []).forEach(tag => set.add(tag));
+    });
+    return Array.from(set);
+  }, [globalTodos]);
+
+  // Handle Raycast-Style Fast Natural Language Quick Capture
+  const handleQuickCapture = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickInput.trim() || !user) return;
+
+    let text = quickInput.trim();
+    let priority: 'low' | 'medium' | 'high' = 'medium';
+    let timeSlot: string | null = null;
+    const tags: string[] = [];
+
+    // Parse priority (!p1, !p2, !p3 or p1, p2, p3)
+    if (/\b(?:!|p)1\b/i.test(text)) {
+      priority = 'high';
+      text = text.replace(/\b(?:!|p)1\b/gi, '').trim();
+    } else if (/\b(?:!|p)2\b/i.test(text)) {
+      priority = 'medium';
+      text = text.replace(/\b(?:!|p)2\b/gi, '').trim();
+    } else if (/\b(?:!|p)3\b/i.test(text)) {
+      priority = 'low';
+      text = text.replace(/\b(?:!|p)3\b/gi, '').trim();
+    }
+
+    // Parse tags (#tag)
+    const tagMatches = text.match(/#([a-zA-Z0-9_-]+)/g);
+    if (tagMatches) {
+      tagMatches.forEach(t => tags.push(t.replace('#', '')));
+      text = text.replace(/#([a-zA-Z0-9_-]+)/g, '').trim();
+    }
+
+    // Parse time (e.g. at 4pm, 14:30, 4:30pm)
+    const timeMatch = text.match(/\b(?:at\s+)?(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/i);
+    if (timeMatch && (timeMatch[0].toLowerCase().includes('am') || timeMatch[0].toLowerCase().includes('pm') || timeMatch[0].includes(':'))) {
+      timeSlot = timeMatch[1].trim();
+      text = text.replace(timeMatch[0], '').trim();
+    }
+
+    const count = todos.filter(t => t.status !== 'completed').length;
+    const newDoc: any = {
+      userId: user.uid,
+      title: text || quickInput.trim(),
+      text: text || quickInput.trim(),
+      date: selectedDate,
+      status: 'pending',
+      priority,
+      timeSlot,
+      subtasks: [],
+      tags,
+      isRecurring: false,
+      createdAt: Date.now(),
+      order: count,
+    };
+
+    try {
+      await addDoc(collection(db, 'todos'), newDoc);
+      playPopSound();
+      toast.success(`Task added: "${newDoc.title}" ⚡`);
+      setQuickInput('');
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to add task');
+    }
+  };
+
   // Sort & Filter todos for list view
   const pendingTodos = useMemo(() => {
     let list = todos.filter(t => t.status !== 'completed');
+
+    // Search term
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       list = list.filter(t => (t.title || t.text || '').toLowerCase().includes(q) || (t.tags || []).some(tag => tag.toLowerCase().includes(q)));
     }
+
+    // Priority filter
+    if (priorityFilter !== 'all') {
+      if (priorityFilter === 'high') {
+        list = list.filter(t => t.priority === 'high' || t.priority === 'P1');
+      } else if (priorityFilter === 'medium') {
+        list = list.filter(t => t.priority === 'medium' || t.priority === 'P2');
+      } else if (priorityFilter === 'low') {
+        list = list.filter(t => t.priority === 'low' || t.priority === 'P3' || t.priority === 'P4' || !t.priority);
+      }
+    }
+
+    // Tag filter
+    if (selectedTagFilter !== 'all') {
+      list = list.filter(t => (t.tags || []).includes(selectedTagFilter));
+    }
+
     if (sortBy === 'priority') {
       const pOrder: Record<string, number> = { high: 1, P1: 1, medium: 2, P2: 2, low: 3, P3: 3 };
       list.sort((a, b) => (pOrder[a.priority || 'medium'] || 2) - (pOrder[b.priority || 'medium'] || 2));
@@ -146,7 +242,7 @@ export const TodoListModule: React.FC = () => {
       list.sort((a, b) => (a.order || 0) - (b.order || 0));
     }
     return list;
-  }, [todos, searchTerm, sortBy]);
+  }, [todos, searchTerm, priorityFilter, selectedTagFilter, sortBy]);
 
   const completedTodos = useMemo(() => {
     return todos.filter(t => t.status === 'completed');
@@ -457,57 +553,44 @@ export const TodoListModule: React.FC = () => {
             <span>Analytics</span>
           </button>
 
-          {/* View Mode Switcher Dropdown */}
-          <div className="view-switcher-relative">
+          {/* Linear-Style Segmented View Switcher */}
+          <div className="tasks-view-segmented-bar">
             <button
               type="button"
-              className="tasks-action-pill-btn view-switch-btn"
-              onClick={() => setIsViewMenuOpen(v => !v)}
+              className={`segmented-view-btn ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setViewMode('list')}
+              title="List View"
             >
-              {viewMode === 'list' && <ListIcon size={15} />}
-              {viewMode === 'timeline' && <Clock size={15} />}
-              {viewMode === 'kanban' && <Columns size={15} />}
-              {viewMode === 'matrix' && <LayoutGrid size={15} />}
-              <span className="view-mode-label">{viewMode === 'list' ? 'List' : viewMode === 'timeline' ? 'Timeline' : viewMode === 'kanban' ? 'Kanban' : 'Matrix'}</span>
-              <ChevronDown size={14} />
+              <ListIcon size={14} />
+              <span>List</span>
             </button>
-
-            {isViewMenuOpen && (
-              <div className="view-dropdown-menu" onClick={() => setIsViewMenuOpen(false)}>
-                <button
-                  type="button"
-                  className={`view-menu-item ${viewMode === 'list' ? 'active' : ''}`}
-                  onClick={() => setViewMode('list')}
-                >
-                  <ListIcon size={15} />
-                  <span>List View</span>
-                </button>
-                <button
-                  type="button"
-                  className={`view-menu-item ${viewMode === 'timeline' ? 'active' : ''}`}
-                  onClick={() => setViewMode('timeline')}
-                >
-                  <Clock size={15} />
-                  <span>24h Timeline</span>
-                </button>
-                <button
-                  type="button"
-                  className={`view-menu-item ${viewMode === 'kanban' ? 'active' : ''}`}
-                  onClick={() => setViewMode('kanban')}
-                >
-                  <Columns size={15} />
-                  <span>Kanban Board</span>
-                </button>
-                <button
-                  type="button"
-                  className={`view-menu-item ${viewMode === 'matrix' ? 'active' : ''}`}
-                  onClick={() => setViewMode('matrix')}
-                >
-                  <LayoutGrid size={15} />
-                  <span>Eisenhower Matrix</span>
-                </button>
-              </div>
-            )}
+            <button
+              type="button"
+              className={`segmented-view-btn ${viewMode === 'timeline' ? 'active' : ''}`}
+              onClick={() => setViewMode('timeline')}
+              title="24h Timeline"
+            >
+              <Clock size={14} />
+              <span>Timeline</span>
+            </button>
+            <button
+              type="button"
+              className={`segmented-view-btn ${viewMode === 'kanban' ? 'active' : ''}`}
+              onClick={() => setViewMode('kanban')}
+              title="Kanban Board"
+            >
+              <Columns size={14} />
+              <span>Kanban</span>
+            </button>
+            <button
+              type="button"
+              className={`segmented-view-btn ${viewMode === 'matrix' ? 'active' : ''}`}
+              onClick={() => setViewMode('matrix')}
+              title="Eisenhower Matrix"
+            >
+              <LayoutGrid size={14} />
+              <span>Matrix</span>
+            </button>
           </div>
 
           {/* + Add Task Button */}
@@ -636,24 +719,89 @@ export const TodoListModule: React.FC = () => {
       <div className="tasks-viewport-container">
         {viewMode === 'list' && (
           <div className="tasks-list-view">
-            {/* Search filter if active */}
-            {todos.length > 4 && (
+            {/* Linear-Style Unified Command Toolbar (One Full-Width Structured Line) */}
+            <div className="tasks-filter-toolbar">
+              {/* Left: Priority Filter Pills & Tags */}
+              <div className="tasks-filter-pills-group">
+                <button
+                  type="button"
+                  className={`filter-pill-btn ${priorityFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setPriorityFilter('all')}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  className={`filter-pill-btn p1 ${priorityFilter === 'high' ? 'active' : ''}`}
+                  onClick={() => setPriorityFilter(priorityFilter === 'high' ? 'all' : 'high')}
+                >
+                  <span className="priority-dot p1" />
+                  <span>P1 Urgent</span>
+                </button>
+                <button
+                  type="button"
+                  className={`filter-pill-btn p2 ${priorityFilter === 'medium' ? 'active' : ''}`}
+                  onClick={() => setPriorityFilter(priorityFilter === 'medium' ? 'all' : 'medium')}
+                >
+                  <span className="priority-dot p2" />
+                  <span>P2 High</span>
+                </button>
+                <button
+                  type="button"
+                  className={`filter-pill-btn p3 ${priorityFilter === 'low' ? 'active' : ''}`}
+                  onClick={() => setPriorityFilter(priorityFilter === 'low' ? 'all' : 'low')}
+                >
+                  <span className="priority-dot p3" />
+                  <span>P3 Normal</span>
+                </button>
+
+                {allAvailableTags.length > 0 && (
+                  <select
+                    value={selectedTagFilter}
+                    onChange={e => setSelectedTagFilter(e.target.value)}
+                    className="tasks-tag-filter-select"
+                  >
+                    <option value="all">🏷️ All Tags</option>
+                    {allAvailableTags.map(tag => (
+                      <option key={tag} value={tag}>#{tag}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Center: Search Bar filling all remaining space */}
               <div className="tasks-search-wrap">
                 <Search size={14} color="#8e8e93" />
                 <input
                   type="text"
-                  placeholder="Search tasks or #tags..."
+                  placeholder="Search tasks, subtasks, or #tags..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className="tasks-search-input"
                 />
                 {searchTerm && (
-                  <button type="button" onClick={() => setSearchTerm('')} className="search-clear-btn">
+                  <button type="button" onClick={() => setSearchTerm('')} className="search-clear-btn" title="Clear search">
                     <X size={13} />
                   </button>
                 )}
               </div>
-            )}
+
+              {/* Right: Quick Sort Dropdown & Task Counter Badge */}
+              <div className="tasks-toolbar-right-group">
+                <button
+                  type="button"
+                  className="toolbar-sort-btn"
+                  onClick={() => setSortBy(s => s === 'priority' ? 'default' : 'priority')}
+                  title={`Current sort: ${sortBy === 'priority' ? 'Priority' : 'Manual Order'}`}
+                >
+                  <Filter size={13} />
+                  <span>{sortBy === 'priority' ? 'Priority' : 'Custom'}</span>
+                </button>
+                <div className="toolbar-count-badge">
+                  <span>{pendingTodos.length} Tasks</span>
+                </div>
+              </div>
+            </div>
 
             {/* Pending Tasks DragDrop List */}
             {pendingTodos.length === 0 && completedTodos.length === 0 ? (

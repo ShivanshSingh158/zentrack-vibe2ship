@@ -7,6 +7,10 @@ import { getEventColors, parseTimeTo24h, parseTaskTimeSlot } from './calendarUti
 import { CalendarDayView, type MergedCalendarEvent } from './CalendarDayView';
 import { CalendarWeekView } from './CalendarWeekView';
 import { CalendarMonthView } from './CalendarMonthView';
+import { CalendarAgendaView } from './CalendarAgendaView';
+import { CalendarMiniMonth } from './CalendarMiniMonth';
+import { CalendarLayerToggles, type CalendarLayersState } from './CalendarLayerToggles';
+import { CalendarInspector } from './CalendarInspector';
 import { AddEventModal } from './AddEventModal';
 import { EventDetailModal } from './EventDetailModal';
 import { AiFreeSlotModal } from './AiFreeSlotModal';
@@ -18,7 +22,8 @@ import {
 } from '../../services/googleCalendar';
 import {
   Calendar as CalendarIcon, Clock, Sparkles, Plus, RefreshCw, Link2,
-  Check, ChevronDown, LayoutGrid, Columns, ListFilter
+  Check, ChevronLeft, ChevronRight, LayoutGrid, Columns, ListFilter,
+  CalendarDays, AlignLeft
 } from 'lucide-react';
 import { toast } from 'sonner';
 import '../../styles/calendar.css';
@@ -42,13 +47,23 @@ export const CalendarModule: React.FC = () => {
     return getLocalDateString();
   });
 
-
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('day');
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'month' | 'agenda'>('day');
   const [customEvents, setCustomEvents] = useState<MergedCalendarEvent[]>([]);
   const [gcalEvents, setGcalEvents] = useState<MergedCalendarEvent[]>([]);
-  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
 
-  // Modals
+  // Layer Visibility State
+  const [layers, setLayers] = useState<CalendarLayersState>({
+    showClasses: true,
+    showGCal: true,
+    showGym: true,
+    showTasks: true,
+  });
+
+  const handleToggleLayer = (key: keyof CalendarLayersState) => {
+    setLayers(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Modals & Inspector
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isAiSlotModalOpen, setIsAiSlotModalOpen] = useState(false);
@@ -58,9 +73,6 @@ export const CalendarModule: React.FC = () => {
   // AI Free Slot State
   const [aiLoading, setAiLoading] = useState(false);
   const [aiSlotResult, setAiSlotResult] = useState<string | null>(null);
-
-  // GCal sync status
-  const [isGCalSyncing, setIsGCalSyncing] = useState(false);
 
   // ── 1. Real-time Firestore Custom Events Subscription ──
   useEffect(() => {
@@ -95,7 +107,7 @@ export const CalendarModule: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // ── 2. Merge All 5 Data Sources ──
+  // ── 2. Merge All Data Sources ──
   const allMergedEvents = useMemo(() => {
     const merged: MergedCalendarEvent[] = [...customEvents];
 
@@ -124,9 +136,8 @@ export const CalendarModule: React.FC = () => {
       }
     });
 
-    // (B) Academic Timetable (Classes & Labs) for all dates
+    // (B) Academic Timetable (Classes & Labs)
     if (attendanceSubjects && attendanceSubjects.length > 0) {
-      // Generate for a rolling 60-day window around selectedDate
       const [selY, selM, selD] = selectedDate.split('-').map(Number);
       const baseD = new Date(selY, (selM || 1) - 1, selD || 1);
       for (let offset = -30; offset <= 30; offset++) {
@@ -199,112 +210,80 @@ export const CalendarModule: React.FC = () => {
             type: 'gym',
             startTime: gLog?.startTime || '18:00',
             endTime: gLog?.endTime || '19:30',
-            location: 'Fitness Center',
+            location: 'Gym',
           });
         }
       }
     }
 
-    // (D) Google Calendar external events
+    // (D) Google Calendar Sync
     gcalEvents.forEach(ge => {
-      merged.push(ge);
+      merged.push({ ...ge, fromGCal: true });
     });
 
     return merged;
   }, [customEvents, tasks, attendanceSubjects, gymSchedule, gymLogs, gcalEvents, selectedDate]);
 
-  // Timed vs Unscheduled for Selected Day
-  const { timedDayEvents, unscheduledDayEvents } = useMemo(() => {
-    const dayEvts = allMergedEvents.filter(e => e.date === selectedDate);
-    const timed: MergedCalendarEvent[] = [];
-    const unscheduled: MergedCalendarEvent[] = [];
-
-    dayEvts.forEach(e => {
-      if (e.startTime && e.startTime.trim()) {
-        timed.push(e);
-      } else {
-        unscheduled.push(e);
-      }
+  // ── 3. Filter by Active Layer Toggles ──
+  const filteredEvents = useMemo(() => {
+    return allMergedEvents.filter(e => {
+      if (e.type === 'class' || e.type === 'lab') return layers.showClasses;
+      if (e.fromGCal) return layers.showGCal;
+      if (e.type === 'gym') return layers.showGym;
+      if (e.type === 'todo') return layers.showTasks;
+      return true;
     });
+  }, [allMergedEvents, layers]);
 
-    return { timedDayEvents: timed, unscheduledDayEvents: unscheduled };
+  // Layer Counts for today
+  const layerCounts = useMemo(() => {
+    const today = selectedDate;
+    const dayEvts = allMergedEvents.filter(e => e.date === today);
+    return {
+      classes: dayEvts.filter(e => e.type === 'class' || e.type === 'lab').length,
+      gcal: dayEvts.filter(e => e.fromGCal).length,
+      gym: dayEvts.filter(e => e.type === 'gym').length,
+      tasks: dayEvts.filter(e => e.type === 'todo').length,
+    };
   }, [allMergedEvents, selectedDate]);
 
-  // ── 3. Event CRUD Operations ──
-  const handleSaveEvent = async (eventData: {
-    title: string;
-    date: string;
-    type: string;
-    startTime?: string;
-    endTime?: string;
-    location?: string;
-    description?: string;
-    syncToGCal?: boolean;
-  }) => {
-    const user = auth.currentUser;
-    if (!user) {
-      toast.error('Please log in to create events');
-      return;
-    }
+  // Day specific events
+  const timedDayEvents = useMemo(() => {
+    return filteredEvents.filter(e => e.date === selectedDate && !!e.startTime);
+  }, [filteredEvents, selectedDate]);
 
-    try {
-      let gcalEventId: string | undefined;
+  const unscheduledDayEvents = useMemo(() => {
+    return filteredEvents.filter(e => e.date === selectedDate && !e.startTime);
+  }, [filteredEvents, selectedDate]);
 
-      // Google Calendar 2-Way Sync
-      if (eventData.syncToGCal && isSignedInToGoogle()) {
-        try {
-          gcalEventId = await addEventToGoogleCalendar({
-            zentrackId: `evt_${Date.now()}`,
-            title: eventData.title,
-            date: eventData.date,
-            type: eventData.type,
-            startDateTime: eventData.startTime ? `${eventData.date}T${eventData.startTime}:00` : undefined,
-            endDateTime: eventData.endTime ? `${eventData.date}T${eventData.endTime}:00` : undefined,
-            location: eventData.location,
-            description: eventData.description,
-          });
-        } catch (gcalErr) {
-          console.warn('GCal push failed:', gcalErr);
-        }
+  // ── 4. Keyboard Shortcuts (Cron / Superhuman Style) ──
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input/textarea
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
+
+      if (e.key === 't' || e.key === 'T') {
+        setSelectedDate(getLocalDateString());
+      } else if (e.key === 'd' || e.key === 'D') {
+        setViewMode('day');
+      } else if (e.key === 'w' || e.key === 'W') {
+        setViewMode('week');
+      } else if (e.key === 'm' || e.key === 'M') {
+        setViewMode('month');
+      } else if (e.key === 'a' || e.key === 'A') {
+        setViewMode('agenda');
+      } else if (e.key === 'c' || e.key === 'C') {
+        setIsAddModalOpen(true);
+      } else if (e.key === 'Escape') {
+        setSelectedEvent(null);
       }
+    };
 
-      await addDoc(collection(db, 'calendar_events'), {
-        userId: user.uid,
-        title: eventData.title,
-        date: eventData.date,
-        type: eventData.type,
-        startTime: eventData.startTime || null,
-        endTime: eventData.endTime || null,
-        location: eventData.location || null,
-        description: eventData.description || null,
-        gcalEventId: gcalEventId || null,
-        createdAt: new Date().toISOString(),
-      });
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
-      toast.success('Event scheduled successfully');
-    } catch (err: any) {
-      console.error('Failed to create event:', err);
-      toast.error('Failed to create event');
-    }
-  };
-
-  const handleDeleteEvent = async (event: MergedCalendarEvent) => {
-    try {
-      if (event.gcalEventId && isSignedInToGoogle()) {
-        try {
-          await deleteGoogleCalendarEvent(event.gcalEventId);
-        } catch { /* best effort */ }
-      }
-
-      await deleteDoc(doc(db, 'calendar_events', event.id));
-      toast.success('Event deleted');
-    } catch (err: any) {
-      console.error('Failed to delete event:', err);
-      toast.error('Failed to delete event');
-    }
-  };
-
-  // ── 4. AI Free Slot Finder ──
+  // ── 5. AI Free Slot Finder ──
   const handleFindFreeSlot = async () => {
     setIsAiSlotModalOpen(true);
     setAiLoading(true);
@@ -341,7 +320,7 @@ Provide a concise, energetic 2-paragraph response.`;
     }
   };
 
-  // Quick Slot creation from Day / Week click
+  // Quick Slot creation
   const handleQuickAddAtTime = (timeStr: string) => {
     setQuickAddStartTime(timeStr);
     setIsAddModalOpen(true);
@@ -355,49 +334,94 @@ Provide a concise, energetic 2-paragraph response.`;
 
   const handleSelectEvent = (event: MergedCalendarEvent) => {
     setSelectedEvent(event);
-    setIsDetailModalOpen(true);
+  };
+
+  // Date Navigator Helpers
+  const handlePrevDay = () => {
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const dateObj = new Date(y, (m || 1) - 1, d || 1);
+    dateObj.setDate(dateObj.getDate() - (viewMode === 'week' ? 7 : 1));
+    setSelectedDate(getLocalDateString(dateObj));
+  };
+
+  const handleNextDay = () => {
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const dateObj = new Date(y, (m || 1) - 1, d || 1);
+    dateObj.setDate(dateObj.getDate() + (viewMode === 'week' ? 7 : 1));
+    setSelectedDate(getLocalDateString(dateObj));
   };
 
   const [selY, selM, selD] = selectedDate.split('-').map(Number);
   const displayDateObj = new Date(selY, (selM || 1) - 1, selD || 1);
+  const formattedHeaderDate = displayDateObj.toLocaleDateString('en-US', {
+    month: 'long',
+    year: 'numeric',
+  });
 
   return (
     <div className="calendar-module-root">
-      {/* ── TOP HEADER BAR ── */}
+      {/* ── TOP CONTROL HEADER ── */}
       <div className="calendar-header-bar">
         <div className="calendar-header-left">
-          <h1 className="calendar-hero-title">Calendar</h1>
-          <span className="calendar-date-subtitle">
-            {displayDateObj.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-          </span>
+          <div className="calendar-date-nav-group">
+            <h1 className="calendar-hero-title">{formattedHeaderDate}</h1>
+            <div className="calendar-nav-chevrons">
+              <button type="button" onClick={handlePrevDay} className="nav-chevron-btn" title="Previous">
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedDate(getLocalDateString())}
+                className="nav-today-btn"
+                title="Jump to Today (Key: T)"
+              >
+                Today
+              </button>
+              <button type="button" onClick={handleNextDay} className="nav-chevron-btn" title="Next">
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="calendar-header-actions">
-          {/* iOS-Style Segmented View Switcher Pills */}
+          {/* Linear-Style Segmented View Switcher */}
           <div className="calendar-segmented-view-picker">
             <button
               type="button"
               className={`segmented-view-btn ${viewMode === 'day' ? 'active' : ''}`}
               onClick={() => setViewMode('day')}
+              title="Day View (Key: D)"
             >
-              <Clock size={14} />
+              <Clock size={13} />
               <span>Day</span>
             </button>
             <button
               type="button"
               className={`segmented-view-btn ${viewMode === 'week' ? 'active' : ''}`}
               onClick={() => setViewMode('week')}
+              title="Week View (Key: W)"
             >
-              <Columns size={14} />
+              <Columns size={13} />
               <span>Week</span>
             </button>
             <button
               type="button"
               className={`segmented-view-btn ${viewMode === 'month' ? 'active' : ''}`}
               onClick={() => setViewMode('month')}
+              title="Month View (Key: M)"
             >
-              <LayoutGrid size={14} />
+              <LayoutGrid size={13} />
               <span>Month</span>
+            </button>
+            <button
+              type="button"
+              className={`segmented-view-btn ${viewMode === 'agenda' ? 'active' : ''}`}
+              onClick={() => setViewMode('agenda')}
+              title="Agenda View (Key: A)"
+            >
+              <AlignLeft size={13} />
+              <span>Agenda</span>
             </button>
           </div>
 
@@ -406,13 +430,13 @@ Provide a concise, energetic 2-paragraph response.`;
             type="button"
             className="calendar-action-pill-btn ai-btn"
             onClick={handleFindFreeSlot}
-            title="Find continuous focus window"
+            title="Find continuous deep work window"
           >
             <Sparkles size={14} color="#38bdf8" />
             <span>AI Free Slot</span>
           </button>
 
-          {/* Google Calendar Connect / Sync Button */}
+          {/* Google Calendar Connect Button */}
           <button
             type="button"
             className={`calendar-action-pill-btn gcal-btn ${isGoogleConnected ? 'connected' : ''}`}
@@ -431,6 +455,7 @@ Provide a concise, energetic 2-paragraph response.`;
               setQuickAddStartTime('09:00');
               setIsAddModalOpen(true);
             }}
+            title="Create Event (Key: C)"
           >
             <Plus size={15} strokeWidth={2.5} />
             <span>Add Event</span>
@@ -438,64 +463,128 @@ Provide a concise, energetic 2-paragraph response.`;
         </div>
       </div>
 
-      {/* ── MAIN VIEW CONTAINER ── */}
-      <div className="calendar-viewport-container">
-        {viewMode === 'day' && (
-          <CalendarDayView
+      {/* ── 3-COLUMN POWER DESKTOP LAYOUT ── */}
+      <div className="calendar-power-layout">
+        {/* LEFT SIDEBAR: Mini Month + Layer Toggles */}
+        <aside className="calendar-left-sidebar">
+          <CalendarMiniMonth
             selectedDate={selectedDate}
-            timedEvents={timedDayEvents}
-            unscheduledEvents={unscheduledDayEvents}
-            onSelectEvent={handleSelectEvent}
-            onQuickAddAtTime={handleQuickAddAtTime}
-          />
-        )}
-
-        {viewMode === 'week' && (
-          <CalendarWeekView
-            selectedDate={selectedDate}
-            allEvents={allMergedEvents}
             onSelectDate={setSelectedDate}
-            onSelectEvent={handleSelectEvent}
-            onQuickAddAtDateTime={handleQuickAddAtDateTime}
+            events={allMergedEvents}
           />
-        )}
 
-        {viewMode === 'month' && (
-          <CalendarMonthView
-            selectedDate={selectedDate}
-            allEvents={allMergedEvents}
-            onSelectDate={setSelectedDate}
-            onSelectEvent={handleSelectEvent}
-            onAddEventClick={() => {
-              setQuickAddStartTime('09:00');
-              setIsAddModalOpen(true);
-            }}
+          <CalendarLayerToggles
+            layers={layers}
+            onToggleLayer={handleToggleLayer}
+            eventCounts={layerCounts}
           />
+        </aside>
+
+        {/* CENTER VIEWPORT: Day / Week / Month / Agenda */}
+        <main className="calendar-center-viewport">
+          {viewMode === 'day' && (
+            <CalendarDayView
+              selectedDate={selectedDate}
+              timedEvents={timedDayEvents}
+              unscheduledEvents={unscheduledDayEvents}
+              onSelectEvent={handleSelectEvent}
+              onQuickAddAtTime={handleQuickAddAtTime}
+            />
+          )}
+
+          {viewMode === 'week' && (
+            <CalendarWeekView
+              selectedDate={selectedDate}
+              allEvents={filteredEvents}
+              onSelectDate={setSelectedDate}
+              onSelectEvent={handleSelectEvent}
+              onQuickAddAtDateTime={handleQuickAddAtDateTime}
+            />
+          )}
+
+          {viewMode === 'month' && (
+            <CalendarMonthView
+              selectedDate={selectedDate}
+              allEvents={filteredEvents}
+              onSelectDate={setSelectedDate}
+              onSelectEvent={handleSelectEvent}
+            />
+          )}
+
+          {viewMode === 'agenda' && (
+            <CalendarAgendaView
+              events={filteredEvents}
+              selectedDate={selectedDate}
+              onSelectEvent={handleSelectEvent}
+              onSelectDate={setSelectedDate}
+            />
+          )}
+        </main>
+
+        {/* RIGHT INSPECTOR (Visible when an event is selected) */}
+        {selectedEvent && (
+          <aside className="calendar-right-inspector">
+            <CalendarInspector
+              event={selectedEvent}
+              onClose={() => setSelectedEvent(null)}
+              onEdit={(evt) => {
+                setSelectedEvent(evt);
+                setIsDetailModalOpen(true);
+              }}
+              onDelete={async (evt) => {
+                if (window.confirm('Delete this event?')) {
+                  try {
+                    await deleteDoc(doc(db, 'calendar_events', evt.id));
+                    toast.success('Event deleted');
+                    setSelectedEvent(null);
+                  } catch (err) {
+                    toast.error('Failed to delete event');
+                  }
+                }
+              }}
+            />
+          </aside>
         )}
       </div>
 
-      {/* ── MODALS ── */}
+      {/* ── MODALS & SHEETS ── */}
       <AddEventModal
         isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
         selectedDate={selectedDate}
         initialStartTime={quickAddStartTime}
-        isGoogleConnected={isGoogleConnected}
-        onClose={() => setIsAddModalOpen(false)}
-        onSave={handleSaveEvent}
+        onEventCreated={() => setIsAddModalOpen(false)}
       />
 
-      <EventDetailModal
-        isOpen={isDetailModalOpen}
-        event={selectedEvent}
-        onClose={() => setIsDetailModalOpen(false)}
-        onDelete={handleDeleteEvent}
-      />
+      {selectedEvent && (
+        <EventDetailModal
+          isOpen={isDetailModalOpen}
+          onClose={() => {
+            setIsDetailModalOpen(false);
+          }}
+          event={selectedEvent}
+          onEventUpdated={() => {
+            setIsDetailModalOpen(false);
+            setSelectedEvent(null);
+          }}
+          onEventDeleted={() => {
+            setIsDetailModalOpen(false);
+            setSelectedEvent(null);
+          }}
+        />
+      )}
 
       <AiFreeSlotModal
         isOpen={isAiSlotModalOpen}
-        isLoading={aiLoading}
-        result={aiSlotResult}
         onClose={() => setIsAiSlotModalOpen(false)}
+        selectedDate={selectedDate}
+        aiResult={aiSlotResult}
+        isLoading={aiLoading}
+        onBookSlot={(slotStr) => {
+          setIsAiSlotModalOpen(false);
+          setQuickAddStartTime(slotStr);
+          setIsAddModalOpen(true);
+        }}
       />
     </div>
   );

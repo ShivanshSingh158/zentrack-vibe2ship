@@ -32,6 +32,18 @@ function tagColor(tag: string): string {
   return TAG_PALETTE[Math.abs(hash) % TAG_PALETTE.length];
 }
 
+function formatDateLabel(dateStr?: string): string {
+  if (!dateStr) return '';
+  const today = new Date().toISOString().split('T')[0];
+  if (dateStr === today) return 'Today';
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return dateStr;
+  }
+}
+
 export const TodoCard = React.memo(({
   todo, index, isExpanded, isSelected, isBulkEdit, newSubtaskText, isBlocked,
   toggleSelection, toggleTodoComplete, setExpandedTaskId, handleDeleteTask,
@@ -76,19 +88,16 @@ export const TodoCard = React.memo(({
             className={`todo-card-row ${isSelected ? 'selected-row' : ''} ${isDone ? 'completed-row' : ''}`}
             onClick={() => !isBulkEdit && setExpandedTaskId(isExpanded ? null : todo.id!)}
           >
-            {/* Priority Indicator Stripe */}
-            <div className="todo-priority-stripe" style={{ backgroundColor: priorityColor }} />
-
-            {/* Main Row Content */}
+            {/* Main Things 3 / Designer Luxury Row */}
             <div className="todo-row-main">
               {/* Drag Handle */}
               {!isBulkEdit && (
-                <div {...provided.dragHandleProps} className="todo-drag-handle" onClick={e => e.stopPropagation()}>
-                  <GripVertical size={14} />
+                <div {...provided.dragHandleProps} className="todo-drag-handle" onClick={e => e.stopPropagation()} title="Drag to reorder">
+                  <GripVertical size={13} />
                 </div>
               )}
 
-              {/* Checkbox */}
+              {/* Tactile Circle Checkbox */}
               {isBulkEdit ? (
                 <button
                   type="button"
@@ -98,7 +107,7 @@ export const TodoCard = React.memo(({
                     toggleSelection(todo.id!);
                   }}
                 >
-                  {isSelected && <Check size={12} strokeWidth={3} />}
+                  {isSelected && <Check size={11} strokeWidth={3} />}
                 </button>
               ) : (
                 <button
@@ -114,13 +123,14 @@ export const TodoCard = React.memo(({
                   }}
                   aria-label="Mark complete"
                 >
-                  {isDone && <Check size={12} strokeWidth={3} />}
+                  {isDone && <Check size={11} strokeWidth={3} />}
                 </button>
               )}
 
-              {/* Title & Metadata Column */}
-              <div className="todo-title-and-meta">
-                <div className="todo-title-line">
+              {/* Content Block (Title + Sub-Metadata Line) */}
+              <div className="todo-content-block">
+                {/* Line 1: Title & Priority */}
+                <div className="todo-title-row">
                   <span
                     className={`todo-title-text ${isDone ? 'completed-text' : ''}`}
                     onDoubleClick={(e) => {
@@ -131,21 +141,53 @@ export const TodoCard = React.memo(({
                   >
                     {todo.title || todo.text}
                   </span>
+                  
+                  {todo.priority && todo.priority !== 'low' && (
+                    <span
+                      className="priority-dot-badge"
+                      style={{ backgroundColor: priorityColor }}
+                      title={`Priority: ${todo.priority}`}
+                    />
+                  )}
                 </div>
 
-                {/* Meta Badges Row */}
-                <div className="todo-meta-badges">
-                  {/* Priority Dot */}
-                  <span
-                    className="priority-dot-badge"
-                    style={{ backgroundColor: priorityColor }}
-                    title={`Priority: ${todo.priority || 'medium'}`}
-                  />
+                {/* Line 2: Subtle Metadata (Time range, duration, recurrence, date, tags) */}
+                <div className="todo-submeta-row">
+                  {/* Time Slot / Range */}
+                  {todo.timeSlot && (
+                    <span className="submeta-time-text">
+                      <Clock size={11} />
+                      <span>{todo.timeSlot}</span>
+                    </span>
+                  )}
+
+                  {/* Date or Recurrence */}
+                  {todo.date && (
+                    <span className="submeta-date-text">
+                      <CalendarIcon size={11} />
+                      <span>{formatDateLabel(todo.date)}</span>
+                    </span>
+                  )}
+
+                  {/* Duration Focus */}
+                  {computedMinutes ? (
+                    <span className="submeta-duration-chip">
+                      <Timer size={11} />
+                      <span>{formatHoursDisplay(computedMinutes / 60)}</span>
+                    </span>
+                  ) : null}
 
                   {/* Subtask count */}
                   {subtasks.length > 0 && (
-                    <span className="meta-subtask-badge">
-                      ☑ {stDone}/{subtasks.length}
+                    <span
+                      className="submeta-subtasks-chip"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedTaskId(isExpanded ? null : todo.id!);
+                      }}
+                      title="Click to view subtasks"
+                    >
+                      ☑ {stDone}/{subtasks.length} subtasks
                     </span>
                   )}
 
@@ -153,48 +195,33 @@ export const TodoCard = React.memo(({
                   {todo.tags && todo.tags.map(tag => (
                     <span
                       key={tag}
-                      className="meta-tag-chip"
+                      className="submeta-tag-chip"
                       style={{
-                        backgroundColor: `${tagColor(tag)}18`,
                         color: tagColor(tag),
+                        backgroundColor: `${tagColor(tag)}15`,
                         borderColor: `${tagColor(tag)}30`,
                       }}
                     >
                       #{tag}
                     </span>
                   ))}
-
-                  {/* Time Slot */}
-                  {todo.timeSlot && (
-                    <span className="meta-time-badge">
-                      <Clock size={11} />
-                      <span>{todo.timeSlot}</span>
-                    </span>
-                  )}
-
-                  {/* Estimate */}
-                  {computedMinutes ? (
-                    <span className="meta-estimate-badge">
-                      <Timer size={11} />
-                      <span>{formatHoursDisplay(computedMinutes / 60)}</span>
-                    </span>
-                  ) : null}
                 </div>
-
-                {/* Subtask Progress Track */}
-                {subtasks.length > 0 && (
-                  <div className="todo-subtask-track">
-                    <div
-                      className="todo-subtask-progress"
-                      style={{ width: `${(stDone / subtasks.length) * 100}%` }}
-                    />
-                  </div>
-                )}
               </div>
 
-              {/* Action Buttons Right */}
+              {/* Action Buttons Right (Hover Action Cluster) */}
               {!isBulkEdit && (
                 <div className="todo-actions-cluster" onClick={e => e.stopPropagation()}>
+                  {!isDone && (
+                    <button
+                      type="button"
+                      className="todo-focus-play-btn"
+                      onClick={() => startTimer(todo.id!, todo.title || todo.text || 'Task', undefined, undefined, computedMinutes)}
+                      title="Launch Pomodoro Focus Timer"
+                    >
+                      <Timer size={12} />
+                      <span>Focus</span>
+                    </button>
+                  )}
                   {subtasks.length > 0 && (
                     <button
                       type="button"
@@ -202,7 +229,7 @@ export const TodoCard = React.memo(({
                       onClick={() => setExpandedTaskId(isExpanded ? null : todo.id!)}
                       title="Toggle Subtasks"
                     >
-                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                     </button>
                   )}
                   <button
@@ -211,25 +238,15 @@ export const TodoCard = React.memo(({
                     onClick={() => onEdit(todo)}
                     title="Edit Task"
                   >
-                    <Edit2 size={13} />
+                    <Edit2 size={12} />
                   </button>
-                  {!isDone && (
-                    <button
-                      type="button"
-                      className="todo-action-icon-btn timer-btn"
-                      onClick={() => startTimer(todo.id!, todo.title || todo.text || 'Task', undefined, undefined, computedMinutes)}
-                      title="Focus Timer"
-                    >
-                      <Timer size={13} />
-                    </button>
-                  )}
                   <button
                     type="button"
                     className="todo-action-icon-btn delete-btn"
                     onClick={() => handleDeleteTask(todo.id!)}
                     title="Delete Task"
                   >
-                    <Trash2 size={13} />
+                    <Trash2 size={12} />
                   </button>
                 </div>
               )}

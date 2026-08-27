@@ -180,6 +180,19 @@ export const CalendarWeekView: React.FC<CalendarWeekViewProps> = ({
                     );
                   })}
 
+                  {/* Current Time Indicator in Today Column */}
+                  {wd.isToday && currentHour >= START_HOUR && currentHour <= END_HOUR && (
+                    <div
+                      className="calendar-current-time-line week-line"
+                      style={{
+                        top: `${((currentHour * 60 + currentMin - START_HOUR * 60) / 60) * HOUR_HEIGHT}px`,
+                      }}
+                    >
+                      <div className="current-time-dot" />
+                      <div className="current-time-bar" />
+                    </div>
+                  )}
+
                   {/* Day Events Overlay */}
                   {dayEvts.map(evt => {
                     const { hour: sh, min: sm } = parseTimeTo24h(evt.startTime);

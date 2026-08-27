@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   ChevronDown, ChevronUp, Play, Check, Clock, Pin, Plus, Trash2,
   Calendar, Edit3, MoreVertical, Sparkles, BookOpen, ExternalLink, X,
-  GraduationCap, Layers, ArrowRight
+  GraduationCap, Layers, ArrowRight, Star
 } from 'lucide-react';
 import type { LearningTopic, LearningSubTask } from '../../types';
 import { extractYoutubeId, formatDuration } from './learningHelpers';
@@ -92,7 +92,7 @@ export const TopicCard: React.FC<TopicCardProps> = ({
   const [newTitle, setNewTitle] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [newEstHours, setNewEstHours] = useState('');
-  const [visibleLimit, setVisibleLimit] = useState(15);
+  const [visibleLimit, setVisibleLimit] = useState(25);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState(topic.title);
   const [showMenu, setShowMenu] = useState(false);
@@ -212,7 +212,7 @@ export const TopicCard: React.FC<TopicCardProps> = ({
         ['--lp-accent-grad' as any]: theme.grad,
       }}
     >
-      {/* ── Topic Card Header (Clean Mobile Style) ── */}
+      {/* ── Topic Card Header ── */}
       <div className="lp-topic-card-header">
         {/* Title and Action/Chevron Row */}
         <div className="lp-card-title-row">
@@ -248,55 +248,37 @@ export const TopicCard: React.FC<TopicCardProps> = ({
           <div className="lp-card-header-actions">
             <button
               type="button"
-              className="lp-icon-circle-btn"
-              onClick={onToggleExpand}
-              title={isExpanded ? 'Collapse' : 'Expand'}
+              className="lp-card-icon-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsEditingTitle(true);
+                setEditedTitle(topic.title);
+              }}
+              title="Edit Title"
             >
-              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              <Edit3 size={13} />
             </button>
 
-            <div className="lp-menu-wrap">
-              <button
-                type="button"
-                className="lp-icon-circle-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowMenu(prev => !prev);
-                }}
-                title="Topic actions"
-              >
-                <MoreVertical size={15} />
-              </button>
-
-              {showMenu && (
-                <div className="lp-dropdown-menu" onClick={() => setShowMenu(false)}>
-                  <button
-                    type="button"
-                    className="lp-dropdown-item"
-                    onClick={() => {
-                      setEditedTitle(topic.title);
-                      setIsEditingTitle(true);
-                    }}
-                  >
-                    <Edit3 size={13} /> Rename Topic
-                  </button>
-                  <button
-                    type="button"
-                    className="lp-dropdown-item danger"
-                    onClick={() => onDeleteTopic(topic.id!)}
-                  >
-                    <Trash2 size={13} /> Delete Topic
-                  </button>
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              className="lp-card-icon-btn delete"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(`Delete "${topic.title}" and all its lectures?`)) {
+                  onDeleteTopic(topic.id!);
+                }
+              }}
+              title="Delete Topic"
+            >
+              <Trash2 size={13} />
+            </button>
           </div>
         </div>
 
-        {/* Stats Row */}
-        <div className="lp-topic-meta-row">
+        {/* Course Progress & Metadata Row */}
+        <div className="lp-card-meta-line" onClick={onToggleExpand}>
           <span className="lp-meta-pct" style={{ color: theme.accent }}>
-            {progressPct.toFixed(0)}% completed
+            {Math.round(progressPct)}% completed
           </span>
           <span className="lp-meta-separator">·</span>
           <span className="lp-meta-count">
@@ -308,7 +290,7 @@ export const TopicCard: React.FC<TopicCardProps> = ({
         </div>
 
         {/* Subtle Progress Bar */}
-        <div className="lp-card-progress-track">
+        <div className="lp-card-progress-track" onClick={onToggleExpand}>
           <div
             className="lp-card-progress-bar"
             style={{ width: `${progressPct}%`, background: theme.accent }}
@@ -335,7 +317,7 @@ export const TopicCard: React.FC<TopicCardProps> = ({
             }}
           >
             <Play size={13} fill="#000000" color="#000000" />
-            <span>{progressPct === 0 ? 'Start Learning' : 'Resume'}</span>
+            <span>{progressPct === 0 ? 'Start Learning' : progressPct === 100 ? 'Review' : 'Resume'}</span>
           </button>
 
           <div className="lp-footer-right-actions">
@@ -426,121 +408,130 @@ export const TopicCard: React.FC<TopicCardProps> = ({
               {displayedSubtasks.map((sub, idx) => {
                 const videoId = extractYoutubeId(sub.url || '');
                 const isRenaming = renamingSubtaskId === sub.id;
+                const lectureTitle = sub.title || (sub as any).text || (sub as any).name || (sub as any).label || 'Lecture';
 
                 return (
                   <div
                     key={sub.id}
-                    className={`lp-lecture-card ${sub.isCompleted ? 'completed' : ''} ${sub.pinned ? 'pinned' : ''}`}
+                    className={`lp-lecture-row ${sub.isCompleted ? 'completed' : ''} ${sub.pinned ? 'pinned' : ''}`}
                   >
-                    {/* Tier 1: Index Number + Checkbox + Full Width Title */}
-                    <div className="lp-lecture-top-row">
-                      <span className="lp-lecture-index">{idx + 1}.</span>
+                    {/* Left: Index + Checkbox + Single Line Title */}
+                    <div className="lp-row-left">
+                      <span className="lp-row-index">{idx + 1}.</span>
 
                       <button
                         type="button"
-                        className={`lp-lecture-checkbox ${sub.isCompleted ? 'checked' : ''}`}
+                        className={`lp-row-checkbox ${sub.isCompleted ? 'checked' : ''}`}
                         onClick={() => onToggleSubtask(topic.id!, sub.id)}
                         title={sub.isCompleted ? 'Mark uncompleted' : 'Mark completed (+25 XP)'}
                       >
-                        {sub.isCompleted && <Check size={11} strokeWidth={3.5} />}
+                        {sub.isCompleted && <Check size={10} strokeWidth={3.5} />}
                       </button>
 
-                      <div className="lp-lecture-title-container">
-                        {isRenaming ? (
-                          <div className="lp-subtask-rename-row">
-                            <input
-                              type="text"
-                              className="lp-text-input"
-                              value={subtaskTitleDraft}
-                              onChange={e => setSubtaskTitleDraft(e.target.value)}
-                              onKeyDown={e => {
-                                if (e.key === 'Enter') handleSaveSubtaskTitle(sub.id);
-                                if (e.key === 'Escape') setRenamingSubtaskId(null);
-                              }}
-                              autoFocus
-                            />
-                            <button
-                              type="button"
-                              className="lp-btn-primary-xs"
-                              onClick={() => handleSaveSubtaskTitle(sub.id)}
-                            >
-                              Save
-                            </button>
-                          </div>
-                        ) : (
-                          <span
-                            className={`lp-lecture-title ${sub.isCompleted ? 'completed-text' : ''}`}
-                            title={sub.title || (sub as any).text}
-                          >
-                            {sub.title || (sub as any).text}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Tier 2: Dedicated Bottom Toolbar (Watch on Left, Action Icons on Right) */}
-                    <div className="lp-lecture-bottom-row">
-                      <div className="lp-lecture-bottom-left">
-                        {videoId && (
+                      {isRenaming ? (
+                        <div className="lp-row-rename-box" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            className="lp-row-rename-input"
+                            value={subtaskTitleDraft}
+                            onChange={e => setSubtaskTitleDraft(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSaveSubtaskTitle(sub.id);
+                              if (e.key === 'Escape') setRenamingSubtaskId(null);
+                            }}
+                            autoFocus
+                          />
                           <button
                             type="button"
-                            className="lp-lecture-watch-pill"
-                            onClick={() => onPlayVideo(videoId, sub.id, topic.id!, sub.title || (sub as any).text)}
-                            title="Watch in Lecture Theater"
+                            className="lp-btn-primary-xs"
+                            onClick={() => handleSaveSubtaskTitle(sub.id)}
                           >
-                            <Play size={10} fill="currentColor" />
-                            <span>Watch</span>
+                            Save
                           </button>
-                        )}
-
-                        {sub.pinned && (
-                          <span className="lp-lecture-meta-chip pin" title="Pinned to top">
-                            <Pin size={9} /> Pinned
-                          </span>
-                        )}
-
-                        {sub.estimatedHours && sub.estimatedHours > 0 && (
-                          <span className="lp-lecture-meta-chip duration">
-                            <Clock size={9} /> {sub.estimatedHours}h
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="lp-lecture-actions-group">
-                        <button
-                          type="button"
-                          className="lp-icon-action-btn"
-                          onClick={() => onOpenSchedule(topic, sub)}
-                          title="Schedule on Calendar"
-                        >
-                          <Calendar size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          className={`lp-icon-action-btn ${sub.pinned ? 'active-pin' : ''}`}
-                          onClick={() => onTogglePin(topic.id!, sub.id)}
-                          title={sub.pinned ? 'Unpin lecture' : 'Pin to top'}
-                        >
-                          <Pin size={13} />
-                        </button>
-                        <button
-                          type="button"
-                          className="lp-icon-action-btn"
+                        </div>
+                      ) : (
+                        <span
+                          className={`lp-row-title ${sub.isCompleted ? 'completed-text' : ''}`}
+                          title={lectureTitle}
                           onClick={() => {
-                            setSubtaskTitleDraft(sub.title || (sub as any).text);
-                            setRenamingSubtaskId(sub.id);
+                            if (videoId) {
+                              onPlayVideo(videoId, sub.id, topic.id!, lectureTitle);
+                            } else {
+                              onToggleSubtask(topic.id!, sub.id);
+                            }
                           }}
-                          title="Rename lecture"
                         >
-                          <Edit3 size={13} />
-                        </button>
+                          {lectureTitle}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Right: Badges + Hover Actions */}
+                    <div className="lp-row-right">
+                      {/* Video Play Button Pill */}
+                      {videoId && (
                         <button
                           type="button"
-                          className="lp-icon-action-btn delete"
-                          onClick={() => onDeleteSubtask(topic.id!, sub.id)}
-                          title="Delete lecture"
+                          className="lp-row-video-pill"
+                          onClick={() => onPlayVideo(videoId, sub.id, topic.id!, lectureTitle)}
+                          title="Watch in Lecture Theater"
                         >
-                          <Trash2 size={13} />
+                          <Play size={9} fill="currentColor" />
+                          <span>Video</span>
+                        </button>
+                      )}
+
+                      {/* Duration Chip */}
+                      {sub.estimatedHours && sub.estimatedHours > 0 && (
+                        <span className="lp-row-duration-chip">
+                          <Clock size={10} />
+                          <span>
+                            {sub.estimatedHours >= 1
+                              ? `${sub.estimatedHours}h`
+                              : `${Math.round(sub.estimatedHours * 60)}m`}
+                          </span>
+                        </span>
+                      )}
+
+                      {/* Hover Action Cluster */}
+                      <div className="lp-row-actions">
+                        <button
+                          type="button"
+                          className={`lp-row-action-btn pin ${sub.pinned ? 'is-pinned' : ''}`}
+                          onClick={() => onTogglePin(topic.id!, sub.id)}
+                          title={sub.pinned ? 'Unpin Lecture' : 'Pin Lecture'}
+                        >
+                          <Star size={11} fill={sub.pinned ? '#ff9f4d' : 'none'} color={sub.pinned ? '#ff9f4d' : '#8e8e93'} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="lp-row-action-btn schedule"
+                          onClick={() => onOpenSchedule(topic, sub)}
+                          title="Schedule to Calendar"
+                        >
+                          <Calendar size={11} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="lp-row-action-btn edit"
+                          onClick={() => {
+                            setRenamingSubtaskId(sub.id);
+                            setSubtaskTitleDraft(lectureTitle);
+                          }}
+                          title="Rename Lecture"
+                        >
+                          <Edit3 size={11} />
+                        </button>
+
+                        <button
+                          type="button"
+                          className="lp-row-action-btn delete"
+                          onClick={() => onDeleteSubtask(topic.id!, sub.id)}
+                          title="Delete Lecture"
+                        >
+                          <Trash2 size={11} />
                         </button>
                       </div>
                     </div>
@@ -548,14 +539,14 @@ export const TopicCard: React.FC<TopicCardProps> = ({
                 );
               })}
 
-              {/* Show more pagination */}
-              {subTasks.length > visibleLimit && (
+              {/* Show more lectures if limit reached */}
+              {sortedSubtasks.length > visibleLimit && (
                 <button
                   type="button"
                   className="lp-show-more-btn"
-                  onClick={() => setVisibleLimit(prev => prev + 30)}
+                  onClick={() => setVisibleLimit(prev => prev + 25)}
                 >
-                  Show More (+{Math.min(30, subTasks.length - visibleLimit)} lectures)
+                  Show more ({sortedSubtasks.length - visibleLimit} remaining)...
                 </button>
               )}
             </div>
