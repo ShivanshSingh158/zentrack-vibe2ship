@@ -923,6 +923,12 @@ All storage keys must be imported from `src/config/constants.ts → STORAGE_KEYS
 
 ## 15. Changelog
 
+### 2026-08-27 — Hydration Logging & Optimistic Water State Overhaul
+- **FIXED** `src/contexts/domains/WellnessContext.tsx` & `src/contexts/MobileDataContext.tsx`: Added `optimisticAddWaterLog` handler with instant in-memory and `@zentrack_cache_water_logs` cache updates (0ms latency).
+- **FIXED** `src/screens/dashboard/useDashboardData.ts`: Subscribed `DashboardScreen` to `WellnessContext` (`ensureSubscribed`) behind `InteractionManager.runAfterInteractions`, restoring live real-time Firestore synchronization for hydration and gym widgets.
+- **FIXED** `src/components/Dashboard/WaterLogSheet.tsx`: Replaced UTC `.toISOString()` with `formatLocalDateStr(new Date())` to eliminate timezone day-shift bugs in IST, and integrated `optimisticAddWaterLog` for immediate UI response.
+- **VERIFIED**: `npx tsc --noEmit` passes with 0 errors.
+
 ### 2026-08-27 — 3–4 Second Screen Flicker Elimination (Order-Independent areItemsEqual & Ring Stabilization)
 - **FIXED** `src/utils/schemaGuards.ts`: Made `areItemsEqual` order-independent by sorting items by ID before stringifying. Eliminates false-positive re-render bursts when Firestore server snapshots arrive with arbitrary Document ID ordering.
 - **FIXED** `src/contexts/domains/CoreDataContext.tsx`: Initialized `firestoreReady` to `hasCachedData` so it starts `true` when cached data exists, preventing a disruptive `false -> true` context re-render cascade.

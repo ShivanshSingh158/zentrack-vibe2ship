@@ -38,6 +38,7 @@ export interface WellnessContextType {
   // Optimistic write helpers — WhatsApp pattern: show instantly, Firestore syncs in background.
   optimisticAddGymLog: (log: GymLog) => void;
   optimisticUpdateGymLog: (logId: string, partial: Partial<GymLog>) => void;
+  optimisticAddWaterLog: (log: WaterLog) => void;
 }
 
 const DEFAULT_WELLNESS_DATA: WellnessContextType = {
@@ -53,6 +54,7 @@ const DEFAULT_WELLNESS_DATA: WellnessContextType = {
   ensureSubscribed: () => {},
   optimisticAddGymLog: () => {},
   optimisticUpdateGymLog: () => {},
+  optimisticAddWaterLog: () => {},
 };
 
 const WellnessContext = createContext<WellnessContextType | null>(null);
@@ -439,6 +441,14 @@ export function WellnessProvider({
     });
   };
 
+  const optimisticAddWaterLog = (log: WaterLog) => {
+    setWaterLogs(prev => {
+      const next = [log, ...prev];
+      writeWellnessCache({ waterLogs: next }, true); // immediate: optimistic add
+      return next;
+    });
+  };
+
   // gymLogsReady: true once the first Firestore snapshot has fired (even if user has no logs).
   // Previously derived as `gymLogs.length > 0` which was always false for new users,
   // causing an infinite loading skeleton. Now a proper boolean sentinel.
@@ -446,10 +456,11 @@ export function WellnessProvider({
 
   const value = useMemo(() => ({
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
-    waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog
+    waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddGymLog, optimisticUpdateGymLog,
+    optimisticAddWaterLog
   }), [
     gymLogs, gymLogsReady, userGymPlan, updateMasterPlan, updateFullMasterPlan, applyMasterTemplate,
-    waterLogs, sleepLogs, weightLogs, ensureSubscribed
+    waterLogs, sleepLogs, weightLogs, ensureSubscribed, optimisticAddWaterLog
   ]);
 
   return (

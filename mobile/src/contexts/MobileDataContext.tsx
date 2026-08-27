@@ -107,7 +107,7 @@ export interface CustomEvent {
   startTime?: string; endTime?: string; location?: string; description?: string; userId: string;
 }
 
-export interface WaterLog { id: string; userId: string; date: string; amountMl: number; }
+export interface WaterLog { id: string; userId: string; date: string; amountMl: number; timestamp?: number; createdAt?: any; }
 export interface SleepLog {
   id?: string;
   userId: string;
@@ -239,6 +239,7 @@ interface MobileDataContextType {
   // Wellness
   optimisticAddGymLog: (log: GymLog) => void;
   optimisticUpdateGymLog: (logId: string, partial: Partial<GymLog>) => void;
+  optimisticAddWaterLog: (log: WaterLog) => void;
   // Academic
   optimisticAddSubject: (subject: AttendanceSubject) => void;
   optimisticDeleteSubject: (subjectId: string) => void;
@@ -329,6 +330,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     // Optimistic functions — Wellness
     optimisticAddGymLog: wellness.optimisticAddGymLog,
     optimisticUpdateGymLog: wellness.optimisticUpdateGymLog,
+    optimisticAddWaterLog: wellness.optimisticAddWaterLog,
     // Optimistic functions — Academic
     optimisticAddSubject: academic.optimisticAddSubject,
     optimisticDeleteSubject: academic.optimisticDeleteSubject,
@@ -356,7 +358,7 @@ function MobileDataShimProvider({ children }: { children: React.ReactNode }) {
     core.optimisticAddTask, core.optimisticUpdateTask, core.optimisticDeleteTask,
     core.optimisticUpdateHabit, core.optimisticAddHabitLog, core.optimisticUpdateHabitLog, core.optimisticRemoveHabitLog,
     wellness.gymLogs, wellness.gymLogsReady, wellness.ensureSubscribed, wellness.userGymPlan, wellness.updateMasterPlan, wellness.updateFullMasterPlan, wellness.applyMasterTemplate, wellness.waterLogs, wellness.sleepLogs, wellness.weightLogs,
-    wellness.optimisticAddGymLog, wellness.optimisticUpdateGymLog,
+    wellness.optimisticAddGymLog, wellness.optimisticUpdateGymLog, wellness.optimisticAddWaterLog,
     academic.attendance, academic.attendanceLogs, academic.assignments, academic.semesters, academic.semesterSubjects,
     academic.optimisticUpdateAttendance, academic.optimisticAddAttendanceLog, academic.optimisticRemoveAttendanceLog, academic.optimisticAddAssignment, academic.optimisticUpdateAssignment, academic.optimisticDeleteAssignment,
     creative.storageNodes, creative.notes, creative.learningTopics, creative.jobs, creative.contentLogs,
@@ -443,6 +445,7 @@ const DEFAULT_FALLBACK_CTX: MobileDataContextType = {
   optimisticRemoveHabitLog: () => {},
   optimisticAddGymLog: () => {},
   optimisticUpdateGymLog: () => {},
+  optimisticAddWaterLog: () => {},
   optimisticAddSubject: () => {},
   optimisticDeleteSubject: () => {},
   optimisticUpdateAttendance: () => {},

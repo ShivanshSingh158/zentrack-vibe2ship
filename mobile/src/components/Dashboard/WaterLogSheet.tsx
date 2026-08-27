@@ -13,6 +13,7 @@ import { scheduleAllNotifications } from '../../services/notifications';
 import { queueWrite } from '../../services/offlineSync';
 import { useGymProfile } from '../../hooks/useGymProfile';
 import { useWellnessData } from '../../contexts/domains/WellnessContext';
+import { formatLocalDateStr } from '../../utils/dateUtils';
 
 const WATER_GOAL_KEY = 'zentrack_water_goal_ml';
 
@@ -30,7 +31,7 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const s = makeStyles(colors, isDark);
   const navigation = useNavigation<any>();
   const { gymProfile, saveGymProfile } = useGymProfile();
-  const { weightLogs } = useWellnessData();
+  const { weightLogs, optimisticAddWaterLog } = useWellnessData();
 
   const [editingTarget, setEditingTarget] = useState(false);
   const [tempTarget, setTempTarget] = useState(String(target));
@@ -118,8 +119,17 @@ export default function WaterLogSheet({ visible, onClose, userId, target, onUpda
   const handleLog = async (amountMl: number) => {
     if (amountMl <= 0) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatLocalDateStr(new Date());
     
+    // Instant optimistic update (0ms latency in UI)
+    optimisticAddWaterLog({
+      id: `local_water_${Date.now()}`,
+      userId,
+      date: todayStr,
+      amountMl,
+      timestamp: Date.now(),
+    });
+
     try {
       await queueWrite(COLLECTION.WATER_LOGS, 'add', {
         userId,

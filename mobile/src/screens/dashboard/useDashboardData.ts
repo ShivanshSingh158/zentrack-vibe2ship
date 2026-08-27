@@ -53,8 +53,16 @@ export function useDashboardData() {
   // Dashboard only re-renders when these specific slices change.
   const { user, tasks, habitLogs, allHabits } = useCoreData();
   const { attendance, attendanceLogs, assignments } = useAcademicData();
-  const { gymLogs, userGymPlan, waterLogs } = useWellnessData();
+  const { gymLogs, userGymPlan, waterLogs, ensureSubscribed: ensureWellnessSubscribed } = useWellnessData();
   const { customEvents } = usePlannerData();
+
+  // Ensure Wellness real-time subscriptions (water_logs, gym_logs, user_gym_plans) are open on Dashboard
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => {
+      ensureWellnessSubscribed?.();
+    });
+    return () => handle.cancel();
+  }, [ensureWellnessSubscribed]);
 
   // ── UI State (Seeded synchronously from L1 Cache for 0.00ms cold paint) ──────
   const initialManifest = getBootManifestSync();
