@@ -325,7 +325,10 @@ export function CoreDataProvider({ children }: { children: React.ReactNode }) {
 
     unsubs.push(onSnapshot(
       query(collection(db, COLLECTION.TASKS), where("userId", "==", uid)),
+      { includeMetadataChanges: false }, // Only fire on server-confirmed data changes
       (snap: QuerySnapshot<DocumentData>) => {
+        // Guard 1: If we have cached data and Firestore returns 0 docs from its LOCAL SDK
+        // cache (before the server responds), skip — prevents "All clear!" flash on cold boot.
         if (snap.docs.length === 0 && hasCachedDataRef.current) return;
         unstable_batchedUpdates(() => {
           const fresh = snap.docs.map((d: QueryDocumentSnapshot<DocumentData>) => parseTask(d.data(), d.id));
