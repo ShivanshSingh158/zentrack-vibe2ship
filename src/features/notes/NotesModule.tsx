@@ -6,7 +6,8 @@ import type { StorageNode } from '../../types/index';
 import {
   Folder, FileText, Trash2, X, Plus, FolderPlus,
   HardDrive, ExternalLink, Sparkles, Upload, Download,
-  PanelLeftClose, PanelLeftOpen, Maximize2, Minimize2, Columns, LayoutGrid
+  PanelLeftClose, PanelLeftOpen, Maximize2, Minimize2, Columns, LayoutGrid,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
@@ -63,6 +64,13 @@ export const NotesModule = () => {
 
   // File Viewer State
   const [viewingFile, setViewingFile] = useState<StorageNode | null>(null);
+  const [isIframeLoading, setIsIframeLoading] = useState(true);
+
+  useEffect(() => {
+    if (viewingFile) {
+      setIsIframeLoading(true);
+    }
+  }, [viewingFile?.id, viewingFile?.url]);
 
   useEffect(() => {
     activeNoteRef.current = activeNote;
@@ -621,14 +629,24 @@ export const NotesModule = () => {
                 </div>
               </div>
 
-              <div className="notes-studio-file-body">
-                {viewingFile.fileType === 'pdf' || viewingFile.mimeType?.includes('pdf') || viewingFile.url?.endsWith('.pdf') ? (
-                  <iframe
-                    src={viewingFile.url}
-                    title={viewingFile.name}
-                    className="notes-preview-iframe"
-                  />
-                ) : viewingFile.fileType === 'image' || viewingFile.mimeType?.startsWith('image/') ? (
+              <div className="notes-studio-file-body" style={{ position: 'relative' }}>
+                {viewingFile.url && (viewingFile.fileType === 'pdf' || viewingFile.mimeType?.includes('pdf') || viewingFile.url?.toLowerCase().endsWith('.pdf') || viewingFile.name?.toLowerCase().endsWith('.pdf') || viewingFile.fileType === 'docx' || viewingFile.name?.toLowerCase().match(/\.(docx?|pptx?|xlsx?)$/i)) ? (
+                  <>
+                    {isIframeLoading && (
+                      <div className="notes-preview-loading-overlay">
+                        <Loader2 size={24} className="animate-spin" color="#a599ff" />
+                        <span>Loading document preview...</span>
+                      </div>
+                    )}
+                    <iframe
+                      src={`https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(viewingFile.url)}`}
+                      title={viewingFile.name}
+                      className="notes-preview-iframe"
+                      onLoad={() => setIsIframeLoading(false)}
+                      allow="autoplay"
+                    />
+                  </>
+                ) : viewingFile.url && (viewingFile.fileType === 'image' || viewingFile.mimeType?.startsWith('image/') || viewingFile.url?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i) || viewingFile.name?.toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/i)) ? (
                   <div className="notes-preview-img-container">
                     <img
                       src={viewingFile.url}

@@ -583,9 +583,10 @@ User clicks "Connect Google" → signInWithGoogle() in googleCalendar.ts
 | New agent role | `AgentRole` type in `DagEngine.ts` + `AGENT_DETAILS` in `agentDetails.ts` + config in `NewAgents.ts` |
 | App-wide constants | `src/config/constants.ts` |
 
----
-
 ## 12. Changelog
+
+### 2026-08-27 — PDF & Document In-App Viewer Fix
+- **FIXED** `src/features/notes/NotesModule.tsx` & `src/styles/notes.css` — Resolved browser iframe security blocking (`X-Frame-Options` / CSP `frame-ancestors`) on uploaded cloud documents (Cloudinary/Storage). Routed PDF and Office document previews through the Google Docs Viewer embed URL (`https://docs.google.com/gview?embedded=true&url=...`) with an animated loading spinner overlay.
 
 ### 2026-08-23 — Gemini Model Dual-Tier Support: 3.7 Flash & 2.5 Flash
 - **UPDATED** `src/config/constants.ts` & `mobile/src/config/constants.ts` — Added `AVAILABLE_GEMINI_MODELS` registry containing `gemini-3.7-flash` (Hybrid Thinking) and `gemini-2.5-flash` (Fast & Balanced), setting `gemini-3.7-flash` as default.

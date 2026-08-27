@@ -1761,6 +1761,24 @@
   align-items: center;
   justify-content: center;
   background: #0b0b0e;
+  position: relative;
+}
+
+.notes-preview-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  background: #0b0b0e;
+  color: #8e8e93;
+  font-size: 0.85rem;
+  z-index: 2;
 }
 
 .notes-studio-empty-state {
