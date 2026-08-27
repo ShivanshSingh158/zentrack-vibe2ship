@@ -47,7 +47,6 @@ loadBootManifest().catch(() => {});
 import { FONT_FAMILY, SPACE, FONT_SIZE } from '../theme/tokens';
 import AnimatedPressable from '../components/AnimatedPressable';
 import { useTheme } from '../contexts/ThemeContext';
-import { useTabBarBadges } from '../hooks/useTabBarBadges';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 // --- Core App Screens (Synchronous for 0ms Instant Tab Switching) ----------
@@ -225,9 +224,7 @@ function MainTabNavigator() {
     AsyncStorage.setItem(NAV_ROUTE_KEY, routeName).catch(() => {});
   }, []);
 
-  const badges = useTabBarBadges();
-
-  const renderTabBar = useCallback((props: any) => <TelegramTabBar {...props} badges={badges} />, [badges]);
+  const renderTabBar = useCallback((props: any) => <TelegramTabBar {...props} />, []);
 
   return (
     <Tab.Navigator
@@ -242,7 +239,6 @@ function MainTabNavigator() {
         sceneStyle:  { backgroundColor: colors.background },
         lazy:        true,
         freezeOnBlur: false,
-        animation:   'fade',
       }}
       backBehavior="history"
     >

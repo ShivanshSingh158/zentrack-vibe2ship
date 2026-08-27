@@ -247,7 +247,7 @@ mobile/
         ├── exportUtils.ts                # Excel & CSV Report Exporter
         ├── gymUtils.ts                   # 1RM Calculation & Volume Metrics Formatter
         ├── firebaseUtils.ts              # Firebase Helper Utilities
-        └── tabBarScroll.ts               # Tab Bar Auto-Scroll on Navigation
+        └── tabBarScroll.ts               # Persistent 0ms Nav Bar Anchor & Haptic Coordinator
 ```
 
 ---

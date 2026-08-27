@@ -1,36 +1,21 @@
 /**
  * tabBarScroll.ts — ZenTrack Mobile
- * Lightweight scroll direction coordinator for auto-hiding and showing the bottom tab bar.
+ * Rock-solid persistent bottom tab bar coordinator.
+ * Tab bar remains permanently anchored and responsive for 0ms touch latency.
  */
 
 type TabBarScrollListener = (visible: boolean) => void;
-const listeners = new Set<TabBarScrollListener>();
 
-let currentVisibility = true;
-
-/**
- * Explicitly show or hide the floating bottom tab bar.
- */
-export function setTabBarVisible(visible: boolean) {
-  if (currentVisibility === visible) return;
-  currentVisibility = visible;
-  listeners.forEach((fn) => fn(visible));
+export function setTabBarVisible(_visible: boolean) {
+  // Fixed rock-solid tab bar — no-op to eliminate scroll-triggered JS bridge churn
 }
 
-/**
- * Get current tab bar visibility state.
- */
 export function getTabBarVisible(): boolean {
-  return currentVisibility;
+  return true;
 }
 
-/**
- * Subscribe to tab bar visibility changes.
- */
 export function subscribeTabBarScroll(fn: TabBarScrollListener): () => void {
-  listeners.add(fn);
-  fn(currentVisibility);
-  return () => {
-    listeners.delete(fn);
-  };
+  fn(true);
+  return () => {};
 }
+

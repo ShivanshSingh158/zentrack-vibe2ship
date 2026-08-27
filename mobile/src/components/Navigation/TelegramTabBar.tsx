@@ -11,9 +11,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FONT_FAMILY } from '../../theme/tokens';
-import { subscribeTabBarScroll, setTabBarVisible } from '../../utils/tabBarScroll';
+import { useTabBarBadges } from '../../hooks/useTabBarBadges';
 
 // ─── Module Icons Configuration ───────────────────────────────────────────────
 export const SPOTIFY_TAB_CONFIG: Record<string, {
@@ -85,6 +86,7 @@ const TabItem = React.memo(function TabItem({
   }));
 
   const handlePress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     const event = navigation.emit({
       type: 'tabPress',
       target: route.key,
@@ -165,10 +167,12 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
   state,
   descriptors,
   navigation,
-  badges = {},
+  badges: passedBadges,
 }: TelegramTabBarProps) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const hookBadges = useTabBarBadges();
+  const badges = (passedBadges && Object.keys(passedBadges).length > 0) ? passedBadges : hookBadges;
 
   // Filter visible routes based on custom style and TabBarNullButton
   const visibleRoutes = useMemo(() => {
@@ -203,37 +207,23 @@ export const TelegramTabBar = React.memo(function TelegramTabBar({
       ? moreRouteIndex
       : 0;
 
-  // Scroll Hide / Reveal Behavior
-  const focusedOptions = descriptors[state.routes[state.index].key].options;
+  // Screen options hide (only when a full-screen modal explicitly requests tabBarStyle: { display: 'none' })
+  const focusedOptions = descriptors[state.routes[state.index].key]?.options || {};
   const isScreenOptionsHidden =
     focusedOptions.tabBarStyle &&
     (focusedOptions.tabBarStyle as any).display === 'none';
 
-  const [isScrollHidden, setIsScrollHidden] = useState(false);
+  const shouldHide = Boolean(isScreenOptionsHidden);
+  const translateY = useSharedValue(shouldHide ? 110 : 0);
+  const tabOpacity = useSharedValue(shouldHide ? 0 : 1);
 
   useEffect(() => {
-    return subscribeTabBarScroll((visible) => {
-      setIsScrollHidden(!visible);
-    });
-  }, []);
-
-  useEffect(() => {
-    setIsScrollHidden(false);
-    setTabBarVisible(true);
-  }, [state.index]);
-
-  const shouldHide = isScreenOptionsHidden || isScrollHidden;
-  const translateY = useSharedValue(0);
-  const tabOpacity = useSharedValue(1);
-
-  useEffect(() => {
-    translateY.value = withSpring(shouldHide ? 110 : 0, {
-      damping: 24,
-      stiffness: 350,
-      mass: 0.6,
+    translateY.value = withTiming(shouldHide ? 110 : 0, {
+      duration: 150,
+      easing: Easing.out(Easing.cubic),
     });
     tabOpacity.value = withTiming(shouldHide ? 0 : 1, {
-      duration: shouldHide ? 120 : 160,
+      duration: 150,
       easing: Easing.out(Easing.cubic),
     });
   }, [shouldHide]);
