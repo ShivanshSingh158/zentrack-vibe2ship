@@ -105,7 +105,6 @@ export const SCREENS = {
   // Auth stack
   LANDING: 'Landing',
   AUTH: 'Auth',
-  GUEST_DASHBOARD: 'GuestDashboard',
   // Main tabs
   HOME: 'Home',
   SARA_MODAL: 'SaraModal',

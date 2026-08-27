@@ -197,7 +197,6 @@ mobile/
     │   ├── NotificationsSettingsScreen.tsx # Multi-Channel Notification Scheduling Controls
     │   ├── OnboardingScreen.tsx          # 5-Step Psychological Persona Setup
     │   ├── AuthScreen.tsx                # Google & Apple One-Tap Sign In
-    │   ├── GuestDashboard.tsx            # Unauthenticated Offline Preview Mode
     │   ├── LandingScreen.tsx             # Welcome Landing Screen
     │   ├── TermsScreen.tsx               # Privacy Policy & Terms of Service
     │   ├── attendance/                   # Attendance Helper Hooks, Styles & Week Strip

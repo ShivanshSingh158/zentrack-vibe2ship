@@ -52,7 +52,6 @@ import ErrorBoundary from '../components/ErrorBoundary';
 
 // --- Core App Screens (Synchronous for 0ms Instant Tab Switching) ----------
 import LandingScreen from '../screens/LandingScreen';
-import GuestDashboard from '../screens/GuestDashboard';
 import AuthScreen from '../screens/AuthScreen';
 import OnboardingScreen, { ONBOARDING_KEY } from '../screens/OnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
@@ -663,7 +662,6 @@ export default function AppNavigator() {
         ) : (
           <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade', contentStyle: { backgroundColor: colors.background } }}>
             <Stack.Screen name="Landing"        component={LandingScreen} />
-            <Stack.Screen name="GuestDashboard" component={GuestDashboard} />
             <Stack.Screen name="Auth"           component={AuthScreen} />
           </Stack.Navigator>
         )}
